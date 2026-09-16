@@ -2,7 +2,7 @@
 
 ## 1. 목표와 고정 범위
 
-현재 Party custom Canvas는 런타임 그림 asset에 의존하지 않는 코드 네이티브 ASCII 화면으로 표시한다. 선택형 2.5D는 Reddit 글의 첫 번째 영상인 ASCIIDENT를 시각 기준으로 삼아, 검은 바탕·고채도 제한 팔레트·여러 printable ASCII 문자로 조립한 지형과 배우·전후 문자층·문자 글로우로 깊이를 만든다. 평면 2D는 같은 글의 두 번째 영상처럼 현재 시야는 컬러, 한 번 보았지만 현재 시야 밖인 기억 영역은 흑백, 미탐험 영역은 비표시로 구분한다. 기존 좌표·입력·전투 crop은 유지한다. `docs/concepts/ascii_2_5d_visual_target.png`는 폐기 전 초기 방향을 기록한 문서 이미지이며 현재 구현 목표가 아니다.
+현재 Party custom Canvas는 런타임 그림 asset에 의존하지 않는 코드 네이티브 ASCII 화면으로 표시한다. 선택형 2.5D는 Reddit 글의 첫 번째 영상인 ASCIIDENT를 시각 기준으로 삼아, 검은 바탕·고채도 제한 팔레트·여러 printable ASCII 문자로 조립한 지형과 배우·전후 문자층·문자 글로우로 깊이를 만든다. 평면 2D는 같은 글의 두 번째 영상처럼 현재 시야는 컬러, 한 번 보았지만 현재 시야 밖인 기억 영역은 흑백, 미탐험 영역은 비표시로 구분한다. 기존 좌표·입력·전투 crop은 유지한다. `art/archive/concepts/ascii_2_5d_visual_target.png`는 폐기 전 초기 방향을 기록한 문서 이미지이며 현재 구현 목표가 아니다.
 
 동시에 exact `SHOWCASE_V1`을 추가하고 다음 UX를 적용한다.
 

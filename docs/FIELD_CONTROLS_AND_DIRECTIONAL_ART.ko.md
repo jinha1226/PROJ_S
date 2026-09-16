@@ -75,4 +75,4 @@ Viewport 입력을 전달해 수행했고 390×800 화면도 확인했다.
 최종 Web release export 성공. 저장소 밖 빈 실행 폴더에서 내보낸 `index.pck`만
 지정한 headless 실행도 오류 없이 종료했다. 원격 푸시/배포는 이 작업에 포함하지 않았다.
 
-[실행 화면](previews/field-controls-390.png) · [8방향 픽셀 확대 확인](previews/human-8way-native.png)
+[실행 화면](../art/archive/previews/field-controls-390.png) · [8방향 픽셀 확대 확인](../art/archive/previews/human-8way-native.png)

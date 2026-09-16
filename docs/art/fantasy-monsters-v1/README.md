@@ -6,7 +6,7 @@
 
 - [전체 12종과 24·32·48px 비교](sprites.png)
 - [게임 렌더러로 던전 바닥에 배치한 화면](runtime.png)
-- [생성 원본과 프롬프트](../../../assets/generated/fantasy_monsters_v1/README.md)
+- [생성 원본과 프롬프트](../../../art/sources/fantasy_monsters_v1/README.md)
 - [개별 게임용 PNG](../../../assets/fantasy_pawns_v1/monsters)
 
 ## 적용 목록

@@ -23,9 +23,9 @@ nearest-neighbor로 48×48 UI 텍스처를 캐시한다. 24×24 월드 타일과
 전술 메뉴와 마을 화면을 캡처한다. 웹 release export와 소스 밖 패키지 초기화도
 확인했다. 원격 배포와 브라우저 실기기 테스트는 포함하지 않는다.
 
-확인한 캡처: [360px 필드](previews/dark-ui-360.png),
-[450px 필드](previews/dark-ui-450.png), [전술](previews/dark-ui-tactics.png),
-[마을](previews/dark-ui-town.png).
+확인한 캡처: [360px 필드](../art/archive/previews/dark-ui-360.png),
+[450px 필드](../art/archive/previews/dark-ui-450.png), [전술](../art/archive/previews/dark-ui-tactics.png),
+[마을](../art/archive/previews/dark-ui-town.png).
 
 ## 생성 프롬프트
 

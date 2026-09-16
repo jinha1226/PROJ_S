@@ -33,4 +33,4 @@
 - 새 경로 캐시 적용 뒤 headless 단일 실행 참고 측정: 6회 대기 기준 지도 토글 전 542,814µs, 5회 열기/닫기 뒤 490,633µs. 작은 지도 재구축 횟수는 계속 1회. NPC 처리 평균은 각각 33,015µs / 18,187µs. 이는 서로 다른 세계 시간대의 측정으로 엄밀한 A/B 성능 비교나 모바일 FPS 보장은 아니다.
 
 - Web release 내보내기 종료 코드 0. 소스가 없는 별도 임시 폴더에서 배포 PCK 단독 실행도 종료 코드 0이며 스크립트/리소스 오류가 없었다.
-- 화면 확인: [1인 HUD](previews/v4/solo-ui.png), [8방향 캐릭터](previews/v4/eight-way-actors.png).
+- 화면 확인: [1인 HUD](../art/archive/previews/v4/solo-ui.png), [8방향 캐릭터](../art/archive/previews/v4/eight-way-actors.png).

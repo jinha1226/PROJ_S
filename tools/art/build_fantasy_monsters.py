@@ -6,7 +6,7 @@ from PIL import Image, ImageDraw
 from build_fantasy_pawns import cutout, fitted
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT/'assets/generated/fantasy_monsters_v1/source/monsters.png'
+SOURCE = ROOT/'art/sources/fantasy_monsters_v1/source/monsters.png'
 OUT = ROOT/'assets/fantasy_pawns_v1/monsters'
 IDS = ['fire_lizard','frost_spider','water_slime','electric_eel',
        'dcss_rat','dcss_river_rat','dcss_frilled_lizard','dcss_gnoll',

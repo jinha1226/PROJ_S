@@ -59,7 +59,7 @@
 위 검사들은 PASS. 목업은 X11 실제 렌더러에서도 실행·캡처했다.
 브라우저/휴대폰 실기 및 Web 재배포는 이번 작업에 포함하지 않았다.
 
-[이능 목업](previews/ability-loadout-mockup.png) · [파티 HUD](previews/party-care-hud.png)
+[이능 목업](../art/archive/previews/ability-loadout-mockup.png) · [파티 HUD](../art/archive/previews/party-care-hud.png)
 
 ## CI 테스트 정합성 보완
 

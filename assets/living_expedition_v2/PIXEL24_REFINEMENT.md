@@ -2,9 +2,9 @@
 
 2026-09-09, 내장 image_gen 편집. 런타임 미적용.
 파일: actors-pixel24-refinement-concept.png
-편집 참조: assets/generated/topdown_pixel_readability_v1/review/actors_6x.png
-실제 기존 24×24 원본: assets/generated/topdown_pixel_readability_v1/runtime/actors/base/ 및 assets/topdown_fixed_front/actors/base/
-16×16 비교판은 assets/generated/topdown_pixel_readability_v2/에 별도 보존되어 있다.
+편집 참조: art/archive/generated/topdown_pixel_readability_v1/review/actors_6x.png
+실제 기존 24×24 원본: art/archive/generated/topdown_pixel_readability_v1/runtime/actors/base/ 및 assets/topdown_fixed_front/actors/base/
+16×16 비교판은 art/archive/generated/topdown_pixel_readability_v2/에 별도 보존되어 있다.
 
 종족 순서와 기존 전신 비율을 유지하면서 옷의 색을 분리하는 후보이다.
 중요: 생성 출력은 확대된 디자인 시트로 정확한 native 24×24 스프라이트가 아니다. 균일한 논리 픽셀 격자/색 수/알파가 보장되지 않는다. 요청과 달리 눈과 명암 세부가 남아 있어 추가 단순화 필요. 기존 24×24 파일에 적용할 팔레트·픽셀 클러스터 편집은 아직 하지 않았다.

@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 from scipy import ndimage as ndi
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / 'assets/concepts/fantasy_pawns_v1'
+SOURCE = ROOT / 'art/sources/fantasy_pawns_v1'
 OUT = ROOT / 'assets/fantasy_pawns_v1'
 LANCZOS = Image.Resampling.LANCZOS
 

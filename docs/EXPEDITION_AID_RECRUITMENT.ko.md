@@ -20,7 +20,7 @@
 
 ## 검증 범위
 
-아래 두 테스트는 모두 PASS. 390×844 X11 렌더링에서 [동행 수락 화면](previews/expedition-aid-offer.png)을 확인했다.
+아래 두 테스트는 모두 PASS. 390×844 X11 렌더링에서 [동행 수락 화면](../art/archive/previews/expedition-aid-offer.png)을 확인했다.
 
 - `tests/expedition_aid_recruitment_acceptance.gd`: NPC 배치, 초기화 저장/재생 일치, 읽기 전용 평가, 거리 제한, 도움 전 영입 차단, 물품 1개 소비, NPC만 회복, 중복 도움/수락 차단, 명시적 UI 수락, 정원 및 도움 기억, 귀환 후 해제, 월드 유효성.
 - `tests/dungeon_0x72_acceptance.gd`: 실제 종족 선택에서 던전 직행, 동료 허용, 자율 탐험 NPC 배치, 기존 에셋/장비/타일 검증.

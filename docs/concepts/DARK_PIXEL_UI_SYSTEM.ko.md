@@ -1,6 +1,6 @@
 # 어두운 픽셀 던전 UI 시스템
 
-기준 목업: [`ui/dark_inventory_mockup_v1.png`](ui/dark_inventory_mockup_v1.png)
+기준 목업: [`ui/dark_inventory_mockup_v1.png`](../../art/archive/concepts/ui/dark_inventory_mockup_v1.png)
 
 목업은 분위기와 정보 위계만 정의한다. 화면 전체를 한 장의 이미지로 사용하지 않는다.
 실제 제품 UI는 Godot 컨테이너와 입력 시스템으로 배치하고, 프레임·슬롯 상태는

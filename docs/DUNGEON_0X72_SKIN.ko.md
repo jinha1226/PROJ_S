@@ -26,7 +26,7 @@
 - `godot --display-driver x11 --rendering-method gl_compatibility --path . --script tests/dungeon_0x72_acceptance.gd`: `0X72 ASSETS: PASS`.
   영역 경계, 캐시 재사용, 종족 매핑, 미탐색 타일 숨김, 관측의 상태 불변성, 실제 장비 교체, 방패 대체 표시와 월드 유효성을 검사했다.
 - `godot --headless --path . --script tests/mobile_combat_loot_torch_acceptance.gd`: `MOBILE COMBAT LOOT TORCH: PASS`.
-- 390×844 화면을 실제 렌더링하고 비율과 장비 표시를 확인했다: [던전](previews/0x72-dungeon-mobile.png), [인벤토리](previews/0x72-inventory-mobile.png).
+- 390×844 화면을 실제 렌더링하고 비율과 장비 표시를 확인했다: [던전](../art/archive/previews/0x72-dungeon-mobile.png), [인벤토리](../art/archive/previews/0x72-inventory-mobile.png).
 - 데스크톱 소프트웨어 렌더러에서 확인한 결과다. 모바일 실기기 FPS나 웹 배포 완료를 의미하지 않는다.
 
 ## 후속 수정: 던전 직행과 벽 방향

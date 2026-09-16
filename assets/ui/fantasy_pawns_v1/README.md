@@ -1,6 +1,6 @@
 # Fantasy pawn UI icons
 
-Style reference: `docs/mockups/fantasy-pawns/01-simple-fantasy-pawns.png`.
+Style reference: `art/references/fantasy-pawns/01-simple-fantasy-pawns.png`.
 Generated with built-in image_gen, followed by built-in transparent-background editing. Original references are preserved.
 
 4×4 atlas order: attack, wait, explore, tactics; bag, food, noise, menu; stealth, suspicious, detected, strike; shield, heal, fire, ability.
