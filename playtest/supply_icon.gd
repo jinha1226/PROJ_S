@@ -10,11 +10,9 @@ func configure(value:float,is_lit:bool=true)->void:
 func _draw()->void:
 	var origin:=(size-Vector2(20,20))*0.5
 	if kind=="FOOD_ITEM":
-		draw_rect(Rect2(origin+Vector2(12,1),Vector2(3,8)),Color("ceb88a"))
-		draw_rect(Rect2(origin+Vector2(10,0),Vector2(7,3)),Color("ead6a8"))
-		draw_rect(Rect2(origin+Vector2(6,6),Vector2(10,11)),Color("99472e"))
-		draw_rect(Rect2(origin+Vector2(3,9),Vector2(12,9)),Color("ad5731"))
-		draw_rect(Rect2(origin+Vector2(5,8),Vector2(4,5)),Color("cd7b40"))
+		texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
+		draw_texture_rect(preload("res://playtest/gameplay_pixel_icons.gd").texture("food"),
+			Rect2((size-Vector2(24,24))*0.5,Vector2(24,24)),false)
 	elif kind=="FOOD":
 		draw_rect(Rect2(origin+Vector2(0,16),Vector2(20,3)),Color("766b58"))
 		for i in range(4):

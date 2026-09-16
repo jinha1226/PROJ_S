@@ -1006,7 +1006,9 @@ func _build_ui()->void:
 	top_hud_actions.add_child(enemy_vision_overlay_button)
 	DarkPixelSkinScript.apply_action_button(enemy_vision_overlay_button,DarkPixelSkinScript.BLOOD)
 	product_menu_button=MenuButton.new();product_menu_button.name="ProductMainMenu"
-	product_menu_button.text="☰";product_menu_button.custom_minimum_size=Vector2(44,44)
+	product_menu_button.text="";product_menu_button.icon=preload("res://playtest/gameplay_pixel_icons.gd").texture("menu")
+	product_menu_button.expand_icon=true;product_menu_button.add_theme_constant_override("icon_max_width",28)
+	product_menu_button.custom_minimum_size=Vector2(44,44)
 	product_menu_button.add_theme_font_size_override("font_size",FONT_COMMAND)
 	product_menu_button.focus_mode=Control.FOCUS_NONE;product_menu_button.visible=false
 	product_menu_button.tooltip_text="원정 다시 시작 · 새 원정"
@@ -2879,7 +2881,7 @@ func _render_hero_skill_row(status:Dictionary,visible:bool)->void:
 			if actor_id!=session.sim.world.party_control_actor_id():continue
 			var skills=preload("res://playtest/portrait_skill_row.gd").new()
 			skills.name="PortraitSkills%d"%actor_id
-			skills.slot_count=3
+			skills.slot_count=6
 			skills.page_index=int(_skill_pages.get(actor_id,0))
 			skills.page_requested.connect(_on_skill_page_requested)
 			skills.size_flags_horizontal=Control.SIZE_EXPAND_FILL

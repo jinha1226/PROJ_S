@@ -16,7 +16,7 @@ func configure(actor_id:int,rows:Array,pending_actor:int,pending_skill:String)->
 	page_index=clampi(page_index,0,page_count-1)
 	var displayed:=rows.slice(page_index*slot_count,(page_index+1)*slot_count)
 	for row in displayed:
-		var button:=Button.new()
+		var button:Button=preload("res://playtest/pixel_skill_button.gd").new()
 		button.name="ActorSkill_%d_%s"%[actor_id,str(row.skill_id)]
 		button.set_meta("actor_id",actor_id);button.set_meta("skill_id",str(row.skill_id))
 		button.set_meta("skill_label",str(row.label))
@@ -26,14 +26,15 @@ func configure(actor_id:int,rows:Array,pending_actor:int,pending_skill:String)->
 		button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		button.add_theme_font_size_override("font_size",12)
 		button.disabled=not bool(row.can_select) or pending_actor>0
-		button.tooltip_text=str(row.get("message",""))
+		button.tooltip_text="%s · 기력 %d\n%s"%[str(row.label),int(row.cost),str(row.get("message",""))]
 		DarkSkin.apply_action_button(button,DarkSkin.BRASS if bool(row.get("reserved",false)) \
 			or actor_id==pending_actor and str(row.skill_id)==pending_skill else DarkSkin.CYAN)
 		button.pressed.connect(func():
 			if not explicit_pointer_input:skill_selected.emit(actor_id,str(row.skill_id),str(row.label)))
 		add_child(button)
 	for slot in range(displayed.size(),slot_count):
-		var empty:=Control.new()
+		var empty:=Panel.new()
+		empty.add_theme_stylebox_override("panel",DarkSkin.panel_surface(Color("10181b"),Color("39474c"),0,1))
 		empty.name="EmptySkillSlot%d"%slot
 		empty.custom_minimum_size=Vector2(44,48)
 		empty.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -44,7 +45,7 @@ func configure(actor_id:int,rows:Array,pending_actor:int,pending_skill:String)->
 		next.text="%d/%d\n›"%[page_index+1,page_count]
 		next.custom_minimum_size=Vector2(44,48)
 		next.set_meta("actor_id",actor_id);next.set_meta("next_page",(page_index+1)%page_count)
-		next.disabled=targeting;next.tooltip_text="다음 스킬 · 결속한 이능 포함"
+		next.disabled=targeting;next.tooltip_text="다음 기술 · 결속한 부위 포함"
 		next.pressed.connect(func():
 			if not explicit_pointer_input:page_requested.emit(actor_id,(page_index+1)%page_count))
 		DarkSkin.apply_action_button(next);add_child(next)
@@ -57,5 +58,6 @@ func update_rows(actor_id:int,rows:Array)->void:
 		var label:="%s\n%s"%[str(row.label),"예약 · 취소" if reserved else "기력 %d"%int(row.cost)]
 		if button.text!=label:
 			button.text=label;DarkSkin.apply_action_button(button,DarkSkin.BRASS if reserved else DarkSkin.CYAN)
+			button.call("hide_native_text")
 		button.disabled=not bool(row.can_select) or targeting
-		button.tooltip_text=str(row.get("message",""))
+		button.tooltip_text="%s · 기력 %d\n%s"%[str(row.label),int(row.cost),str(row.get("message",""))]

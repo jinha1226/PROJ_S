@@ -1,0 +1,11 @@
+# Gameplay v4 pixel icons
+
+Generated with the built-in `image_gen` tool on 2026-09-16. Source PNG is preserved, with transparent alpha. The game selects cells from a 4 × 4 atlas using nearest texture filtering.
+
+Rows: attack / rest-wait / exploration / tactics; bag / food / noise / menu; stealth closed / suspicious half-open / detected open / strike; shield / healing / fire / generic ability.
+
+The generic rune represents abilities without dedicated art; the actual skill name and cost remain authoritative. Icons do not add abilities or change detection rules. Six outlined skill slots follow the currently controlled party member.
+
+## Generation prompt
+
+Create a production game UI sprite atlas, ONE square PNG with genuine transparent background, a precisely regular 4 columns x 4 rows grid of 16 equally sized cells. No visible grid, no text or labels, no button frames. Each isolated icon centered within its cell with generous transparent padding (art occupies central 65 percent), no overlap. Cohesive richly shaded but crisp retro pixel art for a dark medieval dungeon mobile RPG, similar to detailed 32x32 pixel inventory icons enlarged with nearest-neighbor, hard square pixels, no smooth gradients or antialiasing. Readable at 24-32 pixels. Row 1 left to right: silver sword with gold hilt diagonal pointing upper right (attack); cream circular clock with gold rim (rest/wait); brass compass with red needle (explore); small blue tactical grid with three pawn figures and orange flag (tactics). Row 2: brown leather adventurer backpack (bag); roast meat drumstick (food); three golden sound wave arcs (noise); three cream horizontal bars (menu). Row 3: green CLOSED eye, a gently curved eyelid with absolutely NO visible eyeball or iris; yellow HALF OPEN eye, narrow slit with partial iris; red WIDE OPEN eye with full iris, all three eyes same size silhouette family and clear strong emotion; bright orange impact slash (strike skill). Row 4: blue steel shield (shield skill); vivid green healing cross (healing skill); orange red fireball (fire skill); cyan glowing rune diamond (generic ability skill). These are isolated functional icon sprites, not a screenshot or promotional layout. All 16 cells aligned exactly to quarter-image boundaries. Preserve full transparency around icons.
