@@ -150,16 +150,37 @@ func mobile_condition_text()->String:
 		return str(actor.get("readiness","전투불능"))
 	return str(actor.get("stress_band_label","평온"))
 
+func mobile_meter_specs()->Array[Dictionary]:
+	var wide:=size.x>=150
+	var left:=46.0 if wide else 5.0
+	var width:=maxf(1,size.x-left-5.0)
+	var progression:Dictionary=actor.get("progression",{})
+	var values:=[int(actor.get("health",0)),int(actor.get("energy",0)),int(progression.get("xp_current",0))]
+	var maxima:=[int(actor.get("max_health",0)),int(actor.get("max_energy",0)),int(progression.get("xp_required",0))]
+	var colors:=[Color("#a84949"),Color("#396d9c"),Color("#a08338")]
+	var rows:Array[Dictionary]=[]
+	for i in range(3):
+		var label:String=["HP","MP","XP"][i]
+		rows.append({"kind":label,"value":values[i],"maximum":maxima[i],
+			"ratio":clampf(float(values[i])/maxi(1,maxima[i]),0,1),
+			"rect":Rect2(left,23+i*11,width,10),"color":colors[i],
+			"label":"%s %d/%d"%[label,values[i],maxima[i]] if width>=105 else "%s %d"%[label,values[i]]})
+	return rows
+
 func _draw_mobile_vitals()->void:
 	var font:=get_theme_font("font")
 	var wide:=size.x>=150
-	var left:=46.0 if wide else 5.0
-	var width:=size.x-left-5.0
-	if wide:_portrait(Assets.actor_layer_spec(actor).get("body_texture"),Rect2(4,5,38,38))
-	draw_string(font,Vector2(left,16),str(actor.get("display_name","")),HORIZONTAL_ALIGNMENT_LEFT,width,11,Color("#e5e4da"))
-	var labels:=resource_labels(wide)
-	for i in range(2):
-		draw_string(font,Vector2(left,30+i*12),labels[i],HORIZONTAL_ALIGNMENT_LEFT,width,10,[Color("#b7d99d"),Color("#88b9ce")][i])
-	_draw_health(Rect2(left,46,width,3),int(actor.get("health",0)),maxi(1,int(actor.get("max_health",1))))
-	draw_string(font,Vector2(5,61),mobile_condition_text(),HORIZONTAL_ALIGNMENT_LEFT,size.x-10,10,
+	var portrait:=Rect2(4,4,38,38) if wide else Rect2(4,2,20,20)
+	_portrait(Assets.actor_layer_spec(actor).get("body_texture"),portrait)
+	var name_left:=46.0 if wide else 27.0
+	draw_string(font,Vector2(name_left,15),str(actor.get("display_name","")),HORIZONTAL_ALIGNMENT_LEFT,maxf(1,size.x-name_left-5),10,Color("#e5e4da"))
+	for meter in mobile_meter_specs():
+		var rect:Rect2=meter.rect
+		draw_rect(rect,Color("#080b10"))
+		var fill:=rect.grow(-1)
+		fill.size.x=floor(fill.size.x*float(meter.ratio))
+		if fill.size.x>0:draw_rect(fill,meter.color)
+		draw_rect(rect,Color("#514b42"),false,1)
+		draw_string(font,rect.position+Vector2(3,8),meter.label,HORIZONTAL_ALIGNMENT_LEFT,rect.size.x-6,8,Color("#f4eee3"))
+	draw_string(font,Vector2(5,65),mobile_condition_text(),HORIZONTAL_ALIGNMENT_LEFT,size.x-10,9,
 		Color("#ff8686") if str(actor.get("life_state","ACTIVE"))!="ACTIVE" else Color("#d0c8b4"))

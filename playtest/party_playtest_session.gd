@@ -4884,7 +4884,7 @@ func party_cards() -> Array[Dictionary]:
 		elif member.role == "PROTAGONIST":
 			override_state = "PENDING" if _protagonist_placeholder else "DIRECT"
 		var _ppg:=PerfProbeScript.begin()
-		var progression:=protagonist_progression() if member.role=="PROTAGONIST" else {}
+		var progression:=member_progression(member_id)
 		PerfProbeScript.end("cards.progression",_ppg)
 		var _pmem:=PerfProbeScript.begin()
 		var memory_dto:Dictionary=_memory_presentation(member)
