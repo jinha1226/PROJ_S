@@ -144,6 +144,33 @@
       "passive": "가까운 숨은 위험 감지",
       "active": "지정 방향 집중 탐지",
       "effect_status": "IMPLEMENTED_DUAL_MODE"
+    },
+    {
+      "species_id": "water_slime",
+      "ability_id": "WATER_SAC",
+      "label": "물 분사",
+      "essence_id": "PART_WATER_SAC",
+      "passive": "적중 위치에 물 20 공급",
+      "active": "물 분사",
+      "effect_status": "IMPLEMENTED_DUAL_MODE"
+    },
+    {
+      "species_id": "frost_spider",
+      "ability_id": "COLD_GLAND",
+      "label": "냉각 분사",
+      "essence_id": "PART_COLD_GLAND",
+      "passive": "적중 위치에 냉기 300 공급",
+      "active": "냉각 분사",
+      "effect_status": "IMPLEMENTED_DUAL_MODE"
+    },
+    {
+      "species_id": "electric_eel",
+      "ability_id": "ARC_GLAND",
+      "label": "전도 방전",
+      "essence_id": "PART_ARC_GLAND",
+      "passive": "적중 위치에서 출력 12 방전 · 아군도 위험",
+      "active": "전도 방전",
+      "effect_status": "IMPLEMENTED_DUAL_MODE"
     }
   ]
 }

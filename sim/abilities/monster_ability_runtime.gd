@@ -9,7 +9,7 @@ static func distance(a:Vector2i,b:Vector2i)->int:return maxi(absi(a.x-b.x),absi(
 static func alive(world,id:int)->bool:return world.entities.has(id) and world.combatant_states.has(id) and world.combatant_states[id].life_state=="ACTIVE"
 static func passive(world,id:int,ability:String)->bool:
 	var member=world.party_encounter.member(id) if world.party_encounter!=null else null
-	return member!=null and ability in member.passive_ability_ids
+	return member!=null and (ability in member.passive_ability_ids or (preload("res://sim/living_expedition_rules.gd").elemental_parts(world) and ability in member.bound_ability_ids))
 
 static func projection(world)->Dictionary:
 	var p:Dictionary=world.get_meta(KEY,{})
@@ -116,6 +116,7 @@ static func commit(sim,actor:int,id:String,target:int,a:Dictionary):
 	if e==null:return null
 	var power:=scale(w,actor,id,int(d.power));var ok:=true
 	match str(d.effect):
+		"WATER","COLD","ELECTRIC":ok=elemental_impulse(sim,str(d.effect),w.entities[target].position,power,e.id)
 		"DAMAGE","EXECUTE","LEAP","ACID","SIPHON":
 			if d.effect=="LEAP" and a.destination!=w.entities[actor].position:
 				ok=sim.movement.commit_preflighted_move(actor,a.destination,str(w.tile_at(a.destination).terrain),1,e.id)!=null
@@ -190,6 +191,10 @@ static func reactions(sim,start:int)->bool:
 		var actor:int=attack.actor_id;var target:int=hit.target_id
 		var melee:bool=distance(w.entities[actor].position,hit.position)<=1
 		# Apply on-hit effects only to the original attack, never their damage children.
+		for elemental_id in ["WATER_SAC","COLD_GLAND","ARC_GLAND"]:
+			if passive(w,actor,elemental_id):
+				var amount:int={"WATER_SAC":20,"COLD_GLAND":300,"ARC_GLAND":12}[elemental_id]
+				if not elemental_impulse(sim,str(Defs.definition(elemental_id).effect),hit.position,amount,hit.id):return false
 		if alive(w,target):
 			for id in ["PREDATOR_NERVE","THROWING_INSTINCT","HUNTER_LEAP"]:
 				if not passive(w,actor,id):continue
@@ -239,6 +244,7 @@ static func accuracy_bonus(world,actor:int,weapon_id:String,before:int=-1)->int:
 		enabled=false
 		for e in world.events:
 			if e.id>=before:break
+			if e.type=="party.ability_bound" and e.actor_id==actor and e.data.ability_id=="THROWING_INSTINCT" and preload("res://sim/living_expedition_rules.gd").elemental_parts(world):enabled=true
 			if e.type=="party.ability_mode_changed" and e.actor_id==actor and e.data.ability_id=="THROWING_INSTINCT":enabled=e.data.mode=="PASSIVE"
 	return penalty+(150 if enabled else 0)
 
@@ -342,3 +348,11 @@ static func heal_error(world,e)->String:
 			or e.target_id!=source.target_id or e.actor_id!=e.target_id or e.magnitude!=source.magnitude or e.position!=source.position \
 			or e.world_time!=source.world_time or e.step_index!=source.step_index:return "monster_heal_invalid"
 	return ""
+
+static func elemental_impulse(sim,effect:String,position:Vector2i,power:int,cause:int)->bool:
+	var step:int=sim.world._active_step_index
+	match effect:
+		"WATER":return sim.environment.apply_water(position,clampi(power,1,100),cause,step)
+		"COLD":return sim.environment.apply_cold(position,power,cause,step)
+		"ELECTRIC":return sim.environment.discharge(position,clampi(power,1,100),cause,step)
+	return false

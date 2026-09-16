@@ -2715,7 +2715,7 @@ func ability_binding_rows(actor_id:int)->Array[Dictionary]:
 		if slot_index<member.bound_ability_ids.size():
 			var ability_id:=str(member.bound_ability_ids[slot_index])
 			var preview:=AbilityBindingRulesScript.effect_preview(ability_id)
-			preview["mode"]="PASSIVE" if ability_id in member.passive_ability_ids else "ACTIVE"
+			preview["mode"]="BOTH" if preload("res://sim/living_expedition_rules.gd").elemental_parts(sim.world) else "PASSIVE" if ability_id in member.passive_ability_ids else "ACTIVE"
 			preview.merge({"slot_index":slot_index,"state":"BOUND",
 				"unlock_level":slot_index+1,"removable":false},true)
 			rows.append(preview)
@@ -2834,6 +2834,7 @@ func bind_ability_item(actor_id:int,instance_id:String)->Dictionary:
 
 
 func set_ability_mode(actor_id:int,ability_id:String,mode:String)->Dictionary:
+	if sim!=null and preload("res://sim/living_expedition_rules.gd").elemental_parts(sim.world):return _rejection_dto("ability_modes_combined")
 	if sim==null or sim.world==null or sim.world.party_encounter==null:return _rejection_dto("session_not_initialized")
 	var state=sim.world.party_encounter
 	var member=state.member(actor_id)
@@ -9954,6 +9955,7 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"not_ability_item":"이 아이템은 이능 획득물이 아닙니다.",
 		"ability_binding_actor_missing":"결속할 캐릭터를 찾을 수 없습니다.",
 		"ability_binding_actor_unavailable":"현재 결속할 수 없는 상태의 캐릭터입니다.",
+		"ability_modes_combined":"결속한 이능은 패시브와 액티브를 함께 제공합니다.",
 		"ability_binding_unsafe_phase":"교전이 끝난 안전한 상태에서만 특수 부위를 먹을 수 있습니다.",
 		"ability_binding_inventory_missing":"결속 대상의 가방을 찾을 수 없습니다.",
 		"ability_binding_equipped_item":"장착 중인 아이템은 이능으로 결속할 수 없습니다.",

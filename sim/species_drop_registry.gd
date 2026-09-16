@@ -2,6 +2,8 @@ class_name SpeciesDropRegistry
 extends RefCounted
 
 const CONTENT_PATH := "res://data/content/species_drop_tables.json"
+const ELEMENTAL_RULESET_ID := "species-drops-v6"
+const EARLY_PARTS := {"fire_lizard":"ESSENCE_FIRE_BOLT","frost_spider":"PART_COLD_GLAND","water_slime":"PART_WATER_SAC","electric_eel":"PART_ARC_GLAND"}
 const RULESET_ID := "species-drops-v5"
 const PRE_EXPANSION_RULESET_ID := "species-drops-v4"
 const PRE_MYSTERY_RULESET_ID := "species-drops-v3"
@@ -32,8 +34,16 @@ static func species_ids() -> Array[String]:
 static func rolls_for(world_seed: int, death_event_id: int, species_id: String,
 		ruleset_id:String=RULESET_ID) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	if death_event_id < 1 or ruleset_id not in [RULESET_ID,PRE_EXPANSION_RULESET_ID,PRE_MYSTERY_RULESET_ID,PREVIOUS_RULESET_ID,LEGACY_RULESET_ID] \
+	if death_event_id < 1 or ruleset_id not in [ELEMENTAL_RULESET_ID,RULESET_ID,PRE_EXPANSION_RULESET_ID,PRE_MYSTERY_RULESET_ID,PREVIOUS_RULESET_ID,LEGACY_RULESET_ID] \
 			or not registry_error().is_empty() or not has_table(species_id):
+		return result
+	if ruleset_id==ELEMENTAL_RULESET_ID:
+		var legacy:=rolls_for(world_seed,death_event_id,species_id,RULESET_ID)
+		if not EARLY_PARTS.has(species_id):return legacy
+		for row in legacy:
+			if ItemRewardRulesScript.family_for_item(str(row.definition_id))!="MONSTER_ABILITY":result.append(row)
+		var key:="elemental-parts-v1/%d/%d/%s"%[world_seed,death_event_id,species_id]
+		if _keyed_u31(key,"CHANCE")%1000<800:result.append({"roll_id":"PART_"+species_id.to_upper(),"definition_id":EARLY_PARTS[species_id],"quantity":1})
 		return result
 	for row in _TABLES[species_id].rolls:
 		var key := "%s|seed=%d|death=%d|species=%s|roll=%s" % [

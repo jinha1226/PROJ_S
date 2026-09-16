@@ -49,12 +49,13 @@ func run():
 		check(s.load_session_json(s.save_session_json()).accepted,"joined companion replay")
 		check(s.sim.snapshot()==before,"joined companion exact replay")
 	# Prior procedural saves keep their original deterministic behavior rules.
-	check(s.reset_party(15,13,s.DUO_SCENARIO_ID,Campaign.generate(15,1,true,true,true,5),true,"human",true,true,true,true,true,true,true),"v5 fixture")
-	check(not s.allows_companions(),"v5 companion policy retained")
-	check(s.commit_field_action(Action.hold(s.sim.world.party_control_actor_id())).accepted,"v5 turn")
-	var old_snapshot:Dictionary=s.sim.snapshot()
-	check(s.load_session_json(s.save_session_json()).accepted,"v5 save accepted")
-	check(s.sim.snapshot()==old_snapshot,"v5 exact replay")
+	for legacy_version in [5,6]:
+		check(s.reset_party(15,13,s.DUO_SCENARIO_ID,Campaign.generate(15,1,true,true,true,legacy_version),true,"human",true,true,true,true,true,true,true),"legacy fixture")
+		check(s.allows_companions()==(legacy_version>=6),"legacy companion policy retained")
+		check(s.commit_field_action(Action.hold(s.sim.world.party_control_actor_id())).accepted,"legacy turn")
+		var old_snapshot:Dictionary=s.sim.snapshot()
+		check(s.load_session_json(s.save_session_json()).accepted,"legacy save accepted")
+		check(s.sim.snapshot()==old_snapshot,"legacy exact replay")
 	# Reach stairs while live monsters remain; no debug kills or relocation.
 	var layout:Dictionary=Campaign.generate(15,1,true,true,true)
 	var portal:Vector2i=layout.entry_position+Vector2i.RIGHT
@@ -76,7 +77,7 @@ func run():
 	var board=preload("res://sim/enemy_squad_blackboard.gd")
 	check(hero in board.visible_party_ids(world,enemy),"close target detected")
 	check(s.sim.party_coordinator._update_enemy_awareness(enemy,world.step_index),"awareness update")
-	check(party.enemy_awareness(enemy).awareness_state=="HUNTING","close target immediately hunted")
+	check(party.enemy_awareness(enemy).awareness_state=="SUSPICIOUS" and party.enemy_awareness(enemy).suspicion<1000,"close target still uses stealth contest")
 	world.tile_at(origin+Vector2i.RIGHT).terrain="wall"
 	check(hero not in board.visible_party_ids(world,enemy),"wall blocks close detection")
 	# Spending is allowed at a settled combat decision; points and rank still enforced.

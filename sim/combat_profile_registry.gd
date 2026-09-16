@@ -46,6 +46,7 @@ static func _all_profiles()->Dictionary:
 
 static func profile_id_for_kind(kind: String, species_id:String="") -> String:
 	if kind in ["melee_enemy","kobold_enemy"]:
+		if species_id in ["fire_lizard","frost_spider","water_slime","electric_eel"]:return DEFAULT_PROFILE_ID
 		var imported:=DcssEnemies.profile_id(species_id)
 		if not imported.is_empty():return imported
 	return str(KIND_TO_PROFILE.get(kind, DEFAULT_PROFILE_ID))

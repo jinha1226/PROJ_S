@@ -11,7 +11,7 @@ const LABELS := {
 	"WEAPON_MATERIAL":"무기 업그레이드 소재",
 	"CRAFT_MATERIAL":"제작 재료",
 	"CURRENCY":"돈·환금품",
-	"MONSTER_ABILITY":"몬스터 이능",
+	"MONSTER_ABILITY":"몬스터 특수부위",
 	"BASE_MATERIAL":"거점 업그레이드 재료",
 	"SUPPLY":"보급품",
 	"SPECIAL":"특별 발견",

@@ -10,8 +10,8 @@ const FLOOR_GAP := 8
 const FloorMapScript = preload("res://playtest/campaign_floor_map.gd")
 
 
-static func generate(seed:int, selected_floor:int=1,compact:bool=true,living:bool=false,procedural:bool=false,rules_version:int=6)->Dictionary:
-	var floor_one:Dictionary=preload("res://playtest/procedural_campaign_floor.gd").generate(seed) if procedural else (FloorMapScript.generate(1,seed) if compact else FloorMapScript.generate_authored(1,seed))
+static func generate(seed:int, selected_floor:int=1,compact:bool=true,living:bool=false,procedural:bool=false,rules_version:int=7)->Dictionary:
+	var floor_one:Dictionary=preload("res://playtest/procedural_campaign_floor.gd").generate(seed,rules_version) if procedural else (FloorMapScript.generate(1,seed) if compact else FloorMapScript.generate_authored(1,seed))
 	var floor_two:Dictionary=FloorMapScript.generate(2,seed) if compact else FloorMapScript.generate_authored(2,seed)
 	if floor_one.is_empty() or floor_two.is_empty():return {}
 	if living:

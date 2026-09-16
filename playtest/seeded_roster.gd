@@ -25,6 +25,9 @@ static func population(world_seed:int,personality_seed:int)->Array:
 	return explorers
 static func apply_layout(layout:Dictionary,world_seed:int,personality_seed:int)->Dictionary:
 	var result:=layout.duplicate(true)
+	# Version 7 floors already own their species composition. Personality seeds
+	# must not replace elemental creatures with goblins and kobolds.
+	if int(result.get("procedural_rules_version",0))>=7:return result
 	var floors:Dictionary=result.get("campaign_floors",{})
 	if floors.is_empty():_floor(result,world_seed,personality_seed)
 	else:

@@ -607,6 +607,7 @@ func _update_enemy_awareness(enemy_id:int,processed_step_index:int)->bool:
 	# It gains the maximum suspicion per tick, so a party that sneaks up gets one
 	# action to strike first; a suspicious watcher still turns on you next tick.
 	if observed != null and _distance(enemy.position,observed.position)<=1 \
+			and not preload("res://sim/living_expedition_rules.gd").elemental_parts(world) \
 			and not state.legacy_contact_rule and previous_state in ["UNAWARE","SUSPICIOUS","RETURNING"] \
 			and awareness.suspicion+600<EnemyPerceptionRegistryScript.ALERT_THRESHOLD:
 		awareness.suspicion=clampi(awareness.suspicion+600,0,1000)
@@ -616,7 +617,7 @@ func _update_enemy_awareness(enemy_id:int,processed_step_index:int)->bool:
 		awareness.search_turns_remaining=0
 		return _set_awareness_state(awareness,"SUSPICIOUS",observed.position,
 			previous_state,observed_id)
-	if observed != null and _distance(enemy.position,observed.position)<=1:
+	if observed != null and _distance(enemy.position,observed.position)<=1 and not preload("res://sim/living_expedition_rules.gd").elemental_parts(world):
 		awareness.suspicion=1000
 		awareness.last_known_target_position=observed.position
 		awareness.last_seen_step=processed_step_index
@@ -669,7 +670,7 @@ func _most_detectable_party_member(enemy_id:int,visible_party_ids:Array[int])->D
 		var equipment:Dictionary=world.equipment_modifiers(party_id)
 		var stealth:=EnemyPerceptionRegistryScript.HERO_BASE_STEALTH+int(
 			equipment.get("totals",{}).get("stealth",0))
-		var gain:=600 if distance<=1 else EnemyPerceptionRegistryScript.suspicion_gain(
+		var gain:=600 if distance<=1 and not preload("res://sim/living_expedition_rules.gd").elemental_parts(world) else EnemyPerceptionRegistryScript.suspicion_gain(
 			str(enemy.species_id),distance,stealth)
 		var candidate:={"entity_id":party_id,"distance":distance,
 			"stealth":stealth,"suspicion_gain":gain}
@@ -1091,6 +1092,9 @@ func _suggest(actor_id: int, protagonist_action, board: Dictionary = {}):
 	var rescue=preload("res://sim/party_rescue_rules.gd").suggest(world,actor_id,movement)
 	if rescue!=null:return rescue
 	var decision := _companion_decision(actor_id, protagonist_action, board)
+	if str(decision.selected_leaf.get("type","")) in ["MELEE","HOLD"]:
+		var elemental=preload("res://sim/abilities/elemental_ability_ai.gd").suggest(world,actor_id)
+		if elemental!=null:return elemental
 	return _leaf_to_action(actor_id, decision.selected_leaf)
 
 func suggest_protagonist_turn()->Dictionary:

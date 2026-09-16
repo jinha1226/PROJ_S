@@ -14,6 +14,11 @@ const SUSPICION_DECAY := 180
 const DcssEnemies=preload("res://sim/dcss_enemy_registry.gd")
 
 const PROFILES := {
+	"fire_lizard":{"species_id":"fire_lizard","display_name":"화염도마뱀","glyph":"f","sight_range":6,"perception":520,"max_health":32,"entity_kind":"melee_enemy"},
+	"frost_spider":{"species_id":"frost_spider","display_name":"서리거미","glyph":"s","sight_range":6,"perception":520,"max_health":28,"entity_kind":"melee_enemy"},
+	"water_slime":{"species_id":"water_slime","display_name":"물슬라임","glyph":"j","sight_range":6,"perception":520,"max_health":36,"entity_kind":"melee_enemy"},
+	"electric_eel":{"species_id":"electric_eel","display_name":"전기뱀장어","glyph":"e","sight_range":6,"perception":520,"max_health":30,"entity_kind":"melee_enemy"},
+
 	"goblin":{"species_id":"goblin","display_name":"고블린","glyph":"g",
 		"sight_range":6,"perception":520,"max_health":40,"entity_kind":"melee_enemy"},
 	"kobold":{"species_id":"kobold","display_name":"코볼트","glyph":"K",

@@ -3,7 +3,7 @@ extends RefCounted
 ## Generator v1 is pinned in living-expedition event version 5 for save replay.
 const SIZE:=64
 const DIRS:=[Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]
-static func generate(seed:int)->Dictionary:
+static func generate(seed:int,rules_version:int=5)->Dictionary:
 	var rng:=RandomNumberGenerator.new();rng.seed=seed ^ 0x50434731
 	var leaves:Array[Rect2i]=[Rect2i(2,2,SIZE-4,SIZE-4)]
 	while leaves.size()<14:
@@ -75,6 +75,7 @@ static func generate(seed:int)->Dictionary:
 		for k in range(mini(rng.randi_range(1,3),candidates.size())):
 			var ix:=rng.randi_range(0,candidates.size()-1);var p:Vector2i=candidates[ix];candidates.remove_at(ix);used[p]=true
 			var kind:String=preload("res://sim/dcss_enemy_registry.gd").spawn_species(1,seed,i,k)
+			if rules_version>=7 and k==0:kind=["fire_lizard","frost_spider","water_slime","electric_eel"][(groups.size()+posmod(seed,4))%4]
 			species.append(kind);roster.append({"position":p,"species_id":kind,"group_id":id,"route_id":"LINK_0"})
 		if not species.is_empty():groups.append({"group_id":id,"route_id":"LINK_0","position":[c.x,c.y],"species_ids":species,"optional":true,"anchor_guard":false,"transition_guard":c==exit})
 		if not used.has(c) and supplies.size()<5:supplies.append(c);used[c]=true

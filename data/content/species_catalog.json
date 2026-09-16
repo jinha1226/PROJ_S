@@ -735,6 +735,366 @@
       "bone_fracture_threshold": 5
     }
   }
+},
+{
+  "species_id": "fire_lizard",
+  "label": "화염도마뱀",
+  "base_stats": {
+    "STR": 5,
+    "DEX": 5,
+    "INT": 5
+  },
+  "natural_weapon_id": "UNARMED_STRIKE",
+  "body": {
+    "parts": [
+      {
+        "part_id": "HEAD",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": [
+          "BRAIN"
+        ]
+      },
+      {
+        "part_id": "TORSO",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": [
+          "HEART_LUNG"
+        ]
+      },
+      {
+        "part_id": "LEFT_ARM",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      },
+      {
+        "part_id": "RIGHT_ARM",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      },
+      {
+        "part_id": "LEFT_LEG",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      },
+      {
+        "part_id": "RIGHT_LEG",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      }
+    ],
+    "systemic": {
+      "blood_capacity": 1000,
+      "shock_threshold": 100,
+      "consciousness_threshold": 700
+    },
+    "scalars": {
+      "skin_toughness": 30,
+      "soft_tissue_cushioning": 30,
+      "bone_fracture_threshold": 80
+    },
+    "variation": {
+      "blood_capacity": 30,
+      "shock_threshold": 5,
+      "consciousness_threshold": 20,
+      "skin_toughness": 3,
+      "soft_tissue_cushioning": 3,
+      "bone_fracture_threshold": 5
+    }
+  }
+},
+{
+  "species_id": "frost_spider",
+  "label": "서리거미",
+  "base_stats": {
+    "STR": 5,
+    "DEX": 5,
+    "INT": 5
+  },
+  "natural_weapon_id": "UNARMED_STRIKE",
+  "body": {
+    "parts": [
+      {
+        "part_id": "HEAD",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": [
+          "BRAIN"
+        ]
+      },
+      {
+        "part_id": "TORSO",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": [
+          "HEART_LUNG"
+        ]
+      },
+      {
+        "part_id": "LEFT_ARM",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      },
+      {
+        "part_id": "RIGHT_ARM",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      },
+      {
+        "part_id": "LEFT_LEG",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      },
+      {
+        "part_id": "RIGHT_LEG",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      }
+    ],
+    "systemic": {
+      "blood_capacity": 1000,
+      "shock_threshold": 100,
+      "consciousness_threshold": 700
+    },
+    "scalars": {
+      "skin_toughness": 30,
+      "soft_tissue_cushioning": 30,
+      "bone_fracture_threshold": 80
+    },
+    "variation": {
+      "blood_capacity": 30,
+      "shock_threshold": 5,
+      "consciousness_threshold": 20,
+      "skin_toughness": 3,
+      "soft_tissue_cushioning": 3,
+      "bone_fracture_threshold": 5
+    }
+  }
+},
+{
+  "species_id": "water_slime",
+  "label": "물슬라임",
+  "base_stats": {
+    "STR": 5,
+    "DEX": 5,
+    "INT": 5
+  },
+  "natural_weapon_id": "UNARMED_STRIKE",
+  "body": {
+    "parts": [
+      {
+        "part_id": "HEAD",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": [
+          "BRAIN"
+        ]
+      },
+      {
+        "part_id": "TORSO",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": [
+          "HEART_LUNG"
+        ]
+      },
+      {
+        "part_id": "LEFT_ARM",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      },
+      {
+        "part_id": "RIGHT_ARM",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      },
+      {
+        "part_id": "LEFT_LEG",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      },
+      {
+        "part_id": "RIGHT_LEG",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      }
+    ],
+    "systemic": {
+      "blood_capacity": 1000,
+      "shock_threshold": 100,
+      "consciousness_threshold": 700
+    },
+    "scalars": {
+      "skin_toughness": 30,
+      "soft_tissue_cushioning": 30,
+      "bone_fracture_threshold": 80
+    },
+    "variation": {
+      "blood_capacity": 30,
+      "shock_threshold": 5,
+      "consciousness_threshold": 20,
+      "skin_toughness": 3,
+      "soft_tissue_cushioning": 3,
+      "bone_fracture_threshold": 5
+    }
+  }
+},
+{
+  "species_id": "electric_eel",
+  "label": "전기뱀장어",
+  "base_stats": {
+    "STR": 5,
+    "DEX": 5,
+    "INT": 5
+  },
+  "natural_weapon_id": "UNARMED_STRIKE",
+  "body": {
+    "parts": [
+      {
+        "part_id": "HEAD",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": [
+          "BRAIN"
+        ]
+      },
+      {
+        "part_id": "TORSO",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": [
+          "HEART_LUNG"
+        ]
+      },
+      {
+        "part_id": "LEFT_ARM",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      },
+      {
+        "part_id": "RIGHT_ARM",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      },
+      {
+        "part_id": "LEFT_LEG",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      },
+      {
+        "part_id": "RIGHT_LEG",
+        "layers": [
+          "SKIN",
+          "SOFT_TISSUE",
+          "BONE"
+        ],
+        "vital_tags": []
+      }
+    ],
+    "systemic": {
+      "blood_capacity": 1000,
+      "shock_threshold": 100,
+      "consciousness_threshold": 700
+    },
+    "scalars": {
+      "skin_toughness": 30,
+      "soft_tissue_cushioning": 30,
+      "bone_fracture_threshold": 80
+    },
+    "variation": {
+      "blood_capacity": 30,
+      "shock_threshold": 5,
+      "consciousness_threshold": 20,
+      "skin_toughness": 3,
+      "soft_tissue_cushioning": 3,
+      "bone_fracture_threshold": 5
+    }
+  }
 }
   ]
 }

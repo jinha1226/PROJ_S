@@ -11,6 +11,11 @@ const BASE_PROFILE := {
 	"darkness_stress_resistance_milli": 500,
 }
 const SPECIES_PROFILES := {
+	"fire_lizard":{"base_sight_range":6,"dark_vision_milli":750,"dark_front_angle":165,"peripheral_range":2,"detection_sensitivity_milli":520,"darkness_stress_resistance_milli":600},
+	"frost_spider":{"base_sight_range":6,"dark_vision_milli":750,"dark_front_angle":165,"peripheral_range":2,"detection_sensitivity_milli":520,"darkness_stress_resistance_milli":600},
+	"water_slime":{"base_sight_range":6,"dark_vision_milli":750,"dark_front_angle":165,"peripheral_range":2,"detection_sensitivity_milli":520,"darkness_stress_resistance_milli":600},
+	"electric_eel":{"base_sight_range":6,"dark_vision_milli":750,"dark_front_angle":165,"peripheral_range":2,"detection_sensitivity_milli":520,"darkness_stress_resistance_milli":600},
+
 	"human": {"base_sight_range": 6, "dark_vision_milli": 300,
 		"dark_front_angle": 120, "peripheral_range": 2,
 		"detection_sensitivity_milli": 500, "darkness_stress_resistance_milli": 500},

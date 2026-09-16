@@ -49,7 +49,7 @@ func _ready()->void:
 	actions.visible=false
 	feedback=Label.new();feedback.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	feedback.add_theme_font_size_override("font_size",11);feedback.visible=false;add_child(feedback)
-	var label:=Label.new();label.text="보관 중인 정수";PixelSkin.apply_heading(label);add_child(label)
+	var label:=Label.new();label.text="보관 중인 특수부위";PixelSkin.apply_heading(label);add_child(label)
 	picker=VBoxContainer.new();add_child(picker)
 	confirmation=ConfirmationDialog.new();confirmation.title="이능 결속 확인"
 	confirmation.dialog_autowrap=true
@@ -94,15 +94,15 @@ func _refresh_detail()->void:
 	var filled:bool=not selected_item.is_empty() or str(row.get("state",""))=="BOUND"
 	detail_title.text=str(row.get("label","이능")) if filled else "빈 슬롯"
 	if not filled:
-		var empty:=Label.new();empty.text="정수를 선택해 효과를 확인하세요."
+		var empty:=Label.new();empty.text="특수부위를 선택해 효과를 확인하세요."
 		empty.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;empty.add_theme_font_size_override("font_size",12);mode_rows.add_child(empty);return
 	var planned:bool=bool(row.get("planned",false))
 	var dual:bool=bool(row.get("dual_mode",false))
-	_mode("패시브" if dual else "패시브 · 미구현",str(row.get("passive","패시브 효과 미구현")),dual and str(row.get("mode","ACTIVE"))=="PASSIVE")
+	_mode("패시브" if dual else "패시브 · 미구현",str(row.get("passive","패시브 효과 미구현")),dual and str(row.get("mode","ACTIVE")) in ["PASSIVE","BOTH"])
 	var effect:=str(row.get("active",""))
 	if effect.is_empty():effect="기본 위력 %d · 기력 %d · 사거리 %d"%[int(row.get("power",0)),int(row.get("cost",0)),int(row.get("range",0))]
-	_mode("액티브 · 미구현" if planned else "액티브",effect,not planned and str(row.get("mode","ACTIVE"))=="ACTIVE")
-	if dual and selected_item.is_empty() and row.get("state")=="BOUND":
+	_mode("액티브 · 미구현" if planned else "액티브",effect,not planned and str(row.get("mode","ACTIVE")) in ["ACTIVE","BOTH"])
+	if dual and selected_item.is_empty() and row.get("state")=="BOUND" and row.get("mode")!="BOTH":
 		var choices:=HBoxContainer.new();mode_rows.add_child(choices)
 		for mode in ["PASSIVE","ACTIVE"]:
 			var button:=Button.new();button.name="AbilityMode"+mode
@@ -162,14 +162,14 @@ func _refresh()->void:
 			var line:=HBoxContainer.new();picker.add_child(line)
 			var button:=Button.new()
 			var preview:Dictionary=row.get("effect_preview",{}) if row.get("effect_preview",{}) is Dictionary else {}
-			button.text="%s · %d개"%[str(row.get("label","정수")),int(row.get("quantity",1))]
+			button.text="%s · %d개"%[str(row.get("label","특수부위")),int(row.get("quantity",1))]
 			button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 			button.custom_minimum_size.y=48;button.clip_text=true
 			button.pressed.connect(_select_item.bind(str(row.get("instance_id",""))))
 			line.add_child(button);PixelSkin.apply_action_button(button)
-			var absorb:=Button.new();absorb.text="흡수";absorb.custom_minimum_size=Vector2(52,48)
+			var absorb:=Button.new();absorb.text="먹기";absorb.custom_minimum_size=Vector2(52,48)
 			absorb.disabled=bool(preview.get("planned",false)) or not bind_action.is_valid()
-			absorb.tooltip_text="효과 구현 전에는 정수를 소비하지 않습니다." if absorb.disabled else "정수 1개 소비 · 해제 불가"
+			absorb.tooltip_text="효과 구현 전에는 특수부위를 소비하지 않습니다." if absorb.disabled else "특수부위 1개 소비 · 해제 불가"
 			absorb.pressed.connect(_bind_item.bind(str(row.get("instance_id",""))))
 			line.add_child(absorb);PixelSkin.apply_action_button(absorb,PixelSkin.CYAN)
 

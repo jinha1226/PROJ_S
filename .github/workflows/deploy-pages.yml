@@ -85,6 +85,18 @@ jobs:
             fi
           done
 
+      - name: Validate elemental parts and gameplay replay
+        timeout-minutes: 7
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test in monster_ability_drops_acceptance elemental_parts_acceptance elemental_drop_replay_acceptance; do
+            ./godot --headless --path . --script "tests/${test}.gd" 2>&1 | tee "${test}.log"
+            if grep -Eq 'SCRIPT ERROR:|^FAIL ' "${test}.log"; then
+              exit 1
+            fi
+          done
+
       - name: Inject Pages build ID
         shell: bash
         run: |

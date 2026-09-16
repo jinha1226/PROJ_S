@@ -255,6 +255,7 @@
       ],
       "reward_rows": []
     },
+    {"species_id":"water_slime","rolls":[],"reward_rows":[]},
     {
       "species_id": "wolf",
       "rolls": [

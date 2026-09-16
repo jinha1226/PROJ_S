@@ -1941,7 +1941,7 @@ func _corpse_drop_history_error() -> String:
 		var ruleset_id:=str(event.data.get("ruleset_id",""))
 		var legacy_drop_event:bool=ruleset_id in [SpeciesDropRegistryScript.PREVIOUS_RULESET_ID,
 			SpeciesDropRegistryScript.LEGACY_RULESET_ID]
-		var current_drop_event:bool=ruleset_id in [SpeciesDropRegistryScript.RULESET_ID,SpeciesDropRegistryScript.PRE_EXPANSION_RULESET_ID,SpeciesDropRegistryScript.PRE_MYSTERY_RULESET_ID]
+		var current_drop_event:bool=ruleset_id in [SpeciesDropRegistryScript.ELEMENTAL_RULESET_ID,SpeciesDropRegistryScript.RULESET_ID,SpeciesDropRegistryScript.PRE_EXPANSION_RULESET_ID,SpeciesDropRegistryScript.PRE_MYSTERY_RULESET_ID]
 		var expected_keys:Array=["generated_items","ruleset_id","schema_version",
 			"source_death_event_id"] if ruleset_id==SpeciesDropRegistryScript.LEGACY_RULESET_ID else [
 			"generated_items","reward_rows","ruleset_id","schema_version",

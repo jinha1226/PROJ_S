@@ -49,8 +49,11 @@ static func snapshot_version(snapshot:Dictionary)->int:
 	return 0
 static func immediate_close_awareness(world)->bool:
 	var event=preload("res://sim/runtime_history_index.gd").sync(world).first.get(EVENT)
-	return event!=null and int(event.data.get("version",1))>=6
+	return event!=null and int(event.data.get("version",1))==6
 
 static func rules_version(world)->int:
 	var event=preload("res://sim/runtime_history_index.gd").sync(world).first.get(EVENT)
 	return int(event.data.get("version",1)) if event!=null else 0
+
+static func elemental_parts(world)->bool:
+	return rules_version(world)>=7

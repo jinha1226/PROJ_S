@@ -2,6 +2,10 @@ extends RefCounted
 
 ## Runtime contracts, not acquisition metadata. Times use the field clock (100 ~= one move).
 const SKILLS:={
+	"WATER_SAC":{"name":"물 분사","cost":2,"range":4,"target":"ENEMY","effect":"WATER","power":80,"element":"WATER","axis":"MAGIC","passive":"적중 위치에 물 20 공급"},
+	"COLD_GLAND":{"name":"냉각 분사","cost":3,"range":4,"target":"ENEMY","effect":"COLD","power":1800,"element":"ICE","axis":"MAGIC","passive":"적중 위치에 냉기 300 공급"},
+	"ARC_GLAND":{"name":"전도 방전","cost":3,"range":4,"target":"ENEMY","effect":"ELECTRIC","power":45,"element":"ELECTRIC","axis":"MAGIC","passive":"적중 위치에서 출력 12 방전 · 아군도 위험"},
+
 	"PREDATOR_NERVE":{"name":"약점 일격","cost":3,"range":1,"target":"ENEMY","effect":"EXECUTE","power":24,"element":"PHYSICAL","axis":"MELEE","passive":"다친 적에게 근접 적중 시 추가 피해 6"},
 	"THROWING_INSTINCT":{"name":"돌 파편","cost":2,"range":5,"target":"ENEMY","effect":"DAMAGE","power":18,"element":"PHYSICAL","axis":"RANGED","passive":"원거리 적중 시 추가 피해 4 · 원거리 명중 +15%p"},
 	"HUNTER_LEAP":{"name":"도약 공격","cost":3,"range":3,"target":"ENEMY","effect":"LEAP","power":20,"element":"PHYSICAL","axis":"MELEE","passive":"이동 후 150시간 안에 첫 근접 적중 시 추가 피해 8"},

@@ -45,8 +45,9 @@ static func materialize_death_event(world, death_event) -> Dictionary:
 	var generated_rewards:Array[Dictionary]=SpeciesDropRegistryScript.rewards_for(world.seed,
 		int(death_event.id),str(corpse.species_id),source_depth,floor_generation,source_id)
 	var generated_reward_items:Array[Dictionary]=[]
+	var drop_ruleset:String=SpeciesDropRegistryScript.ELEMENTAL_RULESET_ID if preload("res://sim/living_expedition_rules.gd").elemental_parts(world) else SpeciesDropRegistryScript.RULESET_ID
 	var rolls := SpeciesDropRegistryScript.rolls_for(world.seed, int(death_event.id),
-		str(corpse.species_id))
+		str(corpse.species_id),drop_ruleset)
 	for roll in rolls:
 		var instance_id: String = next.instance_id_for(next.next_item_instance_id)
 		next.next_item_instance_id += 1
@@ -81,7 +82,7 @@ static func materialize_death_event(world, death_event) -> Dictionary:
 	for row in generated_rows: total_quantity += int(row.quantity)
 	var materialized = world.emit_event("corpse.loot_materialized", corpse_id, corpse_id,
 			corpse.position, total_quantity, int(death_event.id), {"schema_version": 1,
-				"ruleset_id": SpeciesDropRegistryScript.RULESET_ID,
+				"ruleset_id": drop_ruleset,
 				"source_death_event_id": str(death_event.id),
 				"generated_items": generated_rows,"generated_reward_items":generated_reward_items,
 				"reward_rows":generated_rewards,"source_id":source_id,
