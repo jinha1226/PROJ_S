@@ -13,8 +13,16 @@ static var DEFINITIONS:Dictionary=ContentLoaderScript.index_rows(
 	_CONTENT.get("definitions",[]),"weapon_id")
 
 
+# Static content: memoize per-id validity instead of re-validating the row on
+# every lookup (item validation calls this for each weapon item).
+static var _VALID_IDS: Dictionary = {}
+
+
 static func has(weapon_id: String) -> bool:
-	return DEFINITIONS.has(weapon_id) and definition_error(DEFINITIONS[weapon_id]).is_empty()
+	if _VALID_IDS.has(weapon_id): return bool(_VALID_IDS[weapon_id])
+	var valid: bool = DEFINITIONS.has(weapon_id) and definition_error(DEFINITIONS[weapon_id]).is_empty()
+	_VALID_IDS[weapon_id] = valid
+	return valid
 
 
 static func definition(weapon_id: String):

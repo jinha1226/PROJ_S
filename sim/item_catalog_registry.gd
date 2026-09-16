@@ -11,8 +11,15 @@ static var _DEFINITIONS:Dictionary = Loader.index_rows(
 	_CONTENT.get("definitions", []), "definition_id")
 
 
+# Static content: memoize per-id validity instead of re-validating per lookup.
+static var _VALID_IDS:Dictionary = {}
+
+
 static func has(definition_id:String) -> bool:
-	return _DEFINITIONS.has(definition_id) and _row_error(_DEFINITIONS[definition_id]).is_empty()
+	if _VALID_IDS.has(definition_id): return bool(_VALID_IDS[definition_id])
+	var valid:bool = _DEFINITIONS.has(definition_id) and _row_error(_DEFINITIONS[definition_id]).is_empty()
+	_VALID_IDS[definition_id] = valid
+	return valid
 
 
 static func definition(definition_id:String) -> Dictionary:
