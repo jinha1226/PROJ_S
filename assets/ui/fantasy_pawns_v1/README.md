@@ -10,3 +10,5 @@ Prompt: Production 4×4 equally spaced UI icon sheet. Simple fantasy pawn style,
 Native UI uses linear filtering, flat charcoal panels, subtle smooth borders, and NanumSquare Korean text. Command semantics and world simulation are unchanged.
 
 Validation: `gameplay_mobile_ui_acceptance.gd -- --capture` PASS at 320×640, 390×844 and 450×800. Native UI screenshots are saved in `docs/art/fantasy-ui-v1/`. Layout preserves minimum 44px command touch targets and does not advance the simulation.
+
+Bottom command buttons use cached pale-gray silhouette textures with dark details as transparent cutouts so clock hands and compass needles remain readable. Only attack/wait/explore/tactics/bag use this treatment. Hover and pressed borders are neutral gray; top status and skill icons retain their colors.

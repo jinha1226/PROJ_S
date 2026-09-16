@@ -99,6 +99,8 @@ static func apply_action_button(button:Button,accent:Color=BRASS,
 		danger:bool=false)->void:
 	button.texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
 	var tone:=BLOOD if danger else accent
+	if str(button.name) in ["ProductAttack","ProductWaitGuard","ProductAuto","ProductTactics","ProductBag"]:
+		tone=Color("#aeb2b6")
 	var normal:=panel_surface(SECTION,IRON_LIGHT.darkened(0.2),4,1)
 	var hover:=panel_surface(Color("#1a2224"),tone.darkened(0.18),4,2)
 	var pressed:=panel_surface(tone.darkened(0.55),tone,4,2)

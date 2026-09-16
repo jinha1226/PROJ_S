@@ -24,7 +24,10 @@ func _draw()->void:
 		"RESTART":label="재시작"
 	var icon_key:String={"ProductAttack":"attack","ProductWaitGuard":"wait","ProductRest":"wait",
 		"ProductAuto":"explore","ProductTactics":"tactics","ProductBag":"bag"}.get(str(name),"ability")
-	var icon:Texture2D=preload("res://playtest/gameplay_pixel_icons.gd").texture(icon_key)
+	var icons=preload("res://playtest/gameplay_pixel_icons.gd")
+	var main_command:=str(name) in ["ProductAttack","ProductWaitGuard","ProductAuto","ProductTactics","ProductBag"]
+	var icon:Texture2D=icons.monochrome_texture(icon_key) if main_command else icons.texture(icon_key)
+	if main_command:ink=Color("#d1d6db") if not disabled else Color("#727778")
 	draw_texture_rect(icon,Rect2(Vector2(size.x*0.5-18,0),Vector2(36,36)),false,
 		Color(1,1,1,0.4) if disabled else Color.WHITE)
 	draw_string(get_theme_font("font"),Vector2(2,size.y-5),label,HORIZONTAL_ALIGNMENT_CENTER,size.x-4,11,ink)
