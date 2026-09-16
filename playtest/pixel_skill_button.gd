@@ -1,6 +1,6 @@
 extends Button
 func _ready()->void:
-	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
 	hide_native_text()
 func hide_native_text()->void:
 	for key in ["font_color","font_hover_color","font_pressed_color","font_disabled_color","font_focus_color","font_hover_pressed_color"]:

@@ -1,17 +1,7 @@
 class_name DarkPixelUISkin
 extends RefCounted
 
-## Image-backed nine-slice ironwork. Layout, text and input remain native controls.
-const FrameTexture=preload("res://assets/ui/dark_fantasy_v1/iron_frame.png")
-static var _runtime_frame:Texture2D
-
-static func frame_texture()->Texture2D:
-	if _runtime_frame==null:
-		var pixels:Image=FrameTexture.get_image()
-		pixels.resize(48,48,Image.INTERPOLATE_NEAREST)
-		_runtime_frame=ImageTexture.create_from_image(pixels)
-	return _runtime_frame
-
+## Flat charcoal panels matching the fantasy pawn illustrations. Native layout and input.
 const CANVAS:=Color("#15191d")
 const FOLIO:=Color("#20252a")
 const SECTION:=Color("#292f34")
@@ -29,9 +19,9 @@ const CYAN:=Color("#4d8f98")
 const BLOOD:=Color("#9f4544")
 const JADE:=Color("#5f8a66")
 
-const VISUAL_FAMILY:="DARK_FANTASY_PIXEL_9SLICE"
-# Shared Korean/Latin pixel face, imported without antialiasing or subpixels.
-const PixelFont:FontFile=preload("res://assets/fonts/Galmuri14.ttf")
+const VISUAL_FAMILY:="FANTASY_PAWNS_FLAT"
+# Shared legible Korean/Latin face; name retained for existing callers.
+const PixelFont:FontFile=preload("res://assets/fonts/NanumSquareR.ttf")
 
 
 static func configure_theme(theme:Theme)->void:
@@ -72,20 +62,12 @@ static func configure_theme(theme:Theme)->void:
 
 static func panel_surface(fill:Color=FOLIO,border:Color=IRON_EDGE,
 		margin:int=8,border_width:int=2)->StyleBox:
-	# Gauges and explicit unframed fills stay solid for accurate proportional fill.
-	if border_width==0:
-		var flat:=StyleBoxFlat.new();flat.bg_color=fill;flat.anti_aliasing=false
-		flat.set_content_margin_all(float(margin));return flat
-	var style:=StyleBoxTexture.new()
-	style.texture=frame_texture()
-	var cut:=8.0
-	for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:
-		style.set_texture_margin(side,cut)
-		style.set_expand_margin(side,0)
-	style.axis_stretch_horizontal=StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
-	style.axis_stretch_vertical=StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
-	style.modulate_color=Color(border.r*1.3+0.28,border.g*1.3+0.28,border.b*1.3+0.28,1)
-	style.draw_center=fill.a>0
+	var style:=StyleBoxFlat.new()
+	style.bg_color=fill
+	style.border_color=border
+	style.set_border_width_all(border_width)
+	style.set_corner_radius_all(4 if margin>0 else 2)
+	style.anti_aliasing=true
 	style.set_content_margin_all(float(margin))
 	return style
 
@@ -99,9 +81,9 @@ static func apply_panel(panel:PanelContainer,kind:String="FOLIO")->void:
 	if kind=="SECTION":style=section_surface()
 	elif kind=="COMPACT":style=panel_surface(SECTION,IRON_SHADOW,2,1)
 	panel.add_theme_stylebox_override("panel",style)
-	panel.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
+	panel.texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
 	panel.set_meta("visual_family",VISUAL_FAMILY)
-	panel.set_meta("pixel_material","BLACK_IRON")
+	panel.set_meta("pixel_material","FLAT_CHARCOAL")
 	panel.set_meta("skin_kind",kind)
 
 
@@ -115,9 +97,9 @@ static func apply_heading(label:Label,accent:Color=BRASS)->void:
 
 static func apply_action_button(button:Button,accent:Color=BRASS,
 		danger:bool=false)->void:
-	button.texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
+	button.texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
 	var tone:=BLOOD if danger else accent
-	var normal:=panel_surface(tone.darkened(0.67),tone.darkened(0.15),4,2)
+	var normal:=panel_surface(SECTION,IRON_LIGHT.darkened(0.2),4,1)
 	var hover:=panel_surface(Color("#1a2224"),tone.darkened(0.18),4,2)
 	var pressed:=panel_surface(tone.darkened(0.55),tone,4,2)
 	var disabled:=panel_surface(Color("#090c0d"),IRON_SHADOW,4,1)
@@ -132,7 +114,7 @@ static func apply_action_button(button:Button,accent:Color=BRASS,
 	button.add_theme_color_override("font_disabled_color",BONE_DIM.darkened(0.35))
 	button.add_theme_constant_override("outline_size",0)
 	button.set_meta("visual_family",VISUAL_FAMILY)
-	button.set_meta("pixel_material","BLACK_IRON_BUTTON")
+	button.set_meta("pixel_material","FLAT_ACTION_BUTTON")
 	button.set_meta("danger_action",danger)
 
 
@@ -152,7 +134,7 @@ static func apply_tab_button(button:Button,selected:bool=false)->void:
 	button.add_theme_color_override("font_hover_color",BONE)
 	button.add_theme_color_override("font_pressed_color",Color.WHITE)
 	button.set_meta("visual_family",VISUAL_FAMILY)
-	button.set_meta("pixel_material","IRON_TAB")
+	button.set_meta("pixel_material","FLAT_TAB")
 	button.set_meta("selected_tab",selected)
 
 

@@ -1,9 +1,9 @@
 extends Button
 
-## Generated pixel icons use nearest filtering; text remains the command
+## Generated fantasy icons use linear filtering; text remains the command
 ## state/accessibility source so contextual AUTO/reload/portal actions still work.
 func _ready()->void:
-	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
 	add_theme_color_override("font_color",Color.TRANSPARENT)
 	add_theme_color_override("font_hover_color",Color.TRANSPARENT)
 	add_theme_color_override("font_pressed_color",Color.TRANSPARENT)

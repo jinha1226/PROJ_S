@@ -1,5 +1,5 @@
 extends Control
-## Discrete, event-driven pixel silhouettes; no animation/process loop.
+## Discrete, event-driven supply icons; no animation/process loop.
 var kind:String="FOOD"
 var level:int=-1
 var lit:bool=false
@@ -10,7 +10,7 @@ func configure(value:float,is_lit:bool=true)->void:
 func _draw()->void:
 	var origin:=(size-Vector2(20,20))*0.5
 	if kind=="FOOD_ITEM":
-		texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
+		texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
 		draw_texture_rect(preload("res://playtest/gameplay_pixel_icons.gd").texture("food"),
 			Rect2((size-Vector2(24,24))*0.5,Vector2(24,24)),false)
 	elif kind=="FOOD":

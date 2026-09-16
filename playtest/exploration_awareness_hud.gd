@@ -14,7 +14,7 @@ func _draw()->void:
 	if state in ["ALERT","HUNTING"]:key="detected"
 	elif state in ["SUSPICIOUS","SEARCHING"]:key="suspicious"
 	if kind=="NOISE":key="noise";ink=Color("dbb55e")
-	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
 	draw_texture_rect(preload("res://playtest/gameplay_pixel_icons.gd").texture(key),
 		Rect2(Vector2(0,size.y*0.5-13),Vector2(26,26)),false)
 	draw_line(Vector2(0,5),Vector2(0,size.y-5),Color("393c3a"),1)

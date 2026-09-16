@@ -1,5 +1,5 @@
 extends RefCounted
-const SHEET=preload("res://assets/ui/gameplay_v4/icons.png")
+const SHEET=preload("res://assets/ui/fantasy_pawns_v1/icons.png")
 const INDEX:={"attack":0,"wait":1,"explore":2,"tactics":3,"bag":4,"food":5,"noise":6,"menu":7,
 	"stealth":8,"suspicious":9,"detected":10,"strike":11,"shield":12,"heal":13,"fire":14,"ability":15}
 static var cache:Dictionary={}
