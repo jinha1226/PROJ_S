@@ -1,0 +1,250 @@
+{
+  "version": 1,
+  "status": "concept_source_not_runtime_ready",
+  "species_aliases": {
+    "generic_humanoid": "human"
+  },
+  "sheets": [
+    {
+      "id": "species",
+      "file": "species.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "has_alpha": false,
+      "grid": {
+        "columns": 3,
+        "rows": 2,
+        "indexing": "zero-based row-major; intended layout only, not validated crop rectangles"
+      },
+      "sha256": "32cdbff764a4459c8ccfbe157f623e85f120d3a3274f1e3e7117c9e7bac74f05",
+      "generation_file": "exec-8c999cda-aacd-4193-b3a5-ac93c5aa0557.png",
+      "entries": [
+        {
+          "id": "human",
+          "row": 0,
+          "column": 0
+        },
+        {
+          "id": "elf",
+          "row": 0,
+          "column": 1
+        },
+        {
+          "id": "dwarf",
+          "row": 0,
+          "column": 2
+        },
+        {
+          "id": "orc",
+          "row": 1,
+          "column": 0
+        },
+        {
+          "id": "beastkin",
+          "row": 1,
+          "column": 1
+        },
+        {
+          "id": "goblin",
+          "row": 1,
+          "column": 2
+        }
+      ]
+    },
+    {
+      "id": "tiles",
+      "file": "tiles.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "has_alpha": false,
+      "grid": {
+        "columns": 4,
+        "rows": 4,
+        "indexing": "zero-based row-major; intended layout only, not validated crop rectangles"
+      },
+      "sha256": "1e7e28225900fa37efc81dac806dc8935973458a152909839aad36c5f504d954",
+      "generation_file": "exec-8a5c2d22-f6b3-4421-bc1c-f69504930c8f.png",
+      "entries": [
+        {
+          "id": "stone_floor_a",
+          "row": 0,
+          "column": 0
+        },
+        {
+          "id": "stone_floor_b",
+          "row": 0,
+          "column": 1
+        },
+        {
+          "id": "cracked_floor",
+          "row": 0,
+          "column": 2
+        },
+        {
+          "id": "moss_floor",
+          "row": 0,
+          "column": 3
+        },
+        {
+          "id": "wall_solid",
+          "row": 1,
+          "column": 0
+        },
+        {
+          "id": "wall_north",
+          "row": 1,
+          "column": 1
+        },
+        {
+          "id": "wall_corner_nw",
+          "row": 1,
+          "column": 2
+        },
+        {
+          "id": "wall_end",
+          "row": 1,
+          "column": 3
+        },
+        {
+          "id": "door_closed",
+          "row": 2,
+          "column": 0
+        },
+        {
+          "id": "door_open",
+          "row": 2,
+          "column": 1
+        },
+        {
+          "id": "stairs_down",
+          "row": 2,
+          "column": 2
+        },
+        {
+          "id": "stairs_up",
+          "row": 2,
+          "column": 3
+        },
+        {
+          "id": "water",
+          "row": 3,
+          "column": 0
+        },
+        {
+          "id": "wood_floor",
+          "row": 3,
+          "column": 1
+        },
+        {
+          "id": "rubble",
+          "row": 3,
+          "column": 2
+        },
+        {
+          "id": "pit",
+          "row": 3,
+          "column": 3
+        }
+      ]
+    },
+    {
+      "id": "items",
+      "file": "items.png",
+      "width": 1261,
+      "height": 1247,
+      "mode": "RGB",
+      "has_alpha": false,
+      "grid": {
+        "columns": 4,
+        "rows": 4,
+        "indexing": "zero-based row-major; intended layout only, not validated crop rectangles"
+      },
+      "sha256": "a7d881b4853dcface9512073698cbabc14872381da0938aafdbdb4bdaeb56818",
+      "generation_file": "exec-f8a0b24d-3cf4-4123-b240-5445e749871e.png",
+      "entries": [
+        {
+          "id": "sword",
+          "row": 0,
+          "column": 0
+        },
+        {
+          "id": "axe",
+          "row": 0,
+          "column": 1
+        },
+        {
+          "id": "bow",
+          "row": 0,
+          "column": 2
+        },
+        {
+          "id": "staff",
+          "row": 0,
+          "column": 3
+        },
+        {
+          "id": "shield",
+          "row": 1,
+          "column": 0
+        },
+        {
+          "id": "helmet",
+          "row": 1,
+          "column": 1
+        },
+        {
+          "id": "armor",
+          "row": 1,
+          "column": 2
+        },
+        {
+          "id": "ring",
+          "row": 1,
+          "column": 3
+        },
+        {
+          "id": "potion",
+          "row": 2,
+          "column": 0
+        },
+        {
+          "id": "ration",
+          "row": 2,
+          "column": 1
+        },
+        {
+          "id": "scroll",
+          "row": 2,
+          "column": 2
+        },
+        {
+          "id": "coins",
+          "row": 2,
+          "column": 3
+        },
+        {
+          "id": "fire_gland",
+          "row": 3,
+          "column": 0
+        },
+        {
+          "id": "cold_gland",
+          "row": 3,
+          "column": 1
+        },
+        {
+          "id": "water_sac",
+          "row": 3,
+          "column": 2
+        },
+        {
+          "id": "electric_organ",
+          "row": 3,
+          "column": 3
+        }
+      ]
+    }
+  ]
+}

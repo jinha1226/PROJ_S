@@ -1,0 +1,70 @@
+{
+  "tool": "image_gen",
+  "date": "2026-09-16",
+  "reference": "docs/mockups/fantasy-pawns/01-simple-fantasy-pawns.png",
+  "sheets": [
+    {
+      "id": "species",
+      "cols": 3,
+      "rows": 2,
+      "names": [
+        "human",
+        "elf",
+        "dwarf",
+        "orc",
+        "beastkin",
+        "goblin"
+      ],
+      "prompt": "Production asset sheet for the supplied reference mockup's MINIMAL fantasy pawn game. Reference image is STYLE reference only, do NOT reproduce its UI or screenshot. Clean smooth flat 2D, bold charcoal outline, solid color blocks with at most one shadow tone, very few interior lines. No pixel art, no gradients, no painted texture, no realistic anatomy, no fine details, no decorative frames, no labels, no text, no watermark. Must remain legible at 32-48 pixels per asset. Create exactly SIX separate unarmed fantasy pawn BASE sprites in a perfectly regular 3 columns by 2 rows atlas, square image, transparent background with genuine alpha. Each pawn centered at same bottom baseline within its cell with large clear padding. Head and simple torso silhouette ONLY, no arms or legs, round head just above body, face blank, no eyes mouth or nose. All wear the SAME plain warm-gray sleeveless tunic, no hats helmets armor weapons jewelry or accessories. Front-facing consistent slightly top-down pawn perspective. Top row: human with light tan round head and minimal brown hair cap, average torso; elf pale peach head with clearly projecting pointed ears and a simple blonde hair cap, slim torso; dwarf tan broad head with ONE blocky orange beard shape, short broad torso. Bottom row: orc olive-green broad head, two tiny ivory tusk triangles at lower head corners, broad shoulders; beastkin warm tawny catlike head with TWO triangular animal ears and a tiny cream muzzle patch, average torso, no tail; goblin light green smaller head with two large long pointed ears, small thin torso. These are species bases without class equipment, distinct chiefly by shape and skin color, cute and simple, neutral standing idle. Uniform thick outline. Each cell contains exactly one pawn, no extra drawings."
+    },
+    {
+      "id": "tiles",
+      "cols": 4,
+      "rows": 4,
+      "names": [
+        "stone_floor_a",
+        "stone_floor_b",
+        "cracked_floor",
+        "moss_floor",
+        "wall_solid",
+        "wall_north",
+        "wall_corner_nw",
+        "wall_end",
+        "door_closed",
+        "door_open",
+        "stairs_down",
+        "stairs_up",
+        "water",
+        "wood_floor",
+        "rubble",
+        "pit"
+      ],
+      "prompt": "Production asset sheet for the supplied reference mockup's MINIMAL fantasy pawn game. Reference image is STYLE reference only, do NOT reproduce its UI or screenshot. Clean smooth flat 2D, bold charcoal outline, solid color blocks with at most one shadow tone, very few interior lines. No pixel art, no gradients, no painted texture, no realistic anatomy, no fine details, no decorative frames, no labels, no text, no watermark. Must remain legible at 32-48 pixels per asset. Create a perfectly aligned 4x4 atlas of exactly 16 SQUARE DUNGEON TILES. Each tile fills its entire cell edge-to-edge, no gutters or margins between cells. Orthographic top-down map tiles, completely flat, never isometric. Subtle gray-green palette with darker gray walls; quiet low-contrast ground so characters stand out. Keep neighboring floor tiles same base gray. Row1: plain stone floor variant A, plain stone floor variant B with only one seam, cracked stone floor with one crack, stone floor with one small moss patch. Row2: solid wall block filling square, straight north wall segment with floor below it, northwest L-corner wall segment with floor in lower right, single freestanding wall end cap with floor around it. Row3: wooden closed doorway on gray floor, matching open doorway on gray floor, stairs descending inset into gray floor, stairs ascending inset into gray floor. Row4: blue shallow water tile with just two simple wave strokes, brown plank floor, gray floor with 3 rubble chunks, dark black square pit with thin stone lip. Walls chunky planar shapes, minimal seam marks. Make floors usable as repeatable modules, no cast shadows bleeding across tile borders. NO character, prop chest, UI, lighting effects or torch. Entire image is the tile atlas and NOTHING else."
+    },
+    {
+      "id": "items",
+      "cols": 4,
+      "rows": 4,
+      "names": [
+        "sword",
+        "axe",
+        "bow",
+        "staff",
+        "shield",
+        "helmet",
+        "armor",
+        "ring",
+        "potion",
+        "ration",
+        "scroll",
+        "coins",
+        "fire_gland",
+        "cold_gland",
+        "water_sac",
+        "electric_organ"
+      ],
+      "prompt": "Production asset sheet for the supplied reference mockup's MINIMAL fantasy pawn game. Reference image is STYLE reference only, do NOT reproduce its UI or screenshot. Clean smooth flat 2D, bold charcoal outline, solid color blocks with at most one shadow tone, very few interior lines. No pixel art, no gradients, no painted texture, no realistic anatomy, no fine details, no decorative frames, no labels, no text, no watermark. Must remain legible at 32-48 pixels per asset. Create exactly 16 isolated inventory icons in a perfectly regular 4 columns x 4 rows atlas on truly transparent background. Each object centered in own cell and occupies about 65 percent of cell, consistent scale and transparent padding. Row1: simple silver short sword with brown grip diagonal tip upper right, broad iron axe with brown handle, simple curved wooden bow with one string, wooden magic staff with small green orb. Row2: blue kite shield with steel rim, simple steel rounded helmet with nose guard, plain brown leather cuirass, gold ring with ONE blue stone. Row3: round red potion bottle with cork, brown dried meat ration, rolled cream parchment scroll, stack of three gold coins. Row4 MONSTER PARTS, clearly organic and not gemstones or spells: small orange rounded flame gland with a short dark stem; pale blue cold gland with 2 simple ice spikes; translucent blue pear-shaped water sac with one inner bubble; yellow electric organ shaped like a simple folded kidney with a tiny zigzag marking. Part silhouettes distinct and compact, no graphic gore. Every object has consistent thick charcoal outline. Favor simple large shapes, no inscriptions, no sparkles, no glow bloom, no item rarity frames."
+    }
+  ],
+  "unsuccessful_alpha_edit": "Edit only the background: remove the baked gray-white checkerboard completely and replace with genuine transparent alpha=0 pixels, including holes between shapes, around ears, between bow and bowstring, inside the ring. Preserve every foreground sprite, exact layout, colors, shapes, scale and outline. Do not draw a checkerboard, white background, gray background or drop shadows. Output a transparent PNG sprite sheet, not a visualization of transparency. Nothing else changes."
+}
