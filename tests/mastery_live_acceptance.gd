@@ -60,7 +60,7 @@ func run()->void:
 	var threat_cell:Vector2i=fixture._visible_empty_cell(session,session._auto_explore_fog_snapshot())
 	world.entities[threat_id].position=threat_cell;party.revision+=1
 	ui._refresh_open_member_detail()
-	check(ui.mastery_panel.rows.MELEE.button.disabled and ui.mastery_panel.summary.text.contains("주변 적"),"visible threat explains level THREE lock")
+	check(not ui.mastery_panel.rows.MELEE.button.disabled,"visible threat permits investment")
 	world.entities[threat_id].position=saved_position;party.revision+=1
 	ui._refresh_open_member_detail()
 	check(not ui.mastery_panel.rows.MELEE.button.disabled,"safety restores investment without another level-up or reopening")
@@ -69,18 +69,18 @@ func run()->void:
 	ui.mastery_panel.commit()
 	check(session.mastery_status().ranks.MELEE==1,"UI commits to campaign, not demo")
 	ui.mastery_panel.confirm.hide()
-	ui._open_hero_detail_tab("STATUS")
+	ui._open_hero_detail_tab("ITEM")
 	ui._refresh_open_member_detail()
 	await process_frame
-	var before_summary:String=ui.find_child("StatusCombatSummary",true,false).text
-	check(session.equip_inventory_item("START_HAND_AXE_001","MAIN_HAND").accepted,"change weapon with status open")
+	var before_summary:String=ui.find_child("EquippedCombatSummary",true,false).text
+	check(session.equip_inventory_item("START_HAND_AXE_001","MAIN_HAND").accepted,"change weapon with equipment open")
 	ui._refresh()
 	await process_frame
-	check(ui.member_detail_modal.visible and ui.member_detail_current_tab=="STATUS","refresh preserves open status tab")
-	check(ui.find_child("StatusCombatSummary",true,false).text!=before_summary,"open status combat numbers update without reopening")
-	var summary_node=ui.find_child("StatusCombatSummary",true,false)
+	check(ui.member_detail_modal.visible and ui.member_detail_current_tab=="ITEM","refresh preserves open equipment tab")
+	check(ui.find_child("EquippedCombatSummary",true,false).text!=before_summary,"open equipment combat numbers update without reopening")
+	var summary_node=ui.find_child("EquippedCombatSummary",true,false)
 	ui._refresh_open_member_detail()
-	check(ui.find_child("StatusCombatSummary",true,false)==summary_node,"unchanged frame does not rebuild modal")
+	check(ui.find_child("EquippedCombatSummary",true,false)==summary_node,"unchanged frame does not rebuild modal")
 	if DisplayServer.get_name()!="headless":
 		for i in range(5):await process_frame
 		await RenderingServer.frame_post_draw
@@ -98,7 +98,8 @@ func run()->void:
 	if target_position.x>=0:
 		world.entities[enemy_id].position=target_position
 		var blocked:Dictionary=session.spend_mastery_point("MAGIC")
-		check(not blocked.accepted,"visible threat prevents investment")
+		check(session.mastery_spend_assessment(hero_id).accepted,"adjacent threat permits investment assessment")
+		check(not blocked.accepted,"spent point budget remains enforced")
 		var attack:Dictionary=session.strike_enemy(enemy_id)
 		check(attack.accepted,"trained attack executes: "+str(attack.reason))
 		check(session.sim.world.world_state_error().is_empty(),"trained combat history validates: "+session.sim.world.world_state_error())

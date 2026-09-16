@@ -5137,19 +5137,13 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 			gratitude_rows.append(event)
 		elif event.type == "opening.reencountered" and event.target_id == npc_id:
 			reencounter_rows.append(event)
-		if event.type == "action.move" and event.actor_id == npc_id:
+		if event.type == "action.move" and event.actor_id == npc_id and not joined_history:
 			if not _party_move_event_is_canonical(event) \
 					or Vector2i(int(event.data.from_position[0]),
 						int(event.data.from_position[1])) != cursor \
 					or event.id <= opening.choice_event_id:
 				return "opening_npc_move_history_invalid"
 			cursor = event.position
-		elif joined_history and event.type=="party.companion_recruited" \
-				and event.target_id==npc_id:
-			cursor=event.position
-		elif joined_history and event.type=="action.move" \
-				and event.actor_id==party_encounter.protagonist_id:
-			cursor=event.position
 		if event.target_id != npc_id: continue
 		var event_type := str(event.type)
 		if event_type.begins_with("combat.") and event_type.ends_with("_damage"):
@@ -5211,6 +5205,12 @@ func _party_opening_event_error(party_ids: Dictionary) -> String:
 			or discovery.data.get("convergence_goal") != [opening.convergence_goal.x,
 				opening.convergence_goal.y]:
 		return "opening_discovery_event_invalid"
+	if joined_history:
+		# Recruited field companions move independently; use the shared history
+		# projection, including recruitment, assistance and floor transitions.
+		var history:=_entity_position_at_event(npc_id,events[-1].id+1)
+		if not bool(history.get("ok",false)):return "opening_npc_move_history_invalid"
+		cursor=history.position
 	if cursor != npc.position: return "opening_npc_position_projection_mismatch"
 	if projected_health != npc.health: return "opening_npc_health_projection_mismatch"
 	if (life.life_state == "ACTIVE") != (npc.health > 0):

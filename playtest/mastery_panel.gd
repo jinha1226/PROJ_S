@@ -51,10 +51,8 @@ func refresh(owner_session,member_id:int=-1)->void:
 	summary.text="Lv.%d · 남은 포인트 %d"%[status.level,status.points]
 	PixelSkin.apply_heading(summary)
 	progress.min_value=floor_xp;progress.max_value=maxi(floor_xp+1,next_xp);progress.value=status.xp
-	var safety:Dictionary=session._auto_explore_stop_snapshot()
-	var safe:bool=safety.get("visible_enemy_keys",{}).is_empty() and str(safety.get("safe_phase","")) in ["GROUPED","GROUPED_COMPLETE"]
-	if actor_id!=-1 and actor_id not in session.sim.world.party_encounter.active_party_member_ids:safe=false
-	if not safe:summary.text+=" · 전투 중"
+	var availability:Dictionary=session.mastery_spend_assessment(actor_id)
+	var safe:bool=bool(availability.get("accepted",false))
 	for definition in Growth.DATA.axes:
 		var axis:String=definition.id;var rank:int=status.ranks[axis]
 		var per_rank:int=Growth.DATA.defense_per_rank_milli if axis=="DEFENSE" else Growth.DATA.attack_per_rank_milli
@@ -62,7 +60,7 @@ func refresh(owner_session,member_id:int=-1)->void:
 		rows[axis].info.text="%s\n+%d%%"%[
 			"방어·회피·막기" if axis=="DEFENSE" else "공격·이능 효과",rank*per_rank/10]
 		rows[axis].button.disabled=status.points<1 or rank>=status.max_rank or not safe
-		rows[axis].button.tooltip_text="전투 중에는 투자할 수 없습니다." if not safe else \
+		rows[axis].button.tooltip_text=str(availability.get("message","현재 포인트를 사용할 수 없습니다.")) if not safe else \
 			("숙련 포인트가 없습니다." if status.points<1 else ("최대 숙련입니다." if rank>=status.max_rank else "1점 투자"))
 
 func preview(axis:String)->void:
@@ -83,4 +81,4 @@ func commit()->void:
 	var result:Dictionary=session.spend_mastery_point(action.axis,actor_id)
 	refresh(session,actor_id)
 	if result.accepted:changed.emit()
-	else:summary.text+="\n지금은 투자할 수 없습니다. 안전한 곳에서 시도하세요."
+	else:summary.text+="\n"+str(result.get("message","포인트를 사용할 수 없습니다."))

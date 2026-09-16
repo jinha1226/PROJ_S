@@ -596,6 +596,13 @@ func _update_enemy_awareness(enemy_id:int,processed_step_index:int)->bool:
 	var observed_id:int=int(contest.get("entity_id",-1))
 	var observed = world.entities.get(observed_id)
 	var previous_state:=str(awareness.awareness_state)
+	if observed!=null and _distance(enemy.position,observed.position)<=2 \
+			and preload("res://sim/living_expedition_rules.gd").immediate_close_awareness(world):
+		awareness.suspicion=1000
+		awareness.last_known_target_position=observed.position
+		awareness.last_seen_step=processed_step_index;awareness.last_seen_time=world.world_time
+		awareness.search_turns_remaining=0
+		return _set_awareness_state(awareness,"HUNTING",observed.position,previous_state,observed_id)
 	# Awareness rule: standing next to an unaware enemy is not an instant alarm.
 	# It gains the maximum suspicion per tick, so a party that sneaks up gets one
 	# action to strike first; a suspicious watcher still turns on you next tick.

@@ -359,7 +359,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	if product_dungeon and not VisualTestMapScript.apply_product_dungeon_hazards(
 			candidate.world, map_layout): return false
 	if bootstrap_living:
-		if candidate.world.emit_event(preload("res://sim/living_expedition_rules.gd").EVENT,-1,-1,Vector2i(-1,-1),0,-1,{"version":5 if bool(map_layout.get("procedural_generation",false)) else 4 if bootstrap_expanded_exploration else 3 if bootstrap_roster else 2})==null:return false
+		if candidate.world.emit_event(preload("res://sim/living_expedition_rules.gd").EVENT,-1,-1,Vector2i(-1,-1),0,-1,{"version":int(map_layout.get("procedural_rules_version",5)) if bool(map_layout.get("procedural_generation",false)) else 4 if bootstrap_expanded_exploration else 3 if bootstrap_roster else 2})==null:return false
 	if duo and bootstrap_settlement and bootstrap_talents and (p_player_species_id=="human" or bootstrap_living):
 		var talent_rules=preload("res://sim/personal_talent_rules.gd")
 		if candidate.world.emit_event(talent_rules.EVENT_ID,-1,-1,Vector2i(-1,-1),0,-1,
@@ -671,7 +671,7 @@ func prepare_autonomous_party_turn()->Dictionary:
 	return replace_auto_combat_protagonist_action(ActionScript.from_dict(suggested.action))
 
 func allows_companions()->bool:
-	return town_life_enabled() or SoloRunPolicy.allows_companions(scenario_id)
+	return town_life_enabled() or SoloRunPolicy.allows_companions(scenario_id) or (sim!=null and preload("res://sim/living_expedition_rules.gd").rules_version(sim.world)>=6)
 
 func town_life_enabled()->bool:
 	return sim!=null and preload("res://sim/runtime_history_index.gd").sync(sim.world).first.has("town.life_started")
@@ -982,11 +982,16 @@ func spend_species_trait_point(branch_id:String)->Dictionary:
 	return _commit_growth_point("SPEND_SPECIES_POINT",branch_id)
 
 
+func mastery_spend_assessment(actor_id:int=-1)->Dictionary:
+	if sim==null or sim.world==null or sim.world.party_encounter==null:return _rejection_dto("session_not_initialized")
+	if not sim.world.is_settled() or _protagonist_draft!=null:return _rejection_dto("world_not_settled")
+	if _run_is_complete() or sim.world.party_encounter.safe_phase=="PARTY_DEFEATED":return _rejection_dto("run_complete")
+	if actor_id!=-1 and actor_id not in sim.world.party_encounter.active_party_member_ids:return _rejection_dto("mastery_actor_unavailable")
+	return {"accepted":true,"reason":"ok"}
+
 func spend_mastery_point(axis:String,actor_id:int=-1)->Dictionary:
-	var stop_snapshot:=_auto_explore_stop_snapshot()
-	if stop_snapshot.is_empty() or not stop_snapshot.get("visible_enemy_keys",{}).is_empty() \
-			or str(stop_snapshot.get("safe_phase","")) not in ["GROUPED","GROUPED_COMPLETE"]:
-		return _rejection_dto("mastery_requires_safety")
+	var availability:=mastery_spend_assessment(actor_id)
+	if not availability.accepted:return availability
 	if actor_id==-1 or actor_id==sim.world.party_encounter.protagonist_id:return _commit_growth_point("SPEND_MASTERY_POINT",axis)
 	var w=sim.world;var member=w.party_encounter.member(actor_id)
 	if member==null or actor_id not in w.party_encounter.active_party_member_ids:return _rejection_dto("mastery_actor_unavailable")
@@ -3072,7 +3077,7 @@ func floor_transition_assessment()->Dictionary:
 	var hero=sim.world.entities.get(sim.world.party_control_actor_id())
 	if hero==null or hero.position!=portal_value:
 		return _rejection_dto("floor_transition_not_on_portal")
-	if state.safe_phase!="GROUPED_COMPLETE" and not (FieldRules.active(sim.world) and _field_floor_cleared()):
+	if not FieldRules.active(sim.world) and state.safe_phase!="GROUPED_COMPLETE":
 		return _rejection_dto("floor_transition_locked")
 	return _feedback_dto({"accepted":true,"reason":"ok",
 		"from_floor_index":floor_index,"to_floor_index":floor_index+1,
@@ -3833,8 +3838,8 @@ func run_progress() -> Dictionary:
 		if state.expedition_cycle!=null else 1
 	var campaign_runtime:=VisualTestMapScript.uses_product_dungeon(scenario_id) \
 		and _map_layout.has("campaign_floors")
-	var at_open_portal:bool=encounter_cleared \
-		and hero.position==exit_position
+	var exit_open:bool=encounter_cleared or (campaign_runtime and floor_index<MAX_IMPLEMENTED_CAMPAIGN_FLOOR and FieldRules.active(sim.world))
+	var at_open_portal:bool=exit_open and hero.position==exit_position
 	var transition_ready:bool=campaign_runtime and at_open_portal \
 		and floor_index<MAX_IMPLEMENTED_CAMPAIGN_FLOOR
 	var complete:bool=at_open_portal and (not campaign_runtime \
@@ -3856,8 +3861,8 @@ func run_progress() -> Dictionary:
 		"reward":{"reward_id":str(manifest.reward.reward_id),
 			"amount":int(manifest.reward.amount) if encounter_cleared else 0,
 			"granted":encounter_cleared},
-		"exit":{"feature_id":str(manifest.exit.open_feature_id) if encounter_cleared \
-			else str(manifest.exit.locked_feature_id), "open":encounter_cleared},
+		"exit":{"feature_id":str(manifest.exit.open_feature_id) if exit_open \
+			else str(manifest.exit.locked_feature_id), "open":exit_open},
 		"complete":complete, "terminal":terminal}
 	if campaign_runtime:
 		result["floor_index"]=floor_index
@@ -3889,7 +3894,7 @@ func solo_start_enabled()->bool:
 	return sim!=null and sim.world.party_encounter!=null and SOLO_START_TAG in sim.world.entities[sim.world.party_encounter.protagonist_id].tags
 
 func _restart_layout()->Dictionary:
-	return preload("res://playtest/campaign_world_map.gd").generate(world_seed,1,true,true,true) if bool(_map_layout.get("procedural_generation",false)) else {}
+	return preload("res://playtest/campaign_world_map.gd").generate(world_seed,1,true,true,true,int(_map_layout.get("procedural_rules_version",5))) if bool(_map_layout.get("procedural_generation",false)) else {}
 
 func start_procedural_run_with_species(species_id:String,new_world_seed:int,new_personality_seed:int)->Dictionary:
 	if not GrowthBuildRegistryScript.has_species(species_id):return _rejection_dto("unknown_player_species")
@@ -8488,7 +8493,7 @@ func load_session_json(encoded: String) -> Dictionary:
 	if VisualTestMapScript.uses_product_dungeon(parsed_scenario_id):
 		var current_layout:=VisualTestMapScript.product_dungeon(parsed_world_seed)
 		if preload("res://sim/living_expedition_rules.gd").snapshot_enabled(decoded.snapshot):
-			current_layout=preload("res://playtest/campaign_world_map.gd").generate(parsed_world_seed,1,true,true,preload("res://sim/living_expedition_rules.gd").snapshot_procedural(decoded.snapshot))
+			current_layout=preload("res://playtest/campaign_world_map.gd").generate(parsed_world_seed,1,true,true,preload("res://sim/living_expedition_rules.gd").snapshot_procedural(decoded.snapshot),preload("res://sim/living_expedition_rules.gd").snapshot_version(decoded.snapshot))
 			if preload("res://sim/living_expedition_rules.gd").snapshot_roster_randomized(decoded.snapshot):
 				current_layout=preload("res://playtest/seeded_roster.gd").apply_layout(current_layout,parsed_world_seed,parsed_personality_seed)
 		if int(decoded.snapshot.get("width",0))==360 and int(decoded.snapshot.get("height",0))==192:

@@ -348,6 +348,10 @@ var _product_auto_explore_scheduled_generation:=-1
 var _product_auto_last_hop_started_msec:=-1
 var _product_auto_stop_feedback:=""
 var _product_transient_event_feedback:=""
+var _product_gift_pending:=false
+var _candidate_touch_index:=-1
+var _candidate_touch_origin:=Vector2.ZERO
+var _candidate_touch_cancelled:=false
 var _product_attack_targeting:=false
 var _party_command_targeting:=false
 var _battle_target_mode:=""
@@ -1482,6 +1486,7 @@ func _build_member_detail_modal()->void:
 	member_detail_candidate_action.custom_minimum_size=Vector2(160,TOUCH_TARGET)
 	member_detail_candidate_action.add_theme_font_size_override("font_size",FONT_BODY)
 	member_detail_candidate_action.pressed.connect(_on_member_detail_candidate_action)
+	member_detail_candidate_action.gui_input.connect(_on_member_detail_candidate_gui_input)
 	member_detail_candidate_action.visible=false;stack.add_child(member_detail_candidate_action)
 	DarkPixelSkinScript.apply_action_button(member_detail_candidate_action,DarkPixelSkinScript.CYAN)
 	member_detail_attack=Button.new();member_detail_attack.name="MemberDetailAttack"
@@ -4322,7 +4327,7 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 		if session.has_method("floor_transition_assessment") else {}
 	var auto_state:Dictionary=session.auto_explore_state() if session.has_method("auto_explore_state") else {}
 	product_give_button.visible=opening_choice
-	product_give_button.disabled=not bool(opening.get("give_enabled",false))
+	product_give_button.disabled=_product_gift_pending or not bool(opening.get("give_enabled",false))
 	if opening_choice:
 		if event_label!=null:
 			event_label.text=str(opening.get("scene_summary",
@@ -4537,19 +4542,34 @@ func _take_ground_pickup_choice(index:int)->void:
 	_request_refresh()
 
 func _on_product_give_potion()->void:
-	var opening:Dictionary=session.opening_event_status() \
-		if session.has_method("opening_event_status") else {}
-	if bool(opening.get("can_interact",false)):
-		_cancel_product_auto_explore("auto_explore_interaction_discovered",false)
-		var choice_result:Dictionary=session.commit_opening_event_choice("GIVE_POTION")
-		_record_result(choice_result,true)
-		_show_product_command_feedback("회복 물약을 건넸습니다." \
-			if bool(choice_result.get("accepted",false)) else str(choice_result.get("message","물약을 건넬 수 없습니다.")))
-		if bool(choice_result.get("accepted",false)) \
-				and bool(choice_result.get("immediate_recruitment",{}).get("joined",false)):
-			_show_product_command_feedback("물약을 건넸습니다. 여행자가 바로 파티에 합류했습니다.")
-		# A potion gift is one interaction, independent of the exploration button.
-		_request_refresh();return
+	if _product_gift_pending or session==null:return
+	var opening:Dictionary=session.opening_event_status()
+	if not bool(opening.get("can_interact",false)):
+		_show_product_command_feedback("여행자 곁으로 이동한 뒤 물약을 건네세요.");return
+	var gift_world=session.sim.world
+	_product_gift_pending=true
+	_cancel_product_auto_explore("auto_explore_interaction_discovered",false)
+	_show_product_command_feedback("물약을 건네는 중…")
+	if product_give_button!=null:product_give_button.disabled=true
+	if member_detail_candidate_action!=null:member_detail_candidate_action.disabled=true
+	# Let touch release and the pending feedback reach the screen before the turn.
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if session==null or session.sim.world!=gift_world:
+		_product_gift_pending=false;return
+	var choice_result:Dictionary=session.commit_opening_event_choice("GIVE_POTION")
+	_product_gift_pending=false
+	_record_result(choice_result,true)
+	if bool(choice_result.get("accepted",false)):
+		if member_detail_modal.visible:_close_member_detail()
+		_show_product_command_feedback("물약을 건넸습니다. 여행자 HP +%d"%int(choice_result.get("healed_amount",0)))
+		if bool(choice_result.get("immediate_recruitment",{}).get("joined",false)):
+			_show_product_command_feedback("물약을 건넸습니다. 여행자가 파티에 합류했습니다.")
+	else:
+		_show_product_command_feedback(str(choice_result.get("message","물약을 건넬 수 없습니다.")))
+		if member_detail_modal.visible:_open_member_detail(member_detail_entity_id)
+	_request_refresh()
+
 func _on_product_auto()->void:
 	var status:Dictionary=session.party_status()
 	if str(status.get("view_mode",""))=="EXPLORATION":
@@ -5288,6 +5308,7 @@ func _refresh_open_member_detail()->void:
 	member_detail_body.text=_member_detail_text(detail)
 	_update_member_status_window(detail)
 	_update_progression_window(detail.get("progression",{}))
+	_update_item_window(detail.get("progression",{}).get("equipment",{}))
 	member_skill_window.call("set_detail",detail)
 	member_relationship_window.call("set_detail",detail)
 	mastery_panel.refresh(session,member_detail_entity_id)
@@ -5311,11 +5332,8 @@ func _open_member_detail(member_id:int,initial_tab:String="STATUS")->void:
 	member_detail_title.text=str(detail.get("display_name","파티원"))
 	member_detail_glyph_seal.call("set_actor",detail)
 	var detail_progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
-	var subtitle_parts:Array[String]=[_species(str(detail.get("species_id","default")))]
-	subtitle_parts.append(str(detail.get("role_label",_role(str(detail.get("role",""))))))
-	if bool(detail_progression.get("available",false)):subtitle_parts.append("LV%02d"%int(detail_progression.get("level",1)))
-	subtitle_parts.append(_life_state_label(str(detail.get("life_state","ACTIVE"))))
-	member_detail_subtitle.text=" / ".join(subtitle_parts)
+	member_detail_subtitle.text="LV%02d"%int(detail_progression.get("level",1)) if bool(detail_progression.get("available",false)) else ""
+	member_detail_subtitle.visible=not member_detail_subtitle.text.is_empty()
 	consumable_status_label.text=preload("res://sim/consumable_effects.gd").summary(session.sim.world,member_id)
 	consumable_status_label.visible=not consumable_status_label.text.is_empty()
 	member_detail_body.text=_member_detail_text(detail)
@@ -6174,6 +6192,12 @@ func _configure_candidate_detail_action(detail:Dictionary)->void:
 				member_detail_candidate_action.disabled=not bool(resident.can_assign if resident.joined else (resident.can_join or resident.can_talk))
 		return
 	var story_state:=str(detail.get("rescue_story_state",""))
+	if story_state=="OPENING_CHOICE":
+		var opening:Dictionary=session.opening_event_status()
+		member_detail_candidate_action.text="물약 주기"
+		member_detail_candidate_action.disabled=_product_gift_pending or not bool(opening.get("give_enabled",false))
+		member_detail_candidate_action.tooltip_text="여행자에게 회복 물약을 건넵니다."
+		return
 	if story_state=="COLLAPSED_STORY":
 		var rescue:Dictionary=detail.get("rescue_assessment",{}) if detail.get("rescue_assessment",{}) is Dictionary else {}
 		member_detail_candidate_action.text="상처 안정화 · %d 시간"%int(rescue.get("time_cost",0))
@@ -6194,6 +6218,20 @@ func _configure_candidate_detail_action(detail:Dictionary)->void:
 	member_detail_candidate_action.disabled=true
 	member_detail_candidate_action.tooltip_text="먼저 구조와 안정화를 완료해야 합니다."
 
+func _on_member_detail_candidate_gui_input(event:InputEvent)->void:
+	if event is InputEventScreenTouch:
+		_species_ignore_mouse_until=Time.get_ticks_msec()+500
+		if event.pressed:
+			_candidate_touch_index=event.index;_candidate_touch_origin=event.position;_candidate_touch_cancelled=false
+		elif event.index==_candidate_touch_index:
+			_candidate_touch_index=-1
+			if not event.canceled and not _candidate_touch_cancelled and Rect2(Vector2.ZERO,member_detail_candidate_action.size).has_point(event.position):
+				_on_member_detail_candidate_action()
+		member_detail_candidate_action.accept_event()
+	elif event is InputEventScreenDrag and event.index==_candidate_touch_index:
+		if event.position.distance_to(_candidate_touch_origin)>24:_candidate_touch_cancelled=true
+		member_detail_candidate_action.accept_event()
+
 func _on_member_detail_candidate_action()->void:
 	if member_detail_entity_id<=0:return
 	if session.town_life_enabled():
@@ -6210,6 +6248,8 @@ func _on_member_detail_candidate_action()->void:
 		notice_text=str(response.get("message","지금은 상호작용할 수 없습니다"))
 		_request_refresh();_open_member_detail(id);return
 	var detail:Dictionary=session.inspect_party_member(member_detail_entity_id)
+	if str(detail.get("rescue_story_state",""))=="OPENING_CHOICE":
+		_on_product_give_potion();return
 	var result:Dictionary
 	if str(detail.get("rescue_story_state",""))=="COLLAPSED_STORY":
 		result=session.stabilize_recruit_candidate(member_detail_entity_id)

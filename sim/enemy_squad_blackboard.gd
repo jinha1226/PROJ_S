@@ -85,7 +85,10 @@ static func visible_party_ids(world, enemy_id: int) -> Array[int]:
 		var observation:=VisionRulesScript.observe(world,enemy.position,
 			world.entities[target_id].position,VisionRulesScript.facing_for_entity(world,enemy_id),
 			VisionRulesScript.profile_for_entity(enemy),VisionRulesScript.lighting_for_world(world))
-		if bool(observation.get("visible",false)):
+		var close_visible:bool=preload("res://sim/living_expedition_rules.gd").immediate_close_awareness(world) \
+			and _distance(enemy.position,world.entities[target_id].position)<=2 \
+			and VisionRulesScript.has_line_of_sight(world,enemy.position,world.entities[target_id].position)
+		if close_visible or bool(observation.get("visible",false)):
 			result.append(target_id)
 	result.sort_custom(func(a: int, b: int):
 		var a_distance := _distance(enemy.position, world.entities[a].position)

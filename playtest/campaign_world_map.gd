@@ -10,7 +10,7 @@ const FLOOR_GAP := 8
 const FloorMapScript = preload("res://playtest/campaign_floor_map.gd")
 
 
-static func generate(seed:int, selected_floor:int=1,compact:bool=true,living:bool=false,procedural:bool=false)->Dictionary:
+static func generate(seed:int, selected_floor:int=1,compact:bool=true,living:bool=false,procedural:bool=false,rules_version:int=6)->Dictionary:
 	var floor_one:Dictionary=preload("res://playtest/procedural_campaign_floor.gd").generate(seed) if procedural else (FloorMapScript.generate(1,seed) if compact else FloorMapScript.generate_authored(1,seed))
 	var floor_two:Dictionary=FloorMapScript.generate(2,seed) if compact else FloorMapScript.generate_authored(2,seed)
 	if floor_one.is_empty() or floor_two.is_empty():return {}
@@ -37,7 +37,7 @@ static func generate(seed:int, selected_floor:int=1,compact:bool=true,living:boo
 			world_hazards.append((row_value as Dictionary).duplicate(true))
 	var base:Dictionary={"schema_version":SCHEMA_VERSION,
 		"ruleset_id":RULESET_ID,"seed":seed,"width":world_size.x,
-		"height":world_size.y,"procedural_generation":procedural,"terrain":terrain,"campaign_floors":floors,
+		"height":world_size.y,"procedural_generation":procedural,"procedural_rules_version":rules_version,"terrain":terrain,"campaign_floors":floors,
 		"campaign_floor_indices":[1,2],"hazards":world_hazards}
 	return select_floor(base,selected_floor)
 

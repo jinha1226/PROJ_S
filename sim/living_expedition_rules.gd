@@ -42,3 +42,15 @@ static func snapshot_procedural(snapshot:Dictionary)->bool:
 static func procedural(world)->bool:
 	var event=preload("res://sim/runtime_history_index.gd").sync(world).first.get(EVENT)
 	return event!=null and int(event.data.get("version",1))>=5
+
+static func snapshot_version(snapshot:Dictionary)->int:
+	for row in snapshot.get("events",[]):
+		if row.get("type","")==EVENT:return int(row.get("data",{}).get("version",1))
+	return 0
+static func immediate_close_awareness(world)->bool:
+	var event=preload("res://sim/runtime_history_index.gd").sync(world).first.get(EVENT)
+	return event!=null and int(event.data.get("version",1))>=6
+
+static func rules_version(world)->int:
+	var event=preload("res://sim/runtime_history_index.gd").sync(world).first.get(EVENT)
+	return int(event.data.get("version",1)) if event!=null else 0
