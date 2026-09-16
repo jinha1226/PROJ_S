@@ -1,0 +1,18 @@
+# 단순한 판타지 폰 스타일 목업
+
+2026-09-16 · 내장 image_gen으로 생성.
+
+[목업](01-simple-fantasy-pawns.png)
+
+머리·몸통 중심의 단순한 폰 형태, 네 파티원의 장비·색·실루엣 구분, 타일 하나에 들어가는 작은 캐릭터 크기를 시험한다. 실제 게임 적용 화면은 아니다. 생성 결과의 상단 눈은 요청한 감은 눈과 달리 떠 있으며, UI와 수치는 기능 변경 명세가 아니다. 최종 에셋 제작 전 실제 게임 타일 크기에서 재검증한다.
+
+## 생성 프롬프트
+
+Use case: ui-mockup. Create ONE portrait 9:16 mobile tactical fantasy dungeon RPG screenshot mockup at approximately 900x1600. Art direction: extremely simplified top-down colony-simulator pawn sprites adapted to fantasy. Flat 2D clean vector-like shapes, bold dark outlines, solid restrained colors, NO pixel art, NO detailed illustration. Minimal rounded head above a simple compact shoulder/body silhouette, no visible legs, minimal or absent facial features. The readability and abstraction of a colony-management game, not chibi anime, not detailed RPG character artwork. Original fantasy designs.
+
+CRITICAL SCALE: camera pulled back showing approximately 13 tiles across and 17 tiles down in the main playfield. Each character's complete body fits WITHIN ONE tile, roughly 45-55 screen pixels tall in a 900px wide image. Characters collectively occupy only a tiny fraction of the map. DO NOT enlarge characters for visual appeal. No full body illustrated adventurers, no portrait closeups. This must look like an ACTUAL zoomed-out playable screen. Four party pawns near the center spaced one tile apart: human knight as beige round head with a simple steel helmet and cobalt-blue torso plus one large shield shape; elf as pale round head with two small pointed ear triangles, blond hair and green triangular cloak, slim staff; dwarf as wide tan head with ONE blocky orange beard shape and squat brown torso, gray hammer; mage as purple pointed hat and purple robe with cream face sliver. Only 3-5 large color shapes per pawn and 1-2 simple equipment shapes. Cute appealing proportions without big cartoon eyes or ugly caricature noses. No hands, fingers, belt buckles, armor engravings, fabric texture.
+
+Map: readable flat muted gray square-tile dungeon, several rooms connected by narrow corridors, low-contrast flat stone walls, simple closed wooden door on left corridor, stairs down in upper-right room, a small blue water patch, two orange torch symbols. Plenty of open walkable space. Black unexplored fog beyond the dungeon edges. Enemy pawns at upper-middle: small squat orange lizard defined by simple head/body/tail and ONE bright orange throat gland; small blue spider defined by an oval icy abdomen and six simple short legs. All same one-tile scale as party. A green slime elsewhere. Two tiny loot symbols. Environment uses very few interior lines and no surface noise, no lighting gradients, no photoreal texture. Easily readable on an actual phone.
+
+Compact UI with flat charcoal panels and thin muted borders, no ornate bevels: top 6% of screen has minimap, B1, food x3, closed green eye icon, sound icon, hamburger menu. Main dungeon 70% of screen. Lower compact log two lines 'A door blocks the passage.' / 'Your party is ready.' Beneath it four SMALL pawn head icons with short HP and MP bars; heads identical abstraction as map pawns, no illustrated faces. Six thin outlined skill slots, three filled with very simple fire/shield/healing icons, three empty. Bottom five equal buttons with simple sword/clock/compass/flag/bag icons labeled ATTACK REST EXPLORE TACTICS BAG. Maintain modest UI height so dungeon dominates. No decorative title or branding, no phone device frame, no watermark. Deliver a production-looking readable minimal fantasy colony-pawn dungeon game screen rather than a concept painting.
+
