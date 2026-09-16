@@ -48,7 +48,8 @@ func test_bind_consumes_item_and_restores_party_wire()->bool:
 	check_eq(item_rows.size(),1,"stored ability item is exposed")
 	var assessment:Dictionary=session.ability_binding_assessment(hero,"ABILITY_BIND_01")
 	check(bool(assessment.accepted),"binding assessment accepts a stored ability item")
-	check_eq(assessment.effect_preview.ability_id,"FIREBOLT","assessment exposes canonical effect")
+	check_eq(assessment.effect_preview.label,"???","unconsumed part hides effect")
+	check(not assessment.effect_preview.has("passive"),"unconsumed part hides passive")
 	var result:Dictionary=session.bind_ability_item(hero,"ABILITY_BIND_01")
 	check(bool(result.accepted),"binding commit succeeds: "+str(result.get("reason")))
 	check_eq(world.party_encounter.member(hero).bound_ability_ids,["FIREBOLT"],

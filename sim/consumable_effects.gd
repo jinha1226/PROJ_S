@@ -1,7 +1,7 @@
 extends RefCounted
 const Catalog=preload("res://sim/consumable_catalog.gd")
-const DURATIONS={"HASTE":600,"ARMOR":600,"REGEN":500,"POISON":400,"SLOW":500,"WEAK":500,"FEAR":400,"SEAL":500,"CONFUSION":400,"NOISE":500}
-const BAD=["POISON","SLOW","WEAK","CONFUSION"]
+const DURATIONS={"HASTE":600,"ARMOR":600,"REGEN":500,"POISON":400,"SLOW":500,"WEAK":500,"FEAR":400,"SEAL":500,"CONFUSION":400,"NOISE":500,"BURN":300,"CHILL":300,"SOAKED":300,"SHOCK":300,"STIFF":300,"DIZZY":300,"TREMOR":300,"NAUSEA":300}
+const BAD=["POISON","SLOW","WEAK","CONFUSION","BURN","CHILL","SOAKED","SHOCK","STIFF","DIZZY","TREMOR","NAUSEA"]
 static func projection(w)->Dictionary:
 	var p:Dictionary=w.get_meta("consumable_effect_cache",{})
 	if p.is_empty() or p.cursor>w.events.size() or (p.cursor>0 and p.tail!=w.events[p.cursor-1]):
@@ -26,15 +26,18 @@ static func status(w,id:int,key:String,before:int=-1):
 			if row.type=="consumable.cleansed":clear=row.id
 	return e if e!=null and int(e.data.until)>now and (key not in BAD or clear<e.id) else null
 static func rate(w,id:int,before:int=-1)->int:
-	return (50 if status(w,id,"HASTE",before)!=null else 0)-(35 if status(w,id,"SLOW",before)!=null else 0)
+	return (50 if status(w,id,"HASTE",before)!=null else 0)-(35 if status(w,id,"SLOW",before)!=null else 0) \
+		-(25 if status(w,id,"CHILL",before)!=null or status(w,id,"STIFF",before)!=null else 0) \
+		-(15 if status(w,id,"SOAKED",before)!=null or status(w,id,"NAUSEA",before)!=null else 0)
 static func accuracy(w,id:int,before:int=-1)->int:
-	return (-200 if status(w,id,"WEAK",before)!=null else 0)+(-250 if status(w,id,"CONFUSION",before)!=null else 0)
+	return (-200 if status(w,id,"WEAK",before)!=null else 0)+(-250 if status(w,id,"CONFUSION",before)!=null else 0) \
+		+(-150 if status(w,id,"SHOCK",before)!=null or status(w,id,"DIZZY",before)!=null or status(w,id,"TREMOR",before)!=null else 0)
 static func armor(w,id:int)->int:
 	return (5 if status(w,id,"ARMOR")!=null else 0)-(3 if status(w,id,"WEAK")!=null else 0)
 static func skill_blocked(w,id:int)->bool:return status(w,id,"SEAL")!=null or status(w,id,"CONFUSION")!=null
 static func summary(w,id:int)->String:
 	var parts:Array[String]=[]
-	var labels={"HASTE":"가속","ARMOR":"경화","REGEN":"재생","POISON":"독","SLOW":"둔화","WEAK":"쇠약","FEAR":"공포","SEAL":"봉인","CONFUSION":"혼란"}
+	var labels={"HASTE":"가속","ARMOR":"경화","REGEN":"재생","POISON":"독","SLOW":"둔화","WEAK":"쇠약","FEAR":"공포","SEAL":"봉인","CONFUSION":"혼란","BURN":"화상","CHILL":"오한","SOAKED":"몸이 무거움","SHOCK":"감전","STIFF":"경직","DIZZY":"어지럼","TREMOR":"떨림","NAUSEA":"메스꺼움"}
 	for key in labels:
 		var e=status(w,id,key)
 		if e!=null:parts.append("%s %d"%[labels[key],ceili(float(int(e.data.until)-w.world_time)/100.0)])
@@ -46,16 +49,16 @@ static func tick(sim,start:int,end:int)->bool:
 	var p:=projection(w)
 	for s in p.statuses.values().duplicate():
 		var key:String=s.data.effect
-		if key not in ["POISON","REGEN"] or not runtime.alive(w,s.target_id):continue
-		if key=="POISON" and int(p.clears.get(s.target_id,-1))>s.id:continue
+		if key not in ["POISON","REGEN","BURN"] or not runtime.alive(w,s.target_id):continue
+		if key in BAD and int(p.clears.get(s.target_id,-1))>s.id:continue
 		var stop:int=mini(end,int(s.data.until))
 		var ticks:int=maxi(0,(stop-s.world_time)/100-maxi(0,(start-s.world_time)/100))
 		for n in range(mini(5,ticks)):
 			var entity=w.entities[s.target_id]
-			var amount:int=mini(4,maxi(0,entity.health-1)) if key=="POISON" else mini(6,entity.max_health-entity.health)
+			var amount:int=mini(3 if key=="BURN" else 4,maxi(0,entity.health-1)) if key in ["POISON","BURN"] else mini(6,entity.max_health-entity.health)
 			if amount<=0:continue
 			var pulse=w.emit_event("consumable.pulse",s.actor_id,s.target_id,entity.position,amount,s.id,{"schema_version":1,"effect":key})
-			if pulse==null or runtime.impact(sim,s.actor_id,s.target_id,"VENOM_FANG" if key=="POISON" else "REGENERATIVE_TISSUE",amount,"physical" if key=="POISON" else "HEAL",pulse.id)<0:return false
+			if pulse==null or runtime.impact(sim,s.actor_id,s.target_id,"FIREBOLT" if key=="BURN" else ("VENOM_FANG" if key=="POISON" else "REGENERATIVE_TISSUE"),amount,"fire" if key=="BURN" else ("physical" if key=="POISON" else "HEAL"),pulse.id)<0:return false
 	return true
 static func event_error(w,e)->String:
 	if not str(e.type).begins_with("consumable."):return ""
@@ -66,8 +69,9 @@ static func event_error(w,e)->String:
 		if not Catalog.SPECS.has(str(source.data.get("definition_id",""))) or e.data.get("definition_id")!=source.data.definition_id or e.data.size()!=3 or not e.data.get("selection") is Dictionary:return "consumable_activation_data"
 		return ""
 	if e.type=="consumable.pulse":
-		if source.type!="consumable.status" or source.data.effect!=e.data.get("effect") or e.actor_id!=source.actor_id or e.target_id!=source.target_id or e.magnitude<1 or e.magnitude>(4 if e.data.effect=="POISON" else 6):return "consumable_pulse_invalid"
+		if source.type!="consumable.status" or source.data.effect!=e.data.get("effect") or e.actor_id!=source.actor_id or e.target_id!=source.target_id or e.magnitude<1 or e.magnitude>({"POISON":4,"REGEN":6,"BURN":3}.get(str(e.data.get("effect","")),0)):return "consumable_pulse_invalid"
 		return ""
+	if source.type=="party.ability_bound":return preload("res://sim/part_ingestion_rules.gd").status_error(e,source)
 	if source.type!="consumable.activated" or source.actor_id!=e.actor_id or source.world_time!=e.world_time or source.step_index!=e.step_index:return "consumable_effect_source"
 	var effect:String=Catalog.definition(str(source.data.definition_id)).get("effect","")
 	match str(e.type):

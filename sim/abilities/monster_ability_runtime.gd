@@ -305,7 +305,8 @@ static func event_error(world,e)->String:
 	if not str(e.type).begins_with("ability."):return ""
 	if e.type=="ability.passive_triggered":return "" # Original fire gland validator.
 	var id:String=str(e.data.get("skill_id",e.data.get("ability_id","")))
-	if not Defs.SKILLS.has(id) or e.data.get("schema_version")!=1 or not world.entities.has(e.actor_id) or not world.entities.has(e.target_id):return "monster_ability_event_invalid"
+	var ingestion_fire:bool=id=="FIREBOLT" and e.type=="ability.impact" and world.event_by_id(e.cause_id)!=null and world.event_by_id(e.cause_id).type=="consumable.pulse"
+	if (not Defs.SKILLS.has(id) and not ingestion_fire) or e.data.get("schema_version")!=1 or not world.entities.has(e.actor_id) or not world.entities.has(e.target_id):return "monster_ability_event_invalid"
 	var keys:Array=e.data.keys();keys.sort()
 	match str(e.type):
 		"ability.cast":
@@ -318,7 +319,7 @@ static func event_error(world,e)->String:
 			if str(e.data.status) not in allowed.get(id,[]):return "monster_status_ability_mismatch"
 			if e.data.status=="POISON" and e.magnitude not in [1,2,3]:return "monster_poison_stacks_invalid"
 		"ability.impact":
-			if keys!=["ability_id","kind","schema_version"] or e.data.kind not in ["physical","electric","HEAL"] or e.magnitude<=0 or e.magnitude>1000:return "monster_impact_invalid"
+			if keys!=["ability_id","kind","schema_version"] or (e.data.kind not in ["physical","electric","HEAL"] and not (ingestion_fire and e.data.kind=="fire")) or e.magnitude<=0 or e.magnitude>1000:return "monster_impact_invalid"
 		"ability.charge":
 			if keys!=["ability_id","schema_version"] or id!="CHARGE_ORGAN" or e.magnitude>3:return "monster_charge_invalid"
 		"ability.ration_spent":
@@ -336,8 +337,8 @@ static func event_error(world,e)->String:
 	if e.type not in ["ability.cast","ability.pulse","ability.reaction"]:
 		var source=world.event_by_id(e.cause_id)
 		if source!=null and source.type=="consumable.pulse" and e.type=="ability.impact":
-			var expected:String="VENOM_FANG" if source.data.effect=="POISON" else "REGENERATIVE_TISSUE"
-			var kind:String="physical" if source.data.effect=="POISON" else "HEAL"
+			var expected:String="FIREBOLT" if source.data.effect=="BURN" else ("VENOM_FANG" if source.data.effect=="POISON" else "REGENERATIVE_TISSUE")
+			var kind:String="fire" if source.data.effect=="BURN" else ("physical" if source.data.effect=="POISON" else "HEAL")
 			return "" if id==expected and e.data.kind==kind and e.actor_id==source.actor_id and e.target_id==source.target_id and e.magnitude==source.magnitude and e.world_time==source.world_time and e.step_index==source.step_index and preload("res://sim/consumable_effects.gd").event_error(world,source).is_empty() else "consumable_impact_invalid"
 		if source==null or source.type not in ["ability.cast","ability.status","ability.pulse","ability.reaction","combat.physical_damage","action.move","action.melee_attack","action.skill"]:return "monster_effect_source_invalid"
 	return ""

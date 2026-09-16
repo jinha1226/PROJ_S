@@ -990,6 +990,7 @@ func mastery_spend_assessment(actor_id:int=-1)->Dictionary:
 	return {"accepted":true,"reason":"ok"}
 
 func spend_mastery_point(axis:String,actor_id:int=-1)->Dictionary:
+	if actor_id==-1 and sim!=null:actor_id=sim.world.party_control_actor_id()
 	var availability:=mastery_spend_assessment(actor_id)
 	if not availability.accepted:return availability
 	if actor_id==-1 or actor_id==sim.world.party_encounter.protagonist_id:return _commit_growth_point("SPEND_MASTERY_POINT",axis)
@@ -1009,7 +1010,7 @@ func spend_mastery_point(axis:String,actor_id:int=-1)->Dictionary:
 
 func mastery_status(actor_id:int=-1)->Dictionary:
 	if sim==null or sim.world.party_encounter==null:return {}
-	if actor_id==-1:actor_id=sim.world.party_encounter.protagonist_id
+	if actor_id==-1:actor_id=sim.world.party_control_actor_id()
 	var growth=preload("res://sim/party_growth_rules.gd").for_actor(sim.world,actor_id)
 	if growth==null:return {}
 	return {"level":growth.level(),"xp":growth.xp_total,"points":growth.mastery_points_available(),
@@ -1366,6 +1367,8 @@ func party_consumable_choices(instance_id:String)->Array:
 		choices.append({"label":"%s · Lv.%d · HP %d/%d · MP %d/%d"%[entity.display_name,ability_binding_level(id),entity.health,entity.max_health,member.energy,member.max_energy],"selection":{"recipient_id":id}})
 	return choices
 
+var _part_ingestion_enabled:bool=true
+
 func use_party_item(instance_id:String,actor_id:int,selection:Dictionary={})->Dictionary:
 	var rollback:Dictionary=sim.capture_rollback_memento(false);var journal_size:int=command_journal.size()
 	var routed:Dictionary=preload("res://sim/party_bag_rules.gd").route(sim.world,instance_id,actor_id)
@@ -1376,7 +1379,7 @@ func use_party_item(instance_id:String,actor_id:int,selection:Dictionary={})->Di
 	if not result.get("accepted",false):
 		_rollback_session_transaction(rollback,journal_size);return result
 	while command_journal.size()>journal_size:command_journal.pop_back()
-	command_journal.append({"kind":"party_use","instance_id":instance_id,"actor_id":str(actor_id),"selection":selection.duplicate(true)})
+	command_journal.append({"kind":"party_use","instance_id":instance_id,"actor_id":str(actor_id),"selection":selection.duplicate(true),"part_ingestion":_part_ingestion_enabled})
 	return result
 
 func use_inventory_item(instance_id:String,heal_before_time:bool=true,selection:Dictionary={})->Dictionary:
@@ -1753,7 +1756,10 @@ func _item_presentation_row(item,slot:String,equipped:bool,actor_id:int=-1)->Dic
 	var ability_id:=ItemRewardRulesScript.ability_for_item(str(item.definition_id))
 	if not ability_id.is_empty():
 		result.merge({"usable":true,"ability_id":ability_id,
-			"ability_preview":AbilityBindingRulesScript.effect_preview(ability_id)},true)
+			"ability_preview":part_effect_preview(actor_id if actor_id!=-1 else sim.world.party_control_actor_id(),ability_id)},true)
+		result["identified"]=bool(result.ability_preview.get("identified",true))
+		result["purpose"]=""
+		if not result.identified:result.label="???"
 	if str(item.definition_id)==TorchRulesScript.DEFINITION_ID:
 		result.merge({"equip_slots":[],"usable":false,"compact_stat_text":"폐기된 장비"},true)
 	if str(definition.category)=="WEAPON":
@@ -2675,9 +2681,8 @@ func monster_ability_acquisition_rows()->Array[Dictionary]:
 	for ability_id in acquired:
 		var entry:Dictionary=acquired[ability_id]
 		var reward:Dictionary=entry.reward
-		var definition:=ActiveSkillRegistryScript.definition(str(ability_id))
 		var owner:Dictionary=sim.world.item_owner(str(entry.instance_id))
-		rows.append({"ability_id":str(ability_id),"label":str(definition.get("name",ability_id)),
+		rows.append({"ability_id":str(ability_id),"label":str(part_effect_preview(sim.world.party_control_actor_id(),str(ability_id)).get("label","???")),
 			"definition_id":str(reward.get("definition_id","")),
 			"instance_id":str(entry.instance_id),"source_event_id":int(entry.event_id),
 			"stored":owner.kind=="ENTITY","on_ground":owner.kind=="GROUND",
@@ -2730,6 +2735,14 @@ func ability_binding_rows(actor_id:int)->Array[Dictionary]:
 	return rows.duplicate(true)
 
 
+func part_effect_preview(actor_id:int,ability_id:String)->Dictionary:
+	var member=sim.world.party_encounter.member(actor_id)
+	var canonical:=AbilityBindingRulesScript.canonical_id(ability_id)
+	if member!=null and canonical in member.bound_ability_ids:
+		return AbilityBindingRulesScript.effect_preview(canonical).merged({"identified":true})
+	return {"label":"???","identified":false,"planned":not AbilityBindingRulesScript.has(canonical)}
+
+
 func ability_binding_item_rows(actor_id:int)->Array[Dictionary]:
 	var rows:Array[Dictionary]=[]
 	if sim==null or sim.world==null:return rows
@@ -2741,7 +2754,7 @@ func ability_binding_item_rows(actor_id:int)->Array[Dictionary]:
 		var ability_id:=ItemRewardRulesScript.ability_for_item(str(item.definition_id))
 		var catalog:Dictionary=preload("res://sim/abilities/monster_ability_catalog.gd").for_item(str(item.definition_id))
 		if (ability_id.is_empty() or not AbilityBindingRulesScript.has(ability_id)) and catalog.is_empty():continue
-		var preview:=AbilityBindingRulesScript.effect_preview(ability_id)
+		var preview:=part_effect_preview(actor_id,ability_id)
 		if preview.is_empty():
 			ability_id=str(catalog.ability_id)
 			preview={"ability_id":ability_id,"label":str(catalog.label),"planned":true,
@@ -2792,11 +2805,11 @@ func ability_binding_assessment(actor_id:int,instance_id:String)->Dictionary:
 	return _feedback_dto({"accepted":true,"reason":"ok","actor_id":actor_id,
 		"instance_id":instance_id,"ability_id":ability_id,"level":level,
 		"current_slots":bound.size(),"max_slots":limit,"slot_index":bound.size(),
-		"effect_preview":AbilityBindingRulesScript.effect_preview(ability_id),
+		"effect_preview":part_effect_preview(actor_id,ability_id),
 		"consumes_item":true})
 
 
-func bind_ability_item(actor_id:int,instance_id:String)->Dictionary:
+func bind_ability_item(actor_id:int,instance_id:String,ingestion:bool=true)->Dictionary:
 	var assessment:=ability_binding_assessment(actor_id,instance_id)
 	if not bool(assessment.get("accepted",false)):return assessment
 	var rollback:Variant=sim.snapshot()
@@ -2819,6 +2832,10 @@ func bind_ability_item(actor_id:int,instance_id:String)->Dictionary:
 		_restore_town_rollback(rollback)
 		return _rejection_dto("ability_binding_event_failed")
 	sim.world.item_state=next
+	if ingestion and _part_ingestion_enabled:
+		if not preload("res://sim/part_ingestion_rules.gd").apply(sim.world,event):
+			_restore_town_rollback(rollback)
+			return _rejection_dto("part_ingestion_failed")
 	sim.world.party_encounter.revision+=1
 	var state_error:String=sim.world.world_state_error()
 	if not state_error.is_empty():
@@ -2826,11 +2843,13 @@ func bind_ability_item(actor_id:int,instance_id:String)->Dictionary:
 		return _rejection_dto(state_error)
 	command_journal.append({"kind":"ability","operation":{"action":"BIND",
 		"actor_id":str(actor_id),"instance_id":instance_id,
-		"ability_id":str(assessment.ability_id)}})
+		"ability_id":str(assessment.ability_id),"part_ingestion":ingestion and _part_ingestion_enabled}})
 	return _feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
 		"actor_id":actor_id,"instance_id":instance_id,
 		"ability_id":str(assessment.ability_id),"slot_index":int(assessment.slot_index),
-		"bindings":ability_binding_rows(actor_id)})
+		"bindings":ability_binding_rows(actor_id),
+		"ability_preview":AbilityBindingRulesScript.effect_preview(str(assessment.ability_id)),
+		"ingestion_status":preload("res://sim/consumable_effects.gd").summary(sim.world,actor_id)})
 
 
 func set_ability_mode(actor_id:int,ability_id:String,mode:String)->Dictionary:
@@ -4233,13 +4252,11 @@ func _party_observation_context(include_decoration:bool=true)->Dictionary:
 	PerfProbeScript.end("ctx.ground_items",_pgi)
 	var _pbl:=PerfProbeScript.begin()
 	var monster_blood_by_cell:Dictionary={}
+	var corpses_by_cell:Dictionary={}
 	var enemy_ids:Array=_current_floor_enemy_ids()
-	var deaths:Dictionary=preload("res://sim/runtime_history_index.gd").sync(sim.world).deaths if include_decoration else {}
-	for enemy_id in enemy_ids:
-		var event=deaths.get(int(enemy_id))
-		if event==null:continue
-		if sim.world.in_bounds(event.position):
-			monster_blood_by_cell[_position_key(event.position)]=true
+	if include_decoration:corpses_by_cell=preload("res://playtest/monster_corpse_visuals.gd").project(sim.world,enemy_ids,visible)
+	for cell_key in corpses_by_cell:
+		if corpses_by_cell[cell_key].any(func(row):return row.stage=="BODY"):monster_blood_by_cell[cell_key]=true
 	PerfProbeScript.end("ctx.blood_scan",_pbl)
 	var followers_by_cell: Dictionary = {}
 	for member_id_value in follower_positions:
@@ -4253,7 +4270,7 @@ func _party_observation_context(include_decoration:bool=true)->Dictionary:
 		"visible":visible,"explored":explored,"visited":visited,
 		"followers_by_cell":followers_by_cell,
 		"ground_items_by_cell":ground_items_by_cell,
-		"monster_blood_by_cell":monster_blood_by_cell}
+		"monster_blood_by_cell":monster_blood_by_cell,"corpses_by_cell":corpses_by_cell}
 
 
 func _wall_borders_visible_floor(position:Vector2i,visible:Dictionary)->bool:
@@ -4389,7 +4406,8 @@ func _party_rich_observation(context:Dictionary,bounds:Rect2i,
 				"smoke_amount":int(tile.smoke_amount), "steam_amount":int(tile.steam_amount),
 				"flammable_gas_amount":int(tile.flammable_gas_amount),
 				"effective_conductivity":int(tile.effective_conductivity()), "actors":actors,
-				"ground_items":ground_items_by_cell.get(position_key,[]).duplicate(true)})
+				"ground_items":ground_items_by_cell.get(position_key,[]).duplicate(true),
+				"corpses":context.get("corpses_by_cell",{}).get(position_key,[]).duplicate(true)})
 	var los_radius:=VisualTestMapScript.uses_los_fov(scenario_id)
 	var vision_profile: Dictionary = VisionRulesScript.profile_for_entity(
 		sim.world.entities.get(int(status.protagonist_id)))
@@ -8626,7 +8644,10 @@ func load_session_json(encoded: String) -> Dictionary:
 			"rescue_enabled":replay_result=replay.enable_party_rescue()
 			"party_item":replay_result=replay.party_item_operation(str(row.action),str(row.instance_id),str(row.slot),int(row.actor_id))
 			"npc_mastery":replay_result=replay.spend_mastery_point(str(row.axis),int(row.actor_id))
-			"party_use":replay_result=replay.use_party_item(str(row.instance_id),int(row.actor_id),row.selection)
+			"party_use":
+				replay._part_ingestion_enabled=bool(row.get("part_ingestion",false))
+				replay_result=replay.use_party_item(str(row.instance_id),int(row.actor_id),row.selection)
+				replay._part_ingestion_enabled=true
 			"population":replay_result=preload("res://playtest/dungeon_visitors_service.gd").interact(replay,row.operation)
 			"town_life":replay_result=replay.town_life_command(row.operation)
 			"guild_tutorial":replay_result=replay.guild_tutorial_command(row.operation,not row.has("ruleset_id"))
@@ -8658,7 +8679,7 @@ func load_session_json(encoded: String) -> Dictionary:
 				var growth_operation:Dictionary=row.operation
 				match str(growth_operation.action):
 					"SPEND_MASTERY_POINT":
-						replay_result=replay.spend_mastery_point(str(growth_operation.target_id))
+						replay_result=replay.spend_mastery_point(str(growth_operation.target_id),replay.sim.world.party_encounter.protagonist_id)
 					"SPEND_STAT_POINT":
 						replay_result=replay.spend_growth_stat_point(
 							str(growth_operation.target_id))
@@ -8694,7 +8715,7 @@ func load_session_json(encoded: String) -> Dictionary:
 				if ability_operation.action=="MODE":replay_result=replay.set_ability_mode(Int64CodecScript.parse(ability_operation.actor_id,"ability actor"),str(ability_operation.ability_id),str(ability_operation.instance_id))
 				else:replay_result=replay.bind_ability_item(
 					Int64CodecScript.parse(ability_operation.actor_id,"ability actor"),
-					str(ability_operation.instance_id))
+					str(ability_operation.instance_id),bool(ability_operation.get("part_ingestion",false)))
 				if bool(replay_result.get("accepted",false)) and str(replay_result.get("ability_id",""))!=str(ability_operation.ability_id):
 					return _rejection_dto("party_journal_snapshot_mismatch")
 			"exploration":
@@ -8966,6 +8987,9 @@ func _journal_wire_error(journal: Array) -> String:
 			"npc_mastery":
 				if keys!=["actor_id","axis","kind"] or not Int64CodecScript.is_canonical(row.actor_id) or row.axis not in ["MELEE","RANGED","MAGIC","DEFENSE"]:return "invalid_npc_mastery_journal"
 			"party_use":
+				if keys.has("part_ingestion"):
+					if not row.part_ingestion is bool:return "invalid_party_use_journal"
+					keys.erase("part_ingestion")
 				if keys!=["actor_id","instance_id","kind","selection"] or not Int64CodecScript.is_canonical(row.actor_id) or not row.instance_id is String or not row.selection is Dictionary or not preload("res://playtest/consumable_utility_service.gd").selection_valid(row.selection):return "invalid_party_use_journal"
 			"population":
 				if keys!=["kind","operation"] or not preload("res://sim/town_population_rules.gd").interaction_error(row.get("operation")).is_empty():
@@ -9089,6 +9113,9 @@ func _journal_wire_error(journal: Array) -> String:
 				if keys!=["kind","operation"] or not row.get("operation") is Dictionary:
 					return "invalid_ability_journal"
 				var ability_keys:Array=row.operation.keys();ability_keys.sort()
+				if ability_keys.has("part_ingestion"):
+					if row.operation.get("action")!="BIND" or not row.operation.part_ingestion is bool:return "invalid_ability_journal"
+					ability_keys.erase("part_ingestion")
 				if row.operation.get("action")=="MODE" and row.operation.get("instance_id") not in ["PASSIVE","ACTIVE"]:return "invalid_ability_journal"
 				var ability_id:=AbilityBindingRulesScript.canonical_id(
 					str(row.operation.get("ability_id","")))
@@ -10373,6 +10400,12 @@ func _event_message(event) -> String:
 	return ""
 
 
+func _known_item_label(definition_id:String)->String:
+	var ability_id:=ItemRewardRulesScript.ability_for_item(definition_id)
+	if not ability_id.is_empty() and not part_effect_preview(sim.world.party_control_actor_id(),ability_id).get("identified",false):return "???"
+	return preload("res://sim/mystery_consumables.gd").label(sim.world,definition_id)
+
+
 func _item_label_for_event(event)->String:
 	var instance_id:=str(event.data.get("instance_id",""))
 	if instance_id.is_empty() or sim==null or sim.world==null:return "아이템"
@@ -10380,17 +10413,17 @@ func _item_label_for_event(event)->String:
 		var item=inventory.item(instance_id)
 		if item!=null:
 			var definition=ItemRegistryScript.definition(str(item.definition_id))
-			return preload("res://sim/mystery_consumables.gd").label(sim.world,str(item.definition_id)) if definition!=null else "아이템"
+			return _known_item_label(str(item.definition_id)) if definition!=null else "아이템"
 	for ground_row in sim.world.item_state.ground_items.rows:
 		if str(ground_row.item.instance_id)==instance_id:
 			var definition=ItemRegistryScript.definition(str(ground_row.item.definition_id))
-			return preload("res://sim/mystery_consumables.gd").label(sim.world,str(ground_row.item.definition_id)) if definition!=null else "아이템"
+			return _known_item_label(str(ground_row.item.definition_id)) if definition!=null else "아이템"
 	for historical in sim.world.events:
 		if int(historical.id)>int(event.id):break
 		if str(historical.data.get("instance_id",""))!=instance_id:continue
 		var definition_id:=str(historical.data.get("definition_id",""))
 		var definition=ItemRegistryScript.definition(definition_id)
-		if definition!=null:return preload("res://sim/mystery_consumables.gd").label(sim.world,definition_id)
+		if definition!=null:return _known_item_label(definition_id)
 	return "아이템"
 
 

@@ -34,13 +34,17 @@ func _ready()->void:
 		button.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 		button.pressed.connect(preview.bind(axis));row.add_child(button);PixelSkin.apply_action_button(button,PixelSkin.BRASS)
 		rows[axis]={"info":info,"button":button,"title":title}
-	var note:=Label.new();note.text="전투 밖에서 투자 · 재분배 불가"
+	var note:=Label.new();note.text="캐릭터별 개별 포인트 · 재분배 불가"
 	note.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;note.add_theme_font_size_override("font_size",11);add_child(note)
 	confirm=ConfirmationDialog.new();confirm.title="숙련 투자";confirm.ok_button_text="1점 투자"
 	confirm.cancel_button_text="취소";confirm.get_label().autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	confirm.confirmed.connect(commit);confirm.canceled.connect(func():pending.clear());add_child(confirm)
 
 func refresh(owner_session,member_id:int=-1)->void:
+	if member_id==-1:member_id=owner_session.sim.world.party_control_actor_id()
+	if actor_id!=member_id:
+		pending.clear()
+		confirm.hide()
 	session=owner_session
 	actor_id=member_id
 	var status:Dictionary=session.mastery_status(actor_id)
@@ -48,7 +52,7 @@ func refresh(owner_session,member_id:int=-1)->void:
 	var registry=session.GrowthBuildRegistryScript
 	var floor_xp:int=registry.xp_floor_for_level(status.level)
 	var next_xp:int=registry.xp_floor_for_level(int(status.level)+1)
-	summary.text="Lv.%d · 남은 포인트 %d"%[status.level,status.points]
+	summary.text="%s · Lv.%d\n남은 포인트 %d"%[session.sim.world.entities[actor_id].display_name,status.level,status.points]
 	PixelSkin.apply_heading(summary)
 	progress.min_value=floor_xp;progress.max_value=maxi(floor_xp+1,next_xp);progress.value=status.xp
 	var availability:Dictionary=session.mastery_spend_assessment(actor_id)

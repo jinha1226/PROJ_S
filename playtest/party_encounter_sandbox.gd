@@ -5301,7 +5301,8 @@ func _refresh_open_member_detail()->void:
 	if session==null or member_detail_modal==null or not member_detail_modal.visible:return
 	var world=session.sim.world
 	var party=world.party_encounter
-	var growth=party.protagonist_growth
+	var growth=preload("res://sim/party_growth_rules.gd").for_actor(world,member_detail_entity_id)
+	if growth==null:growth=party.protagonist_growth
 	var key:Array=[world.get_instance_id(),member_detail_entity_id,world.world_time,
 		world.events.size(),party.revision,world.item_state.revision,growth.xp_total,
 		growth.mastery_ranks.hash()]
@@ -5815,6 +5816,7 @@ func _item_row_text(row:Dictionary)->String:
 
 func _item_stats_text(row:Dictionary)->String:
 	if row.is_empty() or bool(row.get("empty",false)):return ""
+	if str(row.get("reward_family",""))=="MONSTER_ABILITY" and row.get("identified",true)==false:return "???"
 	if row.get("identified",true)==false:return "미감정 · 사용하면 같은 종류의 정체를 알게 됩니다."
 	if str(row.get("reward_family",""))=="MONSTER_ABILITY":
 		var preview:Dictionary=row.get("ability_preview",{}) if row.get("ability_preview",{}) is Dictionary else {}
@@ -5849,9 +5851,8 @@ func _item_stats_text(row:Dictionary)->String:
 	return "\n".join(lines)
 
 func _item_description_text(row:Dictionary)->String:
+	if str(row.get("reward_family",""))=="MONSTER_ABILITY":return ""
 	if row.get("identified",true)==false:return "효과를 알 수 없습니다. 사용 시 1개와 한 행동을 소모합니다. 같은 외형은 이번 판에서 같은 효과입니다."
-	if str(row.get("reward_family",""))=="MONSTER_ABILITY":
-		return "몬스터에게서 얻은 특수 부위입니다. 먹일 캐릭터를 고르면 부위 1개를 소모해 이능을 습득합니다."
 	if str(row.get("use_kind",""))=="UTILITY":return "사용 시 1개 소모 · 지속 효과는 시간 경과로 해제됩니다." if str(row.get("definition_id",""))!="POTION_MYSTERY_POISON" else "마시거나 보이는 적에게 투척합니다. 정화로 해제할 수 있습니다."
 	if str(row.get("use_kind",""))=="ENERGY":return "사용하면 MP를 회복합니다."
 	match str(row.get("category","")):
@@ -6121,6 +6122,7 @@ func _on_item_use_selected(selection:Dictionary={},selected_instance:String="",r
 		_position_item_popover();return
 	var healed:=int(result.get("healed_amount",0))
 	notice_text=str(result.get("message","회복 물약 사용 · HP +%d"%healed))
+	if result.has("ability_preview"):notice_text="이능 습득 · "+str(result.ability_preview.get("label",""))
 	action_feedback_text=notice_text
 	_hide_item_popover()
 	_record_result(result,true)
@@ -6131,6 +6133,16 @@ func _on_item_use_selected(selection:Dictionary={},selected_instance:String="",r
 	var progression:Dictionary=detail.get("progression",{}) if detail.get("progression",{}) is Dictionary else {}
 	_update_item_window(progression.get("equipment",{}));_update_progression_window(progression)
 	_apply_member_detail_tab();_reflow_member_detail_scroll();_refresh()
+	if result.has("ability_preview"):_show_learned_ability(result)
+
+func _show_learned_ability(result:Dictionary)->void:
+	var preview:Dictionary=result.ability_preview
+	var popup:=AcceptDialog.new();popup.name="LearnedMonsterAbility"
+	popup.title="이능 습득";popup.ok_button_text="확인"
+	popup.dialog_text="습득 이능 · %s\n\n패시브 · %s\n\n액티브 · %s\n\n%s"%[preview.get("label",""),preview.get("passive","-"),preview.get("active","-"),result.get("ingestion_status","")]
+	popup.get_label().autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	add_child(popup);popup.confirmed.connect(popup.queue_free);popup.canceled.connect(popup.queue_free)
+	popup.popup_centered(Vector2i(mini(340,int(size.x)-24),280))
 
 func _on_item_operation_result(result:Dictionary)->void:
 	if not bool(result.get("accepted",false)):

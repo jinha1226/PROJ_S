@@ -16,7 +16,9 @@ func equip(s,row,passive:bool):
 	var inv=w.inventory_of(hero);var items:Array=inv.backpack.duplicate()
 	items.append(Item.new("ALL_"+str(row.ability_id),str(row.essence_id),1))
 	w.item_state.inventory_rows[hero]=Inventory.new(items,inv.equipped)
-	var result:Dictionary=s.bind_ability_item(hero,"ALL_"+str(row.ability_id))
+	# Isolate established ability behavior from the three-turn ingestion penalty.
+	# Real consumption, periodic damage and expiry are covered by corpse_parts_growth_acceptance.
+	var result:Dictionary=s.bind_ability_item(hero,"ALL_"+str(row.ability_id),false)
 	check(result.accepted,"bind "+str(row.ability_id)+" "+str(result.get("reason")))
 	var id:String="FIREBOLT" if row.ability_id=="FIRE_GLAND" else str(row.ability_id)
 	if passive:

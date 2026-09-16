@@ -94,8 +94,9 @@ func _refresh_detail()->void:
 	var filled:bool=not selected_item.is_empty() or str(row.get("state",""))=="BOUND"
 	detail_title.text=str(row.get("label","이능")) if filled else "빈 슬롯"
 	if not filled:
-		var empty:=Label.new();empty.text="특수부위를 선택해 효과를 확인하세요."
+		var empty:=Label.new();empty.text="섭취한 이능을 선택하세요."
 		empty.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;empty.add_theme_font_size_override("font_size",12);mode_rows.add_child(empty);return
+	if row.get("identified",true)==false:return
 	var planned:bool=bool(row.get("planned",false))
 	var dual:bool=bool(row.get("dual_mode",false))
 	_mode("패시브" if dual else "패시브 · 미구현",str(row.get("passive","패시브 효과 미구현")),dual and str(row.get("mode","ACTIVE")) in ["PASSIVE","BOTH"])
@@ -183,9 +184,7 @@ func _bind_item(instance_id:String)->void:
 		var preview:Dictionary=row.get("effect_preview",{})
 		if bool(preview.get("planned",false)):return
 		pending_instance_id=instance_id
-		confirmation.dialog_text="%s\nMP %d · 사거리 %d\n\n획득물 1개를 소비하고 빈 결속 한도 1칸을 사용합니다.\n현재 해제할 수 없습니다. 결속할까요?"%[
-			str(preview.get("label",row.get("ability_id","이능"))),
-			int(preview.get("cost",0)),int(preview.get("range",0))]
+		confirmation.dialog_text="%s\n\n1개 섭취 · 이능 슬롯 1칸 사용\n습득 후 해제할 수 없습니다."%str(preview.get("label","???"))
 		confirmation.popup_centered(Vector2i(300,220))
 		return
 
@@ -199,12 +198,14 @@ func _confirm_binding()->void:
 	if not result is Dictionary or not bool(result.get("accepted",false)):
 		feedback.text=str(result.get("message","이능을 결속할 수 없습니다.")) if result is Dictionary else "이능을 결속할 수 없습니다."
 		return
-	feedback.text="%s 결속 완료 · 아이템을 소비했습니다."%str(result.get("ability_id","이능"))
+	feedback.text="이능을 습득했습니다."
 	if result.get("bindings",[]) is Array:
 		binding_rows=result.bindings.duplicate(true)
 	for index in range(item_rows.size()-1,-1,-1):
 		if str(item_rows[index].get("instance_id",""))==instance_id:item_rows.remove_at(index)
 	selected_item=""
+	for index in range(binding_rows.size()):
+		if binding_rows[index].get("ability_id")==result.get("ability_id"):selected_slot=index
 	_refresh()
 
 

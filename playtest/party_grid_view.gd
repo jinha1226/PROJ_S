@@ -286,6 +286,7 @@ func set_observation(observation: Dictionary, ghosts: Array = []) -> void:
 		# approved scalar glyph, and only for a currently visible cell. This also
 		# prevents a malformed MEMORY observation from retaining live item details.
 		var visibility_state:=AsciiStyleScript.visibility_state(row)
+		row["corpses"]=raw.get("corpses",[]).duplicate(true) if visibility_state=="VISIBLE" else []
 		var ground_item_spec:=AsciiStyleScript.ground_item_spec(raw) \
 			if visibility_state=="VISIBLE" else AsciiStyleScript.item_presentation_spec("")
 		row.erase("ground_items")
@@ -1756,7 +1757,7 @@ func ground_item_draw_spec(position:Vector2i)->Dictionary:
 	var item:Dictionary=AsciiStyleScript.item_presentation_spec(
 		str(row.get("ground_item_glyph","")))
 	if not bool(item.visible):return hidden.duplicate(true)
-	var rect:=world_cell_rect(position);var occupied:=_cell_is_visually_occupied(position)
+	var rect:=world_cell_rect(position);var occupied:=_cell_is_visually_occupied(position) or not (_cells.get(_key(position),{}).get("corpses",[]) as Array).is_empty()
 	var texture:Texture2D=preload("res://playtest/pixel24_item_assets.gd").texture_for_id(
 		str(row.get("ground_item_icon_id","")))
 	var image_side:float=floor(minf(rect.size.x,rect.size.y)*(0.42 if occupied else 0.72))
@@ -2651,6 +2652,7 @@ func _draw_world_with_emphasis()->void:
 	_draw_wall_torches()
 	_draw_ground_features()
 	_draw_ground_marks()
+	_draw_monster_corpses()
 	_draw_ground_hazards()
 	_draw_enemy_vision_overlays()
 	_draw_follower_footprints()
@@ -3574,6 +3576,7 @@ func ground_mark_draw_specs()->Array[Dictionary]:
 func _draw_ground_marks()->void:
 	var font:Font=BoldFont
 	for spec in ground_mark_draw_specs():
+		if not (_cells.get(_key(_array_to_world_position(spec.world_position)),{}).get("corpses",[]) as Array).is_empty():continue
 		if not uses_perspective_projection():
 			WorldEffectAssets.draw_icon(self,"BLOOD",world_cell_rect(_array_to_world_position(spec.world_position)),Color(1,1,1,float(spec.opacity)))
 			continue
@@ -4303,3 +4306,10 @@ func world_marker_style_spec()->Dictionary:
 		"pixel_snap":true,"antialiased":false,"cell_shaped_targets":true}.duplicate(true)
 
 func _key(p:Vector2i)->String: return "%d:%d"%[p.x,p.y]
+
+func _draw_monster_corpses()->void:
+	for row in _cells.values():
+		if row.get("visibility_state","")!="VISIBLE":continue
+		var rect:=world_cell_rect(_array_to_world_position(row.position))
+		for corpse in row.get("corpses",[]):
+			preload("res://playtest/monster_corpse_visuals.gd").draw(self,corpse,rect)
