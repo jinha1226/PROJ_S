@@ -6924,12 +6924,26 @@ func _consume_route_result(result:Dictionary)->void:
 func _pickup_pending_ground_item_if_reached()->void:
 	# Arrival is movement only: no synchronous multi-turn pickup loop.
 	pending_ground_pickup_id="";pending_ground_pickup_label=""
-	var count:int=session.ground_item_count_at_protagonist()
+	var ground_rows:Array=session.ground_items_at_protagonist()
+	var count:int=ground_rows.size()
 	if count>0:
-		notice_text="발밑 아이템 %d개 · 현재 타일을 다시 눌러 획득"%count
+		notice_text=ground_item_arrival_notice(ground_rows)
 		action_feedback_text=notice_text
+		_product_transient_event_feedback=notice_text
 	if product_pickup_button!=null:
 		product_pickup_button.disabled=count==0
+
+func ground_item_arrival_notice(rows:Array)->String:
+	var labels:Array[String]=[]
+	for raw in rows:
+		if not raw is Dictionary:continue
+		var row:=raw as Dictionary
+		var label:=str(row.get("label",row.get("display_name",
+			row.get("definition_id","아이템")))).strip_edges()
+		if not label.is_empty() and label not in labels:labels.append(label)
+	var names:=", ".join(labels) if not labels.is_empty() else "아이템"
+	return "발밑 아이템 %d개 · %s · 현재 타일을 다시 눌러 획득"%[
+		rows.size(),names]
 
 func _pickup_everything_here()->void:
 	# Keep the existing callback name, but one press is exactly one item action.
@@ -6943,6 +6957,7 @@ func _pickup_everything_here()->void:
 	notice_text="%s 가방에 주웠습니다 (100시간)%s"%[str(rows[0].label),
 		" · %d개 남음"%remaining if remaining>0 else ""]
 	action_feedback_text=notice_text
+	_product_transient_event_feedback=notice_text
 
 func _schedule_route_continue(previous_hop_started_msec:int=-1)->void:
 	if route_continue_pending or route_paused_by_modal or route_paused_by_pointer or not is_inside_tree():return

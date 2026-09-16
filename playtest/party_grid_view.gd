@@ -2552,53 +2552,50 @@ func _draw() -> void:
 				for dx in range(-1,2):
 					var cell:Vector2i=point+Vector2i(dx,dy)
 					if is_world_cell_visible(cell):draw_rect(world_cell_rect(cell).grow(-2),Color(tint,0.25),true)
-		else:draw_arc(center,cell_size_px()*0.3,0,TAU,16,tint,2,true)
+		else:_draw_pixel_corner_marker(center,cell_size_px()*0.3,tint,5,2)
 	Perf.end("grid.draw_world",begun)
 	var pickup_center:=actor_visual_center(underfoot_pickup_actor)
 	if pickup_center.x>=0:
 		pickup_center+=Vector2(cell_size_px()*0.36,cell_size_px()*0.25)
-		draw_circle(pickup_center,7,Color("#171b20"))
-		draw_arc(pickup_center,7,0,TAU,20,Color("#f5cc67"),1.5,true)
-		draw_line(pickup_center-Vector2(4,0),pickup_center+Vector2(4,0),Color("#f5cc67"),2,true)
-		draw_line(pickup_center-Vector2(0,4),pickup_center+Vector2(0,4),Color("#f5cc67"),2,true)
+		_draw_pixel_plus_badge(pickup_center,Color("#f5cc67"))
 	var focus_spec:=party_focus_draw_spec()
 	if bool(focus_spec.visible):
 		var center:Vector2=focus_spec.center
 		var radius:float=focus_spec.radius
 		var tint:=Color("#87dfcb")
 		for corner in [Vector2(-1,-1),Vector2(1,-1),Vector2(-1,1),Vector2(1,1)]:
-			var point:Vector2=center+corner*radius
+			var point:Vector2=_pixel_point(center+corner*radius)
 			for axis in [Vector2(corner.x,0),Vector2(0,corner.y)]:
-				draw_line(point,point-axis*8,Color(0,0,0,0.9),5,true)
-				draw_line(point,point-axis*8,tint,2.5,true)
-		draw_circle(center+Vector2(0,-radius-5),3,tint)
+				draw_line(point,_pixel_point(point-axis*8),Color(0,0,0,0.9),5,false)
+				draw_line(point,_pixel_point(point-axis*8),tint,3,false)
+		var focus_pixel:=_pixel_point(center+Vector2(0,-radius-5))
+		draw_rect(Rect2(focus_pixel-Vector2(2,2),Vector2(5,5)),tint,true)
 	for id in battle_move_goals:
 		var goal:Vector2i=battle_move_goals[id]
 		if not is_world_cell_visible(goal):continue
 		var center:=world_to_pixel_center(goal)
-		draw_rect(Rect2(center-Vector2.ONE*cell_size_px()*0.4,Vector2.ONE*cell_size_px()*0.8),Color("#87c9eb"),false,2)
+		_draw_cell_overlay(goal,Color("#87c9eb18"),Color("#87c9eb"),2)
 		var actor_center:=actor_visual_center(id)
 		if actor_center.x>=0:draw_line(actor_center,center,Color(0.5,0.8,1,0.35),1,true)
 	if move_preview_position!=Vector2i(-1,-1) and is_world_cell_visible(move_preview_position):
 		var color:=Color("#87dfcb") if move_preview_valid else Color("#ff6363")
-		var center:=world_to_pixel_center(move_preview_position)
-		draw_rect(Rect2(center-Vector2.ONE*cell_size_px()*0.45,Vector2.ONE*cell_size_px()*0.9),color,false,3)
+		_draw_cell_overlay(move_preview_position,Color(color,0.08),color,3)
 	for id in danger_actor_ids:
 		var center:=actor_visual_center(id)
 		if center.x<0 or center.y<0:continue
-		draw_arc(center,25,0,TAU,32,Color("#ff6262"),3,true)
+		_draw_pixel_corner_marker(center,25,Color("#ff6262"),8,3)
 		draw_string(get_theme_font("font"),center+Vector2(-5,-29),"!",HORIZONTAL_ALIGNMENT_LEFT,20,22,Color("#ff6262"))
 	if target_preview_id>0:
 		var center:=actor_visual_center(target_preview_id)
 		if center.x>=0 and center.y>=0:
 			var color:=Color("#ffe08a") if target_preview_valid else Color("#ff6363")
-			draw_arc(center,22,0,TAU,32,Color(0,0,0,0.85),6,true)
-			draw_arc(center,22,0,TAU,32,color,3,true)
-			draw_colored_polygon(PackedVector2Array([center+Vector2(-7,-34),
-				center+Vector2(7,-34),center+Vector2(0,-25)]),color)
+			_draw_pixel_corner_marker(center,22,Color(0,0,0,0.85),8,6)
+			_draw_pixel_corner_marker(center,22,color,8,3)
+			draw_colored_polygon(PackedVector2Array([_pixel_point(center+Vector2(-7,-34)),
+				_pixel_point(center+Vector2(7,-34)),_pixel_point(center+Vector2(0,-25))]),color)
 	for id in _actor_emphasis:
 		if actor_emphasis_active(int(id)):
-			draw_arc(actor_visual_center(int(id)),18,0,TAU,32,Color("#e4bb67"),2,true)
+			_draw_pixel_corner_marker(actor_visual_center(int(id)),18,Color("#e4bb67"),6,2)
 	if not battle_notice.is_empty():
 		draw_rect(Rect2(2,2,maxf(1,size.x-4),24),Color(0.04,0.07,0.09,0.9))
 		draw_string(get_theme_font("font"),Vector2(6,19),battle_notice,HORIZONTAL_ALIGNMENT_CENTER,
@@ -4070,7 +4067,8 @@ func _draw_actor_selection_overlays(sample_time_ms:int=-1)->void:
 		var color:=Color(str(row.color_hex))
 		color.a*=float(row.get("opacity",1.0))
 		for segment in row.segments:
-			draw_line(segment[0],segment[1],color,float(row.line_width),true)
+			draw_line(_pixel_point(segment[0]),_pixel_point(segment[1]),color,
+				maxf(1.0,roundf(float(row.line_width))),false)
 		if row.kind=="TARGET":
 			var label:="·".join(row.attackers)
 			var center:Vector2=row.visual_center
@@ -4085,14 +4083,31 @@ func _draw_cursor_preview() -> void:
 	var spec:=cursor_preview_draw_spec()
 	if not bool(spec.visible):return
 	var color:=Color(str(spec.color_hex))
-	if uses_tactical_projection():
-		_draw_cell_overlay(cursor_cell,Color(color,0.08),color,1.0)
-		return
-	var center:Vector2=spec.pixel_center;var radius:=float(spec.radius)
-	draw_circle(center,radius,Color(color,0.10))
-	draw_arc(center,radius,0,TAU,20,color,3.0)
+	_draw_cell_overlay(cursor_cell,Color(color,0.08),color,2.0)
 	if preview_origin.x >= 0 and is_world_cell_visible(preview_origin):
 		_draw_arrow(world_to_pixel_center(preview_origin), world_to_pixel_center(preview_destination), color, 3.5, false)
+
+func _pixel_point(point:Vector2)->Vector2:
+	return Vector2(roundf(point.x),roundf(point.y))
+
+func _draw_pixel_plus_badge(center:Vector2,color:Color)->void:
+	var p:=_pixel_point(center)
+	draw_rect(Rect2(p-Vector2(7,7),Vector2(15,15)),Color("#111820e8"),true)
+	draw_rect(Rect2(p-Vector2(7,7),Vector2(15,15)),color,false,2.0)
+	draw_rect(Rect2(p+Vector2(-4,-1),Vector2(9,3)),color,true)
+	draw_rect(Rect2(p+Vector2(-1,-4),Vector2(3,9)),color,true)
+
+func _draw_pixel_corner_marker(center:Vector2,half_extent:float,color:Color,
+		corner_length:int=7,line_width:int=2)->void:
+	var c:=_pixel_point(center);var extent:=roundf(half_extent)
+	var left:=c.x-extent;var right:=c.x+extent
+	var top:=c.y-extent;var bottom:=c.y+extent
+	for segment in [
+		[Vector2(left,top+corner_length),Vector2(left,top),Vector2(left+corner_length,top)],
+		[Vector2(right-corner_length,top),Vector2(right,top),Vector2(right,top+corner_length)],
+		[Vector2(left,bottom-corner_length),Vector2(left,bottom),Vector2(left+corner_length,bottom)],
+		[Vector2(right-corner_length,bottom),Vector2(right,bottom),Vector2(right,bottom-corner_length)]]:
+		draw_polyline(PackedVector2Array(segment),color,float(line_width),false)
 
 func cell_overlay_polygon(position:Vector2i,inset_ratio:float=0.08)->PackedVector2Array:
 	var polygon:=world_cell_polygon(position)
@@ -4105,10 +4120,11 @@ func cell_overlay_polygon(position:Vector2i,inset_ratio:float=0.08)->PackedVecto
 func _draw_cell_overlay(position:Vector2i,fill:Color,edge:Color,width:float=1.0)->void:
 	var polygon:=cell_overlay_polygon(position)
 	if polygon.size()!=4:return
+	for index in range(polygon.size()):polygon[index]=_pixel_point(polygon[index])
 	if fill.a>0.0:draw_colored_polygon(polygon,fill)
 	if edge.a>0.0:
 		polygon.append(polygon[0])
-		draw_polyline(polygon,edge,width,true)
+		draw_polyline(polygon,edge,maxf(1.0,roundf(width)),false)
 
 func cursor_preview_draw_spec()->Dictionary:
 	var suppressed_by_route:=_route_path.size()>=2
@@ -4207,17 +4223,18 @@ func _draw_compact_intent(intent:Dictionary,spec:Dictionary)->void:
 			points.append(begin.lerp(end,t)+side*sin(t*PI)*minf(10.0,delta.length()*0.10))
 		for index in range(16):
 			if kind=="MOVE" and index%4>=2:continue
-			draw_line(points[index],points[index+1],outline,4.0,true)
-			draw_line(points[index],points[index+1],color,1.7,true)
+			draw_line(_pixel_point(points[index]),_pixel_point(points[index+1]),outline,4.0,false)
+			draw_line(_pixel_point(points[index]),_pixel_point(points[index+1]),color,2.0,false)
 	if kind=="MOVE":
-		draw_arc(finish,cell_size_px()*0.13,0,TAU,20,outline,4.0,true)
-		draw_arc(finish,cell_size_px()*0.13,0,TAU,20,color,1.7,true)
+		_draw_pixel_corner_marker(finish,cell_size_px()*0.13,outline,4,4)
+		_draw_pixel_corner_marker(finish,cell_size_px()*0.13,color,4,2)
 	else:
 		var tip:Vector2=end+direction*3.0
 		var back:Vector2=end-direction*5.0
-		var triangle:PackedVector2Array=PackedVector2Array([tip,back+side*4.0,back-side*4.0])
+		var triangle:PackedVector2Array=PackedVector2Array([
+			_pixel_point(tip),_pixel_point(back+side*4.0),_pixel_point(back-side*4.0)])
 		draw_colored_polygon(triangle,color)
-		draw_polyline(PackedVector2Array([triangle[0],triangle[1],triangle[2],triangle[0]]),outline,1.0,true)
+		draw_polyline(PackedVector2Array([triangle[0],triangle[1],triangle[2],triangle[0]]),outline,1.0,false)
 
 
 func intent_draw_spec(intent: Dictionary) -> Dictionary:
@@ -4251,14 +4268,8 @@ func intent_draw_spec(intent: Dictionary) -> Dictionary:
 
 func _draw_ring(center: Vector2, radius: float, color: Color, width: float,
 		dashed: bool, dash_segments: int) -> void:
-	if not dashed:
-		draw_arc(center, radius, 0, TAU, 24, color, width)
-		return
-	var segments := maxi(1,dash_segments)
-	var slice := TAU/float(segments)
-	for index in range(segments):
-		var start := float(index)*slice
-		draw_arc(center,radius,start,start+slice*0.52,4,color,width)
+	_draw_pixel_corner_marker(center,radius,color,4 if dashed else 7,
+		maxi(1,int(roundf(width))))
 
 func _draw_arrow(from: Vector2, to: Vector2, color: Color, width: float, dashed: bool) -> void:
 	var delta := to-from
@@ -4267,22 +4278,28 @@ func _draw_arrow(from: Vector2, to: Vector2, color: Color, width: float, dashed:
 		for index in range(4):
 			var start := from + delta * (float(index) / 4.0)
 			var finish := from + delta * (float(index) / 4.0 + 0.13)
-			draw_line(start, finish, color, width)
-	else: draw_line(from, to, color, width)
+			draw_line(_pixel_point(start),_pixel_point(finish),color,
+				maxf(1.0,roundf(width)),false)
+	else:draw_line(_pixel_point(from),_pixel_point(to),color,
+		maxf(1.0,roundf(width)),false)
 	var direction := delta.normalized(); var side := Vector2(-direction.y,direction.x)
-	draw_colored_polygon(PackedVector2Array([to, to-direction*10.0+side*5.0, to-direction*10.0-side*5.0]), color)
+	draw_colored_polygon(PackedVector2Array([_pixel_point(to),
+		_pixel_point(to-direction*10.0+side*5.0),
+		_pixel_point(to-direction*10.0-side*5.0)]),color)
 
 func _draw_source_marker(position: Vector2i, marker_style: String, color: Color) -> void:
 	var center := world_to_pixel_center(position); var radius := cell_size_px() * 0.24
 	if marker_style == "DIAMOND":
-		draw_colored_polygon(PackedVector2Array([center+Vector2(0,-radius),center+Vector2(radius,0),
-			center+Vector2(0,radius),center+Vector2(-radius,0)]),Color(color,0.38))
-		draw_polyline(PackedVector2Array([center+Vector2(0,-radius),center+Vector2(radius,0),
-			center+Vector2(0,radius),center+Vector2(-radius,0),center+Vector2(0,-radius)]),color,2.5)
+		_draw_cell_overlay(position,Color(color,0.20),color,2)
 	elif marker_style == "SQUARE":
-		draw_rect(Rect2(center-Vector2(radius,radius),Vector2(radius*2,radius*2)),Color(color,0.30),true)
-		draw_rect(Rect2(center-Vector2(radius,radius),Vector2(radius*2,radius*2)),color,false,3.5)
-	else:
-		draw_circle(center,radius,Color(color,0.25)); draw_arc(center,radius,0,TAU,18,color,2.5)
+		var corner:=_pixel_point(center-Vector2(radius,radius))
+		var dimensions:=Vector2(roundf(radius*2),roundf(radius*2))
+		draw_rect(Rect2(corner,dimensions),Color(color,0.30),true)
+		draw_rect(Rect2(corner,dimensions),color,false,4.0)
+	else:_draw_pixel_corner_marker(center,radius,color,5,2)
+
+func world_marker_style_spec()->Dictionary:
+	return {"primitive":"PIXEL_CORNERS","pickup":"PIXEL_PLUS_BADGE",
+		"pixel_snap":true,"antialiased":false,"cell_shaped_targets":true}.duplicate(true)
 
 func _key(p:Vector2i)->String: return "%d:%d"%[p.x,p.y]
