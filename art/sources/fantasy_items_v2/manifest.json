@@ -1,0 +1,36 @@
+{
+  "tool": "built-in image_gen",
+  "prompt_template": "Use case: stylized-concept. Asset type: single transparent game inventory icon. Subject: {subject}. Match a simple fantasy pawn game: thick very dark charcoal rounded outline, flat muted colors, at most two shading tones, no fine texture, large clear silhouette readable at 32 pixels. One isolated item centered in square canvas with 10 percent clear padding. Genuine transparent background, no ground shadow, no lettering, no grid, no border. This is a finished usable sprite, not a mockup.",
+  "items": [
+    {
+      "id": "crossbow",
+      "file": "crossbow.png",
+      "subject": "a compact medieval wooden CROSSBOW, broad horizontal steel bow arms, visible string and wooden stock, angled lower-left to upper-right"
+    },
+    {
+      "id": "mace",
+      "file": "mace.png",
+      "subject": "a short one-handed iron MACE, unmistakable chunky flanged steel head, short brown leather grip, angled lower-left to upper-right"
+    },
+    {
+      "id": "spear",
+      "file": "spear.png",
+      "subject": "a SPEAR, long straight wooden shaft and large simple leaf-shaped steel spearhead, full weapon visible, angled lower-left to upper-right"
+    },
+    {
+      "id": "club",
+      "file": "club.png",
+      "subject": "a wooden CLUB, thicker rounded striking end and narrower leather-wrapped grip, natural brown wood, angled lower-left to upper-right"
+    },
+    {
+      "id": "potion_blue",
+      "file": "potion_blue.png",
+      "subject": "a BLUE POTION in a squat rounded glass bottle with short neck and cork stopper, saturated blue liquid, two large simple highlights"
+    },
+    {
+      "id": "potion_green",
+      "file": "potion_green.png",
+      "subject": "a GREEN POTION in a triangular squat glass bottle with short neck and cork stopper, bright green liquid, one large simple highlight"
+    }
+  ]
+}

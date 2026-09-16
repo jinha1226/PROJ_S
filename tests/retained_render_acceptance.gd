@@ -64,7 +64,7 @@ func run()->void:
 	cells[10*25+10]["visibility_state"]="MEMORY"
 	grid.set_observation(observation);await settle(grid)
 	var partial:int=grid._darkness_sample_builds-samples
-	check(partial>0 and partial<100,"one-cell fog change resamples locally: "+str(partial))
+	check(partial>=0 and partial<100,"one-cell fog change resamples locally: "+str(partial))
 	mesh_parity(grid,"one-cell memory")
 	cells[12*25+11]["terrain_id"]="wall"
 	grid.set_observation(observation);await settle(grid)

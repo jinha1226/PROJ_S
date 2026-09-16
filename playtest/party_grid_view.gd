@@ -3164,6 +3164,7 @@ func _build_radial_darkness_mesh()->ArrayMesh:
 	if context!=_darkness_vertex_context:
 		_darkness_vertex_context=context;_darkness_vertex_cache.clear()
 	_prepare_darkness_frame(center)
+	if _darkness_frame_flat:return _build_cell_darkness_mesh()
 	var vertices:=PackedVector3Array();var colors:=PackedColorArray()
 	var indices:=PackedInt32Array()
 	var maximum_radius:=center.distance_to(grid_rect().position)
@@ -3202,6 +3203,32 @@ func _build_radial_darkness_mesh()->ArrayMesh:
 				var inner_next:=1+(ring-2)*RADIAL_DARKNESS_SEGMENTS+next_segment
 				indices.append(inner);indices.append(outer_next);indices.append(outer)
 				indices.append(inner);indices.append(inner_next);indices.append(outer_next)
+	if indices.is_empty():return null
+	var arrays:=[];arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX]=vertices;arrays[Mesh.ARRAY_COLOR]=colors
+	arrays[Mesh.ARRAY_INDEX]=indices
+	var mesh:=ArrayMesh.new();mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+	return mesh
+
+func _build_cell_darkness_mesh()->ArrayMesh:
+	# Polar wedges crossed FOV boundaries and interpolated visible darkness toward
+	# transparent unseen vertices, producing bright triangular stains. Tessellate
+	# only visible cells, so no triangle can cross into remembered/unseen terrain.
+	var vertices:=PackedVector3Array();var colors:=PackedColorArray()
+	var indices:=PackedInt32Array()
+	for cell in _darkness_frame_sources:
+		var rect:=world_cell_rect(cell).intersection(grid_rect()).grow(-0.0001)
+		if not rect.has_area():continue
+		var base:=vertices.size()
+		for y in range(3):
+			for x in range(3):
+				var point:=rect.position+rect.size*Vector2(x*0.5,y*0.5)
+				vertices.append(Vector3(point.x,point.y,0))
+				colors.append(_cached_darkness_vertex_color(point))
+		for y in range(2):
+			for x in range(2):
+				var a:=base+y*3+x
+				indices.append_array(PackedInt32Array([a,a+1,a+4,a,a+4,a+3]))
 	if indices.is_empty():return null
 	var arrays:=[];arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX]=vertices;arrays[Mesh.ARRAY_COLOR]=colors

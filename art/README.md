@@ -8,6 +8,7 @@
 |---|---|---|
 | 제작 원본 | [sources/fantasy_pawns_v1](sources/fantasy_pawns_v1/README.md) | 종족·아이템·입체감 있는 타일 원본, 프롬프트, 해시·배치 정보 |
 | 제작 원본 | [sources/fantasy_monsters_v1](sources/fantasy_monsters_v1/README.md) | 현재 몬스터 시트와 프롬프트 |
+| 제작 원본 | [sources/fantasy_items_v2](sources/fantasy_items_v2/README.md) | 추가 무기·물약 원본과 프롬프트 |
 | 스타일 기준 | [references/fantasy-pawns](references/fantasy-pawns/README.md) | 단순한 판타지 폰 스타일. 평면 벽 후속 실험은 보관용이며 현재 벽 제작 기준이 아니다. |
 | UI 배치 참고 | [references/ui/main-menu-pixel-icons-gameplay-v4.png](references/ui/main-menu-pixel-icons-gameplay-v4.png) | 상단 상태, 상시 스킬, 하단 명령 배치 참고. 현재 실제 UI는 docs/art 참고. |
 | 이전 시안 | [archive/](archive/README.md) | 다른 화풍, 폐기한 픽셀·캐릭터 시트, 이전 화면 캡처 |

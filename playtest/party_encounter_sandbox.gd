@@ -133,7 +133,6 @@ var _product_rest_generation:=0
 var _product_rest_due_msec:=-1
 var _product_rest_last_health:=-1
 var _product_rest_idle_waits:=0
-var _product_rest_started_time:=0
 const PRODUCT_REST_CADENCE_MSEC:=90
 const PRODUCT_REST_IDLE_LIMIT:=16
 var product_execute_button:Button
@@ -4735,7 +4734,6 @@ func _on_product_rest()->void:
 	if bool(active_route.get("active",false)) or bool(active_route.get("has_preview",false)):
 		_cancel_active_route()
 	_product_rest_active=true;_product_rest_generation+=1
-	_product_rest_started_time=session.sim.world.world_time
 	_product_rest_due_msec=Time.get_ticks_msec()
 	_product_rest_last_health=_party_health_total();_product_rest_idle_waits=0
 	notice_text="휴식 중 · 파티 HP·MP가 다 차면 멈춥니다";action_feedback_text=notice_text
@@ -4811,7 +4809,7 @@ func _continue_product_rest(expected_generation:int)->void:
 	var world=session.sim.world;var hero=world.entities.get(int(status.protagonist_id))
 	if hero!=null:
 		var member=session.sim.world.party_encounter.member(int(status.protagonist_id))
-		notice_text="휴식 %d시간 · HP %d/%d · MP %d/%d"%[world.world_time-_product_rest_started_time,int(hero.health),int(hero.max_health),member.energy,member.max_energy]
+		notice_text="휴식 중 · HP %d/%d · MP %d/%d"%[int(hero.health),int(hero.max_health),member.energy,member.max_energy]
 		action_feedback_text=notice_text
 	_refresh_continuous_exploration_surface(session.party_status())
 

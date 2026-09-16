@@ -5,6 +5,10 @@ const FAMILY:="FANTASY_PAWNS_V1"
 const ITEM_IDS={
 	"WEAPON_SHORT_SWORD":"sword","WEAPON_THRUSTING_SWORD":"sword",
 	"WEAPON_HAND_AXE":"axe","WEAPON_BOW":"bow","WEAPON_STAFF":"staff",
+	"WEAPON_CROSSBOW":"crossbow","WEAPON_MACE":"mace","WEAPON_SPEAR":"spear",
+	"WEAPON_DCSS_CLUB":"club","WEAPON_DCSS_DAGGER":"sword",
+	"WEAPON_DCSS_FALCHION":"sword","WEAPON_DCSS_LONG_SWORD":"sword",
+	"WEAPON_DCSS_SCIMITAR":"sword","WEAPON_DCSS_WAR_AXE":"axe","WEAPON_DCSS_ORCBOW":"bow",
 	"WEAPON_DCSS_STAFF":"staff","WEAPON_DCSS_QUARTERSTAFF":"staff",
 	"ARMOR_LEATHER":"armor","SHIELD_WOOD":"shield","SHIELD_IRON":"shield",
 	"POTION_HEALING":"potion","POTION_UNSPECIFIED":"potion",
@@ -26,8 +30,12 @@ static func item(value:String)->Texture2D:
 	var id:=value.strip_edges().to_upper()
 	if ITEM_IDS.has(id):return ICONS[ITEM_IDS[id]]
 	# Prefix suffixes encode weapon variants, not new weapon categories.
-	for base in ["WEAPON_SHORT_SWORD","WEAPON_THRUSTING_SWORD","WEAPON_HAND_AXE","WEAPON_BOW","WEAPON_STAFF"]:
+	for base in ["WEAPON_SHORT_SWORD","WEAPON_THRUSTING_SWORD","WEAPON_HAND_AXE","WEAPON_BOW","WEAPON_STAFF","WEAPON_CROSSBOW","WEAPON_MACE","WEAPON_SPEAR"]:
 		if id.begins_with(base+"_"):return ICONS[ITEM_IDS[base]]
+	# Mystery appearance numbers remain authoritative; colors do not disclose effects.
+	if id.begins_with("MYSTERY_POTION_"):
+		return ICONS[["potion","potion_blue","potion_green"][posmod(int(id.get_slice("_",2)),3)]]
+	if id.begins_with("POTION_"):return ICONS.potion
 	if id.begins_with("SCROLL_") or id.begins_with("MYSTERY_SCROLL_"):return ICONS.scroll
 	if id.begins_with("RING_") or id.begins_with("ACCESSORY_RING_"):return ICONS.ring
 	if id.begins_with("HELMET_") or id.begins_with("ARMOR_HELMET_"):return ICONS.helmet
@@ -67,6 +75,12 @@ const BODIES={
 	"orc":preload("res://assets/fantasy_pawns_v1/species/orc.png"),
 }
 const ICONS={
+	"crossbow":preload("res://assets/fantasy_pawns_v1/items/crossbow.png"),
+	"mace":preload("res://assets/fantasy_pawns_v1/items/mace.png"),
+	"spear":preload("res://assets/fantasy_pawns_v1/items/spear.png"),
+	"club":preload("res://assets/fantasy_pawns_v1/items/club.png"),
+	"potion_blue":preload("res://assets/fantasy_pawns_v1/items/potion_blue.png"),
+	"potion_green":preload("res://assets/fantasy_pawns_v1/items/potion_green.png"),
 	"armor":preload("res://assets/fantasy_pawns_v1/items/armor.png"),
 	"axe":preload("res://assets/fantasy_pawns_v1/items/axe.png"),
 	"bow":preload("res://assets/fantasy_pawns_v1/items/bow.png"),

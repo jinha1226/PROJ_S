@@ -67,6 +67,17 @@ func run()->void:
 		var mesh:ArrayMesh=grid._build_radial_darkness_mesh()
 		check(mesh!=null and mesh.get_surface_count()==1,
 			"%dpx radial gradient batches into one draw surface"%viewport)
+		if mesh!=null:
+			var arrays:=mesh.surface_get_arrays(0)
+			var vertices:PackedVector3Array=arrays[Mesh.ARRAY_VERTEX]
+			var indices:PackedInt32Array=arrays[Mesh.ARRAY_INDEX]
+			for i in range(0,indices.size(),3):
+				var triangle_cells:Array=[]
+				for j in range(3):
+					var v:=vertices[indices[i+j]]
+					triangle_cells.append(grid.pixel_to_world_cell(Vector2(v.x,v.y)))
+				check(triangle_cells[0]==triangle_cells[1] and triangle_cells[1]==triangle_cells[2],"darkness triangles never cross tile/FOV boundaries")
+				check(triangle_cells[0].x<=7,"darkness cannot bleed into memory")
 		var los_builds:=int(grid.torch_cache_stats().los_build_count)
 		for repeat in range(4):
 			grid.radial_darkness_draw_specs()
