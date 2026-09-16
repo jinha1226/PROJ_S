@@ -30,6 +30,23 @@ const BEARD=[Vector2(37,49),Vector2(43,45),Vector2(51,51),Vector2(64,53),Vector2
 static func target(rect:Rect2,bounds:Rect2)->Rect2:
 	return Rect2(bounds.position+rect.position/128.0*bounds.size,rect.size/128.0*bounds.size)
 
+static func armor_rect(species:String,definition_id:String)->Rect2:
+	var rect:Rect2=FIT[species][0]
+	if definition_id=="ARMOR_CLOTH_ROBE":
+		# The cloth edging extends farther than leather. Keep the waist/foot anchor
+		# while bringing shoulders inward. Raise the deeper cloth neck opening
+		# under the original neck so it cannot expose a gap to the background.
+		var extent:=Vector2(rect.size.x*0.90,rect.size.y+5.0)
+		rect=Rect2(Vector2(rect.get_center().x-extent.x/2.0,rect.end.y-extent.y),extent)
+	return rect
+
+static func helmet_rect(species:String,definition_id:String)->Rect2:
+	var rect:Rect2=FIT[species][1]
+	if definition_id=="HELMET_CLOTH":
+		# Hood cheek flaps must end at the jaw, independently of the worn armor.
+		rect.size.y*=0.92
+	return rect
+
 static func fragment(canvas:CanvasItem,body:Texture2D,points:Array,bounds:Rect2,tint:Color)->void:
 	var positions:=PackedVector2Array()
 	var uv:=PackedVector2Array()
@@ -45,15 +62,17 @@ static func draw_body(canvas:CanvasItem,spec:Dictionary,bounds:Rect2,tint:Color)
 		canvas.draw_texture_rect(body,bounds,false,tint)
 		return
 	var fit:Array=FIT[species]
-	var armor:Texture2D=ARMORS.get(str(spec.get("armor_definition_id","")))
+	var armor_id:=str(spec.get("armor_definition_id",""))
+	var armor:Texture2D=ARMORS.get(armor_id)
 	if armor!=null:
 		# Replace only the covered tunic region; sample the original head/neck over it.
-		canvas.draw_texture_rect(armor,target(fit[0],bounds),false,tint)
+		canvas.draw_texture_rect(armor,target(armor_rect(species,armor_id),bounds),false,tint)
 		fragment(canvas,body,[Vector2.ZERO,Vector2(128,0),Vector2(128,fit[2]),Vector2(fit[4],fit[2]),Vector2(fit[4]-3,fit[5]),Vector2(fit[3]+3,fit[5]),Vector2(fit[3],fit[2]),Vector2(0,fit[2])],bounds,tint)
 		if species=="dwarf":fragment(canvas,body,BEARD,bounds,tint)
 	else:
 		canvas.draw_texture_rect(body,bounds,false,tint)
 	# Head slot is not yet authoritative: this key is also used by the fit-review fixture.
-	var helmet:Texture2D=HELMETS.get(str(spec.get("head_definition_id","")))
+	var helmet_id:=str(spec.get("head_definition_id",""))
+	var helmet:Texture2D=HELMETS.get(helmet_id)
 	if helmet!=null:
-		canvas.draw_texture_rect(helmet,target(fit[1],bounds),false,tint)
+		canvas.draw_texture_rect(helmet,target(helmet_rect(species,helmet_id),bounds),false,tint)
