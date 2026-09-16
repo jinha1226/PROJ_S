@@ -119,8 +119,6 @@ var combat_action_area:VBoxContainer
 var action_feedback_label:Label
 var combat_action_dock:HBoxContainer
 var party_command_menu:MenuButton
-var product_skills_button:Button
-var _product_skills_open:=false
 var product_auto_button:Button
 var product_interact_button:Button
 var product_attack_button:Button
@@ -757,7 +755,7 @@ func _tick_portrait_long_press()->void:
 
 func _product_control_at_position(global_position:Vector2)->String:
 	var controls:Array=[]
-	controls.append_array([product_skills_button,product_auto_button,product_give_button,
+	controls.append_array([product_auto_button,product_give_button,
 		product_tactics_button,product_rest_button,product_pickup_button,
 		product_interact_button,product_attack_button,product_wait_guard_button,
 		product_execute_button,product_bag_button,minimap_open_button,
@@ -788,7 +786,6 @@ func _activate_product_control(control_name:String)->void:
 		_on_compact_member_card_pressed(int(control_name.trim_prefix("MemberCard")),"");return
 	match control_name:
 		"EnemyVisionOverlay":_toggle_enemy_vision_overlay()
-		"ProductSkills":_toggle_product_skills()
 		"ProductTactics":_on_product_tactics()
 		"ProductRest":_on_product_rest()
 		"ProductMoveNW":_on_product_direction(Vector2i(-1,-1))
@@ -2855,7 +2852,7 @@ func _hero_skill_rows(status:Dictionary)->Array:
 func _render_hero_skill_row(status:Dictionary,visible:bool)->void:
 	if hero_skill_row==null:return
 	_clear_container(hero_skill_row)
-	hero_skill_row.visible=visible and _product_skills_open
+	hero_skill_row.visible=visible
 	if not hero_skill_row.visible:return
 	# Keep the 48px rail on defeat/completion; hide actions, not map geometry.
 	if bool(status.get("terminal",false)) or str(status.get("safe_phase",""))=="PARTY_DEFEATED" \
@@ -2880,7 +2877,6 @@ func _render_hero_skill_row(status:Dictionary,visible:bool)->void:
 		return
 	var hero_id:=int(status.get("protagonist_id",-1))
 	var rows:=_hero_skill_rows(status)
-	if rows.is_empty():hero_skill_row.visible=false;return
 	var skills=preload("res://playtest/portrait_skill_row.gd").new();skills.name="HeroSkills"
 	skills.page_index=int(_skill_pages.get(hero_id,0))
 	skills.page_requested.connect(_on_skill_page_requested)
@@ -4259,9 +4255,8 @@ func _build_product_controls_dock(status:Dictionary)->void:
 		product_execute_button.disabled=false
 		product_execute_button.tooltip_text="같은 원정을 처음부터 다시 시작"
 		return
-	# Contextual dock: skills, attack/explore, wait/rest, party orders, bag.
+	# Fixed dock: attack, wait/rest, explore, party orders, bag.
 	var target:=clampi(int(floor((size.x-float(gap)*4.0)/5.0)),44,int(metrics.target))
-	product_skills_button=_add_product_context_button(combat_action_dock,"기술","ProductSkills",_toggle_product_skills,target)
 	product_attack_button=_add_product_context_button(combat_action_dock,"[공격]","ProductAttack",
 		_on_product_attack_any,target)
 	product_wait_guard_button=_add_product_context_button(combat_action_dock,"[대기]",
@@ -4364,14 +4359,10 @@ func _sync_product_control_state(status_override:Dictionary={}) -> void:
 		and product_interact_button.text=="[INTERACT]")
 	product_context_actions.visible=product_interact_button.visible or product_give_button.visible
 
-	# Only actions relevant to the current field state occupy the main dock.
-	product_attack_button.visible=enemy_in_view and not terminal
-	product_auto_button.visible=not enemy_in_view or bool(auto_state.get("running",false))
-	product_tactics_button.visible=(status.get("party_member_ids",[]) as Array).size()>1
-	if product_skills_button!=null and is_instance_valid(product_skills_button):
-		product_skills_button.text="기술 닫기" if _product_skills_open else "기술"
-		product_skills_button.disabled=terminal or mode=="TOWN"
-		product_skills_button.tooltip_text="현재 조작 인물의 기술을 펼칩니다. 선택 후 지도에서 대상을 누르세요."
+	# Keep all five commands in the same positions across exploration and combat.
+	product_attack_button.visible=true
+	product_auto_button.visible=true
+	product_tactics_button.visible=true
 
 func _add_product_context_button(parent:Control,label:String,node_name:String,
 		_callback:Callable,target:int)->Button:
@@ -7352,11 +7343,6 @@ func _compact_meaningful_event_text(history:Dictionary,_status:Dictionary)->Stri
 	return preload("res://playtest/meaningful_event_summary.gd").summarize(history,
 		_combat_log_row_message,_is_persistent_log_filler,notice_text if _product_rest_active else "")
 
-func _toggle_product_skills()->void:
-	_product_skills_open=not _product_skills_open
-	if grid!=null:grid.cancel_pointer_gesture()
-	_request_refresh()
-
 func _full_meaningful_record_text(history:Dictionary)->String:
 	var lines:Array[String]=[];var groups:Variant=history.get("groups",[])
 	if groups is Array:
@@ -7454,7 +7440,7 @@ func _current_grid_view_dimensions()->Vector2i:
 	# HUD, map, event feed, hero skill row, party, command dock: the same stack in
 	# exploration and in a fight, so the map never changes size on contact.
 	# Projection must not depend on the previous refresh\'s skill visibility.
-	var skill_row_height:int=48 if _product_skills_open else 0
+	var skill_row_height:int=48
 	var map_extent:=Vector2(maxf(1.0,size.x),maxf(1.0,size.y
 		-PRODUCT_TOP_HUD_HEIGHT-PRODUCT_EVENT_HEIGHT-skill_row_height-party_height-48
 		-separation*5))
@@ -7791,7 +7777,7 @@ func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 	cards.custom_minimum_size.y=maxi(0,party_height)
 	info_scroll.custom_minimum_size.y=30
 	event_surface.custom_minimum_size.y=PRODUCT_EVENT_HEIGHT
-	if hero_skill_row!=null:hero_skill_row.custom_minimum_size.y=48 if product_hud and _product_skills_open else 0
+	if hero_skill_row!=null:hero_skill_row.custom_minimum_size.y=48 if product_hud else 0
 	bottom_navigation.custom_minimum_size.y=TOUCH_TARGET
 
 func _apply_phase_banner(status:Dictionary,presentation:Dictionary)->void:
