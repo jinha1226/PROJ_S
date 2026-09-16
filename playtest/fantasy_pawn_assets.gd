@@ -59,9 +59,9 @@ static func draw_actor(canvas:CanvasItem,spec:Dictionary,bounds:Rect2,tint:Color
 		Legacy.draw_actor(canvas,spec,bounds,tint)
 		return
 	canvas.draw_texture_rect(spec.body_texture,bounds,false,tint)
-	# Inventory icons are small attachments, never stretched across the whole pawn.
+	# Keep the shield scale; enlarge the weapon canvas by 1.6x for tile readability.
 	for entry in [["offhand_texture",Vector2(0.06,0.55),Vector2(0.35,0.35)],
-			["weapon_texture",Vector2(0.67,0.40),Vector2(0.30,0.53)]]:
+			["weapon_texture",Vector2(0.54,0.31),Vector2(0.48,0.72)]]:
 		var part:Texture2D=spec.get(entry[0])
 		if part!=null:
 			canvas.draw_texture_rect(part,Legacy.fit(part,

@@ -1,36 +1,52 @@
 {
   "tool": "built-in image_gen",
-  "prompt_template": "Use case: stylized-concept. Asset type: single transparent game inventory icon. Subject: {subject}. Match a simple fantasy pawn game: thick very dark charcoal rounded outline, flat muted colors, at most two shading tones, no fine texture, large clear silhouette readable at 32 pixels. One isolated item centered in square canvas with 10 percent clear padding. Genuine transparent background, no ground shadow, no lettering, no grid, no border. This is a finished usable sprite, not a mockup.",
+  "revision": "matched-to-original-items",
+  "reference_sheet": "art/sources/fantasy_pawns_v1/items.png",
   "items": [
     {
       "id": "crossbow",
       "file": "crossbow.png",
-      "subject": "a compact medieval wooden CROSSBOW, broad horizontal steel bow arms, visible string and wooden stock, angled lower-left to upper-right"
+      "prompt": "Use case: style-transfer. Asset type: transparent inventory sprite for an existing game. Image 1 is the AUTHORITATIVE existing item sheet: faithfully match its almost-black thick round outlines, chunky toy-like proportions, warm brown wood, light gray steel, simple broad two-tone fills and minimal detail. Image 2 is the crossbow to REDRAW; its detailed metal facets and realistic construction are WRONG. Recreate a crossbow as if the exact artist of image 1 drew a seventeenth icon for that sheet. Use the sword, axe and bow in image 1 as the guide. Compact chubby crossbow with a broad simple bow and short thick wooden stock, diagonal lower-left to upper-right. ONE dark outline around every outer shape; no dark metallic rendering, no tiny bolts, no thin line highlights, no etched grooves, no wood grain, no white sticker outline, no dramatic perspective. At most one flat shade patch per material. It must look equally simple and equally chunky next to the old axe. One centered icon, 10% clear margin, true transparent alpha background (do NOT copy the checkerboard from image 1), no text or shadow.",
+      "outline_threshold": 80,
+      "hole_seeds": [
+        [
+          648,
+          430
+        ],
+        [
+          886,
+          626
+        ],
+        [
+          618,
+          781
+        ]
+      ]
     },
     {
       "id": "mace",
       "file": "mace.png",
-      "subject": "a short one-handed iron MACE, unmistakable chunky flanged steel head, short brown leather grip, angled lower-left to upper-right"
+      "prompt": "Use case: precise-object-edit plus style matching. Image 1 is the approved existing game's sword icon and defines the bold dark outline, light gray steel and simple two-tone shading style. Image 2 is a mace revision: keep the warm brown short thick handle and thick black outline, but REPLACE ITS ENTIRE AXE-LIKE HEAD with an unmistakable ROUND BALL MACE HEAD. A roughly circular gray iron ball with exactly three short chunky triangular studs sticking out at the top and sides, only one broad light-gray crescent highlight. The head must be a round heavy knob, NOT an axe blade, NOT a leaf, NOT a spearhead. The result is a short chubby spiked mace diagonally upward to the right. Same simple cartoon game icon style as image 1, no realistic metallic facets, no scratches, no small rivets, no white border. One item centered, 10% margin, transparent alpha background, no painted checkerboard, no text, no ground shadow."
     },
     {
       "id": "spear",
       "file": "spear.png",
-      "subject": "a SPEAR, long straight wooden shaft and large simple leaf-shaped steel spearhead, full weapon visible, angled lower-left to upper-right"
+      "prompt": "Use case: style-transfer. Asset type: one transparent game item sprite. Image 1 is the existing approved style reference and is authoritative. Image 2 is the item whose style is wrong and must be completely redrawn. Subject: spear with a thicker warm-brown shaft and an oversized simple LIGHT GRAY leaf spearhead, diagonal lower-left to upper-right. Keep it compact and chubby, no bands or tiny ornaments. Match image 1 as closely as if drawn by its artist: bold very dark charcoal/black rounded contour, simplified toy proportions, warm brown and LIGHT gray material palette, one broad simple shadow per material, very few large shapes. No realism, no intricate metal facets, no little fasteners, no microtexture, no white sticker outline, no ground shadow. Ensure the BLACK outer contour is as thick proportionally as image 1. Center one icon with 10% margin, true transparent alpha background. Do NOT paint any checkerboard. No text."
     },
     {
       "id": "club",
       "file": "club.png",
-      "subject": "a wooden CLUB, thicker rounded striking end and narrower leather-wrapped grip, natural brown wood, angled lower-left to upper-right"
+      "prompt": "Use case: style-transfer. Asset type: one transparent game item sprite. Image 1 is the existing approved style reference and is authoritative. Image 2 is the item whose style is wrong and must be completely redrawn. Subject: simple chubby wooden club with a round bulbous tip and a short thick grip, diagonal lower-left to upper-right. Warm orange-brown, just one broad shadow area; NO wood grain or etched lines. Match image 1 as closely as if drawn by its artist: bold very dark charcoal/black rounded contour, simplified toy proportions, warm brown and LIGHT gray material palette, one broad simple shadow per material, very few large shapes. No realism, no intricate metal facets, no little fasteners, no microtexture, no white sticker outline, no ground shadow. Ensure the BLACK outer contour is as thick proportionally as image 1. Center one icon with 10% margin, true transparent alpha background. Do NOT paint any checkerboard. No text."
     },
     {
       "id": "potion_blue",
       "file": "potion_blue.png",
-      "subject": "a BLUE POTION in a squat rounded glass bottle with short neck and cork stopper, saturated blue liquid, two large simple highlights"
+      "prompt": "Use case: style-transfer. Asset type: one transparent game item sprite. Image 1 is the existing approved style reference and is authoritative. Image 2 is the item whose style is wrong and must be completely redrawn. Subject: blue potion. EXACTLY the same round bottle silhouette, thick BLACK outline, cork shape and broad gloss marks as image 1, but with BLUE liquid replacing the red liquid. Do not invent a different flask shape, white outline, or thin glass neck. Match image 1 as closely as if drawn by its artist: bold very dark charcoal/black rounded contour, simplified toy proportions, warm brown and LIGHT gray material palette, one broad simple shadow per material, very few large shapes. No realism, no intricate metal facets, no little fasteners, no microtexture, no white sticker outline, no ground shadow. Ensure the BLACK outer contour is as thick proportionally as image 1. Center one icon with 10% margin, true transparent alpha background. Do NOT paint any checkerboard. No text."
     },
     {
       "id": "potion_green",
       "file": "potion_green.png",
-      "subject": "a GREEN POTION in a triangular squat glass bottle with short neck and cork stopper, bright green liquid, one large simple highlight"
+      "prompt": "Use case: style-transfer. Asset type: one transparent game item sprite. Image 1 is the existing approved style reference and is authoritative. Image 2 is the item whose style is wrong and must be completely redrawn. Subject: green potion. EXACTLY the same round bottle silhouette, thick BLACK outline, cork shape and broad gloss marks as image 1, but with GREEN liquid replacing the red liquid. Do not invent a triangular flask, white outline, or thin glass neck. Match image 1 as closely as if drawn by its artist: bold very dark charcoal/black rounded contour, simplified toy proportions, warm brown and LIGHT gray material palette, one broad simple shadow per material, very few large shapes. No realism, no intricate metal facets, no little fasteners, no microtexture, no white sticker outline, no ground shadow. Ensure the BLACK outer contour is as thick proportionally as image 1. Center one icon with 10% margin, true transparent alpha background. Do NOT paint any checkerboard. No text."
     }
   ]
 }
