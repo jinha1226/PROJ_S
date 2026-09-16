@@ -64,14 +64,16 @@ jobs:
           fi
 
       - name: Validate fantasy pawn assets and UI integration
-        timeout-minutes: 5
+        timeout-minutes: 8
         shell: bash
         run: |
           set -euo pipefail
-          ./godot --headless --path . --script tests/fantasy_pawn_assets_acceptance.gd 2>&1 | tee fantasy-assets-test.log
-          if grep -Eq 'SCRIPT ERROR:|^FAIL ' fantasy-assets-test.log; then
-            exit 1
-          fi
+          for test in fantasy_pawn_assets_acceptance fantasy_item_expansion_acceptance equipment_materials_acceptance; do
+            ./godot --headless --path . --script "tests/${test}.gd" 2>&1 | tee "${test}.log"
+            if grep -Eq 'SCRIPT ERROR:|^FAIL ' "${test}.log"; then
+              exit 1
+            fi
+          done
 
       - name: Validate procedural dungeon and save replay
         timeout-minutes: 5

@@ -44,7 +44,8 @@ func run()->void:
 	check(shield.weapon_texture==Assets.ICONS.axe and shield.offhand_texture==Assets.ICONS.shield,"equipment attachments use icons")
 	for id in Assets.ITEM_IDS:
 		check(Items.texture_for_id(id)==Assets.ICONS[Assets.ITEM_IDS[id]],"inventory mapping "+id)
-	check(Items.texture_for_id("POTION_POISON")==Assets.Legacy.item("POTION_POISON"),"uncovered potion preserved")
+	check(Items.texture_for_id("POTION_POISON")==Assets.ICONS.potion,"potion family uses approved bottle art")
+	check(Items.texture_for_id("TORCH")==Assets.Legacy.item("TORCH"),"uncovered item preserves legacy art")
 	var wall:={"terrain_id":"wall","visibility_state":"VISIBLE"}
 	var floor_cell:={"terrain_id":"floor","visibility_state":"VISIBLE"}
 	check(Tiles.tile_spec(wall,Vector2i.ZERO,1,{"S":floor_cell}).sprite_key=="wall_04","south face exposed")
