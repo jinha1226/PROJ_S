@@ -35,12 +35,16 @@ static func accuracy(w,id:int,before:int=-1)->int:
 static func armor(w,id:int)->int:
 	return (5 if status(w,id,"ARMOR")!=null else 0)-(3 if status(w,id,"WEAK")!=null else 0)
 static func skill_blocked(w,id:int)->bool:return status(w,id,"SEAL")!=null or status(w,id,"CONFUSION")!=null
+static func has_harmful_status(w,id:int)->bool:
+	for effect in BAD+["FEAR","SEAL"]:
+		if status(w,id,effect)!=null:return true
+	return false
 static func summary(w,id:int)->String:
 	var parts:Array[String]=[]
 	var labels={"HASTE":"가속","ARMOR":"경화","REGEN":"재생","POISON":"독","SLOW":"둔화","WEAK":"쇠약","FEAR":"공포","SEAL":"봉인","CONFUSION":"혼란","BURN":"화상","CHILL":"오한","SOAKED":"몸이 무거움","SHOCK":"감전","STIFF":"경직","DIZZY":"어지럼","TREMOR":"떨림","NAUSEA":"메스꺼움"}
 	for key in labels:
 		var e=status(w,id,key)
-		if e!=null:parts.append("%s %d"%[labels[key],ceili(float(int(e.data.until)-w.world_time)/100.0)])
+		if e!=null:parts.append("%s %d턴"%[labels[key],ceili(float(int(e.data.until)-w.world_time)/100.0)])
 	return " · ".join(parts)
 static func add(w,actor:int,target:int,effect:String,cause:int)->bool:
 	return w.emit_event("consumable.status",actor,target,w.entities[target].position,1,cause,{"schema_version":1,"effect":effect,"until":str(w.world_time+int(DURATIONS[effect]))})!=null

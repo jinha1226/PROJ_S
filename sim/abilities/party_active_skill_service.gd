@@ -15,7 +15,7 @@ const MoraleModel=preload("res://sim/party_morale_model.gd")
 
 const RULESET_ID := "party-active-skills-v1"
 const ACTION_TIMES := {"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120,"FIREBALL":120,"TEST_WATER":120,"TEST_FROST":120,"TEST_SPARK":120}
-const ENABLED_SKILLS := ["STRIKE","SHOVE","FIREBOLT","MEND"]
+const ENABLED_SKILLS := ["WATER_SAC","STRIKE","SHOVE","FIREBOLT","MEND"]
 
 static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:bool=false,
 		in_transaction:bool=false, ground_position:Vector2i=Vector2i(-1,-1))->Dictionary:
@@ -42,7 +42,7 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 	# attacks and movement stay available so the pressure reads as "pull back".
 	if MoraleModel.stress_band(int(member.stress),str(member.mental_mode)) in ["ANXIOUS","PANIC"]:
 		return _reject(rejected,"active_skill_actor_anxious","불안해서 기술에 집중할 수 없습니다.")
-	if preload("res://sim/abilities/monster_ability_definitions.gd").SKILLS.has(skill_id):
+	if preload("res://sim/abilities/monster_ability_definitions.gd").SKILLS.has(skill_id) and not (skill_id=="WATER_SAC" and target_id==-1):
 		return preload("res://sim/abilities/monster_ability_runtime.gd").assess(world,actor_id,skill_id,target_id)
 	if skill_id not in ENABLED_SKILLS or skill_id not in member.active_skill_ids():
 		return _reject(rejected,"active_skill_not_equipped","장착하지 않은 기술입니다.")
@@ -50,6 +50,8 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 		var definition:=Registry.definition(skill_id)
 		if target_id!=-1 or not world.in_bounds(ground_position):
 			return _reject(rejected,"active_skill_target_invalid","물이나 바닥을 선택하세요.")
+		if skill_id=="WATER_SAC" and not bool(Terrain.definition(str(world.tile_at(ground_position).terrain)).get("passable",false)):
+			return _reject(rejected,"active_skill_target_invalid","물을 뿌릴 수 있는 바닥을 선택하세요.")
 		var origin:Vector2i=world.entities[actor_id].position
 		if maxi(absi(origin.x-ground_position.x),absi(origin.y-ground_position.y))>int(definition.range):
 			return _reject(rejected,"active_skill_out_of_range","사거리 밖입니다.")

@@ -90,7 +90,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for test in field_feedback_acceptance mastery_live_acceptance corpse_parts_growth_acceptance; do
+          for test in field_feedback_acceptance mastery_live_acceptance corpse_parts_growth_acceptance rest_parts_water_acceptance; do
             ./godot --headless --path . --script "tests/${test}.gd" 2>&1 | tee "${test}.log"
             if grep -Eq 'SCRIPT ERROR:|^FAIL ' "${test}.log"; then
               exit 1

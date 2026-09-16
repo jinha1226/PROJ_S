@@ -63,7 +63,7 @@ static func wire_error(row: Variant) -> String:
 		if not (value is int or value is float and value == floor(value)) \
 				or int(value) < -2147483648 or int(value) > 2147483647:return "invalid_party_destination"
 	var target:=Int64CodecScript.parse(row.target_id,"target")
-	if row.type=="SKILL" and row.skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS:
+	if row.type=="SKILL" and row.skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS and not (row.skill_id=="WATER_SAC" and target>0):
 		if target!=-1:return "party_target_forbidden"
 		if int(row.destination[0])<0 or int(row.destination[1])<0:return "skill_destination_required"
 		return ""

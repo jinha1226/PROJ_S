@@ -133,7 +133,7 @@ var _product_rest_generation:=0
 var _product_rest_due_msec:=-1
 var _product_rest_last_health:=-1
 var _product_rest_idle_waits:=0
-const PRODUCT_REST_CADENCE_MSEC:=90
+const PRODUCT_REST_CADENCE_MSEC:=30
 const PRODUCT_REST_IDLE_LIMIT:=16
 var product_execute_button:Button
 var hud_bottom_flex:Control
@@ -2955,7 +2955,7 @@ func _on_manual_skill_selected(actor_id:int,skill_id:String,skill_label:String)-
 		if session.has_method("skill_reach_cells") else {}
 	grid.set_skill_reach_cells(reach.get("cells",[]),str(reach.get("target","ENEMY")))
 	if str(reach.get("target",""))=="TILE":
-		_battle_target_prompt=skill_label+" · 사거리 5칸 · 물이나 바닥을 누르세요"
+		_battle_target_prompt=skill_label+" · 사거리 %d칸 · 물이나 바닥을 누르세요"%int(preload("res://sim/abilities/active_skill_registry.gd").definition(skill_id).get("range",0))
 		_show_manual_battle_feedback(_battle_target_prompt+" · 취소: 같은 기술 다시 선택 / Esc")
 		_request_refresh();return
 	_battle_target_prompt="%s · 붉은 칸의 %s을 고르세요"%[skill_label,

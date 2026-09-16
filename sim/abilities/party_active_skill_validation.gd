@@ -5,7 +5,7 @@ const Registry = preload("res://sim/abilities/active_skill_registry.gd")
 const Int64 = preload("res://sim/int64_codec.gd")
 const Commands = preload("res://sim/party_exception_command.gd")
 const RULESET_ID := "party-active-skills-v1"
-const TIMES := {"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120,"FIREBALL":120,"TEST_WATER":120,"TEST_FROST":120,"TEST_SPARK":120}
+const TIMES := {"WATER_SAC":120,"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120,"FIREBALL":120,"TEST_WATER":120,"TEST_FROST":120,"TEST_SPARK":120}
 
 static func event_error(world, event) -> String:
 	if str(event.type).begins_with("consumable."):return preload("res://sim/consumable_effects.gd").event_error(world,event)

@@ -601,7 +601,7 @@ func commit_active_skill(actor_id:int,skill_id:String,target_id:int):
 
 func _commit_skill_effect(actor_id:int,skill_id:String,target_id:int,
 		assessment:Dictionary,processed_step_index:int):
-	if preload("res://sim/abilities/monster_ability_definitions.gd").SKILLS.has(skill_id):
+	if preload("res://sim/abilities/monster_ability_definitions.gd").SKILLS.has(skill_id) and not (skill_id=="WATER_SAC" and target_id==-1):
 		return preload("res://sim/abilities/monster_ability_runtime.gd").commit(self,actor_id,skill_id,target_id,assessment)
 	var ground_cast:bool=skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS
 	var position:Vector2i=assessment.destination if ground_cast else world.entities[target_id].position
@@ -620,7 +620,7 @@ func _commit_skill_effect(actor_id:int,skill_id:String,target_id:int,
 		var applied:=false
 		match skill_id:
 			"FIREBALL":applied=environment.apply_heat(position,magnitude,action.id,processed_step_index)
-			"TEST_WATER":applied=environment.apply_water(position,magnitude,action.id,processed_step_index)
+			"TEST_WATER","WATER_SAC":applied=environment.apply_water(position,magnitude,action.id,processed_step_index)
 			"TEST_FROST":applied=environment.apply_cold(position,magnitude,action.id,processed_step_index)
 			"TEST_SPARK":applied=environment.discharge(position,magnitude,action.id,processed_step_index)
 		if not applied:return null

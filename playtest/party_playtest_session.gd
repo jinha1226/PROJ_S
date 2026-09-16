@@ -2848,7 +2848,9 @@ func ability_binding_assessment(actor_id:int,instance_id:String)->Dictionary:
 func bind_ability_item(actor_id:int,instance_id:String,ingestion:bool=true)->Dictionary:
 	var assessment:=ability_binding_assessment(actor_id,instance_id)
 	if not bool(assessment.get("accepted",false)):return assessment
-	var rollback:Variant=sim.snapshot()
+	# Use the same compact rollback path as item operations. The full accepted-state
+	# audit below remains mandatory; do not serialize/audit the whole history twice.
+	var rollback:Variant=sim.capture_rollback_memento(false)
 	if not rollback is Dictionary:return _rejection_dto("snapshot_unavailable")
 	var next=sim.world.item_state.clone()
 	var removed:=InventoryOperationsScript.commit_discard(next.inventory(actor_id),instance_id)
@@ -2865,17 +2867,17 @@ func bind_ability_item(actor_id:int,instance_id:String,ingestion:bool=true)->Dic
 		"ability_id":str(assessment.ability_id),"instance_id":instance_id,
 		"slot_index":int(assessment.slot_index)})
 	if event==null:
-		_restore_town_rollback(rollback)
+		sim.restore_rollback_memento(rollback)
 		return _rejection_dto("ability_binding_event_failed")
 	sim.world.item_state=next
 	if ingestion and _part_ingestion_enabled:
 		if not preload("res://sim/part_ingestion_rules.gd").apply(sim.world,event):
-			_restore_town_rollback(rollback)
+			sim.restore_rollback_memento(rollback)
 			return _rejection_dto("part_ingestion_failed")
 	sim.world.party_encounter.revision+=1
 	var state_error:String=sim.world.world_state_error()
 	if not state_error.is_empty():
-		_restore_town_rollback(rollback)
+		sim.restore_rollback_memento(rollback)
 		return _rejection_dto(state_error)
 	command_journal.append({"kind":"ability","operation":{"action":"BIND",
 		"actor_id":str(actor_id),"instance_id":instance_id,
@@ -4930,6 +4932,8 @@ func party_cards() -> Array[Dictionary]:
 			"display_name": entity.display_name, "health": entity.health, "max_health": entity.max_health, "alive": sim.world.occupies_tile(member_id),
 			"life_state":str(life.life_state),
 			"species_id":str(entity.species_id),
+			"consumable_status":preload("res://sim/consumable_effects.gd").summary(sim.world,member_id),
+			"consumable_harmful":preload("res://sim/consumable_effects.gd").has_harmful_status(sim.world,member_id),
 			"status_ids": _combatant_status_ids(member_id), "presence": member.presence, "logical_position": [logical.x,logical.y],
 			"element_exposure": exposure, "stress": member.stress,
 			"darkness_stress": darkness_stress,

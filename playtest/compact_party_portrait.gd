@@ -148,7 +148,12 @@ func _draw_health(bar:Rect2,health:int,maximum:int)->void:
 func mobile_condition_text()->String:
 	if str(actor.get("life_state","ACTIVE"))!="ACTIVE":
 		return str(actor.get("readiness","전투불능"))
-	return str(actor.get("stress_band_label","평온"))
+	var effects:=str(actor.get("consumable_status",""))
+	return effects if not effects.is_empty() else str(actor.get("stress_band_label","평온"))
+
+func _get_tooltip(_at_position:Vector2)->String:
+	var effects:=str(actor.get("consumable_status",""))
+	return tooltip_text+("\n"+effects if not effects.is_empty() else "")
 
 func mobile_meter_specs()->Array[Dictionary]:
 	var wide:=size.x>=150
@@ -183,4 +188,4 @@ func _draw_mobile_vitals()->void:
 		draw_rect(rect,Color("#514b42"),false,1)
 		draw_string(font,rect.position+Vector2(3,8),meter.label,HORIZONTAL_ALIGNMENT_LEFT,rect.size.x-6,8,Color("#f4eee3"))
 	draw_string(font,Vector2(5,65),mobile_condition_text(),HORIZONTAL_ALIGNMENT_LEFT,size.x-10,9,
-		Color("#ff8686") if str(actor.get("life_state","ACTIVE"))!="ACTIVE" else Color("#d0c8b4"))
+		Color("#ff8686") if str(actor.get("life_state","ACTIVE"))!="ACTIVE" or bool(actor.get("consumable_harmful",false)) else Color("#d0c8b4"))
