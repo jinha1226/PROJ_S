@@ -1,6 +1,7 @@
 extends RefCounted
 ## Approved fantasy pawn art; uncovered species/items keep their legacy assets.
 const Legacy=preload("res://playtest/dungeon_0x72_assets.gd")
+const Equipment=preload("res://playtest/fantasy_equipment_overlays.gd")
 const FAMILY:="FANTASY_PAWNS_V1"
 const ITEM_IDS={
 	"WEAPON_SHORT_SWORD":"sword","WEAPON_THRUSTING_SWORD":"sword",
@@ -48,6 +49,7 @@ static func actor_spec(actor:Dictionary)->Dictionary:
 	if species=="dcss_orc":species="orc"
 	if not BODIES.has(species) and not MONSTERS.has(species):return spec
 	return spec.merged({"asset_family":FAMILY,"body_key":species,
+		"head_definition_id":str(actor.get("equipment_visual",{}).get("head_definition_id","")),
 		"body_texture":body_texture(species),"supports_walk":false,"visual_cell_ratio":1.0,
 		"monster_sprite":MONSTERS.has(species) or str(actor.get("species_id","")) in ["goblin","dcss_orc"],
 		"source_canvas_size":Vector2(128,128),"foot_anchor_ratio":0.94,
@@ -58,7 +60,7 @@ static func draw_actor(canvas:CanvasItem,spec:Dictionary,bounds:Rect2,tint:Color
 	if str(spec.get("asset_family",""))!=FAMILY:
 		Legacy.draw_actor(canvas,spec,bounds,tint)
 		return
-	canvas.draw_texture_rect(spec.body_texture,bounds,false,tint)
+	Equipment.draw_body(canvas,spec,bounds,tint)
 	# Keep the shield scale; enlarge the weapon canvas by 1.6x for tile readability.
 	for entry in [["offhand_texture",Vector2(0.06,0.55),Vector2(0.35,0.35)],
 			["weapon_texture",Vector2(0.54,0.31),Vector2(0.48,0.72)]]:

@@ -1,0 +1,12 @@
+[
+  [
+    "leather",
+    "Create a reusable transparent WORN ARMOR OVERLAY ONLY from this leather armor design. No character, no head, no skin, no arms, no legs, no hanger, no mannequin. Front view, vertically symmetrical. Same thick dark contour, warm brown, simple broad shading, two small rounded shoulder caps, scooped OPEN transparent neck hole, black waist belt with simple gray buckle. Shape must be a short broad trapezoid tunic slightly wider at bottom, matching a legless pawn torso, not a narrow fitted human waist. Both shoulder caps must connect to the chest so there are no floating fragments. One isolated armor garment; all exterior and neck opening genuinely transparent. No baked checkerboard, no background, no text, no shadow. Preserve the existing simple game-art style. Centered with 10% margin.",
+    "armor"
+  ],
+  [
+    "iron_helmet",
+    "Create a reusable transparent WORN HELMET OVERLAY ONLY from this iron helmet design. Same front-facing rounded gray metal dome and straight central nose guard, thick near-black contour and very simple two-tone steel. No head, no face, no hair, NO beige or skin-colored areas; the side cheek/face areas MUST BE TRANSPARENT OPENINGS. Eye slit may remain dark charcoal. Not an assembled character: just the hollow helmet cutout to lay on heads of different skin colors. Vertically symmetrical, one centered isolated helmet with 10% margin. Genuine transparent background and openings, no baked checkerboard, no mannequin, no shadow, no text. Match source style.",
+    "helmet"
+  ]
+]
