@@ -22,7 +22,7 @@ static func canonical_id(ability_id: String) -> String:
 
 static func has(ability_id: String) -> bool:
 	return not ActiveSkillRegistryScript.definition(canonical_id(ability_id)).is_empty() \
-		and (canonical_id(ability_id) not in ActiveSkillRegistryScript.GROUND_SKILLS or canonical_id(ability_id)=="WATER_SAC")
+		and canonical_id(ability_id) not in ["FIREBALL","TEST_WATER","TEST_FROST","TEST_SPARK"]
 
 
 static func definition(ability_id: String) -> Dictionary:

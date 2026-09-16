@@ -5,7 +5,7 @@ const Registry = preload("res://sim/abilities/active_skill_registry.gd")
 const Int64 = preload("res://sim/int64_codec.gd")
 const Commands = preload("res://sim/party_exception_command.gd")
 const RULESET_ID := "party-active-skills-v1"
-const TIMES := {"WATER_SAC":120,"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120,"FIREBALL":120,"TEST_WATER":120,"TEST_FROST":120,"TEST_SPARK":120}
+const TIMES := {"COLD_GLAND":100,"ARC_GLAND":100,"FROST_SILK":100,"WATER_SAC":120,"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120,"FIREBALL":120,"TEST_WATER":120,"TEST_FROST":120,"TEST_SPARK":120}
 
 static func event_error(world, event) -> String:
 	if str(event.type).begins_with("consumable."):return preload("res://sim/consumable_effects.gd").event_error(world,event)
@@ -54,13 +54,14 @@ static func forced_move_error(world,event)->String:
 
 static func _action_error(world,event)->String:
 	var data:Dictionary=event.data
+	var ground_cast:bool=event.target_id==-1 and data.get("skill_id") in Registry.GROUND_SKILLS
 	var keys:Array=data.keys();keys.sort()
 	if keys!=["action_time","cost","damage","destination","healing",
 			"ruleset_id","schema_version","skill_id"] \
 			or data.get("schema_version")!=1 or data.get("ruleset_id")!=RULESET_ID \
 			or data.get("skill_id") not in TIMES or event.cause_id!=-1 \
 			or not world.entities.has(event.actor_id) \
-			or (data.get("skill_id") not in Registry.GROUND_SKILLS and not world.entities.has(event.target_id)) \
+			or (not ground_cast and not world.entities.has(event.target_id)) \
 			or world.party_encounter==null \
 			or not world.party_encounter.member_rows.has(event.actor_id):
 		return "active_skill_event_invalid"
@@ -71,12 +72,12 @@ static func _action_error(world,event)->String:
 			world,event.actor_id,str(data.skill_id),int(TIMES[data.skill_id]),event.id) \
 			or not data.destination is Array or data.destination.size()!=2 \
 			or not data.destination[0] is int or not data.destination[1] is int \
-			or event.magnitude!=(int(definition.power) if data.skill_id in Registry.GROUND_SKILLS else maxi(int(data.damage),int(data.healing))) or event.magnitude<=0:
+			or event.magnitude!=(int(definition.power) if ground_cast else maxi(int(data.damage),int(data.healing))) or event.magnitude<=0:
 		return "active_skill_event_invalid"
 	var landing:=Vector2i(data.destination[0],data.destination[1])
 	if not Rect2i(Vector2i.ZERO,Vector2i(world.width,world.height)).has_point(landing):
 		return "active_skill_destination_invalid"
-	if data.skill_id in Registry.GROUND_SKILLS:
+	if ground_cast:
 		if event.target_id!=-1 or int(data.damage)!=0 or int(data.healing)!=0:return "active_skill_effect_invalid"
 	elif data.skill_id=="MEND":
 		if int(data.damage)!=0 or int(data.healing)<=0:return "active_skill_effect_invalid"

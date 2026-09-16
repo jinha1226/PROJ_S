@@ -8,7 +8,7 @@ func _init()->void:
 	var ally=Member.new(2,1,"COMPANION","GROUPED")
 	assert(hero.active_skill_ids().is_empty(),"no prototype hero kit")
 	assert(ally.active_skill_ids().is_empty(),"no prototype companion kit")
-	for id in Registry.GROUND_SKILLS:
+	for id in ["FIREBALL","TEST_WATER","TEST_FROST","TEST_SPARK"]:
 		assert(not Binding.has(id) and id not in Service.ENABLED_SKILLS,"test skill blocked")
 	hero.bound_ability_ids.assign(["FIREBOLT"])
 	assert(hero.active_skill_ids()==["FIREBOLT"],"earned ability remains usable")

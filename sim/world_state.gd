@@ -6971,9 +6971,12 @@ func _party_move_event_is_canonical(event) -> bool:
 		and event.magnitude == int(event.data.move_time_cost)
 	if not common_valid:return false
 	if event.cause_id==-1:
-		var base:int=int(definition.move_time_cost)+preload("res://sim/abilities/monster_ability_runtime.gd").delay_before(self,event)
+		var base:int=int(definition.move_time_cost)
 		var member=party_encounter.member(event.actor_id) if party_encounter!=null else null
+		# Enemy slow extends enemy_busy_rows after movement; only party members
+		# include the delay in the movement event itself.
 		if member!=null and preload("res://sim/field_turn_rules.gd").enabled(self):
+			base+=preload("res://sim/abilities/monster_ability_runtime.gd").delay_before(self,event)
 			var rate:int=maxi(25,int(member.action_speeds.MOVE)+preload("res://sim/consumable_effects.gd").rate(self,event.actor_id,event.id))
 			base=maxi(1,(base*100+rate-1)/rate)
 		if preload("res://sim/party_rescue_rules.gd").links(self,event.id).has(event.actor_id):base=(base*3+1)/2

@@ -4,7 +4,7 @@ extends RefCounted
 ## Initial balance hypotheses, not production progression values.
 const RULESET_ID:="active-combat-prototype-v1"
 const MAX_ENERGY:=12
-const GROUND_SKILLS:=["WATER_SAC","FIREBALL","TEST_WATER","TEST_FROST","TEST_SPARK"]
+const GROUND_SKILLS:=["FIREBOLT","COLD_GLAND","ARC_GLAND","FROST_SILK","WATER_SAC","FIREBALL","TEST_WATER","TEST_FROST","TEST_SPARK"]
 const SKILLS:={
 	"TEST_WATER":{"name":"물 생성(시험)","cost":1,"range":5,"target":"TILE","effect":"WATER","power":100,"element":"WATER"},
 	"TEST_FROST":{"name":"냉각(시험)","cost":1,"range":5,"target":"TILE","effect":"COLD","power":1800,"element":"ICE"},

@@ -601,9 +601,10 @@ func commit_active_skill(actor_id:int,skill_id:String,target_id:int):
 
 func _commit_skill_effect(actor_id:int,skill_id:String,target_id:int,
 		assessment:Dictionary,processed_step_index:int):
-	if preload("res://sim/abilities/monster_ability_definitions.gd").SKILLS.has(skill_id) and not (skill_id=="WATER_SAC" and target_id==-1):
+	target_id=int(assessment.get("target_id",target_id))
+	if preload("res://sim/abilities/monster_ability_definitions.gd").SKILLS.has(skill_id) and not (skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS and target_id==-1):
 		return preload("res://sim/abilities/monster_ability_runtime.gd").commit(self,actor_id,skill_id,target_id,assessment)
-	var ground_cast:bool=skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS
+	var ground_cast:bool=target_id==-1 and skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS
 	var position:Vector2i=assessment.destination if ground_cast else world.entities[target_id].position
 	var magnitude:int=int(preload("res://sim/abilities/active_skill_registry.gd").definition(skill_id).power) \
 		if ground_cast else maxi(int(assessment.damage),int(assessment.healing))
@@ -620,10 +621,14 @@ func _commit_skill_effect(actor_id:int,skill_id:String,target_id:int,
 		var applied:=false
 		match skill_id:
 			"FIREBALL":applied=environment.apply_heat(position,magnitude,action.id,processed_step_index)
+			"FIREBOLT":applied=environment.apply_heat(position,maxi(100,magnitude*20),action.id,processed_step_index)
 			"TEST_WATER","WATER_SAC":applied=environment.apply_water(position,magnitude,action.id,processed_step_index)
-			"TEST_FROST":applied=environment.apply_cold(position,magnitude,action.id,processed_step_index)
-			"TEST_SPARK":applied=environment.discharge(position,magnitude,action.id,processed_step_index)
+			"TEST_FROST","COLD_GLAND","FROST_SILK":applied=environment.apply_cold(position,magnitude,action.id,processed_step_index)
+			"TEST_SPARK","ARC_GLAND":applied=environment.discharge(position,magnitude,action.id,processed_step_index)
 		if not applied:return null
+		if skill_id=="FROST_SILK":
+			if world.emit_event("ability.status",actor_id,actor_id,position,1,action.id,
+				{"schema_version":1,"ability_id":skill_id,"status":"FROST_ZONE","until":str(world.world_time+300)})==null:return null
 	if int(assessment.damage)>0:
 		var target=world.entities[target_id]
 		var damage_type:="fire" if skill_id=="FIREBOLT" else "physical"

@@ -2948,14 +2948,14 @@ func _on_manual_skill_selected(actor_id:int,skill_id:String,skill_label:String)-
 	_battle_target_mode="ACTIVE_SKILL";_battle_target_actor_id=actor_id
 	_battle_target_skill_id=skill_id;_battle_target_skill_label=skill_label
 	_battle_target_prior_paused=autonomous_battle_clock.paused
-	if preload("res://sim/abilities/active_skill_registry.gd").definition(skill_id).get("target")=="SELF":
+	if not session.field_turns_active() and preload("res://sim/abilities/active_skill_registry.gd").definition(skill_id).get("target")=="SELF":
 		_commit_battle_target(actor_id);return
 	autonomous_battle_clock.paused=true
 	var reach:Dictionary=session.skill_reach_cells(actor_id,skill_id) \
 		if session.has_method("skill_reach_cells") else {}
 	grid.set_skill_reach_cells(reach.get("cells",[]),str(reach.get("target","ENEMY")))
 	if str(reach.get("target",""))=="TILE":
-		_battle_target_prompt=skill_label+" · 사거리 %d칸 · 물이나 바닥을 누르세요"%int(preload("res://sim/abilities/active_skill_registry.gd").definition(skill_id).get("range",0))
+		_battle_target_prompt=skill_label+" · 사거리 %d칸 · 대상 칸을 누르세요"%int(preload("res://sim/abilities/active_skill_registry.gd").definition(skill_id).get("range",0))
 		_show_manual_battle_feedback(_battle_target_prompt+" · 취소: 같은 기술 다시 선택 / Esc")
 		_request_refresh();return
 	_battle_target_prompt="%s · 붉은 칸의 %s을 고르세요"%[skill_label,
@@ -6626,7 +6626,7 @@ func flush_auto_flow_for_headless_test()->Dictionary:
 	return auto_flow_state()
 func _on_cell(position:Vector2i)->void:
 	if not _battle_target_mode.is_empty():
-		if _battle_target_skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS and session.field_turns_active():
+		if _battle_target_mode=="ACTIVE_SKILL" and session.field_turns_active():
 			if _battle_target_committing:return
 			_battle_target_committing=true
 			var result:Dictionary=session.commit_field_action(ActionScript.skill_at(
@@ -6634,8 +6634,8 @@ func _on_cell(position:Vector2i)->void:
 			_battle_target_committing=false
 			if result.get("accepted",false):
 				_cancel_battle_targeting()
-				_record_result(result,true,"환경 기술 실행 불가")
-				_show_manual_battle_feedback("환경 기술 사용 · 물·얼음·수증기·전도 반응을 확인하세요.")
+				_record_result(result,true,"기술 실행 불가")
+				_show_manual_battle_feedback("기술을 사용했습니다.")
 			else:_show_manual_battle_feedback(str(result.get("message",result.get("reason","사용 불가"))))
 			_request_refresh();return
 		_cancel_battle_targeting("대상 선택을 취소했습니다.");return
@@ -6750,7 +6750,7 @@ func _focus_battle_enemy(entity_id:int)->void:
 
 func _on_actor(entity_id:int)->void:
 	grid.set_actor_emphasis(entity_id,1400)
-	if _battle_target_skill_id in preload("res://sim/abilities/active_skill_registry.gd").GROUND_SKILLS and session.sim.world.entities.has(entity_id):
+	if _battle_target_mode=="ACTIVE_SKILL" and session.field_turns_active() and session.sim.world.entities.has(entity_id):
 		_on_cell(session.sim.world.entities[entity_id].position);return
 	if not _battle_target_mode.is_empty():
 		_commit_battle_target(entity_id);return

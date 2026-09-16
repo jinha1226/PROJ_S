@@ -15,7 +15,7 @@ const MoraleModel=preload("res://sim/party_morale_model.gd")
 
 const RULESET_ID := "party-active-skills-v1"
 const ACTION_TIMES := {"STRIKE":100,"SHOVE":100,"FIREBOLT":120,"MEND":120,"FIREBALL":120,"TEST_WATER":120,"TEST_FROST":120,"TEST_SPARK":120}
-const ENABLED_SKILLS := ["WATER_SAC","STRIKE","SHOVE","FIREBOLT","MEND"]
+const ENABLED_SKILLS := ["COLD_GLAND","ARC_GLAND","FROST_SILK","WATER_SAC","STRIKE","SHOVE","FIREBOLT","MEND"]
 
 static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:bool=false,
 		in_transaction:bool=false, ground_position:Vector2i=Vector2i(-1,-1))->Dictionary:
@@ -42,14 +42,32 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 	# attacks and movement stay available so the pressure reads as "pull back".
 	if MoraleModel.stress_band(int(member.stress),str(member.mental_mode)) in ["ANXIOUS","PANIC"]:
 		return _reject(rejected,"active_skill_actor_anxious","불안해서 기술에 집중할 수 없습니다.")
-	if preload("res://sim/abilities/monster_ability_definitions.gd").SKILLS.has(skill_id) and not (skill_id=="WATER_SAC" and target_id==-1):
+	if target_id==-1 and ground_position!=Vector2i(-1,-1):
+		var tile_definition:=Registry.definition(skill_id)
+		if tile_definition.is_empty() or skill_id not in member.active_skill_ids():
+			return _reject(rejected,"active_skill_not_equipped","장착하지 않은 기술입니다.")
+		if not world.in_bounds(ground_position):return _reject(rejected,"active_skill_target_invalid","보이는 칸을 선택하세요.")
+		# Resolve tile occupants through the original effect assessment. No damage,
+		# healing, allegiance or self-only restrictions are bypassed by tile input.
+		if tile_definition.target=="SELF":
+			if ground_position!=world.entities[actor_id].position:
+				return _reject(rejected,"active_skill_target_invalid","자신이 서 있는 칸을 선택하세요.")
+			return assess(world,actor_id,skill_id,actor_id,allow_busy,in_transaction)
+		for occupant in world.occupying_entities_at(ground_position):
+			var candidate:int=occupant.id
+			var allied:bool=candidate in state.active_party_member_ids
+			if (tile_definition.target=="ALLY" and allied) or (tile_definition.target=="ENEMY" and not allied and world.is_autonomous_target(candidate)):
+				return assess(world,actor_id,skill_id,candidate,allow_busy,in_transaction)
+		if skill_id not in Registry.GROUND_SKILLS:
+			return _reject(rejected,"active_skill_target_invalid","아군이 있는 칸을 선택하세요." if tile_definition.target=="ALLY" else "적이 있는 칸을 선택하세요.")
+	if preload("res://sim/abilities/monster_ability_definitions.gd").SKILLS.has(skill_id) and not (skill_id in Registry.GROUND_SKILLS and target_id==-1):
 		return preload("res://sim/abilities/monster_ability_runtime.gd").assess(world,actor_id,skill_id,target_id)
 	if skill_id not in ENABLED_SKILLS or skill_id not in member.active_skill_ids():
 		return _reject(rejected,"active_skill_not_equipped","장착하지 않은 기술입니다.")
-	if skill_id in Registry.GROUND_SKILLS:
+	if skill_id in Registry.GROUND_SKILLS and target_id==-1:
 		var definition:=Registry.definition(skill_id)
 		if target_id!=-1 or not world.in_bounds(ground_position):
-			return _reject(rejected,"active_skill_target_invalid","물이나 바닥을 선택하세요.")
+			return _reject(rejected,"active_skill_target_invalid","보이는 칸을 선택하세요.")
 		if skill_id=="WATER_SAC" and not bool(Terrain.definition(str(world.tile_at(ground_position).terrain)).get("passable",false)):
 			return _reject(rejected,"active_skill_target_invalid","물을 뿌릴 수 있는 바닥을 선택하세요.")
 		var origin:Vector2i=world.entities[actor_id].position
@@ -62,7 +80,7 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 			return _reject(rejected,"active_skill_energy_insufficient","기력이 부족합니다.")
 		return {"accepted":true,"reason":"ok","message":str(definition.name),
 			"skill_id":skill_id,"actor_id":actor_id,"target_id":-1,"cost":int(definition.cost),
-			"action_time":preload("res://sim/field_action_timing.gd").duration(world,actor_id,skill_id,120),
+			"action_time":preload("res://sim/field_action_timing.gd").duration(world,actor_id,skill_id,100 if skill_id in ["COLD_GLAND","ARC_GLAND","FROST_SILK"] else 120),
 			"damage":0,"healing":0,"destination":ground_position,"ruleset_id":RULESET_ID}
 	if not world.entities.has(target_id) or not world.combatant_states.has(target_id):
 		return _reject(rejected,"active_skill_target_invalid","대상을 선택하세요.")

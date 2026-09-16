@@ -79,13 +79,30 @@ static func generate(seed:int,rules_version:int=5)->Dictionary:
 			species.append(kind);roster.append({"position":p,"species_id":kind,"group_id":id,"route_id":"LINK_0"})
 		if not species.is_empty():groups.append({"group_id":id,"route_id":"LINK_0","position":[c.x,c.y],"species_ids":species,"optional":true,"anchor_guard":false,"transition_guard":c==exit})
 		if not used.has(c) and supplies.size()<5:supplies.append(c);used[c]=true
+	var materials:={"shallow_water":[],"metal":[],"wood_floor":[],"rubble":[]}
+	if rules_version>=8:
+		# Separate RNG preserves existing rooms, spawns, supplies and event placement.
+		var material_rng:=RandomNumberGenerator.new();material_rng.seed=seed ^ 0x4D415438
+		var kinds:=["wood_floor","shallow_water","metal","rubble"]
+		var offset:=material_rng.randi_range(0,3)
+		for i in range(rooms.size()):
+			var room:Rect2i=rooms[i]
+			var kind:String=kinds[(i+offset)%4]
+			var corner:=room.position+Vector2i(1,1)
+			if material_rng.randf()<0.5:corner.x=room.end.x-4
+			if material_rng.randf()<0.5:corner.y=room.end.y-4
+			for y in range(corner.y,corner.y+3):
+				for x in range(corner.x,corner.x+3):
+					var cell:=Vector2i(x,y)
+					if cell in [entry,exit,anchor]:continue
+					terrain[y*SIZE+x]=kind;materials[kind].append(cell)
 	return {"schema_version":1,"ruleset_id":"procedural-rooms-v1","procedural_generation":true,
 		"floor_index":1,"floor_label":"잊힌 지하 회랑","theme_id":"PROCEDURAL_STONE_DUNGEON",
 		"seed":seed,"width":SIZE,"height":SIZE,"terrain":terrain,"rooms":rooms,"room_centers":centers,
 		"regions":regions,"field_regions":regions,"routes":routes,"room_links":edges,
 		"entry_position":entry,"hero_position":entry,"exit_position":exit,"transition_portal_position":exit,
 		"anchor_portal_position":anchor,"anchor_portal_clear_radius":2,"door_positions":[],"hazards":[],
-		"material_positions":{"shallow_water":[],"metal":[],"wood_floor":[],"rubble":[]},
+		"material_positions":materials,
 		"presentation_material_positions":{"grass":[],"ice":[],"fog":[]},"supply_positions":supplies,
 		"encounter_groups":groups,"planned_contact_count":groups.size(),"planned_enemy_count":roster.size(),
 		"runtime_enemy_roster":roster,"enemy_roster":roster.duplicate(true),"enemy_positions":roster.map(func(row):return row.position)}

@@ -7460,12 +7460,13 @@ func skill_reach_cells(actor_id: int, skill_id: String) -> Dictionary:
 	for y in range(maxi(0, origin.y - reach), mini(sim.world.height, origin.y + reach + 1)):
 		for x in range(maxi(0, origin.x - reach), mini(sim.world.width, origin.x + reach + 1)):
 			var cell := Vector2i(x, y)
-			if cell == origin: continue
+			if str(definition.target)=="SELF" and cell!=origin:continue
+			if cell==origin and str(definition.target) not in ["SELF","ALLY"]:continue
 			var terrain: Dictionary = TerrainRegistryScript.definition(str(sim.world.tile_at(cell).terrain))
 			if terrain.is_empty() or not bool(terrain.get("passable", false)): continue
 			if not EnemyPerceptionRegistryScript.has_line_of_sight(sim.world, origin, cell): continue
 			cells.append([x, y])
-	return {"skill_id":skill_id, "target":str(definition.target), "range":reach, "cells":cells}
+	return {"skill_id":skill_id, "target":"TILE" if field_turns_active() else str(definition.target), "range":reach, "cells":cells}
 
 
 func enter_solo_combat() -> Dictionary:

@@ -30,7 +30,7 @@ static func tile_spec(cell:Dictionary,position:Vector2i,floor_index:int,
 		var feature:=str(cell.get("feature_id",""))
 		var material:=str(cell.get("presentation_material_id",""))
 		if FLOOR_FEATURES.has(feature):key=FLOOR_FEATURES[feature]
-		elif visibility=="VISIBLE" and terrain in ["floor","stone_floor"] and str(cell.get("surface_id","NONE"))!="ICE" and int(cell.get("wetness",0))>0:key="water"
+		elif visibility=="VISIBLE" and terrain in ["floor","stone_floor","wood_floor","metal","rubble"] and str(cell.get("surface_id","NONE"))!="ICE" and int(cell.get("wetness",0))>0:key="water"
 		elif MATERIALS.has(material):key=MATERIALS[material]
 		elif terrain in ["floor","stone_floor"]:
 			var variant:=Legacy._variant_index(position,floor_index,12)

@@ -106,6 +106,8 @@ static func facing_for_action(world,action,fallback:Vector2i)->Vector2i:
 	var delta:=Vector2i.ZERO
 	if action.type=="MOVE":
 		delta=action.destination-world.entities[action.actor_id].position
+	elif action.type=="SKILL" and action.target_id==-1:
+		delta=action.destination-world.entities[action.actor_id].position
 	elif action.type in ["MELEE","SKILL"] and world.entities.has(action.target_id):
 		delta=world.entities[action.target_id].position-world.entities[action.actor_id].position
 	elif action.type=="SKILL" and action.destination!=Vector2i(-1,-1):
