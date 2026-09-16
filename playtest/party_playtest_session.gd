@@ -4141,6 +4141,21 @@ func enemy_vision_overlay() -> Dictionary:
 		"observer_id": observer_id, "rows": rows}.duplicate(true)
 
 
+func exploration_header_status(status:Dictionary)->Dictionary:
+	var floor_index:=int(sim.world.party_encounter.expedition_cycle.floor_index)
+	var layout:Dictionary=_map_layout.get("campaign_floors",{}).get(floor_index,_map_layout)
+	var awareness_state:="UNAWARE"
+	var priority:={"UNAWARE":0,"RETURNING":0,"SUSPICIOUS":1,"SEARCHING":1,"ALERT":2,"HUNTING":2}
+	# Only currently visible living enemies may contribute to this display.
+	for id_value in status.get("visible_enemy_ids",[]):
+		var id:=int(id_value)
+		if not sim.world.is_autonomous_target(id):continue
+		var awareness=sim.world.party_encounter.enemy_awareness(id)
+		if awareness!=null and int(priority.get(awareness.awareness_state,0))>int(priority.get(awareness_state,0)):
+			awareness_state=str(awareness.awareness_state)
+	return {"floor_index":floor_index,"floor_name":str(layout.get("floor_label","던전")),
+		"awareness_state":awareness_state}
+
 func observe_minimap()->Dictionary:
 	var context:=_party_observation_context()
 	return {} if context.is_empty() else _party_minimap_observation(context)

@@ -32,6 +32,15 @@ func run()->void:
 		ui._refresh()
 		for i in range(3):await process_frame
 		check(ui.hero_skill_row.visible,"skills always visible")
+		var header_nodes:Array=[ui.minimap_frame,ui.expedition_floor_label,ui.food_hud,ui.stealth_hud,ui.noise_hud,ui.top_hud_actions]
+		var right_edge:=0.0
+		for node in header_nodes:
+			check(node.is_visible_in_tree(),"header segment visible "+str(node.name))
+			check(node.global_position.x>=right_edge,"header order "+str(node.name))
+			check(ui.phase_panel.get_global_rect().encloses(node.get_global_rect()),"header fits "+str(dimensions)+str(node.name))
+			right_edge=node.get_global_rect().end.x
+		check(ui.ration_label.text=="×%d"%int(ui.expedition_hud_spec().food_count),"food count only")
+		check(ui.return_timer_label.text==session.exploration_header_status(session.party_status()).floor_name,"real floor name")
 		check(not ui.build_label.visible,"build stamp cannot obscure dock labels")
 		check(ui.grid.size.y>=dimensions.y*0.5,"map dominates "+str(dimensions))
 		check(ui.event_label.max_lines_visible==3,"three event lines")
@@ -59,6 +68,15 @@ func run()->void:
 	check(ui.product_attack_button.visible and ui.product_auto_button.visible,"combat preserves attack and explore")
 	status.visible_enemy_ids=[];status.enemies_in_view=[];ui._sync_product_control_state(status)
 	check(ui.product_attack_button.visible and ui.product_auto_button.visible,"exploration preserves attack and explore")
+	var awareness=session.sim.world.party_encounter.enemy_awareness(enemy)
+	var original_state:String=awareness.awareness_state
+	awareness.awareness_state="HUNTING"
+	check(session.exploration_header_status(status).awareness_state=="UNAWARE","hidden enemy cannot expose detection")
+	status.visible_enemy_ids=[enemy]
+	check(session.exploration_header_status(status).awareness_state=="HUNTING","visible hunting enemy reports detection")
+	awareness.awareness_state="SUSPICIOUS"
+	check(session.exploration_header_status(status).awareness_state=="SUSPICIOUS","visible suspicion reports caution")
+	awareness.awareness_state=original_state
 	ui.queue_free();await process_frame
 	print("GAMEPLAY MOBILE UI: ","PASS" if failures.is_empty() else "FAIL",failures)
 	quit(0 if failures.is_empty() else 1)

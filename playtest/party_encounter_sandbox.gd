@@ -107,6 +107,8 @@ var detail_hp_text:Label
 var detail_mp_text:Label
 var stat_help:Node
 var food_icon:Control
+var stealth_hud:Control
+var noise_hud:Control
 var food_hud:VBoxContainer
 var cards:HBoxContainer
 var deck:VBoxContainer
@@ -1021,23 +1023,34 @@ func _build_ui()->void:
 	menu_popup.id_pressed.connect(_on_product_menu_id)
 	top_hud_actions.add_child(product_menu_button)
 	DarkPixelSkinScript.apply_action_button(product_menu_button,DarkPixelSkinScript.CYAN)
-	# One aligned rail: map / floor and return clock / food / menu.
-	minimap_frame.custom_minimum_size=Vector2(52,52)
-	minimap.custom_minimum_size=Vector2(44,44)
+	# One aligned rail: map / floor and region / food / awareness / noise / menu.
+	minimap_frame.custom_minimum_size=Vector2(44,52)
+	minimap.custom_minimum_size=Vector2(36,44)
 	return_timer_label.reparent(situation_stack)
 	return_timer_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_LEFT
 	return_timer_label.add_theme_font_size_override("font_size",12)
 	situation_stack.size_flags_vertical=Control.SIZE_SHRINK_CENTER
-	expedition_floor_label.custom_minimum_size.x=60
-	food_hud=VBoxContainer.new();food_hud.name="FoodHUD";food_hud.custom_minimum_size.x=72
+	expedition_floor_label.custom_minimum_size.x=0
+	expedition_floor_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	expedition_floor_label.add_theme_font_size_override("font_size",12)
+	food_hud=VBoxContainer.new();food_hud.name="FoodHUD";food_hud.custom_minimum_size.x=54
 	food_hud.size_flags_vertical=Control.SIZE_SHRINK_CENTER;phase_row.add_child(food_hud);phase_row.move_child(food_hud,2)
 	ration_label.reparent(food_hud)
-	food_icon=_supply_icon_row(food_hud,ration_label,"FOOD")
+	food_icon=_supply_icon_row(food_hud,ration_label,"FOOD_ITEM")
 	for label in [ration_label]:
 		label.add_theme_font_size_override("font_size",12);label.clip_text=true
 		label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		label.custom_minimum_size.y=34
 	food_meter=_hud_supply_meter(food_hud,"FoodRemaining",DarkPixelSkinScript.JADE)
+	for kind in ["STEALTH","NOISE"]:
+		var indicator=preload("res://playtest/exploration_awareness_hud.gd").new()
+		indicator.name="StealthHUD" if kind=="STEALTH" else "NoiseHUD"
+		indicator.kind=kind;indicator.custom_minimum_size=Vector2(48,48)
+		indicator.size_flags_vertical=Control.SIZE_SHRINK_CENTER
+		phase_row.add_child(indicator);phase_row.move_child(indicator,phase_row.get_child_count()-2)
+		if kind=="STEALTH":stealth_hud=indicator
+		else:noise_hud=indicator
+	noise_hud.tooltip_text="소음 수치는 아직 연결되지 않았습니다."
 	top_hud_actions.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	# Compatibility aliases point at the unified HUD rather than preserving a
 	# second objective/time strip in the product layout.
@@ -2073,6 +2086,8 @@ func _refresh()->void:
 	# The product rail is the Pixel Dungeon style top HUD: minimap, current floor
 	# with the return countdown, and the main menu. Legacy keeps the phase banner.
 	phase_panel.visible=true
+	phase_row.add_theme_constant_override("separation",1 if product_hud else 4)
+	stealth_hud.visible=product_hud;noise_hud.visible=product_hud
 	minimap_frame.visible=product_hud;minimap.visible=product_hud;recent_event_label.visible=false
 	top_hud_actions.visible=product_hud or town_base_active
 	top_hud_actions.custom_minimum_size.x=44 if product_hud else (100 if town_active and session.town_life_enabled() else 132)
@@ -7727,7 +7742,14 @@ func _update_expedition_hud(product_hud:bool,status:Dictionary={})->void:
 	if preload("res://playtest/frontier_campaign.gd").enabled(session):
 		expedition_floor_label.text="숲길" if session.sim.world.party_encounter.expedition_cycle.floor_index==1 else "폐광"
 	return_timer_label.text=timer_text;return_timer_label.visible=product_hud and not timer_text.is_empty()
-	return_timer_label.add_theme_color_override("font_color",Color(str(spec.get("tone_hex","c7c2b3"))))
+	if product_hud:
+		var header:Dictionary=session.exploration_header_status(status if not status.is_empty() else session.party_status())
+		expedition_floor_label.text="지하 %d층"%int(header.floor_index)
+		return_timer_label.text=str(header.floor_name);return_timer_label.visible=true
+		return_timer_label.tooltip_text=str(header.floor_name)+" · 귀환까지 "+timer_text
+		stealth_hud.configure(str(header.awareness_state))
+		stealth_hud.tooltip_text="현재 보이는 적의 인식: 은신 / 경계 / 발각. 보이지 않는 적의 인식은 알 수 없습니다."
+	return_timer_label.add_theme_color_override("font_color",AsciiFrameScript.INK)
 	if ration_label!=null:
 		var ration_text:=str(spec.get("ration_text",""))
 		ration_label.text=ration_text
@@ -7739,8 +7761,9 @@ func _update_expedition_hud(product_hud:bool,status:Dictionary={})->void:
 	if food_hud.visible:
 		food_meter.max_value=int(spec.ration_max);food_meter.value=int(spec.ration)
 		food_icon.configure(float(spec.ration)/maxi(1,int(spec.ration_max)))
-		ration_label.text="×%d\n%d%%"%[int(spec.food_count),int(100.0*int(spec.ration)/int(spec.ration_max))]
-		food_hud.tooltip_text="숫자: 조작 캐릭터의 식량 개수 / 게이지: 현재 포만도"
+		ration_label.text="×%d"%int(spec.food_count)
+		food_meter.visible=false
+		food_hud.tooltip_text="조작 캐릭터의 식량 %d개 · 포만도 %d%%"%[int(spec.food_count),int(100.0*int(spec.ration)/int(spec.ration_max))]
 
 func _apply_screen_budget(combat_active:bool,combat_actions_visible:bool,
 		run_available:bool=false,run_terminal:bool=false,party_height:int=160,
