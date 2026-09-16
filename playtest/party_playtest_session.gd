@@ -250,6 +250,11 @@ var _presentation_topology_cache:Dictionary={}
 # and while refreshing the surface; keep that presentation work step-keyed and
 # detached from canonical world state.
 var _presentation_visibility_cache:Dictionary={}
+# party_status() is pure and the sandbox reads it several times per refresh.
+# One deep copy of a memoized DTO replaces a full rebuild; the key covers every
+# world/party input the DTO is derived from, following the visibility cache.
+var _party_status_cache_key:String=""
+var _party_status_cache:Dictionary={}
 # Read-only battle timeline projection, keyed on the authoritative counters so a
 # UI that asks every frame rebuilds only when the core actually moved. Never
 # serialized: a load rebuilds it from canonical state (spec §7).
@@ -1969,6 +1974,37 @@ func _bootstrap_rescue_candidate(candidate, target_id: int) -> bool:
 
 func party_status() -> Dictionary:
 	if sim == null or sim.world.party_encounter == null: return {"ok": false, "reason": "session_not_initialized"}
+	var cache_key:=_party_status_cache_key_now()
+	if cache_key==_party_status_cache_key and not _party_status_cache.is_empty():
+		return _party_status_cache.duplicate(true)
+	var result:Dictionary=_build_party_status()
+	_party_status_cache_key=cache_key;_party_status_cache=result
+	return result.duplicate(true)
+
+
+func _party_status_cache_key_now()->String:
+	var world=sim.world;var state=world.party_encounter
+	var hero_id:int=world.party_control_actor_id()
+	var hero=world.entities.get(hero_id)
+	var hero_position:Vector2i=hero.position if hero!=null else Vector2i(-1,-1)
+	var presences:PackedStringArray=PackedStringArray()
+	for entity_id in state.party_member_ids:
+		var member=state.member(entity_id)
+		presences.append("%d=%s"%[int(entity_id),str(member.presence) if member!=null else "?"])
+	var active:PackedStringArray=PackedStringArray()
+	for entity_id in state.active_party_member_ids:active.append(str(int(entity_id)))
+	var cycle=state.expedition_cycle
+	return "%d|%s|%d|%d|%d|%d|%s|%s|%s|%d,%d|%d,%d|%d|%d|%d|%d,%d|%s|%s|%d|%d|%s"%[
+		int(world.get_instance_id()),scenario_id,world.world_time,world.step_index,
+		world.events.size(),int(state.revision),str(state.safe_phase),str(state.contact_kind),
+		str(state.formation_id),state.group_anchor.x,state.group_anchor.y,state.facing.x,state.facing.y,
+		int(state.ration_milli),int(world.item_state.revision) if world.item_state!=null else -1,
+		hero_id,hero_position.x,hero_position.y,",".join(presences),
+		str(cycle.phase) if cycle!=null else "-",int(cycle.expedition_index) if cycle!=null else -1,
+		int(cycle.floor_index) if cycle!=null else -1,",".join(active)]
+
+
+func _build_party_status() -> Dictionary:
 	var state = sim.world.party_encounter; var view_mode: String = {"GROUPED":"EXPLORATION", "GROUPED_COMPLETE":"EXPLORATION",
 		"CONTACT":"ENCOUNTER_PREVIEW", "ENGAGED":"COMBAT", "REGROUP_READY":"REGROUP", "PARTY_DEFEATED":"COMBAT"}[state.safe_phase]
 	var visible_enemy_ids: Array = []

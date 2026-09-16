@@ -15,8 +15,17 @@ static var AFFIX_DEFINITIONS:Dictionary=ContentLoaderScript.index_rows(
 	_CONTENT.get("affixes",[]),"affix_id")
 
 
+# Content is static for the process lifetime, so row validity is memoized per
+# id. Every item instance validation and inventory scan used to re-run the
+# full row check (and a weapon registry check) on each lookup.
+static var _VALID_IDS:Dictionary={}
+
+
 static func has(definition_id:String)->bool:
-	return DEFINITIONS.has(definition_id) and definition_error(DEFINITIONS[definition_id]).is_empty()
+	if _VALID_IDS.has(definition_id):return bool(_VALID_IDS[definition_id])
+	var valid:bool=DEFINITIONS.has(definition_id) and definition_error(DEFINITIONS[definition_id]).is_empty()
+	_VALID_IDS[definition_id]=valid
+	return valid
 
 
 static func definition(definition_id:String):
