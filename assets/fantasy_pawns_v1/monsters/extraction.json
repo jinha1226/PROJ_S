@@ -1,0 +1,138 @@
+{
+  "source": "assets/generated/fantasy_monsters_v1/source/monsters.png",
+  "source_sha256": "a6f826cdc3ab58d9b7e1bf4ec1806cdd02e169d5e7fa3ced9a00aa53f216fb2e",
+  "sprites": [
+    {
+      "species_id": "fire_lizard",
+      "source_crop": [
+        0,
+        0,
+        362,
+        362
+      ],
+      "fraction": 0.86,
+      "foot_anchor_ratio": 0.94
+    },
+    {
+      "species_id": "frost_spider",
+      "source_crop": [
+        362,
+        0,
+        724,
+        362
+      ],
+      "fraction": 0.86,
+      "foot_anchor_ratio": 0.94
+    },
+    {
+      "species_id": "water_slime",
+      "source_crop": [
+        724,
+        0,
+        1086,
+        362
+      ],
+      "fraction": 0.86,
+      "foot_anchor_ratio": 0.94
+    },
+    {
+      "species_id": "electric_eel",
+      "source_crop": [
+        1086,
+        0,
+        1448,
+        362
+      ],
+      "fraction": 0.86,
+      "foot_anchor_ratio": 0.94
+    },
+    {
+      "species_id": "dcss_rat",
+      "source_crop": [
+        0,
+        362,
+        362,
+        724
+      ],
+      "fraction": 0.66,
+      "foot_anchor_ratio": 0.94
+    },
+    {
+      "species_id": "dcss_river_rat",
+      "source_crop": [
+        362,
+        362,
+        724,
+        724
+      ],
+      "fraction": 0.78,
+      "foot_anchor_ratio": 0.94
+    },
+    {
+      "species_id": "dcss_frilled_lizard",
+      "source_crop": [
+        724,
+        362,
+        1086,
+        724
+      ],
+      "fraction": 0.86,
+      "foot_anchor_ratio": 0.94
+    },
+    {
+      "species_id": "dcss_gnoll",
+      "source_crop": [
+        1086,
+        362,
+        1448,
+        724
+      ],
+      "fraction": 0.86,
+      "foot_anchor_ratio": 0.94
+    },
+    {
+      "species_id": "dcss_hobgoblin",
+      "source_crop": [
+        0,
+        724,
+        362,
+        1086
+      ],
+      "fraction": 0.86,
+      "foot_anchor_ratio": 0.94
+    },
+    {
+      "species_id": "kobold",
+      "source_crop": [
+        362,
+        724,
+        724,
+        1086
+      ],
+      "fraction": 0.76,
+      "foot_anchor_ratio": 0.94
+    },
+    {
+      "species_id": "slime",
+      "source_crop": [
+        724,
+        724,
+        1086,
+        1086
+      ],
+      "fraction": 0.86,
+      "foot_anchor_ratio": 0.94
+    },
+    {
+      "species_id": "beetle",
+      "source_crop": [
+        1086,
+        724,
+        1448,
+        1086
+      ],
+      "fraction": 0.72,
+      "foot_anchor_ratio": 0.94
+    }
+  ]
+}

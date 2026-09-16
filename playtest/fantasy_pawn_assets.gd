@@ -17,7 +17,9 @@ const ITEM_IDS={
 static func body_texture(species_id:String)->Texture2D:
 	var species:=species_id.to_lower()
 	if species=="generic_humanoid":species="human"
+	if species=="dcss_orc":species="orc"
 	if BODIES.has(species):return BODIES[species]
+	if MONSTERS.has(species):return MONSTERS[species]
 	return Legacy.texture(str(Legacy.BODIES.get(species,"knight_m_idle_anim_f0")))
 
 static func item(value:String)->Texture2D:
@@ -35,9 +37,11 @@ static func actor_spec(actor:Dictionary)->Dictionary:
 	var spec:=Legacy.actor_spec(actor)
 	var species:=str(actor.get("species_id","human")).to_lower()
 	if species=="generic_humanoid":species="human"
-	if not BODIES.has(species):return spec
+	if species=="dcss_orc":species="orc"
+	if not BODIES.has(species) and not MONSTERS.has(species):return spec
 	return spec.merged({"asset_family":FAMILY,"body_key":species,
-		"body_texture":BODIES[species],"supports_walk":false,"visual_cell_ratio":1.0,
+		"body_texture":body_texture(species),"supports_walk":false,"visual_cell_ratio":1.0,
+		"monster_sprite":MONSTERS.has(species) or str(actor.get("species_id","")) in ["goblin","dcss_orc"],
 		"source_canvas_size":Vector2(128,128),"foot_anchor_ratio":0.94,
 		"flip_h":false,"weapon_texture":item(str(spec.weapon_definition_id)),
 		"offhand_texture":item(str(spec.off_hand_definition_id))},true)
@@ -79,4 +83,18 @@ const ICONS={
 	"staff":preload("res://assets/fantasy_pawns_v1/items/staff.png"),
 	"sword":preload("res://assets/fantasy_pawns_v1/items/sword.png"),
 	"water_sac":preload("res://assets/fantasy_pawns_v1/items/water_sac.png"),
+}
+const MONSTERS={
+	"beetle":preload("res://assets/fantasy_pawns_v1/monsters/beetle.png"),
+	"dcss_frilled_lizard":preload("res://assets/fantasy_pawns_v1/monsters/dcss_frilled_lizard.png"),
+	"dcss_gnoll":preload("res://assets/fantasy_pawns_v1/monsters/dcss_gnoll.png"),
+	"dcss_hobgoblin":preload("res://assets/fantasy_pawns_v1/monsters/dcss_hobgoblin.png"),
+	"dcss_rat":preload("res://assets/fantasy_pawns_v1/monsters/dcss_rat.png"),
+	"dcss_river_rat":preload("res://assets/fantasy_pawns_v1/monsters/dcss_river_rat.png"),
+	"electric_eel":preload("res://assets/fantasy_pawns_v1/monsters/electric_eel.png"),
+	"fire_lizard":preload("res://assets/fantasy_pawns_v1/monsters/fire_lizard.png"),
+	"frost_spider":preload("res://assets/fantasy_pawns_v1/monsters/frost_spider.png"),
+	"kobold":preload("res://assets/fantasy_pawns_v1/monsters/kobold.png"),
+	"slime":preload("res://assets/fantasy_pawns_v1/monsters/slime.png"),
+	"water_slime":preload("res://assets/fantasy_pawns_v1/monsters/water_slime.png"),
 }

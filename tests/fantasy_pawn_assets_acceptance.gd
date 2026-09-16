@@ -17,7 +17,7 @@ func capture(path:String)->void:
 	root.get_texture().get_image().save_png(path)
 func run()->void:
 	root.size=Vector2i(450,800);root.content_scale_size=Vector2i(450,800)
-	for collection in [Assets.BODIES,Assets.ICONS]:
+	for collection in [Assets.BODIES,Assets.ICONS,Assets.MONSTERS]:
 		for id in collection:
 			var im:Image=collection[id].get_image()
 			check(im.get_size()==Vector2i(128,128),"runtime size "+id)
@@ -28,7 +28,17 @@ func run()->void:
 		check(spec.asset_family==Assets.FAMILY and not spec.supports_walk,"pawn species "+species)
 		check(spec.visual_cell_ratio<=1.0,"pawn fits one tile "+species)
 	check(Fixed.body_texture("generic_humanoid")==Fixed.body_texture("human"),"generic humanoid alias")
-	check(Fixed.actor_layer_spec({"species_id":"slime"}).asset_family=="0X72_DUNGEON_II","uncovered monster preserved")
+	check(Fixed.actor_layer_spec({"species_id":"shadow_beast"}).asset_family=="0X72_DUNGEON_II","uncovered monster preserved")
+	for species in Assets.MONSTERS:
+		var monster:=Fixed.actor_layer_spec({"species_id":species})
+		check(monster.body_texture==Assets.MONSTERS[species] and monster.monster_sprite,
+			"dedicated monster art "+species)
+		check(monster.species_id==species and monster.visual_cell_ratio<=1.0,
+			"monster identity and one-cell footprint "+species)
+	for species in preload("res://sim/dcss_enemy_registry.gd").DEFINITIONS:
+		check(Fixed.actor_layer_spec({"species_id":species}).asset_family==Assets.FAMILY,
+			"registered dungeon spawn has art "+species)
+	check(Fixed.body_texture("dcss_orc")==Fixed.body_texture("orc"),"dungeon orc uses approved orc base")
 	var shield:=Fixed.actor_layer_spec({"species_id":"elf","equipment_visual":{
 		"weapon_definition_id":"WEAPON_HAND_AXE","off_hand_definition_id":"SHIELD_WOOD"}})
 	check(shield.weapon_texture==Assets.ICONS.axe and shield.offhand_texture==Assets.ICONS.shield,"equipment attachments use icons")
