@@ -1630,13 +1630,20 @@ func _build_item_window(parent:VBoxContainer)->void:
 	var equipment_title:=_card_label("장착","ItemEquipmentGridHeading",FONT_SECTION)
 	DarkPixelSkinScript.apply_heading(equipment_title,DarkPixelSkinScript.BRASS)
 	equipment_stack.add_child(equipment_title)
+	var equipment_body:=HBoxContainer.new();equipment_body.name="EquipmentBody"
+	equipment_body.add_theme_constant_override("separation",12)
+	equipment_stack.add_child(equipment_body)
+	var portrait:=PortraitScript.new();portrait.name="EquipmentPortrait"
+	portrait.custom_minimum_size=Vector2(80,120)
+	portrait.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	equipment_body.add_child(portrait)
 	member_item_equipment_grid=GridContainer.new()
 	member_item_equipment_grid.name="ItemEquipmentGrid"
 	member_item_equipment_grid.columns=3
 	member_item_equipment_grid.add_theme_constant_override("h_separation",4)
 	member_item_equipment_grid.add_theme_constant_override("v_separation",4)
-	member_item_equipment_grid.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	equipment_stack.add_child(member_item_equipment_grid)
+	member_item_equipment_grid.size_flags_horizontal=Control.SIZE_SHRINK_END
+	equipment_body.add_child(member_item_equipment_grid)
 	var backpack_panel:=PanelContainer.new();backpack_panel.name="InventoryBackpackSection"
 	DarkPixelSkinScript.apply_panel(backpack_panel,"SECTION")
 	member_item_window.add_child(backpack_panel)
@@ -5750,9 +5757,20 @@ func _update_item_inventory_ledger()->void:
 		var slot:=str(row.get("slot",""))
 		_add_item_ledger_button(member_item_equipment_rows,row,
 			"%-5s %s"%[str(slot_labels.get(slot,slot)),_item_row_text(row)],true)
+	var rows_by_slot:Dictionary={}
+	for row in equipment_slots:rows_by_slot[str(row.slot)]=row
+	# Keep the equipment compact; head/feet are presentation placeholders until
+	# those equipment contracts exist. They never issue simulation commands.
+	var layout:=["", "HEAD", "", "OFF_HAND", "ARMOR", "MAIN_HAND", "ACCESSORY_1", "FEET", "ACCESSORY_2"]
+	for index in range(layout.size()):
+		var slot:String=layout[index]
+		if slot.is_empty():
+			var spacer:=Control.new();spacer.mouse_filter=Control.MOUSE_FILTER_IGNORE
+			member_item_equipment_grid.add_child(spacer)
+			continue
+		var row:Dictionary=rows_by_slot.get(slot,{"slot":slot,"empty":true,"presentation_only":true})
 		_add_item_grid_slot(member_item_equipment_grid,row,index,slot)
-	var portrait:=PortraitScript.new();portrait.name="EquipmentPortrait";portrait.custom_minimum_size=Vector2(48,64)
-	member_item_equipment_grid.add_child(portrait);member_item_equipment_grid.move_child(portrait,mini(1,member_item_equipment_grid.get_child_count()-1))
+	var portrait=member_item_window.find_child("EquipmentPortrait",true,false)
 	portrait.set_actor(session.inspect_party_member(member_detail_entity_id))
 	var backpack:Array=dto.get("backpack_rows",[])
 	var capacity:=int(dto.get("capacity",20))

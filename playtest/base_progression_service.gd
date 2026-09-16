@@ -129,6 +129,8 @@ func base_overview()->Dictionary:
 
 
 func _base_cache_rows()->Array[Dictionary]:
+	# Settlement salvage must follow the same feature gate as its product UI.
+	if not preload("res://playtest/product_features.gd").SETTLEMENT_ENABLED:return []
 	if _session.scenario_id!=_session.DUO_SCENARIO_ID:return []
 	if _session.sim==null or _session.sim.world==null or _session.sim.world.party_encounter==null:return []
 	var cycle:Variant=_session.sim.world.party_encounter.expedition_cycle

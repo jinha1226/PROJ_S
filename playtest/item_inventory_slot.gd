@@ -108,6 +108,10 @@ func _draw()->void:
 	if _selected or is_hovered():draw_rect(bounds,border,false,2.0)
 	if _selected:_draw_selection_brackets(bounds)
 	var inner:=plate.grow(-4.0)
+	if not _equipment_slot.is_empty():
+		var labels:={"HEAD":"머리","ARMOR":"몸통","FEET":"신발","OFF_HAND":"왼손","MAIN_HAND":"오른손","ACCESSORY_1":"반지","ACCESSORY_2":"반지"}
+		inner.size.y=maxf(1,inner.size.y-13)
+		draw_string(get_theme_default_font(),Vector2(3,bounds.end.y-4),str(labels.get(_equipment_slot,"")),HORIZONTAL_ALIGNMENT_CENTER,size.x-6,10,MUTED)
 	if empty:
 		_draw_empty_slot(inner)
 		return

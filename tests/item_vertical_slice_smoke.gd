@@ -45,10 +45,10 @@ func _check_viewport(viewport_size:Vector2)->void:
 	var final_bag_rect:Rect2=final_bag_row.get_global_rect()
 	_assert(scroll.get_global_rect().intersection(final_bag_rect).size.y>=51.9,
 		"%s ITEM final bag slot is not visible without scrolling: %s"%[viewport_size,final_bag_rect])
-	_assert(sandbox.member_item_equipment_grid.get_child_count()==5 \
+	_assert(sandbox.member_item_equipment_grid.get_child_count()==9 \
 		and sandbox.member_item_backpack_rows.get_child_count()==20 \
 		and sandbox.member_item_backpack_rows.columns==5,
-		"%s item UI is not 5 equipment slots plus a 5x4 bag"%viewport_size)
+		"%s item UI is not 7 equipment slots plus a 5x4 bag"%viewport_size)
 	_assert(sandbox.member_item_equipment_grid.is_visible_in_tree() \
 		and sandbox.member_item_backpack_rows.is_visible_in_tree() \
 		and not sandbox.member_item_equipment_rows.is_visible_in_tree(),

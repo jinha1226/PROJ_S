@@ -28,9 +28,9 @@ func test_item_tab_uses_five_by_four_visual_inventory_slots() -> bool:
 		Session.SOLO_COMBAT_SCENARIO_ID))
 	sandbox._open_hero_detail_tab("ITEM")
 	check(sandbox.member_item_equipment_grid is GridContainer \
-		and sandbox.member_item_equipment_grid.columns==5 \
-		and sandbox.member_item_equipment_grid.get_child_count()==5,
-		"item folio renders five visual equipment cells")
+		and sandbox.member_item_equipment_grid.columns==3 \
+		and sandbox.member_item_equipment_grid.get_child_count()==9,
+		"item folio renders seven visual equipment cells and two spacers")
 	check(sandbox.member_item_backpack_rows is GridContainer \
 		and sandbox.member_item_backpack_rows.columns==5 \
 		and sandbox.member_item_backpack_rows.get_child_count()==20 \

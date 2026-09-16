@@ -295,12 +295,12 @@ func test_mobile_card_detail_focus_and_enemy_threat_are_visible()->bool:
 		and "화살 12" in sandbox.member_item_ammo_text.text,
 		"item tab owns a one-line combat summary and compact ammo information")
 	check(sandbox.member_item_equipment_grid is GridContainer \
-		and sandbox.member_item_equipment_grid.columns==5 \
-		and sandbox.member_item_equipment_grid.get_child_count()==5 \
+		and sandbox.member_item_equipment_grid.columns==3 \
+		and sandbox.member_item_equipment_grid.get_child_count()==9 \
 		and sandbox.member_item_backpack_rows is GridContainer \
 		and sandbox.member_item_backpack_rows.columns==5 \
 		and sandbox.member_item_backpack_rows.get_child_count()==20,
-		"item tab uses five equipment cells plus a five-by-four backpack grid")
+		"item tab uses seven equipment cells and two spacers plus a five-by-four backpack grid")
 	var equipped_weapon=sandbox._find_item_row_button("LEGACY_MAIN_HAND","MAIN_HAND")
 	var potion_slot=sandbox._find_item_row_button("START_POTION_001","")
 	check(equipped_weapon!=null and equipped_weapon.has_method("slot_draw_spec") \

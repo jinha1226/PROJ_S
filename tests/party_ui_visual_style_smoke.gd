@@ -338,11 +338,11 @@ func _check_viewport(viewport_size:Vector2)->void:
 		and "막기" in combat_summary.text and "장착" not in combat_summary.text \
 		and sandbox.member_item_ammo_text.custom_minimum_size.y>=44 \
 		and equipment_slot_rows==5 \
-		and sandbox.member_item_equipment_grid.get_child_count()==5 \
+		and sandbox.member_item_equipment_grid.get_child_count()==9 \
 		and sandbox.member_item_backpack_rows.get_child_count()==20 \
 		and sandbox.member_item_backpack_rows.columns==5 \
 		and sandbox.member_item_drop_button.custom_minimum_size.y>=44,
-		"%s item/status UI lacks one-line stats, 5 equipment icons, 5x4 bag, or 44px popover actions"%viewport_size)
+		"%s item/status UI lacks one-line stats, 7 equipment icons, 5x4 bag, or 44px popover actions"%viewport_size)
 	_check(sandbox.member_item_backpack_rows.is_visible_in_tree() \
 		and sandbox.member_item_equipment_grid.is_visible_in_tree() \
 		and not sandbox.member_item_equipment_rows.is_visible_in_tree(),
