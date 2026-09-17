@@ -103,12 +103,16 @@ func spawn_fusion_minion(name:String,near_cell:int,power:int)->void:
 	var c=free_near(near_cell)
 	if c<0:return
 	var a=spawn({"id":"fusion","name":name,"sprite":"human","hp":12+power*2,"power":4+power,"speed":100,"ac":1,"ev":4,"will":100,"ai":"guardian","res":{"poison":100}},floor_id,c,"ally",400);occupancy[c]=int(a.id)
+func damage(source:Dictionary,target:Dictionary,raw:int,element:String="physical")->void:
+	var enemy_id:=int(target.get("id",-1));var was_alive:=int(target.get("hp",0))>0
+	var eligible:=enemy_id>0 and target.get("team","")=="enemy" and not bool(target.get("summoned",false)) and friendly(source)
+	super(source,target,raw,element)
+	if eligible and was_alive and int(target.get("hp",0))<=0:award_usage_xp(enemy_id,18+depth()*8)
 func attack(source:Dictionary,target:Dictionary)->void:
 	var player:=int(source.get("id",-1))==0;var enemy_id:=int(target.get("id",-1));var skill:=""
 	if player and enemy_id>0 and int(hero().gear.weapon)>=0:skill=weapon_skill(str(inventory[int(hero().gear.weapon)].type));record_usage(enemy_id,skill)
 	var hp_before:=int(target.hp);super(source,target)
 	if player and not skill.is_empty() and hp_before>int(target.hp) and int(target.hp)>0:apply_weapon_fusions(skill,target)
-	if player and enemy_id>0 and hp_before>0 and int(target.hp)<=0:award_usage_xp(enemy_id,18+depth()*8)
 func apply_magic_progression(skill:String,target:Dictionary)->void:
 	var rank:=skill_rank(skill);magic_momentum[skill]=mini(3,int(magic_momentum.get(skill,0))+1)
 	if target.is_empty() or int(target.hp)<=0:return
@@ -125,31 +129,29 @@ func apply_reverse_fusions(skill:String,target:Dictionary)->void:
 	if target.is_empty() or int(target.hp)<=0:return
 	var weapon_ids:Array=["sword","spear","mace","axe","bow"]
 	for weapon in weapon_ids:
-		var id:=skill+"_"+weapon;var tier:=fusion_tier(id)
+		var fusion_id:String=skill+"_"+str(weapon);var tier:=fusion_tier(fusion_id)
 		if tier<=0:continue
-		damage(hero(),target,2+skill_rank(weapon))
-		if tier>=2:chain_element(target,"fire" if skill=="fire" else "ice" if skill=="ice" else "air",3+skill_rank(weapon)/2)
-	# Symmetric magic combinations: their identity comes from the pair, not main/sub order.
+		damage(hero(),target,2+skill_rank(str(weapon)))
+		if tier>=2:chain_element(target,"fire" if skill=="fire" else "ice" if skill=="ice" else "air",3+skill_rank(str(weapon))/2)
 	var magic_pairs:Dictionary={"fire_air":["fire","air","fire"],"fire_summon":["fire","summon","fire"],"ice_air":["ice","air","ice"],"ice_summon":["ice","summon","ice"],"air_summon":["air","summon","air"],"hex_summon":["hex","summon","air"]}
 	for id in magic_pairs:
 		var row:Array=magic_pairs[id]
 		if skill not in [row[0],row[1]]:continue
-		var tier:=fusion_tier(id)
+		var tier:=fusion_tier(str(id))
 		if tier<=0:continue
-		if row[1]=="summon":
-			spawn_fusion_minion("융합 정령",int(target.cell),skill_rank("summon")+tier)
+		if row[1]=="summon":spawn_fusion_minion("융합 정령",int(target.cell),skill_rank("summon")+tier)
 		else:
 			damage(hero(),target,3+skill_rank(str(row[0]))+skill_rank(str(row[1]))/2,str(row[2]))
 			if tier>=2:chain_element(target,str(row[2]),4+skill_rank(str(row[1])))
 func cast(id:String,target:int)->bool:
 	var skill:String=str(DATA.spells[id].school) if DATA.spells.has(id) else "";var victim:Dictionary={}
-	if target>=0 and target<occupancy.size() and occupancy[target]>0:victim=actors[occupancy[target]]
+	if target>=0 and target<occupancy.size() and occupancy[target]>0:victim=actors[int(occupancy[target])]
 	var accepted=super(id,target)
 	if not accepted or skill.is_empty():return accepted
 	var actor_id:=int(victim.get("id",-1))
 	if actor_id>0:record_usage(actor_id,skill)
 	else:
-		for enemy in visible_enemies():record_usage(int(enemy.id),skill)
+		for enemy_id in visible_enemies():record_usage(int(enemy_id),skill)
 	apply_magic_progression(skill,victim);apply_reverse_fusions(skill,victim);return true
 func gain_xp(amount:int)->void:
 	xp+=amount
