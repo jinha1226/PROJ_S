@@ -170,7 +170,7 @@ func _award_canonical_enemy_deaths(state) -> bool:
 				and event.instigator_id not in world._party_active_ids_at_event(event.id):
 			if not preload("res://sim/party_growth_rules.gd").award_actor(world,event.instigator_id,event):return false
 			continue
-		if not state.protagonist_progression.award_enemy_death(event.id):return false
+		if not state.protagonist_progression.award_enemy_death(event.id,not preload("res://sim/usage_skill_rules.gd").enabled(world,event.id)):return false
 		var xp_result:Dictionary=state.protagonist_growth.commit_award_xp(
 			ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP)
 		if not bool(xp_result.get("accepted",false)):return false
@@ -195,7 +195,7 @@ func _award_canonical_enemy_deaths(state) -> bool:
 		var reward=world.emit_event("progression.enemy_reward",state.protagonist_id,event.target_id,
 			event.position,ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP,event.id,
 			{"schema_version":1,"character_xp":ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP,
-				"mastery_pool":ProgressionRegistryScript.ENEMY_KILL_MASTERY_POOL,
+				"mastery_pool":0 if preload("res://sim/usage_skill_rules.gd").enabled(world,event.id) else ProgressionRegistryScript.ENEMY_KILL_MASTERY_POOL,
 				"ruleset_id":ProgressionRegistryScript.RULESET_ID})
 		if reward==null:return false
 		var growth_reward=world.emit_event("growth.enemy_reward",state.protagonist_id,

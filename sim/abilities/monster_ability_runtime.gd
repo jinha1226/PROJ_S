@@ -34,7 +34,8 @@ static func add_status(world,actor:int,target:int,id:String,key:String,power:int
 	return world.emit_event("ability.status",actor,target,world.entities[target].position,maxi(0,power),cause,
 		{"schema_version":1,"ability_id":id,"status":key,"until":str(world.world_time+duration)})!=null
 
-static func scale(world,id:int,ability:String,value:int)->int:
+static func scale(world,id:int,ability:String,value:int,before_id:int=9223372036854775807)->int:
+	value=preload("res://sim/usage_skill_rules.gd").scale(world,id,ability,value,before_id)
 	var growth=preload("res://sim/party_growth_rules.gd").for_actor(world,id)
 	if growth!=null:
 		return growth.mastery_scale(str(Defs.definition(ability).get("axis","MAGIC")),value)
@@ -114,14 +115,14 @@ static func commit(sim,actor:int,id:String,target:int,a:Dictionary):
 	var e=w.emit_event("ability.cast",actor,target,w.entities[target].position,0,-1,
 		{"schema_version":1,"skill_id":id,"cost":int(a.cost),"action_time":int(a.action_time)})
 	if e==null:return null
-	var power:=scale(w,actor,id,int(d.power));var ok:=true
+	var power:=scale(w,actor,id,int(d.power),e.id);var ok:=true
 	match str(d.effect):
 		"WATER","COLD","ELECTRIC":ok=elemental_impulse(sim,str(d.effect),w.entities[target].position,power,e.id)
 		"DAMAGE","EXECUTE","LEAP","ACID","SIPHON":
 			if d.effect=="LEAP" and a.destination!=w.entities[actor].position:
 				ok=sim.movement.commit_preflighted_move(actor,a.destination,str(w.tile_at(a.destination).terrain),1,e.id)!=null
 			if d.effect=="ACID":ok=ok and impact(sim,actor,actor,id,5,"physical",e.id)>=0
-			if d.effect=="EXECUTE" and w.entities[target].health<w.entities[target].max_health:power+=scale(w,actor,id,12)
+			if d.effect=="EXECUTE" and w.entities[target].health<w.entities[target].max_health:power+=scale(w,actor,id,12,e.id)
 			var dealt:=impact(sim,actor,target,id,power,"physical",e.id) if ok else -1
 			ok=dealt>=0
 			if d.effect=="SIPHON" and dealt>0:ok=ok and impact(sim,actor,actor,id,dealt,"HEAL",e.id)>=0

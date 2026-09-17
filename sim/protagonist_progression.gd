@@ -20,7 +20,7 @@ var legacy_processed_victory_event_ids: Array[int] = []
 var legacy_reward_origin := false
 
 
-func award_enemy_death(source_death_event_id: int) -> bool:
+func award_enemy_death(source_death_event_id: int, train_mastery:bool=true) -> bool:
 	if source_death_event_id <= 0 or source_death_event_id in processed_source_death_event_ids:
 		return false
 	if xp_total > RegistryScript.MAX_XP - RegistryScript.ENEMY_KILL_CHARACTER_XP:
@@ -31,7 +31,7 @@ func award_enemy_death(source_death_event_id: int) -> bool:
 	xp_total += RegistryScript.ENEMY_KILL_CHARACTER_XP
 	var allocation := RegistryScript.enemy_kill_mastery_allocation(training_modes)
 	for proficiency_id in RegistryScript.PROFICIENCY_IDS:
-		skill_training[proficiency_id] = int(skill_training[proficiency_id]) + int(allocation[proficiency_id])
+		if train_mastery:skill_training[proficiency_id] = int(skill_training[proficiency_id]) + int(allocation[proficiency_id])
 	processed_source_death_event_ids.append(source_death_event_id)
 	return true
 

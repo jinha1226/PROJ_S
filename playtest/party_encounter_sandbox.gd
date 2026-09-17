@@ -155,6 +155,8 @@ var base_preview
 var base_close_button:Button
 var species_picker_modal:Control
 var species_picker_panel:PanelContainer
+var starting_job_button:Button
+var selected_starting_job:String="FIGHTER"
 var species_picker_buttons:VBoxContainer
 var species_picker_error:Label
 var _species_touch_index:=-1
@@ -1269,6 +1271,11 @@ func _build_species_picker()->void:
 	title.add_theme_font_size_override("font_size",FONT_SECTION);stack.add_child(title)
 	var help:=Label.new();help.text="새 원정의 주인공 종족을 선택하세요."
 	help.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;stack.add_child(help)
+	starting_job_button=Button.new();starting_job_button.name="StartingJobButton"
+	starting_job_button.text="시작 직업: "+preload("res://sim/usage_skill_rules.gd").JOB_LABELS[selected_starting_job]
+	starting_job_button.custom_minimum_size.y=TOUCH_TARGET
+	starting_job_button.pressed.connect(_cycle_starting_job);stack.add_child(starting_job_button)
+	DarkPixelSkinScript.apply_action_button(starting_job_button,DarkPixelSkinScript.CYAN)
 	species_picker_buttons=VBoxContainer.new();species_picker_buttons.name="SpeciesPickerButtons"
 	species_picker_buttons.add_theme_constant_override("separation",4);stack.add_child(species_picker_buttons)
 	for species_id in GrowthBuildRegistryScript.picker_species_ids():
@@ -1284,6 +1291,11 @@ func _build_species_picker()->void:
 	species_picker_error.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	species_picker_error.visible=false;stack.add_child(species_picker_error)
 
+func _cycle_starting_job()->void:
+	var jobs:Array=preload("res://sim/usage_skill_rules.gd").JOBS
+	selected_starting_job=jobs[(jobs.find(selected_starting_job)+1)%jobs.size()]
+	starting_job_button.text="시작 직업: "+preload("res://sim/usage_skill_rules.gd").JOB_LABELS[selected_starting_job]
+
 func _handle_species_picker_touch(event:InputEvent)->void:
 	if not event is InputEventScreenTouch and not event is InputEventScreenDrag:return
 	get_viewport().set_input_as_handled()
@@ -1293,7 +1305,7 @@ func _handle_species_picker_touch(event:InputEvent)->void:
 			_species_touch_cancelled=true;return
 		_species_touch_index=event.index;_species_touch_origin=event.position
 		_species_touch_cancelled=false;_species_touch_button=null
-		for button in species_picker_buttons.get_children():
+		for button in species_picker_buttons.get_children()+[starting_job_button]:
 			if button is Button and not button.disabled and button.get_global_rect().has_point(event.position):
 				_species_touch_button=button;break
 		return
@@ -1329,7 +1341,7 @@ func _commit_species_picker(species_id:String,frontier:bool=false)->void:
 	_species_picker_committed=true
 	var result:Dictionary=session.start_procedural_run_with_species(species_id,
 		_issue_new_personality_seed(int(session.world_seed)),
-		_issue_new_personality_seed(int(session.personality_seed))) if session!=null else {}
+		_issue_new_personality_seed(int(session.personality_seed)),selected_starting_job) if session!=null else {}
 	if not bool(result.get("accepted",false)):
 		_show_species_picker_error(result);return
 	# A fresh run already starts in the dungeon. Do not initialize town life
@@ -1551,7 +1563,7 @@ func _build_progression_window(parent:VBoxContainer)->void:
 	member_skill_category_button.pressed.connect(_toggle_weapon_mastery_category)
 	member_progression_window.add_child(member_skill_category_button)
 	DarkPixelSkinScript.apply_action_button(member_skill_category_button,DarkPixelSkinScript.CYAN)
-	for skill_id in ["SWORD","AXE","BLUNT","SPEAR","RANGED","UNARMED"]:
+	for skill_id in preload("res://sim/usage_skill_rules.gd").IDS:
 		var panel:=PanelContainer.new();panel.name="SkillCard%s"%skill_id
 		panel.custom_minimum_size.y=TOUCH_TARGET;panel.clip_contents=true
 		panel.set_meta("fixed_single_line_ledger",true)
@@ -5582,6 +5594,10 @@ func _update_progression_window(progression:Variant)->void:
 		int(progression.get("xp_total",0)),int(progression.get("next_level_threshold",0))]
 	member_progression_xp.max_value=maxi(1,int(progression.get("xp_required",1)))
 	member_progression_xp.value=int(progression.get("xp_current",0))
+	var use_training:bool=preload("res://sim/usage_skill_rules.gd").enabled(session.sim.world)
+	member_skill_help.text="실제 전투 사용으로 성장 · 처치 XP와 별개" if use_training else "행 터치: 집중×3 → 보통×1 → 끄기×0"
+	for id in member_progression_skill_rows:
+		(member_progression_skill_rows[id].panel as Control).visible=member_skill_category_expanded and (use_training or id in ProgressionRegistryScript.SKILL_IDS)
 	var equipment:Dictionary=progression.get("equipment",{}) \
 		if progression.get("equipment",{}) is Dictionary else {}
 	var equipped_proficiency:=str(equipment.get("proficiency_id",""))
@@ -5607,6 +5623,11 @@ func _update_progression_window(progression:Variant)->void:
 		(row.title as Button).tooltip_text=("장착 무기 숙련 · " if equipped else (
 			"훈련 중지 · " if mode=="OFF" else ""))+"터치하여 %s로 변경" \
 			%ProgressionRegistryScript.mode_label(ProgressionRegistryScript.next_training_mode(mode))
+		if use_training:
+			(row.title as Button).disabled=true
+			(row.title as Button).tooltip_text="실제 사용으로 자동 성장"
+			(row.mode as Label).text="사용 성장"
+		else:(row.title as Button).disabled=false
 		_apply_skill_ledger_style(row.title,row.mode,mode,equipped,row.name,row.panel)
 	_reflow_member_detail_scroll()
 
@@ -5634,7 +5655,7 @@ func _toggle_weapon_mastery_category()->void:
 	member_skill_category_expanded=not member_skill_category_expanded
 	for skill_id in member_progression_skill_rows:
 		var row:Dictionary=member_progression_skill_rows[skill_id]
-		(row.panel as Control).visible=member_skill_category_expanded
+		(row.panel as Control).visible=member_skill_category_expanded and (preload("res://sim/usage_skill_rules.gd").enabled(session.sim.world) or skill_id in ProgressionRegistryScript.SKILL_IDS)
 	# A collapsed ledger has no meaningful retained offset. Reset synchronously so
 	# the released touch cannot leave its previous overflow position visible while
 	# Godot recalculates the shorter ScrollContainer range on the deferred pass.
@@ -5645,7 +5666,7 @@ func _toggle_weapon_mastery_category()->void:
 
 func _update_weapon_mastery_category_label()->void:
 	if member_skill_category_button==null:return
-	member_skill_category_button.text=("▼" if member_skill_category_expanded else "▶")+"  무기 숙련  ·  6개"
+	member_skill_category_button.text=("▼" if member_skill_category_expanded else "▶")+("  사용 숙련  ·  14개" if session!=null and preload("res://sim/usage_skill_rules.gd").enabled(session.sim.world) else "  무기 숙련  ·  6개")
 
 func _reflow_member_detail_scroll()->void:
 	if member_progression_window!=null:member_progression_window.update_minimum_size()
