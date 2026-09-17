@@ -1,30 +1,21 @@
 extends "res://game/crawl/world.gd"
 ## Usage-weighted combat skill progression for Model B.
-## During a fight, valid weapon attacks and successful spell casts record usage.
-## When an enemy dies, its XP is split across the skills used against that enemy.
+const Progression=preload("res://game/crawl/progression_data.gd")
 
 const USAGE_SKILLS := {
-	"sword": "검술",
-	"spear": "창술",
-	"mace": "둔기술",
-	"axe": "도끼술",
-	"bow": "궁술",
-	"fire": "화염술",
-	"ice": "냉기술",
-	"air": "기류술",
-	"hex": "변이·제어",
-	"summon": "소환술"
+	"sword":"검술","spear":"창술","mace":"둔기술","axe":"도끼술","bow":"궁술",
+	"fire":"화염술","ice":"냉기술","air":"기류술","hex":"변이·제어","summon":"소환술"
 }
-
-# enemy actor id -> { skill_id: use_count }
 var combat_usage:Dictionary={}
+var discovered_rewards:Dictionary={}
+var discovered_fusions:Dictionary={}
 
 func _init(p_seed:int=44,species:String="human") -> void:
 	super(p_seed,species)
 	for id in USAGE_SKILLS:
 		if not skills.has(id):skills[id]=0
-	# Kept only because the legacy save contract still serializes focus.
 	focus=["melee"]
+	refresh_unlocks(false)
 
 func weapon_skill(weapon_type:String)->String:
 	match weapon_type:
@@ -49,8 +40,29 @@ func add_skill_xp(skill:String,base_amount:int)->void:
 	if god=="bind" and bound_weapon>=0 and skill in ["sword","spear","mace","axe","bow"]:amount=amount*13/10
 	skills[skill]=int(skills.get(skill,0))+amount
 	var after=skill_rank(skill)
-	if after>before:message("%s 숙련 %d"%[USAGE_SKILLS[skill],after])
+	if after>before:
+		message("%s 숙련 %d"%[USAGE_SKILLS[skill],after])
+		refresh_unlocks(true)
 	emit("growth.skill",0,-1,amount)
+
+func refresh_unlocks(announce:bool=true)->void:
+	for skill in USAGE_SKILLS:
+		for reward in Progression.rewards_for(skill,skill_rank(skill)):
+			var key:String="%s:%d"%[skill,int(reward.level)]
+			if discovered_rewards.has(key):continue
+			discovered_rewards[key]=true
+			if announce:message("해금 · %s Lv%d · %s"%[USAGE_SKILLS[skill],int(reward.level),str(reward.name)])
+	for fusion in Progression.unlocked_fusions(skills):
+		var key:String="%s:%d"%[str(fusion.id),int(fusion.tier)]
+		if discovered_fusions.has(key):continue
+		discovered_fusions[key]=true
+		if announce:message("융합 발견 · %s"%str(fusion.display_name))
+
+func unlocked_rewards(skill:String)->Array:
+	return Progression.rewards_for(skill,skill_rank(skill))
+
+func unlocked_fusions()->Array:
+	return Progression.unlocked_fusions(skills)
 
 func record_usage(enemy_id:int,skill:String)->void:
 	if enemy_id<=0 or not USAGE_SKILLS.has(skill):return
@@ -70,10 +82,8 @@ func award_usage_xp(enemy_id:int,kill_xp:int)->void:
 	var remaining:=kill_xp
 	var keys:Array=usage.keys()
 	for i in range(keys.size()):
-		var skill:String=str(keys[i])
-		var share:int
-		if i==keys.size()-1:
-			share=remaining
+		var skill:String=str(keys[i]);var share:int
+		if i==keys.size()-1:share=remaining
 		else:
 			share=maxi(0,int(round(float(kill_xp)*float(int(usage[skill]))/float(total_uses))))
 			share=mini(share,remaining)
@@ -85,10 +95,8 @@ func stats(a:Dictionary)->Dictionary:
 	if int(a.get("id",-1))!=0:return s
 	var gear:Dictionary=a.gear
 	if int(gear.weapon)>=0:
-		var it:Dictionary=inventory[int(gear.weapon)]
-		var w:Dictionary=DATA.weapons[it.type]
+		var it:Dictionary=inventory[int(gear.weapon)];var w:Dictionary=DATA.weapons[it.type]
 		var mastery:=skill_rank(weapon_skill(str(it.type)))
-		# Replace the legacy melee/ranged mastery contribution with the weapon-family mastery.
 		var legacy_skill:String="ranged" if str(w.trait)=="ranged" else "melee"
 		var legacy_mastery:=skill_rank(legacy_skill)
 		s.damage+=mastery-legacy_mastery
@@ -109,23 +117,16 @@ func attack(source:Dictionary,target:Dictionary)->void:
 func cast(id:String,target:int)->bool:
 	var accepted=super(id,target)
 	if not accepted or not DATA.spells.has(id):return accepted
-	var skill:String=str(DATA.spells[id].school)
-	# Targeted hostile spells attach their use to that enemy. Area/status/summon spells
-	# without a direct actor target count once for every currently visible enemy so the
-	# next kills in that encounter can reward the school without rewarding empty casts.
-	var actor_id:=-1
+	var skill:String=str(DATA.spells[id].school);var actor_id:=-1
 	if target>=0:
 		var a=actor_at(target)
 		if a!=null and int(a.get("id",-1))>0:actor_id=int(a.id)
-	if actor_id>0:
-		record_usage(actor_id,skill)
+	if actor_id>0:record_usage(actor_id,skill)
 	else:
 		for enemy in visible_enemies():record_usage(int(enemy.id),skill)
 	return true
 
 func gain_xp(amount:int)->void:
-	# Character level still uses kill XP. Combat skill XP is awarded separately by
-	# award_usage_xp() using the defeated enemy's XP and recorded use counts.
 	xp+=amount
 	while level<12 and xp>=level*level*65:
 		level+=1;hero().max_hp+=4;hero().hp+=4;hero().max_mp+=1;hero().mp+=1
