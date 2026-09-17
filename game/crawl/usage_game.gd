@@ -5,10 +5,20 @@ func _init()->void:
 	world=UsageWorld.new()
 
 func growth()->void:
-	panel("숙련 · 전투에서 자연 성장")
-	label(content,"숙련은 10종입니다. 적을 처치하면 그 적의 XP가 전투 중 사용한 무기·마법의 사용 횟수 비율대로 나뉩니다.\n현재 XP %d · 공격 지연 %d · 주문 부담 %d"%[world.xp,world.stats(world.hero()).delay,world.stats(world.hero()).enc])
+	panel("숙련 · 스킬 · 융합")
+	label(content,"처치 XP가 사용 횟수 비율대로 숙련에 분배됩니다. 숙련 Lv1~10마다 보상이 자동 해금되고, 주계열 Lv5 + 보조계열 Lv3부터 방향성 융합이 열립니다.\n현재 XP %d · 공격 지연 %d · 주문 부담 %d"%[world.xp,world.stats(world.hero()).delay,world.stats(world.hero()).enc])
 	for axis in UsageWorld.USAGE_SKILLS:
-		label(content,"%s  %d  · 숙련 XP %d"%[UsageWorld.USAGE_SKILLS[axis],world.skill_rank(axis),int(world.skills.get(axis,0))])
+		var rank:int=world.skill_rank(axis)
+		var names:Array=[]
+		for reward in world.unlocked_rewards(axis):names.append("Lv%d %s"%[int(reward.level),str(reward.name)])
+		label(content,"%s  Lv%d · XP %d\n%s"%[UsageWorld.USAGE_SKILLS[axis],rank,int(world.skills.get(axis,0))," · ".join(names) if not names.is_empty() else "아직 해금 없음"])
+	var fusions:Array=world.unlocked_fusions()
+	label(content,"융합 스킬")
+	if fusions.is_empty():label(content,"아직 없음 · 주계열 Lv5 + 보조계열 Lv3 필요")
+	else:
+		for fusion in fusions:
+			var direction:String="%s → %s"%[UsageWorld.USAGE_SKILLS.get(fusion.main,fusion.main),UsageWorld.USAGE_SKILLS.get(fusion.sub,fusion.sub)]
+			label(content,"%s · Tier %d · %s · %s"%[fusion.display_name,int(fusion.tier),direction,str(fusion.kind)])
 	label(content,"배운 주문 · 준비 최대 6개 · 안전한 곳에서 변경")
 	for key in world.spells:
 		var id:String=key;var sp:Dictionary=World.DATA.spells[id]
