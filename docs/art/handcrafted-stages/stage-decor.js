@@ -111,28 +111,28 @@ const StageDecor = (()=>{
  }
  function go(id){
   const d=links().find(d=>d.id===id);if(!d)return false;
-  if(doorMode(selected)&&state().doorsClosed){state().doorsClosed=false;render(selected);return false;}
+  if(doorMode(state().theme)&&state().doorsClosed){state().doorsClosed=false;render(selected);return false;}
   coord=[coord[0]+d.delta[0],coord[1]+d.delta[1]];
   entry=d.id==='N'?[3,7]:d.id==='S'?[3,0]:d.id==='E'?[0,3]:[7,3];
-  render(state().theme);return true;
+  render(typeof roomIndexAt==='function'?roomIndexAt(coord):state().theme);return true;
  }
  function toggleChest(){state().chest=!state().chest;render(selected);}
  function updateControls(){
   document.querySelector('#room-state').textContent=`연결 시연 구역 ${coord[0]+1},${coord[1]+1} / 3×3 · ${state().chest?'상자 열림':'상자 닫힘'}${ready?'':' · 소품 로딩 중/실패'}`;
   document.querySelector('#chest-toggle').textContent=state().chest?'상자 닫기':'상자 열기';
   document.querySelector('#door-toggle').textContent=state().doorsClosed?'문 열기':'문 닫기';
-  document.querySelector('#door-toggle').disabled=!doorMode(selected);
+  document.querySelector('#door-toggle').disabled=!doorMode(state().theme);
   for(const button of document.querySelectorAll('#room-links button'))button.disabled=!links().some(d=>d.id===button.dataset.direction);
  }
  function pick(px,py){
-  if(doorMode(selected))for(const d of links()){
+  if(doorMode(state().theme))for(const d of links()){
    const points=diamond(...d.cell),pair=d.id==='N'?[0,1]:d.id==='E'?[1,2]:d.id==='S'?[2,3]:[3,0];
    const a=points[pair[0]],b=points[pair[1]],u=(px-a[0])/(b[0]-a[0]);
    const height=d.id==='N'||d.id==='W'?69:18,v=a[1]+u*(b[1]-a[1])-py;
    if(u>=0&&u<=1&&v>=0&&v<=height)return go(d.id);
   }
   for(const d of links())for(const p of [d.out,d.cell]){const [a,b]=project(...p);if(Math.abs(px-a)/46+Math.abs(py-b)/23<=1.25)return go(d.id);}
-  const [a,b]=project(...chestCell(selected));if(Math.abs(px-a)<34&&py>b-58&&py<b+20){toggleChest();return true;}return false;
+  const [a,b]=project(...chestCell(state().theme));if(Math.abs(px-a)<34&&py>b-58&&py<b+20){toggleChest();return true;}return false;
  }
  function init(){
   for(const d of directions){const button=document.createElement('button');button.type='button';button.textContent=d.label+' 구역';button.dataset.direction=d.id;button.onclick=()=>go(d.id);document.querySelector('#room-links').append(button);}
@@ -143,5 +143,6 @@ const StageDecor = (()=>{
   sheet.onload=()=>{ready=true;render(selected);};sheet.onerror=()=>{ready=false;updateControls();};sheet.src='fantasy-props-pixel64-source.png';updateControls();
   walls.onload=()=>{wallsReady=true;wallCache.clear();render(selected);};walls.onerror=()=>{wallsReady=false;render(selected);};walls.src='dungeon-wall-faces-coarse64.png';
  }
- return {init,background,cell,foreground,go,pick,links,state,get coord(){return [...coord];},get ready(){return ready&&wallsReady;}};
+ function setCoord(next){coord=[next[0],next[1]];}
+ return {init,background,cell,foreground,go,pick,links,state,setCoord,get coord(){return [...coord];},get ready(){return ready&&wallsReady;}};
 })();
