@@ -1,0 +1,793 @@
+{
+  "version": 1,
+  "species": {
+    "human": {
+      "name": "인간",
+      "hp": 72,
+      "mp": 18,
+      "str": 12,
+      "int": 12,
+      "dex": 12,
+      "apt": {},
+      "note": "균형 · 모든 훈련에 적응"
+    },
+    "dwarf": {
+      "name": "드워프",
+      "hp": 86,
+      "mp": 12,
+      "str": 17,
+      "int": 8,
+      "dex": 9,
+      "apt": {
+        "melee": 130,
+        "defense": 140,
+        "fire": 70,
+        "air": 70,
+        "summon": 70
+      },
+      "note": "중갑 적응 · 방어 훈련 우수, 마법 훈련 느림"
+    },
+    "elf": {
+      "name": "엘프",
+      "hp": 56,
+      "mp": 26,
+      "str": 8,
+      "int": 17,
+      "dex": 14,
+      "apt": {
+        "melee": 75,
+        "defense": 70,
+        "fire": 140,
+        "ice": 140,
+        "air": 140,
+        "hex": 130,
+        "summon": 130
+      },
+      "note": "마법 적응 · 낮은 HP, 판금 장착 불가"
+    }
+  },
+  "skills": {
+    "melee": "근접",
+    "ranged": "원거리",
+    "survival": "생존",
+    "defense": "방어",
+    "tools": "도구·신앙",
+    "fire": "화염",
+    "ice": "냉기",
+    "air": "기류",
+    "hex": "변이·제어",
+    "summon": "소환"
+  },
+  "gods": {
+    "war": {
+      "name": "전투의 맹세",
+      "note": "주문 금지 · 처치로 신앙 · 광전(신앙 10, 4턴 공격 강화)"
+    },
+    "bind": {
+      "name": "결속의 맹세",
+      "note": "무기 결속: 교체하려면 파괴 · 훈련 +30% · 통찰(신앙 8, 주변 탐지)"
+    },
+    "kin": {
+      "name": "수호의 맹세",
+      "note": "최대 HP 20% 희생 · 수호령 1기 · 재소환(신앙 12)"
+    }
+  },
+  "floors": {
+    "D1": {
+      "name": "던전 1",
+      "depth": 1,
+      "links": [
+        "D2"
+      ],
+      "theme": "stone"
+    },
+    "D2": {
+      "name": "던전 2",
+      "depth": 2,
+      "links": [
+        "D1",
+        "D3"
+      ],
+      "theme": "stone"
+    },
+    "D3": {
+      "name": "분기 회랑",
+      "depth": 3,
+      "links": [
+        "D2",
+        "M1",
+        "F1",
+        "Z"
+      ],
+      "theme": "stone"
+    },
+    "M1": {
+      "name": "습지 1",
+      "depth": 4,
+      "links": [
+        "D3",
+        "M2"
+      ],
+      "theme": "water"
+    },
+    "M2": {
+      "name": "습지 2 · 룬",
+      "depth": 5,
+      "links": [
+        "M1"
+      ],
+      "theme": "water",
+      "rune": "marsh"
+    },
+    "F1": {
+      "name": "화로 1",
+      "depth": 4,
+      "links": [
+        "D3",
+        "F2"
+      ],
+      "theme": "fire"
+    },
+    "F2": {
+      "name": "화로 2 · 룬",
+      "depth": 5,
+      "links": [
+        "F1"
+      ],
+      "theme": "fire",
+      "rune": "forge"
+    },
+    "Z": {
+      "name": "심장부 · 오브",
+      "depth": 6,
+      "links": [
+        "D3"
+      ],
+      "theme": "vault"
+    }
+  },
+  "weapons": {
+    "sword": {
+      "name": "장검",
+      "damage": 10,
+      "delay": 120,
+      "axis": "melee",
+      "range": 1,
+      "trait": "balanced"
+    },
+    "axe": {
+      "name": "도끼",
+      "damage": 11,
+      "delay": 140,
+      "axis": "melee",
+      "range": 1,
+      "trait": "cleave"
+    },
+    "mace": {
+      "name": "철퇴",
+      "damage": 12,
+      "delay": 145,
+      "axis": "melee",
+      "range": 1,
+      "trait": "pierce"
+    },
+    "spear": {
+      "name": "창",
+      "damage": 8,
+      "delay": 115,
+      "axis": "melee",
+      "range": 2,
+      "trait": "reach"
+    },
+    "bow": {
+      "name": "활",
+      "damage": 9,
+      "delay": 125,
+      "axis": "ranged",
+      "range": 6,
+      "trait": "ranged"
+    },
+    "dagger": {
+      "name": "단검",
+      "damage": 6,
+      "delay": 75,
+      "axis": "melee",
+      "range": 1,
+      "trait": "stab"
+    },
+    "staff": {
+      "name": "지팡이",
+      "damage": 7,
+      "delay": 110,
+      "axis": "melee",
+      "range": 1,
+      "trait": "focus"
+    }
+  },
+  "armours": {
+    "robe": {
+      "name": "로브",
+      "ac": 1,
+      "ev_penalty": 0,
+      "enc": 0
+    },
+    "leather": {
+      "name": "가죽옷",
+      "ac": 3,
+      "ev_penalty": 1,
+      "enc": 2
+    },
+    "mail": {
+      "name": "사슬갑옷",
+      "ac": 6,
+      "ev_penalty": 3,
+      "enc": 7
+    },
+    "plate": {
+      "name": "판금",
+      "ac": 10,
+      "ev_penalty": 6,
+      "enc": 13
+    }
+  },
+  "rings": {
+    "fire": {
+      "name": "화염 저항 반지",
+      "stat": "fire",
+      "value": 60
+    },
+    "ice": {
+      "name": "냉기 저항 반지",
+      "stat": "ice",
+      "value": 60
+    },
+    "poison": {
+      "name": "독 저항 반지",
+      "stat": "poison",
+      "value": 100
+    },
+    "air": {
+      "name": "전기 저항 반지",
+      "stat": "air",
+      "value": 60
+    },
+    "power": {
+      "name": "마력 반지",
+      "stat": "power",
+      "value": 5
+    },
+    "ev": {
+      "name": "회피 반지",
+      "stat": "ev",
+      "value": 4
+    }
+  },
+  "spells": {
+    "bolt": {
+      "name": "화염탄",
+      "school": "fire",
+      "level": 1,
+      "mp": 3,
+      "range": 6,
+      "power": 16,
+      "effect": "bolt",
+      "note": "적 1체에 화염 피해"
+    },
+    "blast": {
+      "name": "화염 폭발",
+      "school": "fire",
+      "level": 3,
+      "mp": 6,
+      "range": 5,
+      "power": 18,
+      "effect": "blast",
+      "note": "반경 1 · 아군 피해 · 화염 지대"
+    },
+    "cone": {
+      "name": "서리 부채",
+      "school": "ice",
+      "level": 2,
+      "mp": 4,
+      "range": 4,
+      "power": 13,
+      "effect": "cone",
+      "note": "전방 부채꼴 피해와 둔화 · 물을 얼림"
+    },
+    "cloud": {
+      "name": "독 안개",
+      "school": "hex",
+      "level": 2,
+      "mp": 4,
+      "range": 5,
+      "power": 3,
+      "effect": "cloud",
+      "note": "반경 1 독 지대 · 아군도 중독"
+    },
+    "confuse": {
+      "name": "혼란",
+      "school": "hex",
+      "level": 2,
+      "mp": 4,
+      "range": 5,
+      "power": 0,
+      "effect": "confuse",
+      "note": "의지 판정 후 3턴 무작위 행동"
+    },
+    "blink": {
+      "name": "순간이동",
+      "school": "air",
+      "level": 2,
+      "mp": 4,
+      "range": 4,
+      "power": 0,
+      "effect": "blink",
+      "note": "시야 내 안전한 무작위 빈칸 · 선택 착지 불가"
+    },
+    "passwall": {
+      "name": "벽 통과",
+      "school": "air",
+      "level": 3,
+      "mp": 5,
+      "range": 3,
+      "power": 0,
+      "effect": "passwall",
+      "note": "얇은 벽 너머 선택한 칸 · 2턴 비용"
+    },
+    "ward": {
+      "name": "서리 갑옷",
+      "school": "ice",
+      "level": 2,
+      "mp": 4,
+      "range": 0,
+      "power": 6,
+      "effect": "ward",
+      "note": "4턴 AC +6 · 화염에 일찍 해제"
+    },
+    "hound": {
+      "name": "추적령",
+      "school": "summon",
+      "level": 2,
+      "mp": 5,
+      "range": 4,
+      "power": 7,
+      "effect": "hound",
+      "note": "6턴 이동·근접 소환수"
+    },
+    "turret": {
+      "name": "고정 포탑",
+      "school": "summon",
+      "level": 3,
+      "mp": 6,
+      "range": 4,
+      "power": 9,
+      "effect": "turret",
+      "note": "6턴 고정 원거리 소환수 · 길목 점유"
+    },
+    "ignite": {
+      "name": "독 점화",
+      "school": "fire",
+      "level": 3,
+      "mp": 5,
+      "range": 6,
+      "power": 16,
+      "effect": "ignite",
+      "note": "독 상태/안개를 화염으로 전환 · 아군 위험"
+    },
+    "mend": {
+      "name": "생명 전환",
+      "school": "hex",
+      "level": 2,
+      "mp": 6,
+      "range": 0,
+      "power": 24,
+      "effect": "mend",
+      "note": "HP 회복 · 3턴 느려짐"
+    }
+  },
+  "monsters": [
+    {
+      "id": "rat",
+      "name": "쥐",
+      "sprite": "dcss_rat",
+      "depth": 1,
+      "hp": 9,
+      "power": 3,
+      "speed": 110,
+      "ac": 0,
+      "ev": 3,
+      "ai": "melee",
+      "res": {},
+      "branch": "",
+      "weight": 40,
+      "will": 18
+    },
+    {
+      "id": "goblin",
+      "name": "고블린",
+      "sprite": "goblin",
+      "depth": 1,
+      "hp": 13,
+      "power": 4,
+      "speed": 100,
+      "ac": 1,
+      "ev": 4,
+      "ai": "melee",
+      "res": {},
+      "branch": "",
+      "weight": 35,
+      "will": 18
+    },
+    {
+      "id": "kobold",
+      "name": "코볼트 투석병",
+      "sprite": "kobold",
+      "depth": 1,
+      "hp": 11,
+      "power": 4,
+      "speed": 105,
+      "ac": 0,
+      "ev": 5,
+      "ai": "ranged",
+      "res": {},
+      "branch": "",
+      "weight": 20,
+      "will": 18
+    },
+    {
+      "id": "bat",
+      "name": "박쥐",
+      "sprite": "bat",
+      "depth": 1,
+      "hp": 8,
+      "power": 2,
+      "speed": 60,
+      "ac": 0,
+      "ev": 10,
+      "ai": "skirmish",
+      "res": {},
+      "branch": "",
+      "weight": 25,
+      "will": 18
+    },
+    {
+      "id": "gnoll",
+      "name": "놀 창병",
+      "sprite": "dcss_gnoll",
+      "depth": 2,
+      "hp": 24,
+      "power": 7,
+      "speed": 110,
+      "ac": 2,
+      "ev": 3,
+      "ai": "reach",
+      "res": {},
+      "branch": "",
+      "weight": 25,
+      "will": 26
+    },
+    {
+      "id": "orc",
+      "name": "오크 전사",
+      "sprite": "orc",
+      "depth": 2,
+      "hp": 27,
+      "power": 8,
+      "speed": 120,
+      "ac": 4,
+      "ev": 2,
+      "ai": "melee",
+      "res": {},
+      "branch": "",
+      "weight": 30,
+      "will": 26
+    },
+    {
+      "id": "wolf",
+      "name": "늑대",
+      "sprite": "wolf",
+      "depth": 2,
+      "hp": 19,
+      "power": 6,
+      "speed": 80,
+      "ac": 1,
+      "ev": 5,
+      "ai": "pack",
+      "res": {},
+      "branch": "",
+      "weight": 25,
+      "will": 26
+    },
+    {
+      "id": "boar",
+      "name": "멧돼지",
+      "sprite": "boar",
+      "depth": 2,
+      "hp": 28,
+      "power": 9,
+      "speed": 125,
+      "ac": 3,
+      "ev": 2,
+      "ai": "charge",
+      "res": {},
+      "branch": "",
+      "weight": 20,
+      "will": 26
+    },
+    {
+      "id": "beetle",
+      "name": "갑각 딱정벌레",
+      "sprite": "beetle",
+      "depth": 2,
+      "hp": 26,
+      "power": 6,
+      "speed": 135,
+      "ac": 7,
+      "ev": 0,
+      "ai": "melee",
+      "res": {},
+      "branch": "",
+      "weight": 22,
+      "will": 26
+    },
+    {
+      "id": "viper",
+      "name": "독사",
+      "sprite": "dcss_frilled_lizard",
+      "depth": 2,
+      "hp": 15,
+      "power": 4,
+      "speed": 85,
+      "ac": 0,
+      "ev": 7,
+      "ai": "poison",
+      "res": {
+        "poison": 100
+      },
+      "branch": "water",
+      "weight": 24,
+      "will": 26
+    },
+    {
+      "id": "slime",
+      "name": "산성 슬라임",
+      "sprite": "slime",
+      "depth": 3,
+      "hp": 30,
+      "power": 6,
+      "speed": 140,
+      "ac": 1,
+      "ev": 0,
+      "ai": "acid",
+      "res": {
+        "poison": 100
+      },
+      "branch": "water",
+      "weight": 22,
+      "will": 34
+    },
+    {
+      "id": "fire_lizard",
+      "name": "화염 도마뱀",
+      "sprite": "fire_lizard",
+      "depth": 3,
+      "hp": 24,
+      "power": 6,
+      "speed": 110,
+      "ac": 2,
+      "ev": 4,
+      "ai": "caster",
+      "res": {
+        "fire": 75
+      },
+      "branch": "fire",
+      "weight": 23,
+      "will": 34
+    },
+    {
+      "id": "frost_spider",
+      "name": "서리 거미",
+      "sprite": "frost_spider",
+      "depth": 3,
+      "hp": 22,
+      "power": 5,
+      "speed": 105,
+      "ac": 1,
+      "ev": 6,
+      "ai": "slow",
+      "res": {
+        "ice": 75
+      },
+      "branch": "water",
+      "weight": 24,
+      "will": 34
+    },
+    {
+      "id": "electric_eel",
+      "name": "전기 뱀장어",
+      "sprite": "electric_eel",
+      "depth": 3,
+      "hp": 23,
+      "power": 8,
+      "speed": 120,
+      "ac": 1,
+      "ev": 5,
+      "ai": "electric",
+      "res": {
+        "air": 100
+      },
+      "branch": "water",
+      "weight": 22,
+      "will": 34
+    },
+    {
+      "id": "water_slime",
+      "name": "물 슬라임",
+      "sprite": "water_slime",
+      "depth": 3,
+      "hp": 30,
+      "power": 6,
+      "speed": 140,
+      "ac": 2,
+      "ev": 0,
+      "ai": "water",
+      "res": {
+        "poison": 100
+      },
+      "branch": "water",
+      "weight": 18,
+      "will": 34
+    },
+    {
+      "id": "troll",
+      "name": "재생 트롤",
+      "sprite": "troll",
+      "depth": 4,
+      "hp": 52,
+      "power": 11,
+      "speed": 125,
+      "ac": 3,
+      "ev": 3,
+      "ai": "regen",
+      "res": {},
+      "branch": "",
+      "weight": 16,
+      "will": 42
+    },
+    {
+      "id": "golem",
+      "name": "석상 수호자",
+      "sprite": "beetle",
+      "depth": 4,
+      "hp": 56,
+      "power": 13,
+      "speed": 160,
+      "ac": 12,
+      "ev": 0,
+      "ai": "melee",
+      "res": {
+        "poison": 100,
+        "fire": 50
+      },
+      "branch": "fire",
+      "weight": 18,
+      "will": 42
+    },
+    {
+      "id": "shadow",
+      "name": "그림자 추적자",
+      "sprite": "goblin",
+      "depth": 4,
+      "hp": 30,
+      "power": 9,
+      "speed": 85,
+      "ac": 1,
+      "ev": 10,
+      "ai": "blink",
+      "res": {},
+      "branch": "",
+      "weight": 16,
+      "will": 42
+    },
+    {
+      "id": "leech",
+      "name": "흡혈 거머리",
+      "sprite": "slime",
+      "depth": 4,
+      "hp": 35,
+      "power": 9,
+      "speed": 100,
+      "ac": 2,
+      "ev": 4,
+      "ai": "drain",
+      "res": {},
+      "branch": "water",
+      "weight": 18,
+      "will": 42
+    },
+    {
+      "id": "eye",
+      "name": "심층의 눈",
+      "sprite": "water_slime",
+      "depth": 4,
+      "hp": 24,
+      "power": 5,
+      "speed": 110,
+      "ac": 0,
+      "ev": 4,
+      "ai": "hex",
+      "res": {},
+      "branch": "",
+      "weight": 16,
+      "will": 42
+    },
+    {
+      "id": "priest",
+      "name": "오크 사제",
+      "sprite": "orc",
+      "depth": 4,
+      "hp": 32,
+      "power": 8,
+      "speed": 110,
+      "ac": 3,
+      "ev": 4,
+      "ai": "support",
+      "res": {},
+      "branch": "",
+      "weight": 16,
+      "will": 42
+    },
+    {
+      "id": "summoner",
+      "name": "소환술사",
+      "sprite": "kobold",
+      "depth": 5,
+      "hp": 30,
+      "power": 6,
+      "speed": 120,
+      "ac": 2,
+      "ev": 5,
+      "ai": "summoner",
+      "res": {},
+      "branch": "",
+      "weight": 12,
+      "will": 50
+    },
+    {
+      "id": "marsh_warden",
+      "name": "수렁의 파수꾼",
+      "sprite": "water_slime",
+      "depth": 5,
+      "hp": 90,
+      "power": 13,
+      "speed": 115,
+      "ac": 7,
+      "ev": 5,
+      "ai": "electric",
+      "res": {
+        "poison": 100,
+        "air": 60
+      },
+      "branch": "water",
+      "weight": 0,
+      "will": 50
+    },
+    {
+      "id": "forge_warden",
+      "name": "화로의 파수꾼",
+      "sprite": "fire_lizard",
+      "depth": 5,
+      "hp": 96,
+      "power": 14,
+      "speed": 130,
+      "ac": 9,
+      "ev": 3,
+      "ai": "caster",
+      "res": {
+        "fire": 90
+      },
+      "branch": "fire",
+      "weight": 0,
+      "will": 50
+    }
+  ]
+}

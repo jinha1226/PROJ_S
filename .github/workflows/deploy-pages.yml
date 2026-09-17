@@ -109,6 +109,16 @@ jobs:
             fi
           done
 
+      - name: Validate Model B default game
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test in acceptance ui_smoke; do
+            ./godot --headless --path . --script "tests/crawl/${test}.gd" 2>&1 | tee "model-b-${test}.log"
+            if grep -Eq 'SCRIPT ERROR:|^FAIL ' "model-b-${test}.log"; then exit 1; fi
+          done
+
       - name: Inject Pages build ID
         shell: bash
         run: |

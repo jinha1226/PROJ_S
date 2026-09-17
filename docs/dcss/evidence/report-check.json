@@ -1,0 +1,15 @@
+{
+  "sections": 25,
+  "source_anchors": 98,
+  "cited_source_ids": 97,
+  "unknown_references": 0,
+  "local_links": "all exist",
+  "inventory_assertions": "passed",
+  "html": "Pandoc standalone with embedded CSS; Mermaid source retained as code blocks",
+  "not_performed": [
+    "DCSS compile/run",
+    "gameplay balance tests",
+    "mobile device usability test",
+    "browser screenshot review"
+  ]
+}

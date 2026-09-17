@@ -1,0 +1,884 @@
+[
+  {
+    "id": "S01",
+    "path": "crawl-ref/source/dungeon.cc",
+    "line": 247,
+    "symbol": "bool builder(bool",
+    "meaning": "생성 재시도·branch RNG",
+    "sha256": "42a7ae27df3279dc6cfda4bbe28f458c5133006e07fa6c680f4ef6f938720cca",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dungeon.cc#L247"
+  },
+  {
+    "id": "S02",
+    "path": "crawl-ref/source/dungeon.cc",
+    "line": 2868,
+    "symbol": "static void _build_dungeon_level()\n{",
+    "meaning": "생성 파이프라인",
+    "sha256": "42a7ae27df3279dc6cfda4bbe28f458c5133006e07fa6c680f4ef6f938720cca",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dungeon.cc#L2868"
+  },
+  {
+    "id": "S03",
+    "path": "crawl-ref/source/dungeon.cc",
+    "line": 3666,
+    "symbol": "static bool _builder_normal()\n{",
+    "meaning": "primary vault/layout 선택",
+    "sha256": "42a7ae27df3279dc6cfda4bbe28f458c5133006e07fa6c680f4ef6f938720cca",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dungeon.cc#L3666"
+  },
+  {
+    "id": "S04",
+    "path": "crawl-ref/source/branch-data.h",
+    "line": 7,
+    "symbol": "const Branch branches",
+    "meaning": "branch 깊이·입구·규칙",
+    "sha256": "d5f28f7be4c6f39952c1eda3a745976ef3a12bea4da2ca64ed239c61f82a8fff",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/branch-data.h#L7"
+  },
+  {
+    "id": "S05",
+    "path": "crawl-ref/source/branch.cc",
+    "line": 170,
+    "symbol": "vector<branch_type> random_choose_disabled_branches()",
+    "meaning": "분기 교체",
+    "sha256": "89f22a8cb68974402d56e71f18a180ad2a36625aa3d8fcfe12d87da41832f22d",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/branch.cc#L170"
+  },
+  {
+    "id": "S06",
+    "path": "crawl-ref/source/mapdef.h",
+    "line": 1099,
+    "symbol": "class map_def\n",
+    "meaning": "vault 데이터 구조",
+    "sha256": "de50555590bf3419acc119fd99c85ebe245260335ef38c13bbb95113e2331d05",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/mapdef.h#L1099"
+  },
+  {
+    "id": "S07",
+    "path": "crawl-ref/source/dat/des/builder/layout_loops.des",
+    "line": 27,
+    "symbol": "function randomLow",
+    "meaning": "절차적 loop layout",
+    "sha256": "2e38addda80c1cffa8ae6d6ecbabaaa445292eb6d772688049edf89d0a6c565a",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/des/builder/layout_loops.des#L27"
+  },
+  {
+    "id": "S08",
+    "path": "crawl-ref/source/dat/des/builder/layout.des",
+    "line": 28,
+    "symbol": "function spotty_stairs",
+    "meaning": "layout·계단 연결",
+    "sha256": "c41b23c5af048cf0bdec55ce401b2917064cb6c8786d769b49c680a3ac4829f4",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/des/builder/layout.des#L28"
+  },
+  {
+    "id": "S09",
+    "path": "crawl-ref/source/dat/des/arrival/simple.des",
+    "line": 9,
+    "symbol": "NAME:   minmay_arrival_doors",
+    "meaning": "입구 vault 데이터",
+    "sha256": "56c3c142088387878ade4c55e9dcfcc52ff3d64ea43e4d3960eb1bd2774942fe",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/des/arrival/simple.des#L9"
+  },
+  {
+    "id": "S10",
+    "path": "crawl-ref/source/dungeon.cc",
+    "line": 4391,
+    "symbol": "static void _builder_monsters()\n{",
+    "meaning": "D:1 배치 보호",
+    "sha256": "42a7ae27df3279dc6cfda4bbe28f458c5133006e07fa6c680f4ef6f938720cca",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dungeon.cc#L4391"
+  },
+  {
+    "id": "S11",
+    "path": "crawl-ref/source/dungeon.cc",
+    "line": 4486,
+    "symbol": "static void _builder_items()\n{",
+    "meaning": "바닥 아이템 생성",
+    "sha256": "42a7ae27df3279dc6cfda4bbe28f458c5133006e07fa6c680f4ef6f938720cca",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dungeon.cc#L4486"
+  },
+  {
+    "id": "S12",
+    "path": "crawl-ref/source/traps.cc",
+    "line": 745,
+    "symbol": "void roll_trap_effects()",
+    "meaning": "탐험 함정",
+    "sha256": "d6c3280fd8618b57f4fa0aaab4e0c0c7f195a063f3247db59406e63864edc434",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/traps.cc#L745"
+  },
+  {
+    "id": "S13",
+    "path": "crawl-ref/source/traps.cc",
+    "line": 921,
+    "symbol": "dungeon_feature_type random_trap_for_place",
+    "meaning": "branch별 바닥 함정",
+    "sha256": "d6c3280fd8618b57f4fa0aaab4e0c0c7f195a063f3247db59406e63864edc434",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/traps.cc#L921"
+  },
+  {
+    "id": "S14",
+    "path": "crawl-ref/source/stairs.cc",
+    "line": 415,
+    "symbol": "static void _rune_effect",
+    "meaning": "룬·층 이동",
+    "sha256": "4fb361c4d32d6605efde5cb9dfce5acc3faca305d6bfc8f36cfa82e4081e103f",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/stairs.cc#L415"
+  },
+  {
+    "id": "S15",
+    "path": "crawl-ref/source/travel.cc",
+    "line": 599,
+    "symbol": "#define ES_item",
+    "meaning": "자동 탐험 중단 대상",
+    "sha256": "993f5459e1ac164781c08da056c99dd3e13029d50f790a0f4c8263d0a0f714f4",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/travel.cc#L599"
+  },
+  {
+    "id": "S16",
+    "path": "crawl-ref/source/dungeon-feature-type.h",
+    "line": 14,
+    "symbol": "enum dungeon_feature_type",
+    "meaning": "terrain/feature enum",
+    "sha256": "e49b72b8eefc01cdc20aa0bc3b808f7d9597d7cf1337ebf90038d85796127829",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dungeon-feature-type.h#L14"
+  },
+  {
+    "id": "S17",
+    "path": "crawl-ref/source/mon-util.h",
+    "line": 133,
+    "symbol": "struct monsterentry",
+    "meaning": "몬스터 정의 구조",
+    "sha256": "cb11ccb52d25b65b9e3c158c25a4a6ab476e9a7e232c89fce7283c445a244001",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/mon-util.h#L133"
+  },
+  {
+    "id": "S18",
+    "path": "crawl-ref/source/dat/mons/adder.yaml",
+    "line": 1,
+    "symbol": "name:",
+    "meaning": "adder 데이터",
+    "sha256": "6ee4ba334a0d83dceeb246cba4c29852afee466466e84105f3ee637f81a562bd",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/mons/adder.yaml#L1"
+  },
+  {
+    "id": "S19",
+    "path": "crawl-ref/source/dat/mons/hydra.yaml",
+    "line": 1,
+    "symbol": "name:",
+    "meaning": "hydra 데이터",
+    "sha256": "f0ab0e13397b6a088c76a6d907d17dd5e63f2e6bf4bd1eeaa85047b6a089fe3d",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/mons/hydra.yaml#L1"
+  },
+  {
+    "id": "S20",
+    "path": "crawl-ref/source/dat/mons/orc-priest.yaml",
+    "line": 1,
+    "symbol": "name:",
+    "meaning": "orc priest 데이터",
+    "sha256": "dbf566a6719cfb1191c16a3c82d916980c2d8a1f986b54359ae0c2e99e7788e5",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/mons/orc-priest.yaml#L1"
+  },
+  {
+    "id": "S21",
+    "path": "crawl-ref/source/dat/mons/guardian-serpent.yaml",
+    "line": 1,
+    "symbol": "name:",
+    "meaning": "guardian serpent 데이터",
+    "sha256": "ff3aa632d2ea7478ee90d69d1dfc17cdb709d6ed8ccb152e2440a4e8f07ba291",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/mons/guardian-serpent.yaml#L1"
+  },
+  {
+    "id": "S22",
+    "path": "crawl-ref/source/dat/mons/boulder-beetle.yaml",
+    "line": 1,
+    "symbol": "name:",
+    "meaning": "boulder beetle 데이터",
+    "sha256": "a1c67bf45bf6ce25a9f7f248b782833a3e1ef765834c8484e19eee164eeb0c24",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/mons/boulder-beetle.yaml#L1"
+  },
+  {
+    "id": "S23",
+    "path": "crawl-ref/source/dat/mons/slime-creature.yaml",
+    "line": 1,
+    "symbol": "name:",
+    "meaning": "slime creature 데이터",
+    "sha256": "cde7e1d0fbeb2fcdaeb7731f7a8158525857e996c7c04de3e3dcf72b9998d1df",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/mons/slime-creature.yaml#L1"
+  },
+  {
+    "id": "S24",
+    "path": "crawl-ref/source/mon-spell.h",
+    "line": 424,
+    "symbol": "{  MST_ORC_PRIEST,",
+    "meaning": "priest 주문 묶음",
+    "sha256": "c3ea72cbb86ad183ba785e025c9da3e118ad73986ab1696e48ff71e3fe894b3a",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/mon-spell.h#L424"
+  },
+  {
+    "id": "S25",
+    "path": "crawl-ref/source/mon-spell.h",
+    "line": 1526,
+    "symbol": "{  MST_GUARDIAN_SERPENT,",
+    "meaning": "포위 주문 묶음",
+    "sha256": "c3ea72cbb86ad183ba785e025c9da3e118ad73986ab1696e48ff71e3fe894b3a",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/mon-spell.h#L1526"
+  },
+  {
+    "id": "S26",
+    "path": "crawl-ref/source/mon-place.cc",
+    "line": 1860,
+    "symbol": "{ MONS_ORC,",
+    "meaning": "band 생성",
+    "sha256": "9ec8052944ca15b5fc37256e801ce2b4170f7c195877b6951fd3b0e09151b133",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/mon-place.cc#L1860"
+  },
+  {
+    "id": "S27",
+    "path": "crawl-ref/source/mon-act.cc",
+    "line": 1742,
+    "symbol": "static void _monster_add_energy",
+    "meaning": "행동 시간",
+    "sha256": "a91fba451e81945968c47421971f129e336cff98ccd1c07b01c9af0dc0080bea",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/mon-act.cc#L1742"
+  },
+  {
+    "id": "S28",
+    "path": "crawl-ref/source/mon-behv.cc",
+    "line": 1016,
+    "symbol": "void behaviour_event",
+    "meaning": "행동 상태",
+    "sha256": "689b5ecb30255aa278e07c6d86cbb8e9778cf92b41b36d1b913da182e4fe84e9",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/mon-behv.cc#L1016"
+  },
+  {
+    "id": "S29",
+    "path": "crawl-ref/source/mon-pick-data.h",
+    "line": 63,
+    "symbol": "{ // Dungeon",
+    "meaning": "깊이별 population",
+    "sha256": "2f5a06e7b5a7f0cada502d8c7255013a270bf57dcd741ce35ce2072c542e9ad8",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/mon-pick-data.h#L63"
+  },
+  {
+    "id": "S30",
+    "path": "crawl-ref/source/dat/des/builder/uniques.des",
+    "line": 263,
+    "symbol": "NAME:   uniq_sigmund",
+    "meaning": "unique 배치",
+    "sha256": "e90d38dd0c34a470410bd1898de9c004517fc8b81b70ee9a6b77a5a2fa73586b",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/des/builder/uniques.des#L263"
+  },
+  {
+    "id": "S31",
+    "path": "crawl-ref/source/melee-attack.cc",
+    "line": 3196,
+    "symbol": "bool melee_attack::consider_decapitation",
+    "meaning": "히드라 절단·재생",
+    "sha256": "4b34c2f6189d1db2ac888496894f419dee45d4d6a90f64697ccfe1f08e3c92df",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/melee-attack.cc#L3196"
+  },
+  {
+    "id": "S32",
+    "path": "crawl-ref/source/mon-abil.cc",
+    "line": 559,
+    "symbol": "static bool _slime_split_merge(monster* thing)\n{",
+    "meaning": "슬라임 합체",
+    "sha256": "da90a01b3e4676321f0259bb0eca94b24be16014f5139a011ef4b7103b0045bb",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/mon-abil.cc#L559"
+  },
+  {
+    "id": "S33",
+    "path": "crawl-ref/source/item-def.h",
+    "line": 21,
+    "symbol": "struct item_def",
+    "meaning": "아이템 구조",
+    "sha256": "73e8debd4d29d41a2f26b42ed407ee1db26d1686e71c63c975e5a811cefe1f62",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/item-def.h#L21"
+  },
+  {
+    "id": "S34",
+    "path": "crawl-ref/source/item-prop.cc",
+    "line": 312,
+    "symbol": "struct weapon_def",
+    "meaning": "무기·brand 가중치",
+    "sha256": "e745479be09110cfbc08629ec1b11853251eb1ef80823fce00d43ac4d2ffcea8",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/item-prop.cc#L312"
+  },
+  {
+    "id": "S35",
+    "path": "crawl-ref/source/item-prop.cc",
+    "line": 47,
+    "symbol": "struct armour_def",
+    "meaning": "갑옷·ego 데이터",
+    "sha256": "e745479be09110cfbc08629ec1b11853251eb1ef80823fce00d43ac4d2ffcea8",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/item-prop.cc#L47"
+  },
+  {
+    "id": "S36",
+    "path": "crawl-ref/source/makeitem.cc",
+    "line": 2023,
+    "symbol": "int items(",
+    "meaning": "랜덤 아이템 생성",
+    "sha256": "abd53d88316cf0e0c1461fc0dd6718bfe87be049aadc62ff78b16e09c6512beb",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/makeitem.cc#L2023"
+  },
+  {
+    "id": "S37",
+    "path": "crawl-ref/source/artefact.cc",
+    "line": 1486,
+    "symbol": "int artefact_property(",
+    "meaning": "artefact 속성",
+    "sha256": "743c6dd82d32de358e6fc3945c9728530217755398dfb126cf403715d363b300",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/artefact.cc#L1486"
+  },
+  {
+    "id": "S38",
+    "path": "crawl-ref/source/items.cc",
+    "line": 1003,
+    "symbol": "static bool _id_floor_item",
+    "meaning": "장비·wand 자동 식별",
+    "sha256": "d40c48b90e002acfb697ee36e6a4211087100d6f94f9d48e4605877c57615f47",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/items.cc#L1003"
+  },
+  {
+    "id": "S39",
+    "path": "crawl-ref/source/acquire.cc",
+    "line": 1205,
+    "symbol": "int acquirement_create_item(",
+    "meaning": "획득 선택 생성",
+    "sha256": "8dcca0deece470cfbdabbd049f18a569e4e9c0f8ae848419cf83cf549967f58b",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/acquire.cc#L1205"
+  },
+  {
+    "id": "S40",
+    "path": "crawl-ref/source/xp-evoker-data.h",
+    "line": 18,
+    "symbol": "struct evoker_data",
+    "meaning": "XP 재충전 evoker",
+    "sha256": "1d6218edefbb3cbb87b18cba2823a4526b7d82a41f68ed5292ecd5418c26fe31",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/xp-evoker-data.h#L18"
+  },
+  {
+    "id": "S41",
+    "path": "crawl-ref/source/skills.cc",
+    "line": 766,
+    "symbol": "void reset_training()",
+    "meaning": "훈련 분배",
+    "sha256": "05e243a5ab0d4d9abcbebabfdef56a271d83d786e0a9f2458ec7df9c018cf1f3",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/skills.cc#L766"
+  },
+  {
+    "id": "S42",
+    "path": "crawl-ref/source/skills.cc",
+    "line": 2493,
+    "symbol": "bool is_removed_skill",
+    "meaning": "폐기 skill",
+    "sha256": "05e243a5ab0d4d9abcbebabfdef56a271d83d786e0a9f2458ec7df9c018cf1f3",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/skills.cc#L2493"
+  },
+  {
+    "id": "S43",
+    "path": "crawl-ref/source/skills.cc",
+    "line": 2611,
+    "symbol": "float apt_to_factor",
+    "meaning": "적성 비용",
+    "sha256": "05e243a5ab0d4d9abcbebabfdef56a271d83d786e0a9f2458ec7df9c018cf1f3",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/skills.cc#L2611"
+  },
+  {
+    "id": "S44",
+    "path": "crawl-ref/source/skill-type.h",
+    "line": 10,
+    "symbol": "enum skill_type",
+    "meaning": "skill 목록",
+    "sha256": "cfd28b9eb3317983de67625a7b295a0de4fa31b32bf70ec3ab20dfce1c61c5b6",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/skill-type.h#L10"
+  },
+  {
+    "id": "S45",
+    "path": "crawl-ref/source/spl-util.cc",
+    "line": 58,
+    "symbol": "struct spell_desc",
+    "meaning": "주문 구조",
+    "sha256": "c9ce25b23087a6b9792cec41f3b0b6d58e40380ee995f9d0ac035026c9d13b17",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/spl-util.cc#L58"
+  },
+  {
+    "id": "S46",
+    "path": "crawl-ref/source/spl-data.h",
+    "line": 26,
+    "symbol": "static const struct spell_desc spelldata",
+    "meaning": "주문 정의",
+    "sha256": "ebb8711c2b33d52ce9928cc2af9cc1ae1f22a687ee64f43cb2b034d1f9f255a1",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/spl-data.h#L26"
+  },
+  {
+    "id": "S47",
+    "path": "crawl-ref/source/spl-cast.cc",
+    "line": 469,
+    "symbol": "int raw_spell_fail",
+    "meaning": "실패율",
+    "sha256": "69e2e9f5ba938e4e2dab5f7f45028b53d97f4d8ab11b7fac44c00d2ccedb9a27",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/spl-cast.cc#L469"
+  },
+  {
+    "id": "S48",
+    "path": "crawl-ref/source/spl-cast.cc",
+    "line": 564,
+    "symbol": "int calc_spell_power",
+    "meaning": "마법 위력",
+    "sha256": "69e2e9f5ba938e4e2dab5f7f45028b53d97f4d8ab11b7fac44c00d2ccedb9a27",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/spl-cast.cc#L564"
+  },
+  {
+    "id": "S49",
+    "path": "crawl-ref/source/spl-util.cc",
+    "line": 545,
+    "symbol": "int spell_mana",
+    "meaning": "MP 비용",
+    "sha256": "c9ce25b23087a6b9792cec41f3b0b6d58e40380ee995f9d0ac035026c9d13b17",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/spl-util.cc#L545"
+  },
+  {
+    "id": "S50",
+    "path": "crawl-ref/source/spl-book.cc",
+    "line": 223,
+    "symbol": "bool is_player_book_spell",
+    "meaning": "학습 가능한 주문 판별",
+    "sha256": "d9c7ce131a54c0e91e909be4c3f9eb25dbd148d8538f83b9fa9a032b13e46e4e",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/spl-book.cc#L223"
+  },
+  {
+    "id": "S51",
+    "path": "crawl-ref/source/book-data.h",
+    "line": 37,
+    "symbol": "static const vector<spell_type> spellbook_templates",
+    "meaning": "마법서 내용",
+    "sha256": "e44a890ca5972c4eabaa1c191f982f1b4b095dad797b3a25afcdc262b772b8be",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/book-data.h#L37"
+  },
+  {
+    "id": "S52",
+    "path": "crawl-ref/source/fight.cc",
+    "line": 1742,
+    "symbol": "bool weapon_uses_strength",
+    "meaning": "Str/Dex 피해 역할",
+    "sha256": "8a7cf017cabd80e9dcfab473ae828e0e3eeb997b7c6731045892261e6862ea87",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/fight.cc#L1742"
+  },
+  {
+    "id": "S53",
+    "path": "crawl-ref/source/player-act.cc",
+    "line": 242,
+    "symbol": "random_var player::attack_delay_with",
+    "meaning": "공격 시간",
+    "sha256": "ec42460db12a11597b64a0cab76f801b623a86c9e2d21ee3c9ce9480ab69d91a",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/player-act.cc#L242"
+  },
+  {
+    "id": "S54",
+    "path": "crawl-ref/source/player.cc",
+    "line": 2366,
+    "symbol": "static int _player_evasion(",
+    "meaning": "EV 계산",
+    "sha256": "9e5b0723cd9ed2b91ee79108edc0767f84cd8ab8982deb154fe939776ca8229a",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/player.cc#L2366"
+  },
+  {
+    "id": "S55",
+    "path": "crawl-ref/source/player.cc",
+    "line": 6392,
+    "symbol": "int player::adjusted_body_armour_penalty",
+    "meaning": "ER·Str·Armour",
+    "sha256": "9e5b0723cd9ed2b91ee79108edc0767f84cd8ab8982deb154fe939776ca8229a",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/player.cc#L6392"
+  },
+  {
+    "id": "S56",
+    "path": "crawl-ref/source/player.cc",
+    "line": 2406,
+    "symbol": "int player_armour_shield_spell_penalty",
+    "meaning": "갑옷과 마법",
+    "sha256": "9e5b0723cd9ed2b91ee79108edc0767f84cd8ab8982deb154fe939776ca8229a",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/player.cc#L2406"
+  },
+  {
+    "id": "S57",
+    "path": "crawl-ref/source/dat/species/formicid.yaml",
+    "line": 1,
+    "symbol": "enum:",
+    "meaning": "Formicid",
+    "sha256": "5e824f326ef7ced5956374664e4cbd7c8697a19e903892265fa6150eb9a7f8a9",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/species/formicid.yaml#L1"
+  },
+  {
+    "id": "S58",
+    "path": "crawl-ref/source/dat/species/octopode.yaml",
+    "line": 1,
+    "symbol": "enum:",
+    "meaning": "Octopode",
+    "sha256": "435895c80195e9358f644e9f3790971e0c4e5ab22f7a9d7994aa7699e8ab52c2",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/species/octopode.yaml#L1"
+  },
+  {
+    "id": "S59",
+    "path": "crawl-ref/source/dat/species/coglin.yaml",
+    "line": 1,
+    "symbol": "enum:",
+    "meaning": "Coglin",
+    "sha256": "ca5123907a44c7613599a7591b15ce83dc1cd1b30026341d2631013fa533d4d0",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/species/coglin.yaml#L1"
+  },
+  {
+    "id": "S60",
+    "path": "crawl-ref/source/dat/species/djinni.yaml",
+    "line": 1,
+    "symbol": "enum:",
+    "meaning": "Djinni",
+    "sha256": "0433999d34eb7c0dd382e2612a3999e96eb34ef3b2dc40ff15142073af157f2b",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/species/djinni.yaml#L1"
+  },
+  {
+    "id": "S61",
+    "path": "crawl-ref/source/dat/species/gnoll.yaml",
+    "line": 1,
+    "symbol": "enum:",
+    "meaning": "Gnoll",
+    "sha256": "9d89e1f72592134bccf4181c45b7dff208c2995930600d6b83f129621f256fd2",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/species/gnoll.yaml#L1"
+  },
+  {
+    "id": "S62",
+    "path": "crawl-ref/source/dat/species/mountain-dwarf.yaml",
+    "line": 1,
+    "symbol": "enum:",
+    "meaning": "Mountain Dwarf",
+    "sha256": "1486f2189d90215a54d3c367a2cc9a86bf02234a9c3ece55fee0f3f849f0bceb",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/species/mountain-dwarf.yaml#L1"
+  },
+  {
+    "id": "S63",
+    "path": "crawl-ref/source/dat/species/gale-centaur.yaml",
+    "line": 1,
+    "symbol": "enum:",
+    "meaning": "Gale Centaur",
+    "sha256": "cb82f7b9da9e6ea4df861c626816937af59dc7183f6afc399afc584e47430b4a",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/species/gale-centaur.yaml#L1"
+  },
+  {
+    "id": "S64",
+    "path": "crawl-ref/source/dat/species/poltergeist.yaml",
+    "line": 1,
+    "symbol": "enum:",
+    "meaning": "Poltergeist",
+    "sha256": "9b20de77abf08463e13d8020d7671914e08db4db4ac23c4664833d67ee6024b6",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/species/poltergeist.yaml#L1"
+  },
+  {
+    "id": "S65",
+    "path": "crawl-ref/source/god-type.h",
+    "line": 5,
+    "symbol": "enum god_type",
+    "meaning": "신 목록",
+    "sha256": "26d6b003f2c7f0b66d3304bd5fb32683d9169f22a34adfdcbfc2e012818ec85f",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/god-type.h#L5"
+  },
+  {
+    "id": "S66",
+    "path": "crawl-ref/source/religion.cc",
+    "line": 3891,
+    "symbol": "void join_religion",
+    "meaning": "입교",
+    "sha256": "3fb4e2f5f9d64fef42f22a0e1673c5a2490c3323a17c9db4bee1b2e7f8d5e5bd",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/religion.cc#L3891"
+  },
+  {
+    "id": "S67",
+    "path": "crawl-ref/source/religion.cc",
+    "line": 2864,
+    "symbol": "void excommunication",
+    "meaning": "배교",
+    "sha256": "3fb4e2f5f9d64fef42f22a0e1673c5a2490c3323a17c9db4bee1b2e7f8d5e5bd",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/religion.cc#L2864"
+  },
+  {
+    "id": "S68",
+    "path": "crawl-ref/source/god-conduct.cc",
+    "line": 217,
+    "symbol": "// GOD_TROG,",
+    "meaning": "금기",
+    "sha256": "ca65157c887d7186e5efbb3bec28c5d0b2cd62c30117473b8e80f52b2ba91113",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/god-conduct.cc#L217"
+  },
+  {
+    "id": "S69",
+    "path": "crawl-ref/source/god-passive.cc",
+    "line": 81,
+    "symbol": "static const vector<god_passive> god_passives",
+    "meaning": "신별 passive",
+    "sha256": "7ee3ff3dd1856dbb94fd02e0eb3f7c0014ba082737f662777e973d48c67fe6d3",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/god-passive.cc#L81"
+  },
+  {
+    "id": "S70",
+    "path": "crawl-ref/source/god-abil.cc",
+    "line": 2437,
+    "symbol": "bool ashenzari_curse_item",
+    "meaning": "장비 저주",
+    "sha256": "87cd5697a98c717ac916f6d555fd4cf14a36993bb9e50fb02acb020ae139d341",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/god-abil.cc#L2437"
+  },
+  {
+    "id": "S71",
+    "path": "crawl-ref/source/god-abil.cc",
+    "line": 2471,
+    "symbol": "bool ashenzari_uncurse_item",
+    "meaning": "저주 해제 비용",
+    "sha256": "87cd5697a98c717ac916f6d555fd4cf14a36993bb9e50fb02acb020ae139d341",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/god-abil.cc#L2471"
+  },
+  {
+    "id": "S72",
+    "path": "crawl-ref/source/god-wrath.cc",
+    "line": 1740,
+    "symbol": "divine_retribution",
+    "meaning": "신벌",
+    "sha256": "3f314d7fb4b8626baef157de75aeff1f56e09bd75ec38d7256a3866e0032bd67",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/god-wrath.cc#L1740"
+  },
+  {
+    "id": "S73",
+    "path": "crawl-ref/source/religion.cc",
+    "line": 2060,
+    "symbol": "bool do_god_gift",
+    "meaning": "신의 선물",
+    "sha256": "3fb4e2f5f9d64fef42f22a0e1673c5a2490c3323a17c9db4bee1b2e7f8d5e5bd",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/religion.cc#L2060"
+  },
+  {
+    "id": "S74",
+    "path": "crawl-ref/source/defines.h",
+    "line": 113,
+    "symbol": "#define LOS_RADIUS",
+    "meaning": "기본/최대 시야",
+    "sha256": "f4e2fa04b76de821a887b5eff9717c1dcf26b2f8ddd42eae41779731cd6537c1",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/defines.h#L113"
+  },
+  {
+    "id": "S75",
+    "path": "crawl-ref/source/mon-act.cc",
+    "line": 3743,
+    "symbol": "static void _maybe_launch_opportunity_attack",
+    "meaning": "추격 기회공격",
+    "sha256": "a91fba451e81945968c47421971f129e336cff98ccd1c07b01c9af0dc0080bea",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/mon-act.cc#L3743"
+  },
+  {
+    "id": "S76",
+    "path": "crawl-ref/source/dat/clua/autofight.lua",
+    "line": 38,
+    "symbol": "AUTOFIGHT_STOP",
+    "meaning": "기존 자동 공격",
+    "sha256": "eefdc3eb9f65fd60028b00a89978cfc5bf02df37a309470f910605ac6a855897",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/clua/autofight.lua#L38"
+  },
+  {
+    "id": "S77",
+    "path": "crawl-ref/source/zot.cc",
+    "line": 71,
+    "symbol": "bool zot_clock_active",
+    "meaning": "행동 시간 제한",
+    "sha256": "5ac5d946b32ba5168e2a63813f8bc2662340e7f3016717c696838fca4b9fdea0",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/zot.cc#L71"
+  },
+  {
+    "id": "S78",
+    "path": "crawl-ref/source/transformation.h",
+    "line": 5,
+    "symbol": "enum class transformation",
+    "meaning": "변신 상태",
+    "sha256": "d73c0481cf7ea96f5c953fb6685746c7c175a6bb2b150a541f3c0d4b4b0bac6d",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/transformation.h#L5"
+  },
+  {
+    "id": "S79",
+    "path": "crawl-ref/source/dat/species/human.yaml",
+    "line": 1,
+    "symbol": "enum:",
+    "meaning": "Human 탐험 재생",
+    "sha256": "b8751d82b5cae0812e9952b9c41719f29bf388b98407a9f5edc7d0cb4833a219",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/species/human.yaml#L1"
+  },
+  {
+    "id": "S80",
+    "path": "crawl-ref/source/dat/species/spriggan.yaml",
+    "line": 1,
+    "symbol": "enum:",
+    "meaning": "Spriggan",
+    "sha256": "b0744b25c2294be85d494a195ed2c5202fdafcdc5db30689401580c9e6739c01",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/species/spriggan.yaml#L1"
+  },
+  {
+    "id": "S81",
+    "path": "crawl-ref/source/dat/species/revenant.yaml",
+    "line": 1,
+    "symbol": "enum:",
+    "meaning": "Revenant",
+    "sha256": "6061ac6e115f6c4a903a38273e3253f68017e3ea5e2c78c52f1c34ca6240380d",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/species/revenant.yaml#L1"
+  },
+  {
+    "id": "S82",
+    "path": "crawl-ref/source/dat/species/draconian-base.yaml",
+    "line": 1,
+    "symbol": "enum:",
+    "meaning": "Draconian 기본형",
+    "sha256": "789c1932d060157e40dc88dd77a0964b0c75d9de510bc6b435e2b5a961233590",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/species/draconian-base.yaml#L1"
+  },
+  {
+    "id": "S83",
+    "path": "crawl-ref/source/dat/mons/death-yak.yaml",
+    "line": 1,
+    "symbol": "name:",
+    "meaning": "death yak",
+    "sha256": "ae2d55372e0e6c6789a5fe8e3041cec6d7aa6c75ed78a75d2715c5dd9aaa388a",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/mons/death-yak.yaml#L1"
+  },
+  {
+    "id": "S84",
+    "path": "crawl-ref/source/dat/mons/sigmund.yaml",
+    "line": 1,
+    "symbol": "name:",
+    "meaning": "Sigmund",
+    "sha256": "68d0a0d4acaa332aff657ab682cd4fa1fbc31227db0cef64a57d2564563f1a75",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/mons/sigmund.yaml#L1"
+  },
+  {
+    "id": "S85",
+    "path": "crawl-ref/source/item-prop.cc",
+    "line": 2448,
+    "symbol": "static map<potion_type, item_rarity_type>",
+    "meaning": "소모품 희귀도",
+    "sha256": "e745479be09110cfbc08629ec1b11853251eb1ef80823fce00d43ac4d2ffcea8",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/item-prop.cc#L2448"
+  },
+  {
+    "id": "S86",
+    "path": "crawl-ref/source/spl-util.cc",
+    "line": 2232,
+    "symbol": "bool spell_removed",
+    "meaning": "제거된 주문 필터",
+    "sha256": "c9ce25b23087a6b9792cec41f3b0b6d58e40380ee995f9d0ac035026c9d13b17",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/spl-util.cc#L2232"
+  },
+  {
+    "id": "S87",
+    "path": "crawl-ref/source/mon-cast.cc",
+    "line": 5282,
+    "symbol": "bool handle_mon_spell",
+    "meaning": "몬스터 주문 실행",
+    "sha256": "ed90c5c51ac978e0c3b759117979e974877ee1b3f6a3942b1b663443dd3e552b",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/mon-cast.cc#L5282"
+  },
+  {
+    "id": "S88",
+    "path": "crawl-ref/source/shout.cc",
+    "line": 385,
+    "symbol": "void noisy",
+    "meaning": "소음 전달",
+    "sha256": "ab7be52fbce355b32874242d3da149959e8f891bc28cb3a107301043b9f99171",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/shout.cc#L385"
+  },
+  {
+    "id": "S89",
+    "path": "crawl-ref/source/quiver.cc",
+    "line": 68,
+    "symbol": "namespace quiver",
+    "meaning": "기존 준비 행동",
+    "sha256": "e99e2a2d636301489528ad762e49f579c4a37f95ba2fa28736c7009c98882e4f",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/quiver.cc#L68"
+  },
+  {
+    "id": "S90",
+    "path": "crawl-ref/source/dat/species/felid.yaml",
+    "line": 1,
+    "symbol": "enum:",
+    "meaning": "Felid",
+    "sha256": "c58a719ba991dee38c4b34010849b859fe7f186ea74c0d898c9dcfe9e9cf0455",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/dat/species/felid.yaml#L1"
+  },
+  {
+    "id": "S91",
+    "path": "crawl-ref/source/spl-damage.cc",
+    "line": 2248,
+    "symbol": "static int _ignite_poison_clouds",
+    "meaning": "독성 cloud→불",
+    "sha256": "943841d060837997b04829155567766c5b0d153531731c7f380ecb1324e7b2ca",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/spl-damage.cc#L2248"
+  },
+  {
+    "id": "S92",
+    "path": "crawl-ref/source/spl-damage.cc",
+    "line": 5244,
+    "symbol": "spret cast_grave_claw",
+    "meaning": "Grave Claw 충전 소비",
+    "sha256": "943841d060837997b04829155567766c5b0d153531731c7f380ecb1324e7b2ca",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/spl-damage.cc#L5244"
+  },
+  {
+    "id": "S93",
+    "path": "crawl-ref/source/spl-other.cc",
+    "line": 377,
+    "symbol": "spret cast_passwall",
+    "meaning": "벽 통과 지연과 방어",
+    "sha256": "2b6dac6c1d03b2d4ca67a1a417e69c510fad5588799ea5c18780d5e4b08b5936",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/spl-other.cc#L377"
+  },
+  {
+    "id": "S94",
+    "path": "crawl-ref/source/spl-transloc.cc",
+    "line": 939,
+    "symbol": "spret cast_blink",
+    "meaning": "무작위 blink와 cooldown",
+    "sha256": "4efe1dba1de1473f7a2daf5bcd9b6ef0c2a116154bb59fddc175d58af59b9898",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/spl-transloc.cc#L939"
+  },
+  {
+    "id": "S95",
+    "path": "crawl-ref/source/movement.cc",
+    "line": 205,
+    "symbol": "void remove_ice_movement()",
+    "meaning": "이동과 위치 방어 마법",
+    "sha256": "2c83ab8f084c1db651d5981a38a0b7113effe13c75847252255b9042383bee68",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/movement.cc#L205"
+  },
+  {
+    "id": "S96",
+    "path": "crawl-ref/source/mon-place.cc",
+    "line": 203,
+    "symbol": "static int _ood_fuzzspan",
+    "meaning": "D:1 OOD 제한",
+    "sha256": "9ec8052944ca15b5fc37256e801ce2b4170f7c195877b6951fd3b0e09151b133",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/mon-place.cc#L203"
+  },
+  {
+    "id": "S97",
+    "path": "crawl-ref/source/mon-death.cc",
+    "line": 3601,
+    "symbol": "if (drop_items)\n",
+    "meaning": "몬스터 사망 시 물품 처리",
+    "sha256": "a4281db0964a8a80033cd389a0620c97682bd4cfdec9dfb9f5a9eabba8054cc4",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/mon-death.cc#L3601"
+  },
+  {
+    "id": "S98",
+    "path": "crawl-ref/source/acquire.cc",
+    "line": 1752,
+    "symbol": "bool acquirement_menu()",
+    "meaning": "acquirement 선택",
+    "sha256": "8dcca0deece470cfbdabbd049f18a569e4e9c0f8ae848419cf83cf549967f58b",
+    "url": "https://github.com/crawl/crawl/blob/2bd8e06e6e5614a6f4917c1c24e04a8922319476/crawl-ref/source/acquire.cc#L1752"
+  }
+]

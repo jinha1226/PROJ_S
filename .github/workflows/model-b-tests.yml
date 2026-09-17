@@ -1,0 +1,129 @@
+name: Model B tests and playable builds
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'game/**'
+      - 'sim/**'
+      - 'playtest/**'
+      - 'data/**'
+      - 'assets/**'
+      - 'tests/crawl/**'
+      - 'tests/turn_engine_acceptance.gd'
+      - 'project.godot'
+      - 'export_presets.cfg'
+      - '.github/workflows/model-b-tests.yml'
+  push:
+    paths:
+      - 'game/**'
+      - 'sim/**'
+      - 'playtest/**'
+      - 'data/**'
+      - 'assets/**'
+      - 'tests/crawl/**'
+      - 'tests/turn_engine_acceptance.gd'
+      - 'project.godot'
+      - 'export_presets.cfg'
+      - '.github/workflows/model-b-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-b-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.6.2
+  XDG_CONFIG_HOME: /tmp/model-b-config
+  XDG_DATA_HOME: /tmp/model-b-data
+  XDG_CACHE_HOME: /tmp/model-b-cache
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download pinned Godot and export templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-logs
+          curl -fL --retry 3 -o /tmp/godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d /tmp/model-b-engine
+          mv "/tmp/model-b-engine/Godot_v${GODOT_VERSION}-stable_linux.x86_64" /tmp/model-b-godot
+          chmod +x /tmp/model-b-godot
+          curl -fL --retry 3 -o /tmp/templates.tpz "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q /tmp/templates.tpz -d /tmp/model-b-templates
+          mkdir -p "${XDG_DATA_HOME}/godot/export_templates/${GODOT_VERSION}.stable"
+          mv /tmp/model-b-templates/templates/* "${XDG_DATA_HOME}/godot/export_templates/${GODOT_VERSION}.stable/"
+      - name: Import and compile
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/model-b-godot --headless --path . --editor --import --quit 2>&1 | tee ci-logs/import.log
+          ! grep -Eq 'SCRIPT ERROR:|ERROR: Failed to load script' ci-logs/import.log
+      - name: Simulation, save, UI, and shared kernel tests
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test in crawl/acceptance crawl/ui_smoke turn_engine_acceptance; do
+            log="ci-logs/${test//\//-}.log"
+            timeout 90 /tmp/model-b-godot --headless --path . --script "tests/${test}.gd" 2>&1 | tee "${log}"
+            ! grep -Eq 'SCRIPT ERROR:|^FAIL ' "${log}"
+          done
+          grep -Eq 'MODEL_B_ACCEPTANCE checks=[0-9]+ failures=0' ci-logs/crawl-acceptance.log
+          grep -Fq 'MODEL_B_UI failures=0' ci-logs/crawl-ui_smoke.log
+          grep -Fq 'TURN ENGINE: PASS' ci-logs/turn_engine_acceptance.log
+      - name: Export web and Windows builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/model-b build/model-b-windows
+          /tmp/model-b-godot --headless --path . --export-release Web build/model-b/index.html 2>&1 | tee ci-logs/export-web.log
+          ! grep -Eq 'SCRIPT ERROR:|ERROR:.*[Ee]xport|ERROR: Failed to load' ci-logs/export-web.log
+          /tmp/model-b-godot --headless --path . --export-release 'Model B Windows' build/model-b-windows/ModelB.exe 2>&1 | tee ci-logs/export-windows.log
+          ! grep -Eq 'SCRIPT ERROR:|ERROR:.*[Ee]xport|ERROR: Failed to load' ci-logs/export-windows.log
+          test -s build/model-b/index.wasm
+          test -s build/model-b/index.pck
+          test -s build/model-b-windows/ModelB.exe
+          test -s build/model-b-windows/ModelB.pck
+          for target in build/model-b build/model-b-windows; do
+            cp assets/fonts/NanumSquareR.LICENSE.txt assets/fonts/Galmuri-OFL.txt "${target}/"
+          done
+          cp docs/dcss/PLAYTEST.md build/model-b-windows/PLAYTEST.md
+      - name: Boot exported packs without checkout fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          pack_check_dir="$(mktemp -d)"
+          for pack in model-b/index model-b-windows/ModelB; do
+            log="${GITHUB_WORKSPACE}/ci-logs/pack-${pack//\//-}.log"
+            (cd "${pack_check_dir}" && /tmp/model-b-godot --headless --main-pack "${GITHUB_WORKSPACE}/build/${pack}.pck" --quit-after 15) 2>&1 | tee "${log}"
+            ! grep -Eq 'SCRIPT ERROR:|ERROR: Failed to load|ERROR: Resource file not found' "${log}"
+          done
+      - name: Publish test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-b-test-logs-${{ github.sha }}
+          path: ci-logs/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Publish playable web build (no deployment)
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-b-web-${{ github.sha }}
+          path: build/model-b/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish playable Windows build (no deployment)
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-b-windows-${{ github.sha }}
+          path: build/model-b-windows/
+          if-no-files-found: error
+          retention-days: 14

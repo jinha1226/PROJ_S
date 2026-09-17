@@ -1,3 +1,16 @@
+# Model B 플레이테스트
+
+기본 실행은 DCSS식 모바일 로그라이크 Model B입니다. `project.godot`를 Godot 4.6.2에서 열고 F6가 아닌 **F5**로 실행합니다.
+
+- Windows 빌드: `build/model-b-windows/ModelB.exe` (옆의 `.pck`와 함께 유지).
+- 웹 빌드: `build/model-b/index.html`을 HTTP 서버로 제공합니다. 파일을 직접 더블클릭하지 않습니다.
+- 목표: D3에서 습지/화로 분기 → 각 룬 → 심장부 오브 → D1 출구.
+- [플레이테스트 안내](docs/dcss/PLAYTEST.md), [구현/검증 결과](docs/dcss/RESULTS.md).
+- 신체 손상, 성격/동료 관계, 몬스터 흡수 이능은 이번 Model B에 **연결하지 않았습니다**. 기존 모듈은 보존했습니다.
+- 이전 게임은 `--legacy-demo` 또는 웹 `?demo=legacy`, 이전 rebuilt 실험은 `--rebuilt-demo` / `?demo=rebuilt`로 엽니다. 저장 파일은 별개입니다.
+
+---
+
 # Living World Simulator
 
 현재 플레이 가능한 새 원정은 [탐험·전투 통합 턴](docs/FIELD_TURN_COMBAT.ko.md)을
