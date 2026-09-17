@@ -1,4 +1,4 @@
-name: Test and deploy Web
+name: Test and deploy Legacy Web
 
 on:
   push:
@@ -43,9 +43,9 @@ jobs:
       - name: Import project and validate scripts
         run: ./godot --headless --path . --editor --quit
 
-      # The deployed default is Model B. Legacy personality/body/absorption
-      # acceptance suites remain intact in legacy-regression.yml.
-      - name: Validate shared engine and art used by Model B
+      # Pages deploys the legacy game with use-based protagonist skills.
+      # The broader legacy regression suite remains independently runnable.
+      - name: Validate shared engine and legacy art
         timeout-minutes: 8
         shell: bash
         run: |
@@ -55,17 +55,18 @@ jobs:
             if grep -Eq 'SCRIPT ERROR:|^FAIL ' "${test}.log"; then exit 1; fi
           done
 
-      - name: Validate Model B default game
-        timeout-minutes: 3
+      - name: Validate legacy default, skills, and save replay
+        timeout-minutes: 12
         shell: bash
         run: |
           set -euo pipefail
-          for test in acceptance ui_smoke; do
-            ./godot --headless --path . --script "tests/crawl/${test}.gd" 2>&1 | tee "model-b-${test}.log"
-            if grep -Eq 'SCRIPT ERROR:|^FAIL ' "model-b-${test}.log"; then exit 1; fi
+          for test in legacy_default_boot_smoke legacy_usage_skills_acceptance compact_campaign_save_smoke; do
+            ./godot --headless --path . --script "tests/${test}.gd" 2>&1 | tee "${test}.log"
+            if grep -Eq 'SCRIPT ERROR:|^FAIL ' "${test}.log"; then exit 1; fi
           done
-          grep -Eq 'MODEL_B_ACCEPTANCE checks=[0-9]+ failures=0' model-b-acceptance.log
-          grep -Fq 'MODEL_B_UI failures=0' model-b-ui_smoke.log
+          grep -Fq 'LEGACY_DEFAULT_BOOT: PASS' legacy_default_boot_smoke.log
+          grep -Eq 'LEGACY USAGE SKILLS: [0-9]+ checks, 0 failures' legacy_usage_skills_acceptance.log
+          grep -Fq 'Compact campaign save: 0 failures' compact_campaign_save_smoke.log
 
       - name: Inject Pages build ID
         shell: bash
@@ -110,16 +111,16 @@ jobs:
             exit 1
           fi
 
-      - name: Validate Model B in the exported pack
-        timeout-minutes: 3
+      - name: Validate legacy default in the exported pack
+        timeout-minutes: 5
         shell: bash
         run: |
           set -euo pipefail
           pack_check_dir="$(mktemp -d)"
           cd "$pack_check_dir"
-          "$GITHUB_WORKSPACE/godot" --headless --main-pack "$GITHUB_WORKSPACE/build/web/index.pck" --script "$GITHUB_WORKSPACE/tests/crawl/acceptance.gd" 2>&1 | tee "$GITHUB_WORKSPACE/model-b-pack.log"
-          ! grep -Eq 'SCRIPT ERROR:|^FAIL ' "$GITHUB_WORKSPACE/model-b-pack.log"
-          grep -Eq 'MODEL_B_ACCEPTANCE checks=[0-9]+ failures=0' "$GITHUB_WORKSPACE/model-b-pack.log"
+          "$GITHUB_WORKSPACE/godot" --headless --main-pack "$GITHUB_WORKSPACE/build/web/index.pck" --script "$GITHUB_WORKSPACE/tests/legacy_default_boot_smoke.gd" 2>&1 | tee "$GITHUB_WORKSPACE/legacy-pack.log"
+          ! grep -Eq 'SCRIPT ERROR:|^FAIL ' "$GITHUB_WORKSPACE/legacy-pack.log"
+          grep -Fq 'LEGACY_DEFAULT_BOOT: PASS' "$GITHUB_WORKSPACE/legacy-pack.log"
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
