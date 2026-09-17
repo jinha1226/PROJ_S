@@ -1,0 +1,115 @@
+name: Legacy regression tests (not a deployment gate)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: legacy-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.6.2
+  XDG_CONFIG_HOME: /tmp/godot-config
+  XDG_DATA_HOME: /tmp/godot-data
+  XDG_CACHE_HOME: /tmp/godot-cache
+
+jobs:
+  build:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Download Godot and Web templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 --output godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot
+          chmod +x godot
+          curl -L --fail --retry 3 --output templates.tpz "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q templates.tpz
+          mkdir -p "${XDG_DATA_HOME}/godot/export_templates/${GODOT_VERSION}.stable"
+          mv templates/* "${XDG_DATA_HOME}/godot/export_templates/${GODOT_VERSION}.stable/"
+
+      - name: Import project and validate scripts
+        run: ./godot --headless --path . --editor --quit
+
+      - name: Validate settlement workers and material reservations
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./godot --headless --path . --script tests/settlement_work_unit.gd 2>&1 | tee settlement-test.log
+          if grep -Eq 'SCRIPT ERROR:|^FAIL ' settlement-test.log; then
+            exit 1
+          fi
+
+      - name: Validate new expedition entry
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./godot --headless --path . --script tests/species_picker_start_regression.gd 2>&1 | tee expedition-start-test.log
+          if grep -Eq 'SCRIPT ERROR:|^FAIL ' expedition-start-test.log; then
+            exit 1
+          fi
+
+      - name: Validate fantasy pawn assets and UI integration
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test in fantasy_pawn_assets_acceptance fantasy_item_expansion_acceptance equipment_materials_acceptance; do
+            ./godot --headless --path . --script "tests/${test}.gd" 2>&1 | tee "${test}.log"
+            if grep -Eq 'SCRIPT ERROR:|^FAIL ' "${test}.log"; then
+              exit 1
+            fi
+          done
+
+      - name: Validate procedural dungeon and save replay
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./godot --headless --path . --script tests/procedural_dungeon_acceptance.gd 2>&1 | tee procedural-dungeon-test.log
+          if grep -Eq 'SCRIPT ERROR:|^FAIL ' procedural-dungeon-test.log; then
+            exit 1
+          fi
+
+      - name: Validate field interactions and mastery
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test in field_feedback_acceptance mastery_live_acceptance corpse_parts_growth_acceptance rest_parts_water_acceptance tile_skills_materials_acceptance; do
+            ./godot --headless --path . --script "tests/${test}.gd" 2>&1 | tee "${test}.log"
+            if grep -Eq 'SCRIPT ERROR:|^FAIL ' "${test}.log"; then
+              exit 1
+            fi
+          done
+
+      - name: Validate elemental parts and gameplay replay
+        timeout-minutes: 7
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test in monster_ability_drops_acceptance elemental_parts_acceptance elemental_drop_replay_acceptance; do
+            ./godot --headless --path . --script "tests/${test}.gd" 2>&1 | tee "${test}.log"
+            if grep -Eq 'SCRIPT ERROR:|^FAIL ' "${test}.log"; then
+              exit 1
+            fi
+          done
+
+      - name: Preserve legacy regression logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-regression-logs-${{ github.sha }}
+          path: '*.log'
+          retention-days: 14
