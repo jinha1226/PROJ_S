@@ -5,10 +5,10 @@ func _init()->void:
 	world=UsageWorld.new()
 
 func growth()->void:
-	panel("숙련 · 사용하면 성장")
-	label(content,"전투 XP는 레벨만 올립니다. 무기·마법·방어·회피·은신·도구 숙련은 실제 사용으로 오릅니다.\n현재 XP %d · 공격 지연 %d · 주문 부담 %d"%[world.xp,world.stats(world.hero()).delay,world.stats(world.hero()).enc])
+	panel("숙련 · 전투에서 자연 성장")
+	label(content,"숙련은 10종입니다. 적을 처치하면 그 적의 XP가 전투 중 사용한 무기·마법의 사용 횟수 비율대로 나뉩니다.\n현재 XP %d · 공격 지연 %d · 주문 부담 %d"%[world.xp,world.stats(world.hero()).delay,world.stats(world.hero()).enc])
 	for axis in UsageWorld.USAGE_SKILLS:
-		label(content,"%s  %d  · 숙련도 %d"%[UsageWorld.USAGE_SKILLS[axis],world.skill_rank(axis),int(world.skills.get(axis,0))])
+		label(content,"%s  %d  · 숙련 XP %d"%[UsageWorld.USAGE_SKILLS[axis],world.skill_rank(axis),int(world.skills.get(axis,0))])
 	label(content,"배운 주문 · 준비 최대 6개 · 안전한 곳에서 변경")
 	for key in world.spells:
 		var id:String=key;var sp:Dictionary=World.DATA.spells[id]
