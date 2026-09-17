@@ -3192,10 +3192,12 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 	# Changing cycle scope first detaches old-expedition monsters from collision.
 	# The party remains the same entities, inventories, bodies and social state.
 	_map_layout=target_layout
-	if not state.nine_room_floor.is_empty() and _last_expedition_abandoned():
+	if not state.nine_room_floor.is_empty() and entry_mode!="FLOOR_TRANSITION" and _last_expedition_abandoned():
 		# An abandoned expedition forfeits floor progress: fresh visited/discovered
 		# rooms on the same topology. Counters and effect clocks stay monotonic
-		# because earlier room events are still validated against them.
+		# because earlier room events are still validated against them. Only a
+		# departure from town resets; a floor transition inside the following
+		# expedition must keep that expedition's progress.
 		var s:Dictionary=state.nine_room_floor
 		s.active_room_id=4;s.visited=[];s.discovered_portals=[];s.pending_exit={};s.pending_pursuit=[]
 	if not state.nine_room_floor.is_empty():
