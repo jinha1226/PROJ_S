@@ -4,16 +4,27 @@ const RoundRules=preload("res://sim/round_combat_rules.gd")
 const RoundState=preload("res://sim/round_combat_state.gd")
 const Action=preload("res://sim/party_action_command.gd")
 const Field=preload("res://sim/systems/field_turn_system.gd")
+const Stage=preload("res://sim/stage_counterplay.gd")
 
 static func begin_exit(sim,id:int,key:String)->Dictionary:
 	var w=sim.world;var s:Dictionary=w.party_encounter.nine_room_floor
 	var assessment:=Rules.assess(w,id,key,true)
 	if not assessment.accepted:return assessment
 	if not s.pending_exit.is_empty():return Rules.rejected("room_exit_pending")
+	# Leaving an uncleared combat room is a retreat: forbidden in some authored
+	# rooms, and always a party-wide stress hit committed here so the morale row
+	# shares the request's step index (the round boundary never sees this event).
+	var combat:bool=retreating(w)
+	if combat and not Stage.retreat_allowed(w):return Rules.rejected("room_retreat_forbidden")
 	s.request_serial=int(s.request_serial)+1
 	s.pending_exit={"request_id":str(s.request_serial),"actor_id":str(id),"from_room":int(s.active_room_id),"portal_id":key,"stage":"REQUESTED","revision":int(s.revision)}
-	w.emit_event("room.exit_requested",id,-1,assessment.exit_cell,0,-1,{"schema_version":1,"request_id":str(s.request_serial),"portal_id":key,"revision":int(s.revision)})
+	var event=w.emit_event("room.exit_requested",id,-1,assessment.exit_cell,0,-1,{"schema_version":1,"request_id":str(s.request_serial),"portal_id":key,"revision":int(s.revision),"combat":combat})
+	if event==null:s.pending_exit.clear();return Rules.rejected("room_exit_event_failed")
+	if combat and not preload("res://sim/systems/party_morale_system.gd").commit_batch(w,[event],false):return Rules.rejected("room_retreat_stress_failed")
 	return assessment
+
+static func retreating(w)->bool:
+	return RoundRules.active(w) and not Stage.cleared(w)
 
 static func request(sim,id:int,key:String,revision:int)->Dictionary:
 	var w=sim.world
@@ -25,6 +36,7 @@ static func request(sim,id:int,key:String,revision:int)->Dictionary:
 	var start_event:int=w.events.size()
 	var rollback:Dictionary=w.rollback_memento(false)
 	if RoundRules.active(w):
+		if retreating(w) and not Stage.retreat_allowed(w):return Rules.rejected("room_retreat_forbidden")
 		var r:Dictionary=w.party_encounter.round_combat
 		if RoundRules.individual(w) and id!=RoundRules.current_actor(w):return Rules.rejected("round_not_current_actor")
 		if r.phase=="DEPLOYMENT":return Rules.rejected("deployment_confirmation_required")
@@ -32,7 +44,7 @@ static func request(sim,id:int,key:String,revision:int)->Dictionary:
 		# The retreat request owns one existing round boundary; published enemy
 		# actions remain frozen. Already completed slots are never replayed.
 		var begun:=begin_exit(sim,id,key)
-		if not begun.accepted:return begun
+		if not begun.accepted:sim.restore_rollback_memento(rollback);return begun
 		var result:Dictionary=load("res://sim/systems/round_combat_system.gd").confirm(sim,int(r.round_id),int(r.plan_revision),r.phase=="INTERRUPTED")
 		if not result.accepted:sim.restore_rollback_memento(rollback);return result
 		return result.merged({"transitioned":int(sim.world.party_encounter.nine_room_floor.active_room_id)!=int(assessed.source_room),"reason":exit_reason(sim.world,start_event)},true)

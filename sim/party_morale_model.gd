@@ -19,6 +19,8 @@ const MAX_STRESS := 1000
 const BAND_TENSE := 300
 const BAND_ANXIOUS := 600
 const BAND_LABELS := {"CALM":"안정","TENSE":"긴장","ANXIOUS":"불안","PANIC":"공황"}
+## Stage campaign stress costs (retreat attempt in combat, abandoned expedition).
+static var STRESS:Dictionary=preload("res://sim/json_content_loader.gd").load_document("res://data/content/stage_stress.json")
 
 
 static func stress_band(stress: int, mental_mode: String = "NORMAL") -> String:
@@ -103,6 +105,12 @@ static func evaluate(world, event_rows: Array, previous_modes: Dictionary = {}) 
 			direct[actor_id] = int(direct[actor_id]) + stress_delta
 			if stress_delta > 0:
 				triggers[actor_id].append("DARKNESS")
+		elif event_type=="room.exit_requested" and bool((event.get("data",{}) if event is Dictionary else event.data).get("combat",false)):
+			for member_id in members:
+				direct[member_id]=int(direct[member_id])+int(STRESS.retreat_attempt);triggers[member_id].append("RETREAT")
+		elif event_type=="expedition.abandoned":
+			for member_id in members:
+				direct[member_id]=int(direct[member_id])+int(STRESS.abandon);triggers[member_id].append("ABANDON")
 	var rows: Array[Dictionary] = []
 	for member_id in members:
 		var member = world.party_encounter.member(member_id)

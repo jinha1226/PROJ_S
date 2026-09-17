@@ -327,7 +327,8 @@ func base_sell(resource_id:String,amount:int=1)->Dictionary:
 			_session.sim.world.events,int(cycle.expedition_index),"TOWN")})
 
 
-func base_return_assessment()->Dictionary:
+## `force` is the expedition abandon: no entry/anchor or clear-radius demand.
+func base_return_assessment(force:bool=false)->Dictionary:
 	if _session.sim==null or _session.sim.world==null or _session.sim.world.party_encounter==null:
 		return _session._rejection_dto("session_not_initialized")
 	if _session.scenario_id!=_session.DUO_SCENARIO_ID:return _session._rejection_dto("base_scenario_unavailable")
@@ -343,27 +344,35 @@ func base_return_assessment()->Dictionary:
 	var at_entry:bool=entry is Vector2i and hero.position==entry
 	var at_active_anchor:bool=anchor is Vector2i and hero.position==anchor \
 		and int(cycle.floor_index) in state.activated_anchor_portal_floors
-	if not at_entry and not at_active_anchor:return _session._rejection_dto("base_return_portal_required")
+	if not force and not at_entry and not at_active_anchor:return _session._rejection_dto("base_return_portal_required")
 	var nearby_enemy_ids:Array[int]=[]
 	for enemy_id in _session.CampaignEncounterStreamScript.active_enemy_ids(_session.sim.world):
 		var enemy=_session.sim.world.entities.get(enemy_id)
 		if enemy!=null and maxi(absi(enemy.position.x-hero.position.x),
 				absi(enemy.position.y-hero.position.y))<=3:nearby_enemy_ids.append(enemy_id)
-	if not nearby_enemy_ids.is_empty():return _session._rejection_dto("base_return_contested")
+	if not force and not nearby_enemy_ids.is_empty():return _session._rejection_dto("base_return_contested")
 	return _session._feedback_dto({"accepted":true,"reason":"ok","position":[hero.position.x,
-		hero.position.y],"entry_mode":"ENTRY" if at_entry else "ANCHOR_PORTAL",
+		hero.position.y],"entry_mode":"ABANDON" if force else "ENTRY" if at_entry else "ANCHOR_PORTAL",
 		"expedition_index":int(cycle.expedition_index),
 		"carried":_session.BaseProgressionRulesScript.carried(_session.sim.world.events,
 			int(cycle.expedition_index),"DUNGEON")})
 
 
-func base_return()->Dictionary:
-	var assessment:Dictionary=base_return_assessment()
+func base_return(force:bool=false)->Dictionary:
+	var assessment:Dictionary=base_return_assessment(force)
 	if not bool(assessment.get("accepted",false)):return assessment
 	var rollback:Dictionary=_session.sim.snapshot()
 	if rollback.is_empty():return _session._rejection_dto("snapshot_unavailable")
 	var state=_session.sim.world.party_encounter;var cycle=state.expedition_cycle
-	if not cycle.manual_return(int(_session.sim.world.world_time)):
+	if force:
+		# Abandoning drops every stage's combat progress; the party stays put and
+		# the next departure re-enters a fresh floor (see _enter_campaign_floor).
+		var previous_round:Dictionary=state.round_combat
+		state.round_combat=preload("res://sim/round_combat_state.gd").fresh()
+		state.round_combat.round_id=int(previous_round.round_id)
+		state.round_combat.plan_revision=int(previous_round.plan_revision)+1
+	if not cycle.manual_return(int(_session.sim.world.world_time),"ABANDON" if force else "MANUAL_EXTRACT"):
+		_session.sim=_session.SimulatorScript.from_snapshot(rollback)
 		return _session._rejection_dto("base_return_failed")
 	state.reset_ration(int(_session.sim.world.world_time))
 	var hero_id:=int(_session.sim.world.party_control_actor_id())
@@ -371,7 +380,7 @@ func base_return()->Dictionary:
 		_session.sim.world.entities[hero_id].position,
 		_session.BaseProgressionRulesScript.total_resources(assessment.carried),-1,
 		{"schema_version":1,"ruleset_id":_session.ExpeditionCycleScript.RULESET_ID,
-			"return_reason":"MANUAL_EXTRACT","entry_mode":str(assessment.entry_mode),
+			"return_reason":str(cycle.return_reason),"entry_mode":str(assessment.entry_mode),
 			"expedition_index":int(assessment.expedition_index),
 			"haul":assessment.carried.duplicate(true)})
 	var refilled_ids:Array=[]
@@ -390,7 +399,7 @@ func base_return()->Dictionary:
 	if event==null or not error.is_empty():
 		_session.sim=_session.SimulatorScript.from_snapshot(rollback)
 		return _session._rejection_dto(error if not error.is_empty() else "base_return_failed")
-	_session.command_journal.append({"kind":"base","operation":{"action":"RETURN"}})
+	_session.command_journal.append({"kind":"base","operation":{"action":"ABANDON" if force else "RETURN"}})
 	_session._clear_run_completion_transients()
 	return _session._feedback_dto({"accepted":true,"reason":"ok","event_id":int(event.id),
 		"banked":assessment.carried.duplicate(true),"expedition_cycle":_session.expedition_cycle_status(),

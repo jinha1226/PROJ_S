@@ -2217,6 +2217,25 @@ func base_return_assessment()->Dictionary:
 func base_return()->Dictionary:
 	return _base_progression_service.base_return()
 
+## Abandon the running expedition from anywhere in the dungeon: the whole
+## party takes the abandon stress, then the forced base return closes the cycle.
+func abandon_expedition()->Dictionary:
+	if not room_enabled() or _run_is_complete():return _rejection_dto("room_exit_unavailable")
+	var w=sim.world;var state=w.party_encounter
+	if state.expedition_cycle==null or str(state.expedition_cycle.phase)!="DUNGEON":return _rejection_dto("base_return_dungeon_required")
+	if not state.nine_room_floor.pending_exit.is_empty():return _rejection_dto("room_exit_pending")
+	if RoundRules.active(w) and not preload("res://sim/stage_counterplay.gd").cleared(w):return _rejection_dto("room_combat_active")
+	var hero:int=w.party_control_actor_id()
+	if not w.entities.has(hero) or not w.is_settled():return _rejection_dto("base_return_unsafe")
+	var rollback:Dictionary=sim.snapshot()
+	if rollback.is_empty():return _rejection_dto("snapshot_unavailable")
+	var event=w.emit_event("expedition.abandoned",hero,-1,w.entities[hero].position,int(preload("res://sim/party_morale_model.gd").STRESS.abandon),-1,{"schema_version":1,"ruleset_id":"stage-campaign-v1","floor_index":int(state.nine_room_floor.floor_index),"room_id":int(state.nine_room_floor.active_room_id)})
+	if event==null or not preload("res://sim/systems/party_morale_system.gd").commit_batch(w,[event],false):
+		sim=SimulatorScript.from_snapshot(rollback);return _rejection_dto("abandon_failed")
+	var result:Dictionary=_base_progression_service.base_return(true)
+	if not result.get("accepted",false):sim=SimulatorScript.from_snapshot(rollback);return result
+	result=result.duplicate(true);result["message"]="원정을 포기하고 거점으로 돌아왔습니다";return result
+
 func base_build_assessment(type_id:String,tile_origin:Variant)->Dictionary:
 	return _base_settlement_service.work_build_assessment(type_id,tile_origin)
 
@@ -3173,6 +3192,12 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 	# Changing cycle scope first detaches old-expedition monsters from collision.
 	# The party remains the same entities, inventories, bodies and social state.
 	_map_layout=target_layout
+	if not state.nine_room_floor.is_empty() and _last_expedition_abandoned():
+		# An abandoned expedition forfeits floor progress: fresh visited/discovered
+		# rooms on the same topology. Counters and effect clocks stay monotonic
+		# because earlier room events are still validated against them.
+		var s:Dictionary=state.nine_room_floor
+		s.active_room_id=4;s.visited=[];s.discovered_portals=[];s.pending_exit={};s.pending_pursuit=[]
 	if not state.nine_room_floor.is_empty():
 		state.nine_room_floor.floor_index=floor_index;state.nine_room_floor.active_room_id=4
 		for portal_id in state.nine_room_floor.floors[floor_index-1].rooms[4].exits:
@@ -3241,6 +3266,21 @@ func _enter_campaign_floor(floor_index:int,entry_mode:String)->Dictionary:
 	if not FieldRules.place_companions(sim):return _rejection_dto("field_companion_placement_failed")
 	return _feedback_dto({"accepted":true,"reason":"ok","event_ids":event_ids,
 		"spawned_enemy_ids":spawned_ids})
+
+
+## True when the expedition that ended most recently was abandoned. The scan
+## skips the departure event of the expedition being entered right now.
+func _last_expedition_abandoned()->bool:
+	var departures:=0
+	for index in range(sim.world.events.size()-1,-1,-1):
+		var event=sim.world.events[index]
+		match str(event.type):
+			"town.expedition_departed":
+				departures+=1
+				if departures>1:return false
+			"dungeon.expedition_returned":return str(event.data.get("return_reason",""))=="ABANDON"
+			"party.expedition_auto_returned":return false
+	return false
 
 
 func _place_floor_ration(floor_index:int,entry_position:Vector2i,
@@ -8681,6 +8721,7 @@ func load_session_json(encoded: String) -> Dictionary:
 				match str(base_operation.action):
 					"GATHER":replay_result=replay.base_gather()
 					"RETURN":replay_result=replay.base_return()
+					"ABANDON":replay_result=replay.abandon_expedition()
 					"UPGRADE":replay_result=replay.base_upgrade(
 						str(base_operation.facility_id))
 					"SELL":replay_result=replay.base_sell(
@@ -9039,7 +9080,7 @@ func _journal_wire_error(journal: Array) -> String:
 					return "invalid_base_journal"
 				var base_keys:Array=row.operation.keys();base_keys.sort()
 				var base_action:=str(row.operation.get("action",""))
-				if base_action in ["GATHER","RETURN"]:
+				if base_action in ["GATHER","RETURN","ABANDON"]:
 					if base_keys!=["action"]:return "invalid_base_journal"
 				elif base_action=="UPGRADE":
 					if base_keys!=["action","facility_id"] \
@@ -10234,6 +10275,9 @@ func reason_message(reason: String, details: Dictionary = {}) -> String:
 		"base_return_portal_required":"입구 또는 활성화한 거점 관문에서 귀환할 수 있습니다.",
 		"base_return_contested":"주변의 적을 떨쳐낸 뒤 귀환하세요.",
 		"base_return_failed":"귀환을 완료하지 못해 이전 상태로 돌아갔습니다.",
+		"abandon_failed":"원정 포기를 완료하지 못해 이전 상태로 돌아갔습니다.",
+		"room_retreat_forbidden":"이 방에서는 도주할 수 없습니다 · 목표를 완수하세요.",
+		"room_retreat_stress_failed":"도주 스트레스를 기록하지 못했습니다.",
 		"base_trade_failed":"거래를 완료하지 못해 이전 상태로 돌아갔습니다.",
 		"base_upgrade_failed":"증축을 완료하지 못해 이전 상태로 돌아갔습니다.",
 		"base_gather_failed":"채집을 완료하지 못해 이전 상태로 돌아갔습니다.",

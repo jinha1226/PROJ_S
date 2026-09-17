@@ -6274,7 +6274,7 @@ func _party_morale_history_error() -> String:
 		"ALLY_DIED_EMOTIONALITY", "ALLY_DIED_WITNESSED", "ALLY_DOWNED",
 		"ALLY_FEAR_CONTAGION", "ENEMY_DIED", "OVERRIDE_STRESS",
 		"SAFE_RECOVERY", "SELF_DAMAGE", "SELF_DOWNED", "STARVING", "TOWN_REST",
-		"DARKNESS"]
+		"DARKNESS", "RETREAT", "ABANDON"]
 	for event in events:
 		if event.type != "party.morale_changed":
 			continue
@@ -6345,7 +6345,8 @@ func _party_morale_history_error() -> String:
 					or source.type not in ["combat.physical_damage", "combat.downed_damage",
 						"entity.downed", "entity.died", "party.override_committed",
 						"party.ration_starve_tick", "town.shrine_service",
-						"darkness.exposure_changed"]:
+						"darkness.exposure_changed", "room.exit_requested",
+						"expedition.abandoned"]:
 				return "party_morale_source_invalid"
 			previous_source = source_id
 		if (source_rows.is_empty() and event.cause_id != -1) \

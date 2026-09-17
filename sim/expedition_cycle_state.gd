@@ -4,7 +4,7 @@ extends RefCounted
 const SCHEMA_VERSION := 1
 const RULESET_ID := "town-dungeon-cycle-v1"
 const PHASES := ["TOWN", "DUNGEON"]
-const RETURN_REASONS := ["NONE", "TIME_LIMIT", "MANUAL_EXTRACT"]
+const RETURN_REASONS := ["NONE", "TIME_LIMIT", "MANUAL_EXTRACT", "ABANDON"]
 const MAX_WORLD_TIME := 9223372036854775707
 const MAX_FLOOR_INDEX := 15
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
@@ -52,11 +52,11 @@ func auto_return_if_due(now: int) -> bool:
 	return true
 
 
-func manual_return(now:int)->bool:
-	if phase!="DUNGEON" or now<opened_at_world_time:return false
+func manual_return(now:int,reason:String="MANUAL_EXTRACT")->bool:
+	if phase!="DUNGEON" or now<opened_at_world_time or reason not in ["MANUAL_EXTRACT","ABANDON"]:return false
 	phase="TOWN"
 	returned_at_world_time=now
-	return_reason="MANUAL_EXTRACT"
+	return_reason=reason
 	return true
 
 
@@ -147,7 +147,7 @@ static func wire_error(row: Variant) -> String:
 				or row.return_reason != "NONE":
 			return "invalid_initial_town_cycle"
 	elif closes <= opened or (row.return_reason=="TIME_LIMIT" and returned<closes) \
-			or (row.return_reason=="MANUAL_EXTRACT" and (returned<opened or returned>=closes)):
+			or (row.return_reason in ["MANUAL_EXTRACT","ABANDON"] and (returned<opened or returned>=closes)):
 		return "invalid_returned_expedition_cycle"
 	return ""
 

@@ -91,7 +91,9 @@ static func event_error(w,e)->String:
 	if s.is_empty():return "room_event_without_ruleset"
 	if e.type=="room.exit_requested":
 		var keys:Array=e.data.keys();keys.sort()
-		if keys!=["portal_id","request_id","revision","schema_version"] or e.data.schema_version!=1 or not preload("res://sim/int64_codec.gd").is_canonical(e.data.request_id) or int(e.data.request_id)<1 or int(e.data.request_id)>int(s.request_serial) or not integer(e.data.revision) or e.data.revision<1 or e.actor_id!=w.party_encounter.protagonist_id:return "room_request_event_invalid"
+		var combat_flag:bool=keys.has("combat")
+		if combat_flag:keys.erase("combat")
+		if keys!=["portal_id","request_id","revision","schema_version"] or (combat_flag and not e.data.combat is bool) or e.data.schema_version!=1 or not preload("res://sim/int64_codec.gd").is_canonical(e.data.request_id) or int(e.data.request_id)<1 or int(e.data.request_id)>int(s.request_serial) or not integer(e.data.revision) or e.data.revision<1 or e.actor_id!=w.party_encounter.protagonist_id:return "room_request_event_invalid"
 	elif e.type=="room.exit_failed":
 		var keys:Array=e.data.keys();keys.sort()
 		if keys!=["reason","request_id"] or not e.data.reason is String or not preload("res://sim/int64_codec.gd").is_canonical(e.data.request_id):return "room_failure_event_invalid"

@@ -73,6 +73,11 @@ static func _source_event_ids(world, event_rows: Array) -> Array[int]:
 			relevant = true
 		if event_type == "darkness.exposure_changed":
 			relevant = actor_id in world.party_encounter.party_member_ids
+		if event_type=="room.exit_requested":
+			var data:Dictionary=event.get("data",{}) if event is Dictionary else event.data
+			relevant=bool(data.get("combat",false))
+		if event_type=="expedition.abandoned":
+			relevant=true
 		if event_type == "entity.downed":
 			relevant = target_id in world.party_encounter.party_member_ids
 		elif event_type == "entity.died":
