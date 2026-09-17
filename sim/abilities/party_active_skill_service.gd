@@ -133,6 +133,7 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 	if int(result.damage)>0:
 		var raw:=maxi(1,int(definition.power)+bonus)
 		if growth!=null:raw=growth.mastery_scale(axis,raw)
+		raw=preload("res://sim/usage_skill_rules.gd").scale(world,actor_id,skill_id,raw)
 		if str(definition.element)=="PHYSICAL":raw=maxi(1,raw-int(target.armor))
 		var resistance:=clampi(int(target.resistances.get(
 			str(definition.element),0)),-25,75)
@@ -140,6 +141,7 @@ static func assess(world,actor_id:int,skill_id:String,target_id:int,allow_busy:b
 	if int(result.healing)>0:
 		var healing_power:=maxi(1,int(definition.power)+bonus)
 		if growth!=null:healing_power=growth.mastery_scale("MAGIC",healing_power)
+		healing_power=preload("res://sim/usage_skill_rules.gd").scale(world,actor_id,skill_id,healing_power)
 		result.healing=mini(maxi(0,int(target.max_hp)-int(target.hp)),
 			mini(recoverable_damage(world,target_id),healing_power))
 		if int(result.healing)<=0:

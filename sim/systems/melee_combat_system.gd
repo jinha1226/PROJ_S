@@ -77,7 +77,7 @@ func assess_attack(attacker_id: int, target_id: int, source: String,
 	if not weapon_id.is_empty():
 		var weapon = WeaponRegistryScript.definition(weapon_id)
 		if weapon == null: return {}
-		proficiency_rank = _weapon_proficiency_rank(attacker_id, weapon.proficiency_id)
+		proficiency_rank = _weapon_proficiency_rank(attacker_id, weapon.proficiency_id,weapon_id)
 		weapon_spec = WeaponAttackRulesScript.build_attack_spec(weapon_id, proficiency_rank,
 			int(attacker_profile.power), int(attacker_profile.accuracy_milli)+preload("res://sim/abilities/monster_ability_runtime.gd").accuracy_bonus(world,attacker_id,weapon_id),
 			target_evasion, target_armor,ActorStatRulesScript.for_entity(world,attacker_id),
@@ -340,7 +340,7 @@ func build_weapon_assessment(attacker_id: int, target_id: int, weapon_id: String
 	var target_profile := ProfileRegistryScript.profile(target_state.combat_profile_id)
 	var weapon = WeaponRegistryScript.definition(weapon_id)
 	if attacker_profile.is_empty() or target_profile.is_empty() or weapon == null: return {}
-	var proficiency_rank := _weapon_proficiency_rank(attacker_id, weapon.proficiency_id)
+	var proficiency_rank := _weapon_proficiency_rank(attacker_id, weapon.proficiency_id,weapon_id)
 	var spec := WeaponAttackRulesScript.build_attack_spec(weapon_id, proficiency_rank,
 		int(attacker_profile.power), int(attacker_profile.accuracy_milli),
 		int(target_profile.evasion_milli), int(target_profile.armor_flat),
@@ -396,7 +396,10 @@ func _kernel_attack_line_open(origin:Vector2i,target:Vector2i)->bool:
 		maxi(1,ceili(Vector2(target-origin).length())))
 
 
-func _weapon_proficiency_rank(attacker_id: int, proficiency_id: String) -> int:
+func _weapon_proficiency_rank(attacker_id: int, proficiency_id: String,weapon_id:String="") -> int:
+	if preload("res://sim/usage_skill_rules.gd").enabled(world) and attacker_id==world.party_encounter.protagonist_id:
+		if weapon_id in ["DCSS_STAFF","DCSS_QUARTERSTAFF"]:return 0
+		return preload("res://sim/usage_skill_rules.gd").rank(world,proficiency_id)
 	var actor_growth=preload("res://sim/party_growth_rules.gd").for_actor(world,attacker_id)
 	if actor_growth!=null and attacker_id!=world.party_encounter.protagonist_id:
 		return int(actor_growth.mastery_ranks["RANGED" if proficiency_id=="RANGED" else "MELEE"])

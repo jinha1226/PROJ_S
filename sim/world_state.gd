@@ -390,6 +390,14 @@ func equipment_modifiers(entity_id: int) -> Dictionary:
 				totals[key]=growth.mastery_scale("DEFENSE",base+int(totals.get(key,0)))-base
 				totals[key]=clampi(int(totals[key]),0,1000000 if key=="armor_flat" else 1000)
 			result["totals"]=totals
+	if preload("res://sim/usage_skill_rules.gd").enabled(self) and entity_id==party_encounter.protagonist_id:
+		result=result.duplicate(true)
+		var usage_totals:Dictionary=result.get("totals",{})
+		var dodge:int=int(usage_totals.get("dodge_milli",0))
+		if dodge<0:dodge=mini(0,dodge+5*preload("res://sim/usage_skill_rules.gd").rank(self,"ARMOUR"))
+		usage_totals["dodge_milli"]=clampi(dodge+15*preload("res://sim/usage_skill_rules.gd").rank(self,"DODGING"),-1000,1000)
+		usage_totals["stealth"]=int(usage_totals.get("stealth",0))+20*preload("res://sim/usage_skill_rules.gd").rank(self,"STEALTH")
+		result["totals"]=usage_totals
 	var monster_armor:int=preload("res://sim/abilities/monster_ability_runtime.gd").armor(self,entity_id)
 	if monster_armor!=0:
 		result=result.duplicate(true)
@@ -2047,6 +2055,7 @@ func _ability_binding_history_error() -> String:
 		expected[int(member_id)]=[]
 		passive[int(member_id)]=[]
 	for event in events:
+		if event.type==preload("res://sim/usage_skill_rules.gd").MARKER and event.data.get("job")=="MAGE":expected[party_encounter.protagonist_id].append("FIREBOLT")
 		if event.type=="party.ability_mode_changed":
 			var keys:Array=event.data.keys();keys.sort()
 			var id:String=str(event.data.get("ability_id",""))
@@ -2401,6 +2410,9 @@ func _restored_state_error() -> String:
 			return "event_position_invalid"
 		if not _is_valid_event_data(event.data):
 			return "event_data_invalid"
+		if event.type==preload("res://sim/usage_skill_rules.gd").MARKER:
+			var usage_error:String=preload("res://sim/usage_skill_rules.gd").marker_error(self,event)
+			if not usage_error.is_empty():return usage_error
 		if event.type in ["party.field_control_selected","party.field_formation_selected"]:
 			if not preload("res://sim/field_turn_rules.gd").enabled(self) \
 					or event.actor_id!=party_control_actor_id(event.id) \
@@ -3117,7 +3129,7 @@ func _melee_action_event_error(event) -> String:
 		var weapon_id := str(event.data.get("weapon_id", ""))
 		var weapon = WeaponRegistryScript.definition(weapon_id)
 		if weapon == null: return "canonical_weapon_missing"
-		var weapon_rank := _progression_rank_before(weapon.proficiency_id, event.id) \
+		var weapon_rank := 0 if weapon_id in ["DCSS_STAFF","DCSS_QUARTERSTAFF"] and preload("res://sim/usage_skill_rules.gd").enabled(self,event.id) else _progression_rank_before(weapon.proficiency_id, event.id) \
 			if event.actor_id==party_encounter.protagonist_id else _npc_mastery_before(event.actor_id,weapon.proficiency_id,event.id)
 		weapon_spec = WeaponAttackRulesScript.build_attack_spec(weapon_id, weapon_rank,
 			int(attacker_profile.power), int(attacker_profile.accuracy_milli)+preload("res://sim/abilities/monster_ability_runtime.gd").accuracy_bonus(self,event.actor_id,weapon_id,event.id),
@@ -3325,7 +3337,7 @@ func _melee_defense_action_event_error(event) -> String:
 		var weapon_id:=str(event.data.get("weapon_id",""))
 		var weapon=WeaponRegistryScript.definition(weapon_id)
 		if weapon==null:return "canonical_combined_weapon_missing"
-		var weapon_rank:=_progression_rank_before(weapon.proficiency_id,event.id) \
+		var weapon_rank:=0 if weapon_id in ["DCSS_STAFF","DCSS_QUARTERSTAFF"] and preload("res://sim/usage_skill_rules.gd").enabled(self,event.id) else _progression_rank_before(weapon.proficiency_id,event.id) \
 			if party_encounter!=null and event.actor_id==party_encounter.protagonist_id else _npc_mastery_before(event.actor_id,weapon.proficiency_id,event.id)
 		weapon_spec=WeaponAttackRulesScript.build_attack_spec(weapon_id,weapon_rank,
 			int(attacker_profile.power),int(attacker_profile.accuracy_milli)+preload("res://sim/abilities/monster_ability_runtime.gd").accuracy_bonus(self,event.actor_id,weapon_id,event.id),
@@ -5357,7 +5369,7 @@ func _party_progression_error()->String:
 			expected.training_modes=modes
 		elif event.type=="entity.died" and event.target_id in party_encounter.enemy_ids:
 			if event.id in party_encounter.protagonist_progression.processed_source_death_event_ids:
-				if not expected.award_enemy_death(event.id):return "progression_enemy_death_award_invalid"
+				if not expected.award_enemy_death(event.id,not preload("res://sim/usage_skill_rules.gd").enabled(self,event.id)):return "progression_enemy_death_award_invalid"
 				var reward_rows:Array=[]
 				for candidate in events:
 					if candidate.type=="progression.enemy_reward" and candidate.cause_id==event.id:
@@ -5370,7 +5382,7 @@ func _party_progression_error()->String:
 						or reward.magnitude!=ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP \
 						or reward.data.schema_version!=1 \
 						or reward.data.character_xp!=ProgressionRegistryScript.ENEMY_KILL_CHARACTER_XP \
-						or reward.data.mastery_pool!=ProgressionRegistryScript.ENEMY_KILL_MASTERY_POOL \
+						or reward.data.mastery_pool!=(0 if preload("res://sim/usage_skill_rules.gd").enabled(self,event.id) else ProgressionRegistryScript.ENEMY_KILL_MASTERY_POOL) \
 						or reward.data.ruleset_id!=ProgressionRegistryScript.RULESET_ID:
 						return "progression_enemy_reward_event_invalid"
 		elif event.type=="party.victory" \
@@ -5409,6 +5421,8 @@ func _npc_mastery_before(actor_id:int,skill_id:String,event_id:int)->int:
 
 
 func _progression_rank_before(skill_id:String,event_id:int)->int:
+	if preload("res://sim/usage_skill_rules.gd").enabled(self,event_id):
+		return preload("res://sim/usage_skill_rules.gd").rank(self,skill_id,event_id)
 	if preload("res://sim/field_turn_rules.gd").enabled(self):
 		var axis:="RANGED" if skill_id=="RANGED" else "MELEE"
 		var rank_value:=0

@@ -332,7 +332,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		p_player_species_id:String="human",
 		bootstrap_settlement:bool=true, bootstrap_talents:bool=true,
 		bootstrap_survival:bool=true,bootstrap_living:bool=false,bootstrap_roster:bool=false,
-		bootstrap_solo:bool=false,bootstrap_expanded_exploration:bool=false) -> bool:
+		bootstrap_solo:bool=false,bootstrap_expanded_exploration:bool=false,bootstrap_usage:bool=false, starting_job:String="FIGHTER") -> bool:
 	if not ContentDatabaseScript.validation_error().is_empty():return false
 	if not GrowthBuildRegistryScript.has_species(p_player_species_id):return false
 	if not VisualTestMapScript.has_scenario(p_scenario_id): return false
@@ -576,6 +576,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		var finds_error:=preload("res://sim/dcss_equipment_finds.gd").initialise(candidate.world,map_layout,p_world_seed)
 		if not finds_error.is_empty():
 			push_error("Starting equipment initialization: "+finds_error);return false
+	if bootstrap_usage and not preload("res://sim/usage_skill_rules.gd").initialize(candidate.world,starting_job):return false
 	candidate.world.warm_rollback_memento_static_tiles()
 	var initial_world_error:String=candidate.world.world_state_error()
 	if not initial_world_error.is_empty():
@@ -869,6 +870,7 @@ func protagonist_progression()->Dictionary:
 		hash([int(growth.xp_total),growth.stat_allocations,growth.species_branch_ranks,
 			growth.equipped_mutation_ids,growth.mastery_ranks]) if growth!=null else 0,
 		str(hero_entity.species_id) if hero_entity!=null else ""]
+	cache_key += "|%d" % sim.world.events.size()
 	if str(_progression_cache.get("key",""))==cache_key:
 		return (_progression_cache.dto as Dictionary).duplicate(true)
 	var built:Dictionary=_build_protagonist_progression()
@@ -903,6 +905,7 @@ func _build_protagonist_progression()->Dictionary:
 			"effect_label":effect_label,
 			"next_milestone":{"rank":int(definition.milestone_rank),
 				"label":str(definition.milestone_label),"implemented":false}})
+	if preload("res://sim/usage_skill_rules.gd").enabled(sim.world):skills=preload("res://sim/usage_skill_rules.gd").rows(sim.world)
 	return {"schema_version":ProgressionRegistryScript.SCHEMA_VERSION,"available":true,
 		"ruleset_id":ProgressionRegistryScript.RULESET_ID,"level":level,
 		"xp_total":int(progression.xp_total),"xp_current":int(progression.xp_total)-floor_xp,
@@ -989,6 +992,7 @@ func spend_species_trait_point(branch_id:String)->Dictionary:
 
 func mastery_spend_assessment(actor_id:int=-1)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:return _rejection_dto("session_not_initialized")
+	if preload("res://sim/usage_skill_rules.gd").enabled(sim.world) and (actor_id==-1 or actor_id==sim.world.party_encounter.protagonist_id):return _rejection_dto("usage_training_automatic")
 	if not sim.world.is_settled() or _protagonist_draft!=null:return _rejection_dto("world_not_settled")
 	if _run_is_complete() or sim.world.party_encounter.safe_phase=="PARTY_DEFEATED":return _rejection_dto("run_complete")
 	if actor_id!=-1 and actor_id not in sim.world.party_encounter.active_party_member_ids:return _rejection_dto("mastery_actor_unavailable")
@@ -1018,7 +1022,7 @@ func mastery_status(actor_id:int=-1)->Dictionary:
 	if actor_id==-1:actor_id=sim.world.party_control_actor_id()
 	var growth=preload("res://sim/party_growth_rules.gd").for_actor(sim.world,actor_id)
 	if growth==null:return {}
-	return {"level":growth.level(),"xp":growth.xp_total,"points":growth.mastery_points_available(),
+	return {"level":growth.level(),"xp":growth.xp_total,"points":0 if preload("res://sim/usage_skill_rules.gd").enabled(sim.world) and actor_id==sim.world.party_encounter.protagonist_id else growth.mastery_points_available(),
 		"ranks":growth.mastery_ranks.duplicate(),"max_rank":int(growth.Mastery.DATA.max_rank)}
 
 func _commit_growth_point(action:String,target_id:String)->Dictionary:
@@ -1917,6 +1921,7 @@ func _replay_legacy_training_focus(skill_id:String)->Dictionary:
 func set_training_mode(skill_id:String,mode:String)->Dictionary:
 	if sim==null or sim.world==null or sim.world.party_encounter==null:
 		return _rejection_dto("session_not_initialized")
+	if preload("res://sim/usage_skill_rules.gd").enabled(sim.world):return _rejection_dto("usage_training_automatic")
 	if skill_id not in ProgressionRegistryScript.SKILL_IDS:
 		return _rejection_dto("unknown_progression_skill")
 	if mode not in ProgressionRegistryScript.TRAINING_MODES:
@@ -3954,10 +3959,11 @@ func solo_start_enabled()->bool:
 func _restart_layout()->Dictionary:
 	return preload("res://playtest/campaign_world_map.gd").generate(world_seed,1,true,true,true,int(_map_layout.get("procedural_rules_version",5))) if bool(_map_layout.get("procedural_generation",false)) else {}
 
-func start_procedural_run_with_species(species_id:String,new_world_seed:int,new_personality_seed:int)->Dictionary:
+func start_procedural_run_with_species(species_id:String,new_world_seed:int,new_personality_seed:int,starting_job:String="FIGHTER")->Dictionary:
+	if starting_job not in preload("res://sim/usage_skill_rules.gd").JOBS:return _rejection_dto("unknown_starting_job")
 	if not GrowthBuildRegistryScript.has_species(species_id):return _rejection_dto("unknown_player_species")
 	var layout:Dictionary=preload("res://playtest/campaign_world_map.gd").generate(new_world_seed,1,true,true,true)
-	if not reset_party(new_world_seed,new_personality_seed,scenario_id,layout,true,species_id,true,true,true,true,true,true,true):
+	if not reset_party(new_world_seed,new_personality_seed,scenario_id,layout,true,species_id,true,true,true,true,true,true,true,true,starting_job):
 		return _rejection_dto("player_species_reset_failed")
 	return _feedback_dto({"accepted":true,"reason":"ok","player_species_id":player_species_id,"run_progress":run_progress()})
 
@@ -8645,7 +8651,9 @@ func load_session_json(encoded: String) -> Dictionary:
 			preload("res://sim/living_expedition_rules.gd").snapshot_enabled(decoded.snapshot),
 			preload("res://sim/living_expedition_rules.gd").snapshot_roster_randomized(decoded.snapshot),
 			SOLO_START_TAG in restored.world.entities[restored.world.party_encounter.protagonist_id].tags,
-			preload("res://sim/living_expedition_rules.gd").snapshot_expanded_exploration(decoded.snapshot)):
+			preload("res://sim/living_expedition_rules.gd").snapshot_expanded_exploration(decoded.snapshot),
+			preload("res://sim/usage_skill_rules.gd").enabled(restored.world),
+			preload("res://sim/usage_skill_rules.gd").starting_job(restored.world)):
 		return _rejection_dto("party_layout_replay_failed")
 	if source_party_schema in [PartyStateScript.STAT_SCALING_SCHEMA_VERSION,
 			PartyStateScript.EXPEDITION_CYCLE_SCHEMA_VERSION,
