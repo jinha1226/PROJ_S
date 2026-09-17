@@ -3,9 +3,11 @@ const Loader=preload("res://sim/json_content_loader.gd")
 const Handcrafted=preload("res://sim/handcrafted_room_templates.gd")
 static var CONFIG:Dictionary=Loader.load_document("res://data/content/nine_room_dungeon.json")
 const RULESET_ID:="nine-room-dungeon-v1"
-const VERSION:=7
+const VERSION:=8
 const FirstFloor=preload("res://sim/first_floor_stages.gd")
+const Catalog=preload("res://sim/stage_catalog.gd")
 const SIZE:=8
+const DEFAULT_STAGE:={"reinforcements":{"interval_rounds":7,"cap":8,"spawn_edges":["N","E","S","W"]},"objective":{"type":"ELIMINATE","rounds":0,"cell":[-1,-1],"retreat_allowed":true}}
 static var generation_count:=0
 
 static func generate(seed:int,floor_index:int=1)->Dictionary:
@@ -61,7 +63,11 @@ static func generate(seed:int,floor_index:int=1)->Dictionary:
 				# Only corner obstacles: the full 8x8 is playable, not a 6x6 inset.
 				if x in [0,7] and y in [0,7]:terrain[(origin.y+y)*24+origin.x+x]="wall"
 		centers.append(origin+Vector2i(3,3))
-		rooms.append({"room_id":id,"coord":[id%3,id/3],"role":roles[id],"bounds":[origin.x,origin.y,8,8],"exits":exits})
+		var stage:Dictionary=DEFAULT_STAGE.duplicate(true)
+		if floor_index==1:
+			var authored_stage:Dictionary=FirstFloor.room(id)
+			stage={"reinforcements":authored_stage.reinforcements.duplicate(true),"objective":authored_stage.objective.duplicate(true)}
+		rooms.append({"room_id":id,"coord":[id%3,id/3],"role":roles[id],"bounds":[origin.x,origin.y,8,8],"exits":exits,"stage":stage})
 	for edge in edges:
 		var a:int=edge[0];var b:int=edge[1];var delta:=Vector2i(b%3-a%3,b/3-a/3)
 		var local_a:=Vector2i(7,3) if delta.x==1 else Vector2i(3,7)
@@ -85,13 +91,16 @@ static func generate(seed:int,floor_index:int=1)->Dictionary:
 			room["template_id"]=template.id
 			room["template_name"]=template.name
 			room["biome"]=template.biome
-			var species:Array=["goblin","kobold","dcss_rat"] if floor_index==1 else ["dcss_orc","dcss_gnoll","goblin"]
 			if floor_index==1:
-				species={0:["goblin"],2:["dcss_frilled_lizard"],6:["dcss_rat"],7:["goblin"]}.get(int(room.room_id),["goblin"])
-			for i in range(mini(species.size(),int(CONFIG.enemies_per_combat_room))):
-				var cell:Array=template.enemy_cells[i]
-				var p:Vector2i=origin+Vector2i(cell[0],cell[1])
-				enemies.append({"position":p,"species_id":species[i],"group_id":"ROOM_%d"%room.room_id,"route_id":"ROOM_%d"%room.room_id})
+				for e in Catalog.wave_enemies(template,0):
+					var p:Vector2i=origin+Vector2i(int(e.cell[0]),int(e.cell[1]))
+					enemies.append({"position":p,"species_id":str(e.kind),"group_id":"ROOM_%d"%room.room_id,"route_id":"ROOM_%d"%room.room_id})
+			else:
+				var species:Array=["dcss_orc","dcss_gnoll","goblin"]
+				for i in range(mini(species.size(),int(CONFIG.enemies_per_combat_room))):
+					var cell:Array=template.enemy_cells[i]
+					var p:Vector2i=origin+Vector2i(cell[0],cell[1])
+					enemies.append({"position":p,"species_id":species[i],"group_id":"ROOM_%d"%room.room_id,"route_id":"ROOM_%d"%room.room_id})
 		elif room.role=="HAZARD":
 			if floor_index!=1:
 				for p in [Vector2i(4,4),Vector2i(4,5),Vector2i(5,4)]:terrain[(origin.y+p.y)*24+origin.x+p.x]="rubble"

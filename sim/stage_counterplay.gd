@@ -1,5 +1,6 @@
 extends RefCounted
 const Rooms=preload("res://sim/room_transition_rules.gd")
+const Catalog=preload("res://sim/stage_catalog.gd")
 static var CONFIG:Dictionary=preload("res://sim/json_content_loader.gd").load_document("res://data/content/stage_counterplay.json")
 
 static func enabled(w)->bool:return Rooms.enabled(w)
@@ -9,6 +10,20 @@ static func current(w)->Dictionary:
 	return w.party_encounter.round_combat.stage_rooms.get(key(w),{}) if enabled(w) else {}
 static func enemies(w)->Array:
 	return w.party_encounter.enemy_ids.filter(func(id):return Rooms.actor_active(w,id) and w.is_unresolved_enemy(id))
+static func config(w)->Dictionary:
+	if not enabled(w):return {}
+	return Rooms.current_floor(w).rooms[int(w.party_encounter.nine_room_floor.active_room_id)].get("stage",{})
+static func objective_done(w)->bool:
+	var o:Dictionary=config(w).get("objective",{})
+	return str(o.get("type",""))=="SURVIVE" and int(current(w).get("turn",0))>=int(o.get("rounds",0))
+static func cleared(w)->bool:
+	return enabled(w) and (enemies(w).is_empty() or objective_done(w))
+static func retreat_allowed(w)->bool:
+	return bool(config(w).get("objective",{}).get("retreat_allowed",true))
+static func authored_wave(w,wave:int)->Array:
+	var s:Dictionary=w.party_encounter.nine_room_floor
+	if int(s.floor_index)!=1:return []
+	return Catalog.wave_enemies(Catalog.room(1,int(s.active_room_id)),wave)
 
 static func prepare(sim,r:Dictionary)->bool:
 	var w=sim.world;var room_key:=key(w)
@@ -62,22 +77,45 @@ static func finish_round(sim)->bool:
 	var living:=enemies(w)
 	# Clearing the last enemy on the deadline wins; there is no empty-room wave.
 	if living.is_empty() or w.entities[w.party_control_actor_id()].health<=0:return true
-	if int(state.turn)<(int(state.waves)+1)*int(CONFIG.rounds_per_wave):return true
-	var count:=mini(int(CONFIG.wave_size),int(CONFIG.max_active_enemies)-living.size())
+	var cfg:Dictionary=config(w).get("reinforcements",{"interval_rounds":int(CONFIG.rounds_per_wave),"cap":int(CONFIG.max_active_enemies),"spawn_edges":["N","E","S","W"]})
+	if int(cfg.cap)<=0:return true
+	if int(state.turn)<(int(state.waves)+1)*int(cfg.interval_rounds):return true
+	var authored:Array=authored_wave(w,int(state.waves)+1)
+	var count:int=mini(authored.size() if not authored.is_empty() else int(CONFIG.wave_size),int(cfg.cap)-living.size())
 	if count<=0:return true
-	var cells:Array[Vector2i]=[];var bounds:=Rooms.bounds(w)
+	var bounds:=Rooms.bounds(w)
+	var occupied:=func(p:Vector2i)->bool:
+		return w.entities.values().any(func(e):return w.occupies_tile(e.id) and e.position==p)
+	var edge_of:=func(p:Vector2i)->String:
+		if p.y==bounds.position.y:return "N"
+		if p.y==bounds.end.y-1:return "S"
+		if p.x==bounds.position.x:return "W"
+		if p.x==bounds.end.x-1:return "E"
+		return ""
+	var edge_candidates:Array[Vector2i]=[]
 	for y in range(bounds.position.y,bounds.end.y):
 		for x in range(bounds.position.x,bounds.end.x):
 			var p:=Vector2i(x,y)
-			if x not in [bounds.position.x,bounds.end.x-1] and y not in [bounds.position.y,bounds.end.y-1]:continue
-			if not Rooms.safe(w,p):continue
-			if w.entities.values().any(func(e):return w.occupies_tile(e.id) and e.position==p):continue
+			var side:String=edge_of.call(p)
+			if side.is_empty() or side not in cfg.spawn_edges:continue
+			if not Rooms.safe(w,p) or occupied.call(p):continue
 			if w.party_encounter.active_party_member_ids.any(func(id):return Rooms.distance(w.entities[id].position,p)<=1):continue
-			cells.append(p)
+			edge_candidates.append(p)
+	var cells:Array[Vector2i]=[];var kinds:Array[String]=[]
+	for i in range(count):
+		var placed:bool=false
+		if i<authored.size():
+			var e:Dictionary=authored[i]
+			var p:Vector2i=bounds.position+Vector2i(int(e.cell[0]),int(e.cell[1]))
+			if Rooms.safe(w,p) and not occupied.call(p) and p not in cells:
+				cells.append(p);kinds.append(str(e.kind));placed=true
+		if not placed and not edge_candidates.is_empty():
+			var p:Vector2i=edge_candidates.pop_front()
+			cells.append(p);kinds.append(str(authored[i].kind) if i<authored.size() else str(CONFIG.reinforcement_species[i%CONFIG.reinforcement_species.size()]))
 	if cells.is_empty():return true # Blocked edges postpone, never overwrite an actor.
 	var spawned:Array=[]
-	for i in range(mini(count,cells.size())):
-		var species:String=CONFIG.reinforcement_species[i%CONFIG.reinforcement_species.size()]
+	for i in range(cells.size()):
+		var species:String=kinds[i]
 		var profile:Dictionary=preload("res://sim/enemy_perception_registry.gd").profile(species)
 		var party=w.party_encounter
 		var tags:Array=["party_enemy","campaign_floor:%d"%party.nine_room_floor.floor_index,"campaign_expedition:%d"%party.expedition_cycle.expedition_index,"encounter_group:ROOM_%d"%party.nine_room_floor.active_room_id,"stage_reinforcement"]
@@ -102,4 +140,5 @@ static func recent_log(w)->String:
 
 static func status(w)->Dictionary:
 	var state:=current(w)
-	return {"turn":int(state.get("turn",0)),"waves":int(state.get("waves",0)),"remaining":maxi(0,(int(state.get("waves",0))+1)*int(CONFIG.rounds_per_wave)-int(state.get("turn",0)))}
+	var interval:int=int(config(w).get("reinforcements",{}).get("interval_rounds",CONFIG.rounds_per_wave))
+	return {"turn":int(state.get("turn",0)),"waves":int(state.get("waves",0)),"remaining":maxi(0,(int(state.get("waves",0))+1)*interval-int(state.get("turn",0))),"objective":config(w).get("objective",{}),"objective_done":objective_done(w),"cleared":cleared(w)}
