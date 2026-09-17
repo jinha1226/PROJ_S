@@ -19,7 +19,7 @@
 | UI smoke | **failures=0**. 4개 화면 크기, 가방/성장/신앙 패널, 저장 생성 |
 | 재사용 턴 엔진 | **PASS**. 기존 `turn_engine_acceptance.gd` |
 | Windows용 export pack | checkout 없는 경로에서 외부 acceptance script로 **1,560 assertions, failures=0**. Windows exe 생성 완료 |
-| Web runtime | Chromium 450×800에서 종족 선택·던전·탐색 입력 및 화면 확인. pack만으로 별도 실행 확인 |
+| Web runtime | Chromium 450×800에서 종족 선택·던전·탐색 입력 및 화면 확인. 최종 pack만으로 외부 acceptance를 실행해 **1,560 assertions, failures=0** |
 | Workflow 정적 검사 | 두 workflow YAML 파싱과 모든 run 블록 bash 구문 검사 통과 |
 
 원본 출력은 `validation/`에 보관한다. assertion 수는 독립 테스트 시나리오 수와 다르다. 사람의 전체 런 플레이테스트, 난이도/승률/45–75분 런 시간, Android/iOS 실기기 성능은 아직 측정하지 않았다. Windows 실행 파일은 내보냈으나 Windows OS 자체에서 GUI를 실행한 결과는 아니다. GitHub Actions는 파일을 추가했지만 **아직 원격 push/실행하지 않았다**. 로컬 성공을 GitHub CI 성공이라고 보고하지 않는다.
