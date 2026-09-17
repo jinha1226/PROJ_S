@@ -1,6 +1,7 @@
 extends "res://game/crawl/world.gd"
-## Usage-based skill progression for Model B.
-## Skills improve from the action that actually uses them; kill XP only drives character level.
+## Usage-weighted combat skill progression for Model B.
+## During a fight, valid weapon attacks and successful spell casts record usage.
+## When an enemy dies, its XP is split across the skills used against that enemy.
 
 const USAGE_SKILLS := {
 	"sword": "검술",
@@ -12,34 +13,26 @@ const USAGE_SKILLS := {
 	"ice": "냉기술",
 	"air": "기류술",
 	"hex": "변이·제어",
-	"summon": "소환술",
-	"armour": "갑옷술",
-	"dodge": "회피술",
-	"stealth": "은신술",
-	"tools": "도구술"
+	"summon": "소환술"
 }
-const PRACTICE_ATTACK := 12
-const PRACTICE_SPELL := 16
-const PRACTICE_DEFENSE := 8
-const PRACTICE_MOVE := 2
-const PRACTICE_TOOL := 10
+
+# enemy actor id -> { skill_id: use_count }
+var combat_usage:Dictionary={}
 
 func _init(p_seed:int=44,species:String="human") -> void:
 	super(p_seed,species)
 	for id in USAGE_SKILLS:
 		if not skills.has(id):skills[id]=0
-	# Legacy focus remains serialized only for backwards save compatibility.
+	# Kept only because the legacy save contract still serializes focus.
 	focus=["melee"]
 
 func weapon_skill(weapon_type:String)->String:
 	match weapon_type:
 		"sword","dagger":return "sword"
 		"spear":return "spear"
-		"mace":return "mace"
+		"mace","staff":return "mace"
 		"axe":return "axe"
 		"bow":return "bow"
-		# Staff is a general magical implement; physical staff blows train blunt technique.
-		"staff":return "mace"
 		_:return "sword"
 
 func aptitude_for(skill:String)->int:
@@ -47,11 +40,9 @@ func aptitude_for(skill:String)->int:
 	if apt.has(skill):return int(apt[skill])
 	if skill in ["sword","spear","mace","axe"]:return int(apt.get("melee",100))
 	if skill=="bow":return int(apt.get("ranged",100))
-	if skill=="armour":return int(apt.get("defense",100))
-	if skill in ["dodge","stealth"]:return int(apt.get("survival",100))
 	return int(apt.get(skill,100))
 
-func practice(skill:String,base_amount:int)->void:
+func add_skill_xp(skill:String,base_amount:int)->void:
 	if not USAGE_SKILLS.has(skill) or base_amount<=0:return
 	var before=skill_rank(skill)
 	var amount=maxi(1,base_amount*aptitude_for(skill)/100)
@@ -61,66 +52,82 @@ func practice(skill:String,base_amount:int)->void:
 	if after>before:message("%s 숙련 %d"%[USAGE_SKILLS[skill],after])
 	emit("growth.skill",0,-1,amount)
 
+func record_usage(enemy_id:int,skill:String)->void:
+	if enemy_id<=0 or not USAGE_SKILLS.has(skill):return
+	if not combat_usage.has(enemy_id):combat_usage[enemy_id]={}
+	var usage:Dictionary=combat_usage[enemy_id]
+	usage[skill]=int(usage.get(skill,0))+1
+	combat_usage[enemy_id]=usage
+
+func award_usage_xp(enemy_id:int,kill_xp:int)->void:
+	if kill_xp<=0:return
+	var usage:Dictionary=combat_usage.get(enemy_id,{})
+	combat_usage.erase(enemy_id)
+	if usage.is_empty():return
+	var total_uses:=0
+	for skill in usage:total_uses+=int(usage[skill])
+	if total_uses<=0:return
+	var remaining:=kill_xp
+	var keys:Array=usage.keys()
+	for i in range(keys.size()):
+		var skill:String=str(keys[i])
+		var share:int
+		if i==keys.size()-1:
+			share=remaining
+		else:
+			share=maxi(0,int(round(float(kill_xp)*float(int(usage[skill]))/float(total_uses))))
+			share=mini(share,remaining)
+		remaining-=share
+		add_skill_xp(skill,share)
+
 func stats(a:Dictionary)->Dictionary:
-	var s={"damage":int(a.power),"delay":100,"ac":int(a.ac),"ev":int(a.ev),"sh":0,"enc":0,"range":1,"brand":"","trait":"","res":a.res.duplicate(),"power":0}
-	if int(a.id)==0:
-		var spec:Dictionary=DATA.species[a.species]
-		var gear:Dictionary=a.gear
-		if int(gear.weapon)>=0:
-			var it:Dictionary=inventory[int(gear.weapon)];var w:Dictionary=DATA.weapons[it.type]
-			var mastery=skill_rank(weapon_skill(str(it.type)))
-			s.damage=int(w.damage)+int(it.enchant)+mastery+int(spec.str)/6
-			s.delay=maxi(60,int(w.delay)-mastery*4);s.range=int(w.range);s.trait=w.trait;s.brand=it.brand
-			if w.trait=="focus":s.power+=4
-		if int(gear.armour)>=0:
-			var armour:Dictionary=inventory[int(gear.armour)];var ar:Dictionary=DATA.armours[armour.type]
-			var armour_rank=skill_rank("armour")
-			s.ac+=int(ar.ac)+int(armour.enchant)+armour_rank/3
-			s.enc=maxi(0,int(ar.enc)-int(spec.str)/5-armour_rank/2)
-			s.ev-=int(ar.ev_penalty)
-		s.ev+=int(spec.dex)/3+skill_rank("dodge")/2
-		if int(gear.shield)>=0 and s.trait not in ["ranged","focus"]:s.sh=mini(35,15+skill_rank("armour")*2);s.enc+=2
-		if int(gear.ring)>=0:
-			var ring:Dictionary=DATA.rings[inventory[int(gear.ring)].type]
-			if ring.stat in ["ev","power"]:s[ring.stat]+=int(ring.value)
-			else:s.res[ring.stat]=int(ring.value)
-		if god=="war" and piety>=20:s.damage+=3
-		if bound_weapon>=0 and god=="bind":s.power+=3
-	if a.statuses.has("ward"):s.ac+=6
-	if a.statuses.has("rage"):s.damage+=8
-	if a.statuses.has("corrode"):s.ac=maxi(0,int(s.ac)-4)
+	var s=super(a)
+	if int(a.get("id",-1))!=0:return s
+	var gear:Dictionary=a.gear
+	if int(gear.weapon)>=0:
+		var it:Dictionary=inventory[int(gear.weapon)]
+		var w:Dictionary=DATA.weapons[it.type]
+		var mastery:=skill_rank(weapon_skill(str(it.type)))
+		# Replace the legacy melee/ranged mastery contribution with the weapon-family mastery.
+		var legacy_skill:String="ranged" if str(w.trait)=="ranged" else "melee"
+		var legacy_mastery:=skill_rank(legacy_skill)
+		s.damage+=mastery-legacy_mastery
+		s.delay=clampi(int(s.delay)+(legacy_mastery-mastery)*4,60,220)
 	return s
 
-func submit(kind:String,target:int=-1,value:String="")->bool:
-	var start_cell=int(hero().cell)
-	var accepted=super(kind,target,value)
-	if not accepted:return false
-	if kind=="MOVE" and int(hero().cell)!=start_cell:
-		practice("dodge",PRACTICE_MOVE)
-		if visible_enemies().is_empty():practice("stealth",PRACTICE_MOVE)
-	elif kind=="USE" and value=="wand":practice("tools",PRACTICE_TOOL)
-	return true
-
 func attack(source:Dictionary,target:Dictionary)->void:
-	if int(source.get("id",-1))==0 and int(hero().gear.weapon)>=0:
+	var player_attack:=int(source.get("id",-1))==0
+	var enemy_id:=int(target.get("id",-1))
+	if player_attack and enemy_id>0 and int(hero().gear.weapon)>=0:
 		var it:Dictionary=inventory[int(hero().gear.weapon)]
-		practice(weapon_skill(str(it.type)),PRACTICE_ATTACK)
-	var hp_before=int(target.hp)
+		record_usage(enemy_id,weapon_skill(str(it.type)))
+	var hp_before:=int(target.hp)
 	super(source,target)
-	if int(target.get("id",-1))==0:
-		# Being attacked while wearing armour trains armour handling; avoiding all HP loss trains evasion.
-		if int(hero().gear.armour)>=0:practice("armour",PRACTICE_DEFENSE)
-		if int(target.hp)==hp_before:practice("dodge",PRACTICE_DEFENSE)
+	if player_attack and enemy_id>0 and hp_before>0 and int(target.hp)<=0:
+		award_usage_xp(enemy_id,int(target.get("xp",0)))
 
 func cast(id:String,target:int)->bool:
 	var accepted=super(id,target)
-	if accepted and DATA.spells.has(id):practice(str(DATA.spells[id].school),PRACTICE_SPELL)
-	return accepted
+	if not accepted or not DATA.spells.has(id):return accepted
+	var skill:String=str(DATA.spells[id].school)
+	# Targeted hostile spells attach their use to that enemy. Area/status/summon spells
+	# without a direct actor target count once for every currently visible enemy so the
+	# next kills in that encounter can reward the school without rewarding empty casts.
+	var actor_id:=-1
+	if target>=0:
+		var a=actor_at(target)
+		if a!=null and int(a.get("id",-1))>0:actor_id=int(a.id)
+	if actor_id>0:
+		record_usage(actor_id,skill)
+	else:
+		for enemy in visible_enemies():record_usage(int(enemy.id),skill)
+	return true
 
 func gain_xp(amount:int)->void:
-	# Kill XP raises only the adventurer level. Skill XP comes from practice().
+	# Character level still uses kill XP. Combat skill XP is awarded separately by
+	# award_usage_xp() using the defeated enemy's XP and recorded use counts.
 	xp+=amount
 	while level<12 and xp>=level*level*65:
 		level+=1;hero().max_hp+=4;hero().hp+=4;hero().max_mp+=1;hero().mp+=1
-		message("레벨 %d · 숙련은 사용한 행동으로 성장합니다."%level)
+		message("레벨 %d"%level)
 	emit("growth.xp",0,-1,amount)
