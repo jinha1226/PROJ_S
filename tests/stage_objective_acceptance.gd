@@ -2,6 +2,7 @@ extends "res://tests/first_floor_stages_acceptance.gd"
 const Stage=preload("res://sim/stage_counterplay.gd")
 const Catalog=preload("res://sim/stage_catalog.gd")
 const Generator=preload("res://sim/nine_room_generator.gd")
+const Fixture=preload("res://tests/round_combat_fixture.gd")
 func run():
 	var layout:Dictionary=Generator.generate(44,1)
 	for room in layout.rooms:
@@ -22,10 +23,37 @@ func run():
 	var objective:Dictionary=Stage.config(w).objective
 	check(objective.type=="SURVIVE","guard room is a survive stage")
 	check(not Stage.cleared(w),"not cleared on entry")
-	for i in range(int(objective.rounds)):Stage.current(w).turn=i;check(not Stage.cleared(w) or i>=int(objective.rounds),"not cleared before rounds")
+	for i in range(int(objective.rounds)):Stage.current(w).turn=i;check(not Stage.cleared(w),"not cleared before rounds")
 	Stage.current(w).turn=int(objective.rounds)
 	check(Stage.cleared(w),"cleared after surviving")
 	check(Stage.status(w).objective_done,"status reports objective")
+	check(Stage.status(w).cleared,"status reports cleared")
 	check(Stage.retreat_allowed(w),"retreat allowed by default")
+	# The clearing round itself must not spawn; staying past it can still see reinforcements.
+	var enemy_count:int=Stage.enemies(w).size()
+	Stage.current(w).turn=int(objective.rounds)-1
+	check(Stage.finish_round(s.sim),"finish round on clear turn")
+	check(Stage.enemies(w).size()==enemy_count,"no spawn on the clearing round")
+	check(Stage.cleared(w),"still cleared after finishing the clear round")
+	var interval:int=int(Stage.config(w).reinforcements.interval_rounds)
+	check(Stage.finish_round(s.sim),"post-clear round one")
+	check(Stage.finish_round(s.sim),"post-clear round two")
+	var expected_wave:Array=Catalog.wave_enemies(Catalog.room(1,7),1)
+	var expected_size:int=expected_wave.size() if not expected_wave.is_empty() else int(Stage.CONFIG.wave_size)
+	check(Stage.enemies(w).size()==enemy_count+expected_size,"wave arrives after staying past the clear round")
+	# A blocked authored spawn cell falls back to an edge candidate instead of colliding with another slot.
+	var s2=Session.new(44,20260828,Session.DUO_SCENARIO_ID,"human",true)
+	var w2=s2.sim.world;var hero2:int=w2.party_control_actor_id()
+	check(walk(s2,Vector2i(11,14)),"approach guard room again")
+	check(s2.request_room_exit(hero2,"F1_R4_R7",w2.party_encounter.nine_room_floor.revision).accepted,"enter guard room again")
+	var blocked_cell:Vector2i=Rooms.bounds(w2).position+Vector2i(6,7)
+	Fixture.relocate(w2,Stage.enemies(w2)[0],blocked_cell)
+	var before_ids:Array=w2.party_encounter.enemy_ids.duplicate()
+	Stage.current(w2).turn=int(Stage.config(w2).reinforcements.interval_rounds)-1
+	check(Stage.finish_round(s2.sim),"wave with blocked authored cell")
+	var new_ids:Array=w2.party_encounter.enemy_ids.filter(func(id):return id not in before_ids)
+	check(new_ids.size()==2,"two enemies spawn despite blocked authored cell")
+	var positions:Array=new_ids.map(func(id):return w2.entities[id].position)
+	check(positions[0]!=positions[1],"fallback and authored spawn land on distinct cells")
 	print("STAGE_OBJECTIVE ","PASS" if failures.is_empty() else failures)
 	quit(0 if failures.is_empty() else 1)

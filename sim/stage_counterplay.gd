@@ -77,6 +77,9 @@ static func finish_round(sim)->bool:
 	var living:=enemies(w)
 	# Clearing the last enemy on the deadline wins; there is no empty-room wave.
 	if living.is_empty() or w.entities[w.party_control_actor_id()].health<=0:return true
+	var objective:Dictionary=config(w).get("objective",{})
+	# The round that first satisfies SURVIVE never spawns; the party staying past it can still see reinforcements.
+	if str(objective.get("type",""))=="SURVIVE" and int(state.turn)==int(objective.get("rounds",0)):return true
 	var cfg:Dictionary=config(w).get("reinforcements",{"interval_rounds":int(CONFIG.rounds_per_wave),"cap":int(CONFIG.max_active_enemies),"spawn_edges":["N","E","S","W"]})
 	if int(cfg.cap)<=0:return true
 	if int(state.turn)<(int(state.waves)+1)*int(cfg.interval_rounds):return true
@@ -92,14 +95,16 @@ static func finish_round(sim)->bool:
 		if p.x==bounds.position.x:return "W"
 		if p.x==bounds.end.x-1:return "E"
 		return ""
+	# Shared by authored cells and edge fallback: neither may land on an actor or beside the party.
+	var usable:=func(p:Vector2i)->bool:
+		return Rooms.safe(w,p) and not occupied.call(p) and not w.party_encounter.active_party_member_ids.any(func(id):return Rooms.distance(w.entities[id].position,p)<=1)
 	var edge_candidates:Array[Vector2i]=[]
 	for y in range(bounds.position.y,bounds.end.y):
 		for x in range(bounds.position.x,bounds.end.x):
 			var p:=Vector2i(x,y)
 			var side:String=edge_of.call(p)
 			if side.is_empty() or side not in cfg.spawn_edges:continue
-			if not Rooms.safe(w,p) or occupied.call(p):continue
-			if w.party_encounter.active_party_member_ids.any(func(id):return Rooms.distance(w.entities[id].position,p)<=1):continue
+			if not usable.call(p):continue
 			edge_candidates.append(p)
 	var cells:Array[Vector2i]=[];var kinds:Array[String]=[]
 	for i in range(count):
@@ -107,8 +112,9 @@ static func finish_round(sim)->bool:
 		if i<authored.size():
 			var e:Dictionary=authored[i]
 			var p:Vector2i=bounds.position+Vector2i(int(e.cell[0]),int(e.cell[1]))
-			if Rooms.safe(w,p) and not occupied.call(p) and p not in cells:
+			if usable.call(p) and p not in cells:
 				cells.append(p);kinds.append(str(e.kind));placed=true
+				edge_candidates.erase(p) # An authored cell that doubles as an edge candidate must not be popped twice.
 		if not placed and not edge_candidates.is_empty():
 			var p:Vector2i=edge_candidates.pop_front()
 			cells.append(p);kinds.append(str(authored[i].kind) if i<authored.size() else str(CONFIG.reinforcement_species[i%CONFIG.reinforcement_species.size()]))
