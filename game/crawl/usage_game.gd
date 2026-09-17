@@ -14,3 +14,10 @@ func growth()->void:
 		var id:String=key;var sp:Dictionary=World.DATA.spells[id]
 		label(content,"%s · %s · Lv%d · %dMP · 실패%d%%\n%s"%[sp.name,UsageWorld.USAGE_SKILLS.get(sp.school,World.DATA.skills.get(sp.school,sp.school)),sp.level,sp.mp,world.failure(id),sp.note])
 		button(content,"준비 해제" if id in world.prepared else "준비",func():world.submit("PREPARE",-1,id);growth();refresh(false);save_timer.start())
+
+func new_game_menu()->void:
+	panel("새 탐험 · 종족 선택")
+	for key in World.DATA.species:
+		var id:String=key;var s:Dictionary=World.DATA.species[id]
+		label(content,"%s · HP%d MP%d\n%s"%[s.name,s.hp,s.mp,s.note])
+		button(content,s.name+" 시작",func():world=UsageWorld.new(int(Time.get_unix_time_from_system()),id);save_allowed=true;dialog.hide();refresh(false);save())
