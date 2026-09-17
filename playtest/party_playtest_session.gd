@@ -8800,6 +8800,7 @@ func load_session_json(encoded: String) -> Dictionary:
 			"darkness_rules":replay_result=replay.enable_darkness_rules()
 			"care_rest":replay_result=replay.request_personal_rest(int(row.revision),int(row.request_id))
 			"room":replay_result=replay.request_room_exit(int(row.operation.actor_id),str(row.operation.portal_id),int(row.operation.revision))
+			"travel":replay_result=replay.request_room_travel(int(row.operation.room_id),int(row.operation.revision))
 			"round":replay_result=replay.round_command(row.operation)
 			"field_action":
 				replay_result=replay.commit_field_action(ActionScript.from_dict(row.action))
@@ -9319,6 +9320,10 @@ func _journal_wire_error(journal: Array) -> String:
 				if keys!=["kind","operation"] or not row.operation is Dictionary:return "invalid_room_journal"
 				var room_keys:Array=row.operation.keys();room_keys.sort()
 				if room_keys!=["actor_id","portal_id","revision"] or not Int64CodecScript.is_canonical(row.operation.actor_id) or not row.operation.portal_id is String or not preload("res://sim/nine_room_floor_state.gd").integer(row.operation.revision):return "invalid_room_journal"
+			"travel":
+				if keys!=["kind","operation"] or not row.operation is Dictionary:return "invalid_travel_journal"
+				var travel_keys:Array=row.operation.keys();travel_keys.sort()
+				if travel_keys!=["revision","room_id"] or not preload("res://sim/nine_room_floor_state.gd").integer(row.operation.room_id) or int(row.operation.room_id) not in range(9) or not preload("res://sim/nine_room_floor_state.gd").integer(row.operation.revision):return "invalid_travel_journal"
 			"round":
 				if keys!=["kind","operation"] or not row.operation is Dictionary or row.operation.get("type") not in ["EDIT","CONFIRM","RESUME"]:return "invalid_round_journal"
 			"field_action":
@@ -10676,6 +10681,22 @@ func visible_room_minimap()->Dictionary:
 	for p in preload("res://sim/room_transition_rules.gd").portals(sim.world):
 		if p.portal_id in s.discovered_portals:connections.append({"a":int(p.a),"b":int(p.b)})
 	return {"room_minimap":true,"rooms":rooms,"connections":connections,"active_room_id":int(s.active_room_id),"width":3,"height":3}
+
+func stage_map()->Dictionary:
+	return preload("res://sim/stage_map_model.gd").build(sim.world) if room_enabled() else {}
+
+func request_room_travel(room_id:int,expected_revision:int)->Dictionary:
+	if not room_enabled() or _run_is_complete():return _rejection_dto("room_exit_unavailable")
+	var rollback:Dictionary=sim.capture_rollback_memento(false)
+	var result:Dictionary=preload("res://sim/systems/room_transition_system.gd").travel(sim,room_id,expected_revision)
+	if not result.get("accepted",false):return _rejection_dto(str(result.reason))
+	if not RoundPlans.begin(sim):sim.restore_rollback_memento(rollback);return _rejection_dto("room_plan_failed")
+	command_journal.append({"kind":"travel","operation":{"room_id":room_id,"revision":expected_revision}})
+	if _auto_explore!=null:_auto_explore.cancel("room_transition")
+	if _exploration_route!=null:_exploration_route.cancel_for_direct_command()
+	_clear_draft();_advance_exile_world()
+	var dto:=_feedback_dto({"accepted":true,"reason":"ok","message":"%s · %s"%[room_status().get("name",""),preload("res://sim/room_transition_rules.gd").current_floor(sim.world).rooms[room_id].get("hint","")]})
+	dto["room_result"]=result;return dto
 
 static func room_exit_message(reason:String)->String:
 	match reason:

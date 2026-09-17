@@ -97,7 +97,9 @@ static func event_error(w,e)->String:
 		if keys!=["reason","request_id"] or not e.data.reason is String or not preload("res://sim/int64_codec.gd").is_canonical(e.data.request_id):return "room_failure_event_invalid"
 	elif e.type in ["room.entered","room.pursuit_arrived"]:
 		var keys:Array=e.data.keys();keys.sort()
-		if keys!=["floor_index","from_position","portal_id","request_id","ruleset_id","schema_version","source_room","target_room","to_position"] or e.data.schema_version!=1 or e.data.ruleset_id!=Generator.RULESET_ID or e.data.floor_index not in [1,2] or e.data.source_room not in range(9) or e.data.target_room not in range(9):return "room_entry_event_invalid"
+		var expected:Array=["floor_index","from_position","portal_id","request_id","ruleset_id","schema_version","source_room","target_room","to_position"]
+		if e.type=="room.entered":expected.append("travel");expected.sort()
+		if keys!=expected or (e.type=="room.entered" and not e.data.travel is bool) or e.data.schema_version!=1 or e.data.ruleset_id!=Generator.RULESET_ID or e.data.floor_index not in [1,2] or e.data.source_room not in range(9) or e.data.target_room not in range(9):return "room_entry_event_invalid"
 		for field in ["from_position","to_position"]:
 			if not e.data[field] is Array or e.data[field].size()!=2 or not integer(e.data[field][0]) or not integer(e.data[field][1]):return "room_entry_position_invalid"
 		var from:=Vector2i(e.data.from_position[0],e.data.from_position[1]);var to:=Vector2i(e.data.to_position[0],e.data.to_position[1])
