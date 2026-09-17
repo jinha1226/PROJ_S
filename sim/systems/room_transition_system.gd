@@ -110,7 +110,7 @@ static func travel(sim,room_id:int,revision:int)->Dictionary:
 	if p.is_empty():return Rules.rejected("room_not_adjacent")
 	var ids:Array=Rules.party_ids(w)
 	for id in ids:
-		if not w.can_act(id,w.world_time):return Rules.rejected("room_party_cannot_move")
+		if not w.can_act(id,w.world_time) or preload("res://sim/abilities/monster_ability_runtime.gd").anchored(w,id):return Rules.rejected("room_party_cannot_move")
 	var cells:Array=Rules.arrivals(w,p,room_id,ids)
 	if cells.is_empty():return Rules.rejected("room_arrival_full")
 	var start:int=w.events.size();var rollback:Dictionary=w.rollback_memento(false)

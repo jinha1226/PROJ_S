@@ -1,5 +1,7 @@
 extends "res://tests/first_floor_stages_acceptance.gd"
 const MapModel=preload("res://sim/stage_map_model.gd")
+const Stage=preload("res://sim/stage_counterplay.gd")
+const RoundRules=preload("res://sim/round_combat_rules.gd")
 func node(map:Dictionary,id:int)->Dictionary:
 	for n in map.nodes:
 		if int(n.id)==id:return n
@@ -19,7 +21,7 @@ func run():
 	var before:Dictionary=s.sim.snapshot();MapModel.build(w);check(s.sim.snapshot()==before,"model is read only")
 	check(s.stage_map()==map,"session stage_map")
 	var rev:int=int(w.party_encounter.nine_room_floor.revision);var time:int=w.world_time
-	check(not s.request_room_travel(1,rev).accepted,"undiscovered room rejected")
+	check(str(s.request_room_travel(1,rev).reason)=="room_not_adjacent","undiscovered room rejected")
 	var moved:Dictionary=s.request_room_travel(5,rev)
 	check(moved.accepted,"travel east "+str(moved.get("reason")))
 	check(int(w.party_encounter.nine_room_floor.active_room_id)==5,"active room 5")
@@ -27,16 +29,23 @@ func run():
 	check("1:5" in w.party_encounter.nine_room_floor.visited,"room 5 visited")
 	for id in w.party_encounter.active_party_member_ids:check(Rooms.current(w,w.entities[id].position),"party inside room 5")
 	check(w.party_encounter.nine_room_floor.pending_pursuit.is_empty(),"no pursuit on travel")
-	check(not s.request_room_travel(4,rev).accepted,"stale revision rejected")
+	check(str(s.request_room_travel(4,rev).reason)=="room_revision_changed","stale revision rejected")
 	check(s.request_room_travel(4,int(w.party_encounter.nine_room_floor.revision)).accepted,"travel back")
 	check(s.request_room_travel(7,int(w.party_encounter.nine_room_floor.revision)).accepted,"travel into combat room")
 	check(w.party_encounter.round_combat.phase=="DEPLOYMENT","combat room starts deployment")
 	map=MapModel.build(w)
 	check(map.in_combat and map.nodes.all(func(n):return not n.reachable),"no travel during combat")
-	check(not s.request_room_travel(4,int(w.party_encounter.nine_room_floor.revision)).accepted,"travel rejected in combat")
+	check(str(s.request_room_travel(4,int(w.party_encounter.nine_room_floor.revision)).reason)=="room_combat_active","travel rejected in combat")
 	var clone=Session.new();var loaded:Dictionary=clone.load_session_json(s.save_session_json())
 	check(loaded.accepted,"travel journal replay "+str(loaded.get("reason")))
 	if loaded.accepted:check(clone.sim.snapshot()==s.sim.snapshot(),"travel replay exact")
+	var r:Dictionary=w.party_encounter.round_combat
+	check(s.confirm_round(r.round_id,r.plan_revision).accepted,"deployment confirmed")
+	Stage.current(w).turn=int(Stage.config(w).objective.rounds)
+	check(RoundRules.active(w) and Stage.cleared(w),"round still active but objective done")
+	var cleared:Dictionary=s.request_room_travel(4,int(w.party_encounter.nine_room_floor.revision))
+	check(cleared.accepted,"travel after clearing "+str(cleared.get("reason")))
+	check(w.party_encounter.round_combat.phase=="EXPLORATION" and int(w.party_encounter.nine_room_floor.active_room_id)==4,"cleared travel returns to exploration")
 	check(w.world_state_error().is_empty(),"world audit "+w.world_state_error())
 	print("STAGE_MAP ","PASS" if failures.is_empty() else failures)
 	quit(0 if failures.is_empty() else 1)
