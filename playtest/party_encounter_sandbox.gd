@@ -355,6 +355,7 @@ var battle_drag:Control
 var _round_attack_targeting:=false
 var round_order_bar:VBoxContainer
 var stage_context_bar:HBoxContainer
+var stage_map_view:Control
 var battle_enemy_strip:ScrollContainer
 var hero_skill_row:HBoxContainer
 var _skill_pages:Dictionary={}
@@ -1134,6 +1135,10 @@ func _build_ui()->void:
 	battle_loot_panel.hide()
 	battle_loot_panel.take_requested.connect(_take_battle_loot)
 	battle_loot_panel.closed.connect(_close_battle_loot)
+	stage_map_view=preload("res://playtest/stage_map_view.gd").new();add_child(stage_map_view)
+	stage_map_view.room_selected.connect(_on_map_room_selected)
+	stage_map_view.abandon_requested.connect(_on_map_abandon)
+	stage_context_bar.map_button.pressed.connect(_open_stage_map)
 	_apply_dark_pixel_shell_skin()
 	resized.connect(_on_surface_resized)
 
@@ -6637,10 +6642,22 @@ func flush_auto_flow_for_headless_test()->Dictionary:
 		if auto_combat_render_stage==0:_advance_auto_combat_preview(auto_generation)
 		else:_commit_auto_combat_plan(auto_generation)
 	return auto_flow_state()
+func _open_stage_map()->void:
+	if grid.stage_motion_busy():return
+	stage_map_view.open(session.stage_map())
+func _on_map_room_selected(room_id:int)->void:
+	stage_map_view.close()
+	_record_result(session.request_room_travel(room_id,int(session.room_status().revision)),false)
+	_request_refresh()
+func _on_map_abandon()->void:
+	stage_map_view.close()
+	_record_result(session.abandon_expedition(),false)
+	_request_refresh()
 func _on_cell(position:Vector2i)->void:
 	if grid.stage_motion_busy():return
 	if session.round_status().phase=="DEPLOYMENT" and not _battle_target_mode.is_empty():_cancel_battle_targeting()
-	if session.room_enabled() and _battle_target_mode.is_empty() and session.round_status().phase!="DEPLOYMENT":
+	# Doorway walking is retreat only: outside combat, rooms are chosen from the stage map overlay.
+	if session.room_enabled() and session.round_active() and _battle_target_mode.is_empty() and session.round_status().phase!="DEPLOYMENT":
 		var exit:Dictionary=preload("res://sim/room_transition_rules.gd").portal_at(session.sim.world,position)
 		var hero:int=session.sim.world.party_encounter.protagonist_id
 		if not exit.is_empty() and preload("res://sim/room_transition_rules.gd").distance(session.sim.world.entities[hero].position,position)==1:

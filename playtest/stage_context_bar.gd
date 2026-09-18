@@ -3,8 +3,14 @@ const Touch=preload("res://playtest/stage_touch_button.gd")
 const Portrait=preload("res://playtest/stage_portrait.gd")
 var _signature:Array=[]
 var _page:=0
+## Persistent exploration control: opens the stage map overlay (host._open_stage_map).
+var map_button:Button
 func _init():
 	name="StageContextBar";custom_minimum_size.y=84;add_theme_constant_override("separation",4)
+	map_button=Touch.new();map_button.name="StageMap";map_button.text="지도"
+	map_button.custom_minimum_size=Vector2(72,48);map_button.clip_text=true
+	map_button.add_theme_font_size_override("font_size",14);style_button(map_button)
+	map_button.visible=false;add_child(map_button)
 static func style_button(b:Button):
 	preload("res://playtest/stage_button_skin.gd").apply(b)
 func button(label:String,node_name:String)->Button:
@@ -23,7 +29,9 @@ func sync(host):
 	var signature:Array=[active,r.phase,r.cursor,r.plan_revision,selected,ids,skills.map(func(row):return row.skill_id),_page,loot]
 	if signature!=_signature:
 		_signature=signature
-		for child in get_children():remove_child(child);child.queue_free()
+		for child in get_children():
+			remove_child(child)
+			if child!=map_button:child.queue_free()
 		for row in members:
 			if active and r.phase!="DEPLOYMENT" and int(row.entity_id)!=selected:continue
 			if not active and get_child_count()>=3:break
@@ -48,6 +56,9 @@ func sync(host):
 		if loot>0:
 			var pickup:=button("줍기\n%d"%loot,"StagePickup")
 			pickup.pressed.connect(func():host._on_product_pickup();host._request_refresh())
+		add_child(map_button)
+	map_button.visible=s.room_enabled() and not active
+	map_button.disabled=host.grid.stage_motion_busy()
 	for row in members:
 		var portrait=get_node_or_null("StagePortrait%d"%int(row.entity_id))
 		if portrait!=null:portrait.actor=row;portrait.queue_redraw()
