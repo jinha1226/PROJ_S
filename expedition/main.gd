@@ -12,6 +12,8 @@ var actions: HFlowContainer
 var logs: Label
 var board
 var map_view
+var minimap
+var map_popup: PopupPanel
 var notice := ""
 var details_popup: PopupPanel
 var details: RichTextLabel
@@ -46,6 +48,14 @@ func _ready() -> void:
 	var info := VBoxContainer.new(); info.custom_minimum_size = Vector2(430,500); details_popup.add_child(info)
 	details = RichTextLabel.new(); details.size_flags_vertical = SIZE_EXPAND_FILL; info.add_child(details)
 	button(info,"닫기",func(): details_popup.hide())
+	map_popup = PopupPanel.new(); add_child(map_popup)
+	var map_layout := VBoxContainer.new()
+	map_layout.custom_minimum_size = Vector2(540,590); map_popup.add_child(map_layout)
+	caption(map_layout,"탐험 지도   3 × 3",22)
+	map_view = MapView.new(); map_view.session = session; map_view.ui_font = FONT
+	map_view.room_pressed.connect(on_room); map_layout.add_child(map_view)
+	caption(map_layout,"통로로 연결된 방을 선택하세요. 전투 중에는 이동할 수 없습니다.",14)
+	button(map_layout,"지도 닫기",func(): map_popup.hide())
 	refresh()
 
 func clear(node: Node) -> void:
@@ -75,7 +85,8 @@ func gauge(parent: Node, value: int, maximum: int, color: Color) -> void:
 func refresh() -> void:
 	status.text = "밝기 %d   ·   횃불 %d   ·   식량 %d      전리품 %d   /   자금 %d" % [session.light,session.torches,session.food,session.loot,session.bank]
 	clear(party_bar); clear(stage); clear(actions)
-	board = null; map_view = null
+	board = null; minimap = null
+	map_view.session = session; map_view.queue_redraw()
 	for i in range(session.party.size()):
 		var actor: Dictionary = session.party[i]
 		var card := VBoxContainer.new(); card.size_flags_horizontal = SIZE_EXPAND_FILL; party_bar.add_child(card)
@@ -84,17 +95,22 @@ func refresh() -> void:
 		gauge(card,actor.hp,actor.max_hp,Color("85bea4"))
 		gauge(card,actor.stress,200,Color("b583a7"))
 	if session.phase in ["EXPLORE","BATTLE"]:
-		var left := VBoxContainer.new(); left.size_flags_horizontal = SIZE_EXPAND_FILL; stage.add_child(left)
-		caption(left,"탐험 지도   3 × 3",22)
-		map_view = MapView.new(); map_view.session = session; map_view.ui_font = FONT
-		map_view.room_pressed.connect(on_room); left.add_child(map_view)
-		caption(left,"통로로 연결된 방을 클릭하여 이동",14)
 		var right := VBoxContainer.new(); right.size_flags_horizontal = SIZE_EXPAND_FILL; stage.add_child(right)
 		caption(right,"%s   8 × 8%s" % [session.rooms[session.room].name," · %d턴" % session.round_number if session.phase == "BATTLE" else ""],22)
+		var game_area := Control.new(); game_area.custom_minimum_size = Vector2(390,390)
+		game_area.size_flags_vertical = SIZE_EXPAND_FILL; right.add_child(game_area)
 		board = Board.new(); board.session = session; board.ui_font = FONT
-		board.cell_pressed.connect(on_cell); right.add_child(board)
+		board.cell_pressed.connect(on_cell); game_area.add_child(board)
+		board.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		var mini_panel := PanelContainer.new(); game_area.add_child(mini_panel)
+		mini_panel.position = Vector2(0,0)
+		var mini_layout := VBoxContainer.new(); mini_panel.add_child(mini_layout)
+		minimap = MapView.new(); minimap.compact = true
+		minimap.session = session; minimap.ui_font = FONT
+		minimap.expand_requested.connect(show_map); mini_layout.add_child(minimap)
+		button(mini_layout,"지도 확대",show_map)
 		var row: Dictionary = session.rooms[session.room]
-		var hint := "문을 누르거나 왼쪽 지도에서 다음 방을 선택하세요."
+		var hint := "문으로 이동 · 왼쪽 위 미니맵을 누르면 지도 확대"
 		if session.phase == "BATTLE":
 			hint = "붉은 칸: 적 공격 예고   ·   선택: " + {"MOVE":"이동","ATTACK":"공격","PUSH":"밀치기","FIRE":"점화","WATER":"물","ELECTRIC":"방전"}[mode]
 			for choice in [["MOVE","이동"],["ATTACK","공격"],["PUSH","밀치기"],["FIRE","점화"],["WATER","물"],["ELECTRIC","방전"]]:
@@ -108,6 +124,7 @@ func refresh() -> void:
 		caption(right,hint,14)
 		button(actions,"철수 · 전리품 절반" if session.phase == "BATTLE" else "귀환",func(): run_action(session.retreat))
 	else:
+		map_popup.hide()
 		var panel := VBoxContainer.new(); panel.size_flags_horizontal = SIZE_EXPAND_FILL; stage.add_child(panel)
 		caption(panel,"변방의 여관" if session.phase == "TOWN" else "원정대 전멸",30)
 		caption(panel,"9개의 방, 무작위 통로. 수문장을 처치하고 돌아오세요.\n출정할 때마다 새로운 지도가 만들어집니다." if session.phase == "TOWN" else "새 원정대로 다시 시작할 수 있습니다.",18)
@@ -119,8 +136,16 @@ func refresh() -> void:
 	logs.text = notice if not notice.is_empty() else "\n".join(session.log_lines.slice(maxi(0,session.log_lines.size()-2)))
 
 func on_room(id: int) -> void:
-	if id == session.room: return
+	if id == session.room:
+		map_popup.hide(); return
+	if not session.can_travel(id): return
+	map_popup.hide()
 	run_action(func(): return session.travel(id))
+
+func show_map() -> void:
+	if session.phase not in ["EXPLORE","BATTLE"]: return
+	map_view.session = session; map_view.queue_redraw()
+	map_popup.popup_centered()
 
 func on_cell(point: Vector2i) -> void:
 	var actor: Dictionary = session.at(point)

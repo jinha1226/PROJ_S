@@ -1,14 +1,17 @@
 extends Control
 signal room_pressed(id: int)
+signal expand_requested
 const Icons = preload("res://expedition/map_icons.gd")
 const KIND_COLORS = {"entry":Color("c0c8dc"),"battle":Color("da8178"),"boss":Color("d2a4ef"),"camp":Color("79c9a2"),"loot":Color("e8c779")}
 const KIND_NAMES = {"entry":"입구","battle":"전투","boss":"수문장","camp":"회복","loot":"전리품"}
 var session
 var ui_font: Font
 var hovered := -1
+var compact := false
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(390,390)
+	custom_minimum_size = Vector2(140,140) if compact else Vector2(390,390)
+	if compact: mouse_default_cursor_shape = CURSOR_POINTING_HAND
 	size_flags_horizontal = SIZE_EXPAND_FILL
 	size_flags_vertical = SIZE_EXPAND_FILL
 	resized.connect(queue_redraw)
@@ -42,6 +45,12 @@ func _draw() -> void:
 		var reachable: bool = session.can_travel(row.id)
 		var color: Color = KIND_COLORS[row.kind]
 		draw_rect(rect,Color("1b2330"))
+		if compact:
+			Icons.paint(self,row.kind,rect.get_center(),rect.size.x*0.22,color)
+			var outline := Color("edd49a") if current else Color("8bbbaa") if reachable else Color("3c4658")
+			draw_rect(rect,outline,false,2 if current else 1)
+			if row.used or row.cleared: draw_circle(rect.end-Vector2(4,4),2,Color("79c9a2"))
+			continue
 		# Every map tile previews its own authoritative 8x8 room terrain.
 		var preview := Rect2(rect.position+Vector2(8,6),Vector2(rect.size.x-16,rect.size.y-32))
 		var cell_size := minf(preview.size.x,preview.size.y)/8.0
@@ -64,6 +73,10 @@ func _draw() -> void:
 		if row.id in session.visited: draw_circle(rect.position+Vector2(8,8),3,Color("e6d8b3"))
 
 func _gui_input(event: InputEvent) -> void:
+	if compact:
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			expand_requested.emit(); accept_event()
+		return
 	if event is InputEventMouseMotion:
 		hovered = room_at(event.position)
 		mouse_default_cursor_shape = CURSOR_POINTING_HAND if hovered == session.room or session.can_travel(hovered) else CURSOR_ARROW

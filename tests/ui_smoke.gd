@@ -14,10 +14,18 @@ func exercise() -> void:
 	var target: int = scene.session.rooms[0].links[0]
 	var event := InputEventMouseButton.new()
 	event.pressed = true; event.button_index = MOUSE_BUTTON_LEFT
+	event.position = scene.minimap.room_rect(target).get_center()
+	scene.minimap._gui_input(event)
+	await process_frame
+	if not scene.map_popup.visible or scene.session.room != 0:
+		failed = true; push_error("minimap must expand without moving")
+	if scene.minimap.size.x > 180 or scene.board.size.x < 900:
+		failed = true; push_error("minimap must stay small and board must use full width")
 	event.position = scene.map_view.room_rect(target).get_center()
 	scene.map_view._gui_input(event)
 	await process_frame
 	if scene.session.room != target: failed = true; push_error("map click did not travel")
+	if scene.map_popup.visible: failed = true; push_error("map must close after selecting a room")
 	Fixture.clear_battle(scene.session)
 	var door: Vector2i = scene.session.doors().keys()[0]
 	var destination: int = scene.session.doors()[door]
@@ -27,12 +35,18 @@ func exercise() -> void:
 	Fixture.reach(scene.session,Fixture.kind_id(scene.session,"battle"))
 	scene.refresh()
 	await process_frame
+	if scene.session.phase == "BATTLE":
+		var before: int = scene.session.room
+		scene.show_map()
+		scene.on_room(scene.session.rooms[before].links[0])
+		if scene.session.room != before: failed = true; push_error("expanded map bypassed combat lock")
+		scene.map_popup.hide()
 	scene.on_cell(Vector2i(2,2))
 	if scene.session.phase == "BATTLE": scene.run_action(scene.session.end_round)
 	await process_frame
 	scene.run_action(scene.session.retreat)
 	await process_frame
-	print("UI smoke: map hit-test, room door input, board and return")
+	print("UI smoke: compact map, popup travel, full-width board, combat lock, doors and return")
 	scene.queue_free()
 	await process_frame
 	quit(1 if failed else 0)
