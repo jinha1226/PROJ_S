@@ -126,32 +126,24 @@ static func execute_individual_ally(sim,plan:Dictionary,step:int,preview:bool)->
 	return result
 
 static func execute_individual_enemy(sim,id:int,step:int,preview:bool)->Dictionary:
-	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat;var key:=str(id)
-	var result:={"accepted":true,"actor_id":id,"status":"DONE","reason":"ok","movement":[],"damage":[],"conditional":false,"from_position":[w.entities[id].position.x,w.entities[id].position.y]}
+	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat
+	var plan:Dictionary=r.plans.get(str(id),{})
+	var result:={"accepted":true,"actor_id":id,"status":"DONE","reason":"ok",
+		"movement":[],"damage":[],"conditional":false,
+		"from_position":[w.entities[id].position.x,w.entities[id].position.y]}
+	if plan.is_empty():return cancel(result,"intent_missing")
+	# Stage plans are built once in round_plan_service.begin().  Keeping this
+	# resolver entirely plan-driven prevents player movement or a later selector
+	# call from silently changing the published enemy action.
 	if not w.can_act(id,w.world_time):return cancel(result,"incapacitated")
-	var movement_event=w.emit_event("stage.enemy_movement",id,-1,w.entities[id].position,0,-1,{"round_id":r.round_id,"room":preload("res://sim/stage_counterplay.gd").key(w)})
-	if movement_event==null:result.accepted=false;return result
-	# Forecast each leaf on this actor's turn, after earlier actors have acted.
-	for i in range(Rules.move_budget(w,id)):
-		var forecast:Dictionary=sim.party_coordinator.forecast_enemy_action(id)
-		if forecast.get("action_type","")!="MOVE":break
-		var path:Array=[forecast.destination]
-		r.slot_progress[key]=0
-		var move:Dictionary=execute_slot(sim,Plans.pack(w,Action.hold(id),"AI",path),step,preview,movement_event.id)
-		if not move.accepted:return move
-		result.movement.append_array(move.movement)
-		if move.movement.is_empty() or not w.can_act(id,w.world_time):break
-	for i in range(Rules.attack_budget(w,id)):
-		var forecast:Dictionary=sim.party_coordinator.forecast_enemy_action(id)
-		if forecast.get("action_type","")!="MELEE" or not w.can_act(id,w.world_time):break
-		r.slot_progress[key]=0
-		var attack:Dictionary=execute_slot(sim,Plans.pack(w,Action.melee(id,int(forecast.target_id)),"AI"),step,preview)
-		if not attack.accepted:return attack
-		result.damage.append_array(attack.damage)
-		if attack.status!="DONE":break
-		r.slot_attacks[key]=int(r.slot_attacks.get(key,0))+1
-	r.slot_progress[key]=0
+	var executed:=execute_slot(sim,plan,step,preview)
+	if not executed.accepted:return executed
+	result.movement.append_array(executed.get("movement",[]))
+	result.damage.append_array(executed.get("damage",[]))
+	result.status=executed.get("status","DONE")
+	result.reason=executed.get("reason","ok")
 	result["end_position"]=[w.entities[id].position.x,w.entities[id].position.y]
+	if result.status=="DONE":r.slot_attacks[str(id)]=int(r.slot_attacks.get(str(id),0))+(1 if plan.action.type=="MELEE" else 0)
 	return result
 
 static func execute_slot(sim,p:Dictionary,step:int,preview:bool=false,movement_cause:int=-1)->Dictionary:

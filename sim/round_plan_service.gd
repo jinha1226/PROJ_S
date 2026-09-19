@@ -39,7 +39,7 @@ static func begin(sim)->bool:
 	r.rng_commitment=("round-v1/%d/%d/%d"%[w.seed,r.round_id,w.world_time]).sha256_text()
 	var hold=Action.hold(w.party_encounter.protagonist_id)
 	var board:Dictionary=FieldTurns.Board.build(w,hold)
-	var enemy_plans:Dictionary={} if staged else preload("res://sim/enemy_telegraph_rules.gd").plans(sim)
+	var enemy_plans:Dictionary=preload("res://sim/enemy_telegraph_rules.gd").plans(sim)
 	for id_wire in r.order:
 		var id:=int(id_wire);var action=Action.hold(id)
 		if w.party_encounter.member(id)!=null:
@@ -47,10 +47,13 @@ static func begin(sim)->bool:
 				var decision:Dictionary=sim.party_coordinator._companion_decision(id,hold,board)
 				action=sim.party_coordinator._leaf_to_action(id,decision.selected_leaf)
 				if not sim.party_coordinator._action_error(action).is_empty():action=Action.hold(id)
+		elif staged and r.phase!="DEPLOYMENT":
+			r.plans[id_wire]=preload("res://sim/stage_counterplay.gd").plan_enemy_round(sim,id)
+			continue
 		elif not staged and r.phase!="DEPLOYMENT" and enemy_plans.has(id):
 			var row:Dictionary=enemy_plans[id]
 			if row.action_type=="MELEE":action=Action.melee(id,int(row.target_id))
-			elif row.action_type=="MOVE" and not staged:action=Action.move_to(id,Vector2i(row.destination[0],row.destination[1]))
+			elif row.action_type=="MOVE":action=Action.move_to(id,Vector2i(row.destination[0],row.destination[1]))
 		var path:Array=[[action.destination.x,action.destination.y]] if action.type=="MOVE" else []
 		r.plans[id_wire]=pack(w,action,"AI",path)
 	w.party_encounter.round_combat=r

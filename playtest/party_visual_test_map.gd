@@ -7,6 +7,7 @@ const SOLO_COMBAT_SCENARIO_ID := "SOLO_COMBAT_V1"
 const SOLO_EXPLORATION_SCENARIO_ID := preload("res://playtest/solo_run_policy.gd").SCENARIO_ID
 const DUO_SCENARIO_ID := preload("res://playtest/solo_run_policy.gd").DUO_SCENARIO_ID
 const SOLO_FIXTURE_SCENARIO_ID := "SOLO_FIXTURE_V1"
+const DARK_FANTASY_SCENARIO_ID := "DARK_FANTASY_EXPEDITION_V1"
 const VISION_TEST_SCENARIO_ID := VisionRulesScript.LIGHTING_TEST_SCENARIO_ID
 const SHOWCASE_FOV_RADIUS := 6
 const RUN_MANIFEST_SCHEMA_VERSION := 1
@@ -57,7 +58,7 @@ const _TERRAIN_BY_GLYPH := {
 static func has_scenario(scenario_id: String) -> bool:
 	return scenario_id in [REGRESSION_SCENARIO_ID, SHOWCASE_SCENARIO_ID,
 		DUO_SCENARIO_ID, SOLO_EXPLORATION_SCENARIO_ID, SOLO_COMBAT_SCENARIO_ID,
-		SOLO_FIXTURE_SCENARIO_ID, VISION_TEST_SCENARIO_ID]
+		SOLO_FIXTURE_SCENARIO_ID, DARK_FANTASY_SCENARIO_ID, VISION_TEST_SCENARIO_ID]
 
 
 static func uses_showcase_layout(scenario_id:String)->bool:
@@ -65,7 +66,8 @@ static func uses_showcase_layout(scenario_id:String)->bool:
 
 
 static func uses_product_dungeon(scenario_id: String) -> bool:
-	return scenario_id in [DUO_SCENARIO_ID, SOLO_EXPLORATION_SCENARIO_ID, SOLO_COMBAT_SCENARIO_ID]
+	return scenario_id in [DUO_SCENARIO_ID, SOLO_EXPLORATION_SCENARIO_ID, SOLO_COMBAT_SCENARIO_ID,
+		DARK_FANTASY_SCENARIO_ID]
 
 
 static func uses_los_fov(scenario_id: String) -> bool:

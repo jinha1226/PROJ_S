@@ -3,11 +3,14 @@ extends RefCounted
 
 const ModelScript = preload("res://sim/party_morale_model.gd")
 const PerfProbeScript = preload("res://sim/perf_probe.gd")
+const DarkExpeditionRulesScript = preload("res://sim/dark_fantasy_expedition_rules.gd")
 
 
 static func commit_batch(world, event_rows: Array, allow_idle_recovery: bool = true) -> bool:
 	if world == null or world.party_encounter == null:
 		return true
+	if DarkExpeditionRulesScript.active(world):
+		return DarkExpeditionRulesScript.commit_event_batch(world, event_rows)
 	var source_ids := _source_event_ids(world, event_rows)
 	# Environment/actor cadence may run back-to-back at the same timestamp. An
 	# empty cadence is not another morale recovery turn; the owning player action

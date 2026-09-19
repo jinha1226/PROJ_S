@@ -25,6 +25,40 @@ static func authored_wave(w,wave:int)->Array:
 	if int(s.floor_index)!=1:return []
 	return Catalog.wave_enemies(Catalog.room(1,int(s.active_room_id)),wave)
 
+# Stage combat publishes one immutable enemy plan at the round boundary.  The
+# existing coordinator selector remains the source of that plan, but it is
+# deliberately called only here; resolution must consume the stored plan.
+static func planned_enemy_action(sim, id:int)->Dictionary:
+	var w=sim.world
+	var base:Dictionary=sim.party_coordinator.forecast_enemy_action(id)
+	var origin:Vector2i=w.entities[id].position if w.entities.has(id) else Vector2i(-1,-1)
+	var target_id:=int(base.get("target_id",-1))
+	var target_cell:=Vector2i(-1,-1)
+	if w.entities.has(target_id):target_cell=w.entities[target_id].position
+	var action=preload("res://sim/party_action_command.gd").hold(id)
+	var path:Array=[]
+	var destination:=origin
+	if bool(base.get("accepted",false)) and str(base.get("action_type",""))=="MOVE":
+		destination=Vector2i(int(base.destination[0]),int(base.destination[1]))
+		path=[[destination.x,destination.y]]
+	elif bool(base.get("accepted",false)) and str(base.get("action_type",""))=="MELEE":
+		action=preload("res://sim/party_action_command.gd").melee(id,target_id)
+	return {"action":action,"origin":[origin.x,origin.y],
+		"destination":[destination.x,destination.y],"path":path,
+		"target_cell":[target_cell.x,target_cell.y],
+		"target_id":target_id,"reason":str(base.get("reason","")),
+		"target_policy":"CELL"}
+
+static func plan_enemy_round(sim,id:int)->Dictionary:
+	var w=sim.world
+	var row:=planned_enemy_action(sim,id)
+	var action=row.action
+	return {"actor_id":str(id),"item_operation":{},"source":"AI",
+		"origin":row.origin,"destination":row.destination,"path":row.path,
+		"action":action.to_dict(),"target_policy":"CELL",
+		"target_cell":row.target_cell,"anchor":"WORLD_TILE",
+		"move_budget":preload("res://sim/round_combat_rules.gd").move_budget(w,id)}
+
 static func prepare(sim,r:Dictionary)->bool:
 	var w=sim.world;var room_key:=key(w)
 	if not r.stage_rooms.has(room_key):

@@ -77,6 +77,7 @@ const ActiveSkillRegistryScript=preload("res://sim/abilities/active_skill_regist
 const AsciiStyleScript=preload("res://playtest/ascii_visual_style.gd")
 const ExpeditionCycleScript=preload("res://sim/expedition_cycle_state.gd")
 const RationRulesScript=preload("res://sim/party_ration_rules.gd")
+const DarkExpeditionRulesScript=preload("res://sim/dark_fantasy_expedition_rules.gd")
 const CampaignEncounterStreamScript=preload("res://sim/campaign_encounter_stream.gd")
 const BaseProgressionRulesScript=preload("res://sim/base_progression_rules.gd")
 const BaseResourceCacheRulesScript=preload("res://sim/base_resource_cache_rules.gd")
@@ -106,6 +107,7 @@ const SOLO_EXPLORATION_SCENARIO_ID := SoloRunPolicy.SCENARIO_ID
 const DUO_SCENARIO_ID := SoloRunPolicy.DUO_SCENARIO_ID
 const SOLO_START_TAG := "solo_start_v1"
 const SOLO_FIXTURE_SCENARIO_ID := "SOLO_FIXTURE_V1"
+const DARK_FANTASY_SCENARIO_ID := "DARK_FANTASY_EXPEDITION_V1"
 const NEW_EXPEDITION_FACET_MIN := 100
 const NEW_EXPEDITION_FACET_MAX := 899
 const NEW_EXPEDITION_MIN_PROFILE_DISTANCE := 700
@@ -552,6 +554,7 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	state.legacy_contact_rule=not duo
 	candidate.world.party_encounter = state
 	if map_layout.get("ruleset_id","")=="nine-room-dungeon-v1":state.nine_room_floor=preload("res://sim/nine_room_floor_state.gd").create(map_layout)
+	var dark_fantasy_start:bool=p_scenario_id==DARK_FANTASY_SCENARIO_ID
 	# Bootstrap must obey the same equipment requirements as gameplay. A dwarf
 	# can have DEX 3, below the default short sword's DEX 4 requirement. Keep all
 	# granted items, but equip the first legal starter (or leave the hand empty).
@@ -579,6 +582,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 		var finds_error:=preload("res://sim/dcss_equipment_finds.gd").initialise(candidate.world,map_layout,p_world_seed)
 		if not finds_error.is_empty():
 			push_error("Starting equipment initialization: "+finds_error);return false
+	if dark_fantasy_start and DarkExpeditionRulesScript.start(candidate.world,
+			"DFE-%d-0"%p_world_seed,0).get("accepted",false)==false:return false
 	candidate.world.warm_rollback_memento_static_tiles()
 	var initial_world_error:String=candidate.world.world_state_error()
 	if not initial_world_error.is_empty():
@@ -593,6 +598,8 @@ func reset_party(p_world_seed: int, p_personality_seed: int,
 	_presentation_visibility_cache.clear()
 	_warm_product_topology_presentation_cache()
 	command_journal.clear(); _clear_draft(); _deployment_plan.clear()
+	if dark_fantasy_start:
+		command_journal.append({"kind":"dark_expedition","operation":{"action":"START","gold":0}})
 	if _exploration_route == null: _exploration_route = ExplorationRouteScript.new(self)
 	else: _exploration_route.clear()
 	if _auto_explore == null: _auto_explore = AutoExploreScript.new(self)
@@ -2026,6 +2033,7 @@ func party_status() -> Dictionary:
 		"party_command":PartyCommandScript.effective(sim.world,state),
 		"contact_warning":_latest_party_contact_warning(),
 		"protagonist_position": [protagonist_position.x, protagonist_position.y],
+		"dark_expedition":DarkExpeditionRulesScript.status(sim.world),
 		"vision_ruleset_id": VisionRulesScript.RULESET_ID,
 		"vision_profile": vision_profile,
 		"vision_observer_illumination": vision_illumination,
@@ -4931,6 +4939,12 @@ func party_cards() -> Array[Dictionary]:
 	for member_id in state.active_party_member_ids:
 		if town_life_enabled() and sim.world.combatant_states[member_id].life_state=="DEAD":continue
 		var member = state.member(member_id); var entity = sim.world.entities[member_id]
+		var expedition_member:Dictionary={}
+		if DarkExpeditionRulesScript.active(sim.world):
+			var expedition_status:Dictionary=DarkExpeditionRulesScript.status(sim.world)
+			for expedition_row in expedition_status.get("members",[]):
+				if int(expedition_row.get("entity_id",-1))==int(member_id):
+					expedition_member=expedition_row;break
 		var logical: Vector2i = entity.position if member.presence == "DEPLOYED" else (state.group_anchor if member.presence == "GROUPED" else Vector2i(-1,-1))
 		var exposure := {"applicable": false, "sampled_step_index": sim.world.step_index, "sampled_world_time": sim.world.world_time,
 			"position": [-1,-1], "fire_score": 0, "water_score": 0, "electric_score": 0, "poison_score": 0, "total_risk": 0}
@@ -4964,6 +4978,10 @@ func party_cards() -> Array[Dictionary]:
 			"species_id":str(entity.species_id),
 			"status_ids": _combatant_status_ids(member_id), "presence": member.presence, "logical_position": [logical.x,logical.y],
 			"element_exposure": exposure, "stress": member.stress,
+				"expedition_stress":int(expedition_member.get("stress",0)),
+				"death_tokens":int(expedition_member.get("death_tokens",0)),
+				"injury_ids":expedition_member.get("injury_ids",[]).duplicate(true),
+				"expedition_stress_band":str(expedition_member.get("stress_band","CALM")),
 			"darkness_stress": darkness_stress,
 			"energy":int(member.energy),"max_energy":int(ActiveSkillRegistryScript.MAX_ENERGY),
 			"stress_band":PartyMoraleModelScript.stress_band(int(member.stress),str(member.mental_mode)),
@@ -6515,9 +6533,9 @@ func preview_actor_action(actor_id: int, action_type: String, destination: Array
 
 
 func enemy_intent_forecasts() -> Array[Dictionary]:
-	# Forecasts are a presentation-only view of the exact selector used by the
-	# next enemy batch. They deliberately say "현재 예상": a committed player
-	# move may change the authoritative positions before that batch is evaluated.
+	# Stage rooms expose the plan published at the round boundary. Other combat
+	# modes retain their current-state forecast because their enemy batch is still
+	# selected at resolution time.
 	var rows: Array[Dictionary] = []
 	if sim == null or sim.world == null or sim.world.party_encounter == null:
 		return rows
@@ -6527,42 +6545,72 @@ func enemy_intent_forecasts() -> Array[Dictionary]:
 	if hero == null: return rows
 	var visible: Dictionary = _presentation_visible_cells(hero.position)
 	var squad_board: Dictionary = EnemySquadBlackboardScript.build(sim.world)
+	var stage_round: bool = preload("res://sim/stage_counterplay.gd").enabled(sim.world) \
+		and state.round_combat.phase != "DEPLOYMENT"
 	for enemy_id_value in CampaignEncounterStreamScript.active_enemy_ids(sim.world):
 		var enemy_id := int(enemy_id_value)
 		var enemy = sim.world.entities.get(enemy_id)
 		if enemy == null or not visible.has(_position_key(enemy.position)): continue
-		var forecast: Dictionary = sim.party_coordinator.forecast_enemy_action(
-			enemy_id, squad_board)
-		if not bool(forecast.get("accepted", false)): continue
-		var target_id := int(forecast.target_id)
-		var target = sim.world.entities.get(target_id)
-		if target == null or not visible.has(_position_key(target.position)): continue
-		var action_type := str(forecast.action_type)
+		var frozen_plan: Dictionary = state.round_combat.plans.get(str(enemy_id), {}) if stage_round else {}
+		var frozen := not frozen_plan.is_empty()
+		var target_id := -1
+		var target = null
+		var action_type := "HOLD"
+		var from_position: Array = [enemy.position.x, enemy.position.y]
+		var destination: Array = from_position.duplicate()
+		var target_position: Array = [-1, -1]
+		var fixed_reason := ""
+		var forecast: Dictionary = {}
+		if frozen:
+			var frozen_action = ActionScript.from_dict(frozen_plan.get("action", {}))
+			if frozen_action == null: continue
+			target_id = int(frozen_action.target_id)
+			action_type = "MOVE" if not frozen_plan.get("path", []).is_empty() else str(frozen_action.type)
+			from_position = frozen_plan.origin.duplicate(true)
+			destination = frozen_plan.destination.duplicate(true)
+			target_position = frozen_plan.target_cell.duplicate(true)
+			if target_id > 0: target = sim.world.entities.get(target_id)
+			if target == null and target_id <= 0:
+				for member_id in state.active_party_member_ids:
+					var candidate = sim.world.entities.get(int(member_id))
+					if candidate != null and [candidate.position.x, candidate.position.y] == target_position:
+						target_id = int(member_id); target = candidate; break
+			fixed_reason = "라운드 시작에 고정된 Intent입니다."
+		else:
+			forecast = sim.party_coordinator.forecast_enemy_action(enemy_id, squad_board)
+			if not bool(forecast.get("accepted", false)): continue
+			target_id = int(forecast.target_id)
+			target = sim.world.entities.get(target_id)
+			if target == null or not visible.has(_position_key(target.position)): continue
+			action_type = str(forecast.action_type)
+			from_position = forecast.from_position.duplicate(true)
+			destination = forecast.destination.duplicate(true)
+			target_position = [target.position.x, target.position.y]
 		var headline := "%s → %s 공격" % [_name(enemy_id), _name(target_id)]
 		var claimed_target_id := int(squad_board.get("claims", {}).get(enemy_id, -1))
 		var is_squad_focus := target_id == int(squad_board.get("focus_target_id", -1))
 		var target_role := "주인공" if is_solo_combat() else (
 			"분대 집중 표적" if is_squad_focus else (
 				"분대 담당 표적" if claimed_target_id == target_id else "가장 가까운 파티원"))
-		var reason := "%s이 공격 범위 안에 있습니다."%target_role
+		var reason := fixed_reason if frozen else "%s이 공격 범위 안에 있습니다."%target_role
 		if action_type == "MOVE":
 			headline = "%s → %s 접근" % [_name(enemy_id), _name(target_id)]
-			reason = "%s을 향해 한 칸 움직입니다."%target_role
+			reason = fixed_reason if frozen else "%s을 향해 한 칸 움직입니다."%target_role
 		elif action_type == "HOLD":
 			headline = "%s · 방어" % _name(enemy_id)
-			reason = "접근할 길이 막혀 자리를 지키며 방어합니다."
-		rows.append({"schema_version":1, "source":"ENEMY_FORECAST",
-			"source_label":"적 현재 예상", "source_color":"#ff756b",
+			reason = fixed_reason if frozen else "접근할 길이 막혀 자리를 지키며 방어합니다."
+		var target_name := _name(target_id) if target_id > 0 else "지정 위치"
+		rows.append({"schema_version":1, "source":"ENEMY_INTENT" if frozen else "ENEMY_FORECAST",
+			"source_label":"고정된 Intent" if frozen else "적 현재 예상", "source_color":"#ff756b",
 			"line_style":"DASHED_THIN", "marker_style":"CIRCLE",
 			"actor_id":enemy_id, "actor_name":_name(enemy_id),
-			"target_id":target_id, "target_name":_name(target_id),
+			"target_id":target_id, "target_name":target_name,
 			"type":action_type, "type_label":{"HOLD":"방어", "MOVE":"이동",
 				"MELEE":"공격"}.get(action_type, "방어"),
-			"from_position":forecast.from_position.duplicate(true),
-			"destination":forecast.destination.duplicate(true),
-			"target_position":[target.position.x, target.position.y],
+			"from_position":from_position, "destination":destination,
+			"target_position":target_position,
 			"headline":headline, "reason":reason,
-			"forecast_basis":"CURRENT_AUTHORITATIVE_STATE"})
+			"forecast_basis":"ROUND_INTENT" if frozen else "CURRENT_AUTHORITATIVE_STATE"})
 	rows.sort_custom(func(a:Dictionary,b:Dictionary):
 		return int(a.actor_id) < int(b.actor_id))
 	return rows.duplicate(true)
@@ -8040,6 +8088,12 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 	var expected_action: Variant = _pure_expected_action(entity_id) if entity_id in state.active_party_member_ids else null
 	var readiness := "행동 준비" if member.busy_until <= sim.world.world_time else "행동 중"
 	var emotion := _emotion_presentation(member, entity)
+	var expedition_member:Dictionary={}
+	if DarkExpeditionRulesScript.active(sim.world):
+		var expedition_status:Dictionary=DarkExpeditionRulesScript.status(sim.world)
+		for expedition_row in expedition_status.get("members",[]):
+			if int(expedition_row.get("entity_id",-1))==entity_id:
+				expedition_member=expedition_row;break
 	var personality_profile = null
 	var personality_facets: Array = []
 	var personality_style_dto: Dictionary = {}
@@ -8089,7 +8143,11 @@ func inspect_party_member(entity_id: int) -> Dictionary:
 		"logical_position":[logical.x,logical.y],
 		"busy_until":int(member.busy_until),
 		"remaining_time":maxi(0,int(member.busy_until)-int(sim.world.world_time)),
-		"stress":int(member.stress),
+			"stress":int(member.stress),
+			"expedition_stress":int(expedition_member.get("stress",0)),
+			"death_tokens":int(expedition_member.get("death_tokens",0)),
+			"injury_ids":expedition_member.get("injury_ids",[]).duplicate(true),
+			"expedition_stress_band":str(expedition_member.get("stress_band","CALM")),
 		"energy":int(member.energy),"max_energy":int(ActiveSkillRegistryScript.MAX_ENERGY),
 		"stress_band":PartyMoraleModelScript.stress_band(int(member.stress),str(member.mental_mode)),
 		"stress_band_label":PartyMoraleModelScript.stress_band_label(
@@ -8841,6 +8899,17 @@ func load_session_json(encoded: String) -> Dictionary:
 					Int64CodecScript.parse(operation.target_id,"actor command target"))
 			"field_care_enabled":replay_result=replay._enable_party_care()
 			"darkness_rules":replay_result=replay.enable_darkness_rules()
+			"dark_expedition":
+				var expedition_operation:Dictionary=row.operation
+				match str(expedition_operation.action):
+					"START":replay_result=replay.start_dark_fantasy_expedition(int(expedition_operation.gold))
+					"COMPLETE_ROOM":replay_result=replay.complete_dark_expedition_room(int(expedition_operation.room_index))
+					"ENTER_CAMP":replay_result=replay.enter_dark_expedition_camp()
+					"LEAVE_CAMP":replay_result=replay.leave_dark_expedition_camp()
+					"CAMP_ACTION":replay_result=replay.dark_expedition_camp_action(
+						str(expedition_operation.action_id),Int64CodecScript.parse(
+							expedition_operation.target_id,"camp target"))
+					"SETTLE":replay_result=replay.settle_dark_expedition(str(expedition_operation.settlement))
 			"care_rest":replay_result=replay.request_personal_rest(int(row.revision),int(row.request_id))
 			"room":replay_result=replay.request_room_exit(int(row.operation.actor_id),str(row.operation.portal_id),int(row.operation.revision))
 			"travel":replay_result=replay.request_room_travel(int(row.operation.room_id),int(row.operation.revision))
@@ -9357,6 +9426,25 @@ func _journal_wire_error(journal: Array) -> String:
 				if keys!=["kind"]:return "invalid_field_care_journal"
 			"darkness_rules":
 				if keys!=["kind"]:return "invalid_darkness_rules_journal"
+			"dark_expedition":
+				if keys!=["kind","operation"] or not row.operation is Dictionary:return "invalid_dark_expedition_journal"
+				var expedition_keys:Array=row.operation.keys();expedition_keys.sort()
+				var expedition_action:=str(row.operation.get("action",""))
+				if expedition_action=="START":
+					if expedition_keys!=["action","gold"] or not _integer(row.operation.gold) or int(row.operation.gold)<0:return "invalid_dark_expedition_journal"
+				elif expedition_action=="COMPLETE_ROOM":
+					if expedition_keys!=["action","room_index"] or not _integer(row.operation.room_index) or int(row.operation.room_index) not in [0,1,2]:return "invalid_dark_expedition_journal"
+				elif expedition_action in ["ENTER_CAMP","LEAVE_CAMP"]:
+					if expedition_keys!=["action"]:return "invalid_dark_expedition_journal"
+				elif expedition_action=="CAMP_ACTION":
+					if expedition_keys!=["action","action_id","target_id"] \
+							or row.operation.action_id not in ["HEAL","CALM","TREAT_INJURY"] \
+							or not Int64CodecScript.is_canonical(row.operation.target_id) \
+							or Int64CodecScript.parse(row.operation.target_id,"camp target")<=0:
+						return "invalid_dark_expedition_journal"
+				elif expedition_action=="SETTLE":
+					if expedition_keys!=["action","settlement"] or row.operation.settlement not in ["COMPLETE","SAFE_RETREAT","EMERGENCY_RETREAT","FAILURE"]:return "invalid_dark_expedition_journal"
+				else:return "invalid_dark_expedition_journal"
 			"care_rest":
 				if keys!=["kind","request_id","revision"] or not _integer(row.request_id) or not _integer(row.revision) or row.request_id<1 or row.revision<1:return "invalid_care_rest_journal"
 			"room":
@@ -10557,6 +10645,56 @@ func _has_final(value:String)->bool:
 func round_active()->bool:
 	return sim!=null and RoundRules.active(sim.world)
 
+## Short three-room expedition slice.  The canonical state lives beside the
+## existing party encounter state and is intentionally opt-in for old modes.
+func start_dark_fantasy_expedition(gold: int = 0) -> Dictionary:
+	if sim == null or sim.world == null:
+		return _rejection_dto("world_not_settled")
+	if sim.world.party_encounter.dark_expedition != null \
+			and scenario_id==DARK_FANTASY_SCENARIO_ID:
+		return _feedback_dto({"accepted":true,"reason":"already_started",
+			"expedition_id":sim.world.party_encounter.dark_expedition.expedition_id})
+	if not sim.world.is_settled():
+		return _rejection_dto("world_not_settled")
+	var result:=DarkExpeditionRulesScript.start(sim.world,"",gold)
+	if not result.get("accepted",false):return _rejection_dto(str(result.reason))
+	command_journal.append({"kind":"dark_expedition","operation":{"action":"START","gold":gold}})
+	return _feedback_dto(result)
+
+func dark_expedition_status() -> Dictionary:
+	return DarkExpeditionRulesScript.status(sim.world) if sim != null else {"active":false}
+
+func complete_dark_expedition_room(room_index: int) -> Dictionary:
+	var result:=DarkExpeditionRulesScript.complete_room(sim.world,room_index)
+	if not result.get("accepted",false):return _rejection_dto(str(result.reason))
+	command_journal.append({"kind":"dark_expedition","operation":{"action":"COMPLETE_ROOM","room_index":room_index}})
+	return _feedback_dto(result)
+
+func enter_dark_expedition_camp() -> Dictionary:
+	var result:=DarkExpeditionRulesScript.enter_camp(sim.world)
+	if not result.get("accepted",false):return _rejection_dto(str(result.reason))
+	command_journal.append({"kind":"dark_expedition","operation":{"action":"ENTER_CAMP"}})
+	return _feedback_dto(result)
+
+func leave_dark_expedition_camp() -> Dictionary:
+	var result:=DarkExpeditionRulesScript.leave_camp(sim.world)
+	if not result.get("accepted",false):return _rejection_dto(str(result.reason))
+	command_journal.append({"kind":"dark_expedition","operation":{"action":"LEAVE_CAMP"}})
+	return _feedback_dto(result)
+
+func dark_expedition_camp_action(action_id: String, target_id: int) -> Dictionary:
+	var result:=DarkExpeditionRulesScript.camp_action(sim.world,action_id,target_id)
+	if not result.get("accepted",false):return _rejection_dto(str(result.reason))
+	command_journal.append({"kind":"dark_expedition","operation":{"action":"CAMP_ACTION",
+		"action_id":action_id,"target_id":str(target_id)}})
+	return _feedback_dto(result)
+
+func settle_dark_expedition(kind: String) -> Dictionary:
+	var result:=DarkExpeditionRulesScript.settle(sim.world,kind)
+	if not result.get("accepted",false):return _rejection_dto(str(result.reason))
+	command_journal.append({"kind":"dark_expedition","operation":{"action":"SETTLE","settlement":kind}})
+	return _feedback_dto(result)
+
 func round_status()->Dictionary:
 	if sim==null or sim.world.party_encounter==null:return {"active":false,"order":[]}
 	var w=sim.world;var r:Dictionary=w.party_encounter.round_combat
@@ -10702,12 +10840,23 @@ func assess_room_exit(actor_id:int,portal_id:String)->Dictionary:
 func request_room_exit(actor_id:int,portal_id:String,expected_revision:int)->Dictionary:
 	if not room_enabled() or _run_is_complete():return _rejection_dto("room_exit_unavailable")
 	var event_start:int=sim.world.events.size();var rollback:Dictionary=sim.capture_rollback_memento(false)
+	var dark_room_index: int = -1
+	if DarkExpeditionRulesScript.active(sim.world) \
+			and not preload("res://sim/stage_counterplay.gd").config(sim.world).is_empty() \
+			and preload("res://sim/stage_counterplay.gd").cleared(sim.world):
+		dark_room_index=int(sim.world.party_encounter.dark_expedition.room_index)
 	var result:Dictionary=preload("res://sim/systems/room_transition_system.gd").request(sim,actor_id,portal_id,expected_revision)
 	if not result.get("accepted",false):return _rejection_dto(str(result.reason))
-	var recovery:Dictionary=preload("res://sim/party_recovery_rules.gd").apply(self,event_start,int(result.get("time_cost",0))) if preload("res://sim/party_recovery_rules.gd").enabled(sim.world) else _apply_safe_exploration_recovery(event_start)
+	var recovery:Dictionary={"accepted":true,"reason":"dark_expedition_no_free_recovery"} \
+		if dark_room_index>=0 else (preload("res://sim/party_recovery_rules.gd").apply(self,event_start,int(result.get("time_cost",0))) if preload("res://sim/party_recovery_rules.gd").enabled(sim.world) else _apply_safe_exploration_recovery(event_start))
 	if not recovery.get("accepted",false):sim.restore_rollback_memento(rollback);return _rejection_dto("room_recovery_failed")
 	if not RoundPlans.begin(sim):sim.restore_rollback_memento(rollback);return _rejection_dto("room_plan_failed")
 	command_journal.append({"kind":"room","operation":{"actor_id":str(actor_id),"portal_id":portal_id,"revision":expected_revision}})
+	if dark_room_index>=0:
+		var dark_result:=DarkExpeditionRulesScript.complete_room(sim.world,dark_room_index)
+		if not dark_result.get("accepted",false):
+			sim.restore_rollback_memento(rollback);return _rejection_dto("expedition_room_completion_failed")
+		command_journal.append({"kind":"dark_expedition","operation":{"action":"COMPLETE_ROOM","room_index":dark_room_index}})
 	if _auto_explore!=null:_auto_explore.cancel("room_transition")
 	if _exploration_route!=null:_exploration_route.cancel_for_direct_command()
 	_clear_draft();_advance_exile_world()

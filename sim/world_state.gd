@@ -4474,9 +4474,9 @@ func _lifecycle_history_error() -> String:
 			var downed_source = event_by_id(int(downed_projection.event_id))
 			var town_source=event_by_id(event.cause_id)
 			var town_recovery:bool=town_source!=null \
-				and town_source.type=="town.clinic_service" \
+				and town_source.type in ["town.clinic_service", "dark_expedition.camp_action"] \
 				and town_source.target_id==event.target_id \
-				and town_source.data.get("ruleset_id")=="town-clinic-care-v1"
+				and (town_source.data.get("ruleset_id") in ["town-clinic-care-v1", "dark-fantasy-expedition-v1"])
 			var expected_health: int = maxi(1, int((entities[event.target_id].max_health + 9) / 10))
 			var encoded_lock: int = Int64CodecScript.parse(
 				event.data.recovery_lock_until, "recovery lock time")
@@ -5490,7 +5490,7 @@ func _party_health_restoration_error()->String:
 			var data_keys:Array=event.data.keys();data_keys.sort()
 			var restoration_kind:=str(event.data.get("kind",""))
 			var expected_keys:Array=["health_after","kind","ruleset_id","schema_version"] \
-				if restoration_kind in ["POTION","TOWN_CLINIC","ACTIVE_SKILL","MONSTER_ABILITY","CARE"] else ["health_after","kind","ruleset_id","safe_turn_count","schema_version"]
+				if restoration_kind in ["POTION","TOWN_CLINIC","DARK_CAMP","ACTIVE_SKILL","MONSTER_ABILITY","CARE"] else ["health_after","kind","ruleset_id","safe_turn_count","schema_version"]
 			if data_keys!=expected_keys or event.data.get("schema_version")!=1 or event.actor_id!=hero_id \
 					or restoration_kind not in ["ACTIVE_SKILL","MONSTER_ABILITY","CARE"] and event.instigator_id!=hero_id \
 					or event.magnitude<=0 \
@@ -5516,6 +5516,12 @@ func _party_health_restoration_error()->String:
 						or clinic_source.target_id!=hero_id or clinic_source.id>=event.id \
 						or event.data.ruleset_id!="town-clinic-care-v1":
 					return "party_town_restoration_cause_invalid"
+			elif restoration_kind=="DARK_CAMP":
+				var camp_source=event_by_id(event.cause_id)
+				if camp_source==null or camp_source.type!="dark_expedition.camp_action" \
+						or camp_source.target_id!=hero_id or camp_source.id>=event.id \
+						or event.data.ruleset_id!="dark-fantasy-expedition-v1":
+					return "party_dark_camp_restoration_cause_invalid"
 			elif restoration_kind=="CARE":
 				var care_error:String=load("res://sim/nine_room_care_rules.gd").event_error(self,event)
 				if not care_error.is_empty():return care_error

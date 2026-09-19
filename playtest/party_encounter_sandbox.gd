@@ -1269,6 +1269,13 @@ func _build_species_picker()->void:
 		button.pressed.connect(_commit_species_picker.bind(species_id))
 		species_picker_buttons.add_child(button);DarkPixelSkinScript.apply_action_button(
 			button,DarkPixelSkinScript.BRASS if species_id=="human" else DarkPixelSkinScript.CYAN)
+	var dark_button:=Button.new();dark_button.name="DarkFantasyExpedition"
+	dark_button.text="암흑 원정 시작 · 3인 파티"
+	dark_button.custom_minimum_size=Vector2(220,TOUCH_TARGET)
+	dark_button.focus_mode=Control.FOCUS_ALL
+	dark_button.pressed.connect(_commit_dark_expedition_picker)
+	species_picker_buttons.add_child(dark_button)
+	DarkPixelSkinScript.apply_action_button(dark_button,DarkPixelSkinScript.BLOOD)
 	species_picker_error=Label.new();species_picker_error.name="SpeciesPickerError"
 	species_picker_error.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	species_picker_error.mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -1331,6 +1338,23 @@ func _commit_species_picker(species_id:String,frontier:bool=false)->void:
 	# START has already established the campaign's canonical initial location.
 	notice_text="던전 1층에서 원정을 시작합니다."
 	if frontier:notice_text="변방의 피난처에서 시작합니다. 숲길을 탐험해 첫 생존자를 데려오세요."
+	_request_refresh()
+
+func _commit_dark_expedition_picker()->void:
+	if _species_picker_committed or species_picker_modal==null \
+			or not species_picker_modal.visible:return
+	_species_picker_committed=true
+	var fresh_seed:=_issue_new_personality_seed(int(session.personality_seed))
+	var started:bool=bool(session.reset_party(session.world_seed,fresh_seed,
+		SessionScript.DARK_FANTASY_SCENARIO_ID,{},false,"human",false,false,false,false,false,false,false)
+	)
+	if not started:
+		_show_species_picker_error({"message":"암흑 원정을 시작하지 못했습니다.","reason":"dark_expedition_reset_failed"})
+		return
+	species_picker_modal.visible=false
+	if grid!=null:grid.modal_open=false
+	_reset_run_ui_transients()
+	notice_text="암흑 원정을 시작합니다. 세 방을 돌파하고 살아 돌아오세요."
 	_request_refresh()
 
 func _build_build_label()->void:
