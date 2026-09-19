@@ -7,6 +7,16 @@ var ui_font: Font
 var half_width := 22.0
 var half_height := 11.0
 var origin := Vector2.ZERO
+var show_attack_range := false
+var target_cell := Vector2i(-1,-1)
+var effects: Array = []
+var effect_time := 0.0
+
+func _process(delta: float) -> void:
+	if effects.is_empty(): return
+	effect_time += delta
+	if effect_time > 0.75: effects.clear()
+	queue_redraw()
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(0,180)
@@ -53,6 +63,8 @@ func _draw() -> void:
 		return
 	var floor_edge := PackedVector2Array([project(Vector2(0,8)),project(Vector2(8,8)),project(Vector2(8,0)),project(Vector2(8,0))+Vector2(0,20),project(Vector2(8,8))+Vector2(0,20),project(Vector2(0,8))+Vector2(0,20)])
 	draw_colored_polygon(floor_edge,Color("20232a"))
+	var movement: Array = session.movement_cells()
+	var attacks: Array = session.attack_cells() if show_attack_range else []
 	for depth in range(15):
 		for x in range(8):
 			var y := depth-x
@@ -65,14 +77,19 @@ func _draw() -> void:
 			draw_polygon(polygon,PackedColorArray([tint]),PackedVector2Array([Vector2.ZERO,Vector2.RIGHT,Vector2.ONE,Vector2.DOWN]),texture)
 			outline(polygon,Color("242a30"))
 			var center := project(Vector2(point)+Vector2.ONE*0.5)
-			if session.phase == "BATTLE" and session.is_free(point) and session.party[session.selected].ap > 0 and session.distance(session.party[session.selected].pos,point) == 1:
-				draw_colored_polygon(polygon,Color(0.35,0.7,0.4,0.14))
+			if point in movement:
+				draw_colored_polygon(polygon,Color(0.2,0.85,0.35,0.32)); outline(polygon,Color("71d991"),1.5)
+			if point in attacks:
+				draw_colored_polygon(polygon,Color(0.95,0.15,0.18,0.3)); outline(polygon,Color("f37575"),2)
+			if point == target_cell: outline(polygon,Color.WHITE,3)
 			if cell.wet > 0 and cell.terrain != "water": outline(polygon,Color(0.3,0.6,0.8,0.6))
 			if session.doors().has(point):
 				outline(polygon,Color("c2aa76"),2)
 				Icons.paint(self,"entry",center,half_width*0.3,Color("d8c28d"))
 			for intent in session.intents:
-				if intent.cell == point: draw_colored_polygon(polygon,Color(0.8,0.18,0.15,0.25)); outline(polygon,Color("d9695d"),2)
+				if intent.cell == point:
+					draw_colored_polygon(polygon,Color(1,0.45,0.05,0.4)); outline(polygon,Color("ffb447"),3)
+					draw_string(ui_font,center+Vector2(-4,4),"!",HORIZONTAL_ALIGNMENT_LEFT,-1,18,Color.WHITE)
 			if cell.fire > 0:
 				draw_circle(center,half_width*0.4,Color("a74b24")); draw_circle(center-Vector2(0,4),half_width*0.2,Color("ffc675"))
 			if cell.terrain == "wall":
@@ -88,9 +105,23 @@ func _draw() -> void:
 				draw_set_transform(center,0,Vector2(1,0.45)); draw_circle(Vector2.ZERO,half_width*0.6,Color(0,0,0,0.5)); draw_set_transform(Vector2.ZERO)
 				var sprite: Texture2D = Art.BOSS if actor.enemy and actor.name == "수문장" else Art.ENEMY if actor.enemy else Art.ACTORS[actor.id]
 				var side := half_width*2.1
-				draw_texture_rect(sprite,Rect2(center-Vector2(side/2,side*0.88),Vector2.ONE*side),false)
+				var flash := Color.WHITE
+				for effect in effects:
+					if effect.cell == point and effect_time < 0.35:
+						center.x += sin(effect_time*65)*4*(1-effect_time/0.35)
+						flash = Color(2,0.6,0.6)
+				draw_texture_rect(sprite,Rect2(center-Vector2(side/2,side*0.88),Vector2.ONE*side),false,flash)
 				draw_rect(Rect2(center+Vector2(-12,6),Vector2(24,3)),Color("191d24"))
 				draw_rect(Rect2(center+Vector2(-12,6),Vector2(24*float(actor.hp)/actor.max_hp,3)),Color("ce7770") if actor.enemy else Color("9ec987"))
+	for effect in effects:
+		var center := cell_center(effect.cell)-Vector2(0,half_width*0.65)
+		var fade := 1.0-effect_time/0.75
+		var color := Color(1,0.85,0.5,fade) if effect.form != "ELECTRIC" else Color(0.4,0.8,1,fade)
+		if effect_time < 0.28:
+			draw_line(cell_center(effect.from)-Vector2(0,half_width*0.65),center,color,3,true)
+			draw_line(center-Vector2(15,-12),center+Vector2(15,-12),color,5,true)
+			draw_arc(center,8+effect_time*45,0,TAU,20,color,2,true)
+		draw_string(ui_font,center+Vector2(-12,-14-effect_time*30),"-%d" % effect.amount,HORIZONTAL_ALIGNMENT_LEFT,-1,20,color)
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:

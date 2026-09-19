@@ -28,6 +28,7 @@ var round_number := 0
 var expedition_number := 0
 var selected := 0
 var intents: Array = []
+var effects: Array = []
 var hunger := 0
 var supplies: Array = [2,2,1,1,1,3]
 const SUPPLY_NAMES = ["치유 물약","정신 안정제","활력 물약","화염 두루마리","물 두루마리","붕대"]
@@ -205,6 +206,42 @@ func is_free(point: Vector2i) -> bool:
 func distance(a: Vector2i, b: Vector2i) -> int:
 	return absi(a.x - b.x) + absi(a.y - b.y)
 
+func movement_cells() -> Array:
+	var result: Array = []
+	var actor: Dictionary = party[selected]
+	if phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0: return result
+	var frontier: Array = [actor.pos]
+	var seen: Array = [actor.pos]
+	for step in range(2 if actor.move_factor == 100 else 1):
+		var next: Array = []
+		for point in frontier:
+			for direction in DIRECTIONS:
+				var cell: Vector2i = point + direction
+				if cell not in seen and is_free(cell):
+					seen.append(cell); result.append(cell); next.append(cell)
+		frontier = next
+	return result
+
+func attack_cells() -> Array:
+	var result: Array = []
+	var actor: Dictionary = party[selected]
+	if phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0: return result
+	for direction in DIRECTIONS:
+		var cell: Vector2i = actor.pos + direction
+		if inside(cell) and tile(cell).terrain != "wall": result.append(cell)
+	return result
+
+func attack_preview(target: Vector2i) -> Dictionary:
+	if target not in attack_cells(): return {}
+	var victim := at(target)
+	if victim.is_empty() or not victim.enemy: return {}
+	var actor: Dictionary = party[selected]
+	var hit := TurnCore.physical(18 * actor.attack_factor / 100, 1000, 0, 2)
+	var amount := int(hit.damage)
+	if victim.get("guarded",false): amount = maxi(1,amount / 2)
+	# Basic attacks currently have no miss roll; do not advertise a fictitious chance.
+	return {"actor":actor.id,"target":victim.id,"cell":target,"name":victim.name,"chance":100,"damage":amount}
+
 func act(kind: String, target: Vector2i) -> bool:
 	if phase != "BATTLE" or not inside(target): return false
 	var actor: Dictionary = party[selected]
@@ -215,11 +252,7 @@ func act(kind: String, target: Vector2i) -> bool:
 			if target != actor.pos: return false
 			if kind == "GUARD": actor["guarded"] = true
 		"MOVE":
-			var move_range := 2 if actor.move_factor == 100 else 1
-			var path := TurnCore.path(8, 8, actor.pos, [target],
-				func(origin, point): return distance(origin, point) == 1 and is_free(point),
-				func(_point): return 100, 100, move_range)
-			if not path.found or target == actor.pos: return false
+			if target not in movement_cells(): return false
 			actor.pos = target
 		"ATTACK", "PUSH":
 			if victim.is_empty() or not victim.enemy or distance(actor.pos, target) != 1: return false
@@ -268,6 +301,11 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	if target.get("guarded",false): amount = maxi(1,amount / 2)
 	serial += 1
 	var lost := mini(int(target.hp), amount)
+	var source_cell: Vector2i = target.pos
+	for actor in party + enemies:
+		if actor.id == source: source_cell = actor.pos
+	effects.append({"from":source_cell,"cell":target.pos,"amount":lost,"form":form})
+	if effects.size() > 32: effects.pop_front()
 	var key := ("%d/%d/%d" % [seed_value, serial, target.id]).sha256_text()
 	var plan := Injury.assess_hp_loss(target.body, form, lost, target.max_hp, key, target.id + 1)
 	Injury._apply_plan(target.body, plan, serial)

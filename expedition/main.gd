@@ -9,6 +9,10 @@ const SKILL_NAMES = [["밀쳐내기","방어"],["강타","방어"],["물","방�
 var session = Session.new(randi())
 var mode := ""
 var pending_item := -1
+var pending_attack: Dictionary = {}
+var attack_button: Button
+var show_attack_range := false
+var action_effects: Array = []
 var root_layout: VBoxContainer
 var board
 var end_turn_button: Button
@@ -91,6 +95,10 @@ func refresh() -> void:
 	label(resource,"배고픔 %d%%" % session.hunger,10); gauge(resource,session.hunger,100,Color("d9904d"))
 	label(resource,"불빛 %d%%" % session.light,10); gauge(resource,session.light,100,Color("e6bd62"))
 	board = Board.new(); board.session = session; board.ui_font = FONT; board.cell_pressed.connect(on_cell); root_layout.add_child(board)
+	board.show_attack_range = show_attack_range
+	board.effects = action_effects; action_effects = []
+	board.target_cell = pending_attack.get("cell",Vector2i(-1,-1))
+	attack_button = null
 	end_turn_button = null
 	if session.phase == "BATTLE":
 		end_turn_button = button(board,"턴 종료",func(): run_action(session.end_round))
@@ -99,8 +107,14 @@ func refresh() -> void:
 		end_turn_button.offset_left = -104; end_turn_button.offset_top = -56
 		end_turn_button.offset_right = -8; end_turn_button.offset_bottom = -8
 		end_turn_button.tooltip_text = "남은 행동을 마치고 적 차례로 진행"
+		if not pending_attack.is_empty():
+			attack_button = button(board,"공격 · %d%% / 피해 %d" % [pending_attack.chance,pending_attack.damage],confirm_attack)
+			attack_button.set_anchors_and_offsets_preset(PRESET_BOTTOM_LEFT)
+			attack_button.offset_left = 8; attack_button.offset_top = -56
+			attack_button.offset_right = 230; attack_button.offset_bottom = -8
+			attack_button.custom_minimum_size.y = 48
 	if session.phase in ["TOWN","DEFEAT"]: button(root_layout,"출정" if session.phase == "TOWN" and not session.alive().is_empty() else "새 원정대",depart)
-	var hint := label(root_layout,notice if not notice.is_empty() else "대원 선택 → 바닥 이동 · 적 공격 · 자신을 눌러 대기",10)
+	var hint := label(root_layout,notice if not notice.is_empty() else "녹색: 이동(1 AP) · 적 선택 → 공격 확정 · 자신: 대기",10)
 	hint.clip_text = true; hint.custom_minimum_size.y = 16
 	var party_row := HBoxContainer.new(); party_row.add_theme_constant_override("separation",5); root_layout.add_child(party_row)
 	for i in range(3):
@@ -136,15 +150,33 @@ func depart() -> void:
 	run_action(session.depart)
 
 func select_actor(index: int) -> void:
+	pending_attack = {}; show_attack_range = false
 	session.selected = index; mode = ""; pending_item = -1; notice = session.party[index].name; refresh()
 
 func run_action(callback: Callable) -> void:
+	session.effects.clear()
 	var accepted: bool = callback.call()
+	pending_attack = {}
 	notice = "" if accepted else "대상·거리·행동력·보유 수량을 확인하세요."
 	if accepted:
 		mode = ""; pending_item = -1
 		if session.phase == "BATTLE" and session.alive().all(func(a): return a.ap <= 0): session.end_round()
+	action_effects = session.effects.duplicate(true); session.effects.clear()
 	refresh()
+
+func preview_attack(point: Vector2i) -> void:
+	pending_attack = session.attack_preview(point)
+	show_attack_range = true
+	notice = "공격 범위 밖이거나 행동력이 없습니다." if pending_attack.is_empty() else "%s · 명중 %d%% · 예상 피해 %d · 공격 버튼으로 확정" % [pending_attack.name,pending_attack.chance,pending_attack.damage]
+	refresh()
+
+func confirm_attack() -> void:
+	if pending_attack.is_empty(): return
+	var current: Dictionary = session.attack_preview(pending_attack.cell)
+	if current != pending_attack:
+		pending_attack = {}; notice = "상황이 바뀌었습니다. 대상을 다시 선택하세요."; refresh(); return
+	var point: Vector2i = pending_attack.cell
+	run_action(func(): return session.act("ATTACK",point))
 
 func choose_skill(actor: int, slot: int) -> void:
 	select_actor(actor); mode = SKILLS[actor][slot]
@@ -152,12 +184,14 @@ func choose_skill(actor: int, slot: int) -> void:
 	notice = "%s · 대상 칸 선택" % SKILL_NAMES[actor][slot]; refresh()
 
 func choose_item(slot: int) -> void:
+	pending_attack = {}
 	mode = ""; pending_item = slot
 	if slot in [3,4]: notice = Session.SUPPLY_NAMES[slot]+" · 대상 칸 선택"; refresh()
 	else: run_action(func(): return session.use_supply(slot))
 
 func on_cell(point: Vector2i) -> void:
 	if pending_item >= 0: run_action(func(): return session.use_supply(pending_item,point)); return
+	if mode == "ATTACK": preview_attack(point); return
 	if not mode.is_empty(): run_action(func(): return session.act(mode,point)); return
 	var actor: Dictionary = session.at(point)
 	if not actor.is_empty() and not actor.enemy:
@@ -165,7 +199,11 @@ func on_cell(point: Vector2i) -> void:
 		else: select_actor(actor.id)
 		return
 	if session.phase == "EXPLORE": run_action(func(): return session.interact_room(point))
-	elif session.phase == "BATTLE": run_action(func(): return session.act("ATTACK" if not actor.is_empty() else "MOVE",point))
+	elif session.phase == "BATTLE":
+		if not actor.is_empty(): preview_attack(point)
+		else:
+			show_attack_range = true
+			run_action(func(): return session.act("MOVE",point))
 
 func show_map() -> void:
 	if session.phase not in ["BATTLE","EXPLORE"]: return

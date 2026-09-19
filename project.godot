@@ -9,6 +9,7 @@ config/features=PackedStringArray("4.6", "GL Compatibility")
 window/size/viewport_width=390
 window/size/viewport_height=844
 window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
 window/handheld/orientation=1
 
 [input_devices]
