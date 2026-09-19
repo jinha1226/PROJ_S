@@ -7,6 +7,7 @@ func _initialize() -> void:
 
 func exercise() -> void:
 	var scene = load("res://expedition/main.tscn").instantiate()
+	scene.session = preload("res://expedition/session.gd").new()
 	root.add_child(scene)
 	await process_frame
 	scene.run_action(scene.session.depart)

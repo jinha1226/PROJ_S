@@ -7,6 +7,8 @@ const TurnCore = preload("res://sim/turn_engine.gd")
 const ElementRules = preload("res://sim/environment_rules.gd")
 const Injury = preload("res://sim/body_injury_system.gd")
 const Dungeon = preload("res://expedition/dungeon_map.gd")
+const BossTrial = preload("res://expedition/boss_trial.gd")
+var boss_trial := false
 const DIRECTIONS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]
 var rooms: Array = []
 var seed_value := 731
@@ -33,9 +35,10 @@ var hunger := 0
 var supplies: Array = [2,2,1,1,1,3]
 const SUPPLY_NAMES = ["치유 물약","정신 안정제","활력 물약","화염 두루마리","물 두루마리","붕대"]
 
-func _init(p_seed: int = 731) -> void:
+func _init(p_seed: int = 731, p_boss_trial: bool = false) -> void:
 	seed_value = p_seed
-	for i in range(3):
+	boss_trial = p_boss_trial
+	for i in range(1 if boss_trial else 3):
 		party.append(make_actor(i, ["아린", "브란", "세라"][i], false))
 	message("부상과 기억은 원정을 마쳐도 남습니다. 준비되면 출정하세요.")
 
@@ -61,6 +64,7 @@ func depart() -> bool:
 	food = 27; torches = 5; light = 90; loot = 0; hunger = 0
 	supplies = [2,2,1,1,1,3]
 	rooms = Dungeon.generate(seed_value + expedition_number * 7919)
+	if boss_trial: BossTrial.prepare(self)
 	room = 0; visited = [0]
 	enter_room()
 	message("원정 %d · 폐허의 수문장을 처치하고 귀환하세요." % expedition_number)
@@ -173,6 +177,9 @@ func interact_room(point: Vector2i) -> bool:
 func start_battle() -> void:
 	phase = "BATTLE"; round_number = 1
 	for actor in party: actor.ap = action_budget(actor); actor["guarded"] = false
+	if boss_trial:
+		BossTrial.spawn(self); selected = 0; plan_enemies()
+		message(BossTrial.HINTS[rooms[room].pattern]); return
 	if not rooms[room].started:
 		rooms[room].started = true
 		for i in range(3 if rooms[room].kind == "boss" else 2):
@@ -201,6 +208,7 @@ func at(point: Vector2i) -> Dictionary:
 	return {}
 
 func is_free(point: Vector2i) -> bool:
+	if boss_trial and rooms[room].shield and point == rooms[room].pylon: return false
 	return inside(point) and tile(point).terrain != "wall" and at(point).is_empty()
 
 func distance(a: Vector2i, b: Vector2i) -> int:
@@ -239,11 +247,13 @@ func attack_preview(target: Vector2i) -> Dictionary:
 	var hit := TurnCore.physical(18 * actor.attack_factor / 100, 1000, 0, 2)
 	var amount := int(hit.damage)
 	if victim.get("guarded",false): amount = maxi(1,amount / 2)
+	if boss_trial and rooms[room].shield: amount = 0
 	# Basic attacks currently have no miss roll; do not advertise a fictitious chance.
 	return {"actor":actor.id,"target":victim.id,"cell":target,"name":victim.name,"chance":100,"damage":amount}
 
 func act(kind: String, target: Vector2i) -> bool:
 	if phase != "BATTLE" or not inside(target): return false
+	if boss_trial and kind == "PYLON": return BossTrial.disable_pylon(self,target)
 	var actor: Dictionary = party[selected]
 	if actor.hp <= 0 or actor.ap <= 0: return false
 	var victim := at(target)
@@ -298,6 +308,8 @@ func conductive(point: Vector2i) -> bool:
 
 func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	if target.hp <= 0: return
+	if boss_trial and target.enemy and rooms[room].shield:
+		message("보호막 · 전력탑을 먼저 파괴하세요."); return
 	if target.get("guarded",false): amount = maxi(1,amount / 2)
 	serial += 1
 	var lost := mini(int(target.hp), amount)
@@ -320,6 +332,7 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	message("%s · %d 피해%s" % [target.name, lost, " · 사망" if target.hp <= 0 else ""])
 
 func plan_enemies() -> void:
+	if boss_trial: BossTrial.plan(self); return
 	intents.clear()
 	for enemy in enemies:
 		enemy["charging"] = false
@@ -335,6 +348,7 @@ func plan_enemies() -> void:
 
 func enemy_attack_turn(enemy: Dictionary) -> void:
 	if enemy.hp <= 0 or alive().is_empty(): return
+	if boss_trial: BossTrial.turn(self,enemy); return
 	if enemy.get("charging",false):
 		# Pushing removes the intent: interrupted charge loses the action.
 		for intent in intents:
@@ -396,6 +410,10 @@ func check_battle_end() -> void:
 		loot += 35 if rooms[room].kind != "boss" else 100
 		rooms[room].cleared = true
 		phase = "EXPLORE"; intents.clear()
+		if boss_trial:
+			rooms[room].shield = false
+			for actor in alive(): actor.hp = actor.max_hp; Body.heal(actor); actor.stress = 0
+			message("패턴 테스트 · 다음 방을 위해 체력과 부상을 회복했습니다.")
 		for actor in alive(): stress(actor, -7)
 		message("전투 승리 · 전리품 %d. 부상과 기억을 안고 탐험을 계속합니다." % loot)
 

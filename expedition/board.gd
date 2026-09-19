@@ -97,6 +97,9 @@ func _draw() -> void:
 				draw_colored_polygon(PackedVector2Array([polygon[1],polygon[2],polygon[3],top[3],top[2],top[1]]),Color("383c43"))
 				draw_colored_polygon(top,Color("62676a")); outline(top,Color("91908b"))
 			var room: Dictionary = session.rooms[session.room]
+			if session.boss_trial and room.shield and point == room.pylon:
+				draw_line(center,center-Vector2(0,30),Color("7eeaff"),8,true)
+				draw_circle(center-Vector2(0,30),8,Color("bffaff"))
 			if room.kind in ["camp","loot"] and room.feature == point:
 				Icons.paint(self,room.kind,center-Vector2(0,5),half_width*0.45,Color("68716a") if room.used else Color("b5d4a6") if room.kind == "camp" else Color("e0b96e"))
 			var actor: Dictionary = session.at(point)
@@ -104,6 +107,9 @@ func _draw() -> void:
 				if not actor.enemy and actor.id == session.selected: outline(polygon,Color("e8c276"),2)
 				draw_set_transform(center,0,Vector2(1,0.45)); draw_circle(Vector2.ZERO,half_width*0.6,Color(0,0,0,0.5)); draw_set_transform(Vector2.ZERO)
 				var sprite: Texture2D = Art.BOSS if actor.enemy and actor.name == "수문장" else Art.ENEMY if actor.enemy else Art.ACTORS[actor.id]
+				if session.boss_trial and actor.enemy: sprite = Art.BOSS
+				if session.boss_trial and actor.enemy and room.shield:
+					draw_arc(center-Vector2(0,half_width*0.6),half_width,0,TAU,32,Color("7eeaff"),3,true)
 				var side := half_width*2.1
 				var flash := Color.WHITE
 				for effect in effects:

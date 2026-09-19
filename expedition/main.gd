@@ -6,7 +6,7 @@ const Art = preload("res://expedition/mobile_art.gd")
 const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 const SKILLS = [["PUSH","GUARD"],["ATTACK","GUARD"],["WATER","ELECTRIC"]]
 const SKILL_NAMES = [["밀쳐내기","방어"],["강타","방어"],["물","방전"]]
-var session = Session.new(randi())
+var session = Session.new(randi(),true)
 var mode := ""
 var pending_item := -1
 var pending_attack: Dictionary = {}
@@ -98,6 +98,9 @@ func refresh() -> void:
 	board.show_attack_range = show_attack_range
 	board.effects = action_effects; action_effects = []
 	board.target_cell = pending_attack.get("cell",Vector2i(-1,-1))
+	if session.boss_trial and session.phase == "BATTLE":
+		var boss_info := label(board,session.rooms[session.room].name+" · HP %d/%d\n" % [session.enemies[0].hp,session.enemies[0].max_hp]+Session.BossTrial.HINTS[session.rooms[session.room].pattern],11)
+		boss_info.position = Vector2(8,4)
 	attack_button = null
 	end_turn_button = null
 	if session.phase == "BATTLE":
@@ -117,7 +120,7 @@ func refresh() -> void:
 	var hint := label(root_layout,notice if not notice.is_empty() else "녹색: 이동(1 AP) · 적 선택 → 공격 확정 · 자신: 대기",10)
 	hint.clip_text = true; hint.custom_minimum_size.y = 16
 	var party_row := HBoxContainer.new(); party_row.add_theme_constant_override("separation",5); root_layout.add_child(party_row)
-	for i in range(3):
+	for i in range(session.party.size()):
 		var actor: Dictionary = session.party[i]
 		var column := VBoxContainer.new(); column.size_flags_horizontal = SIZE_EXPAND_FILL; column.add_theme_constant_override("separation",3); party_row.add_child(column)
 		var skills := HBoxContainer.new(); skills.add_theme_constant_override("separation",3); column.add_child(skills)
@@ -146,7 +149,7 @@ func refresh() -> void:
 		var title := label(node,["상태","가방","장비","원정"][index],12); title.set_anchors_and_offsets_preset(PRESET_BOTTOM_WIDE); title.offset_top = -18; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 func depart() -> void:
-	if session.phase == "DEFEAT" or session.alive().is_empty(): session = Session.new(randi())
+	if session.phase == "DEFEAT" or session.alive().is_empty(): session = Session.new(randi(),true)
 	run_action(session.depart)
 
 func select_actor(index: int) -> void:
@@ -190,6 +193,8 @@ func choose_item(slot: int) -> void:
 	else: run_action(func(): return session.use_supply(slot))
 
 func on_cell(point: Vector2i) -> void:
+	if session.boss_trial and session.phase == "BATTLE" and session.rooms[session.room].shield and point == session.rooms[session.room].pylon:
+		run_action(func(): return session.act("PYLON",point)); return
 	if pending_item >= 0: run_action(func(): return session.use_supply(pending_item,point)); return
 	if mode == "ATTACK": preview_attack(point); return
 	if not mode.is_empty(): run_action(func(): return session.act(mode,point)); return
