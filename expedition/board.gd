@@ -26,17 +26,19 @@ func _ready() -> void:
 	_resize_board()
 
 func _resize_board() -> void:
-	custom_minimum_size.y = maxf(180,size.x/2+96 if session != null and session.phase == "BATTLE" else size.x/2+40)
+	custom_minimum_size.y = maxf(180,size.x+112 if session != null and session.phase == "BATTLE" else size.x+8)
 	queue_redraw()
 
 func geometry() -> void:
-	var available_height := size.y - (56.0 if session != null and session.phase == "BATTLE" else 0.0)
+	var battle: bool = session != null and session.phase == "BATTLE"
+	var top := 56.0 if battle else 4.0
+	var bottom := 56.0 if battle else 4.0
 	half_width = maxf(1,size.x/16.0)
-	half_height = half_width/2
-	origin = Vector2(size.x/2,(available_height-half_height*16)/2+12)
+	half_height = half_width
+	origin = Vector2(0,top+maxf(0,(size.y-top-bottom-size.x)/2))
 
 func project(cell: Vector2) -> Vector2:
-	return origin + Vector2((cell.x-cell.y)*half_width,(cell.x+cell.y)*half_height)
+	return origin + cell*half_width*2
 
 func cell_center(cell: Vector2i) -> Vector2:
 	geometry()
@@ -45,11 +47,11 @@ func cell_center(cell: Vector2i) -> Vector2:
 func cell_at(point: Vector2) -> Vector2i:
 	geometry()
 	var delta := point-origin
-	return Vector2i(floori((delta.x/half_width+delta.y/half_height)/2),floori((delta.y/half_height-delta.x/half_width)/2))
+	return Vector2i(floori(delta.x/(half_width*2)),floori(delta.y/(half_width*2)))
 
-func diamond(point: Vector2, lift: float = 0) -> PackedVector2Array:
+func tile_polygon(point: Vector2) -> PackedVector2Array:
 	var result := PackedVector2Array()
-	for offset in [Vector2.ZERO,Vector2.RIGHT,Vector2.ONE,Vector2.DOWN]: result.append(project(point+offset)-Vector2(0,lift))
+	for offset in [Vector2.ZERO,Vector2.RIGHT,Vector2.ONE,Vector2.DOWN]: result.append(project(point+offset))
 	return result
 
 func outline(points: PackedVector2Array, color: Color, width: float = 1) -> void:
@@ -61,8 +63,6 @@ func _draw() -> void:
 	if session == null or session.tiles.is_empty():
 		draw_string(ui_font,Vector2(18,size.y*0.45),"원정을 준비하세요",HORIZONTAL_ALIGNMENT_CENTER,size.x-36,20,Color("cfbd91"))
 		return
-	var floor_edge := PackedVector2Array([project(Vector2(0,8)),project(Vector2(8,8)),project(Vector2(8,0)),project(Vector2(8,0))+Vector2(0,20),project(Vector2(8,8))+Vector2(0,20),project(Vector2(0,8))+Vector2(0,20)])
-	draw_colored_polygon(floor_edge,Color("20232a"))
 	var movement: Array = session.movement_cells()
 	var attacks: Array = session.attack_cells() if show_attack_range else []
 	for depth in range(15):
@@ -71,7 +71,7 @@ func _draw() -> void:
 			if y < 0 or y > 7: continue
 			var point := Vector2i(x,y)
 			var cell: Dictionary = session.tile(point)
-			var polygon := diamond(Vector2(point))
+			var polygon := tile_polygon(Vector2(point))
 			var texture: Texture2D = Art.WATER if cell.terrain == "water" else Art.WOOD if cell.terrain == "wood" else Art.STONE
 			var tint := Color("809098") if cell.terrain == "metal" else Color("899095")
 			draw_polygon(polygon,PackedColorArray([tint]),PackedVector2Array([Vector2.ZERO,Vector2.RIGHT,Vector2.ONE,Vector2.DOWN]),texture)
@@ -93,13 +93,12 @@ func _draw() -> void:
 			if cell.fire > 0:
 				draw_circle(center,half_width*0.4,Color("a74b24")); draw_circle(center-Vector2(0,4),half_width*0.2,Color("ffc675"))
 			if cell.terrain == "wall":
-				var top := diamond(Vector2(point),half_width*0.7)
-				draw_colored_polygon(PackedVector2Array([polygon[1],polygon[2],polygon[3],top[3],top[2],top[1]]),Color("383c43"))
-				draw_colored_polygon(top,Color("62676a")); outline(top,Color("91908b"))
+				draw_colored_polygon(polygon,Color("383c43"))
+				draw_rect(Rect2(project(Vector2(point))+Vector2.ONE*4,Vector2.ONE*(half_width*2-8)),Color("62676a"))
 			var room: Dictionary = session.rooms[session.room]
 			if session.boss_trial and room.shield and point == room.pylon:
-				draw_line(center,center-Vector2(0,30),Color("7eeaff"),8,true)
-				draw_circle(center-Vector2(0,30),8,Color("bffaff"))
+				draw_line(center+Vector2(0,half_width*0.5),center-Vector2(0,half_width*0.5),Color("7eeaff"),8,true)
+				draw_circle(center-Vector2(0,half_width*0.5),6,Color("bffaff"))
 			if room.kind in ["camp","loot"] and room.feature == point:
 				Icons.paint(self,room.kind,center-Vector2(0,5),half_width*0.45,Color("68716a") if room.used else Color("b5d4a6") if room.kind == "camp" else Color("e0b96e"))
 			var actor: Dictionary = session.at(point)
@@ -109,16 +108,16 @@ func _draw() -> void:
 				var sprite: Texture2D = Art.BOSS if actor.enemy and actor.name == "수문장" else Art.ENEMY if actor.enemy else Art.ACTORS[actor.id]
 				if session.boss_trial and actor.enemy: sprite = Art.BOSS
 				if session.boss_trial and actor.enemy and room.shield:
-					draw_arc(center-Vector2(0,half_width*0.6),half_width,0,TAU,32,Color("7eeaff"),3,true)
-				var side := half_width*2.1
+					draw_arc(center,half_width*0.9,0,TAU,32,Color("7eeaff"),3,true)
+				var side := half_width*1.65
 				var flash := Color.WHITE
 				for effect in effects:
 					if effect.cell == point and effect_time < 0.35:
 						center.x += sin(effect_time*65)*4*(1-effect_time/0.35)
 						flash = Color(2,0.6,0.6)
-				draw_texture_rect(sprite,Rect2(center-Vector2(side/2,side*0.88),Vector2.ONE*side),false,flash)
-				draw_rect(Rect2(center+Vector2(-12,6),Vector2(24,3)),Color("191d24"))
-				draw_rect(Rect2(center+Vector2(-12,6),Vector2(24*float(actor.hp)/actor.max_hp,3)),Color("ce7770") if actor.enemy else Color("9ec987"))
+				draw_texture_rect(sprite,Rect2(center-Vector2.ONE*side/2,Vector2.ONE*side),false,flash)
+				draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24,3)),Color("191d24"))
+				draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24*float(actor.hp)/actor.max_hp,3)),Color("ce7770") if actor.enemy else Color("9ec987"))
 	for effect in effects:
 		var center := cell_center(effect.cell)-Vector2(0,half_width*0.65)
 		var fade := 1.0-effect_time/0.75

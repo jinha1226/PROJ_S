@@ -103,6 +103,7 @@ func refresh() -> void:
 		boss_info.position = Vector2(8,4)
 		var fuse: int = session.enemies[0].get("fuse",0)
 		if fuse > 0 and not session.intents.is_empty(): boss_info.text += "\n폭발까지 %d행동" % fuse
+		elif session.enemies[0].get("recovery",0) > 0: boss_info.text += "\n탈진 · %d행동 동안 반격 없음" % session.enemies[0].recovery
 	attack_button = null
 	end_turn_button = null
 	if session.phase == "BATTLE":
@@ -127,20 +128,23 @@ func refresh() -> void:
 	var party_row := HBoxContainer.new(); party_row.add_theme_constant_override("separation",5); root_layout.add_child(party_row)
 	for i in range(session.party.size()):
 		var actor: Dictionary = session.party[i]
-		var column := VBoxContainer.new(); column.size_flags_horizontal = SIZE_EXPAND_FILL; column.add_theme_constant_override("separation",3); party_row.add_child(column)
+		var column: BoxContainer = HBoxContainer.new() if session.party.size() == 1 else VBoxContainer.new()
+		column.size_flags_horizontal = SIZE_EXPAND_FILL; column.add_theme_constant_override("separation",3); party_row.add_child(column)
 		var skills := HBoxContainer.new(); skills.add_theme_constant_override("separation",3); column.add_child(skills)
+		if session.party.size() == 1: skills.custom_minimum_size.x = 128
 		for slot in range(2):
 			var skill := icon_button(skills,Art.skill(i*2+slot),func(): choose_skill(i,slot),SKILL_NAMES[i][slot])
 			skill.disabled = session.phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0; skill_buttons.append(skill)
-		var portrait := button(column,"",func(): select_actor(i)); portrait.custom_minimum_size.y = 65; portrait_buttons.append(portrait)
+		var portrait_box := VBoxContainer.new(); portrait_box.size_flags_horizontal = SIZE_EXPAND_FILL; portrait_box.add_theme_constant_override("separation",2); column.add_child(portrait_box)
+		var portrait := button(portrait_box,"",func(): select_actor(i)); portrait.custom_minimum_size.y = 48; portrait_buttons.append(portrait)
 		var face := TextureRect.new(); face.texture = Art.portrait(i); face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED; face.mouse_filter = MOUSE_FILTER_IGNORE
 		portrait.add_child(face); face.set_anchors_and_offsets_preset(PRESET_FULL_RECT); face.offset_bottom = -18; face.offset_top = 2; face.offset_left = 2; face.offset_right = -2
-		var name_label := label(portrait,"%s  %d/%d" % [actor.name,actor.hp,actor.max_hp],11); name_label.position = Vector2(4,45)
+		var name_label := label(portrait,"%s  %d/%d" % [actor.name,actor.hp,actor.max_hp],11); name_label.position = Vector2(4,30)
 		if i == session.selected:
 			var gold := portrait.get_theme_stylebox("normal").duplicate(); gold.border_color = Color("e9c575"); gold.set_border_width_all(2); portrait.add_theme_stylebox_override("normal",gold)
 		if actor.hp <= 0: portrait.modulate = Color("636369")
-		gauge(column,actor.hp,actor.max_hp,Color("8ac77c")); gauge(column,actor.stress,200,Color("af80d0"))
+		gauge(portrait_box,actor.hp,actor.max_hp,Color("8ac77c")); gauge(portrait_box,actor.stress,200,Color("af80d0"))
 	var shared := HBoxContainer.new(); shared.add_theme_constant_override("separation",4); root_layout.add_child(shared)
 	for slot in range(6):
 		var item := icon_button(shared,Art.item(slot),func(): choose_item(slot),Session.SUPPLY_NAMES[slot],str(session.supplies[slot]))
@@ -201,7 +205,7 @@ func on_cell(point: Vector2i) -> void:
 	if session.boss_trial and session.phase == "BATTLE" and session.rooms[session.room].shield and point == session.rooms[session.room].pylon:
 		run_action(func(): return session.act("PYLON",point)); return
 	if pending_item >= 0: run_action(func(): return session.use_supply(pending_item,point)); return
-	if mode == "ATTACK": preview_attack(point); return
+	if mode == "ATTACK": run_action(func(): return session.act("ATTACK",point)); return
 	if not mode.is_empty(): run_action(func(): return session.act(mode,point)); return
 	var actor: Dictionary = session.at(point)
 	if not actor.is_empty() and not actor.enemy:
@@ -210,7 +214,7 @@ func on_cell(point: Vector2i) -> void:
 		return
 	if session.phase == "EXPLORE": run_action(func(): return session.interact_room(point))
 	elif session.phase == "BATTLE":
-		if not actor.is_empty(): preview_attack(point)
+		if not actor.is_empty(): run_action(func(): return session.act("ATTACK",point))
 		else:
 			show_attack_range = true
 			run_action(func(): return session.act("MOVE",point))

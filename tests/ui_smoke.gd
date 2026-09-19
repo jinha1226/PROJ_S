@@ -6,12 +6,13 @@ func _initialize() -> void:
 	call_deferred("exercise")
 
 func exercise() -> void:
+	root.size = Vector2i(390,915)
 	var scene = load("res://expedition/main.tscn").instantiate()
 	scene.session = preload("res://expedition/session.gd").new()
 	root.add_child(scene)
 	await process_frame
 	scene.run_action(scene.session.depart)
-	await process_frame
+	for frame in range(5): await process_frame
 	var target: int = scene.session.rooms[0].links[0]
 	var event := InputEventMouseButton.new()
 	event.pressed = true; event.button_index = MOUSE_BUTTON_LEFT
@@ -29,7 +30,7 @@ func exercise() -> void:
 		for x in range(8):
 			var cell := Vector2i(x,y)
 			if scene.board.cell_at(scene.board.cell_center(cell)) != cell:
-				failed = true; push_error("isometric hit test failed")
+				failed = true; push_error("top-down hit test failed")
 	if scene.skill_buttons.size() != 6 or scene.item_buttons.size() != 6 or scene.portrait_buttons.size() != 3:
 		failed = true; push_error("v4 slot counts")
 	for node in scene.item_buttons + scene.skill_buttons:
@@ -72,7 +73,7 @@ func exercise() -> void:
 	await process_frame
 	scene.run_action(scene.session.retreat)
 	await process_frame
-	print("UI smoke: mobile v4 slots, touch targets, 64 isometric cells, map travel and combat lock")
+	print("UI smoke: mobile slots, touch targets, 64 top-down cells, map travel and combat lock")
 	scene.queue_free()
 	await process_frame
 	quit(1 if failed else 0)

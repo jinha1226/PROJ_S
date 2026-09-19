@@ -16,6 +16,8 @@ func exercise() -> void:
 		check(s.enemies.size() == 1 and s.rooms[id].kind == "boss","one boss in every room")
 		var boss: Dictionary = s.enemies[0]
 		if id % 3 in [0,1]:
+			if id % 3 == 0:
+				boss.cooldown = 0; s.party[0].pos = boss.pos+Vector2i.LEFT
 			s.round_number = 3; s.plan_enemies()
 			check(not s.intents.is_empty(),"special attack telegraphed")
 			s.party[0].pos = s.intents[0].cell
@@ -24,6 +26,16 @@ func exercise() -> void:
 			check(s.party[0].hp == hp,"blast allows first escape action")
 			s.enemy_attack_turn(boss)
 			check(s.party[0].hp == hp-16,"marked cells resolve once")
+			if id % 3 == 0:
+				check(boss.recovery == 2,"goo has recovery window")
+				s.party[0].pos = boss.pos+Vector2i.LEFT
+				hp = s.party[0].hp
+				for step in range(2):
+					s.enemy_attack_turn(boss); s.plan_enemies()
+					check(s.intents.is_empty() and s.party[0].hp == hp,"recovery allows approach and attack without retaliation")
+				for step in range(3):
+					s.enemy_attack_turn(boss); s.plan_enemies()
+					check(s.intents.is_empty(),"no immediate repeat charge")
 			s.party[0].hp = s.party[0].max_hp
 		else:
 			boss.hp = 32; s.plan_enemies()
@@ -62,6 +74,28 @@ func exercise() -> void:
 	before = game.round_number
 	check(game.use_supply(3,game.party[0].pos),"scroll succeeds")
 	check(game.round_number == before+1,"scroll does not double advance")
+	game.intents.clear(); game.enemies[0].charging = false; game.enemies[0].fuse = 0
+	game.enemies[0].recovery = 2; game.enemies[0].pos = Vector2i(3,4)
+	game.party[0].pos = Vector2i(2,4); game.party[0].hp = game.party[0].max_hp
+	game.tile(game.party[0].pos).fire = 0
+	before = game.round_number
+	var enemy_hp: int = game.enemies[0].hp
+	scene.on_cell(game.enemies[0].pos)
+	check(game.enemies[0].hp < enemy_hp and game.round_number == before+1,"touch immediately attacks and advances once")
+	check(scene.pending_attack.is_empty() and scene.attack_button == null,"no attack confirmation")
+	for viewport_size in [Vector2i(390,844),Vector2i(430,844),Vector2i(412,915)]:
+		root.size = viewport_size
+		for frame in range(5): await process_frame
+		scene.board.geometry()
+		check(scene.board.half_width == scene.board.half_height,"square top-down tiles")
+		check(absf(scene.board.size.x-scene.size.x) < 1,"board fills screen width")
+		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"portrait layout fits screen")
+		for y in range(8):
+			for x in range(8):
+				var cell := Vector2i(x,y)
+				check(scene.board.cell_at(scene.board.cell_center(cell)) == cell,"64 top-down touch targets")
+		check(not game.inside(scene.board.cell_at(Vector2(5,5))),"boss HUD is not a tile")
+		check(not game.inside(scene.board.cell_at(Vector2(5,scene.board.size.y-5))),"footer is not a tile")
 	scene.queue_free(); await process_frame
 	print("Boss trial: %d failures" % failures)
 	quit(1 if failures else 0)

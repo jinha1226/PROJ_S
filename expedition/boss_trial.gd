@@ -1,7 +1,7 @@
 extends RefCounted
 ## Simplified SPD-inspired patterns, implemented independently for an 8x8 arena.
 const NAMES = ["수렁 포식자", "폭탄 암살자", "과부하 거인"]
-const HINTS = ["충전 폭발 회피 · 보스는 물에서 회복", "폭탄 예고 회피 · 순간이동한 보스 추격", "보호막 가동 시 전력탑 옆에서 탑 터치"]
+const HINTS = ["폭발 후 탈진 틈에 공격 · 물에서 회복", "폭탄 예고 회피 · 순간이동한 보스 추격", "보호막 가동 시 전력탑 옆에서 탑 터치"]
 
 static func prepare(s) -> void:
 	for row in s.rooms:
@@ -20,6 +20,7 @@ static func spawn(s) -> void:
 	row.started = true
 	var boss: Dictionary = s.make_actor(100+s.room,NAMES[row.pattern],true)
 	boss.pos = Vector2i(5,4); boss.hp = 64; boss.max_hp = 64
+	boss.cooldown = 2; boss.recovery = 0
 	s.enemies.append(boss)
 
 static func plan(s) -> void:
@@ -36,7 +37,9 @@ static func plan(s) -> void:
 			for cell in [Vector2i(4,4),Vector2i(1,4),Vector2i(6,6)]:
 				if s.at(cell).is_empty(): row.pylon = cell; break
 		return
-	if s.round_number % 3 != 0: return
+	if row.pattern == 0:
+		if boss.get("recovery",0) > 0 or boss.get("cooldown",0) > 0 or s.distance(boss.pos,s.party[0].pos) != 1: return
+	elif s.round_number % 3 != 0: return
 	boss.charging = true
 	boss.fuse = 2
 	var center: Vector2i = boss.pos if row.pattern == 0 else s.party[0].pos
@@ -50,16 +53,22 @@ static func turn(s, boss: Dictionary) -> void:
 	var row: Dictionary = s.rooms[s.room]
 	var hero: Dictionary = s.party[0]
 	if row.pattern == 0 and s.tile(boss.pos).terrain == "water": boss.hp = mini(boss.max_hp,boss.hp+3)
+	if boss.get("recovery",0) > 0:
+		boss.recovery -= 1; return
 	if boss.get("charging",false):
 		boss.fuse = maxi(0,boss.get("fuse",1)-1)
 		if boss.fuse > 0: return
 		for intent in s.intents:
 			if intent.cell == hero.pos: s.damage(hero,intent.damage,boss.id,"IMPACT")
+		boss.charging = false
+		if row.pattern == 0:
+			boss.recovery = 2; boss.cooldown = 4
 		if row.pattern == 1:
 			for cell in [Vector2i(6,6),Vector2i(1,6),Vector2i(6,1),Vector2i(1,1)]:
 				if s.is_free(cell) and s.distance(cell,hero.pos) >= 3:
 					boss.pos = cell; break
 		return
+	if row.pattern == 0: boss.cooldown = maxi(0,boss.get("cooldown",0)-1)
 	if s.distance(boss.pos,hero.pos) == 1:
 		s.damage(hero,6,boss.id,"IMPACT"); return
 	var goals: Array = []
