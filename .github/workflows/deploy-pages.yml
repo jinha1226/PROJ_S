@@ -41,7 +41,7 @@ jobs:
           mv templates/* "${XDG_DATA_HOME}/godot/export_templates/${GODOT_VERSION}.stable/"
 
       - name: Import project and validate scripts
-        run: ./godot --headless --path . --editor --quit
+        run: ./godot --headless --path . --editor --import --quit
 
       - name: Validate settlement workers and material reservations
         timeout-minutes: 5
@@ -64,7 +64,7 @@ jobs:
           fi
           sed -i "s/^const BUILD_ID := \"LOCAL\"$/const BUILD_ID := \"${build_id}\"/" playtest/build_info.gd
           grep -Fqx "const BUILD_ID := \"${build_id}\"" playtest/build_info.gd
-          ./godot --headless --path . --editor --quit
+          ./godot --headless --path . --editor --import --quit
 
       - name: Export Web build
         shell: bash

@@ -8903,6 +8903,7 @@ func load_session_json(encoded: String) -> Dictionary:
 				var expedition_operation:Dictionary=row.operation
 				match str(expedition_operation.action):
 					"START":replay_result=replay.start_dark_fantasy_expedition(int(expedition_operation.gold))
+					"CLEAR_STAGE":replay_result=replay.complete_dark_expedition_stage()
 					"COMPLETE_ROOM":replay_result=replay.complete_dark_expedition_room(int(expedition_operation.room_index))
 					"ENTER_CAMP":replay_result=replay.enter_dark_expedition_camp()
 					"LEAVE_CAMP":replay_result=replay.leave_dark_expedition_camp()
@@ -9434,7 +9435,7 @@ func _journal_wire_error(journal: Array) -> String:
 					if expedition_keys!=["action","gold"] or not _integer(row.operation.gold) or int(row.operation.gold)<0:return "invalid_dark_expedition_journal"
 				elif expedition_action=="COMPLETE_ROOM":
 					if expedition_keys!=["action","room_index"] or not _integer(row.operation.room_index) or int(row.operation.room_index) not in [0,1,2]:return "invalid_dark_expedition_journal"
-				elif expedition_action in ["ENTER_CAMP","LEAVE_CAMP"]:
+				elif expedition_action in ["ENTER_CAMP","LEAVE_CAMP","CLEAR_STAGE"]:
 					if expedition_keys!=["action"]:return "invalid_dark_expedition_journal"
 				elif expedition_action=="CAMP_ACTION":
 					if expedition_keys!=["action","action_id","target_id"] \
@@ -9596,6 +9597,7 @@ func _run_feature_id_at(position: Vector2i, progress: Dictionary) -> String:
 
 
 func _run_is_complete() -> bool:
+	if sim!=null and sim.world.party_encounter.dark_expedition!=null and sim.world.party_encounter.dark_expedition.settlement_state=="SETTLED":return true
 	var progress := run_progress()
 	return bool(progress.get("available", false)) and bool(progress.get("complete", false))
 
@@ -10670,6 +10672,21 @@ func complete_dark_expedition_room(room_index: int) -> Dictionary:
 	command_journal.append({"kind":"dark_expedition","operation":{"action":"COMPLETE_ROOM","room_index":room_index}})
 	return _feedback_dto(result)
 
+func complete_dark_expedition_stage() -> Dictionary:
+	if not room_enabled():return {"accepted":true,"reason":"inactive"}
+	var w=sim.world
+	if not DarkExpeditionRulesScript.active(w):return {"accepted":true,"reason":"inactive"}
+	var state=w.party_encounter.dark_expedition
+	var stage=preload("res://sim/stage_counterplay.gd")
+	var key:String=stage.key(w)
+	if state.phase!="ACTIVE" or str(room_status().get("role",""))!="COMBAT" or stage.config(w).is_empty() or not stage.cleared(w) or key in state.completed_stage_keys:
+		return {"accepted":true,"reason":"unchanged"}
+	var result:=DarkExpeditionRulesScript.complete_room(w,int(state.room_index))
+	if not result.get("accepted",false):return result
+	state.completed_stage_keys.append(key)
+	command_journal.append({"kind":"dark_expedition","operation":{"action":"CLEAR_STAGE"}})
+	return result
+
 func enter_dark_expedition_camp() -> Dictionary:
 	var result:=DarkExpeditionRulesScript.enter_camp(sim.world)
 	if not result.get("accepted",false):return _rejection_dto(str(result.reason))
@@ -10690,6 +10707,9 @@ func dark_expedition_camp_action(action_id: String, target_id: int) -> Dictionar
 	return _feedback_dto(result)
 
 func settle_dark_expedition(kind: String) -> Dictionary:
+	if sim==null or sim.world.party_encounter.dark_expedition==null:return _rejection_dto("expedition_not_found")
+	if kind in ["SAFE_RETREAT","EMERGENCY_RETREAT"] and round_active() and not preload("res://sim/stage_counterplay.gd").cleared(sim.world):return _rejection_dto("room_combat_active")
+	if kind=="COMPLETE" and sim.world.party_encounter.dark_expedition.completed_rooms.size()!=3:return _rejection_dto("expedition_incomplete")
 	var result:=DarkExpeditionRulesScript.settle(sim.world,kind)
 	if not result.get("accepted",false):return _rejection_dto(str(result.reason))
 	command_journal.append({"kind":"dark_expedition","operation":{"action":"SETTLE","settlement":kind}})
@@ -10882,11 +10902,16 @@ func stage_map()->Dictionary:
 
 func request_room_travel(room_id:int,expected_revision:int)->Dictionary:
 	if not room_enabled() or _run_is_complete():return _rejection_dto("room_exit_unavailable")
+	var boundary:=complete_dark_expedition_stage()
+	if not boundary.get("accepted",false):return boundary
+	var dark=sim.world.party_encounter.dark_expedition
+	if dark!=null and dark.phase!="ACTIVE":return _rejection_dto("expedition_not_active")
 	var rollback:Dictionary=sim.capture_rollback_memento(false)
 	var result:Dictionary=preload("res://sim/systems/room_transition_system.gd").travel(sim,room_id,expected_revision)
 	if not result.get("accepted",false):return _rejection_dto(str(result.reason))
 	if not RoundPlans.begin(sim):sim.restore_rollback_memento(rollback);return _rejection_dto("room_plan_failed")
 	command_journal.append({"kind":"travel","operation":{"room_id":room_id,"revision":expected_revision}})
+	if dark!=null and dark.camp_available:dark.camp_available=false
 	if _auto_explore!=null:_auto_explore.cancel("room_transition")
 	if _exploration_route!=null:_exploration_route.cancel_for_direct_command()
 	_clear_draft();_advance_exile_world()

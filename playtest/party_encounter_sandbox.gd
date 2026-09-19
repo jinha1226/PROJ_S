@@ -1138,6 +1138,13 @@ func _build_ui()->void:
 	stage_map_view=preload("res://playtest/stage_map_view.gd").new();add_child(stage_map_view)
 	stage_map_view.room_selected.connect(_on_map_room_selected)
 	stage_map_view.abandon_requested.connect(_on_map_abandon)
+	stage_map_view.closed.connect(func():grid.modal_open=false)
+	stage_map_view.camp_requested.connect(func():
+		_record_result(session.enter_dark_expedition_camp(),false);_open_stage_map())
+	stage_map_view.camp_action_requested.connect(func(action:String,target_id:int):
+		_record_result(session.dark_expedition_camp_action(action,target_id),false);_open_stage_map();_request_refresh())
+	stage_map_view.camp_finished.connect(func():
+		_record_result(session.leave_dark_expedition_camp(),false);_open_stage_map();_request_refresh())
 	stage_context_bar.map_button.pressed.connect(_open_stage_map)
 	_apply_dark_pixel_shell_skin()
 	resized.connect(_on_surface_resized)
@@ -5053,6 +5060,7 @@ func _strike_visible_enemy(entity_id:int)->void:
 		_request_refresh()
 
 func _on_product_execute()->void:
+	if stage_map_view!=null and stage_map_view.visible:return
 	if grid!=null and grid.stage_motion_busy():return
 	if session!=null and session.round_active():
 		var round_state:Dictionary=session.round_status()
@@ -6673,16 +6681,27 @@ func flush_auto_flow_for_headless_test()->Dictionary:
 	return auto_flow_state()
 func _open_stage_map()->void:
 	if grid.stage_motion_busy():return
+	session.complete_dark_expedition_stage()
+	var expedition:Dictionary=session.dark_expedition_status()
+	if expedition.get("phase","")=="COMPLETE" and expedition.get("settlement_state","")!="SETTLED":
+		session.settle_dark_expedition("COMPLETE")
+		expedition=session.dark_expedition_status()
 	stage_map_view.open(session.stage_map())
+	stage_map_view.set_expedition(expedition)
+	grid.modal_open=true
 func _on_map_room_selected(room_id:int)->void:
 	stage_map_view.close()
 	_record_result(session.request_room_travel(room_id,int(session.room_status().revision)),false)
 	_request_refresh()
 func _on_map_abandon()->void:
+	if session.dark_expedition_status().get("active",false):
+		_record_result(session.settle_dark_expedition("SAFE_RETREAT"),false)
+		_open_stage_map();_request_refresh();return
 	stage_map_view.close()
 	_record_result(session.abandon_expedition(),false)
 	_request_refresh()
 func _on_cell(position:Vector2i)->void:
+	if stage_map_view!=null and stage_map_view.visible:return
 	if grid.stage_motion_busy():return
 	if session.round_status().phase=="DEPLOYMENT" and not _battle_target_mode.is_empty():_cancel_battle_targeting()
 	# Doorway walking is retreat only: outside combat, rooms are chosen from the stage map overlay.

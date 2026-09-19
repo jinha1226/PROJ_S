@@ -17,6 +17,7 @@ var expedition_id := ""
 var phase := "ACTIVE"
 var room_index := 0
 var completed_rooms: Array[int] = []
+var completed_stage_keys: Array[String] = []
 var camp_available := false
 var camp_cp := 0
 var rescue_supplies := RESCUE_SUPPLIES_MAX
@@ -102,6 +103,7 @@ func to_dict() -> Dictionary:
 	return {"schema_version": SCHEMA_VERSION, "ruleset_id": RULESET_ID,
 		"expedition_id": expedition_id, "phase": phase, "room_index": room_index,
 		"completed_rooms": completed_rooms.duplicate(), "camp_available": camp_available,
+		"completed_stage_keys": completed_stage_keys.duplicate(),
 		"camp_cp": camp_cp, "rescue_supplies": rescue_supplies,
 		"earned_gold": earned_gold, "preserved_gold": preserved_gold,
 		"settlement_state": settlement_state, "member_rows": rows,
@@ -115,6 +117,7 @@ static func from_dict(row: Dictionary):
 	state.phase = str(row.phase)
 	state.room_index = int(row.room_index)
 	state.completed_rooms.assign(row.completed_rooms)
+	state.completed_stage_keys.assign(row.get("completed_stage_keys",[]))
 	state.camp_available = bool(row.camp_available)
 	state.camp_cp = int(row.camp_cp)
 	state.rescue_supplies = int(row.rescue_supplies)
@@ -138,6 +141,11 @@ static func wire_error(row: Variant) -> String:
 		"expedition_id", "member_rows", "phase", "preserved_gold", "processed_event_ids",
 		"rescue_supplies", "room_index", "ruleset_id", "schema_version", "settlement_state"]
 	expected.sort()
+	if row.has("completed_stage_keys"):
+		expected.append("completed_stage_keys");expected.sort()
+		if not row.completed_stage_keys is Array:return "dark_expedition_stage_keys"
+		for key in row.completed_stage_keys:
+			if not key is String:return "dark_expedition_stage_keys"
 	if keys != expected or row.schema_version != SCHEMA_VERSION \
 			or row.ruleset_id != RULESET_ID:
 		return "dark_expedition_header"
