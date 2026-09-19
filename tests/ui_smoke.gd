@@ -46,6 +46,18 @@ func exercise() -> void:
 	scene.refresh()
 	await process_frame
 	if scene.session.phase == "BATTLE":
+		var control: Button = scene.end_turn_button
+		if control == null or control.size.x < 96 or control.size.y < 48 or not scene.board.get_global_rect().encloses(control.get_global_rect()):
+			failed = true; push_error("end turn must be inside board at bottom right")
+		for y in range(8):
+			for x in range(8):
+				if control.get_rect().has_point(scene.board.cell_center(Vector2i(x,y))):
+					failed = true; push_error("end turn covers a playable tile")
+		var round_before: int = scene.session.round_number
+		control.pressed.emit()
+		await process_frame
+		if scene.session.phase == "BATTLE" and scene.session.round_number != round_before + 1:
+			failed = true; push_error("end turn did not advance one round")
 		var before: int = scene.session.room
 		scene.show_map()
 		scene.on_room(scene.session.rooms[before].links[0])

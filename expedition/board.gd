@@ -15,9 +15,10 @@ func _ready() -> void:
 	resized.connect(queue_redraw)
 
 func geometry() -> void:
-	half_width = maxf(1,minf((size.x-12)/16.0,(size.y-60)/8.0))
+	var available_height := size.y - (56.0 if session != null and session.phase == "BATTLE" else 0.0)
+	half_width = maxf(1,minf((size.x-12)/16.0,(available_height-60)/8.0))
 	half_height = half_width/2
-	origin = Vector2(size.x/2,(size.y-half_height*16)/2+12)
+	origin = Vector2(size.x/2,(available_height-half_height*16)/2+12)
 
 func project(cell: Vector2) -> Vector2:
 	return origin + Vector2((cell.x-cell.y)*half_width,(cell.x+cell.y)*half_height)

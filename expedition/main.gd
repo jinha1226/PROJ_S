@@ -11,6 +11,7 @@ var mode := ""
 var pending_item := -1
 var root_layout: VBoxContainer
 var board
+var end_turn_button: Button
 var minimap
 var map_view
 var map_popup: PopupPanel
@@ -90,6 +91,14 @@ func refresh() -> void:
 	label(resource,"배고픔 %d%%" % session.hunger,10); gauge(resource,session.hunger,100,Color("d9904d"))
 	label(resource,"불빛 %d%%" % session.light,10); gauge(resource,session.light,100,Color("e6bd62"))
 	board = Board.new(); board.session = session; board.ui_font = FONT; board.cell_pressed.connect(on_cell); root_layout.add_child(board)
+	end_turn_button = null
+	if session.phase == "BATTLE":
+		end_turn_button = button(board,"턴 종료",func(): run_action(session.end_round))
+		end_turn_button.custom_minimum_size = Vector2(96,48)
+		end_turn_button.set_anchors_and_offsets_preset(PRESET_BOTTOM_RIGHT)
+		end_turn_button.offset_left = -104; end_turn_button.offset_top = -56
+		end_turn_button.offset_right = -8; end_turn_button.offset_bottom = -8
+		end_turn_button.tooltip_text = "남은 행동을 마치고 적 차례로 진행"
 	if session.phase in ["TOWN","DEFEAT"]: button(root_layout,"출정" if session.phase == "TOWN" and not session.alive().is_empty() else "새 원정대",depart)
 	var hint := label(root_layout,notice if not notice.is_empty() else "대원 선택 → 바닥 이동 · 적 공격 · 자신을 눌러 대기",10)
 	hint.clip_text = true; hint.custom_minimum_size.y = 16
@@ -182,7 +191,6 @@ func open_management(index: int) -> void:
 		2: modal("장비",actor.name+"\n\n부위 기능 반영 공격력: %d%%\n이동 비용: %d%%\n\n현재 공통 기본 공격을 사용합니다.\n장비 목록과 교체 기능은 준비 중입니다." % [actor.attack_factor,actor.move_factor])
 		3:
 			modal("원정","목표: 수문장 처치 후 귀환\n탐색: %d / 9개 방\n전리품: %d\n자금: %d\n\n전원 행동력 소진 시 적 차례. 선택한 대원을 다시 누르면 행동력 1을 사용해 대기합니다." % [session.visited.size(),session.loot,session.bank])
-			if session.phase == "BATTLE": button(modal_content,"남은 행동을 마치고 적 차례",func(): details_popup.hide(); run_action(session.end_round))
 			if session.phase in ["BATTLE","EXPLORE"]: button(modal_content,"철수 · 전리품 절반" if session.phase == "BATTLE" else "귀환",func(): details_popup.hide(); run_action(session.retreat))
 			if session.phase == "TOWN": button(modal_content,"요양 · 20 자금",func(): details_popup.hide(); run_action(session.rest_town),session.bank >= 20)
 
