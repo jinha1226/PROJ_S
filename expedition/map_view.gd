@@ -1,0 +1,73 @@
+extends Control
+signal room_pressed(id: int)
+const Icons = preload("res://expedition/map_icons.gd")
+const KIND_COLORS = {"entry":Color("c0c8dc"),"battle":Color("da8178"),"boss":Color("d2a4ef"),"camp":Color("79c9a2"),"loot":Color("e8c779")}
+const KIND_NAMES = {"entry":"입구","battle":"전투","boss":"수문장","camp":"회복","loot":"전리품"}
+var session
+var ui_font: Font
+var hovered := -1
+
+func _ready() -> void:
+	custom_minimum_size = Vector2(390,390)
+	size_flags_horizontal = SIZE_EXPAND_FILL
+	size_flags_vertical = SIZE_EXPAND_FILL
+	resized.connect(queue_redraw)
+	mouse_exited.connect(func(): hovered = -1; queue_redraw())
+
+func room_rect(id: int) -> Rect2:
+	var span := minf(size.x,size.y) - 16.0
+	var step := span / 3.0
+	var side := step * 0.78
+	var origin := (size-Vector2.ONE*span)/2.0 + Vector2.ONE * (step-side)/2.0
+	return Rect2(origin+Vector2(id%3,id/3)*step,Vector2.ONE*side)
+
+func room_at(point: Vector2) -> int:
+	for id in range(9):
+		if room_rect(id).has_point(point): return id
+	return -1
+
+func _draw() -> void:
+	if session == null or session.rooms.is_empty(): return
+	var font: Font = ui_font if ui_font != null else ThemeDB.fallback_font
+	for row in session.rooms:
+		for target in row.links:
+			if target < row.id: continue
+			var active: bool = (row.id == session.room or target == session.room)
+			var color := Color("c5b68e") if active else Color("414b61")
+			draw_line(room_rect(row.id).get_center(),room_rect(target).get_center(),Color("111722"),12)
+			draw_line(room_rect(row.id).get_center(),room_rect(target).get_center(),color,4)
+	for row in session.rooms:
+		var rect := room_rect(row.id)
+		var current: bool = row.id == session.room
+		var reachable: bool = session.can_travel(row.id)
+		var color: Color = KIND_COLORS[row.kind]
+		draw_rect(rect,Color("1b2330"))
+		# Every map tile previews its own authoritative 8x8 room terrain.
+		var preview := Rect2(rect.position+Vector2(8,6),Vector2(rect.size.x-16,rect.size.y-32))
+		var cell_size := minf(preview.size.x,preview.size.y)/8.0
+		var offset := preview.position+Vector2((preview.size.x-cell_size*8)/2,0)
+		for y in range(8):
+			for x in range(8):
+				var cell: Dictionary = row.tiles[y*8+x]
+				var shade: Color = {"stone":Color("2b3443"),"wood":Color("4b4035"),"water":Color("285266"),"metal":Color("495363"),"wall":Color("111721")}[cell.terrain]
+				if cell.fire > 0: shade = Color("b86437")
+				draw_rect(Rect2(offset+Vector2(x,y)*cell_size,Vector2.ONE*(cell_size-0.6)),shade)
+		var icon_center := preview.get_center()
+		draw_circle(icon_center,18,Color(0.06,0.08,0.12,0.92))
+		Icons.paint(self,row.kind,icon_center,11,color)
+		var border := Color("edd49a") if current else Color("8bbbaa") if reachable else Color("3c4658")
+		draw_rect(rect,border,false,3 if current or row.id == hovered else 1)
+		var caption: String = KIND_NAMES[row.kind]
+		if current: caption = "현재 · " + caption
+		elif row.used or row.cleared: caption += " ✓"
+		draw_string(font,rect.position+Vector2(5,rect.size.y-8),caption,HORIZONTAL_ALIGNMENT_CENTER,rect.size.x-10,14,color)
+		if row.id in session.visited: draw_circle(rect.position+Vector2(8,8),3,Color("e6d8b3"))
+
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		hovered = room_at(event.position)
+		mouse_default_cursor_shape = CURSOR_POINTING_HAND if hovered == session.room or session.can_travel(hovered) else CURSOR_ARROW
+		queue_redraw()
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var id := room_at(event.position)
+		if id >= 0: room_pressed.emit(id); accept_event()

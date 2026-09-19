@@ -1,10 +1,20 @@
 extends SceneTree
 const Session = preload("res://expedition/session.gd")
+const Fixture = preload("res://tests/map_fixture.gd")
 
 func _initialize() -> void:
 	var s = Session.new()
-	s.depart(); s.travel(2); s.event_choice(false); s.travel(3)
-	s.camp(); s.travel(5); s.event_choice(false); s.travel(6)
+	s.depart()
+	for next in Fixture.path(s,8):
+		if not s.travel(next): break
+		if s.phase == "BATTLE": fight(s)
+		elif s.rooms[s.room].kind == "camp": s.camp()
+	var won: bool = s.phase == "EXPLORE" and s.room == 8 and s.rooms[8].cleared
+	if won: s.retreat()
+	print("Public-action map playthrough: won=%s, survivors=%d, bank=%d" % [won,s.alive().size(),s.bank])
+	quit(0 if won and s.bank >= 100 else 1)
+
+func fight(s) -> void:
 	for turn in range(30):
 		if s.phase != "BATTLE": break
 		for index in range(s.party.size()):
@@ -27,7 +37,3 @@ func _initialize() -> void:
 				for cell in choices:
 					if s.act("MOVE",cell): break
 		if s.phase == "BATTLE": s.end_round()
-	var won: bool = s.phase == "EXPLORE" and s.room == 6
-	if won: s.retreat()
-	print("Public-action playthrough: won=%s, survivors=%d, bank=%d" % [won,s.alive().size(),s.bank])
-	quit(0 if won and s.bank == 100 else 1)

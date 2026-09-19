@@ -1,5 +1,6 @@
 extends Control
 signal cell_pressed(cell: Vector2i)
+const Icons = preload("res://expedition/map_icons.gd")
 var session
 var cell_size := 56.0
 var origin := Vector2.ZERO
@@ -8,7 +9,7 @@ const COLORS = {"stone":Color("252b35"), "wood":Color("584735"),
 	"water":Color("284859"), "metal":Color("49515b"), "wall":Color("111720")}
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(450,450)
+	custom_minimum_size = Vector2(390,390)
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	resized.connect(queue_redraw)
@@ -32,6 +33,16 @@ func _draw() -> void:
 				if intent.cell == point:
 					draw_rect(rect.grow(-4), Color("d26561"), false, 2)
 					draw_line(rect.position+Vector2(5,5),rect.end-Vector2(5,5),Color(0.9,0.3,0.3,0.45),2)
+	for point in session.doors():
+		var rect := Rect2(origin+Vector2(point)*cell_size,Vector2.ONE*cell_size)
+		var color := Color("81c6ad") if session.phase == "EXPLORE" else Color("73535a")
+		draw_rect(rect.grow(-3),color,false,3)
+		Icons.paint(self,"entry",rect.get_center(),cell_size*0.24,color)
+	if not session.rooms.is_empty():
+		var row: Dictionary = session.rooms[session.room]
+		if row.kind in ["camp","loot"]:
+			var color := Color("53616b") if row.used else Color("79c9a2") if row.kind == "camp" else Color("e8c779")
+			Icons.paint(self,row.kind,origin+(Vector2(row.feature)+Vector2.ONE*0.5)*cell_size,cell_size*0.32,color)
 	for actor in session.party + session.enemies:
 		if actor.hp <= 0: continue
 		var center: Vector2 = origin + (Vector2(actor.pos) + Vector2.ONE * 0.5) * cell_size

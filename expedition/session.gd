@@ -6,16 +6,9 @@ const Body = preload("res://game/rebuilt/body_bridge.gd")
 const TurnCore = preload("res://sim/turn_engine.gd")
 const ElementRules = preload("res://sim/environment_rules.gd")
 const Injury = preload("res://sim/body_injury_system.gd")
+const Dungeon = preload("res://expedition/dungeon_map.gd")
 const DIRECTIONS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]
-const ROOMS = [
-	{"name":"폐허 입구", "kind":"entry", "next":[1,2]},
-	{"name":"불탄 병영", "kind":"battle", "next":[3]},
-	{"name":"잊힌 납골당", "kind":"curio", "next":[3]},
-	{"name":"꺼진 야영지", "kind":"camp", "next":[4,5]},
-	{"name":"침수된 무기고", "kind":"battle", "next":[6]},
-	{"name":"희생의 제단", "kind":"curio", "next":[6]},
-	{"name":"수문장의 방", "kind":"boss", "next":[]},
-]
+var rooms: Array = []
 var seed_value := 731
 var phase := "TOWN"
 var room := 0
@@ -34,7 +27,6 @@ var world_time := 0
 var round_number := 0
 var expedition_number := 0
 var selected := 0
-var used_camp := false
 var intents: Array = []
 
 func _init(p_seed: int = 731) -> void:
@@ -62,27 +54,53 @@ func alive() -> Array:
 func depart() -> bool:
 	if phase != "TOWN" or alive().is_empty(): return false
 	expedition_number += 1
-	food = 9; torches = 3; light = 90; loot = 0
-	room = 0; visited = [0]; used_camp = false
-	phase = "EXPLORE"; enemies.clear(); intents.clear(); tiles.clear()
+	food = 27; torches = 5; light = 90; loot = 0
+	rooms = Dungeon.generate(seed_value + expedition_number * 7919)
+	room = 0; visited = [0]
+	enter_room()
 	message("원정 %d · 폐허의 수문장을 처치하고 귀환하세요." % expedition_number)
 	return true
 
+func can_travel(destination: int) -> bool:
+	return phase == "EXPLORE" and not rooms.is_empty() and destination in rooms[room].links
+
 func travel(destination: int) -> bool:
-	if phase != "EXPLORE" or destination not in ROOMS[room].next: return false
+	if not can_travel(destination): return false
 	world_time += 100
 	light = maxi(0, light - 18)
 	var required := alive().size()
 	var hungry := food < required
 	food = maxi(0, food - required)
 	for actor in alive(): stress(actor, (12 if hungry else 3) + (9 if light < 35 else 0))
-	room = destination; visited.append(room); used_camp = false
+	var previous := room
+	room = destination
+	if room not in visited: visited.append(room)
 	message("복도 통과 · 식량 -%d / 횃불 밝기 %d%s" % [required, light, " · 굶주림" if hungry else ""])
-	match ROOMS[room].kind:
-		"battle", "boss": start_battle()
-		"curio": phase = "EVENT"
-		_: phase = "EXPLORE"
+	enter_room(previous)
 	return true
+
+func enter_room(previous: int = -1) -> void:
+	var row: Dictionary = rooms[room]
+	tiles = row.tiles
+	enemies = row.enemies
+	intents = []
+	phase = "EXPLORE"
+	var spawn := Vector2i(1,2)
+	if previous == room + 1: spawn = Vector2i(6,2)
+	elif previous == room - 3: spawn = Vector2i(1,1)
+	elif previous == room + 3: spawn = Vector2i(1,6)
+	for i in range(party.size()):
+		party[i].pos = spawn + (Vector2i(i,0) if previous in [room-3,room+3] else Vector2i(0,i))
+	if row.kind in ["battle","boss"] and not row.cleared: start_battle()
+
+func doors() -> Dictionary:
+	var result: Dictionary = {}
+	if rooms.is_empty(): return result
+	for destination in rooms[room].links:
+		var delta: int = destination - room
+		var point: Vector2i = {1:Vector2i(7,4),-1:Vector2i(0,4),3:Vector2i(4,7),-3:Vector2i(4,0)}[delta]
+		result[point] = destination
+	return result
 
 func stress(actor: Dictionary, amount: int) -> void:
 	var trauma := int(actor.memory.strongest(["SELF_HARM", "ALLY_LOST"]).get("salience", 0)) / 200
@@ -98,8 +116,8 @@ func use_torch() -> bool:
 	return true
 
 func camp() -> bool:
-	if phase != "EXPLORE" or ROOMS[room].kind != "camp" or used_camp or food < alive().size(): return false
-	food -= alive().size(); used_camp = true; world_time += 100
+	if phase != "EXPLORE" or rooms[room].kind != "camp" or rooms[room].used: return false
+	rooms[room].used = true; rooms[room].cleared = true; world_time += 100
 	var helper: Dictionary = alive()[0]
 	for actor in alive():
 		if actor.profile.value("A") > helper.profile.value("A"): helper = actor
@@ -110,11 +128,13 @@ func camp() -> bool:
 		if actor.id != helper.id:
 			serial += 1
 			actor.memory.remember("AID_RECEIVED", serial, world_time, helper.id + 1, helper.id + 1, 300)
-	message("%s의 돌봄 · 체력과 혈액 회복, 스트레스 감소. 부위 손상은 남습니다." % helper.name)
+	message("회복의 샘 · %s의 돌봄으로 체력과 스트레스를 회복했습니다." % helper.name)
 	return true
 
 func event_choice(search: bool) -> bool:
-	if phase != "EVENT": return false
+	if phase != "EXPLORE" or rooms[room].kind != "loot" or rooms[room].used: return false
+	if not search: return false
+	rooms[room].used = true; rooms[room].cleared = true
 	if search:
 		loot += 30
 		var actor: Dictionary = party[selected] if party[selected].hp > 0 else alive()[0]
@@ -126,30 +146,32 @@ func event_choice(search: bool) -> bool:
 			stress(actor, -8)
 			message("온전한 유물을 발견했습니다. 전리품 +30")
 		for member in alive(): stress(member, 4)
-	else: message("유물에 손대지 않고 지나갑니다.")
 	phase = "EXPLORE" if not alive().is_empty() else "DEFEAT"
 	return true
 
+func interact_room(point: Vector2i) -> bool:
+	if phase != "EXPLORE" or not inside(point): return false
+	if doors().has(point): return travel(doors()[point])
+	if point != rooms[room].feature: return false
+	if rooms[room].kind == "camp": return camp()
+	if rooms[room].kind == "loot": return event_choice(true)
+	return false
+
 func start_battle() -> void:
-	phase = "BATTLE"; round_number = 1; enemies.clear(); intents.clear(); tiles.clear()
-	for y in range(8):
-		for x in range(8):
-			var terrain := "stone"
-			if y == 3: terrain = "wood"
-			if x == 5: terrain = "water" if room == 4 else "metal"
-			if Vector2i(x,y) in [Vector2i(3,2), Vector2i(3,5)]: terrain = "wall"
-			tiles.append({"terrain":terrain, "fire":0, "wet":70 if terrain == "water" else 0})
-	for i in range(party.size()):
-		party[i].pos = Vector2i(1, 2 + i)
-		party[i].ap = action_budget(party[i])
-	for i in range(3 if ROOMS[room].kind == "boss" else 2):
-		var enemy := make_actor(100 + room * 10 + i, "수문장" if i == 2 else "망령", true)
-		enemy.pos = Vector2i(6, 2 + i * 2)
-		if i == 2: enemy.hp = 44; enemy.max_hp = 44
-		enemies.append(enemy)
+	phase = "BATTLE"; round_number = 1
+	for actor in party: actor.ap = action_budget(actor)
+	if not rooms[room].started:
+		rooms[room].started = true
+		for i in range(3 if rooms[room].kind == "boss" else 2):
+			var enemy := make_actor(100 + expedition_number * 100 + room * 10 + i, "수문장" if i == 2 else "망령", true)
+			enemy.pos = Vector2i(6, 2 + i * 2)
+			# Entering through the east door must not overlap enemy spawns.
+			if party.any(func(a): return a.hp > 0 and a.pos == enemy.pos): enemy.pos.x = 5
+			if i == 2: enemy.hp = 44; enemy.max_hp = 44
+			enemies.append(enemy)
 	selected = party.find(alive()[0])
 	plan_enemies()
-	message("%s · 붉은 칸은 적의 다음 공격 위치입니다." % ROOMS[room].name)
+	message("%s · 붉은 칸은 적의 다음 공격 위치입니다." % rooms[room].name)
 
 func action_budget(actor: Dictionary) -> int:
 	return 1 if actor.stress >= 150 else 2
@@ -295,7 +317,8 @@ func check_battle_end() -> void:
 	if alive().is_empty():
 		phase = "DEFEAT"; loot = 0; message("원정대가 전멸했습니다.")
 	elif enemies.all(func(a): return a.hp <= 0):
-		loot += 35 if ROOMS[room].kind != "boss" else 100
+		loot += 35 if rooms[room].kind != "boss" else 100
+		rooms[room].cleared = true
 		phase = "EXPLORE"; intents.clear()
 		for actor in alive(): stress(actor, -7)
 		message("전투 승리 · 전리품 %d. 부상과 기억을 안고 탐험을 계속합니다." % loot)
@@ -308,7 +331,7 @@ func retreat() -> bool:
 		for actor in alive(): stress(actor, 15)
 	bank += loot
 	message("귀환 · 전리품 %d 정산%s. 누적 자금 %d" % [loot, " (전투 철수 50% 손실)" if penalty else "", bank])
-	loot = 0; phase = "TOWN"; intents.clear(); enemies.clear(); tiles.clear()
+	loot = 0; phase = "TOWN"; intents = []; enemies = []; tiles = []
 	return true
 
 func rest_town() -> bool:
