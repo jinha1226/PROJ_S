@@ -8,11 +8,12 @@ var session
 var ui_font: Font
 var hovered := -1
 var compact := false
+var minimum_side := 0
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(140,140) if compact else Vector2(390,390)
+	custom_minimum_size = Vector2.ONE * (minimum_side if minimum_side > 0 else 140 if compact else 390)
 	if compact: mouse_default_cursor_shape = CURSOR_POINTING_HAND
-	size_flags_horizontal = SIZE_EXPAND_FILL
+	size_flags_horizontal = SIZE_SHRINK_BEGIN if compact else SIZE_EXPAND_FILL
 	size_flags_vertical = SIZE_EXPAND_FILL
 	resized.connect(queue_redraw)
 	mouse_exited.connect(func(): hovered = -1; queue_redraw())

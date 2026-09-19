@@ -28,6 +28,9 @@ var round_number := 0
 var expedition_number := 0
 var selected := 0
 var intents: Array = []
+var hunger := 0
+var supplies: Array = [2,2,1,1,1,3]
+const SUPPLY_NAMES = ["치유 물약","정신 안정제","활력 물약","화염 두루마리","물 두루마리","붕대"]
 
 func _init(p_seed: int = 731) -> void:
 	seed_value = p_seed
@@ -54,7 +57,8 @@ func alive() -> Array:
 func depart() -> bool:
 	if phase != "TOWN" or alive().is_empty(): return false
 	expedition_number += 1
-	food = 27; torches = 5; light = 90; loot = 0
+	food = 27; torches = 5; light = 90; loot = 0; hunger = 0
+	supplies = [2,2,1,1,1,3]
 	rooms = Dungeon.generate(seed_value + expedition_number * 7919)
 	room = 0; visited = [0]
 	enter_room()
@@ -70,6 +74,7 @@ func travel(destination: int) -> bool:
 	light = maxi(0, light - 18)
 	var required := alive().size()
 	var hungry := food < required
+	hunger = clampi(hunger + (25 if hungry else 4),0,100)
 	food = maxi(0, food - required)
 	for actor in alive(): stress(actor, (12 if hungry else 3) + (9 if light < 35 else 0))
 	var previous := room
@@ -152,14 +157,21 @@ func event_choice(search: bool) -> bool:
 func interact_room(point: Vector2i) -> bool:
 	if phase != "EXPLORE" or not inside(point): return false
 	if doors().has(point): return travel(doors()[point])
-	if point != rooms[room].feature: return false
+	if point != rooms[room].feature:
+		var actor: Dictionary = party[selected]
+		if actor.hp <= 0 or not is_free(point): return false
+		var route := TurnCore.path(8,8,actor.pos,[point],
+			func(a,b): return distance(a,b) == 1 and is_free(b),func(_p): return 100)
+		if not route.found: return false
+		actor.pos = point
+		return true
 	if rooms[room].kind == "camp": return camp()
 	if rooms[room].kind == "loot": return event_choice(true)
 	return false
 
 func start_battle() -> void:
 	phase = "BATTLE"; round_number = 1
-	for actor in party: actor.ap = action_budget(actor)
+	for actor in party: actor.ap = action_budget(actor); actor["guarded"] = false
 	if not rooms[room].started:
 		rooms[room].started = true
 		for i in range(3 if rooms[room].kind == "boss" else 2):
@@ -199,6 +211,9 @@ func act(kind: String, target: Vector2i) -> bool:
 	if actor.hp <= 0 or actor.ap <= 0: return false
 	var victim := at(target)
 	match kind:
+		"GUARD", "WAIT":
+			if target != actor.pos: return false
+			if kind == "GUARD": actor["guarded"] = true
 		"MOVE":
 			var move_range := 2 if actor.move_factor == 100 else 1
 			var path := TurnCore.path(8, 8, actor.pos, [target],
@@ -250,6 +265,7 @@ func conductive(point: Vector2i) -> bool:
 
 func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	if target.hp <= 0: return
+	if target.get("guarded",false): amount = maxi(1,amount / 2)
 	serial += 1
 	var lost := mini(int(target.hp), amount)
 	var key := ("%d/%d/%d" % [seed_value, serial, target.id]).sha256_text()
@@ -306,6 +322,7 @@ func end_round() -> bool:
 				func(origin,point): return distance(origin,point) == 1 and is_free(point), func(_p): return 100)
 			if route.found and route.path.size() > 1: enemy.pos = route.path[1]
 	for actor in alive():
+		actor["guarded"] = false
 		stress(actor, 2 if light >= 35 else 5)
 		actor.ap = action_budget(actor)
 	round_number += 1
@@ -340,4 +357,24 @@ func rest_town() -> bool:
 	for actor in alive():
 		stress(actor, -40); actor.hp = mini(actor.max_hp, actor.hp + 20); Body.heal(actor)
 	message("요양 · 자금 20 소비. 기억과 부위 손상은 유지됩니다.")
+	return true
+
+func use_supply(slot: int, target: Vector2i = Vector2i(-1,-1)) -> bool:
+	if phase not in ["EXPLORE","BATTLE"] or slot < 0 or slot >= supplies.size() or supplies[slot] <= 0: return false
+	var actor: Dictionary = party[selected]
+	if actor.hp <= 0 or phase == "BATTLE" and actor.ap <= 0: return false
+	if slot in [3,4]:
+		if not act("FIRE" if slot == 3 else "WATER",target): return false
+	else:
+		if slot in [0,5] and actor.hp >= actor.max_hp: return false
+		if slot == 1 and actor.stress == 0: return false
+		if slot == 2 and hunger == 0 and actor.stress == 0: return false
+		match slot:
+			0,5:
+				actor.hp = mini(actor.max_hp,actor.hp + (20 if slot == 0 else 10)); Body.heal(actor)
+			1: stress(actor,-25)
+			2: hunger = maxi(0,hunger-30); stress(actor,-10)
+		if phase == "BATTLE": actor.ap -= 1
+	supplies[slot] -= 1
+	message("%s · %s 사용" % [actor.name,SUPPLY_NAMES[slot]])
 	return true

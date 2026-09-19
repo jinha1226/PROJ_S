@@ -19,8 +19,18 @@ func exercise() -> void:
 	await process_frame
 	if not scene.map_popup.visible or scene.session.room != 0:
 		failed = true; push_error("minimap must expand without moving")
-	if scene.minimap.size.x > 180 or scene.board.size.x < 900:
+	if scene.minimap.size.x > 100 or scene.board.size.x < 340:
 		failed = true; push_error("minimap must stay small and board must use full width")
+	for y in range(8):
+		for x in range(8):
+			var cell := Vector2i(x,y)
+			if scene.board.cell_at(scene.board.cell_center(cell)) != cell:
+				failed = true; push_error("isometric hit test failed")
+	if scene.skill_buttons.size() != 6 or scene.item_buttons.size() != 6 or scene.portrait_buttons.size() != 3:
+		failed = true; push_error("v4 slot counts")
+	for node in scene.item_buttons + scene.skill_buttons:
+		if node.size.x < 48 or node.size.y < 48 or not scene.get_global_rect().encloses(node.get_global_rect()):
+			failed = true; push_error("touch target outside screen or too small")
 	event.position = scene.map_view.room_rect(target).get_center()
 	scene.map_view._gui_input(event)
 	await process_frame
@@ -46,7 +56,7 @@ func exercise() -> void:
 	await process_frame
 	scene.run_action(scene.session.retreat)
 	await process_frame
-	print("UI smoke: compact map, popup travel, full-width board, combat lock, doors and return")
+	print("UI smoke: mobile v4 slots, touch targets, 64 isometric cells, map travel and combat lock")
 	scene.queue_free()
 	await process_frame
 	quit(1 if failed else 0)
