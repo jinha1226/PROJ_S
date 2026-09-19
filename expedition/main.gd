@@ -31,7 +31,7 @@ func _ready() -> void:
 		box.content_margin_left = 3; box.content_margin_right = 3; skin.set_stylebox(state,"Button",box)
 	theme = skin
 	var margin := MarginContainer.new(); margin.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
-	for side in ["left","right","top","bottom"]: margin.add_theme_constant_override("margin_"+side,8)
+	for side in ["left","right","top","bottom"]: margin.add_theme_constant_override("margin_"+side,0 if side in ["left","right"] else 8)
 	add_child(margin)
 	root_layout = VBoxContainer.new(); root_layout.add_theme_constant_override("separation",5); margin.add_child(root_layout)
 	map_popup = PopupPanel.new(); add_child(map_popup)

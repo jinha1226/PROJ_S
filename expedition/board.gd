@@ -12,11 +12,16 @@ func _ready() -> void:
 	custom_minimum_size = Vector2(0,180)
 	size_flags_vertical = SIZE_EXPAND_FILL
 	mouse_default_cursor_shape = CURSOR_POINTING_HAND
-	resized.connect(queue_redraw)
+	resized.connect(_resize_board)
+	_resize_board()
+
+func _resize_board() -> void:
+	custom_minimum_size.y = maxf(180,size.x/2+96 if session != null and session.phase == "BATTLE" else size.x/2+40)
+	queue_redraw()
 
 func geometry() -> void:
 	var available_height := size.y - (56.0 if session != null and session.phase == "BATTLE" else 0.0)
-	half_width = maxf(1,minf((size.x-12)/16.0,(available_height-60)/8.0))
+	half_width = maxf(1,size.x/16.0)
 	half_height = half_width/2
 	origin = Vector2(size.x/2,(available_height-half_height*16)/2+12)
 

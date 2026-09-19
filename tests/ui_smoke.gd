@@ -21,6 +21,9 @@ func exercise() -> void:
 		failed = true; push_error("minimap must expand without moving")
 	if scene.minimap.size.x > 100 or scene.board.size.x < 340:
 		failed = true; push_error("minimap must stay small and board must use full width")
+	scene.board.geometry()
+	if absf(scene.board.size.x-scene.size.x) > 1 or absf(scene.board.half_width*16-scene.size.x) > 1:
+		failed = true; push_error("board and projected room must fill screen width")
 	for y in range(8):
 		for x in range(8):
 			var cell := Vector2i(x,y)

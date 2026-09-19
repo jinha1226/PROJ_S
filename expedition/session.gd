@@ -183,7 +183,7 @@ func start_battle() -> void:
 			enemies.append(enemy)
 	selected = party.find(alive()[0])
 	plan_enemies()
-	message("%s · 붉은 칸은 적의 다음 공격 위치입니다." % rooms[room].name)
+	message("%s · 적은 이동 후 공격합니다. 붉은 칸은 강력한 기술의 예고입니다." % rooms[room].name)
 
 func action_budget(actor: Dictionary) -> int:
 	return 1 if actor.stress >= 150 else 2
@@ -284,19 +284,53 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 func plan_enemies() -> void:
 	intents.clear()
 	for enemy in enemies:
+		enemy["charging"] = false
 		if enemy.hp <= 0 or alive().is_empty(): continue
+		# Only the guardian's heavy strike is cell-locked and telegraphed.
+		if enemy.name != "수문장" or round_number % 3 != 0: continue
 		var targets := alive()
 		targets.sort_custom(func(a,b): return distance(enemy.pos,a.pos) < distance(enemy.pos,b.pos))
 		var target: Dictionary = targets[0]
-		# Cell-locked ranged intent; moving off the marked cell always dodges it.
-		intents.append({"id":enemy.id, "cell":target.pos, "damage":10 if enemy.name == "수문장" else 7})
+		if distance(enemy.pos,target.pos) > 4 or not preload("res://sim/combat_kernel.gd").sees(enemy.pos,target.pos,func(p): return tile(p).terrain == "wall"): continue
+		enemy.charging = true
+		intents.append({"id":enemy.id, "cell":target.pos, "damage":16})
+
+func enemy_attack_turn(enemy: Dictionary) -> void:
+	if enemy.hp <= 0 or alive().is_empty(): return
+	if enemy.get("charging",false):
+		# Pushing removes the intent: interrupted charge loses the action.
+		for intent in intents:
+			if intent.id != enemy.id: continue
+			var victim := at(intent.cell)
+			if not victim.is_empty(): damage(victim,intent.damage,enemy.id,"IMPACT")
+		return
+	var best_path: Array = []
+	var target: Dictionary = {}
+	for actor in alive():
+		if distance(enemy.pos,actor.pos) == 1:
+			target = actor; best_path = [enemy.pos]; break
+		var goals: Array = []
+		for direction in DIRECTIONS:
+			var point: Vector2i = actor.pos + direction
+			if is_free(point): goals.append(point)
+		if goals.is_empty(): continue
+		var route := TurnCore.path(8,8,enemy.pos,goals,
+			func(origin,point): return distance(origin,point) == 1 and is_free(point),func(_p): return 100)
+		if route.found and (best_path.is_empty() or route.path.size() < best_path.size()):
+			best_path = route.path; target = actor
+	if target.is_empty(): return
+	# Same-turn movement and melee attack; body injuries also slow enemies.
+	var steps := 2 if enemy.move_factor == 100 else 1
+	enemy.pos = best_path[mini(steps,best_path.size()-1)]
+	if distance(enemy.pos,target.pos) == 1:
+		damage(target,maxi(1,(10 if enemy.name == "수문장" else 7)*enemy.attack_factor/100),enemy.id,"IMPACT")
 
 func end_round() -> bool:
 	if phase != "BATTLE": return false
 	world_time += 100
-	for intent in intents:
-		var victim := at(intent.cell)
-		if not victim.is_empty(): damage(victim, intent.damage, intent.id, "IMPACT")
+	for enemy in enemies:
+		enemy_attack_turn(enemy)
+		if alive().is_empty(): break
 	for y in range(8):
 		for x in range(8):
 			var point := Vector2i(x,y)
@@ -308,19 +342,6 @@ func end_round() -> bool:
 			if not victim.is_empty() and result.known_damage > 0: damage(victim, result.known_damage, 999, "FIRE")
 	check_battle_end()
 	if phase != "BATTLE": return true
-	for enemy in enemies:
-		if enemy.hp <= 0: continue
-		var nearest: Dictionary = alive()[0]
-		for actor in alive():
-			if distance(enemy.pos, actor.pos) < distance(enemy.pos, nearest.pos): nearest = actor
-		var goals: Array = []
-		for direction in DIRECTIONS:
-			var point: Vector2i = nearest.pos + direction
-			if is_free(point): goals.append(point)
-		if not goals.is_empty() and distance(enemy.pos, nearest.pos) > 1:
-			var route := TurnCore.path(8,8,enemy.pos,goals,
-				func(origin,point): return distance(origin,point) == 1 and is_free(point), func(_p): return 100)
-			if route.found and route.path.size() > 1: enemy.pos = route.path[1]
 	for actor in alive():
 		actor["guarded"] = false
 		stress(actor, 2 if light >= 35 else 5)
