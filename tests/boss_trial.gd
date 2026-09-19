@@ -21,6 +21,8 @@ func exercise() -> void:
 			s.party[0].pos = s.intents[0].cell
 			var hp: int = s.party[0].hp
 			s.enemy_attack_turn(boss)
+			check(s.party[0].hp == hp,"blast allows first escape action")
+			s.enemy_attack_turn(boss)
 			check(s.party[0].hp == hp-16,"marked cells resolve once")
 			s.party[0].hp = s.party[0].max_hp
 		else:
@@ -39,6 +41,27 @@ func exercise() -> void:
 	root.add_child(scene); scene.depart()
 	await process_frame
 	check(scene.portrait_buttons.size() == 1 and scene.skill_buttons.size() == 2,"solo UI")
+	check(scene.end_turn_button == null,"action mode has no end-turn control")
+	var game = scene.session
+	var before: int = game.round_number
+	var position: Vector2i = game.party[0].pos
+	check(not game.act("MOVE",position+Vector2i(2,0)),"long move rejected")
+	check(game.round_number == before,"invalid action costs no time")
+	check(game.act("MOVE",position+Vector2i.LEFT),"one tile movement")
+	check(game.round_number == before+1 and game.party[0].ap == 1,"one action advances exactly once")
+	before = game.round_number
+	game.attack_preview(game.enemies[0].pos)
+	check(game.round_number == before,"preview costs no time")
+	game.act("WAIT",game.party[0].pos)
+	check(game.round_number == before+1,"wait advances world")
+	before = game.round_number
+	game.party[0].hp -= 5
+	check(game.use_supply(0),"potion succeeds")
+	check(game.round_number == before+1,"potion advances exactly once")
+	game.tile(game.party[0].pos).terrain = "wood"
+	before = game.round_number
+	check(game.use_supply(3,game.party[0].pos),"scroll succeeds")
+	check(game.round_number == before+1,"scroll does not double advance")
 	scene.queue_free(); await process_frame
 	print("Boss trial: %d failures" % failures)
 	quit(1 if failures else 0)

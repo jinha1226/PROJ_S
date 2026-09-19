@@ -23,6 +23,7 @@ static func spawn(s) -> void:
 	s.enemies.append(boss)
 
 static func plan(s) -> void:
+	if not s.enemies.is_empty() and s.enemies[0].get("fuse",0) > 0: return
 	s.intents.clear()
 	if s.alive().is_empty(): return
 	var boss: Dictionary = s.enemies[0]
@@ -37,6 +38,7 @@ static func plan(s) -> void:
 		return
 	if s.round_number % 3 != 0: return
 	boss.charging = true
+	boss.fuse = 2
 	var center: Vector2i = boss.pos if row.pattern == 0 else s.party[0].pos
 	for y in range(8):
 		for x in range(8):
@@ -49,6 +51,8 @@ static func turn(s, boss: Dictionary) -> void:
 	var hero: Dictionary = s.party[0]
 	if row.pattern == 0 and s.tile(boss.pos).terrain == "water": boss.hp = mini(boss.max_hp,boss.hp+3)
 	if boss.get("charging",false):
+		boss.fuse = maxi(0,boss.get("fuse",1)-1)
+		if boss.fuse > 0: return
 		for intent in s.intents:
 			if intent.cell == hero.pos: s.damage(hero,intent.damage,boss.id,"IMPACT")
 		if row.pattern == 1:

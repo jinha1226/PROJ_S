@@ -89,7 +89,7 @@ func refresh() -> void:
 	var location := VBoxContainer.new(); location.size_flags_horizontal = SIZE_EXPAND_FILL; header.add_child(location)
 	label(location,"폐허 1층" if session.phase != "TOWN" else "변방의 여관",13)
 	label(location,session.rooms[session.room].name if session.phase in ["EXPLORE","BATTLE"] else "원정 준비",12)
-	if session.phase == "BATTLE": label(location,"%d턴 · AP %d" % [session.round_number,session.party[session.selected].ap],11)
+	if session.phase == "BATTLE": label(location,"행동 %d" % session.round_number if session.boss_trial else "%d턴 · AP %d" % [session.round_number,session.party[session.selected].ap],11)
 	var resource := VBoxContainer.new(); resource.custom_minimum_size.x = 124; header.add_child(resource)
 	button(resource,"식량 %d   횃불 %d" % [session.food,session.torches],show_supplies).custom_minimum_size.y = 28
 	label(resource,"배고픔 %d%%" % session.hunger,10); gauge(resource,session.hunger,100,Color("d9904d"))
@@ -101,15 +101,20 @@ func refresh() -> void:
 	if session.boss_trial and session.phase == "BATTLE":
 		var boss_info := label(board,session.rooms[session.room].name+" · HP %d/%d\n" % [session.enemies[0].hp,session.enemies[0].max_hp]+Session.BossTrial.HINTS[session.rooms[session.room].pattern],11)
 		boss_info.position = Vector2(8,4)
+		var fuse: int = session.enemies[0].get("fuse",0)
+		if fuse > 0 and not session.intents.is_empty(): boss_info.text += "\n폭발까지 %d행동" % fuse
 	attack_button = null
 	end_turn_button = null
 	if session.phase == "BATTLE":
-		end_turn_button = button(board,"턴 종료",func(): run_action(session.end_round))
-		end_turn_button.custom_minimum_size = Vector2(96,48)
-		end_turn_button.set_anchors_and_offsets_preset(PRESET_BOTTOM_RIGHT)
-		end_turn_button.offset_left = -104; end_turn_button.offset_top = -56
-		end_turn_button.offset_right = -8; end_turn_button.offset_bottom = -8
-		end_turn_button.tooltip_text = "남은 행동을 마치고 적 차례로 진행"
+		var advance: Button
+		if session.boss_trial:
+			advance = button(board,"한 턴 대기",func(): run_action(func(): return session.act("WAIT",session.party[0].pos)))
+		else:
+			advance = button(board,"턴 종료",func(): run_action(session.end_round)); end_turn_button = advance
+		advance.custom_minimum_size = Vector2(96,48)
+		advance.set_anchors_and_offsets_preset(PRESET_BOTTOM_RIGHT)
+		advance.offset_left = -104; advance.offset_top = -56
+		advance.offset_right = -8; advance.offset_bottom = -8
 		if not pending_attack.is_empty():
 			attack_button = button(board,"공격 · %d%% / 피해 %d" % [pending_attack.chance,pending_attack.damage],confirm_attack)
 			attack_button.set_anchors_and_offsets_preset(PRESET_BOTTOM_LEFT)
@@ -117,7 +122,7 @@ func refresh() -> void:
 			attack_button.offset_right = 230; attack_button.offset_bottom = -8
 			attack_button.custom_minimum_size.y = 48
 	if session.phase in ["TOWN","DEFEAT"]: button(root_layout,"출정" if session.phase == "TOWN" and not session.alive().is_empty() else "새 원정대",depart)
-	var hint := label(root_layout,notice if not notice.is_empty() else "녹색: 이동(1 AP) · 적 선택 → 공격 확정 · 자신: 대기",10)
+	var hint := label(root_layout,notice if not notice.is_empty() else "한 칸 이동 / 공격 / 대기 → 적 행동" if session.boss_trial else "녹색: 이동(1 AP) · 적 선택 → 공격 확정 · 자신: 대기",10)
 	hint.clip_text = true; hint.custom_minimum_size.y = 16
 	var party_row := HBoxContainer.new(); party_row.add_theme_constant_override("separation",5); root_layout.add_child(party_row)
 	for i in range(session.party.size()):
@@ -163,7 +168,7 @@ func run_action(callback: Callable) -> void:
 	notice = "" if accepted else "대상·거리·행동력·보유 수량을 확인하세요."
 	if accepted:
 		mode = ""; pending_item = -1
-		if session.phase == "BATTLE" and session.alive().all(func(a): return a.ap <= 0): session.end_round()
+		if not session.boss_trial and session.phase == "BATTLE" and session.alive().all(func(a): return a.ap <= 0): session.end_round()
 	action_effects = session.effects.duplicate(true); session.effects.clear()
 	refresh()
 
@@ -233,12 +238,12 @@ func open_management(index: int) -> void:
 		1: show_supplies()
 		2: modal("장비",actor.name+"\n\n부위 기능 반영 공격력: %d%%\n이동 비용: %d%%\n\n현재 공통 기본 공격을 사용합니다.\n장비 목록과 교체 기능은 준비 중입니다." % [actor.attack_factor,actor.move_factor])
 		3:
-			modal("원정","목표: 수문장 처치 후 귀환\n탐색: %d / 9개 방\n전리품: %d\n자금: %d\n\n전원 행동력 소진 시 적 차례. 선택한 대원을 다시 누르면 행동력 1을 사용해 대기합니다." % [session.visited.size(),session.loot,session.bank])
+			modal("원정","목표: 보스 처치 후 귀환\n탐색: %d / 9개 방\n전리품: %d\n자금: %d\n\n" % [session.visited.size(),session.loot,session.bank]+("행동 한 번마다 적도 행동합니다. 자신을 누르면 대기. 미리보기는 시간을 쓰지 않습니다." if session.boss_trial else "전원 행동력 소진 시 적 차례."))
 			if session.phase in ["BATTLE","EXPLORE"]: button(modal_content,"철수 · 전리품 절반" if session.phase == "BATTLE" else "귀환",func(): details_popup.hide(); run_action(session.retreat))
 			if session.phase == "TOWN": button(modal_content,"요양 · 20 자금",func(): details_popup.hide(); run_action(session.rest_town),session.bank >= 20)
 
 func show_supplies() -> void:
 	var body := "파티 공용 소모품\n선택한 대원: %s\n\n" % session.party[session.selected].name
 	for i in range(6): body += "%s × %d\n" % [Session.SUPPLY_NAMES[i],session.supplies[i]]
-	modal("가방",body+"\n아래 공용 슬롯에서 사용합니다. 전투 중 행동력 1 소비.")
+	modal("가방",body+("\n사용하면 적도 한 번 행동합니다." if session.boss_trial else "\n전투 중 행동력 1 소비."))
 	button(modal_content,"횃불 사용 · 밝기 +50",func(): details_popup.hide(); run_action(session.use_torch),session.phase == "EXPLORE" and session.torches > 0 and session.light < 100)

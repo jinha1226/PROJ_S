@@ -194,6 +194,7 @@ func start_battle() -> void:
 	message("%s · 적은 이동 후 공격합니다. 붉은 칸은 강력한 기술의 예고입니다." % rooms[room].name)
 
 func action_budget(actor: Dictionary) -> int:
+	if boss_trial: return 1
 	return 1 if actor.stress >= 150 else 2
 
 func tile(point: Vector2i) -> Dictionary:
@@ -220,7 +221,7 @@ func movement_cells() -> Array:
 	if phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0: return result
 	var frontier: Array = [actor.pos]
 	var seen: Array = [actor.pos]
-	for step in range(2 if actor.move_factor == 100 else 1):
+	for step in range(2 if not boss_trial and actor.move_factor == 100 else 1):
 		var next: Array = []
 		for point in frontier:
 			for direction in DIRECTIONS:
@@ -253,7 +254,9 @@ func attack_preview(target: Vector2i) -> Dictionary:
 
 func act(kind: String, target: Vector2i) -> bool:
 	if phase != "BATTLE" or not inside(target): return false
-	if boss_trial and kind == "PYLON": return BossTrial.disable_pylon(self,target)
+	if boss_trial and kind == "PYLON":
+		if not BossTrial.disable_pylon(self,target): return false
+		finish_player_action(); return true
 	var actor: Dictionary = party[selected]
 	if actor.hp <= 0 or actor.ap <= 0: return false
 	var victim := at(target)
@@ -287,7 +290,11 @@ func act(kind: String, target: Vector2i) -> bool:
 		_: return false
 	actor.ap -= 1
 	check_battle_end()
+	finish_player_action()
 	return true
+
+func finish_player_action() -> void:
+	if boss_trial and phase == "BATTLE": end_round()
 
 func discharge(origin: Vector2i, source: int) -> void:
 	var queue: Array = [{"pos":origin, "power":18}]
@@ -441,6 +448,7 @@ func use_supply(slot: int, target: Vector2i = Vector2i(-1,-1)) -> bool:
 	var actor: Dictionary = party[selected]
 	if actor.hp <= 0 or phase == "BATTLE" and actor.ap <= 0: return false
 	if slot in [3,4]:
+		# act() advances the world once; do not advance it again below.
 		if not act("FIRE" if slot == 3 else "WATER",target): return false
 	else:
 		if slot in [0,5] and actor.hp >= actor.max_hp: return false
@@ -454,4 +462,5 @@ func use_supply(slot: int, target: Vector2i = Vector2i(-1,-1)) -> bool:
 		if phase == "BATTLE": actor.ap -= 1
 	supplies[slot] -= 1
 	message("%s · %s 사용" % [actor.name,SUPPLY_NAMES[slot]])
+	if slot not in [3,4]: finish_player_action()
 	return true
