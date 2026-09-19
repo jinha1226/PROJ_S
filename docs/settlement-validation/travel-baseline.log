@@ -1,6 +1,0 @@
-Godot Engine v4.6.2.stable.official.71f334935 - https://godotengine.org
-WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
-Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
-     at: setup2 (main/main.cpp:3450)
-
-SETTLEMENT_TRAVEL {"full_audit":"","max_ms":84.732,"moves":40,"p50_ms":42.589,"p95_ms":53.123,"samples_ms":[84.732,39.92,40.738,42.75,42.24,45.698,49.392,46.503,45.381,42.385,45.359,42.846,42.844,41.574,41.102,43.918,42.589,39.485,47.511,36.487,41.431,42.344,37.518,41.872,53.123,35.431,44.403,41.852,37.463,41.112,46.273,43.45,38.685,40.484,45.143,48.273,51.039,40.599,46.098,38.373]}

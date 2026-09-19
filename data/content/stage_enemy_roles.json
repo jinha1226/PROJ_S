@@ -1,9 +1,0 @@
-{
-  "goblin": {"label":"전사","move":2,"min":1,"max":1,"pattern":"SINGLE"},
-  "kobold": {"label":"사수","move":2,"min":2,"max":4,"pattern":"SINGLE"},
-  "dcss_rat": {"label":"돌격","move":4,"min":1,"max":1,"pattern":"SINGLE"},
-  "dcss_hobgoblin": {"label":"중장병","move":1,"min":1,"max":1,"pattern":"SWEEP"},
-  "dcss_frilled_lizard": {"label":"분사","move":1,"min":2,"max":3,"pattern":"CROSS"},
-  "dcss_orc": {"label":"중장병","move":1,"min":1,"max":1,"pattern":"SWEEP"},
-  "dcss_gnoll": {"label":"창병","move":2,"min":1,"max":2,"pattern":"SINGLE"}
-}

@@ -1,116 +1,68 @@
-name: Test and deploy Web
-
+name: Test and deploy expedition
 on:
   push:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
   pages: write
   id-token: write
-
 concurrency:
   group: pages
   cancel-in-progress: true
-
 env:
   GODOT_VERSION: 4.6.2
-  XDG_CONFIG_HOME: /tmp/godot-config
-  XDG_DATA_HOME: /tmp/godot-data
-  XDG_CACHE_HOME: /tmp/godot-cache
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Download Godot and Web templates
+      - uses: actions/checkout@v6
+      - name: Install Godot and export templates
         shell: bash
         run: |
           set -euo pipefail
-          curl -L --fail --retry 3 --output godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
-          unzip -q godot.zip
-          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot
-          chmod +x godot
-          curl -L --fail --retry 3 --output templates.tpz "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
-          unzip -q templates.tpz
-          mkdir -p "${XDG_DATA_HOME}/godot/export_templates/${GODOT_VERSION}.stable"
-          mv templates/* "${XDG_DATA_HOME}/godot/export_templates/${GODOT_VERSION}.stable/"
-
-      - name: Import project and validate scripts
-        run: ./godot --headless --path . --editor --import --quit
-
-      - name: Validate settlement workers and material reservations
+          curl -L --fail --retry 3 -o /tmp/godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d /tmp/godot-bin
+          sudo install "/tmp/godot-bin/Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
+          curl -L --fail --retry 3 -o /tmp/templates.tpz "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q /tmp/templates.tpz -d /tmp/godot-templates
+          mkdir -p "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          cp /tmp/godot-templates/templates/* "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/"
+      - name: Import and verify
         timeout-minutes: 5
         shell: bash
         run: |
           set -euo pipefail
-          ./godot --headless --path . --script tests/settlement_work_unit.gd 2>&1 | tee settlement-test.log
-          if grep -Eq 'SCRIPT ERROR:|^FAIL ' settlement-test.log; then
-            exit 1
-          fi
-
-      - name: Inject Pages build ID
-        shell: bash
-        run: |
-          set -euo pipefail
-          build_id="${GITHUB_SHA:0:7}"
-          if [[ ! "${build_id}" =~ ^[0-9a-f]{7}$ ]]; then
-            echo "GitHub SHA did not produce a safe seven-character build ID" >&2
-            exit 1
-          fi
-          sed -i "s/^const BUILD_ID := \"LOCAL\"$/const BUILD_ID := \"${build_id}\"/" playtest/build_info.gd
-          grep -Fqx "const BUILD_ID := \"${build_id}\"" playtest/build_info.gd
-          ./godot --headless --path . --editor --import --quit
-
-      - name: Export Web build
+          godot --headless --path . --editor --import --quit 2>&1 | tee /tmp/import.log
+          ! grep -E 'SCRIPT ERROR:|^ERROR:' /tmp/import.log
+          for suite in integration playthrough ui_smoke; do
+            godot --headless --path . --script "res://tests/${suite}.gd" 2>&1 | tee "/tmp/${suite}.log"
+            ! grep -E 'SCRIPT ERROR:|^ERROR:' "/tmp/${suite}.log"
+          done
+      - name: Export and verify packed runtime
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/web
-          ./godot --headless --path . --export-release Web build/web/index.html
-          touch build/web/.nojekyll
+          godot --headless --path . --export-release Web build/web/index.html 2>&1 | tee /tmp/export.log
+          ! grep -E 'SCRIPT ERROR:|^ERROR:' /tmp/export.log
           cp assets/fonts/NanumSquareR.LICENSE.txt build/web/
-          cp assets/fonts/Galmuri-OFL.txt build/web/
-          test -s build/web/index.html
-          test -s build/web/index.wasm
-          test -s build/web/index.pck
-          test -s build/web/NanumSquareR.LICENSE.txt
-          test -s build/web/Galmuri-OFL.txt
-
-      - name: Validate exported pack runtime
-        shell: bash
-        run: |
-          set -euo pipefail
-          runtime_log="$(mktemp)"
-          # Do not let missing packed resources fall back to checkout files.
-          # The deployed browser has the PCK only, not our source tree.
+          touch build/web/.nojekyll
           pack_check_dir="$(mktemp -d)"
           cd "$pack_check_dir"
-          "$GITHUB_WORKSPACE/godot" --headless --main-pack "$GITHUB_WORKSPACE/build/web/index.pck" --quit-after 5 2>&1 | tee "$runtime_log"
-          if grep -Eq 'SCRIPT ERROR:|ERROR: Failed to load script' "$runtime_log"; then
-            echo "Exported Web pack contains a runtime script error" >&2
-            exit 1
-          fi
-
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload Web artifact
-        uses: actions/upload-pages-artifact@v4
+          godot --headless --main-pack "$GITHUB_WORKSPACE/build/web/index.pck" --quit-after 5 2>&1 | tee /tmp/pack.log
+          ! grep -E 'SCRIPT ERROR:|^ERROR:' /tmp/pack.log
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: build/web
-
   deploy:
+    needs: build
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
