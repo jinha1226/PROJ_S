@@ -1980,6 +1980,11 @@ func _on_nearby_npc_attack()->void:
 
 func _layout_floating_surfaces()->void:
 	_position_build_label()
+	if map_overlay!=null:
+		map_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		map_overlay.offset_left=0;map_overlay.offset_top=0
+		map_overlay.offset_right=0;map_overlay.offset_bottom=0
+		map_overlay.position=Vector2.ZERO;map_overlay.size=size
 	if member_detail_panel!=null:
 		var panel_width:=minf(size.x-12.0,520.0)
 		var panel_height:=size.y-12.0
