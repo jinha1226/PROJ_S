@@ -9,7 +9,6 @@ func arena():
 	var s = Session.new(731,true,true); s.depart()
 	for cell in s.tiles: cell.terrain = "stone"; cell.fire = 0
 	s.party[0].pos = Vector2i(1,1); s.party[1].pos = Vector2i(3,4)
-	s.party[2].pos = Vector2i(1,6)
 	s.enemies[0].pos = Vector2i(4,4); s.enemies[0].cooldown = 20
 	s.selected = 1
 	return s
@@ -30,7 +29,7 @@ func exercise() -> void:
 	var hp: int = boss.hp
 	var serial: int = s.serial
 	var preview: Array = s.companion_previews()
-	check(preview.size() == 2 and preview[0].actor == 1 and preview[0].kind == "PUSH","both companions are previewed before action")
+	check(preview.size() == 1 and preview[0].actor == 1 and preview[0].kind == "PUSH","companion is previewed before action")
 	check(preview == s.companion_previews() and s.selected == 0 and s.serial == serial and boss.hp == hp and s.round_number == turn,"preview is deterministic and read-only")
 	s.set_tactic(1,"PUSH","MANUAL")
 	check(s.companion_previews()[0].kind != "PUSH","policy change updates prediction")
@@ -114,8 +113,8 @@ func exercise() -> void:
 	var scene = load("res://expedition/main.tscn").instantiate()
 	root.size = Vector2i(390,844); root.add_child(scene); scene.depart()
 	for frame in range(5): await process_frame
-	check(scene.session.party.size() == 3,"leader and two companions")
-	check(scene.board.companion_previews.size() == 2,"board receives both companion actions")
+	check(scene.session.party.size() == 2,"leader and one companion")
+	check(scene.board.companion_previews.size() == 1,"board receives companion action")
 	check(scene.board.get_rect().size.x >= scene.board.preview_rect(scene.session.party[1]).end.x,"badge stays inside screen")
 	scene.select_actor(1)
 	check(scene.session.selected == 0 and scene.reservation_actor == 1,"portrait starts reservation without switching control")
@@ -124,14 +123,11 @@ func exercise() -> void:
 	scene.choose_skill(1,1)
 	check(scene.session.party[1].reservation.kind == "GUARD" and scene.session.round_number == ui_turn,"companion skill click queues without advancing time")
 	check(scene.reservation_actor == -1 and scene.session.selected == 0,"reservation returns input to leader")
-	check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"three-member mobile layout fits")
-	check(scene.portrait_buttons.size() == 3 and scene.skill_buttons.size() == 6,"three portraits and six skill slots")
-	scene.choose_skill(2,1)
-	check(scene.session.party[1].reservation.kind == "GUARD" and scene.session.party[2].reservation.kind == "GUARD","both companions can hold independent reservations")
+	check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"two-member mobile layout fits")
+	check(scene.portrait_buttons.size() == 2 and scene.skill_buttons.size() == 4,"two portraits and four skill slots")
 	scene.run_action(func(): return scene.session.act("WAIT",scene.session.party[0].pos))
-	check(scene.session.round_number == ui_turn+1 and scene.session.selected == 0,"two companions still advance world only once")
-	for i in [1,2]:
-		check(scene.session.party[i].reservation.is_empty() and scene.session.party[i].last_action == "직접 예약","each companion executes one reserved action")
+	check(scene.session.round_number == ui_turn+1 and scene.session.selected == 0,"companion advances world only once")
+	check(scene.session.party[1].reservation.is_empty() and scene.session.party[1].last_action == "직접 예약","companion executes one reserved action")
 	scene.show_tactics()
 	await process_frame
 	check(scene.details_popup.visible,"tactics settings opens")
