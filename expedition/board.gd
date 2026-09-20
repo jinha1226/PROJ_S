@@ -63,6 +63,34 @@ func tile_polygon(point: Vector2) -> PackedVector2Array:
 func outline(points: PackedVector2Array, color: Color, width: float = 1) -> void:
 	var closed := points.duplicate(); closed.append(points[0]); draw_polyline(closed,color,width,true)
 
+func movement_previews() -> Array:
+	var result: Array = []
+	if session == null or session.phase != "BATTLE": return result
+	for preview in companion_previews:
+		if preview.kind != "MOVE": continue
+		var actor: Dictionary = session.party[preview.actor]
+		if actor.hp <= 0 or preview.cell == actor.pos or not session.inside(preview.cell): continue
+		result.append({"actor":actor.id,"from":actor.pos,"cell":preview.cell,"reserved":preview.get("reserved",false)})
+	return result
+
+func draw_movement_previews() -> void:
+	for preview in movement_previews():
+		var start := cell_center(preview.from)
+		var destination := cell_center(preview.cell)
+		var color := Color("f1ca79") if preview.reserved else Color("a6d8e8")
+		var polygon := tile_polygon(Vector2(preview.cell))
+		draw_colored_polygon(polygon,Color(color,0.13))
+		outline(polygon,Color(color,0.8),2)
+		var side := half_width*1.65
+		draw_texture_rect(Art.ACTORS[preview.actor],Rect2(destination-Vector2.ONE*side/2,Vector2.ONE*side),false,Color(color,0.35))
+		var direction := (destination-start).normalized()
+		var tip := destination-direction*half_width*0.4
+		var tail := start+direction*half_width*0.6
+		var normal := Vector2(-direction.y,direction.x)
+		draw_line(tail,tip,Color(0,0,0,0.7),5,true)
+		draw_line(tail,tip,color,2.5,true)
+		draw_colored_polygon(PackedVector2Array([tip,tip-direction*8+normal*5,tip-direction*8-normal*5]),color)
+
 func _draw() -> void:
 	geometry()
 	draw_rect(Rect2(Vector2.ZERO,size),Color("0b1117"))
@@ -124,6 +152,7 @@ func _draw() -> void:
 				draw_texture_rect(sprite,Rect2(center-Vector2.ONE*side/2,Vector2.ONE*side),false,flash)
 				draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24,3)),Color("191d24"))
 				draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24*float(actor.hp)/actor.max_hp,3)),Color("ce7770") if actor.enemy else Color("9ec987"))
+	draw_movement_previews()
 	# Draw after all actors, so another tile cannot paint over the intent badge.
 	for preview in companion_previews:
 		var actor: Dictionary = session.party[preview.actor]

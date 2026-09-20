@@ -17,6 +17,7 @@ var action_effects: Array = []
 var root_layout: VBoxContainer
 var board
 var end_turn_button: Button
+var wait_button: Button
 var minimap
 var map_view
 var map_popup: PopupPanel
@@ -112,15 +113,12 @@ func refresh() -> void:
 	attack_button = null
 	end_turn_button = null
 	if session.phase == "BATTLE":
-		var advance: Button
-		if session.boss_trial:
-			advance = button(board,"한 턴 대기",func(): run_action(func(): return session.act("WAIT",session.party[session.selected].pos)))
-		else:
-			advance = button(board,"턴 종료",func(): run_action(session.end_round)); end_turn_button = advance
-		advance.custom_minimum_size = Vector2(96,48)
-		advance.set_anchors_and_offsets_preset(PRESET_BOTTOM_RIGHT)
-		advance.offset_left = -104; advance.offset_top = -56
-		advance.offset_right = -8; advance.offset_bottom = -8
+		if not session.boss_trial:
+			var advance := button(board,"턴 종료",func(): run_action(session.end_round)); end_turn_button = advance
+			advance.custom_minimum_size = Vector2(96,48)
+			advance.set_anchors_and_offsets_preset(PRESET_BOTTOM_RIGHT)
+			advance.offset_left = -104; advance.offset_top = -56
+			advance.offset_right = -8; advance.offset_bottom = -8
 		if reservation_actor >= 0:
 			var cancel := button(board,"예약 취소",func(): session.cancel_reservation(reservation_actor); reservation_actor = -1; mode = ""; notice = "예약 취소 · 자동 행동"; refresh())
 			cancel.set_anchors_and_offsets_preset(PRESET_BOTTOM_LEFT)
@@ -165,6 +163,8 @@ func refresh() -> void:
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; icon.mouse_filter = MOUSE_FILTER_IGNORE
 		node.add_child(icon); icon.set_anchors_and_offsets_preset(PRESET_FULL_RECT); icon.offset_bottom = -19; icon.offset_top = 3
 		var title := label(node,["상태","가방","전술","원정"][index],12); title.set_anchors_and_offsets_preset(PRESET_BOTTOM_WIDE); title.offset_top = -18; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	wait_button = button(nav,"한 턴\n대기",func(): run_action(func(): return session.act("WAIT",session.party[session.selected].pos)),session.phase == "BATTLE")
+	wait_button.custom_minimum_size.y = 49
 
 func depart() -> void:
 	if session.phase == "DEFEAT" or session.alive().is_empty(): session = Session.new(randi(),true,true)

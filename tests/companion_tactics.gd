@@ -115,6 +115,17 @@ func exercise() -> void:
 	for frame in range(5): await process_frame
 	check(scene.session.party.size() == 2,"leader and one companion")
 	check(scene.board.companion_previews.size() == 1,"board receives companion action")
+	check(scene.wait_button.get_parent() == scene.root_layout.get_child(scene.root_layout.get_child_count()-1),"wait is in bottom navigation row")
+	check(scene.wait_button.size.x >= 44 and scene.wait_button.size.y >= 44,"wait has mobile touch target")
+	var moves: Array = scene.board.movement_previews()
+	check(moves.size() == 1 and moves[0].cell == scene.board.companion_previews[0].cell,"automatic move marker uses predicted destination")
+	var reserved_cell: Vector2i = scene.session.movement_cells(1)[0]
+	check(scene.session.reserve_action(1,"MOVE",reserved_cell),"reserve move for board marker")
+	scene.refresh()
+	moves = scene.board.movement_previews()
+	check(moves.size() == 1 and moves[0].reserved and moves[0].cell == reserved_cell,"reserved move marker uses reserved destination")
+	scene.session.cancel_reservation(1); scene.refresh()
+	for frame in range(3): await process_frame
 	check(scene.board.get_rect().size.x >= scene.board.preview_rect(scene.session.party[1]).end.x,"badge stays inside screen")
 	scene.select_actor(1)
 	check(scene.session.selected == 0 and scene.reservation_actor == 1,"portrait starts reservation without switching control")
@@ -125,7 +136,8 @@ func exercise() -> void:
 	check(scene.reservation_actor == -1 and scene.session.selected == 0,"reservation returns input to leader")
 	check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"two-member mobile layout fits")
 	check(scene.portrait_buttons.size() == 2 and scene.skill_buttons.size() == 4,"two portraits and four skill slots")
-	scene.run_action(func(): return scene.session.act("WAIT",scene.session.party[0].pos))
+	check(scene.board.movement_previews().is_empty(),"guard preview does not leave stale move marker")
+	scene.wait_button.pressed.emit()
 	check(scene.session.round_number == ui_turn+1 and scene.session.selected == 0,"companion advances world only once")
 	check(scene.session.party[1].reservation.is_empty() and scene.session.party[1].last_action == "직접 예약","companion executes one reserved action")
 	scene.show_tactics()
