@@ -1,4 +1,5 @@
 extends Control
+var input_actor := -1
 signal cell_pressed(cell: Vector2i)
 const Art = preload("res://expedition/mobile_art.gd")
 const Icons = preload("res://expedition/map_icons.gd")
@@ -68,8 +69,8 @@ func _draw() -> void:
 	if session == null or session.tiles.is_empty():
 		draw_string(ui_font,Vector2(18,size.y*0.45),"원정을 준비하세요",HORIZONTAL_ALIGNMENT_CENTER,size.x-36,20,Color("cfbd91"))
 		return
-	var movement: Array = session.movement_cells()
-	var attacks: Array = session.attack_cells() if show_attack_range else []
+	var movement: Array = session.movement_cells(input_actor)
+	var attacks: Array = session.attack_cells(input_actor) if show_attack_range or input_actor >= 0 else []
 	for depth in range(15):
 		for x in range(8):
 			var y := depth-x
@@ -131,7 +132,7 @@ func _draw() -> void:
 		var text: String = {"PUSH":"밀치기","GUARD":"방어","ATTACK":"공격","MOVE":"이동","WAIT":"대기"}.get(preview.kind,preview.kind)
 		var color := Color("f1ca79") if preview.kind in ["PUSH","GUARD"] else Color("a6d8e8")
 		draw_style_box(_preview_background(color),badge)
-		draw_string(ui_font,badge.position+Vector2(2,13),text+" 예정",HORIZONTAL_ALIGNMENT_CENTER,badge.size.x-4,10,color)
+		draw_string(ui_font,badge.position+Vector2(2,13),text+(" 예약" if preview.get("reserved",false) else " 예정"),HORIZONTAL_ALIGNMENT_CENTER,badge.size.x-4,10,color)
 	for effect in effects:
 		var center := cell_center(effect.cell)-Vector2(0,half_width*0.65)
 		var fade := 1.0-effect_time/0.75

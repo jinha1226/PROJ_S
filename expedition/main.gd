@@ -8,6 +8,7 @@ const SKILLS = [["PUSH","GUARD"],["ATTACK","GUARD"],["WATER","ELECTRIC"]]
 const SKILL_NAMES = [["밀쳐내기","방어"],["강타","방어"],["물","방전"]]
 var session = Session.new(randi(),true,true)
 var mode := ""
+var reservation_actor := -1
 var pending_item := -1
 var pending_attack: Dictionary = {}
 var attack_button: Button
@@ -25,6 +26,8 @@ var notice := ""
 var item_buttons: Array = []
 var skill_buttons: Array = []
 var portrait_buttons: Array = []
+var tactics_actor := 0
+var tactics_expanded := -1
 
 func _ready() -> void:
 	var skin := Theme.new(); skin.default_font = FONT; skin.default_font_size = 12
@@ -96,6 +99,7 @@ func refresh() -> void:
 	label(resource,"불빛 %d%%" % session.light,10); gauge(resource,session.light,100,Color("e6bd62"))
 	board = Board.new(); board.session = session; board.ui_font = FONT; board.cell_pressed.connect(on_cell); root_layout.add_child(board)
 	board.show_attack_range = show_attack_range
+	board.input_actor = reservation_actor
 	board.effects = action_effects; action_effects = []
 	board.target_cell = pending_attack.get("cell",Vector2i(-1,-1))
 	board.companion_previews = session.companion_previews()
@@ -117,6 +121,10 @@ func refresh() -> void:
 		advance.set_anchors_and_offsets_preset(PRESET_BOTTOM_RIGHT)
 		advance.offset_left = -104; advance.offset_top = -56
 		advance.offset_right = -8; advance.offset_bottom = -8
+		if reservation_actor >= 0:
+			var cancel := button(board,"예약 취소",func(): session.cancel_reservation(reservation_actor); reservation_actor = -1; mode = ""; notice = "예약 취소 · 자동 행동"; refresh())
+			cancel.set_anchors_and_offsets_preset(PRESET_BOTTOM_LEFT)
+			cancel.offset_left = 8; cancel.offset_top = -56; cancel.offset_right = 104; cancel.offset_bottom = -8
 		if not pending_attack.is_empty():
 			attack_button = button(board,"공격 · %d%% / 피해 %d" % [pending_attack.chance,pending_attack.damage],confirm_attack)
 			attack_button.set_anchors_and_offsets_preset(PRESET_BOTTOM_LEFT)
@@ -165,6 +173,11 @@ func depart() -> void:
 func select_actor(index: int) -> void:
 	if session.party[index].hp <= 0: return
 	pending_attack = {}; show_attack_range = false
+	if session.companions:
+		reservation_actor = index if index != session.selected and session.phase == "BATTLE" else -1
+		mode = ""; pending_item = -1
+		notice = session.party[index].name+" · 예약할 이동 칸 / 적 / 스킬 선택" if reservation_actor >= 0 else "직접 조작 · 동료의 예약은 유지됩니다."
+		refresh(); return
 	session.selected = index; mode = ""; pending_item = -1; notice = session.party[index].name; refresh()
 
 func run_action(callback: Callable) -> void:
@@ -173,7 +186,7 @@ func run_action(callback: Callable) -> void:
 	pending_attack = {}
 	notice = "" if accepted else "대상·거리·행동력·보유 수량을 확인하세요."
 	if accepted:
-		mode = ""; pending_item = -1
+		mode = ""; pending_item = -1; reservation_actor = -1
 		if not session.boss_trial and session.phase == "BATTLE" and session.alive().all(func(a): return a.ap <= 0): session.end_round()
 	action_effects = session.effects.duplicate(true); session.effects.clear()
 	refresh()
@@ -194,16 +207,31 @@ func confirm_attack() -> void:
 
 func choose_skill(actor: int, slot: int) -> void:
 	select_actor(actor); mode = SKILLS[0 if session.companions else actor][slot]
+	if reservation_actor >= 0:
+		if mode == "GUARD": queue_action("GUARD",session.party[actor].pos); return
+		notice = session.party[actor].name+" · 스킬 예약 대상 선택"; refresh(); return
 	if mode == "GUARD": run_action(func(): return session.act("GUARD",session.party[actor].pos)); return
 	notice = "%s · 대상 칸 선택" % SKILL_NAMES[0 if session.companions else actor][slot]; refresh()
 
 func choose_item(slot: int) -> void:
+	reservation_actor = -1
 	pending_attack = {}
 	mode = ""; pending_item = slot
 	if slot in [3,4]: notice = Session.SUPPLY_NAMES[slot]+" · 대상 칸 선택"; refresh()
 	else: run_action(func(): return session.use_supply(slot))
 
+func queue_action(kind: String, point: Vector2i) -> void:
+	if session.reserve_action(reservation_actor,kind,point):
+		notice = session.party[reservation_actor].name+" · 다음 행동 예약 완료"
+		reservation_actor = -1; mode = ""
+	else: notice = "예약 불가 · 대상과 거리를 확인하세요."
+	refresh()
+
 func on_cell(point: Vector2i) -> void:
+	if reservation_actor >= 0:
+		var target: Dictionary = session.at(point)
+		var kind := mode if not mode.is_empty() else "ATTACK" if target.get("enemy",false) else "WAIT" if point == session.party[reservation_actor].pos else "MOVE"
+		queue_action(kind,point); return
 	if session.boss_trial and session.phase == "BATTLE" and session.rooms[session.room].shield and point == session.rooms[session.room].pylon:
 		run_action(func(): return session.act("PYLON",point)); return
 	if pending_item >= 0: run_action(func(): return session.use_supply(pending_item,point)); return
@@ -250,23 +278,63 @@ func open_management(index: int) -> void:
 
 func show_tactics() -> void:
 	clear(modal_content)
-	label(modal_content,"동료 전술 · 위쪽 스킬 우선",18)
-	label(modal_content,"선택한 대원은 직접 조작 · 나머지는 자동\n방침 변경은 턴을 쓰지 않습니다. 원정 간 유지.",11)
+	tactics_actor = mini(tactics_actor,session.party.size()-1)
+	label(modal_content,"동료 전술",18)
+	var members := HBoxContainer.new(); modal_content.add_child(members)
 	for i in range(session.party.size()):
-		var actor: Dictionary = session.party[i]
-		label(modal_content,actor.name+" · "+actor.last_action,12)
-		for skill in [actor.priority,"GUARD" if actor.priority == "PUSH" else "PUSH"]:
-			var row := HBoxContainer.new(); modal_content.add_child(row)
-			label(row,"밀치기" if skill == "PUSH" else "방어")
-			var pick := OptionButton.new(); pick.custom_minimum_size = Vector2(180,44); row.add_child(pick)
-			var values: Array = ["PROTECT","OFFENSE","MANUAL"] if skill == "PUSH" else ["DANGER","LOW_HP","MANUAL"]
-			var names: Array = ["보호용 · 위협 감소","공격용 · 충돌/불","수동 전용"] if skill == "PUSH" else ["위험할 때","체력 절반 이하 + 위험","수동 전용"]
-			for title in names: pick.add_item(title)
-			pick.select(values.find(actor.tactics[skill]))
-			pick.item_selected.connect(func(option): session.set_tactic(i,skill,values[option]); refresh())
-		button(modal_content,"우선순위 교체",func(): actor.priority = "GUARD" if actor.priority == "PUSH" else "PUSH"; refresh(); show_tactics())
+		button(members,session.party[i].name,func(): tactics_actor = i; tactics_expanded = -1; show_tactics())
+	label(modal_content,"위쪽부터 사용 · 변경 즉시 적용 · 턴 소비 없음",11)
+	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(310,minf(470,size.y-210))
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; modal_content.add_child(scroll)
+	var list := VBoxContainer.new(); list.size_flags_horizontal = SIZE_EXPAND_FILL; list.add_theme_constant_override("separation",10); scroll.add_child(list)
+	var actor: Dictionary = session.party[tactics_actor]
+	label(list,"스킬 사용 순서",14)
+	for index in range(actor.rules.size()):
+		var rule: Dictionary = actor.rules[index]
+		var card := VBoxContainer.new(); list.add_child(card)
+		var header := HBoxContainer.new(); card.add_child(header)
+		button(header,"%d. %s  ⚙" % [index+1,Session.Rules.SKILLS[rule.skill].name],func(): tactics_expanded = -1 if tactics_expanded == index else index; show_tactics())
+		var enabled := CheckButton.new(); enabled.text = "자동"; enabled.button_pressed = rule.enabled; enabled.custom_minimum_size.y = 44; header.add_child(enabled)
+		enabled.toggled.connect(func(value): change_tactic_rule(index,"enabled",value))
+		var summary := label(card,Session.Rules.summary(rule),11); summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; summary.custom_minimum_size.x = 290
+		if tactics_expanded != index: continue
+		var def: Dictionary = Session.Rules.SKILLS[rule.skill]
+		tactic_pick(card,"누구에게?",def.targets,Session.Rules.TARGET_NAMES,rule.target,func(value): change_tactic_rule(index,"target",value))
+		tactic_pick(card,"언제?",def.conditions,Session.Rules.WHEN_NAMES,rule.when,func(value): change_tactic_rule(index,"when",value))
+		if rule.when in ["HP","STATUS"]:
+			tactic_pick(card,"누구 기준?",["SELF"] if rule.target == "SELF" else ["SELF","TARGET"],{"SELF":"자신","TARGET":"대상"},"SELF" if rule.target == "SELF" else rule.subject,func(value): change_tactic_rule(index,"subject",value))
+		if rule.when == "HP":
+			var threshold := label(card,"체력 %d%%" % rule.threshold)
+			var slider := HSlider.new(); slider.min_value = 10; slider.max_value = 100; slider.step = 10; slider.value = rule.threshold; slider.custom_minimum_size = Vector2(280,44); card.add_child(slider)
+			slider.value_changed.connect(func(value): session.update_rule(tactics_actor,index,"threshold",int(value)); threshold.text = "체력 %d%%" % int(value); refresh())
+			tactic_pick(card,"기준",["BELOW","ABOVE"],{"BELOW":"이하","ABOVE":"이상"},rule.comparison,func(value): change_tactic_rule(index,"comparison",value))
+		if rule.when == "STATUS":
+			tactic_pick(card,"어떤 상태?",Session.Rules.STATUS_NAMES.keys(),Session.Rules.STATUS_NAMES,rule.status,func(value): change_tactic_rule(index,"status",value))
+		var ordering := HBoxContainer.new(); card.add_child(ordering)
+		button(ordering,"↑ 먼저 사용",func(): session.reorder_rule(tactics_actor,index,-1); tactics_expanded = index-1; refresh(); show_tactics(),index > 0)
+		button(ordering,"↓ 나중에 사용",func(): session.reorder_rule(tactics_actor,index,1); tactics_expanded = index+1; refresh(); show_tactics(),index < actor.rules.size()-1)
+	var basic := VBoxContainer.new(); list.add_child(basic)
+	label(basic,"기본 행동",14)
+	tactic_pick(basic,"일반 공격 대상",Session.Rules.BASIC_TARGETS,Session.Rules.TARGET_NAMES,actor.basic_target,change_basic_target)
+	var hint := label(basic,"사용할 스킬이 없으면 공격 가능한 적을 공격합니다.\n공격할 수 없으면 안전하게 접근하거나 대기합니다.",11)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; hint.custom_minimum_size.x = 290
+	label(modal_content,"위험 칸 회피 우선 · 자동 OFF여도 직접 사용 가능",10)
+	button(modal_content,"기본값 복원",func(): actor.rules = Session.Rules.defaults(); session.set_basic_target(tactics_actor,Session.Rules.BASIC_TARGET_DEFAULT); refresh(); show_tactics())
 	button(modal_content,"닫기",func(): details_popup.hide())
 	details_popup.popup_centered()
+
+func change_basic_target(value: String) -> void:
+	if session.set_basic_target(tactics_actor,value): refresh(); show_tactics()
+
+func change_tactic_rule(index: int, field: String, value: Variant) -> void:
+	if session.update_rule(tactics_actor,index,field,value): refresh(); show_tactics()
+
+func tactic_pick(parent: Node, title: String, values: Array, names: Dictionary, current: String, changed: Callable) -> void:
+	label(parent,title,12)
+	var pick := OptionButton.new(); pick.custom_minimum_size = Vector2(280,44)
+	for value in values: pick.add_item(names[value])
+	pick.select(maxi(0,values.find(current))); parent.add_child(pick)
+	pick.item_selected.connect(func(index): changed.call(values[index]))
 
 func show_supplies() -> void:
 	var body := "파티 공용 소모품\n선택한 대원: %s\n\n" % session.party[session.selected].name

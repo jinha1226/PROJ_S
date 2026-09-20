@@ -2,7 +2,6 @@ extends RefCounted
 ## Adapted from ../sim/abilities/tactical_action_selector.gd:
 ## enumerate legal candidates, compare effective damage and before/after threat,
 ## then deterministic ranking. Timeline costs are equal in this action-turn host.
-const POLICIES = ["PROTECT", "OFFENSE", "MANUAL"]
 
 static func danger(s, point: Vector2i) -> int:
 	var value := int(s.tile(point).fire)
@@ -27,6 +26,7 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 	for enemy in s.enemies:
 		if enemy.hp <= 0 or s.distance(actor.pos,enemy.pos) != 1: continue
 		var preview: Dictionary = s.attack_preview(enemy.pos,actor.id)
+		if preview.is_empty(): continue
 		var amount := int(preview.get("damage",0))
 		options.append({"kind":"ATTACK","cell":enemy.pos,"score":amount+(12 if amount >= enemy.hp else 0),"reason":"기본 공격"})
 		var landing: Vector2i = enemy.pos+(enemy.pos-actor.pos)
@@ -45,18 +45,39 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 			if s.boss_trial and s.rooms[s.room].pattern == 0 and s.tile(landing).terrain == "water": unsafe = true
 			for ally in s.alive():
 				if ally.id != actor.id and s.distance(ally.pos,enemy.pos) == 1 and s.distance(ally.pos,landing) > 1 and benefit <= 0: unsafe = true
-		var policy: String = actor.tactics.PUSH
-		if not unsafe and ((policy == "PROTECT" and benefit > 0) or (policy == "OFFENSE" and bonus > 0)):
-			options.append({"kind":"PUSH","cell":enemy.pos,"score":40+benefit+bonus,"reason":"아군 보호·예고 차단" if policy == "PROTECT" else "충돌·위험 지형 활용"})
-	var guard: String = actor.tactics.GUARD
-	var incoming := here
-	for enemy in s.enemies:
-		if enemy.hp > 0: incoming += threat(s,enemy,actor.pos,enemy.pos)
-	if incoming > 0 and (guard == "DANGER" or guard == "LOW_HP" and actor.hp*2 <= actor.max_hp):
-		options.append({"kind":"GUARD","cell":actor.pos,"score":35,"reason":"위험 대비 방어"})
-	# Policy priority is explicit, except escaping a marked tile always wins.
-	for option in options:
-		if option.kind == actor.get("priority","PUSH"): option.score += 60
+		if not unsafe:
+			options.append({"kind":"PUSH","cell":enemy.pos,"score":40+benefit+bonus,"reason":"밀치기"})
+	options.append({"kind":"GUARD","cell":actor.pos,"score":35,"reason":"방어"})
+	# Safety escape first, then the first matching configured rule. No score
+	# from a lower-priority skill may override an earlier valid rule.
+	var escapes: Array = options.filter(func(o): return o.kind == "MOVE")
+	if not escapes.is_empty():
+		escapes.sort_custom(func(a,b): return a.score > b.score)
+		return escapes[0]
+	for index in range(actor.rules.size()):
+		var rule: Dictionary = actor.rules[index]
+		var matches: Array = options.filter(func(o): return s.Rules.matches(s,actor,o,rule))
+		if matches.is_empty(): continue
+		matches.sort_custom(func(a,b):
+			var first: Dictionary = s.at(a.cell)
+			var second: Dictionary = s.at(b.cell)
+			var av: int = first.hp if rule.target == "LOWEST_HP" else s.distance(actor.pos,a.cell)
+			var bv: int = second.hp if rule.target == "LOWEST_HP" else s.distance(actor.pos,b.cell)
+			if av != bv: return av < bv
+			return a.score > b.score if a.score != b.score else str(a.cell) < str(b.cell))
+		var choice: Dictionary = matches[0].duplicate()
+		choice.reason = "%d순위 · %s" % [index+1,s.Rules.SKILLS[rule.skill].name]
+		return choice
+	# Basic attack is a fallback, never a reorderable skill rule.
+	var attacks: Array = options.filter(func(o): return o.kind == "ATTACK")
+	if not attacks.is_empty():
+		attacks.sort_custom(func(a,b):
+			var av: int = s.at(a.cell).hp if actor.basic_target == "LOWEST_HP" else s.distance(actor.pos,a.cell)
+			var bv: int = s.at(b.cell).hp if actor.basic_target == "LOWEST_HP" else s.distance(actor.pos,b.cell)
+			if av != bv: return av < bv
+			return a.score > b.score if a.score != b.score else str(a.cell) < str(b.cell))
+		return attacks[0]
+	options.clear()
 	var goals: Array = []
 	for enemy in s.enemies:
 		if enemy.hp <= 0: continue

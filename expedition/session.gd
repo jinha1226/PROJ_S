@@ -10,6 +10,7 @@ const Dungeon = preload("res://expedition/dungeon_map.gd")
 const BossTrial = preload("res://expedition/boss_trial.gd")
 var boss_trial := false
 const Tactics = preload("res://expedition/tactical_action_selector.gd")
+const Rules = preload("res://expedition/tactic_rules.gd")
 var companions := false
 var resolving_companions := false
 const DIRECTIONS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]
@@ -49,6 +50,9 @@ func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = f
 func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 	var actor := {"id":id, "name":actor_name, "enemy":enemy,
 		"tactics":{"PUSH":"PROTECT","GUARD":"LOW_HP"},"priority":"PUSH","last_action":"대기",
+		"rules":Rules.defaults(),
+		"basic_target":Rules.BASIC_TARGET_DEFAULT,
+		"reservation":{},
 		"pos":Vector2i.ZERO, "hp":28 if enemy else 55, "max_hp":28 if enemy else 55,
 		"stress":0, "condition":"평온", "ap":2,
 		"body":Body.create(id, seed_value, enemy),
@@ -181,6 +185,7 @@ func interact_room(point: Vector2i) -> bool:
 
 func start_battle() -> void:
 	phase = "BATTLE"; round_number = 1
+	for actor in party: actor.reservation = {}
 	for actor in party: actor.ap = action_budget(actor); actor["guarded"] = false
 	if boss_trial:
 		BossTrial.spawn(self); selected = 0; plan_enemies()
@@ -306,18 +311,50 @@ func finish_player_action() -> void:
 		for i in range(party.size()):
 			if i == leader or party[i].hp <= 0 or phase != "BATTLE": continue
 			selected = i
-			var choice: Dictionary = Tactics.choose(self,party[i])
+			var choice: Dictionary = companion_choice(party[i])
+			party[i].reservation = {}
 			if act(choice.kind,choice.cell): party[i].last_action = choice.reason
 	selected = leader
 	resolving_companions = false
 	if phase == "BATTLE": end_round()
+
+func reservation_choice(actor: Dictionary) -> Dictionary:
+	var order: Dictionary = actor.reservation
+	if order.is_empty() or actor.hp <= 0 or actor.ap <= 0 or phase != "BATTLE": return {}
+	var cell: Vector2i = order.cell
+	if order.kind in ["ATTACK","PUSH"]:
+		var target: Dictionary = {}
+		for enemy in enemies:
+			if enemy.id == order.target_id and enemy.hp > 0: target = enemy; break
+		if target.is_empty() or attack_preview(target.pos,actor.id).is_empty(): return {}
+		cell = target.pos
+	elif order.kind == "MOVE":
+		if cell not in movement_cells(actor.id): return {}
+	elif order.kind in ["GUARD","WAIT"]: cell = actor.pos
+	else: return {}
+	return {"kind":order.kind,"cell":cell,"reason":"직접 예약","reserved":true}
+
+func reserve_action(index: int, kind: String, cell: Vector2i) -> bool:
+	if not companions or phase != "BATTLE" or index < 0 or index >= party.size() or index == selected: return false
+	var actor: Dictionary = party[index]
+	var previous: Dictionary = actor.reservation
+	actor.reservation = {"kind":kind,"cell":cell,"target_id":at(cell).get("id",-1)}
+	if reservation_choice(actor).is_empty(): actor.reservation = previous; return false
+	return true
+
+func cancel_reservation(index: int) -> void:
+	if index >= 0 and index < party.size(): party[index].reservation = {}
+
+func companion_choice(actor: Dictionary) -> Dictionary:
+	var reserved := reservation_choice(actor)
+	return Tactics.choose(self,actor) if reserved.is_empty() else reserved
 
 func companion_previews() -> Array:
 	var previews: Array = []
 	if not companions or phase != "BATTLE": return previews
 	for actor in party:
 		if actor.id == selected or actor.hp <= 0 or actor.ap <= 0: continue
-		var choice: Dictionary = Tactics.choose(self,actor).duplicate(true)
+		var choice: Dictionary = companion_choice(actor).duplicate(true)
 		choice.actor = actor.id
 		previews.append(choice)
 	return previews
@@ -327,6 +364,34 @@ func set_tactic(index: int, skill: String, policy: String) -> bool:
 	var allowed: Array = ["PROTECT","OFFENSE","MANUAL"] if skill == "PUSH" else ["DANGER","LOW_HP","MANUAL"] if skill == "GUARD" else []
 	if policy not in allowed: return false
 	party[index].tactics[skill] = policy
+	# Compatibility for previous callers; the live editor uses common rules.
+	for rule in party[index].rules:
+		if rule.skill == skill:
+			rule.enabled = policy != "MANUAL"
+			rule.when = "CHARGING" if policy == "PROTECT" else "HP" if policy == "LOW_HP" else "DANGER" if policy == "DANGER" else "ALWAYS"
+			rule.subject = "SELF"
+	return true
+
+func set_basic_target(index: int, target: String) -> bool:
+	if index < 0 or index >= party.size() or target not in Rules.BASIC_TARGETS: return false
+	party[index].basic_target = target
+	return true
+
+func update_rule(index: int, position: int, field: String, value: Variant) -> bool:
+	if index < 0 or index >= party.size() or position < 0 or position >= party[index].rules.size(): return false
+	if field not in ["enabled","target","when","subject","threshold","comparison","status"]: return false
+	var updated: Dictionary = party[index].rules[position].duplicate(true)
+	updated[field] = value
+	if not Rules.valid(updated): return false
+	party[index].rules[position] = updated
+	return true
+
+func reorder_rule(index: int, position: int, direction: int) -> bool:
+	if index < 0 or index >= party.size() or direction not in [-1,1]: return false
+	var rows: Array = party[index].rules
+	var destination := position+direction
+	if position < 0 or position >= rows.size() or destination < 0 or destination >= rows.size(): return false
+	var rule = rows[position]; rows[position] = rows[destination]; rows[destination] = rule
 	return true
 
 func discharge(origin: Vector2i, source: int) -> void:
