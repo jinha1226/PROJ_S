@@ -107,11 +107,10 @@ func refresh() -> void:
 	minimap.session = session; minimap.ui_font = FONT; minimap.expand_requested.connect(show_map)
 	minimap.size_flags_horizontal = SIZE_SHRINK_BEGIN; header.add_child(minimap)
 	var location := VBoxContainer.new(); location.size_flags_horizontal = SIZE_EXPAND_FILL; header.add_child(location)
-	button(location,"인물 · 상태",func(): show_character(session.selected,"상태")).custom_minimum_size.y = 28
 	label(location,session.rooms[session.room].name if session.phase in ["EXPLORE","BATTLE"] else "원정 준비",12)
 	if session.phase == "BATTLE": label(location,"행동 %d" % session.round_number if session.boss_trial else "%d턴 · AP %d" % [session.round_number,session.party[session.selected].ap],11)
 	var resource := VBoxContainer.new(); resource.custom_minimum_size.x = 124; header.add_child(resource)
-	button(resource,"식량 %d   횃불 %d" % [session.food,session.torches],show_supplies).custom_minimum_size.y = 28
+	label(resource,"식량 %d   횃불 %d" % [session.food,session.torches],12)
 	label(resource,"배고픔 %d%%" % session.hunger,10); gauge(resource,session.hunger,100,Color("d9904d"))
 	label(resource,"불빛 %d%%" % session.light,10); gauge(resource,session.light,100,Color("e6bd62"))
 	board = Board.new(); board.session = session; board.ui_font = FONT; board.cell_pressed.connect(on_cell)
@@ -125,7 +124,7 @@ func refresh() -> void:
 	board.target_cell = pending_attack.get("cell",Vector2i(-1,-1))
 	board.companion_previews = session.companion_previews()
 	if session.boss_trial and session.phase == "BATTLE":
-		var boss_info := label(board,session.rooms[session.room].name+" · HP %d/%d\n" % [session.enemies[0].hp,session.enemies[0].max_hp]+Session.BossTrial.HINTS[session.rooms[session.room].pattern],11)
+		var boss_info := label(board,session.rooms[session.room].name+" · HP %d/%d" % [session.enemies[0].hp,session.enemies[0].max_hp],11)
 		boss_info.position = Vector2(8,4)
 		var fuse: int = session.enemies[0].get("fuse",0)
 		if fuse > 0 and not session.intents.is_empty(): boss_info.text += "\n폭발까지 %d행동" % fuse
@@ -147,7 +146,8 @@ func refresh() -> void:
 			attack_button.custom_minimum_size.y = 48
 	if session.phase in ["TOWN","DEFEAT"]: button(root_layout,"출정" if session.phase == "TOWN" and not session.alive().is_empty() else "새 원정대",depart)
 	var feedback := HBoxContainer.new(); root_layout.add_child(feedback)
-	var hint := label(feedback,notice if not notice.is_empty() else "8방향 이동 / 공격 / 대기 → 적 행동" if session.boss_trial else "녹색: 이동(1 AP) · 자신: 대기",10)
+	feedback.visible = not notice.is_empty()
+	var hint := label(feedback,notice,10)
 	hint.size_flags_horizontal = SIZE_EXPAND_FILL
 	hint.clip_text = true; hint.custom_minimum_size.y = 16
 	var party_row := HBoxContainer.new(); party_row.add_theme_constant_override("separation",5); root_layout.add_child(party_row)
@@ -184,10 +184,10 @@ func refresh() -> void:
 	var nav := HBoxContainer.new(); nav.add_theme_constant_override("separation",4); root_layout.add_child(nav)
 	advance_attack_button = button(nav,"공격",func(): run_action(session.auto_attack),session.phase == "BATTLE")
 	wait_button = button(nav,"한 턴\n대기",func(): run_action(func(): return session.act("WAIT",session.party[session.selected].pos)),session.phase == "BATTLE")
+	button(nav,"상태",func(): show_character(session.selected,"상태"))
 	if reservation_actor >= 0:
 		button(nav,"예약 취소",func(): session.cancel_reservation(reservation_actor); reservation_actor = -1; mode = ""; notice = "예약 취소 · 자동 행동"; refresh())
-	else: button(nav,"탐험",show_map,session.phase in ["BATTLE","EXPLORE"])
-	button(nav,"전술",show_orders)
+	else: button(nav,"전술",show_orders)
 	var essence_count := 0
 	for quantity in session.essences.values(): essence_count += int(quantity)
 	button(nav,"가방"+(" (%d)" % essence_count if essence_count > 0 else ""),show_supplies)
