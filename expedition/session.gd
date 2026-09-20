@@ -13,7 +13,8 @@ const Tactics = preload("res://expedition/tactical_action_selector.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
 var companions := false
 var resolving_companions := false
-const DIRECTIONS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]
+const CARDINALS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]
+const DIRECTIONS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN, Vector2i(-1,-1), Vector2i(1,-1), Vector2i(-1,1), Vector2i(1,1)]
 var rooms: Array = []
 var seed_value := 731
 var phase := "TOWN"
@@ -175,7 +176,7 @@ func interact_room(point: Vector2i) -> bool:
 		var actor: Dictionary = party[selected]
 		if actor.hp <= 0 or not is_free(point): return false
 		var route := TurnCore.path(8,8,actor.pos,[point],
-			func(a,b): return distance(a,b) == 1 and is_free(b),func(_p): return 100)
+			func(a,b): return can_step(a,b),func(_p): return 100)
 		if not route.found: return false
 		actor.pos = point
 		return true
@@ -225,6 +226,37 @@ func is_free(point: Vector2i) -> bool:
 func distance(a: Vector2i, b: Vector2i) -> int:
 	return absi(a.x - b.x) + absi(a.y - b.y)
 
+func melee_reach(a: Vector2i, b: Vector2i) -> bool:
+	if not inside(a) or not inside(b) or a == b or maxi(absi(a.x-b.x),absi(a.y-b.y)) != 1: return false
+	if tile(b).terrain == "wall": return false
+	if a.x != b.x and a.y != b.y:
+		if tile(Vector2i(a.x,b.y)).terrain == "wall" or tile(Vector2i(b.x,a.y)).terrain == "wall": return false
+	return true
+
+func can_step(a: Vector2i, b: Vector2i) -> bool:
+	return melee_reach(a,b) and is_free(b)
+
+func auto_attack() -> bool:
+	if phase != "BATTLE": return false
+	var actor: Dictionary = party[selected]
+	if actor.hp <= 0 or actor.ap <= 0: return false
+	var targets: Array = enemies.filter(func(e): return e.hp > 0)
+	targets.sort_custom(func(a,b):
+		var av: int = a.hp if actor.basic_target == "LOWEST_HP" else distance(actor.pos,a.pos)
+		var bv: int = b.hp if actor.basic_target == "LOWEST_HP" else distance(actor.pos,b.pos)
+		return av < bv if av != bv else a.id < b.id)
+	for enemy in targets:
+		if not attack_preview(enemy.pos).is_empty(): return act("ATTACK",enemy.pos)
+	var best: Array = []
+	for enemy in targets:
+		var goals: Array = []
+		for direction in DIRECTIONS:
+			var cell: Vector2i = enemy.pos+direction
+			if is_free(cell) and melee_reach(cell,enemy.pos) and Tactics.danger(self,cell) == 0: goals.append(cell)
+		var route := TurnCore.path(8,8,actor.pos,goals,func(a,b): return can_step(a,b) and Tactics.danger(self,b) == 0,func(_p): return 100)
+		if route.found and route.path.size() > 1 and (best.is_empty() or route.path.size() < best.size()): best = route.path
+	return act("MOVE",best[1]) if not best.is_empty() else false
+
 func movement_cells(actor_index: int = -1) -> Array:
 	var result: Array = []
 	var actor: Dictionary = party[selected if actor_index < 0 else actor_index]
@@ -236,7 +268,7 @@ func movement_cells(actor_index: int = -1) -> Array:
 		for point in frontier:
 			for direction in DIRECTIONS:
 				var cell: Vector2i = point + direction
-				if cell not in seen and is_free(cell):
+				if cell not in seen and can_step(point,cell):
 					seen.append(cell); result.append(cell); next.append(cell)
 		frontier = next
 	return result
@@ -247,7 +279,7 @@ func attack_cells(actor_index: int = -1) -> Array:
 	if phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0: return result
 	for direction in DIRECTIONS:
 		var cell: Vector2i = actor.pos + direction
-		if inside(cell) and tile(cell).terrain != "wall": result.append(cell)
+		if melee_reach(actor.pos,cell): result.append(cell)
 	return result
 
 func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
@@ -278,13 +310,13 @@ func act(kind: String, target: Vector2i) -> bool:
 			if target not in movement_cells(): return false
 			actor.pos = target
 		"ATTACK", "PUSH":
-			if victim.is_empty() or not victim.enemy or distance(actor.pos, target) != 1: return false
+			if victim.is_empty() or not victim.enemy or not melee_reach(actor.pos,target): return false
 			if kind == "ATTACK":
 				var hit := TurnCore.physical(18 * actor.attack_factor / 100, 1000, 0, 2)
 				damage(victim, int(hit.damage), actor.id, "SLASH")
 			else:
 				var destination: Vector2i = target + (target - actor.pos)
-				if is_free(destination): victim.pos = destination
+				if can_step(target,destination): victim.pos = destination
 				else: damage(victim, 8, actor.id, "IMPACT")
 				intents = intents.filter(func(intent): return intent.id != victim.id)
 				message("밀쳐내기 · 적의 예고 공격을 취소했습니다.")
@@ -402,7 +434,7 @@ func discharge(origin: Vector2i, source: int) -> void:
 		var victim := at(row.pos)
 		if not victim.is_empty(): damage(victim, row.power, source, "ELECTRIC")
 		if row.power <= 6 or not conductive(row.pos): continue
-		for direction in DIRECTIONS:
+		for direction in CARDINALS:
 			var next: Vector2i = row.pos + direction
 			if inside(next) and next not in seen and conductive(next):
 				seen.append(next); queue.append({"pos":next, "power":row.power - 6})
@@ -464,22 +496,22 @@ func enemy_attack_turn(enemy: Dictionary) -> void:
 	var best_path: Array = []
 	var target: Dictionary = {}
 	for actor in alive():
-		if distance(enemy.pos,actor.pos) == 1:
+		if melee_reach(enemy.pos,actor.pos):
 			target = actor; best_path = [enemy.pos]; break
 		var goals: Array = []
 		for direction in DIRECTIONS:
 			var point: Vector2i = actor.pos + direction
-			if is_free(point): goals.append(point)
+			if is_free(point) and melee_reach(point,actor.pos): goals.append(point)
 		if goals.is_empty(): continue
 		var route := TurnCore.path(8,8,enemy.pos,goals,
-			func(origin,point): return distance(origin,point) == 1 and is_free(point),func(_p): return 100)
+			func(origin,point): return can_step(origin,point),func(_p): return 100)
 		if route.found and (best_path.is_empty() or route.path.size() < best_path.size()):
 			best_path = route.path; target = actor
 	if target.is_empty(): return
 	# Same-turn movement and melee attack; body injuries also slow enemies.
 	var steps := 2 if enemy.move_factor == 100 else 1
 	enemy.pos = best_path[mini(steps,best_path.size()-1)]
-	if distance(enemy.pos,target.pos) == 1:
+	if melee_reach(enemy.pos,target.pos):
 		damage(target,maxi(1,(10 if enemy.name == "수문장" else 7)*enemy.attack_factor/100),enemy.id,"IMPACT")
 
 func end_round() -> bool:

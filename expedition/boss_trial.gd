@@ -43,7 +43,7 @@ static func plan(s) -> void:
 				if s.at(cell).is_empty(): row.pylon = cell; break
 		return
 	if row.pattern == 0:
-		if boss.get("recovery",0) > 0 or boss.get("cooldown",0) > 0 or s.distance(boss.pos,target(s).pos) != 1: return
+		if boss.get("recovery",0) > 0 or boss.get("cooldown",0) > 0 or not s.melee_reach(boss.pos,target(s).pos): return
 	elif s.round_number % 3 != 0: return
 	boss.charging = true
 	boss.fuse = 2
@@ -75,12 +75,12 @@ static func turn(s, boss: Dictionary) -> void:
 					boss.pos = cell; break
 		return
 	if row.pattern == 0: boss.cooldown = maxi(0,boss.get("cooldown",0)-1)
-	if s.distance(boss.pos,hero.pos) == 1:
+	if s.melee_reach(boss.pos,hero.pos):
 		s.damage(hero,6,boss.id,"IMPACT"); return
 	var goals: Array = []
 	for direction in s.DIRECTIONS:
-		if s.is_free(hero.pos+direction): goals.append(hero.pos+direction)
-	var route: Dictionary = s.TurnCore.path(8,8,boss.pos,goals,func(a,b): return s.distance(a,b) == 1 and s.is_free(b),func(_p): return 100)
+		if s.is_free(hero.pos+direction) and s.melee_reach(hero.pos+direction,hero.pos): goals.append(hero.pos+direction)
+	var route: Dictionary = s.TurnCore.path(8,8,boss.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100)
 	if route.found and route.path.size() > 1: boss.pos = route.path[1]
 
 static func disable_pylon(s, point: Vector2i) -> bool:

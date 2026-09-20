@@ -13,6 +13,7 @@ func arena():
 	s.selected = 1
 	return s
 func exercise() -> void:
+	eight_way_checks()
 	var s = arena()
 	var ally: Dictionary = s.party[1]
 	var boss: Dictionary = s.enemies[0]
@@ -143,6 +144,10 @@ func exercise() -> void:
 	scene.show_tactics()
 	await process_frame
 	check(scene.details_popup.visible,"tactics settings opens")
+	check(scene.character_tab == "숙련","rule editor is embedded in mastery tab")
+	scene.show_character(1,"상태")
+	check(scene.tactics_actor == 1 and scene.session.selected == 0,"per-character status does not switch control")
+	scene.show_character(0,"숙련")
 	scene.change_basic_target("LOWEST_HP")
 	check(scene.session.party[0].basic_target == "LOWEST_HP","UI changes independent basic target")
 	scene.tactics_expanded = 0; scene.show_tactics()
@@ -152,6 +157,45 @@ func exercise() -> void:
 	check(scene.details_popup.size.y <= root.size.y,"expanded editor fits mobile viewport")
 	scene.change_tactic_rule(0,"when","STATUS")
 	await process_frame
+	for viewport in [Vector2i(390,844),Vector2i(430,844),Vector2i(412,915)]:
+		root.size = viewport
+		for frame in range(3): await process_frame
+		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"new HUD fits portrait viewport %s" % viewport)
+		check(scene.details_popup.size.y <= root.size.y,"character mastery fits viewport")
+		scene.select_actor(1)
+		for frame in range(3): await process_frame
+		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"reservation UI fits portrait viewport %s" % viewport)
+		scene.select_actor(0)
+	scene.details_popup.hide()
+	ui_turn = scene.session.round_number
+	scene.advance_attack_button.pressed.emit()
+	check(scene.session.round_number == ui_turn+1 and scene.session.selected == 0,"footer attack executes one hero action")
 	scene.queue_free(); await process_frame
 	print("Companion tactics: %d failures" % failures)
 	quit(1 if failures else 0)
+
+func eight_way_checks() -> void:
+	var s = Session.new(731,true); s.depart()
+	for cell in s.tiles: cell.terrain = "stone"; cell.fire = 0; cell.wet = 0
+	var hero: Dictionary = s.party[0]
+	var boss: Dictionary = s.enemies[0]
+	hero.pos = Vector2i(2,2); boss.pos = Vector2i(5,5); boss.recovery = 99
+	check(s.movement_cells().size() == 8,"all eight adjacent movement cells")
+	check(Vector2i(3,3) in s.attack_cells(),"diagonal attack range shown")
+	var turn: int = s.round_number
+	check(s.auto_attack() and hero.pos == Vector2i(3,3) and s.round_number == turn+1,"attack button approaches one diagonal step")
+	check(s.auto_attack() and hero.pos == Vector2i(4,4),"attack button reaches diagonal melee range")
+	var hp: int = boss.hp
+	check(s.auto_attack() and boss.hp < hp and hero.pos == Vector2i(4,4),"attack button attacks instead of moving when in range")
+	hero.pos = Vector2i(2,2); boss.pos = Vector2i(3,3)
+	s.tile(Vector2i(3,2)).terrain = "wall"
+	turn = s.round_number
+	check(Vector2i(3,3) not in s.attack_cells() and not s.act("ATTACK",boss.pos),"diagonal attack cannot cut wall corner")
+	check(not s.can_step(Vector2i(2,2),Vector2i(3,3)),"diagonal movement cannot cut wall corner")
+	check(s.round_number == turn,"invalid diagonal action is free")
+	s.tile(Vector2i(3,2)).terrain = "stone"
+	check(s.act("PUSH",boss.pos) and boss.pos == Vector2i(4,4),"diagonal push uses matching diagonal displacement")
+	hero.pos = Vector2i(1,1); boss.pos = Vector2i(6,6)
+	for direction in s.DIRECTIONS: s.tile(hero.pos+direction).terrain = "wall"
+	turn = s.round_number
+	check(not s.auto_attack() and s.round_number == turn,"unreachable auto attack does not consume turn")

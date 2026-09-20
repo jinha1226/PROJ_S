@@ -1,5 +1,6 @@
 extends Control
 var input_actor := -1
+var action_footer := false
 signal cell_pressed(cell: Vector2i)
 const Art = preload("res://expedition/mobile_art.gd")
 const Icons = preload("res://expedition/map_icons.gd")
@@ -32,13 +33,13 @@ func _ready() -> void:
 	_resize_board()
 
 func _resize_board() -> void:
-	custom_minimum_size.y = maxf(180,size.x+112 if session != null and session.phase == "BATTLE" else size.x+8)
+	custom_minimum_size.y = maxf(180,size.x+56+(56 if action_footer else 8) if session != null and session.phase == "BATTLE" else size.x+8)
 	queue_redraw()
 
 func geometry() -> void:
 	var battle: bool = session != null and session.phase == "BATTLE"
 	var top := 56.0 if battle else 4.0
-	var bottom := 56.0 if battle else 4.0
+	var bottom := (56.0 if action_footer else 8.0) if battle else 4.0
 	half_width = maxf(1,size.x/16.0)
 	half_height = half_width
 	origin = Vector2(0,top+maxf(0,(size.y-top-bottom-size.x)/2))

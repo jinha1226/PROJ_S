@@ -47,7 +47,9 @@ func _initialize() -> void:
 	s.enemies[0].pos = Vector2i(2,4)
 	var hp: int = s.party[0].hp
 	check(s.end_round() and s.party[0].hp == hp,"enemy attacks reachable front-line target")
-	check(not s.party[2].memory.records.is_empty() and s.party[2].body.revision > 0,"damage creates memory and body injury")
+	check(s.party.any(func(a): return not a.memory.records.is_empty() and a.body.revision > 0),"damage creates memory and body injury")
+	# Isolate the push landing from other enemies' eight-way pursuit.
+	for i in range(1,s.enemies.size()): s.enemies[i].pos = Vector2i(7,i)
 	s.enemies[0].pos = Vector2i(3,3); s.party[0].pos = Vector2i(2,3); s.party[0].ap = 2
 	check(s.act("PUSH",Vector2i(3,3)) and s.enemies[0].pos == Vector2i(4,3),"push moves enemy")
 	check(s.intents.all(func(row): return row.id != s.enemies[0].id),"push cancels intent")

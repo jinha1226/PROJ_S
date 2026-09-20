@@ -15,7 +15,7 @@ static func threat(s, enemy: Dictionary, point: Vector2i, position: Vector2i) ->
 		for intent in s.intents:
 			if intent.id == enemy.id and intent.cell == point: return int(intent.damage)
 		return 0
-	return 6 if s.distance(position,point) == 1 else 0
+	return 6 if s.melee_reach(position,point) else 0
 
 static func choose(s, actor: Dictionary) -> Dictionary:
 	var options: Array = []
@@ -24,13 +24,13 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 		if danger(s,cell) < here:
 			options.append({"kind":"MOVE","cell":cell,"score":200+here-danger(s,cell),"reason":"위험 회피"})
 	for enemy in s.enemies:
-		if enemy.hp <= 0 or s.distance(actor.pos,enemy.pos) != 1: continue
+		if enemy.hp <= 0 or not s.melee_reach(actor.pos,enemy.pos): continue
 		var preview: Dictionary = s.attack_preview(enemy.pos,actor.id)
 		if preview.is_empty(): continue
 		var amount := int(preview.get("damage",0))
 		options.append({"kind":"ATTACK","cell":enemy.pos,"score":amount+(12 if amount >= enemy.hp else 0),"reason":"기본 공격"})
 		var landing: Vector2i = enemy.pos+(enemy.pos-actor.pos)
-		var moved: bool = s.is_free(landing)
+		var moved: bool = s.can_step(enemy.pos,landing)
 		var benefit := 0
 		var unsafe := false
 		for ally in s.alive():
@@ -44,7 +44,7 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 		if moved:
 			if s.boss_trial and s.rooms[s.room].pattern == 0 and s.tile(landing).terrain == "water": unsafe = true
 			for ally in s.alive():
-				if ally.id != actor.id and s.distance(ally.pos,enemy.pos) == 1 and s.distance(ally.pos,landing) > 1 and benefit <= 0: unsafe = true
+				if ally.id != actor.id and s.melee_reach(ally.pos,enemy.pos) and not s.melee_reach(ally.pos,landing) and benefit <= 0: unsafe = true
 		if not unsafe:
 			options.append({"kind":"PUSH","cell":enemy.pos,"score":40+benefit+bonus,"reason":"밀치기"})
 	options.append({"kind":"GUARD","cell":actor.pos,"score":35,"reason":"방어"})
@@ -82,8 +82,8 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 	for enemy in s.enemies:
 		if enemy.hp <= 0: continue
 		for d in s.DIRECTIONS:
-			if s.is_free(enemy.pos+d) and danger(s,enemy.pos+d) == 0: goals.append(enemy.pos+d)
-	var route: Dictionary = s.TurnCore.path(8,8,actor.pos,goals,func(a,b): return s.distance(a,b) == 1 and s.is_free(b) and danger(s,b) == 0,func(_p): return 100)
+			if s.is_free(enemy.pos+d) and s.melee_reach(enemy.pos+d,enemy.pos) and danger(s,enemy.pos+d) == 0: goals.append(enemy.pos+d)
+	var route: Dictionary = s.TurnCore.path(8,8,actor.pos,goals,func(a,b): return s.can_step(a,b) and danger(s,b) == 0,func(_p): return 100)
 	if route.found and route.path.size() > 1:
 		options.append({"kind":"MOVE","cell":route.path[1],"score":1,"reason":"안전한 접근"})
 	options.append({"kind":"WAIT","cell":actor.pos,"score":0,"reason":"대기"})

@@ -18,6 +18,8 @@ var root_layout: VBoxContainer
 var board
 var end_turn_button: Button
 var wait_button: Button
+var advance_attack_button: Button
+var character_tab := "상태"
 var minimap
 var map_view
 var map_popup: PopupPanel
@@ -91,14 +93,16 @@ func refresh() -> void:
 	minimap.session = session; minimap.ui_font = FONT; minimap.expand_requested.connect(show_map)
 	minimap.size_flags_horizontal = SIZE_SHRINK_BEGIN; header.add_child(minimap)
 	var location := VBoxContainer.new(); location.size_flags_horizontal = SIZE_EXPAND_FILL; header.add_child(location)
-	label(location,"폐허 1층" if session.phase != "TOWN" else "변방의 여관",13)
+	button(location,"인물 · 상태",func(): show_character(session.selected,"상태")).custom_minimum_size.y = 28
 	label(location,session.rooms[session.room].name if session.phase in ["EXPLORE","BATTLE"] else "원정 준비",12)
 	if session.phase == "BATTLE": label(location,"행동 %d" % session.round_number if session.boss_trial else "%d턴 · AP %d" % [session.round_number,session.party[session.selected].ap],11)
 	var resource := VBoxContainer.new(); resource.custom_minimum_size.x = 124; header.add_child(resource)
 	button(resource,"식량 %d   횃불 %d" % [session.food,session.torches],show_supplies).custom_minimum_size.y = 28
 	label(resource,"배고픔 %d%%" % session.hunger,10); gauge(resource,session.hunger,100,Color("d9904d"))
 	label(resource,"불빛 %d%%" % session.light,10); gauge(resource,session.light,100,Color("e6bd62"))
-	board = Board.new(); board.session = session; board.ui_font = FONT; board.cell_pressed.connect(on_cell); root_layout.add_child(board)
+	board = Board.new(); board.session = session; board.ui_font = FONT; board.cell_pressed.connect(on_cell)
+	board.action_footer = not session.boss_trial or not pending_attack.is_empty()
+	root_layout.add_child(board)
 	board.show_attack_range = show_attack_range
 	board.input_actor = reservation_actor
 	board.effects = action_effects; action_effects = []
@@ -119,10 +123,6 @@ func refresh() -> void:
 			advance.set_anchors_and_offsets_preset(PRESET_BOTTOM_RIGHT)
 			advance.offset_left = -104; advance.offset_top = -56
 			advance.offset_right = -8; advance.offset_bottom = -8
-		if reservation_actor >= 0:
-			var cancel := button(board,"예약 취소",func(): session.cancel_reservation(reservation_actor); reservation_actor = -1; mode = ""; notice = "예약 취소 · 자동 행동"; refresh())
-			cancel.set_anchors_and_offsets_preset(PRESET_BOTTOM_LEFT)
-			cancel.offset_left = 8; cancel.offset_top = -56; cancel.offset_right = 104; cancel.offset_bottom = -8
 		if not pending_attack.is_empty():
 			attack_button = button(board,"공격 · %d%% / 피해 %d" % [pending_attack.chance,pending_attack.damage],confirm_attack)
 			attack_button.set_anchors_and_offsets_preset(PRESET_BOTTOM_LEFT)
@@ -130,7 +130,9 @@ func refresh() -> void:
 			attack_button.offset_right = 230; attack_button.offset_bottom = -8
 			attack_button.custom_minimum_size.y = 48
 	if session.phase in ["TOWN","DEFEAT"]: button(root_layout,"출정" if session.phase == "TOWN" and not session.alive().is_empty() else "새 원정대",depart)
-	var hint := label(root_layout,notice if not notice.is_empty() else "한 칸 이동 / 공격 / 대기 → 적 행동" if session.boss_trial else "녹색: 이동(1 AP) · 적 선택 → 공격 확정 · 자신: 대기",10)
+	var feedback := HBoxContainer.new(); root_layout.add_child(feedback)
+	var hint := label(feedback,notice if not notice.is_empty() else "8방향 이동 / 공격 / 대기 → 적 행동" if session.boss_trial else "녹색: 이동(1 AP) · 자신: 대기",10)
+	hint.size_flags_horizontal = SIZE_EXPAND_FILL
 	hint.clip_text = true; hint.custom_minimum_size.y = 16
 	var party_row := HBoxContainer.new(); party_row.add_theme_constant_override("separation",5); root_layout.add_child(party_row)
 	for i in range(session.party.size()):
@@ -152,19 +154,20 @@ func refresh() -> void:
 			var gold := portrait.get_theme_stylebox("normal").duplicate(); gold.border_color = Color("e9c575"); gold.set_border_width_all(2); portrait.add_theme_stylebox_override("normal",gold)
 		if actor.hp <= 0: portrait.modulate = Color("636369")
 		gauge(portrait_box,actor.hp,actor.max_hp,Color("8ac77c")); gauge(portrait_box,actor.stress,200,Color("af80d0"))
+		if session.party.size() > 1: column.move_child(skills,column.get_child_count()-1)
 	var shared := HBoxContainer.new(); shared.add_theme_constant_override("separation",4); root_layout.add_child(shared)
 	for slot in range(6):
 		var item := icon_button(shared,Art.item(slot),func(): choose_item(slot),Session.SUPPLY_NAMES[slot],str(session.supplies[slot]))
 		item.disabled = session.phase not in ["BATTLE","EXPLORE"] or session.supplies[slot] == 0; item_buttons.append(item)
 	var nav := HBoxContainer.new(); nav.add_theme_constant_override("separation",4); root_layout.add_child(nav)
-	for index in range(4):
-		var node := button(nav,"",func(): open_management(index)); node.custom_minimum_size.y = 49
-		var icon := TextureRect.new(); icon.texture = Art.navigation(index); icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; icon.mouse_filter = MOUSE_FILTER_IGNORE
-		node.add_child(icon); icon.set_anchors_and_offsets_preset(PRESET_FULL_RECT); icon.offset_bottom = -19; icon.offset_top = 3
-		var title := label(node,["상태","가방","전술","원정"][index],12); title.set_anchors_and_offsets_preset(PRESET_BOTTOM_WIDE); title.offset_top = -18; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	advance_attack_button = button(nav,"공격",func(): run_action(session.auto_attack),session.phase == "BATTLE")
 	wait_button = button(nav,"한 턴\n대기",func(): run_action(func(): return session.act("WAIT",session.party[session.selected].pos)),session.phase == "BATTLE")
-	wait_button.custom_minimum_size.y = 49
+	if reservation_actor >= 0:
+		button(nav,"예약 취소",func(): session.cancel_reservation(reservation_actor); reservation_actor = -1; mode = ""; notice = "예약 취소 · 자동 행동"; refresh())
+	else: button(nav,"탐험",show_map,session.phase in ["BATTLE","EXPLORE"])
+	button(nav,"전술",show_orders)
+	button(nav,"가방",show_supplies)
+	for node in nav.get_children(): node.custom_minimum_size.y = 49
 
 func depart() -> void:
 	if session.phase == "DEFEAT" or session.alive().is_empty(): session = Session.new(randi(),true,true)
@@ -253,6 +256,18 @@ func show_map() -> void:
 	if session.phase not in ["BATTLE","EXPLORE"]: return
 	map_view.session = session; map_view.queue_redraw(); map_popup.popup_centered()
 
+func show_orders() -> void:
+	clear(modal_content); label(modal_content,"동료 행동 예약",18)
+	for i in range(session.party.size()):
+		if i == session.selected: continue
+		label(modal_content,session.party[i].name)
+		button(modal_content,"다음 행동 예약",func(): details_popup.hide(); select_actor(i),session.phase == "BATTLE" and session.party[i].hp > 0)
+		button(modal_content,"예약 취소 · 자동 행동",func(): session.cancel_reservation(i); refresh(); show_orders())
+		button(modal_content,"상태 · 숙련 확인",func(): show_character(i,"상태"))
+	button(modal_content,"주인공 상태",func(): show_character(session.selected,"상태"))
+	button(modal_content,"원정 · 귀환",func(): open_management(3))
+	button(modal_content,"닫기",func(): details_popup.hide()); details_popup.popup_centered()
+
 func on_room(id: int) -> void:
 	if id == session.room: map_popup.hide(); return
 	if session.can_travel(id): map_popup.hide(); run_action(func(): return session.travel(id))
@@ -263,12 +278,9 @@ func modal(title: String, body: String) -> void:
 	button(modal_content,"닫기",func(): details_popup.hide()); details_popup.popup_centered()
 
 func open_management(index: int) -> void:
-	var actor: Dictionary = session.party[session.selected]
 	match index:
 		0:
-			var body: String = actor.name+" · "+actor.profile.style_summary().label+"\n\n"+Session.Body.description(actor)+"\n\n기억\n"
-			for memory in actor.memory.records: body += "%s · 강도 %d\n" % [memory.kind,memory.salience]
-			modal("상태",body)
+			show_character(session.selected,"상태")
 		1: show_supplies()
 		2: show_tactics()
 		3:
@@ -276,15 +288,39 @@ func open_management(index: int) -> void:
 			if session.phase in ["BATTLE","EXPLORE"]: button(modal_content,"철수 · 전리품 절반" if session.phase == "BATTLE" else "귀환",func(): details_popup.hide(); run_action(session.retreat))
 			if session.phase == "TOWN": button(modal_content,"요양 · 20 자금",func(): details_popup.hide(); run_action(session.rest_town),session.bank >= 20)
 
-func show_tactics() -> void:
+func show_character(index: int, tab: String = "상태") -> void:
+	tactics_actor = clampi(index,0,session.party.size()-1); character_tab = tab
 	clear(modal_content)
-	tactics_actor = mini(tactics_actor,session.party.size()-1)
-	label(modal_content,"동료 전술",18)
+	var actor: Dictionary = session.party[tactics_actor]
+	label(modal_content,actor.name+" · 캐릭터",18)
 	var members := HBoxContainer.new(); modal_content.add_child(members)
 	for i in range(session.party.size()):
-		button(members,session.party[i].name,func(): tactics_actor = i; tactics_expanded = -1; show_tactics())
+		button(members,session.party[i].name,func(): tactics_expanded = -1; show_character(i,character_tab))
+	var tabs := HBoxContainer.new(); modal_content.add_child(tabs)
+	for title in ["상태","성격","기억","숙련","가방"]:
+		var tab_button := button(tabs,title,func(): show_character(tactics_actor,title))
+		tab_button.toggle_mode = true; tab_button.button_pressed = title == character_tab
+	if tab == "숙련":
+		build_tactics(); return
+	var body := ""
+	match tab:
+		"상태": body = "체력 %d/%d · 스트레스 %d\n%s\n\n%s" % [actor.hp,actor.max_hp,actor.stress,actor.condition,Session.Body.description(actor)]
+		"성격": body = actor.profile.style_summary().label
+		"기억":
+			for memory in actor.memory.records: body += "%s · 강도 %d\n" % [memory.kind,memory.salience]
+			if body.is_empty(): body = "아직 기록된 기억이 없습니다."
+		"가방":
+			body = "소모품은 파티 공용입니다.\n\n"
+			for i in range(6): body += "%s × %d\n" % [Session.SUPPLY_NAMES[i],session.supplies[i]]
+	var text := RichTextLabel.new(); text.text = body; text.custom_minimum_size = Vector2(300,minf(300,size.y-270)); modal_content.add_child(text)
+	button(modal_content,"닫기",func(): details_popup.hide()); details_popup.popup_centered()
+
+func show_tactics() -> void:
+	show_character(tactics_actor,"숙련")
+
+func build_tactics() -> void:
 	label(modal_content,"위쪽부터 사용 · 변경 즉시 적용 · 턴 소비 없음",11)
-	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(310,minf(470,size.y-210))
+	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(310,minf(400,size.y-330))
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; modal_content.add_child(scroll)
 	var list := VBoxContainer.new(); list.size_flags_horizontal = SIZE_EXPAND_FILL; list.add_theme_constant_override("separation",10); scroll.add_child(list)
 	var actor: Dictionary = session.party[tactics_actor]

@@ -23,11 +23,11 @@ func _initialize() -> void:
 	s.party[0].pos = Vector2i(3,2)
 	var hp: int = s.party[0].hp
 	s.enemy_attack_turn(enemy)
-	check(s.party[0].hp == hp-10 and s.distance(enemy.pos,s.party[0].pos) == 1,"chase current position then attack")
+	check(s.party[0].hp == hp-10 and s.melee_reach(enemy.pos,s.party[0].pos),"chase current position then attack")
 	s = setup(); enemy = s.enemies[2]
 	enemy.pos = Vector2i(7,7); hp = s.party[0].hp
 	s.enemy_attack_turn(enemy)
-	check(s.party[0].hp == hp and s.distance(Vector2i(7,7),enemy.pos) == 2,"distant enemy moves without ranged damage")
+	check(s.party[0].hp == hp and maxi(absi(7-enemy.pos.x),absi(7-enemy.pos.y)) == 2,"distant enemy moves two eight-way steps without ranged damage")
 	s = setup(); enemy = s.enemies[2]
 	for y in range(8): s.tile(Vector2i(4,y)).terrain = "wall"
 	hp = s.party[0].hp; s.enemy_attack_turn(enemy)
