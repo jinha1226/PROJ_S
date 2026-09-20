@@ -25,7 +25,7 @@ static func spawn(s) -> void:
 	row.started = true
 	var boss: Dictionary = s.make_actor(100+s.room,NAMES[row.pattern],true)
 	boss.pos = Vector2i(5,4); boss.hp = 64; boss.max_hp = 64
-	boss.cooldown = 2; boss.recovery = 0
+	boss.cooldown = 4; boss.recovery = 0
 	boss.essence_id = ["SHOCKWAVE","BOMB","IRON_HIDE"][row.pattern]
 	s.enemies.append(boss)
 
@@ -43,9 +43,8 @@ static func plan(s) -> void:
 			for cell in [Vector2i(4,4),Vector2i(1,4),Vector2i(6,6)]:
 				if s.at(cell).is_empty(): row.pylon = cell; break
 		return
-	if row.pattern == 0:
-		if boss.get("recovery",0) > 0 or boss.get("cooldown",0) > 0 or not s.melee_reach(boss.pos,target(s).pos): return
-	elif s.round_number % 3 != 0: return
+	if boss.get("recovery",0) > 0 or boss.get("cooldown",0) > 0: return
+	if row.pattern == 0 and not s.melee_reach(boss.pos,target(s).pos): return
 	boss.charging = true
 	boss.fuse = 2
 	var center: Vector2i = boss.pos if row.pattern == 0 else target(s).pos
@@ -73,22 +72,23 @@ static func turn(s, boss: Dictionary) -> void:
 			for ally in s.alive():
 				if intent.cell == ally.pos: s.damage(ally,intent.damage,boss.id,"IMPACT")
 		boss.charging = false
-		if row.pattern == 0:
-			boss.recovery = 2; boss.cooldown = 4
+		boss.recovery = 1; boss.cooldown = 6
 		if row.pattern == 1:
 			for cell in [Vector2i(6,6),Vector2i(1,6),Vector2i(6,1),Vector2i(1,1)]:
 				if s.is_free(cell) and s.distance(cell,hero.pos) >= 3:
 					boss.pos = cell; break
 		return
-	if row.pattern == 0: boss.cooldown = maxi(0,boss.get("cooldown",0)-1)
+	boss.cooldown = maxi(0,boss.get("cooldown",0)-1)
 	if s.melee_reach(boss.pos,hero.pos):
 		s.enemy_attack_effect(boss,[hero.pos])
-		s.damage(hero,6,boss.id,"IMPACT"); return
+		s.damage(hero,8,boss.id,"IMPACT"); return
 	var goals: Array = []
 	for direction in s.DIRECTIONS:
 		if s.is_free(hero.pos+direction) and s.melee_reach(hero.pos+direction,hero.pos): goals.append(hero.pos+direction)
 	var route: Dictionary = s.TurnCore.path(8,8,boss.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100)
 	if route.found and route.path.size() > 1: boss.pos = route.path[1]
+	if s.melee_reach(boss.pos,hero.pos):
+		s.enemy_attack_effect(boss,[hero.pos]); s.damage(hero,8,boss.id,"IMPACT")
 
 static func disable_pylon(s, point: Vector2i) -> bool:
 	var row: Dictionary = s.rooms[s.room]

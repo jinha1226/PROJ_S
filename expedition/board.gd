@@ -14,7 +14,20 @@ var show_attack_range := false
 var target_cell := Vector2i(-1,-1)
 var effects: Array = []
 var effect_time := 0.0
+var impact_time := 0.0
 var companion_previews: Array = []
+
+func injury_focus() -> Dictionary:
+	for effect in effects:
+		if effect.get("body_injury",false): return effect
+	return {}
+
+func impact_transform() -> Dictionary:
+	if injury_focus().is_empty() or impact_time >= 0.45: return {"zoom":1.0,"offset":Vector2.ZERO}
+	var strength := sin(clampf(impact_time/0.45,0,1)*PI)
+	var zoom := 1.0+0.18*strength
+	var focus := cell_center(injury_focus().cell)
+	return {"zoom":zoom,"offset":focus*(1.0-zoom)+Vector2(sin(impact_time*110),cos(impact_time*93))*4*strength}
 
 func preview_rect(actor: Dictionary) -> Rect2:
 	var center := cell_center(actor.pos)
@@ -22,11 +35,14 @@ func preview_rect(actor: Dictionary) -> Rect2:
 
 func _process(delta: float) -> void:
 	if effects.is_empty(): return
-	effect_time += delta
+	var slow_delta := minf(delta,maxf(0,0.3-impact_time)) if not injury_focus().is_empty() else 0.0
+	impact_time += delta
+	effect_time += slow_delta*0.25+(delta-slow_delta)
 	if effect_time > 1.0: effects.clear()
 	queue_redraw()
 
 func _ready() -> void:
+	clip_contents = true
 	custom_minimum_size = Vector2(0,180)
 	size_flags_vertical = SIZE_EXPAND_FILL
 	mouse_default_cursor_shape = CURSOR_POINTING_HAND
@@ -51,7 +67,8 @@ func cell_center(cell: Vector2i) -> Vector2:
 
 func cell_at(point: Vector2) -> Vector2i:
 	geometry()
-	var delta := point-origin
+	var camera := impact_transform()
+	var delta: Vector2 = (point-camera.offset)/camera.zoom-origin
 	return Vector2i(floori(delta.x/(half_width*2)),floori(delta.y/(half_width*2)))
 
 func tile_polygon(point: Vector2) -> PackedVector2Array:
@@ -96,6 +113,8 @@ func _draw() -> void:
 	if session == null or session.tiles.is_empty():
 		draw_string(ui_font,Vector2(18,size.y*0.45),"원정을 준비하세요",HORIZONTAL_ALIGNMENT_CENTER,size.x-36,20,Color("cfbd91"))
 		return
+	var camera := impact_transform()
+	draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
 	var movement: Array = session.movement_cells(input_actor)
 	var attacks: Array = session.attack_cells(input_actor) if show_attack_range or input_actor >= 0 else []
 	if targeting_skill == "BOMB":
@@ -144,7 +163,9 @@ func _draw() -> void:
 			var actor: Dictionary = session.at(point)
 			if not actor.is_empty():
 				if not actor.enemy and actor.id == session.selected: outline(polygon,Color("e8c276"),2)
-				draw_set_transform(center,0,Vector2(1,0.45)); draw_circle(Vector2.ZERO,half_width*0.6,Color(0,0,0,0.5)); draw_set_transform(Vector2.ZERO)
+				draw_set_transform(center*camera.zoom+camera.offset,0,Vector2(1,0.45)*camera.zoom)
+				draw_circle(Vector2.ZERO,half_width*0.6,Color(0,0,0,0.5))
+				draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
 				var sprite: Texture2D = Art.BOSS if actor.enemy and actor.name == "수문장" else Art.ENEMY if actor.enemy else Art.ACTORS[actor.id]
 				if session.boss_trial and actor.enemy: sprite = Art.BOSS
 				if session.boss_trial and actor.enemy and room.shield:
@@ -181,6 +202,17 @@ func _draw() -> void:
 			draw_line(center-Vector2(15,-12),center+Vector2(15,-12),color,5,true)
 			draw_arc(center,8+effect_time*45,0,TAU,20,color,2,true)
 		draw_string(ui_font,center+Vector2(-12,-14-effect_time*30),"-%d" % effect.amount,HORIZONTAL_ALIGNMENT_LEFT,-1,20,color)
+	draw_set_transform(Vector2.ZERO)
+	var injury := injury_focus()
+	if not injury.is_empty() and impact_time < 0.45:
+		var fade := 1.0-impact_time/0.45
+		draw_rect(Rect2(Vector2.ZERO,size),Color(0.65,0.03,0.02,0.16*fade))
+		var point := cell_center(injury.cell)
+		point = point*camera.zoom+camera.offset
+		for i in range(8):
+			var direction := Vector2.RIGHT.rotated(i*TAU/8)
+			draw_line(point+direction*(12+impact_time*35),point+direction*(28+impact_time*80),Color(1,0.7,0.45,fade),3,true)
+		draw_string(ui_font,Vector2(clampf(point.x-65,2,maxf(2,size.x-132)),maxf(20,point.y-30)),str(injury.get("part","신체"))+" 손상!",HORIZONTAL_ALIGNMENT_CENTER,130,16,Color(1,0.85,0.7,fade))
 
 func draw_enemy_attack(effect: Dictionary) -> void:
 	var fade := clampf(1.0-effect_time,0,1)

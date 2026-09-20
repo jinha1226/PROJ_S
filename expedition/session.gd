@@ -328,6 +328,8 @@ func act(kind: String, target: Vector2i) -> bool:
 				if can_step(target,destination): victim.pos = destination
 				else: damage(victim, Growth.power(actor,"MELEE",8), actor.id, "IMPACT")
 				intents = intents.filter(func(intent): return intent.id != victim.id)
+				if boss_trial and victim.get("charging",false):
+					victim.charging = false; victim.fuse = 0; victim.cooldown = 6; victim.recovery = 1
 				message("밀쳐내기 · 적의 예고 공격을 취소했습니다.")
 		"FIRE", "WATER", "ELECTRIC":
 			if distance(actor.pos, target) > 4 or tile(target).terrain == "wall": return false
@@ -511,11 +513,15 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	var source_cell: Vector2i = target.pos
 	for actor in party + enemies:
 		if actor.id == source: source_cell = actor.pos
-	effects.append({"from":source_cell,"cell":target.pos,"amount":lost,"form":form})
+	var effect := {"from":source_cell,"cell":target.pos,"amount":lost,"form":form}
+	effects.append(effect)
 	if effects.size() > 32: effects.pop_front()
 	var key := ("%d/%d/%d" % [seed_value, serial, target.id]).sha256_text()
 	var plan := Injury.assess_hp_loss(target.body, form, lost, target.max_hp, key, target.id + 1)
-	Injury._apply_plan(target.body, plan, serial)
+	var injury: Dictionary = Injury._apply_plan(target.body, plan, serial)
+	if injury.get("accepted",false) and injury.get("mutated",false):
+		effect["body_injury"] = true
+		effect["part"] = Body.PART_NAMES.get(plan.get("part_id",""),"신체")
 	target.hp -= lost; Body.sync(target)
 	if target.enemy and target.hp <= 0: roll_essence(target)
 	if not target.enemy:

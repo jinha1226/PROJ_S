@@ -152,10 +152,10 @@ func exercise() -> void:
 	scene.show_tactics()
 	await process_frame
 	check(scene.details_popup.visible,"tactics settings opens")
-	check(scene.character_tab == "숙련","rule editor is embedded in mastery tab")
+	check(scene.character_tab == "이능","rule editor is embedded in ability tab")
 	scene.show_character(1,"상태")
 	check(scene.tactics_actor == 1 and scene.session.selected == 0,"per-character status does not switch control")
-	scene.show_character(0,"숙련")
+	scene.show_character(0,"이능")
 	scene.change_basic_target("LOWEST_HP")
 	check(scene.session.party[0].basic_target == "LOWEST_HP","UI changes independent basic target")
 	scene.tactics_expanded = 0; scene.show_tactics()

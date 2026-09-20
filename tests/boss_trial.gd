@@ -9,6 +9,7 @@ func _initialize() -> void:
 
 func exercise() -> void:
 	attack_effect_checks()
+	pacing_checks()
 	var s = Session.new(731,true)
 	s.depart()
 	check(s.party.size() == 1 and s.phase == "BATTLE","solo begins with boss")
@@ -17,6 +18,7 @@ func exercise() -> void:
 		check(s.enemies.size() == 1 and s.rooms[id].kind == "boss","one boss in every room")
 		var boss: Dictionary = s.enemies[0]
 		if id % 3 in [0,1]:
+			boss.cooldown = 0
 			if id % 3 == 0:
 				boss.cooldown = 0; s.party[0].pos = boss.pos+Vector2i.LEFT
 			s.round_number = 3; s.plan_enemies()
@@ -28,10 +30,10 @@ func exercise() -> void:
 			s.enemy_attack_turn(boss)
 			check(s.party[0].hp == hp-16,"marked cells resolve once")
 			if id % 3 == 0:
-				check(boss.recovery == 2,"goo has recovery window")
+				check(boss.recovery == 1,"goo has one-action recovery window")
 				s.party[0].pos = boss.pos+Vector2i.LEFT
 				hp = s.party[0].hp
-				for step in range(2):
+				for step in range(1):
 					s.enemy_attack_turn(boss); s.plan_enemies()
 					check(s.intents.is_empty() and s.party[0].hp == hp,"recovery allows approach and attack without retaliation")
 				for step in range(3):
@@ -93,6 +95,14 @@ func exercise() -> void:
 	scene.on_cell(game.enemies[0].pos)
 	check(game.enemies[0].hp < enemy_hp and game.round_number == before+1,"touch immediately attacks and advances once")
 	check(scene.pending_attack.is_empty() and scene.attack_button == null,"no attack confirmation")
+	check(scene.board.effects.any(func(e): return e.get("body_injury",false)),"actual body damage marks injury feedback")
+	scene.board.impact_time = 0; scene.board.effect_time = 0; scene.board._process(0.1)
+	var camera: Dictionary = scene.board.impact_transform()
+	check(camera.zoom > 1 and scene.board.effect_time < 0.1,"body injury zoom and slow animation")
+	var hit_cell := Vector2i(3,3)
+	check(scene.board.cell_at(scene.board.cell_center(hit_cell)*camera.zoom+camera.offset) == hit_cell,"zoomed tile input uses inverse camera")
+	scene.board._process(2)
+	check(scene.board.impact_transform().zoom == 1 and scene.board.effects.is_empty(),"cinematic restores camera and expires")
 	for viewport_size in [Vector2i(390,844),Vector2i(430,844),Vector2i(412,915)]:
 		root.size = viewport_size
 		for frame in range(5): await process_frame
@@ -110,6 +120,26 @@ func exercise() -> void:
 	scene.queue_free(); await process_frame
 	print("Boss trial: %d failures" % failures)
 	quit(1 if failures else 0)
+
+func pacing_checks() -> void:
+	for pattern in [0,1,2]:
+		var s = Session.new(731,true); s.depart(); s.room = pattern; s.enter_room()
+		var boss: Dictionary = s.enemies[0]
+		for tile in s.tiles: tile.terrain = "stone"; tile.fire = 0
+		boss.pos = Vector2i(4,4); s.party[0].pos = Vector2i(2,4)
+		var hp: int = s.party[0].hp
+		s.enemy_attack_turn(boss)
+		check(s.party[0].hp == hp-8 and s.melee_reach(boss.pos,s.party[0].pos),"boss approaches and attacks on same turn")
+		if pattern == 2: continue
+		boss.charging = true; boss.fuse = 1
+		s.intents = [{"id":boss.id,"cell":Vector2i.ZERO,"damage":16}]
+		s.enemy_attack_turn(boss); s.plan_enemies()
+		check(boss.cooldown == 6 and boss.recovery == 1 and s.intents.is_empty(),"blast starts recovery and six ordinary actions")
+		s.enemy_attack_turn(boss); s.plan_enemies()
+		for tick in range(5):
+			s.party[0].hp = s.party[0].max_hp
+			s.enemy_attack_turn(boss); s.plan_enemies()
+			check(not boss.charging and s.intents.is_empty(),"no repeated pattern during cooldown")
 
 func attack_effect_checks() -> void:
 	for pattern in [0,1]:

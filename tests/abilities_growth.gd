@@ -61,10 +61,14 @@ func exercise() -> void:
 	check(not s.spend_growth(0,"INVALID") and not s.spend_growth(-1,"MELEE"),"invalid growth choices rejected")
 	var scene = load("res://expedition/main.tscn").instantiate(); root.size = Vector2i(390,844); root.add_child(scene)
 	scene.session = s; scene.refresh()
-	for tab in ["이능","숙련","상태","가방"]:
+	for tab in ["이능","숙련","상태"]:
 		scene.show_character(1,tab)
 		for frame in range(3): await process_frame
 		check(scene.details_popup.size.y <= root.size.y and scene.details_popup.size.x <= root.size.x,"character tab fits mobile: "+tab)
+		var labels: Array = scene.modal_content.find_children("*","Label",true,false)
+		if tab == "숙련": check(not labels.any(func(l): return l.text == "스킬 사용 순서"),"mastery has no ability ordering")
+		if tab == "이능": check(labels.any(func(l): return l.text == "스킬 사용 순서"),"ability tab includes ordering")
+		check(not scene.modal_content.find_children("*","Button",true,false).any(func(b): return b.text == "가방"),"character window has no bag tab")
 	scene.show_essences(); await process_frame
 	scene.confirm_essence(0,"SHOCKWAVE"); await process_frame
 	check(scene.details_popup.visible,"consumption requires recipient confirmation")
@@ -76,6 +80,7 @@ func exercise() -> void:
 	scene.show_item_detail("supply:0")
 	await process_frame
 	check(scene.item_popup.visible and scene.item_popup.size.x <= root.size.x,"item detail popup fits")
+	check(scene.item_popup.get_parent() == scene.details_popup and scene.item_popup.transient and scene.item_popup.exclusive,"item details belong above inventory modal")
 	scene.item_popup.hide(); scene.inventory_filter = "이능"; scene.show_supplies()
 	check(scene.inventory_slots.all(func(slot): return slot.row.is_empty() or slot.row.category == "이능"),"category filter contains only essences")
 	for viewport in [Vector2i(360,800),Vector2i(390,844),Vector2i(430,844)]:
