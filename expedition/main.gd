@@ -14,6 +14,7 @@ var pending_attack: Dictionary = {}
 var attack_button: Button
 var show_attack_range := false
 var action_effects: Array = []
+var reset_effects := false
 var root_layout: VBoxContainer
 var board
 var end_turn_button: Button
@@ -86,6 +87,11 @@ func gauge(parent: Node, value: int, maximum: int, color: Color) -> void:
 	bar.add_theme_stylebox_override("fill",fill); bar.add_theme_stylebox_override("background",background); parent.add_child(bar)
 
 func refresh() -> void:
+	var elapsed := 0.0
+	# Opening an order/selection must not erase an attack that just resolved.
+	if not reset_effects and action_effects.is_empty() and is_instance_valid(board):
+		action_effects = board.effects.duplicate(true); elapsed = board.effect_time
+	reset_effects = false
 	clear(root_layout); item_buttons.clear(); skill_buttons.clear(); portrait_buttons.clear()
 	map_view.session = session; map_view.queue_redraw()
 	var header := HBoxContainer.new(); header.add_theme_constant_override("separation",6); root_layout.add_child(header)
@@ -106,6 +112,7 @@ func refresh() -> void:
 	board.show_attack_range = show_attack_range
 	board.input_actor = reservation_actor
 	board.effects = action_effects; action_effects = []
+	board.effect_time = elapsed
 	board.target_cell = pending_attack.get("cell",Vector2i(-1,-1))
 	board.companion_previews = session.companion_previews()
 	if session.boss_trial and session.phase == "BATTLE":
@@ -192,6 +199,7 @@ func run_action(callback: Callable) -> void:
 		mode = ""; pending_item = -1; reservation_actor = -1
 		if not session.boss_trial and session.phase == "BATTLE" and session.alive().all(func(a): return a.ap <= 0): session.end_round()
 	action_effects = session.effects.duplicate(true); session.effects.clear()
+	reset_effects = accepted
 	refresh()
 
 func preview_attack(point: Vector2i) -> void:

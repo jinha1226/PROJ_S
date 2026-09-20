@@ -443,6 +443,12 @@ func discharge(origin: Vector2i, source: int) -> void:
 func conductive(point: Vector2i) -> bool:
 	return tile(point).terrain in ["metal", "water"] or tile(point).wet >= 25
 
+func enemy_attack_effect(enemy: Dictionary, cells: Array, area: bool = false) -> void:
+	if cells.is_empty(): return
+	effects.append({"kind":"ENEMY_ATTACK","from":enemy.pos,"cell":cells[0],
+		"cells":cells.duplicate(),"area":area,"amount":0,"form":"IMPACT"})
+	if effects.size() > 32: effects.pop_front()
+
 func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	if target.hp <= 0: return
 	if boss_trial and target.enemy and rooms[room].shield:
@@ -488,6 +494,10 @@ func enemy_attack_turn(enemy: Dictionary) -> void:
 	if boss_trial: BossTrial.turn(self,enemy); return
 	if enemy.get("charging",false):
 		# Pushing removes the intent: interrupted charge loses the action.
+		var cells: Array = []
+		for intent in intents:
+			if intent.id == enemy.id: cells.append(intent.cell)
+		enemy_attack_effect(enemy,cells,true)
 		for intent in intents:
 			if intent.id != enemy.id: continue
 			var victim := at(intent.cell)
@@ -512,6 +522,7 @@ func enemy_attack_turn(enemy: Dictionary) -> void:
 	var steps := 2 if enemy.move_factor == 100 else 1
 	enemy.pos = best_path[mini(steps,best_path.size()-1)]
 	if melee_reach(enemy.pos,target.pos):
+		enemy_attack_effect(enemy,[target.pos])
 		damage(target,maxi(1,(10 if enemy.name == "수문장" else 7)*enemy.attack_factor/100),enemy.id,"IMPACT")
 
 func end_round() -> bool:

@@ -8,6 +8,7 @@ func _initialize() -> void:
 	call_deferred("exercise")
 
 func exercise() -> void:
+	attack_effect_checks()
 	var s = Session.new(731,true)
 	s.depart()
 	check(s.party.size() == 1 and s.phase == "BATTLE","solo begins with boss")
@@ -53,6 +54,14 @@ func exercise() -> void:
 	scene.session = Session.new(731,true)
 	root.add_child(scene); scene.depart()
 	await process_frame
+	scene.session.enemy_attack_effect(scene.session.enemies[0],[Vector2i(2,2),Vector2i(3,2)],true)
+	scene.action_effects = scene.session.effects.duplicate(true); scene.session.effects.clear(); scene.refresh()
+	await process_frame
+	check(scene.board.effects.any(func(e): return e.get("kind","") == "ENEMY_ATTACK"),"board receives blast effects without a damage event")
+	scene.board.effect_time = 0.25; scene.refresh()
+	check(not scene.board.effects.is_empty() and scene.board.effect_time == 0.25,"non-action UI refresh preserves effect and elapsed time")
+	scene.board._process(1.1)
+	check(scene.board.effects.is_empty(),"attack effects expire without consuming a turn")
 	check(scene.portrait_buttons.size() == 1 and scene.skill_buttons.size() == 2,"solo UI")
 	check(scene.end_turn_button == null,"action mode has no end-turn control")
 	var game = scene.session
@@ -100,3 +109,27 @@ func exercise() -> void:
 	scene.queue_free(); await process_frame
 	print("Boss trial: %d failures" % failures)
 	quit(1 if failures else 0)
+
+func attack_effect_checks() -> void:
+	for pattern in [0,1]:
+		var s = Session.new(731,true); s.depart(); s.room = pattern; s.enter_room()
+		var boss: Dictionary = s.enemies[0]
+		boss.cooldown = 0; s.party[0].pos = boss.pos+Vector2i.LEFT
+		s.round_number = 3; s.plan_enemies(); s.effects.clear()
+		var marked: Array = s.intents.map(func(i): return i.cell)
+		s.party[0].pos = Vector2i.ZERO
+		var hp: int = s.party[0].hp
+		s.enemy_attack_turn(boss)
+		check(s.effects.is_empty(),"charging is not rendered as an executed attack")
+		s.enemy_attack_turn(boss)
+		var blasts: Array = s.effects.filter(func(e): return e.get("kind","") == "ENEMY_ATTACK")
+		check(blasts.size() == 1 and blasts[0].cells == marked and blasts[0].area,"empty blast still renders every marked tile once")
+		check(s.party[0].hp == hp and s.effects.size() == 1,"missed blast has no fake damage number")
+	var s = Session.new(731,true); s.depart()
+	var boss: Dictionary = s.enemies[0]
+	s.party[0].pos = boss.pos+Vector2i.LEFT; boss.cooldown = 9
+	s.effects.clear(); s.enemy_attack_turn(boss)
+	check(s.effects.size() == 2 and s.effects[0].get("kind","") == "ENEMY_ATTACK" and not s.effects[0].area and s.effects[1].amount > 0,"melee has attack motion plus real damage feedback")
+	boss.charging = true; boss.fuse = 1; s.intents.clear(); s.effects.clear()
+	s.enemy_attack_turn(boss)
+	check(s.effects.is_empty(),"interrupted warning does not show a blast")

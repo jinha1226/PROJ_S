@@ -22,7 +22,7 @@ func preview_rect(actor: Dictionary) -> Rect2:
 func _process(delta: float) -> void:
 	if effects.is_empty(): return
 	effect_time += delta
-	if effect_time > 0.75: effects.clear()
+	if effect_time > 1.0: effects.clear()
 	queue_redraw()
 
 func _ready() -> void:
@@ -147,6 +147,7 @@ func _draw() -> void:
 				var side := half_width*1.65
 				var flash := Color.WHITE
 				for effect in effects:
+					if effect.get("kind","") == "ENEMY_ATTACK": continue
 					if effect.cell == point and effect_time < 0.35:
 						center.x += sin(effect_time*65)*4*(1-effect_time/0.35)
 						flash = Color(2,0.6,0.6)
@@ -164,6 +165,9 @@ func _draw() -> void:
 		draw_style_box(_preview_background(color),badge)
 		draw_string(ui_font,badge.position+Vector2(2,13),text+(" 예약" if preview.get("reserved",false) else " 예정"),HORIZONTAL_ALIGNMENT_CENTER,badge.size.x-4,10,color)
 	for effect in effects:
+		if effect.get("kind","") == "ENEMY_ATTACK":
+			draw_enemy_attack(effect); continue
+		if effect_time >= 0.75: continue
 		var center := cell_center(effect.cell)-Vector2(0,half_width*0.65)
 		var fade := 1.0-effect_time/0.75
 		var color := Color(1,0.85,0.5,fade) if effect.form != "ELECTRIC" else Color(0.4,0.8,1,fade)
@@ -172,6 +176,33 @@ func _draw() -> void:
 			draw_line(center-Vector2(15,-12),center+Vector2(15,-12),color,5,true)
 			draw_arc(center,8+effect_time*45,0,TAU,20,color,2,true)
 		draw_string(ui_font,center+Vector2(-12,-14-effect_time*30),"-%d" % effect.amount,HORIZONTAL_ALIGNMENT_LEFT,-1,20,color)
+
+func draw_enemy_attack(effect: Dictionary) -> void:
+	var fade := clampf(1.0-effect_time,0,1)
+	var impact := Color(1,0.25,0.12,fade)
+	var center := Vector2.ZERO
+	for cell in effect.cells:
+		var point := cell_center(cell)
+		center += point
+		var polygon := tile_polygon(Vector2(cell))
+		draw_colored_polygon(polygon,Color(1,0.12,0.04,fade*(0.55 if effect_time < 0.2 else 0.22)))
+		outline(polygon,impact,3)
+		var radius := half_width*(0.25+minf(effect_time*3,0.7))
+		draw_arc(point,radius,0,TAU,20,Color(1,0.8,0.4,fade),2,true)
+		if effect_time < 0.4:
+			for direction in [Vector2.UP,Vector2.RIGHT,Vector2.DOWN,Vector2.LEFT]:
+				draw_line(point+direction*radius*0.45,point+direction*radius,impact,3,true)
+	center /= maxf(1,effect.cells.size())
+	if not effect.area:
+		var start := cell_center(effect.from)
+		var tip := start.lerp(center,clampf(effect_time*8,0,1))
+		draw_line(start,tip,impact,5,true)
+		var slash := Vector2(half_width*0.5,-half_width*0.5)
+		draw_line(center-slash,center+slash,Color(1,0.85,0.65,fade),4,true)
+	var caption := "폭발!" if effect.area else "공격!"
+	var box := Rect2(Vector2(clampf(center.x-30,0,maxf(0,size.x-60)),center.y-half_width-20),Vector2(60,20))
+	draw_style_box(_preview_background(impact),box)
+	draw_string(ui_font,box.position+Vector2(2,15),caption,HORIZONTAL_ALIGNMENT_CENTER,56,13,Color(1,0.85,0.65,fade))
 
 func _preview_background(color: Color) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()

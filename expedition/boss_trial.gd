@@ -63,7 +63,12 @@ static func turn(s, boss: Dictionary) -> void:
 	if boss.get("charging",false):
 		boss.fuse = maxi(0,boss.get("fuse",1)-1)
 		if boss.fuse > 0: return
+		var cells: Array = []
 		for intent in s.intents:
+			if intent.id == boss.id: cells.append(intent.cell)
+		s.enemy_attack_effect(boss,cells,true)
+		for intent in s.intents:
+			if intent.id != boss.id: continue
 			for ally in s.alive():
 				if intent.cell == ally.pos: s.damage(ally,intent.damage,boss.id,"IMPACT")
 		boss.charging = false
@@ -76,6 +81,7 @@ static func turn(s, boss: Dictionary) -> void:
 		return
 	if row.pattern == 0: boss.cooldown = maxi(0,boss.get("cooldown",0)-1)
 	if s.melee_reach(boss.pos,hero.pos):
+		s.enemy_attack_effect(boss,[hero.pos])
 		s.damage(hero,6,boss.id,"IMPACT"); return
 	var goals: Array = []
 	for direction in s.DIRECTIONS:
