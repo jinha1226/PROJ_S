@@ -3,6 +3,11 @@ extends RefCounted
 const NAMES = ["수렁 포식자", "폭탄 암살자", "과부하 거인"]
 const HINTS = ["폭발 후 탈진 틈에 공격 · 물에서 회복", "폭탄 예고 회피 · 순간이동한 보스 추격", "보호막 가동 시 전력탑 옆에서 탑 터치"]
 
+static func target(s) -> Dictionary:
+	var allies: Array = s.alive()
+	allies.sort_custom(func(a,b): return s.distance(a.pos,s.enemies[0].pos) < s.distance(b.pos,s.enemies[0].pos))
+	return allies[0]
+
 static func prepare(s) -> void:
 	for row in s.rooms:
 		row.kind = "boss"; row.cleared = false
@@ -38,11 +43,11 @@ static func plan(s) -> void:
 				if s.at(cell).is_empty(): row.pylon = cell; break
 		return
 	if row.pattern == 0:
-		if boss.get("recovery",0) > 0 or boss.get("cooldown",0) > 0 or s.distance(boss.pos,s.party[0].pos) != 1: return
+		if boss.get("recovery",0) > 0 or boss.get("cooldown",0) > 0 or s.distance(boss.pos,target(s).pos) != 1: return
 	elif s.round_number % 3 != 0: return
 	boss.charging = true
 	boss.fuse = 2
-	var center: Vector2i = boss.pos if row.pattern == 0 else s.party[0].pos
+	var center: Vector2i = boss.pos if row.pattern == 0 else target(s).pos
 	for y in range(8):
 		for x in range(8):
 			var cell := Vector2i(x,y)
@@ -51,7 +56,7 @@ static func plan(s) -> void:
 
 static func turn(s, boss: Dictionary) -> void:
 	var row: Dictionary = s.rooms[s.room]
-	var hero: Dictionary = s.party[0]
+	var hero: Dictionary = target(s)
 	if row.pattern == 0 and s.tile(boss.pos).terrain == "water": boss.hp = mini(boss.max_hp,boss.hp+3)
 	if boss.get("recovery",0) > 0:
 		boss.recovery -= 1; return
@@ -59,7 +64,8 @@ static func turn(s, boss: Dictionary) -> void:
 		boss.fuse = maxi(0,boss.get("fuse",1)-1)
 		if boss.fuse > 0: return
 		for intent in s.intents:
-			if intent.cell == hero.pos: s.damage(hero,intent.damage,boss.id,"IMPACT")
+			for ally in s.alive():
+				if intent.cell == ally.pos: s.damage(ally,intent.damage,boss.id,"IMPACT")
 		boss.charging = false
 		if row.pattern == 0:
 			boss.recovery = 2; boss.cooldown = 4
@@ -79,7 +85,7 @@ static func turn(s, boss: Dictionary) -> void:
 
 static func disable_pylon(s, point: Vector2i) -> bool:
 	var row: Dictionary = s.rooms[s.room]
-	var hero: Dictionary = s.party[0]
+	var hero: Dictionary = s.party[s.selected]
 	if s.phase != "BATTLE" or not row.shield or point != row.pylon or hero.ap <= 0 or s.distance(hero.pos,point) != 1: return false
 	row.shield = false; hero.ap -= 1
 	s.message("전력탑 파괴 · 보스 보호막 해제!")

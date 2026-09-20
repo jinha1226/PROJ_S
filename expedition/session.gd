@@ -9,6 +9,9 @@ const Injury = preload("res://sim/body_injury_system.gd")
 const Dungeon = preload("res://expedition/dungeon_map.gd")
 const BossTrial = preload("res://expedition/boss_trial.gd")
 var boss_trial := false
+const Tactics = preload("res://expedition/tactical_action_selector.gd")
+var companions := false
+var resolving_companions := false
 const DIRECTIONS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]
 var rooms: Array = []
 var seed_value := 731
@@ -35,15 +38,17 @@ var hunger := 0
 var supplies: Array = [2,2,1,1,1,3]
 const SUPPLY_NAMES = ["치유 물약","정신 안정제","활력 물약","화염 두루마리","물 두루마리","붕대"]
 
-func _init(p_seed: int = 731, p_boss_trial: bool = false) -> void:
+func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = false) -> void:
 	seed_value = p_seed
 	boss_trial = p_boss_trial
-	for i in range(1 if boss_trial else 3):
+	companions = p_companions and boss_trial
+	for i in range(2 if companions else 1 if boss_trial else 3):
 		party.append(make_actor(i, ["아린", "브란", "세라"][i], false))
 	message("부상과 기억은 원정을 마쳐도 남습니다. 준비되면 출정하세요.")
 
 func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 	var actor := {"id":id, "name":actor_name, "enemy":enemy,
+		"tactics":{"PUSH":"PROTECT","GUARD":"LOW_HP"},"priority":"PUSH","last_action":"대기",
 		"pos":Vector2i.ZERO, "hp":28 if enemy else 55, "max_hp":28 if enemy else 55,
 		"stress":0, "condition":"평온", "ap":2,
 		"body":Body.create(id, seed_value, enemy),
@@ -215,9 +220,9 @@ func is_free(point: Vector2i) -> bool:
 func distance(a: Vector2i, b: Vector2i) -> int:
 	return absi(a.x - b.x) + absi(a.y - b.y)
 
-func movement_cells() -> Array:
+func movement_cells(actor_index: int = -1) -> Array:
 	var result: Array = []
-	var actor: Dictionary = party[selected]
+	var actor: Dictionary = party[selected if actor_index < 0 else actor_index]
 	if phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0: return result
 	var frontier: Array = [actor.pos]
 	var seen: Array = [actor.pos]
@@ -231,20 +236,20 @@ func movement_cells() -> Array:
 		frontier = next
 	return result
 
-func attack_cells() -> Array:
+func attack_cells(actor_index: int = -1) -> Array:
 	var result: Array = []
-	var actor: Dictionary = party[selected]
+	var actor: Dictionary = party[selected if actor_index < 0 else actor_index]
 	if phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0: return result
 	for direction in DIRECTIONS:
 		var cell: Vector2i = actor.pos + direction
 		if inside(cell) and tile(cell).terrain != "wall": result.append(cell)
 	return result
 
-func attack_preview(target: Vector2i) -> Dictionary:
-	if target not in attack_cells(): return {}
+func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
+	if target not in attack_cells(actor_index): return {}
 	var victim := at(target)
 	if victim.is_empty() or not victim.enemy: return {}
-	var actor: Dictionary = party[selected]
+	var actor: Dictionary = party[selected if actor_index < 0 else actor_index]
 	var hit := TurnCore.physical(18 * actor.attack_factor / 100, 1000, 0, 2)
 	var amount := int(hit.damage)
 	if victim.get("guarded",false): amount = maxi(1,amount / 2)
@@ -294,7 +299,35 @@ func act(kind: String, target: Vector2i) -> bool:
 	return true
 
 func finish_player_action() -> void:
-	if boss_trial and phase == "BATTLE": end_round()
+	if not boss_trial or phase != "BATTLE" or resolving_companions: return
+	var leader := selected
+	resolving_companions = true
+	if companions:
+		for i in range(party.size()):
+			if i == leader or party[i].hp <= 0 or phase != "BATTLE": continue
+			selected = i
+			var choice: Dictionary = Tactics.choose(self,party[i])
+			if act(choice.kind,choice.cell): party[i].last_action = choice.reason
+	selected = leader
+	resolving_companions = false
+	if phase == "BATTLE": end_round()
+
+func companion_previews() -> Array:
+	var previews: Array = []
+	if not companions or phase != "BATTLE": return previews
+	for actor in party:
+		if actor.id == selected or actor.hp <= 0 or actor.ap <= 0: continue
+		var choice: Dictionary = Tactics.choose(self,actor).duplicate(true)
+		choice.actor = actor.id
+		previews.append(choice)
+	return previews
+
+func set_tactic(index: int, skill: String, policy: String) -> bool:
+	if index < 0 or index >= party.size(): return false
+	var allowed: Array = ["PROTECT","OFFENSE","MANUAL"] if skill == "PUSH" else ["DANGER","LOW_HP","MANUAL"] if skill == "GUARD" else []
+	if policy not in allowed: return false
+	party[index].tactics[skill] = policy
+	return true
 
 func discharge(origin: Vector2i, source: int) -> void:
 	var queue: Array = [{"pos":origin, "power":18}]
@@ -406,6 +439,7 @@ func end_round() -> bool:
 		stress(actor, 2 if light >= 35 else 5)
 		actor.ap = action_budget(actor)
 	round_number += 1
+	if companions and party[selected].hp <= 0: selected = party.find(alive()[0])
 	plan_enemies()
 	return true
 

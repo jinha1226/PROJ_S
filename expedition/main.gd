@@ -6,7 +6,7 @@ const Art = preload("res://expedition/mobile_art.gd")
 const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 const SKILLS = [["PUSH","GUARD"],["ATTACK","GUARD"],["WATER","ELECTRIC"]]
 const SKILL_NAMES = [["밀쳐내기","방어"],["강타","방어"],["물","방전"]]
-var session = Session.new(randi(),true)
+var session = Session.new(randi(),true,true)
 var mode := ""
 var pending_item := -1
 var pending_attack: Dictionary = {}
@@ -98,6 +98,7 @@ func refresh() -> void:
 	board.show_attack_range = show_attack_range
 	board.effects = action_effects; action_effects = []
 	board.target_cell = pending_attack.get("cell",Vector2i(-1,-1))
+	board.companion_previews = session.companion_previews()
 	if session.boss_trial and session.phase == "BATTLE":
 		var boss_info := label(board,session.rooms[session.room].name+" · HP %d/%d\n" % [session.enemies[0].hp,session.enemies[0].max_hp]+Session.BossTrial.HINTS[session.rooms[session.room].pattern],11)
 		boss_info.position = Vector2(8,4)
@@ -109,7 +110,7 @@ func refresh() -> void:
 	if session.phase == "BATTLE":
 		var advance: Button
 		if session.boss_trial:
-			advance = button(board,"한 턴 대기",func(): run_action(func(): return session.act("WAIT",session.party[0].pos)))
+			advance = button(board,"한 턴 대기",func(): run_action(func(): return session.act("WAIT",session.party[session.selected].pos)))
 		else:
 			advance = button(board,"턴 종료",func(): run_action(session.end_round)); end_turn_button = advance
 		advance.custom_minimum_size = Vector2(96,48)
@@ -133,7 +134,7 @@ func refresh() -> void:
 		var skills := HBoxContainer.new(); skills.add_theme_constant_override("separation",3); column.add_child(skills)
 		if session.party.size() == 1: skills.custom_minimum_size.x = 128
 		for slot in range(2):
-			var skill := icon_button(skills,Art.skill(i*2+slot),func(): choose_skill(i,slot),SKILL_NAMES[i][slot])
+			var skill := icon_button(skills,Art.skill(slot if session.companions else i*2+slot),func(): choose_skill(i,slot),SKILL_NAMES[0 if session.companions else i][slot])
 			skill.disabled = session.phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0; skill_buttons.append(skill)
 		var portrait_box := VBoxContainer.new(); portrait_box.size_flags_horizontal = SIZE_EXPAND_FILL; portrait_box.add_theme_constant_override("separation",2); column.add_child(portrait_box)
 		var portrait := button(portrait_box,"",func(): select_actor(i)); portrait.custom_minimum_size.y = 48; portrait_buttons.append(portrait)
@@ -155,13 +156,14 @@ func refresh() -> void:
 		var icon := TextureRect.new(); icon.texture = Art.navigation(index); icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; icon.mouse_filter = MOUSE_FILTER_IGNORE
 		node.add_child(icon); icon.set_anchors_and_offsets_preset(PRESET_FULL_RECT); icon.offset_bottom = -19; icon.offset_top = 3
-		var title := label(node,["상태","가방","장비","원정"][index],12); title.set_anchors_and_offsets_preset(PRESET_BOTTOM_WIDE); title.offset_top = -18; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var title := label(node,["상태","가방","전술","원정"][index],12); title.set_anchors_and_offsets_preset(PRESET_BOTTOM_WIDE); title.offset_top = -18; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 func depart() -> void:
-	if session.phase == "DEFEAT" or session.alive().is_empty(): session = Session.new(randi(),true)
+	if session.phase == "DEFEAT" or session.alive().is_empty(): session = Session.new(randi(),true,true)
 	run_action(session.depart)
 
 func select_actor(index: int) -> void:
+	if session.party[index].hp <= 0: return
 	pending_attack = {}; show_attack_range = false
 	session.selected = index; mode = ""; pending_item = -1; notice = session.party[index].name; refresh()
 
@@ -191,9 +193,9 @@ func confirm_attack() -> void:
 	run_action(func(): return session.act("ATTACK",point))
 
 func choose_skill(actor: int, slot: int) -> void:
-	select_actor(actor); mode = SKILLS[actor][slot]
+	select_actor(actor); mode = SKILLS[0 if session.companions else actor][slot]
 	if mode == "GUARD": run_action(func(): return session.act("GUARD",session.party[actor].pos)); return
-	notice = "%s · 대상 칸 선택" % SKILL_NAMES[actor][slot]; refresh()
+	notice = "%s · 대상 칸 선택" % SKILL_NAMES[0 if session.companions else actor][slot]; refresh()
 
 func choose_item(slot: int) -> void:
 	pending_attack = {}
@@ -240,11 +242,31 @@ func open_management(index: int) -> void:
 			for memory in actor.memory.records: body += "%s · 강도 %d\n" % [memory.kind,memory.salience]
 			modal("상태",body)
 		1: show_supplies()
-		2: modal("장비",actor.name+"\n\n부위 기능 반영 공격력: %d%%\n이동 비용: %d%%\n\n현재 공통 기본 공격을 사용합니다.\n장비 목록과 교체 기능은 준비 중입니다." % [actor.attack_factor,actor.move_factor])
+		2: show_tactics()
 		3:
 			modal("원정","목표: 보스 처치 후 귀환\n탐색: %d / 9개 방\n전리품: %d\n자금: %d\n\n" % [session.visited.size(),session.loot,session.bank]+("행동 한 번마다 적도 행동합니다. 자신을 누르면 대기. 미리보기는 시간을 쓰지 않습니다." if session.boss_trial else "전원 행동력 소진 시 적 차례."))
 			if session.phase in ["BATTLE","EXPLORE"]: button(modal_content,"철수 · 전리품 절반" if session.phase == "BATTLE" else "귀환",func(): details_popup.hide(); run_action(session.retreat))
 			if session.phase == "TOWN": button(modal_content,"요양 · 20 자금",func(): details_popup.hide(); run_action(session.rest_town),session.bank >= 20)
+
+func show_tactics() -> void:
+	clear(modal_content)
+	label(modal_content,"동료 전술 · 위쪽 스킬 우선",18)
+	label(modal_content,"선택한 대원은 직접 조작 · 나머지는 자동\n방침 변경은 턴을 쓰지 않습니다. 원정 간 유지.",11)
+	for i in range(session.party.size()):
+		var actor: Dictionary = session.party[i]
+		label(modal_content,actor.name+" · "+actor.last_action,12)
+		for skill in [actor.priority,"GUARD" if actor.priority == "PUSH" else "PUSH"]:
+			var row := HBoxContainer.new(); modal_content.add_child(row)
+			label(row,"밀치기" if skill == "PUSH" else "방어")
+			var pick := OptionButton.new(); pick.custom_minimum_size = Vector2(180,44); row.add_child(pick)
+			var values: Array = ["PROTECT","OFFENSE","MANUAL"] if skill == "PUSH" else ["DANGER","LOW_HP","MANUAL"]
+			var names: Array = ["보호용 · 위협 감소","공격용 · 충돌/불","수동 전용"] if skill == "PUSH" else ["위험할 때","체력 절반 이하 + 위험","수동 전용"]
+			for title in names: pick.add_item(title)
+			pick.select(values.find(actor.tactics[skill]))
+			pick.item_selected.connect(func(option): session.set_tactic(i,skill,values[option]); refresh())
+		button(modal_content,"우선순위 교체",func(): actor.priority = "GUARD" if actor.priority == "PUSH" else "PUSH"; refresh(); show_tactics())
+	button(modal_content,"닫기",func(): details_popup.hide())
+	details_popup.popup_centered()
 
 func show_supplies() -> void:
 	var body := "파티 공용 소모품\n선택한 대원: %s\n\n" % session.party[session.selected].name

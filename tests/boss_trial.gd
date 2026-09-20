@@ -50,6 +50,7 @@ func exercise() -> void:
 		s.enter_room()
 		check(s.phase == "EXPLORE" and s.enemies.size() == 1,"cleared boss never respawns")
 	var scene = load("res://expedition/main.tscn").instantiate()
+	scene.session = Session.new(731,true)
 	root.add_child(scene); scene.depart()
 	await process_frame
 	check(scene.portrait_buttons.size() == 1 and scene.skill_buttons.size() == 2,"solo UI")

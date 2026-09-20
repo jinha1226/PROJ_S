@@ -11,6 +11,11 @@ var show_attack_range := false
 var target_cell := Vector2i(-1,-1)
 var effects: Array = []
 var effect_time := 0.0
+var companion_previews: Array = []
+
+func preview_rect(actor: Dictionary) -> Rect2:
+	var center := cell_center(actor.pos)
+	return Rect2(Vector2(clampf(center.x-29,0,maxf(0,size.x-58)),maxf(origin.y,center.y-half_width-19)),Vector2(58,18))
 
 func _process(delta: float) -> void:
 	if effects.is_empty(): return
@@ -118,6 +123,15 @@ func _draw() -> void:
 				draw_texture_rect(sprite,Rect2(center-Vector2.ONE*side/2,Vector2.ONE*side),false,flash)
 				draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24,3)),Color("191d24"))
 				draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24*float(actor.hp)/actor.max_hp,3)),Color("ce7770") if actor.enemy else Color("9ec987"))
+	# Draw after all actors, so another tile cannot paint over the intent badge.
+	for preview in companion_previews:
+		var actor: Dictionary = session.party[preview.actor]
+		if actor.hp <= 0: continue
+		var badge := preview_rect(actor)
+		var text: String = {"PUSH":"밀치기","GUARD":"방어","ATTACK":"공격","MOVE":"이동","WAIT":"대기"}.get(preview.kind,preview.kind)
+		var color := Color("f1ca79") if preview.kind in ["PUSH","GUARD"] else Color("a6d8e8")
+		draw_style_box(_preview_background(color),badge)
+		draw_string(ui_font,badge.position+Vector2(2,13),text+" 예정",HORIZONTAL_ALIGNMENT_CENTER,badge.size.x-4,10,color)
 	for effect in effects:
 		var center := cell_center(effect.cell)-Vector2(0,half_width*0.65)
 		var fade := 1.0-effect_time/0.75
@@ -127,6 +141,12 @@ func _draw() -> void:
 			draw_line(center-Vector2(15,-12),center+Vector2(15,-12),color,5,true)
 			draw_arc(center,8+effect_time*45,0,TAU,20,color,2,true)
 		draw_string(ui_font,center+Vector2(-12,-14-effect_time*30),"-%d" % effect.amount,HORIZONTAL_ALIGNMENT_LEFT,-1,20,color)
+
+func _preview_background(color: Color) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(0.04,0.07,0.1,0.95); box.border_color = color
+	box.set_border_width_all(1); box.set_corner_radius_all(3)
+	return box
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
