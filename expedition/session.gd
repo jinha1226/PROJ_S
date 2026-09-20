@@ -43,7 +43,7 @@ func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = f
 	seed_value = p_seed
 	boss_trial = p_boss_trial
 	companions = p_companions and boss_trial
-	for i in range(2 if companions else 1 if boss_trial else 3):
+	for i in range(3 if companions else 1 if boss_trial else 3):
 		party.append(make_actor(i, ["아린", "브란", "세라"][i], false))
 	message("부상과 기억은 원정을 마쳐도 남습니다. 준비되면 출정하세요.")
 
