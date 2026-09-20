@@ -123,12 +123,6 @@ func refresh() -> void:
 	board.effect_time = elapsed
 	board.target_cell = pending_attack.get("cell",Vector2i(-1,-1))
 	board.companion_previews = session.companion_previews()
-	if session.boss_trial and session.phase == "BATTLE":
-		var boss_info := label(board,session.rooms[session.room].name+" · HP %d/%d" % [session.enemies[0].hp,session.enemies[0].max_hp],11)
-		boss_info.position = Vector2(8,4)
-		var fuse: int = session.enemies[0].get("fuse",0)
-		if fuse > 0 and not session.intents.is_empty(): boss_info.text += "\n폭발까지 %d행동" % fuse
-		elif session.enemies[0].get("recovery",0) > 0: boss_info.text += "\n탈진 · %d행동 동안 반격 없음" % session.enemies[0].recovery
 	attack_button = null
 	end_turn_button = null
 	if session.phase == "BATTLE":

@@ -104,7 +104,8 @@ func exercise() -> void:
 			for x in range(8):
 				var cell := Vector2i(x,y)
 				check(scene.board.cell_at(scene.board.cell_center(cell)) == cell,"64 top-down touch targets")
-		check(not game.inside(scene.board.cell_at(Vector2(5,5))),"boss HUD is not a tile")
+		check(scene.board.cell_at(Vector2(5,5)) == Vector2i.ZERO,"board starts immediately below HUD without boss info band")
+		check(scene.board.find_children("*","Label",true,false).is_empty(),"no monster name HP or countdown panel over board")
 		check(not game.inside(scene.board.cell_at(Vector2(5,scene.board.size.y-5))),"footer is not a tile")
 	scene.queue_free(); await process_frame
 	print("Boss trial: %d failures" % failures)
