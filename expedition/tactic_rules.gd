@@ -2,7 +2,10 @@ extends RefCounted
 ## Shared rule schema: UI and AI use the same catalog and validation.
 const SKILLS = {
 	"PUSH":{"name":"밀치기","targets":["NEAREST","LOWEST_HP"],"conditions":["ALWAYS","HP","STATUS","CHARGING","DANGER"]},
-	"GUARD":{"name":"방어","targets":["SELF"],"conditions":["ALWAYS","HP","STATUS","DANGER"]}}
+	"GUARD":{"name":"방어","targets":["SELF"],"conditions":["ALWAYS","HP","STATUS","DANGER"]},
+	"SHOCKWAVE":{"name":"수렁 충격파","targets":["SELF"],"conditions":["ALWAYS","HP","STATUS","DANGER"]},
+	"BOMB":{"name":"폭탄 투척","targets":["NEAREST","LOWEST_HP"],"conditions":["ALWAYS","HP","STATUS","CHARGING","DANGER"]},
+	"IRON_HIDE":{"name":"철갑 방어","targets":["SELF"],"conditions":["ALWAYS","HP","STATUS","DANGER"]}}
 const BASIC_TARGETS = ["NEAREST","LOWEST_HP"]
 const BASIC_TARGET_DEFAULT = "NEAREST"
 const TARGET_NAMES = {"NEAREST":"가까운 적","LOWEST_HP":"체력이 낮은 적","SELF":"자신"}

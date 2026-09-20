@@ -38,7 +38,7 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 			var after := 0 if enemy.get("charging",false) else threat(s,enemy,ally.pos,landing if moved else enemy.pos)
 			benefit += before-after
 			if after > before: unsafe = true
-		var bonus := 0 if moved else 8
+		var bonus: int = 0 if moved else s.Growth.power(actor,"MELEE",8)
 		if moved: bonus += maxi(0,int(s.tile(landing).fire)-int(s.tile(enemy.pos).fire))
 		# Do not push a foe onto healing water or out of another ally's melee reach.
 		if moved:
@@ -48,6 +48,17 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 		if not unsafe:
 			options.append({"kind":"PUSH","cell":enemy.pos,"score":40+benefit+bonus,"reason":"밀치기"})
 	options.append({"kind":"GUARD","cell":actor.pos,"score":35,"reason":"방어"})
+	for id in actor.equipped_abilities:
+		if not s.Abilities.DEFINITIONS.has(id): continue
+		var def: Dictionary = s.Abilities.DEFINITIONS[id]
+		var targets: Array = [actor] if def.target == "SELF" else s.enemies
+		for target in targets:
+			if not s.Abilities.legal(s,actor,id,target.pos): continue
+			if def.damage > 0:
+				var cells: Array = s.Abilities.cells(s,actor,id,target.pos)
+				if s.alive().any(func(a): return (a.id != actor.id or id == "BOMB") and a.pos in cells): continue
+				if not s.enemies.any(func(e): return e.hp > 0 and e.pos in cells): continue
+			options.append({"kind":id,"cell":target.pos,"score":40,"reason":def.name})
 	# Safety escape first, then the first matching configured rule. No score
 	# from a lower-priority skill may override an earlier valid rule.
 	var escapes: Array = options.filter(func(o): return o.kind == "MOVE")
@@ -56,6 +67,7 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 		return escapes[0]
 	for index in range(actor.rules.size()):
 		var rule: Dictionary = actor.rules[index]
+		if rule.skill not in actor.equipped_abilities: continue
 		var matches: Array = options.filter(func(o): return s.Rules.matches(s,actor,o,rule))
 		if matches.is_empty(): continue
 		matches.sort_custom(func(a,b):

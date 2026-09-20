@@ -3,6 +3,12 @@ const Session = preload("res://expedition/session.gd")
 const Board = preload("res://expedition/board.gd")
 const MapView = preload("res://expedition/map_view.gd")
 const Art = preload("res://expedition/mobile_art.gd")
+const InventorySlot = preload("res://expedition/inventory_slot.gd")
+var inventory_filter := "전체"
+var inventory_selected := ""
+var inventory_slots: Array = []
+var item_popup: PopupPanel
+var item_detail: VBoxContainer
 const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 const SKILLS = [["PUSH","GUARD"],["ATTACK","GUARD"],["WATER","ELECTRIC"]]
 const SKILL_NAMES = [["밀쳐내기","방어"],["강타","방어"],["물","방전"]]
@@ -52,6 +58,8 @@ func _ready() -> void:
 	button(map_box,"닫기",func(): map_popup.hide())
 	details_popup = PopupPanel.new(); add_child(details_popup)
 	modal_content = VBoxContainer.new(); modal_content.custom_minimum_size = Vector2(320,340); details_popup.add_child(modal_content)
+	item_popup = PopupPanel.new(); add_child(item_popup)
+	item_detail = VBoxContainer.new(); item_detail.custom_minimum_size = Vector2(300,200); item_popup.add_child(item_detail)
 	refresh()
 
 func clear(node: Node) -> void:
@@ -111,6 +119,7 @@ func refresh() -> void:
 	root_layout.add_child(board)
 	board.show_attack_range = show_attack_range
 	board.input_actor = reservation_actor
+	board.targeting_skill = mode
 	board.effects = action_effects; action_effects = []
 	board.effect_time = elapsed
 	board.target_cell = pending_attack.get("cell",Vector2i(-1,-1))
@@ -149,14 +158,20 @@ func refresh() -> void:
 		var skills := HBoxContainer.new(); skills.add_theme_constant_override("separation",3); column.add_child(skills)
 		if session.party.size() == 1: skills.custom_minimum_size.x = 128
 		for slot in range(2):
-			var skill := icon_button(skills,Art.skill(slot if session.companions else i*2+slot),func(): choose_skill(i,slot),SKILL_NAMES[0 if session.companions else i][slot])
+			var skill_id: String = actor.equipped_abilities[slot] if session.boss_trial else SKILLS[i][slot]
+			var skill_name: String = Session.Rules.SKILLS.get(skill_id,{}).get("name",skill_id)
+			var skill := icon_button(skills,Art.skill(slot if session.boss_trial else i*2+slot),func(): choose_skill(i,slot),skill_name)
+			if Session.Abilities.DEFINITIONS.has(skill_id):
+				var caption := label(skill,skill_name+ (" %d" % actor.cooldowns.get(skill_id,0) if actor.cooldowns.get(skill_id,0) > 0 else ""),10)
+				caption.set_anchors_and_offsets_preset(PRESET_BOTTOM_WIDE); caption.offset_top = -16; caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			skill.disabled = session.phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0; skill_buttons.append(skill)
+			if actor.cooldowns.get(skill_id,0) > 0: skill.disabled = true
 		var portrait_box := VBoxContainer.new(); portrait_box.size_flags_horizontal = SIZE_EXPAND_FILL; portrait_box.add_theme_constant_override("separation",2); column.add_child(portrait_box)
 		var portrait := button(portrait_box,"",func(): select_actor(i)); portrait.custom_minimum_size.y = 48; portrait_buttons.append(portrait)
 		var face := TextureRect.new(); face.texture = Art.portrait(i); face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED; face.mouse_filter = MOUSE_FILTER_IGNORE
 		portrait.add_child(face); face.set_anchors_and_offsets_preset(PRESET_FULL_RECT); face.offset_bottom = -18; face.offset_top = 2; face.offset_left = 2; face.offset_right = -2
-		var name_label := label(portrait,"%s  %d/%d" % [actor.name,actor.hp,actor.max_hp],11); name_label.position = Vector2(4,30)
+		var name_label := label(portrait,"%s Lv.%d  %d/%d" % [actor.name,actor.growth.level,actor.hp,actor.max_hp],11); name_label.position = Vector2(4,30)
 		if i == session.selected:
 			var gold := portrait.get_theme_stylebox("normal").duplicate(); gold.border_color = Color("e9c575"); gold.set_border_width_all(2); portrait.add_theme_stylebox_override("normal",gold)
 		if actor.hp <= 0: portrait.modulate = Color("636369")
@@ -173,7 +188,9 @@ func refresh() -> void:
 		button(nav,"예약 취소",func(): session.cancel_reservation(reservation_actor); reservation_actor = -1; mode = ""; notice = "예약 취소 · 자동 행동"; refresh())
 	else: button(nav,"탐험",show_map,session.phase in ["BATTLE","EXPLORE"])
 	button(nav,"전술",show_orders)
-	button(nav,"가방",show_supplies)
+	var essence_count := 0
+	for quantity in session.essences.values(): essence_count += int(quantity)
+	button(nav,"가방"+(" (%d)" % essence_count if essence_count > 0 else ""),show_supplies)
 	for node in nav.get_children(): node.custom_minimum_size.y = 49
 
 func depart() -> void:
@@ -191,12 +208,15 @@ func select_actor(index: int) -> void:
 	session.selected = index; mode = ""; pending_item = -1; notice = session.party[index].name; refresh()
 
 func run_action(callback: Callable) -> void:
+	var previous_essences: Dictionary = session.essences.duplicate()
 	session.effects.clear()
 	var accepted: bool = callback.call()
 	pending_attack = {}
 	notice = "" if accepted else "대상·거리·행동력·보유 수량을 확인하세요."
 	if accepted:
 		mode = ""; pending_item = -1; reservation_actor = -1
+		for id in session.essences:
+			if session.essences[id] > previous_essences.get(id,0): notice = "이능 획득 · "+Session.Abilities.DEFINITIONS[id].item+"! 가방에서 확인하세요."
 		if not session.boss_trial and session.phase == "BATTLE" and session.alive().all(func(a): return a.ap <= 0): session.end_round()
 	action_effects = session.effects.duplicate(true); session.effects.clear()
 	reset_effects = accepted
@@ -217,12 +237,14 @@ func confirm_attack() -> void:
 	run_action(func(): return session.act("ATTACK",point))
 
 func choose_skill(actor: int, slot: int) -> void:
-	select_actor(actor); mode = SKILLS[0 if session.companions else actor][slot]
+	if actor < 0 or actor >= session.party.size() or slot not in [0,1] or session.party[actor].hp <= 0: return
+	select_actor(actor); mode = session.party[actor].equipped_abilities[slot] if session.boss_trial else SKILLS[actor][slot]
+	var self_target: bool = mode == "GUARD" or Session.Abilities.DEFINITIONS.get(mode,{}).get("target","") == "SELF"
 	if reservation_actor >= 0:
-		if mode == "GUARD": queue_action("GUARD",session.party[actor].pos); return
+		if self_target: queue_action(mode,session.party[actor].pos); return
 		notice = session.party[actor].name+" · 스킬 예약 대상 선택"; refresh(); return
-	if mode == "GUARD": run_action(func(): return session.act("GUARD",session.party[actor].pos)); return
-	notice = "%s · 대상 칸 선택" % SKILL_NAMES[0 if session.companions else actor][slot]; refresh()
+	if self_target: run_action(func(): return session.act(mode,session.party[actor].pos)); return
+	notice = "%s · 대상 칸 선택" % Session.Rules.SKILLS.get(mode,{}).get("name",mode); refresh()
 
 func choose_item(slot: int) -> void:
 	reservation_actor = -1
@@ -305,14 +327,18 @@ func show_character(index: int, tab: String = "상태") -> void:
 	for i in range(session.party.size()):
 		button(members,session.party[i].name,func(): tactics_expanded = -1; show_character(i,character_tab))
 	var tabs := HBoxContainer.new(); modal_content.add_child(tabs)
-	for title in ["상태","성격","기억","숙련","가방"]:
+	for title in ["상태","성격","기억","숙련","이능","가방"]:
 		var tab_button := button(tabs,title,func(): show_character(tactics_actor,title))
 		tab_button.toggle_mode = true; tab_button.button_pressed = title == character_tab
 	if tab == "숙련":
 		build_tactics(); return
+	if tab == "이능":
+		build_abilities(); return
+	if tab == "가방":
+		build_inventory(); return
 	var body := ""
 	match tab:
-		"상태": body = "체력 %d/%d · 스트레스 %d\n%s\n\n%s" % [actor.hp,actor.max_hp,actor.stress,actor.condition,Session.Body.description(actor)]
+		"상태": body = "Lv.%d · XP %d / %d\n체력 %d/%d · 스트레스 %d\n%s\n\n%s\n\n근력 %d · 민첩 %d · 지능 %d\n일반 공격 기본 위력 %d · 방어 피해 감소 %d%%\n3레벨마다 스탯 1점. 근력: 근접, 민첩: 원거리, 지능: 마법 기본 위력 +2." % [actor.growth.level,actor.growth.xp,Session.Growth.threshold(mini(21,actor.growth.level+1)),actor.hp,actor.max_hp,actor.stress,actor.condition,Session.Body.description(actor),actor.growth.stats.STR,actor.growth.stats.DEX,actor.growth.stats.INT,Session.Growth.power(actor,"MELEE",18),actor.growth.ranks.DEFENSE*4]
 		"성격": body = actor.profile.style_summary().label
 		"기억":
 			for memory in actor.memory.records: body += "%s · 강도 %d\n" % [memory.kind,memory.salience]
@@ -321,6 +347,12 @@ func show_character(index: int, tab: String = "상태") -> void:
 			body = "소모품은 파티 공용입니다.\n\n"
 			for i in range(6): body += "%s × %d\n" % [Session.SUPPLY_NAMES[i],session.supplies[i]]
 	var text := RichTextLabel.new(); text.text = body; text.custom_minimum_size = Vector2(300,minf(300,size.y-270)); modal_content.add_child(text)
+	if tab == "상태":
+		label(modal_content,"남은 스탯 포인트 %d" % actor.growth.stat_points)
+		var stats := HBoxContainer.new(); modal_content.add_child(stats)
+		for id in Session.Growth.STATS:
+			button(stats,Session.Growth.STATS[id]+" +",func(): session.spend_growth(tactics_actor,id,true); refresh(); show_character(tactics_actor,"상태"),session.phase in ["TOWN","EXPLORE"] and actor.hp > 0 and actor.growth.stat_points > 0)
+	if tab == "가방": button(modal_content,"이능 전리품 · 먹을 인물 선택",show_essences)
 	button(modal_content,"닫기",func(): details_popup.hide()); details_popup.popup_centered()
 
 func show_tactics() -> void:
@@ -332,12 +364,17 @@ func build_tactics() -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; modal_content.add_child(scroll)
 	var list := VBoxContainer.new(); list.size_flags_horizontal = SIZE_EXPAND_FILL; list.add_theme_constant_override("separation",10); scroll.add_child(list)
 	var actor: Dictionary = session.party[tactics_actor]
+	label(list,"Lv.%d · 숙련 포인트 %d" % [actor.growth.level,actor.growth.points],14)
+	for axis in Session.Growth.AXES:
+		var row := HBoxContainer.new(); list.add_child(row)
+		label(row,"%s %d/10 · %s" % [Session.Growth.AXES[axis],actor.growth.ranks[axis],"피해 감소 +4%p" if axis == "DEFENSE" else "위력 +8%p"],11)
+		button(row,"+",func(): session.spend_growth(tactics_actor,axis); refresh(); show_tactics(),session.phase in ["TOWN","EXPLORE"] and actor.hp > 0 and actor.growth.points > 0 and actor.growth.ranks[axis] < 10)
 	label(list,"스킬 사용 순서",14)
 	for index in range(actor.rules.size()):
 		var rule: Dictionary = actor.rules[index]
 		var card := VBoxContainer.new(); list.add_child(card)
 		var header := HBoxContainer.new(); card.add_child(header)
-		button(header,"%d. %s  ⚙" % [index+1,Session.Rules.SKILLS[rule.skill].name],func(): tactics_expanded = -1 if tactics_expanded == index else index; show_tactics())
+		button(header,"%d. %s%s ⚙" % [index+1,Session.Rules.SKILLS[rule.skill].name,"" if rule.skill in actor.equipped_abilities else " (미장착)"],func(): tactics_expanded = -1 if tactics_expanded == index else index; show_tactics())
 		var enabled := CheckButton.new(); enabled.text = "자동"; enabled.button_pressed = rule.enabled; enabled.custom_minimum_size.y = 44; header.add_child(enabled)
 		enabled.toggled.connect(func(value): change_tactic_rule(index,"enabled",value))
 		var summary := label(card,Session.Rules.summary(rule),11); summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; summary.custom_minimum_size.x = 290
@@ -363,7 +400,7 @@ func build_tactics() -> void:
 	var hint := label(basic,"사용할 스킬이 없으면 공격 가능한 적을 공격합니다.\n공격할 수 없으면 안전하게 접근하거나 대기합니다.",11)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; hint.custom_minimum_size.x = 290
 	label(modal_content,"위험 칸 회피 우선 · 자동 OFF여도 직접 사용 가능",10)
-	button(modal_content,"기본값 복원",func(): actor.rules = Session.Rules.defaults(); session.set_basic_target(tactics_actor,Session.Rules.BASIC_TARGET_DEFAULT); refresh(); show_tactics())
+	button(modal_content,"행동방침 기본값 복원",func(): session.reset_rules(tactics_actor); refresh(); show_tactics())
 	button(modal_content,"닫기",func(): details_popup.hide())
 	details_popup.popup_centered()
 
@@ -381,7 +418,85 @@ func tactic_pick(parent: Node, title: String, values: Array, names: Dictionary, 
 	pick.item_selected.connect(func(index): changed.call(values[index]))
 
 func show_supplies() -> void:
-	var body := "파티 공용 소모품\n선택한 대원: %s\n\n" % session.party[session.selected].name
-	for i in range(6): body += "%s × %d\n" % [Session.SUPPLY_NAMES[i],session.supplies[i]]
-	modal("가방",body+("\n사용하면 적도 한 번 행동합니다." if session.boss_trial else "\n전투 중 행동력 1 소비."))
-	button(modal_content,"횃불 사용 · 밝기 +50",func(): details_popup.hide(); run_action(session.use_torch),session.phase == "EXPLORE" and session.torches > 0 and session.light < 100)
+	clear(modal_content); label(modal_content,"공용 가방",18); build_inventory()
+
+func inventory_rows() -> Array:
+	var rows: Array = []
+	var descriptions := ["선택한 대원의 체력 20 회복 및 부상 치료.","선택한 대원의 스트레스 25 감소.","파티 배고픔 30, 대상 스트레스 10 감소.","전투 중 나무 바닥에 불을 붙입니다. 사거리 4.","전투 중 대상 바닥을 적십니다. 사거리 4.","선택한 대원의 체력 10 회복 및 부상 치료."]
+	for i in range(6):
+		if session.supplies[i] > 0: rows.append({"id":"supply:%d"%i,"label":Session.SUPPLY_NAMES[i],"quantity":session.supplies[i],"category":"소모품","slot":i,"description":descriptions[i],"icon":Art.item(i)})
+	for id in Session.Abilities.DEFINITIONS:
+		if session.essences.get(id,0) <= 0: continue
+		var def: Dictionary = Session.Abilities.DEFINITIONS[id]
+		rows.append({"id":id,"label":def.item,"quantity":session.essences[id],"category":"이능","description":"습득: "+def.name+"\n"+def.description,"icon":Art.item(3 if id == "BOMB" else 4 if id == "SHOCKWAVE" else 5)})
+	for entry in [["food","식량",session.food,"방 이동 시 자동 소모합니다."],["torch","횃불",session.torches,"탐험 중 불빛을 50 회복합니다."]]:
+		if entry[2] > 0: rows.append({"id":entry[0],"label":entry[1],"quantity":entry[2],"category":"자원","description":entry[3],"icon":Art.navigation(3)})
+	return rows
+
+func build_inventory() -> void:
+	label(modal_content,"아이템 선택 → 상세 정보 / 사용할 대원 선택",11)
+	var filters := HBoxContainer.new(); modal_content.add_child(filters)
+	for category in ["전체","소모품","이능","자원"]:
+		var pick := button(filters,category,func(): inventory_filter = category; show_supplies())
+		pick.toggle_mode = true; pick.button_pressed = category == inventory_filter
+	var rows: Array = inventory_rows().filter(func(r): return inventory_filter == "전체" or r.category == inventory_filter)
+	label(modal_content,"%s · %d종 보유" % [inventory_filter,rows.size()],12)
+	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(310,minf(300,size.y-310)); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; modal_content.add_child(scroll)
+	var grid := GridContainer.new(); grid.columns = 4; grid.size_flags_horizontal = SIZE_EXPAND_FILL; grid.add_theme_constant_override("h_separation",4); grid.add_theme_constant_override("v_separation",4); scroll.add_child(grid)
+	inventory_slots.clear()
+	for i in range(maxi(12,int(ceil(rows.size()/4.0))*4)):
+		var slot = InventorySlot.new(); grid.add_child(slot)
+		var row: Dictionary = rows[i] if i < rows.size() else {}
+		slot.configure(row,row.get("id","") == inventory_selected); inventory_slots.append(slot)
+		if not row.is_empty(): slot.pressed.connect(func(): show_item_detail(row.id))
+	label(modal_content,"전투 중 사용: 주인공 행동 1회 · 이능 섭취는 전투 밖",10)
+	button(modal_content,"닫기",func(): details_popup.hide()); details_popup.popup_centered()
+
+func show_item_detail(id: String) -> void:
+	var matches: Array = inventory_rows().filter(func(r): return r.id == id)
+	if matches.is_empty(): item_popup.hide(); show_supplies(); return
+	var row: Dictionary = matches[0]; inventory_selected = id
+	for slot in inventory_slots:
+		if is_instance_valid(slot): slot.selected = slot.row.get("id","") == id; slot.queue_redraw()
+	clear(item_detail); label(item_detail,"%s × %d" % [row.label,row.quantity],18)
+	var info := label(item_detail,row.description,12); info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.custom_minimum_size.x = 290
+	if row.category == "이능":
+		for i in range(session.party.size()):
+			button(item_detail,session.party[i].name+"에게 먹이기",func(): item_popup.hide(); confirm_essence(i,id),session.phase in ["TOWN","EXPLORE"] and session.party[i].hp > 0 and id not in session.party[i].learned_abilities)
+	elif row.category == "소모품":
+		if row.slot in [3,4]:
+			button(item_detail,"사용 · 바닥 선택",func(): item_popup.hide(); details_popup.hide(); choose_item(row.slot),session.phase == "BATTLE")
+		else:
+			for i in range(session.party.size()):
+				button(item_detail,session.party[i].name+"에게 사용",func(): item_popup.hide(); details_popup.hide(); run_action(func(): return session.use_supply(row.slot,Vector2i(-1,-1),i)),session.phase in ["BATTLE","EXPLORE"] and session.party[i].hp > 0)
+	elif id == "torch":
+		button(item_detail,"횃불 사용",func(): item_popup.hide(); details_popup.hide(); run_action(session.use_torch),session.phase == "EXPLORE" and session.light < 100)
+	button(item_detail,"닫기",func(): item_popup.hide()); item_popup.popup_centered()
+
+func popup_list() -> VBoxContainer:
+	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(310,minf(330,size.y-300)); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; modal_content.add_child(scroll)
+	var list := VBoxContainer.new(); list.size_flags_horizontal = SIZE_EXPAND_FILL; scroll.add_child(list)
+	return list
+
+func build_abilities() -> void:
+	var actor: Dictionary = session.party[tactics_actor]
+	label(modal_content,"습득 목록 유지 · 장착 2개 · 전투 밖에서 교체",11)
+	var list := popup_list()
+	for id in actor.learned_abilities:
+		label(list,Session.Rules.SKILLS[id].name,14)
+		var info := label(list,Session.Abilities.DEFINITIONS.get(id,{}).get("description","시작 기술"),11); info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.custom_minimum_size.x = 290
+		var row := HBoxContainer.new(); list.add_child(row)
+		for slot in range(2):
+			button(row,"%d번 장착%s" % [slot+1," 중" if actor.equipped_abilities[slot] == id else ""],func(): session.equip_ability(tactics_actor,slot,id); refresh(); show_character(tactics_actor,"이능"),session.phase in ["TOWN","EXPLORE"] and actor.hp > 0 and id not in actor.equipped_abilities)
+	button(modal_content,"이능 전리품 가방",show_essences)
+	button(modal_content,"닫기",func(): details_popup.hide()); details_popup.popup_centered()
+
+func show_essences() -> void:
+	inventory_filter = "이능"; show_supplies()
+
+func confirm_essence(index: int, id: String) -> void:
+	var def: Dictionary = Session.Abilities.DEFINITIONS[id]
+	modal("이능 습득 확인",session.party[index].name+"이 "+def.item+"을 먹습니다.\n\n습득: "+def.name+"\n"+def.description+"\n\n아이템 1개 소모 · 습득 후 장착 필요")
+	button(modal_content,"먹고 습득",func():
+		if session.consume_essence(index,id): refresh(); show_character(index,"이능")
+		else: show_essences())

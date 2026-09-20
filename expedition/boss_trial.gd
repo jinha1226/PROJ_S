@@ -26,6 +26,7 @@ static func spawn(s) -> void:
 	var boss: Dictionary = s.make_actor(100+s.room,NAMES[row.pattern],true)
 	boss.pos = Vector2i(5,4); boss.hp = 64; boss.max_hp = 64
 	boss.cooldown = 2; boss.recovery = 0
+	boss.essence_id = ["SHOCKWAVE","BOMB","IRON_HIDE"][row.pattern]
 	s.enemies.append(boss)
 
 static func plan(s) -> void:

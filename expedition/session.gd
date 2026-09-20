@@ -11,6 +11,9 @@ const BossTrial = preload("res://expedition/boss_trial.gd")
 var boss_trial := false
 const Tactics = preload("res://expedition/tactical_action_selector.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
+const Abilities = preload("res://expedition/abilities.gd")
+const Growth = preload("res://expedition/growth.gd")
+var essences: Dictionary = {}
 var companions := false
 var resolving_companions := false
 const CARDINALS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]
@@ -54,6 +57,8 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"rules":Rules.defaults(),
 		"basic_target":Rules.BASIC_TARGET_DEFAULT,
 		"reservation":{},
+		"learned_abilities":["PUSH","GUARD"],"equipped_abilities":["PUSH","GUARD"],"cooldowns":{},"iron_guard":false,
+		"growth":Growth.create(),
 		"pos":Vector2i.ZERO, "hp":28 if enemy else 55, "max_hp":28 if enemy else 55,
 		"stress":0, "condition":"평온", "ap":2,
 		"body":Body.create(id, seed_value, enemy),
@@ -287,7 +292,7 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 	var victim := at(target)
 	if victim.is_empty() or not victim.enemy: return {}
 	var actor: Dictionary = party[selected if actor_index < 0 else actor_index]
-	var hit := TurnCore.physical(18 * actor.attack_factor / 100, 1000, 0, 2)
+	var hit := TurnCore.physical(Growth.power(actor,"MELEE",18) * actor.attack_factor / 100, 1000, 0, 2)
 	var amount := int(hit.damage)
 	if victim.get("guarded",false): amount = maxi(1,amount / 2)
 	if boss_trial and rooms[room].shield: amount = 0
@@ -301,6 +306,10 @@ func act(kind: String, target: Vector2i) -> bool:
 		finish_player_action(); return true
 	var actor: Dictionary = party[selected]
 	if actor.hp <= 0 or actor.ap <= 0: return false
+	if companions and kind in Abilities.STARTERS and kind not in actor.equipped_abilities: return false
+	if Abilities.DEFINITIONS.has(kind):
+		if not Abilities.execute(self,actor,kind,target): return false
+		actor.ap -= 1; check_battle_end(); finish_player_action(); return true
 	var victim := at(target)
 	match kind:
 		"GUARD", "WAIT":
@@ -312,12 +321,12 @@ func act(kind: String, target: Vector2i) -> bool:
 		"ATTACK", "PUSH":
 			if victim.is_empty() or not victim.enemy or not melee_reach(actor.pos,target): return false
 			if kind == "ATTACK":
-				var hit := TurnCore.physical(18 * actor.attack_factor / 100, 1000, 0, 2)
+				var hit := TurnCore.physical(Growth.power(actor,"MELEE",18) * actor.attack_factor / 100, 1000, 0, 2)
 				damage(victim, int(hit.damage), actor.id, "SLASH")
 			else:
 				var destination: Vector2i = target + (target - actor.pos)
 				if can_step(target,destination): victim.pos = destination
-				else: damage(victim, 8, actor.id, "IMPACT")
+				else: damage(victim, Growth.power(actor,"MELEE",8), actor.id, "IMPACT")
 				intents = intents.filter(func(intent): return intent.id != victim.id)
 				message("밀쳐내기 · 적의 예고 공격을 취소했습니다.")
 		"FIRE", "WATER", "ELECTRIC":
@@ -354,15 +363,22 @@ func reservation_choice(actor: Dictionary) -> Dictionary:
 	var order: Dictionary = actor.reservation
 	if order.is_empty() or actor.hp <= 0 or actor.ap <= 0 or phase != "BATTLE": return {}
 	var cell: Vector2i = order.cell
-	if order.kind in ["ATTACK","PUSH"]:
+	if order.kind in Abilities.STARTERS and order.kind not in actor.equipped_abilities: return {}
+	if order.kind in ["ATTACK","PUSH","BOMB"]:
 		var target: Dictionary = {}
 		for enemy in enemies:
 			if enemy.id == order.target_id and enemy.hp > 0: target = enemy; break
-		if target.is_empty() or attack_preview(target.pos,actor.id).is_empty(): return {}
+		if target.is_empty(): return {}
+		if order.kind == "BOMB":
+			if not Abilities.legal(self,actor,order.kind,target.pos): return {}
+		elif attack_preview(target.pos,actor.id).is_empty(): return {}
 		cell = target.pos
 	elif order.kind == "MOVE":
 		if cell not in movement_cells(actor.id): return {}
 	elif order.kind in ["GUARD","WAIT"]: cell = actor.pos
+	elif Abilities.DEFINITIONS.has(order.kind):
+		cell = actor.pos
+		if not Abilities.legal(self,actor,order.kind,cell): return {}
 	else: return {}
 	return {"kind":order.kind,"cell":cell,"reason":"직접 예약","reserved":true}
 
@@ -443,6 +459,40 @@ func discharge(origin: Vector2i, source: int) -> void:
 func conductive(point: Vector2i) -> bool:
 	return tile(point).terrain in ["metal", "water"] or tile(point).wet >= 25
 
+func roll_essence(enemy: Dictionary) -> void:
+	if not enemy.enemy or enemy.hp > 0 or enemy.get("essence_rolled",false): return
+	enemy.essence_rolled = true
+	for actor in alive():
+		if Growth.gain(actor,100 if boss_trial else 25) > 0: message(actor.name+" · 레벨 %d! 숙련 포인트 획득" % actor.growth.level)
+	var id: String = enemy.get("essence_id","")
+	if not Abilities.DEFINITIONS.has(id): return
+	if Hexaco.sample(seed_value,expedition_number*10000+room*100+enemy.id,"essence",100) >= Abilities.DROP_PERCENT: return
+	essences[id] = int(essences.get(id,0))+1
+	message("이능 전리품 · "+Abilities.DEFINITIONS[id].item+" → 공용 가방")
+
+func spend_growth(index: int, id: String, stat: bool = false) -> bool:
+	if phase not in ["TOWN","EXPLORE"] or index < 0 or index >= party.size() or party[index].hp <= 0: return false
+	return Growth.spend(party[index],id,stat)
+
+func reset_rules(index: int) -> void:
+	var actor: Dictionary = party[index]
+	actor.rules = Rules.defaults(); actor.basic_target = Rules.BASIC_TARGET_DEFAULT
+	for id in actor.learned_abilities:
+		if Abilities.DEFINITIONS.has(id): actor.rules.append(Rules.make_rule(id,"SELF" if Abilities.DEFINITIONS[id].target == "SELF" else "NEAREST","DANGER" if id == "IRON_HIDE" else "ALWAYS"))
+
+func consume_essence(index: int, id: String) -> bool:
+	if phase not in ["TOWN","EXPLORE"] or index < 0 or index >= party.size() or not Abilities.DEFINITIONS.has(id): return false
+	var actor: Dictionary = party[index]
+	if actor.hp <= 0 or essences.get(id,0) <= 0 or id in actor.learned_abilities: return false
+	actor.learned_abilities.append(id); essences[id] -= 1
+	actor.rules.append(Rules.make_rule(id,"SELF" if Abilities.DEFINITIONS[id].target == "SELF" else "NEAREST","DANGER" if id == "IRON_HIDE" else "ALWAYS"))
+	message(actor.name+" · "+Abilities.DEFINITIONS[id].name+" 습득! 이능 탭에서 장착하세요.")
+	return true
+
+func equip_ability(index: int, slot: int, id: String) -> bool:
+	if phase not in ["TOWN","EXPLORE"] or index < 0 or index >= party.size() or party[index].hp <= 0: return false
+	return Abilities.equip(party[index],slot,id)
+
 func enemy_attack_effect(enemy: Dictionary, cells: Array, area: bool = false) -> void:
 	if cells.is_empty(): return
 	effects.append({"kind":"ENEMY_ATTACK","from":enemy.pos,"cell":cells[0],
@@ -453,7 +503,9 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	if target.hp <= 0: return
 	if boss_trial and target.enemy and rooms[room].shield:
 		message("보호막 · 전력탑을 먼저 파괴하세요."); return
-	if target.get("guarded",false): amount = maxi(1,amount / 2)
+	if target.get("iron_guard",false): amount = maxi(1,amount / 4)
+	elif target.get("guarded",false): amount = maxi(1,amount / 2)
+	if not target.enemy: amount = Growth.incoming(target,amount)
 	serial += 1
 	var lost := mini(int(target.hp), amount)
 	var source_cell: Vector2i = target.pos
@@ -465,6 +517,7 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	var plan := Injury.assess_hp_loss(target.body, form, lost, target.max_hp, key, target.id + 1)
 	Injury._apply_plan(target.body, plan, serial)
 	target.hp -= lost; Body.sync(target)
+	if target.enemy and target.hp <= 0: roll_essence(target)
 	if not target.enemy:
 		target.memory.remember("SELF_HARM", serial, world_time, source + 1, source + 1, mini(1000, 180 + lost * 18))
 		stress(target, 5 + lost / 2)
@@ -544,6 +597,8 @@ func end_round() -> bool:
 	if phase != "BATTLE": return true
 	for actor in alive():
 		actor["guarded"] = false
+		actor.iron_guard = false
+		for id in actor.cooldowns: actor.cooldowns[id] = maxi(0,int(actor.cooldowns[id])-1)
 		stress(actor, 2 if light >= 35 else 5)
 		actor.ap = action_budget(actor)
 	round_number += 1
@@ -585,11 +640,14 @@ func rest_town() -> bool:
 	message("요양 · 자금 20 소비. 기억과 부위 손상은 유지됩니다.")
 	return true
 
-func use_supply(slot: int, target: Vector2i = Vector2i(-1,-1)) -> bool:
+func use_supply(slot: int, target: Vector2i = Vector2i(-1,-1), recipient: int = -1) -> bool:
 	if phase not in ["EXPLORE","BATTLE"] or slot < 0 or slot >= supplies.size() or supplies[slot] <= 0: return false
-	var actor: Dictionary = party[selected]
-	if actor.hp <= 0 or phase == "BATTLE" and actor.ap <= 0: return false
+	var user: Dictionary = party[selected]
+	if recipient < -1 or recipient >= party.size(): return false
+	var actor: Dictionary = party[selected if recipient == -1 else recipient]
+	if actor.hp <= 0 or user.hp <= 0 or phase == "BATTLE" and user.ap <= 0: return false
 	if slot in [3,4]:
+		if recipient != -1: return false
 		# act() advances the world once; do not advance it again below.
 		if not act("FIRE" if slot == 3 else "WATER",target): return false
 	else:
@@ -601,7 +659,7 @@ func use_supply(slot: int, target: Vector2i = Vector2i(-1,-1)) -> bool:
 				actor.hp = mini(actor.max_hp,actor.hp + (20 if slot == 0 else 10)); Body.heal(actor)
 			1: stress(actor,-25)
 			2: hunger = maxi(0,hunger-30); stress(actor,-10)
-		if phase == "BATTLE": actor.ap -= 1
+		if phase == "BATTLE": user.ap -= 1
 	supplies[slot] -= 1
 	message("%s · %s 사용" % [actor.name,SUPPLY_NAMES[slot]])
 	if slot not in [3,4]: finish_player_action()

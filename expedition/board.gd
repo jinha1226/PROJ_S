@@ -1,5 +1,6 @@
 extends Control
 var input_actor := -1
+var targeting_skill := ""
 var action_footer := false
 signal cell_pressed(cell: Vector2i)
 const Art = preload("res://expedition/mobile_art.gd")
@@ -100,6 +101,13 @@ func _draw() -> void:
 		return
 	var movement: Array = session.movement_cells(input_actor)
 	var attacks: Array = session.attack_cells(input_actor) if show_attack_range or input_actor >= 0 else []
+	if targeting_skill == "BOMB":
+		attacks.clear()
+		var caster: Dictionary = session.party[session.selected if input_actor < 0 else input_actor]
+		for y in range(8):
+			for x in range(8):
+				var cell := Vector2i(x,y)
+				if session.distance(caster.pos,cell) <= session.Abilities.DEFINITIONS.BOMB.range and session.tile(cell).terrain != "wall" and session.TurnCore.Geometry.sees(caster.pos,cell,func(p): return session.tile(p).terrain == "wall"): attacks.append(cell)
 	for depth in range(15):
 		for x in range(8):
 			var y := depth-x
@@ -160,8 +168,8 @@ func _draw() -> void:
 		var actor: Dictionary = session.party[preview.actor]
 		if actor.hp <= 0: continue
 		var badge := preview_rect(actor)
-		var text: String = {"PUSH":"밀치기","GUARD":"방어","ATTACK":"공격","MOVE":"이동","WAIT":"대기"}.get(preview.kind,preview.kind)
-		var color := Color("f1ca79") if preview.kind in ["PUSH","GUARD"] else Color("a6d8e8")
+		var text: String = {"PUSH":"밀치기","GUARD":"방어","ATTACK":"공격","MOVE":"이동","WAIT":"대기","SHOCKWAVE":"충격파","BOMB":"폭탄","IRON_HIDE":"철갑"}.get(preview.kind,preview.kind)
+		var color := Color("f1ca79") if preview.kind in session.Rules.SKILLS else Color("a6d8e8")
 		draw_style_box(_preview_background(color),badge)
 		draw_string(ui_font,badge.position+Vector2(2,13),text+(" 예약" if preview.get("reserved",false) else " 예정"),HORIZONTAL_ALIGNMENT_CENTER,badge.size.x-4,10,color)
 	for effect in effects:
