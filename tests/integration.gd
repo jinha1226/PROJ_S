@@ -23,7 +23,7 @@ func _initialize() -> void:
 			cursor += 1
 		check(seen.size() == 9,"all nine rooms reachable")
 		for row in generated:
-			check(row.tiles.size() == 64,"every room owns 64 tiles")
+			check(row.tiles.size() == 100,"every room owns 100 tiles")
 			for next in row.links:
 				check(row.id in generated[next].links and next in Session.Dungeon.neighbors(row.id),"bidirectional cardinal link")
 			signature += str(row.links)
@@ -32,7 +32,7 @@ func _initialize() -> void:
 		check(generated.filter(func(r): return r.kind == "loot").size() == 2,"loot rooms guaranteed")
 	check(graphs.size() > 20,"random generation varies topology")
 	var s = Session.new(731)
-	check(s.depart() and s.tiles.size() == 64,"entry has an 8x8 room")
+	check(s.depart() and s.tiles.size() == 100,"entry has an 10x10 room")
 	var original_map: Array = s.rooms.duplicate(true)
 	check(not s.travel(8) and not s.travel(-1) and s.food == 27,"invalid travel has no side effects")
 	var battle := Fixture.kind_id(s,"battle")
@@ -54,6 +54,7 @@ func _initialize() -> void:
 	check(s.act("PUSH",Vector2i(3,3)) and s.enemies[0].pos == Vector2i(4,3),"push moves enemy")
 	check(s.intents.all(func(row): return row.id != s.enemies[0].id),"push cancels intent")
 	s.party[0].pos = Vector2i(5,3); s.enemies[0].pos = Vector2i(5,4); s.party[0].ap = 2
+	for point in [Vector2i(5,3),Vector2i(5,4)]: s.tile(point).terrain = "water"; s.tile(point).wet = 70
 	var enemy_hp: int = s.enemies[0].hp
 	hp = s.party[0].hp
 	check(s.act("ELECTRIC",Vector2i(5,4)),"electric action")

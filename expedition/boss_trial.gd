@@ -1,5 +1,5 @@
 extends RefCounted
-## Simplified SPD-inspired patterns, implemented independently for an 8x8 arena.
+## Simplified SPD-inspired patterns, implemented independently for an 10x10 arena.
 const NAMES = ["수렁 포식자", "폭탄 암살자", "과부하 거인"]
 const HINTS = ["폭발 후 탈진 틈에 공격 · 물에서 회복", "폭탄 예고 회피 · 순간이동한 보스 추격", "보호막 가동 시 전력탑 옆에서 탑 터치"]
 
@@ -13,11 +13,11 @@ static func prepare(s) -> void:
 		row.kind = "boss"; row.cleared = false
 		row.pattern = row.id % 3; row.name = NAMES[row.pattern]
 		row.pylon = Vector2i(4,4); row.shield = false; row.overloaded = false
-		for y in range(8):
-			for x in range(8):
-				var cell: Dictionary = row.tiles[y*8+x]
-				cell.terrain = "water" if row.pattern == 0 and x == 5 else "stone"
-				cell.wet = 70 if cell.terrain == "water" else 0; cell.fire = 0
+		# Preserve generated cover and routes. Goo always has a small water pool.
+		if row.pattern == 0:
+			for point in [Vector2i(7,4),Vector2i(7,5)]:
+				var cell: Dictionary = row.tiles[point.y*s.BOARD_SIDE+point.x]
+				cell.terrain = "water"; cell.wet = 70
 
 static func spawn(s) -> void:
 	var row: Dictionary = s.rooms[s.room]
@@ -41,15 +41,15 @@ static func plan(s) -> void:
 			row.overloaded = true; row.shield = true
 			# Never create an objective underneath an actor.
 			for cell in [Vector2i(4,4),Vector2i(1,4),Vector2i(6,6)]:
-				if s.at(cell).is_empty(): row.pylon = cell; break
+				if s.is_free(cell): row.pylon = cell; break
 		return
 	if boss.get("recovery",0) > 0 or boss.get("cooldown",0) > 0: return
 	if row.pattern == 0 and not s.melee_reach(boss.pos,target(s).pos): return
 	boss.charging = true
 	boss.fuse = 2
 	var center: Vector2i = boss.pos if row.pattern == 0 else target(s).pos
-	for y in range(8):
-		for x in range(8):
+	for y in range(s.BOARD_SIDE):
+		for x in range(s.BOARD_SIDE):
 			var cell := Vector2i(x,y)
 			var marked: bool = s.distance(center,cell) <= 2 if row.pattern == 0 else absi(center.x-x) <= 1 and absi(center.y-y) <= 1
 			if marked: s.intents.append({"id":boss.id,"cell":cell,"damage":16})
@@ -85,7 +85,7 @@ static func turn(s, boss: Dictionary) -> void:
 	var goals: Array = []
 	for direction in s.DIRECTIONS:
 		if s.is_free(hero.pos+direction) and s.melee_reach(hero.pos+direction,hero.pos): goals.append(hero.pos+direction)
-	var route: Dictionary = s.TurnCore.path(8,8,boss.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100)
+	var route: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,boss.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100)
 	if route.found and route.path.size() > 1: boss.pos = route.path[1]
 	if s.melee_reach(boss.pos,hero.pos):
 		s.enemy_attack_effect(boss,[hero.pos]); s.damage(hero,8,boss.id,"IMPACT")

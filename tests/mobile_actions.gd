@@ -19,6 +19,7 @@ func _initialize() -> void:
 	var before: int = s.party[0].ap
 	check(not s.use_supply(3,Vector2i(7,7)) and s.supplies[3] == 1 and s.party[0].ap == before,"invalid scroll target unchanged")
 	s.party[0].pos = Vector2i(1,2)
+	s.tile(Vector2i(1,3)).terrain = "wood"; s.tile(Vector2i(1,3)).wet = 0
 	check(s.use_supply(3,Vector2i(1,3)) and s.supplies[3] == 0 and s.party[0].ap == before-1,"scroll applies fire and consumes one AP")
 	check(s.act("GUARD",s.party[0].pos),"guard activation")
 	var hp: int = s.party[0].hp

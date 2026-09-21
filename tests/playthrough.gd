@@ -29,8 +29,8 @@ func fight(s) -> void:
 					s.act("ATTACK",target.pos)
 					continue
 				var choices: Array = []
-				for y in range(8):
-					for x in range(8):
+				for y in range(preload("res://expedition/dungeon_map.gd").ROOM_SIDE):
+					for x in range(preload("res://expedition/dungeon_map.gd").ROOM_SIDE):
 						var cell := Vector2i(x,y)
 						if s.is_free(cell) and s.distance(actor.pos,cell) <= 2: choices.append(cell)
 				choices.sort_custom(func(a,b): return s.distance(a,target.pos) < s.distance(b,target.pos))

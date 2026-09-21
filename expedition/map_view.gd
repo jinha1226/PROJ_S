@@ -52,13 +52,13 @@ func _draw() -> void:
 			draw_rect(rect,outline,false,2 if current else 1)
 			if row.used or row.cleared: draw_circle(rect.end-Vector2(4,4),2,Color("79c9a2"))
 			continue
-		# Every map tile previews its own authoritative 8x8 room terrain.
+		# Every map tile previews its own authoritative 10x10 room terrain.
 		var preview := Rect2(rect.position+Vector2(8,6),Vector2(rect.size.x-16,rect.size.y-32))
-		var cell_size := minf(preview.size.x,preview.size.y)/8.0
-		var offset := preview.position+Vector2((preview.size.x-cell_size*8)/2,0)
-		for y in range(8):
-			for x in range(8):
-				var cell: Dictionary = row.tiles[y*8+x]
+		var cell_size := minf(preview.size.x,preview.size.y)/float(session.BOARD_SIDE)
+		var offset := preview.position+Vector2((preview.size.x-cell_size*session.BOARD_SIDE)/2,0)
+		for y in range(session.BOARD_SIDE):
+			for x in range(session.BOARD_SIDE):
+				var cell: Dictionary = row.tiles[y*session.BOARD_SIDE+x]
 				var shade: Color = {"stone":Color("2b3443"),"wood":Color("4b4035"),"water":Color("285266"),"metal":Color("495363"),"wall":Color("111721")}[cell.terrain]
 				if cell.fire > 0: shade = Color("b86437")
 				draw_rect(Rect2(offset+Vector2(x,y)*cell_size,Vector2.ONE*(cell_size-0.6)),shade)

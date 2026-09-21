@@ -19,8 +19,8 @@ static func cells(s, actor: Dictionary, id: String, target: Vector2i) -> Array:
 	if not DEFINITIONS.has(id): return result
 	var def: Dictionary = DEFINITIONS[id]
 	var center: Vector2i = actor.pos if def.target == "SELF" else target
-	for y in range(8):
-		for x in range(8):
+	for y in range(s.BOARD_SIDE):
+		for x in range(s.BOARD_SIDE):
 			var cell := Vector2i(x,y)
 			var in_range: bool = s.distance(center,cell) <= def.radius if id == "SHOCKWAVE" else maxi(absi(center.x-x),absi(center.y-y)) <= def.radius
 			if in_range and s.tile(cell).terrain != "wall" and s.TurnCore.Geometry.sees(center,cell,func(p): return s.tile(p).terrain == "wall"): result.append(cell)

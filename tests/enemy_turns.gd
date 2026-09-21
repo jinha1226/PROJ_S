@@ -29,7 +29,7 @@ func _initialize() -> void:
 	s.enemy_attack_turn(enemy)
 	check(s.party[0].hp == hp and maxi(absi(7-enemy.pos.x),absi(7-enemy.pos.y)) == 2,"distant enemy moves two eight-way steps without ranged damage")
 	s = setup(); enemy = s.enemies[2]
-	for y in range(8): s.tile(Vector2i(4,y)).terrain = "wall"
+	for y in range(preload("res://expedition/dungeon_map.gd").ROOM_SIDE): s.tile(Vector2i(4,y)).terrain = "wall"
 	hp = s.party[0].hp; s.enemy_attack_turn(enemy)
 	check(s.party[0].hp == hp and enemy.pos == Vector2i(5,2),"walls block pursuit")
 	s = setup(); enemy = s.enemies[2]

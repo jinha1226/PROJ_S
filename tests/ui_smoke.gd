@@ -24,10 +24,10 @@ func exercise() -> void:
 	if scene.minimap.size.x > 100 or scene.board.size.x < 340:
 		failed = true; push_error("minimap must stay small and board must use full width")
 	scene.board.geometry()
-	if absf(scene.board.size.x-scene.size.x) > 1 or absf(scene.board.half_width*16-scene.size.x) > 1:
+	if absf(scene.board.size.x-scene.size.x) > 1 or absf(scene.board.half_width*scene.session.BOARD_SIDE*2-scene.size.x) > 1:
 		failed = true; push_error("board and projected room must fill screen width")
-	for y in range(8):
-		for x in range(8):
+	for y in range(preload("res://expedition/dungeon_map.gd").ROOM_SIDE):
+		for x in range(preload("res://expedition/dungeon_map.gd").ROOM_SIDE):
 			var cell := Vector2i(x,y)
 			if scene.board.cell_at(scene.board.cell_center(cell)) != cell:
 				failed = true; push_error("top-down hit test failed")
@@ -54,8 +54,8 @@ func exercise() -> void:
 		var control: Button = scene.end_turn_button
 		if control == null or control.size.x < 96 or control.size.y < 48 or not scene.board.get_global_rect().encloses(control.get_global_rect()):
 			failed = true; push_error("end turn must be inside board at bottom right")
-		for y in range(8):
-			for x in range(8):
+		for y in range(preload("res://expedition/dungeon_map.gd").ROOM_SIDE):
+			for x in range(preload("res://expedition/dungeon_map.gd").ROOM_SIDE):
 				if control.get_rect().has_point(scene.board.cell_center(Vector2i(x,y))):
 					failed = true; push_error("end turn covers a playable tile")
 		var round_before: int = scene.session.round_number
@@ -73,7 +73,7 @@ func exercise() -> void:
 	await process_frame
 	scene.run_action(scene.session.retreat)
 	await process_frame
-	print("UI smoke: mobile slots, touch targets, 64 top-down cells, map travel and combat lock")
+	print("UI smoke: mobile slots, touch targets, 100 top-down cells, map travel and combat lock")
 	scene.queue_free()
 	await process_frame
 	quit(1 if failed else 0)

@@ -1,6 +1,8 @@
 extends RefCounted
-## Connected, undirected 3x3 graph. Each node owns its persistent 8x8 room.
+## Connected, undirected 3x3 graph. Each node owns its persistent 10x10 room.
 const SIDE := 3
+const ROOM_SIDE := 10
+const LAYOUTS := ["개방형","중앙 장애물형","두 갈래형","수로형"]
 const KINDS := ["battle", "battle", "battle", "camp", "camp", "loot", "loot"]
 
 static func generate(seed_value: int) -> Array:
@@ -35,16 +37,32 @@ static func generate(seed_value: int) -> Array:
 		row.name = names[row.kind]
 		row.cleared = id == 0
 		row.links.sort()
-		var wet_room := rng.randf() < 0.5
-		for y in range(8):
-			for x in range(8):
+		row.layout = (id+posmod(seed_value,4))%4
+		row.layout_name = LAYOUTS[row.layout]
+		var variant := rng.randi_range(0,1)
+		for y in range(ROOM_SIDE):
+			for x in range(ROOM_SIDE):
 				var terrain := "stone"
-				if y == 3: terrain = "wood"
-				if x == 5: terrain = "water" if wet_room else "metal"
-				if Vector2i(x,y) in [Vector2i(3,2),Vector2i(3,5)]: terrain = "wall"
-				if row.kind in ["camp","loot"] and x >= 3 and x <= 5 and y >= 3 and y <= 5:
+				match row.layout:
+					0:
+						if Vector2i(x,y) in [Vector2i(3,5+variant),Vector2i(7,2+variant)]: terrain = "wall"
+						if y == 7: terrain = "wood"
+					1:
+						if x in [4,5] and y in [2+variant,6+variant]: terrain = "wall"
+						if y == 5 and x in [3,4,5,6,7]: terrain = "wood"
+					2:
+						if x == 4+variant and y in [2,3,5,6,7]: terrain = "wall"
+						if x == 7-variant and y in [2,3,4,5,6]: terrain = "metal"
+					3:
+						if x in [4,5]: terrain = "water"
+						if x in [4,5] and y in [2+variant,7-variant]: terrain = "wood"
+						if Vector2i(x,y) in [Vector2i(3,3),Vector2i(7,6)]: terrain = "wall"
+				# Keep arrival lanes, objectives and spawn/teleport pads clear.
+				if x in [0,1,2,8,9] or y in [0,9] or Vector2i(x,y) in [Vector2i(4,4),Vector2i(5,4),Vector2i(6,2),Vector2i(6,3),Vector2i(6,4),Vector2i(6,6),Vector2i(6,1)]:
+					if terrain == "wall": terrain = "stone"
+				if Vector2i(x,y) == row.feature and row.kind in ["camp","loot"]:
 					terrain = "water" if row.kind == "camp" else "wood"
-				row.tiles.append({"terrain":terrain,"fire":0,"wet":70 if terrain == "water" else 0})
+				row.tiles.append({"terrain":terrain,"fire":0,"wet":70 if terrain == "water" else 0,"variant":rng.randi_range(0,2),"palette":id%2})
 	return rooms
 
 static func neighbors(id: int) -> Array:

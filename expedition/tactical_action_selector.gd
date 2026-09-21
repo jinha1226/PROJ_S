@@ -95,7 +95,7 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 		if enemy.hp <= 0: continue
 		for d in s.DIRECTIONS:
 			if s.is_free(enemy.pos+d) and s.melee_reach(enemy.pos+d,enemy.pos) and danger(s,enemy.pos+d) == 0: goals.append(enemy.pos+d)
-	var route: Dictionary = s.TurnCore.path(8,8,actor.pos,goals,func(a,b): return s.can_step(a,b) and danger(s,b) == 0,func(_p): return 100)
+	var route: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,actor.pos,goals,func(a,b): return s.can_step(a,b) and danger(s,b) == 0,func(_p): return 100)
 	if route.found and route.path.size() > 1:
 		options.append({"kind":"MOVE","cell":route.path[1],"score":1,"reason":"안전한 접근"})
 	options.append({"kind":"WAIT","cell":actor.pos,"score":0,"reason":"대기"})

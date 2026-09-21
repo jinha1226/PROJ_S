@@ -7,6 +7,7 @@ const TurnCore = preload("res://sim/turn_engine.gd")
 const ElementRules = preload("res://sim/environment_rules.gd")
 const Injury = preload("res://sim/body_injury_system.gd")
 const Dungeon = preload("res://expedition/dungeon_map.gd")
+const BOARD_SIDE := Dungeon.ROOM_SIDE
 const BossTrial = preload("res://expedition/boss_trial.gd")
 var boss_trial := false
 const Tactics = preload("res://expedition/tactical_action_selector.gd")
@@ -111,9 +112,9 @@ func enter_room(previous: int = -1) -> void:
 	intents = []
 	phase = "EXPLORE"
 	var spawn := Vector2i(1,2)
-	if previous == room + 1: spawn = Vector2i(6,2)
+	if previous == room + 1: spawn = Vector2i(BOARD_SIDE-2,2)
 	elif previous == room - 3: spawn = Vector2i(1,1)
-	elif previous == room + 3: spawn = Vector2i(1,6)
+	elif previous == room + 3: spawn = Vector2i(1,BOARD_SIDE-2)
 	for i in range(party.size()):
 		party[i].pos = spawn + (Vector2i(i,0) if previous in [room-3,room+3] else Vector2i(0,i))
 	if row.kind in ["battle","boss"] and not row.cleared: start_battle()
@@ -123,7 +124,7 @@ func doors() -> Dictionary:
 	if rooms.is_empty(): return result
 	for destination in rooms[room].links:
 		var delta: int = destination - room
-		var point: Vector2i = {1:Vector2i(7,4),-1:Vector2i(0,4),3:Vector2i(4,7),-3:Vector2i(4,0)}[delta]
+		var point: Vector2i = {1:Vector2i(BOARD_SIDE-1,4),-1:Vector2i(0,4),3:Vector2i(4,BOARD_SIDE-1),-3:Vector2i(4,0)}[delta]
 		result[point] = destination
 	return result
 
@@ -180,7 +181,7 @@ func interact_room(point: Vector2i) -> bool:
 	if point != rooms[room].feature:
 		var actor: Dictionary = party[selected]
 		if actor.hp <= 0 or not is_free(point): return false
-		var route := TurnCore.path(8,8,actor.pos,[point],
+		var route := TurnCore.path(BOARD_SIDE,BOARD_SIDE,actor.pos,[point],
 			func(a,b): return can_step(a,b),func(_p): return 100)
 		if not route.found: return false
 		actor.pos = point
@@ -214,10 +215,10 @@ func action_budget(actor: Dictionary) -> int:
 	return 1 if actor.stress >= 150 else 2
 
 func tile(point: Vector2i) -> Dictionary:
-	return tiles[point.y * 8 + point.x]
+	return tiles[point.y * BOARD_SIDE + point.x]
 
 func inside(point: Vector2i) -> bool:
-	return point.x >= 0 and point.y >= 0 and point.x < 8 and point.y < 8
+	return point.x >= 0 and point.y >= 0 and point.x < BOARD_SIDE and point.y < BOARD_SIDE
 
 func at(point: Vector2i) -> Dictionary:
 	for actor in party + enemies:
@@ -258,7 +259,7 @@ func auto_attack() -> bool:
 		for direction in DIRECTIONS:
 			var cell: Vector2i = enemy.pos+direction
 			if is_free(cell) and melee_reach(cell,enemy.pos) and Tactics.danger(self,cell) == 0: goals.append(cell)
-		var route := TurnCore.path(8,8,actor.pos,goals,func(a,b): return can_step(a,b) and Tactics.danger(self,b) == 0,func(_p): return 100)
+		var route := TurnCore.path(BOARD_SIDE,BOARD_SIDE,actor.pos,goals,func(a,b): return can_step(a,b) and Tactics.danger(self,b) == 0,func(_p): return 100)
 		if route.found and route.path.size() > 1 and (best.is_empty() or route.path.size() < best.size()): best = route.path
 	return act("MOVE",best[1]) if not best.is_empty() else false
 
@@ -574,7 +575,7 @@ func enemy_attack_turn(enemy: Dictionary) -> void:
 			var point: Vector2i = actor.pos + direction
 			if is_free(point) and melee_reach(point,actor.pos): goals.append(point)
 		if goals.is_empty(): continue
-		var route := TurnCore.path(8,8,enemy.pos,goals,
+		var route := TurnCore.path(BOARD_SIDE,BOARD_SIDE,enemy.pos,goals,
 			func(origin,point): return can_step(origin,point),func(_p): return 100)
 		if route.found and (best_path.is_empty() or route.path.size() < best_path.size()):
 			best_path = route.path; target = actor
@@ -592,8 +593,8 @@ func end_round() -> bool:
 	for enemy in enemies:
 		enemy_attack_turn(enemy)
 		if alive().is_empty(): break
-	for y in range(8):
-		for x in range(8):
+	for y in range(BOARD_SIDE):
+		for x in range(BOARD_SIDE):
 			var point := Vector2i(x,y)
 			var cell := tile(point)
 			var result := ElementRules.project_existing_fire_tick(cell.fire, cell.wet, 0, world_time)

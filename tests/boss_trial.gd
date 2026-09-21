@@ -133,10 +133,10 @@ func exercise() -> void:
 		check(scene.board.half_width == scene.board.half_height,"square top-down tiles")
 		check(absf(scene.board.size.x-scene.size.x) < 1,"board fills screen width")
 		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"portrait layout fits screen")
-		for y in range(8):
-			for x in range(8):
+		for y in range(preload("res://expedition/dungeon_map.gd").ROOM_SIDE):
+			for x in range(preload("res://expedition/dungeon_map.gd").ROOM_SIDE):
 				var cell := Vector2i(x,y)
-				check(scene.board.cell_at(scene.board.cell_center(cell)) == cell,"64 top-down touch targets")
+				check(scene.board.cell_at(scene.board.cell_center(cell)) == cell,"100 top-down touch targets")
 		check(scene.board.cell_at(Vector2(5,5)) == Vector2i.ZERO,"board starts immediately below HUD without boss info band")
 		check(scene.board.find_children("*","Label",true,false).is_empty(),"no monster name HP or countdown panel over board")
 		check(not game.inside(scene.board.cell_at(Vector2(5,scene.board.size.y-5))),"footer is not a tile")

@@ -42,6 +42,7 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	clip_contents = true
 	custom_minimum_size = Vector2(0,180)
 	size_flags_vertical = SIZE_EXPAND_FILL
@@ -54,7 +55,7 @@ func _resize_board() -> void:
 	queue_redraw()
 
 func geometry() -> void:
-	half_width = maxf(1,size.x/16.0)
+	half_width = maxf(1,size.x/(preload("res://expedition/dungeon_map.gd").ROOM_SIDE*2.0))
 	half_height = half_width
 	origin = Vector2(0,4)
 
@@ -120,20 +121,18 @@ func _draw() -> void:
 	if targeting_skill == "BOMB":
 		attacks.clear()
 		var caster: Dictionary = session.party[session.selected if input_actor < 0 else input_actor]
-		for y in range(8):
-			for x in range(8):
+		for y in range(session.BOARD_SIDE):
+			for x in range(session.BOARD_SIDE):
 				var cell := Vector2i(x,y)
 				if session.distance(caster.pos,cell) <= session.Abilities.DEFINITIONS.BOMB.range and session.tile(cell).terrain != "wall" and session.TurnCore.Geometry.sees(caster.pos,cell,func(p): return session.tile(p).terrain == "wall"): attacks.append(cell)
-	for depth in range(15):
-		for x in range(8):
+	for depth in range(session.BOARD_SIDE*2-1):
+		for x in range(session.BOARD_SIDE):
 			var y := depth-x
-			if y < 0 or y > 7: continue
+			if y < 0 or y >= session.BOARD_SIDE: continue
 			var point := Vector2i(x,y)
 			var cell: Dictionary = session.tile(point)
 			var polygon := tile_polygon(Vector2(point))
-			var texture: Texture2D = Art.WATER if cell.terrain == "water" else Art.WOOD if cell.terrain == "wood" else Art.STONE
-			var tint := Color("809098") if cell.terrain == "metal" else Color("899095")
-			draw_polygon(polygon,PackedColorArray([tint]),PackedVector2Array([Vector2.ZERO,Vector2.RIGHT,Vector2.ONE,Vector2.DOWN]),texture)
+			draw_texture_rect(Art.terrain(cell),Rect2(project(Vector2(point)),Vector2.ONE*half_width*2),false)
 			outline(polygon,Color("242a30"))
 			var center := project(Vector2(point)+Vector2.ONE*0.5)
 			if point in movement:
@@ -151,9 +150,6 @@ func _draw() -> void:
 					draw_string(ui_font,center+Vector2(-4,4),"!",HORIZONTAL_ALIGNMENT_LEFT,-1,18,Color.WHITE)
 			if cell.fire > 0:
 				draw_circle(center,half_width*0.4,Color("a74b24")); draw_circle(center-Vector2(0,4),half_width*0.2,Color("ffc675"))
-			if cell.terrain == "wall":
-				draw_colored_polygon(polygon,Color("383c43"))
-				draw_rect(Rect2(project(Vector2(point))+Vector2.ONE*4,Vector2.ONE*(half_width*2-8)),Color("62676a"))
 			var room: Dictionary = session.rooms[session.room]
 			if session.boss_trial and room.shield and point == room.pylon:
 				draw_line(center+Vector2(0,half_width*0.5),center-Vector2(0,half_width*0.5),Color("7eeaff"),8,true)
