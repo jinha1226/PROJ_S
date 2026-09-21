@@ -1,0 +1,22 @@
+{
+  "tools": {
+    "KEY": {"name":"열쇠","description":"잠긴 상자를 안전하게 엽니다. 사용 시 1개 소모합니다."},
+    "SHOVEL": {"name":"삽","description":"흙더미를 안전하게 파냅니다. 사용 시 1개 소모합니다."}
+  },
+  "curios": {
+    "LOCKED_CHEST": {
+      "name":"잠긴 상자","icon":"loot","description":"녹슨 자물쇠 아래로 가느다란 철사가 보입니다.",
+      "options": {
+        "TOOL":{"label":"열쇠로 열기","tool":"KEY","cost":1,"chance":100,"success":{"loot":30,"text":"자물쇠를 풀고 전리품을 회수했습니다."}},
+        "BARE":{"label":"강제로 열기","warning":"성공 50% · 실패 시 함정 피해와 스트레스 증가 · 재시도 불가","chance":50,"success":{"loot":20,"text":"자물쇠를 부수고 전리품을 회수했습니다."},"failure":{"damage":8,"stress":8,"text":"숨겨진 바늘에 찔렸습니다. 안의 물건도 망가졌습니다."}}
+      }
+    },
+    "DIRT_PILE": {
+      "name":"흙더미","icon":"dirt","description":"무너진 흙 사이에 천으로 감싼 무언가가 묻혀 있습니다.",
+      "options": {
+        "TOOL":{"label":"삽으로 파내기","tool":"SHOVEL","cost":1,"chance":100,"success":{"loot":20,"food":2,"text":"묻혀 있던 보급품과 전리품을 꺼냈습니다."}},
+        "BARE":{"label":"맨손으로 파내기","warning":"전리품 10 · 스트레스 증가 · 재시도 불가","chance":100,"success":{"loot":10,"stress":6,"text":"손으로 흙을 걷어냈습니다. 지쳤지만 작은 전리품을 찾았습니다."}}
+      }
+    }
+  }
+}

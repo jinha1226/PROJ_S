@@ -88,7 +88,11 @@ func navigation_tick() -> void:
 	var step: Vector2i = navigation.next_step(session)
 	if step.x < 0: stop_navigation(); return
 	var health: Array = session.party.map(func(a): return a.hp)
+	var discoveries: int = session.floor_state.discovered_curios
+	var exploring: bool = navigation.automatic
 	run_action(func(): return session.act("MOVE",step),true)
+	if exploring and session.floor_state.discovered_curios > discoveries:
+		stop_navigation(); notice = "조사물 발견 · 타일을 눌러 확인하세요."; refresh(); return
 	if session.party.map(func(a): return a.hp) != health or not session.combat_enemies().is_empty() or session.party[session.selected].pos != step:
 		stop_navigation()
 	elif not navigation.automatic and step == navigation.destination: stop_navigation()
@@ -338,6 +342,9 @@ func queue_action(kind: String, point: Vector2i) -> void:
 
 func on_cell(point: Vector2i) -> void:
 	stop_navigation()
+	if session.floor_mode and session.phase == "BATTLE" and reservation_actor < 0 and mode.is_empty() and pending_item < 0:
+		var feature: Dictionary = session.floor_state.features.get(point,{})
+		if feature.get("kind","") == "curio" and session.floor_state.visible.has(point): show_curio(point); return
 	if session.floor_mode and session.phase == "BATTLE" and reservation_actor < 0 and mode.is_empty() and pending_item < 0 and session.floor_state.features.has(point) and not session.floor_state.features[point].used and point != session.party[session.selected].pos and session.distance(session.party[session.selected].pos,point) <= 1:
 		run_action(func(): return session.floor_state.interact(session,point)); return
 	if reservation_actor >= 0:
@@ -368,6 +375,29 @@ func show_map() -> void:
 	stop_navigation()
 	if session.phase not in ["BATTLE","EXPLORE"]: return
 	map_view.session = session; map_view.queue_redraw(); map_popup.popup_centered()
+
+func show_curio(point: Vector2i) -> void:
+	stop_navigation(); clear(modal_content)
+	var feature: Dictionary = session.floor_state.features.get(point,{})
+	var def: Dictionary = Session.Curios.definition(feature)
+	if def.is_empty(): return
+	label(modal_content,def.name,22)
+	var description := label(modal_content,def.description,17)
+	description.custom_minimum_size.x = 300; description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if feature.used: label(modal_content,"이미 조사를 마쳤습니다.",16)
+	else:
+		label(modal_content,"조사 시 행동 1회 · 결과는 되돌릴 수 없습니다.",13)
+		for id in def.options:
+			var choice: Dictionary = def.options[id]
+			var caption: String = choice.label
+			if choice.has("tool"):
+				caption += " · %d개 소모 / 보유 %d" % [choice.cost,session.exploration_tools.get(choice.tool,0)]
+			var reason: String = Session.Curios.error(session,point,id)
+			button(modal_content,caption,func(): details_popup.hide(); run_action(func(): return Session.Curios.resolve(session,point,id)),reason.is_empty())
+			var hint := label(modal_content,reason if not reason.is_empty() else choice.get("warning","안전하게 회수합니다."),14)
+			hint.custom_minimum_size.x = 300; hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	button(modal_content,"지나가기",func(): details_popup.hide())
+	details_popup.popup_centered()
 
 func show_orders() -> void:
 	stop_navigation()
@@ -485,6 +515,9 @@ func show_supplies() -> void:
 
 func inventory_rows() -> Array:
 	var rows: Array = []
+	for id in Session.Curios.content.tools:
+		var tool: Dictionary = Session.Curios.content.tools[id]
+		rows.append({"id":"tool:"+id,"label":tool.name,"quantity":session.exploration_tools.get(id,0),"category":"도구","description":tool.description+"\n발견한 조사물을 눌러 사용하세요.","icon":Art.navigation(3)})
 	var descriptions := ["선택한 대원의 체력 20 회복 및 부상 치료.","선택한 대원의 스트레스 25 감소.","파티 배고픔 30, 대상 스트레스 10 감소.","전투 중 나무 바닥에 불을 붙입니다. 사거리 4.","전투 중 대상 바닥을 적십니다. 사거리 4.","선택한 대원의 체력 10 회복 및 부상 치료."]
 	for i in range(6):
 		if session.supplies[i] > 0: rows.append({"id":"supply:%d"%i,"label":Session.SUPPLY_NAMES[i],"quantity":session.supplies[i],"category":"소모품","slot":i,"description":descriptions[i],"icon":Art.item(i)})
@@ -499,7 +532,7 @@ func inventory_rows() -> Array:
 func build_inventory() -> void:
 	label(modal_content,"아이템 선택 → 상세 정보 / 사용할 대원 선택",11)
 	var filters := HBoxContainer.new(); modal_content.add_child(filters)
-	for category in ["전체","소모품","이능","자원"]:
+	for category in ["전체","소모품","이능","자원","도구"]:
 		var pick := button(filters,category,func(): inventory_filter = category; show_supplies())
 		pick.toggle_mode = true; pick.button_pressed = category == inventory_filter
 	var rows: Array = inventory_rows().filter(func(r): return inventory_filter == "전체" or r.category == inventory_filter)

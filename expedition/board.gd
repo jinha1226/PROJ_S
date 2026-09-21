@@ -162,7 +162,8 @@ func _draw() -> void:
 			var center := project(Vector2(point)+Vector2.ONE*0.5)
 			if session.floor_mode and session.floor_state.features.has(point):
 				var feature: Dictionary = session.floor_state.features[point]
-				Icons.paint(self,"entry" if feature.kind in ["entry","exit","relic"] else feature.kind,center,half_width*0.5,Color("655a43") if feature.used else Color("e4c98e"))
+				var icon: String = session.Curios.definition(feature).get("icon",feature.kind)
+				Icons.paint(self,"entry" if feature.kind in ["entry","exit","relic"] else icon,center,half_width*0.65,Color("655a43") if feature.used else Color("e4c98e"))
 			if point in movement:
 				draw_colored_polygon(polygon,Color(0.2,0.85,0.35,0.32)); outline(polygon,Color("71d991"),1.5)
 			if point in attacks:

@@ -45,6 +45,8 @@ var intents: Array = []
 var effects: Array = []
 var hunger := 0
 var supplies: Array = [2,2,1,1,1,3]
+const Curios = preload("res://expedition/curios.gd")
+var exploration_tools: Dictionary = {"KEY":2,"SHOVEL":2}
 const SUPPLY_NAMES = ["치유 물약","정신 안정제","활력 물약","화염 두루마리","물 두루마리","붕대"]
 
 func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = false, p_floor: bool = false) -> void:
@@ -83,6 +85,7 @@ func depart() -> bool:
 	expedition_number += 1
 	food = 27; torches = 5; light = 90; loot = 0; hunger = 0
 	supplies = [2,2,1,1,1,3]
+	exploration_tools = {"KEY":2,"SHOVEL":2}
 	if floor_mode:
 		floor_state.build(self); message("1층 · 심부 관문을 찾아 탐험하세요."); return true
 	rooms = Dungeon.generate(seed_value + expedition_number * 7919)
@@ -145,6 +148,7 @@ func stress(actor: Dictionary, amount: int) -> void:
 func use_torch() -> bool:
 	if (phase not in ["EXPLORE", "EVENT"] and not (floor_mode and phase == "BATTLE" and safe_management())) or torches <= 0 or light >= 100: return false
 	torches -= 1; light = mini(100, light + 50)
+	if floor_mode: floor_state.observe(self)
 	message("새 횃불을 켰습니다. 밝기 %d" % light)
 	return true
 
@@ -632,12 +636,12 @@ func end_round() -> bool:
 		actor.ap = action_budget(actor)
 	round_number += 1
 	if floor_mode:
-		floor_state.observe(self)
 		if round_number % 20 == 0:
 			food = maxi(0,food-1); light = maxi(0,light-2)
 			hunger = clampi(hunger+(5 if food == 0 else 1),0,100)
 			if food == 0 or light < 35:
 				for actor in alive(): stress(actor,(3 if food == 0 else 0)+(2 if light < 35 else 0))
+		floor_state.observe(self)
 	if companions and party[selected].hp <= 0: selected = party.find(alive()[0])
 	plan_enemies()
 	return true

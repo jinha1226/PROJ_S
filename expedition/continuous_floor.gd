@@ -9,6 +9,7 @@ var explored: Dictionary = {}
 var features: Dictionary = {}
 var discoveries: Array = []
 var epoch := ""
+var discovered_curios := 0
 
 static func point(p: Vector2i) -> Vector2i:
 	return p*2+Vector2i(2,2)
@@ -17,6 +18,7 @@ func build(s) -> void:
 	layout = Source.generate(1,s.seed_value+s.expedition_number*7919)
 	epoch = str(s.seed_value)+"/"+str(s.expedition_number)
 	visible.clear(); explored.clear(); discoveries.clear(); features.clear()
+	discovered_curios = 0
 	s.BOARD_SIDE = SIZE; s.tiles = []
 	for y in range(SIZE):
 		for x in range(SIZE):
@@ -36,7 +38,9 @@ func build(s) -> void:
 	for i in range(s.party.size()):
 		s.party[i].pos = point(layout.entry_position)+Vector2i(0,i); s.party[i].ap = 1
 		s.party[i].reservation = {}
-	for p in layout.supply_positions: features[point(p)] = {"kind":"loot","used":false,"label":"보급 상자"}
+	for i in range(layout.supply_positions.size()):
+		var id := "LOCKED_CHEST" if i%2 == 0 else "DIRT_PILE"
+		features[point(layout.supply_positions[i])] = {"kind":"curio","curio_id":id,"used":false,"label":s.Curios.content.curios[id].name}
 	features[point(layout.entry_position)] = {"kind":"entry","used":false,"label":"귀환 관문"}
 	features[point(layout.transition_portal_position)] = {"kind":"exit","used":false,"label":"1층 출구"}
 	for row in layout.landmarks:
@@ -45,18 +49,25 @@ func build(s) -> void:
 	s.room = 0; s.phase = "BATTLE"; s.round_number = 1
 	observe(s)
 
+static func sight_side(light: int) -> int:
+	# 10x10 at full light; at zero, the actor and two tiles in every direction.
+	return clampi(roundi(5.0+clampi(light,0,100)*0.05),5,10)
+
 func observe(s) -> void:
 	visible.clear()
+	var side := sight_side(s.light)
+	var before := (side-1)/2
 	for actor in s.alive():
-		for y in range(maxi(0,actor.pos.y-7),mini(SIZE,actor.pos.y+8)):
-			for x in range(maxi(0,actor.pos.x-7),mini(SIZE,actor.pos.x+8)):
+		for y in range(maxi(0,actor.pos.y-before),mini(SIZE,actor.pos.y-before+side)):
+			for x in range(maxi(0,actor.pos.x-before),mini(SIZE,actor.pos.x-before+side)):
 				var p := Vector2i(x,y)
-				if actor.pos.distance_squared_to(p) > 49: continue
-				if not s.TurnCore.Geometry.sees(actor.pos,p,func(c): return s.tile(c).terrain == "wall"): continue
+				# Bound the square above; use geometry only for wall/corner occlusion.
+				if not s.TurnCore.Geometry.sees(actor.pos,p,func(c): return s.tile(c).terrain == "wall",8): continue
 				visible[p] = true
 				if not explored.has(p):
 					explored[p] = true
 					var feature: Dictionary = features.get(p,{})
+					if feature.get("kind","") == "curio": discovered_curios += 1
 					discoveries.append({"position":[x,y],"terrain_id":s.tile(p).terrain,"visibility_state":"MEMORY","marker":"EXIT" if feature.get("kind","") in ["entry","exit"] else "PORTAL" if feature.get("kind","") == "relic" else ""})
 
 func observation(s) -> Dictionary:
@@ -75,6 +86,7 @@ func interact(s, p: Vector2i) -> bool:
 	if s.phase != "BATTLE" or s.party[s.selected].hp <= 0 or s.party[s.selected].ap <= 0: return false
 	if not visible.has(p) or not features.has(p) or s.distance(s.party[s.selected].pos,p) > 1: return false
 	var feature: Dictionary = features[p]
+	if feature.kind == "curio": return false # Explicit choice required; never auto-claim.
 	if not safe(s): s.message("주변 적을 먼저 처리하세요."); return false
 	if feature.kind == "entry": return s.retreat()
 	if feature.kind == "exit":

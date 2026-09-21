@@ -2,6 +2,9 @@ extends RefCounted
 ## Small vector icons shared by the room map and the room interior.
 static func paint(canvas: CanvasItem, kind: String, center: Vector2, radius: float, color: Color) -> void:
 	match kind:
+		"dirt":
+			canvas.draw_colored_polygon(PackedVector2Array([center+Vector2(-radius,radius*0.6),center+Vector2(-radius*0.3,-radius*0.7),center+Vector2(radius*0.4,-radius*0.3),center+Vector2(radius,radius*0.6)]),Color("74563d"))
+			canvas.draw_line(center+Vector2(-radius,radius*0.6),center+Vector2(radius,radius*0.6),color,2)
 		"camp":
 			canvas.draw_circle(center,radius,Color("193d36"))
 			canvas.draw_line(center-Vector2(radius*0.6,0),center+Vector2(radius*0.6,0),color,4)

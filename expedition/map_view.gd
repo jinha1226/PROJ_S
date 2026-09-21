@@ -95,7 +95,7 @@ func _gui_input(event: InputEvent) -> void:
 func draw_floor() -> void:
 	if floor_minimap == null:
 		floor_minimap = LegacyMinimap.new(); add_child(floor_minimap)
-	var stamp: String = session.floor_state.epoch+"/"+str(session.world_time)+"/"+str(session.serial)+"/"+str(session.party[session.selected].pos)
+	var stamp: String = session.floor_state.epoch+"/"+str(session.world_time)+"/"+str(session.serial)+"/"+str(session.party[session.selected].pos)+"/"+str(session.light)
 	if floor_stamp != stamp:
 		var observation: Dictionary = session.floor_state.observation(session)
 		var first: bool = floor_minimap.stream_state().epoch != session.floor_state.epoch
