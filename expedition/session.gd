@@ -347,7 +347,8 @@ func act(kind: String, target: Vector2i) -> bool:
 				if can_step(target,destination): victim.pos = destination
 				else: damage(victim, Growth.power(actor,"MELEE",8), actor.id, "IMPACT")
 				intents = intents.filter(func(intent): return intent.id != victim.id)
-				if boss_trial and victim.get("charging",false):
+				if floor_mode: Floor.MonsterAI.interrupt(self,victim)
+				elif boss_trial and victim.get("charging",false):
 					victim.charging = false; victim.fuse = 0; victim.cooldown = 6; victim.recovery = 1
 				message("밀쳐내기 · 적의 예고 공격을 취소했습니다.")
 		"FIRE", "WATER", "ELECTRIC":
@@ -551,6 +552,7 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 		effect["body_injury"] = true
 		effect["part"] = Body.PART_NAMES.get(plan.get("part_id",""),"신체")
 	target.hp -= lost; Body.sync(target)
+	if floor_mode and target.enemy and lost > 0: Floor.MonsterAI.interrupt(self,target)
 	if target.enemy and target.hp <= 0: roll_essence(target)
 	if not target.enemy:
 		target.memory.remember("SELF_HARM", serial, world_time, source + 1, source + 1, mini(1000, 180 + lost * 18))
@@ -562,7 +564,7 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	message("%s %s에게 %d의 피해를 주었습니다.%s" % [subject_name(source_name),target.name,lost," "+subject_name(target.name)+" 쓰러졌습니다." if target.hp <= 0 else ""])
 
 func plan_enemies() -> void:
-	if floor_mode: intents.clear(); return
+	if floor_mode: Floor.MonsterAI.plan(self); return
 	if boss_trial: BossTrial.plan(self); return
 	intents.clear()
 	for enemy in enemies:

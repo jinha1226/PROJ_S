@@ -1,7 +1,7 @@
 extends RefCounted
 const Source = preload("res://expedition/legacy/four_zone_floor.gd")
 const Registry = preload("res://expedition/legacy/dcss_enemy_registry.gd")
-const LegacyAI = preload("res://expedition/floor_tactics_adapter.gd")
+const MonsterAI = preload("res://expedition/monster_ai.gd")
 const SIZE := 100
 var layout: Dictionary
 var visible: Dictionary = {}
@@ -33,6 +33,7 @@ func build(s) -> void:
 		var enemy: Dictionary = s.make_actor(100+s.enemies.size(),profile.get("display_name","코볼트" if row.species_id == "kobold" else "고블린"),true)
 		enemy.pos = point(row.position); enemy.hp = profile.get("max_health",28); enemy.max_hp = enemy.hp
 		enemy.group = row.group_id; enemy.home = enemy.pos; enemy.alert = false
+		MonsterAI.configure(enemy,s.enemies.size())
 		enemy.essence_id = ["BOMB","SHOCKWAVE","IRON_HIDE"][s.enemies.size()%3]
 		s.enemies.append(enemy)
 	for i in range(s.party.size()):
@@ -53,7 +54,11 @@ static func sight_side(light: int) -> int:
 	return ceili(sight_radius(light))*2+1
 
 static func sight_radius(light: int) -> float:
-	return 2.0+clampi(light,0,100)*0.05
+	# Bright light covers even a zoomed-out view; depleted light keeps the old maximum.
+	return lerpf(7.0,18.0,clampf(light/60.0,0,1))
+
+static func darkness_strength(light: int) -> float:
+	return 1.0-clampf(light/60.0,0,1)
 
 func observer(s) -> Dictionary:
 	return s.party[s.selected] if s.party[s.selected].hp > 0 else s.alive()[0] if not s.alive().is_empty() else {}
@@ -69,7 +74,7 @@ func observe(s) -> void:
 			for x in range(maxi(0,actor.pos.x-before),mini(SIZE,actor.pos.x-before+side)):
 				var p := Vector2i(x,y)
 				if Vector2(actor.pos).distance_to(Vector2(p)) > radius: continue
-				if not s.TurnCore.Geometry.sees(actor.pos,p,func(c): return s.tile(c).terrain == "wall",8): continue
+				if not s.TurnCore.Geometry.sees(actor.pos,p,func(c): return s.tile(c).terrain == "wall",before): continue
 				visible[p] = true
 				if not explored.has(p):
 					explored[p] = true
@@ -109,18 +114,7 @@ func interact(s, p: Vector2i) -> bool:
 	s.message(feature.label+" · 사용 완료"); s.act("WAIT",s.party[s.selected].pos); return true
 
 func enemy_turn(s, enemy: Dictionary) -> void:
-	var spotted := false
-	for ally in s.alive():
-		if s.distance(enemy.pos,ally.pos) <= 9 and s.TurnCore.Geometry.sees(enemy.pos,ally.pos,func(p): return s.tile(p).terrain == "wall"): spotted = true
-	if spotted: enemy.alert = true
-	if not enemy.alert: return
-	if s.alive().all(func(a): return s.distance(enemy.pos,a.pos) > 15): enemy.alert = false; return
-	var choice: Dictionary = LegacyAI.new(s,enemy).choose(enemy)
-	if choice.kind == "MOVE": enemy.pos = choice.cell
-	elif choice.kind == "ATTACK":
-		var victim: Dictionary = s.at(choice.cell)
-		if not victim.is_empty() and s.melee_reach(enemy.pos,victim.pos):
-			s.enemy_attack_effect(enemy,[victim.pos]); s.damage(victim,7,enemy.id,"IMPACT")
+	MonsterAI.turn(s,enemy)
 
 func follow(s, actor: Dictionary) -> Dictionary:
 	var leader: Dictionary = s.party[s.selected]

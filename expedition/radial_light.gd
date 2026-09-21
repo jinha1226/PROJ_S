@@ -9,8 +9,8 @@ static func darkness(distance_cells: float, radius: float) -> float:
 	var ratio := clampf((distance_cells-0.65)/maxf(0.001,radius-0.65+0.5),0,1)
 	return lerpf(0.0,0.97,ratio*ratio*(3.0-2.0*ratio))
 
-func get_mesh(center: Vector2, viewport: Vector2, tile_size: float, radius: float) -> ArrayMesh:
-	var key: Array = [center,viewport,tile_size,radius]
+func get_mesh(center: Vector2, viewport: Vector2, tile_size: float, radius: float, strength: float = 1.0) -> ArrayMesh:
+	var key: Array = [center,viewport,tile_size,radius,strength]
 	if mesh != null and key == cache_key: return mesh
 	cache_key = key; builds += 1
 	var extent := 0.0
@@ -25,7 +25,7 @@ func get_mesh(center: Vector2, viewport: Vector2, tile_size: float, radius: floa
 		for segment in range(SEGMENTS):
 			var angle := TAU*segment/SEGMENTS
 			var p := center+Vector2(cos(angle),sin(angle))*distance
-			vertices.append(Vector3(p.x,p.y,0)); colors.append(Color(0,0,0,darkness(distance/tile_size,radius)))
+			vertices.append(Vector3(p.x,p.y,0)); colors.append(Color(0,0,0,darkness(distance/tile_size,radius)*strength))
 	for ring in range(RINGS):
 		for segment in range(SEGMENTS):
 			var outer := 1+ring*SEGMENTS+segment

@@ -199,12 +199,17 @@ func _draw() -> void:
 					draw_arc(center,half_width*0.9,0,TAU,32,Color("7eeaff"),3,true)
 				var side := half_width*1.65
 				var flash := Color.WHITE
+				if actor.enemy and session.floor_mode:
+					flash = {"MELEE":Color.WHITE,"RANGED":Color("b8d9a2"),"CASTER":Color("c5a5ef")}.get(actor.get("role","MELEE"),Color.WHITE)
 				for effect in effects:
 					if effect.get("kind","") == "ENEMY_ATTACK": continue
 					if effect.cell == point and effect_time < 0.35:
 						center.x += sin(effect_time*65)*4*(1-effect_time/0.35)
 						flash = Color(2,0.6,0.6)
 				draw_texture_rect(sprite,Rect2(center-Vector2.ONE*side/2,Vector2.ONE*side),false,flash)
+				if actor.enemy and session.floor_mode:
+					var label: String = "시전!" if actor.get("charging",false) else {"MELEE":"근접","RANGED":"사격","CASTER":"마법"}.get(actor.get("role","MELEE"),"")
+					draw_string(ui_font,center+Vector2(-20,-half_width*0.7),label,HORIZONTAL_ALIGNMENT_CENTER,40,11,Color("ffe2a0"))
 				draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24,3)),Color("191d24"))
 				draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24*float(actor.hp)/actor.max_hp,3)),Color("ce7770") if actor.enemy else Color("9ec987"))
 	draw_movement_previews()
@@ -231,7 +236,8 @@ func _draw() -> void:
 		draw_string(ui_font,center+Vector2(-12,-14-effect_time*30),"-%d" % effect.amount,HORIZONTAL_ALIGNMENT_LEFT,-1,20,color)
 	if session.floor_mode:
 		var observer: Dictionary = session.floor_state.observer(session)
-		if not observer.is_empty(): draw_mesh(radial_light.get_mesh(cell_center(observer.pos),size,half_width*2,session.floor_state.sight_radius(session.light)),null)
+		var strength: float = session.floor_state.darkness_strength(session.light)
+		if not observer.is_empty() and strength > 0: draw_mesh(radial_light.get_mesh(cell_center(observer.pos),size,half_width*2,session.floor_state.sight_radius(session.light),strength),null)
 	draw_set_transform(Vector2.ZERO)
 	var injury := injury_focus()
 	if not injury.is_empty() and impact_time < 0.45:
