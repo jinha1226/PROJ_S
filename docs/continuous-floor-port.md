@@ -43,3 +43,26 @@
 안전 지역 횃불 사용, 상태→가방→아이템 상세 반복 전환 및 불투명 배경,
 상태창 화면 크기, 미니맵 최초 표시를 검사한다.
 기존 10개 테스트와 함께 CI에 등록했다. 실제 기기에서의 시각 확인은 별도로 필요하다.
+
+## 모바일 탐험 조작 추가 이식
+
+- `../playtest/fog_frontier_search.gd` → `expedition/legacy/fog_frontier_search.gd`:
+  원본 탐색 알고리즘을 복사했다. MovementSystem 전체 의존 대신 동일한 8방향 상수만 분리했다.
+  packed 배열 플래그, 힙 기반 거리 탐색, 가장 가까운 경계에서의 조기 종료를 유지한다.
+- `../playtest/party_auto_explore.gd`, `party_exploration_route.gd`:
+  현재 세션과 계약이 다른 전체 호스트는 복사하지 않았다. 경로 보존, 다음 칸 검증,
+  이미 확인한 경계 재탐색 방지 방식은 `exploration_navigation.gd`에 맞춰 적용했다.
+  최초 계획 이후 정상 이동에서는 A*나 전체 발견 타일 DTO를 매 턴 다시 생성하지 않는다.
+- `../playtest/portrait_gesture.gd` → `expedition/legacy/portrait_gesture.gd`:
+  입력 소유권을 일시적인 버튼 밖에 유지하는 원본 제스처를 복사했다.
+  모달 검사와 호스트 콜백만 현 UI에 맞게 변경했다. 600ms 길게 누르기,
+  드래그 취소, 터치 후 에뮬레이션 마우스 중복 방지를 유지한다.
+- `../playtest/base_map_camera.gd` → `expedition/legacy/base_map_camera.gd`:
+  원본 핀치 접점·거리 비율 누적 코드를 복사했다. 확대 투영만 현 6~24칸 카메라에 맞췄다.
+  여기서는 주인공 추종을 유지하므로 원본 정착지 지도처럼 자유 팬은 하지 않는다.
+- 원본 로그는 이벤트 DTO 기반이라 현재 문자열 로그에 그대로 연결되지 않는다.
+  최근 세 줄/전체 기록 모달 구조를 참고하고, 현재 세션의 로그를 그대로 표시한다.
+
+화면 갱신 때 보드와 미니맵 노드를 재사용해 미니맵의 증분 캐시를 보존한다.
+`mobile_exploration.gd`는 경로 재사용, 적 접촉 정지, 핀치 후 오작동 방지,
+줌별 좌표 변환, 길게/짧게 누르기 구분, 로그 보존 및 모바일 배치를 검증한다.

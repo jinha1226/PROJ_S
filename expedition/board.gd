@@ -3,6 +3,14 @@ var input_actor := -1
 var targeting_skill := ""
 var action_footer := false
 signal cell_pressed(cell: Vector2i)
+signal zoom_changed(side: int)
+signal gesture_started
+var view_side := 10
+var camera_gesture = preload("res://expedition/legacy/base_map_camera.gd").new()
+var _pointer_down := false
+var _pointer_dragged := false
+var touch_start := Vector2.ZERO
+var suppress_mouse_until := 0
 const Art = preload("res://expedition/mobile_art.gd")
 const Icons = preload("res://expedition/map_icons.gd")
 var session
@@ -55,7 +63,7 @@ func _resize_board() -> void:
 	queue_redraw()
 
 func geometry() -> void:
-	half_width = maxf(1,size.x/(preload("res://expedition/dungeon_map.gd").ROOM_SIDE*2.0))
+	half_width = maxf(1,size.x/(visible_side()*2.0))
 	half_height = half_width
 	origin = Vector2(0,4)
 
@@ -65,7 +73,14 @@ func project(cell: Vector2) -> Vector2:
 func camera_cell() -> Vector2i:
 	if session == null or not session.floor_mode or session.tiles.is_empty(): return Vector2i.ZERO
 	var focus: Vector2i = session.party[session.selected].pos
-	return Vector2i(clampi(focus.x-4,0,session.BOARD_SIDE-10),clampi(focus.y-4,0,session.BOARD_SIDE-10))
+	var side := visible_side()
+	return Vector2i(clampi(focus.x-(side-1)/2,0,session.BOARD_SIDE-side),clampi(focus.y-(side-1)/2,0,session.BOARD_SIDE-side))
+
+func visible_side() -> int:
+	return view_side if session != null and session.floor_mode else 10
+
+func set_view_side(value: int) -> void:
+	view_side = clampi(value,6,24); zoom_changed.emit(view_side); queue_redraw()
 
 func cell_center(cell: Vector2i) -> Vector2:
 	geometry()
@@ -126,14 +141,14 @@ func _draw() -> void:
 	if targeting_skill == "BOMB":
 		attacks.clear()
 		var caster: Dictionary = session.party[session.selected if input_actor < 0 else input_actor]
-		for y in range(camera_cell().y,camera_cell().y+10):
-			for x in range(camera_cell().x,camera_cell().x+10):
+		for y in range(camera_cell().y,camera_cell().y+visible_side()):
+			for x in range(camera_cell().x,camera_cell().x+visible_side()):
 				var cell := Vector2i(x,y)
 				if session.distance(caster.pos,cell) <= session.Abilities.DEFINITIONS.BOMB.range and session.tile(cell).terrain != "wall" and session.TurnCore.Geometry.sees(caster.pos,cell,func(p): return session.tile(p).terrain == "wall"): attacks.append(cell)
-	for depth in range(19):
-		for local_x in range(10):
+	for depth in range(visible_side()*2-1):
+		for local_x in range(visible_side()):
 			var local_y := depth-local_x
-			if local_y < 0 or local_y >= 10: continue
+			if local_y < 0 or local_y >= visible_side(): continue
 			var x: int = local_x+camera_cell().x
 			var y: int = local_y+camera_cell().y
 			var point := Vector2i(x,y)
@@ -257,6 +272,31 @@ func _preview_background(color: Color) -> StyleBoxFlat:
 	return box
 
 func _gui_input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		suppress_mouse_until = Time.get_ticks_msec()+500
+		if event.pressed:
+			gesture_started.emit()
+			if camera_gesture.contacts.is_empty():
+				touch_start = event.position; _pointer_down = true; _pointer_dragged = false
+				camera_gesture.zoom = 10.0/view_side
+		if camera_gesture.handle(self,event): accept_event(); return
+		if not event.pressed:
+			var tap: bool = _pointer_down and not _pointer_dragged and not event.canceled
+			_pointer_down = false
+			if tap: emit_cell(event.position)
+		accept_event(); return
+	if event is InputEventScreenDrag:
+		suppress_mouse_until = Time.get_ticks_msec()+500
+		if event.position.distance_to(touch_start) > 12: _pointer_dragged = true
+		camera_gesture.handle(self,event); accept_event(); return
+	if event is InputEventMagnifyGesture or event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_WHEEL_UP,MOUSE_BUTTON_WHEEL_DOWN]:
+		gesture_started.emit()
+		camera_gesture.handle(self,event); accept_event(); return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var point := cell_at(event.position)
-		if session != null and session.inside(point): cell_pressed.emit(point); accept_event()
+		if event.device == InputEvent.DEVICE_ID_EMULATION or Time.get_ticks_msec() < suppress_mouse_until: return
+		gesture_started.emit(); emit_cell(event.position); accept_event()
+
+func emit_cell(position: Vector2) -> void:
+	if position.y < origin.y or position.y >= origin.y+size.x: return
+	var point := cell_at(position)
+	if session != null and session.inside(point): cell_pressed.emit(point)

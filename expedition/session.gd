@@ -74,7 +74,6 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 
 func message(value: String) -> void:
 	log_lines.append(value)
-	if log_lines.size() > 40: log_lines.pop_front()
 
 func alive() -> Array:
 	return party.filter(func(a): return a.hp > 0)
@@ -204,7 +203,7 @@ func start_battle() -> void:
 	for actor in party: actor.ap = action_budget(actor); actor["guarded"] = false
 	if boss_trial:
 		BossTrial.spawn(self); selected = 0; plan_enemies()
-		message(BossTrial.HINTS[rooms[room].pattern]); return
+		message(rooms[room].name+" · 전투 시작"); return
 	if not rooms[room].started:
 		rooms[room].started = true
 		for i in range(3 if rooms[room].kind == "boss" else 2):
