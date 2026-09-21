@@ -1,0 +1,145 @@
+{
+  "content_schema_version": 1,
+  "content_version": "dcss-balance-0.34.1-2026-09-13-v1",
+  "content_type": "DCSS_ENEMIES",
+  "definitions": [
+    {
+      "species_id": "dcss_frilled_lizard",
+      "reference_id": "frilled-lizard",
+      "display_name": "목도리 도마뱀",
+      "glyph": "m",
+      "sight_range": 6,
+      "perception": 500,
+      "max_health": 20,
+      "entity_kind": "melee_enemy",
+      "combat_profile": {
+        "profile_id": "dcss-frilled-lizard-v1",
+        "accuracy_milli": 240,
+        "evasion_milli": 150,
+        "power": 1,
+        "armor_flat": 0,
+        "bleed_proc_milli": 100,
+        "bleed_resist_milli": 0
+      },
+      "hd": 1,
+      "loadout_id": "",
+      "body_proxy": "generic_humanoid",
+      "default_attack_time": 100
+    },
+    {
+      "species_id": "dcss_gnoll",
+      "reference_id": "gnoll",
+      "display_name": "놀",
+      "glyph": "o",
+      "sight_range": 6,
+      "perception": 500,
+      "max_health": 130,
+      "entity_kind": "melee_enemy",
+      "combat_profile": {
+        "profile_id": "dcss-gnoll-v1",
+        "accuracy_milli": 260,
+        "evasion_milli": 90,
+        "power": 54,
+        "armor_flat": 4,
+        "bleed_proc_milli": 100,
+        "bleed_resist_milli": 0
+      },
+      "hd": 2,
+      "loadout_id": "DCSS_MONSTER_CLUB_V1",
+      "body_proxy": "generic_humanoid",
+      "default_attack_time": 100
+    },
+    {
+      "species_id": "dcss_hobgoblin",
+      "reference_id": "hobgoblin",
+      "display_name": "홉고블린",
+      "glyph": "o",
+      "sight_range": 6,
+      "perception": 500,
+      "max_health": 55,
+      "entity_kind": "melee_enemy",
+      "combat_profile": {
+        "profile_id": "dcss-hobgoblin-v1",
+        "accuracy_milli": 240,
+        "evasion_milli": 100,
+        "power": 49,
+        "armor_flat": 4,
+        "bleed_proc_milli": 100,
+        "bleed_resist_milli": 0
+      },
+      "hd": 1,
+      "loadout_id": "DCSS_MONSTER_CLUB_V1",
+      "body_proxy": "generic_humanoid",
+      "default_attack_time": 100
+    },
+    {
+      "species_id": "dcss_orc",
+      "reference_id": "orc",
+      "display_name": "오크",
+      "glyph": "o",
+      "sight_range": 6,
+      "perception": 500,
+      "max_health": 70,
+      "entity_kind": "melee_enemy",
+      "combat_profile": {
+        "profile_id": "dcss-orc-v1",
+        "accuracy_milli": 240,
+        "evasion_milli": 100,
+        "power": 34,
+        "armor_flat": 0,
+        "bleed_proc_milli": 100,
+        "bleed_resist_milli": 0
+      },
+      "hd": 1,
+      "loadout_id": "DCSS_MONSTER_CLUB_V1",
+      "body_proxy": "generic_humanoid",
+      "default_attack_time": 100
+    },
+    {
+      "species_id": "dcss_rat",
+      "reference_id": "rat",
+      "display_name": "쥐",
+      "glyph": "m",
+      "sight_range": 6,
+      "perception": 500,
+      "max_health": 25,
+      "entity_kind": "melee_enemy",
+      "combat_profile": {
+        "profile_id": "dcss-rat-v1",
+        "accuracy_milli": 240,
+        "evasion_milli": 100,
+        "power": 1,
+        "armor_flat": 2,
+        "bleed_proc_milli": 100,
+        "bleed_resist_milli": 0
+      },
+      "hd": 1,
+      "loadout_id": "",
+      "body_proxy": "generic_humanoid",
+      "default_attack_time": 100
+    },
+    {
+      "species_id": "dcss_river_rat",
+      "reference_id": "river-rat",
+      "display_name": "강쥐",
+      "glyph": "m",
+      "sight_range": 6,
+      "perception": 500,
+      "max_health": 110,
+      "entity_kind": "melee_enemy",
+      "combat_profile": {
+        "profile_id": "dcss-river-rat-v1",
+        "accuracy_milli": 260,
+        "evasion_milli": 110,
+        "power": 1,
+        "armor_flat": 10,
+        "bleed_proc_milli": 100,
+        "bleed_resist_milli": 0
+      },
+      "hd": 2,
+      "loadout_id": "",
+      "body_proxy": "generic_humanoid",
+      "default_attack_time": 100
+    }
+  ]
+}

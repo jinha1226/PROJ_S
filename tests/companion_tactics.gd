@@ -112,6 +112,7 @@ func exercise() -> void:
 	s.enemies[0].hp = 0
 	check(not s.companion_previews()[0].get("reserved",false),"dead target invalidates reservation")
 	var scene = load("res://expedition/main.tscn").instantiate()
+	scene.session = Session.new(731,true,true)
 	root.size = Vector2i(390,844); root.add_child(scene); scene.depart()
 	for frame in range(5): await process_frame
 	check(scene.session.party.size() == 2,"leader and one companion")

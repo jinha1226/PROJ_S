@@ -7,7 +7,10 @@ const TurnCore = preload("res://sim/turn_engine.gd")
 const ElementRules = preload("res://sim/environment_rules.gd")
 const Injury = preload("res://sim/body_injury_system.gd")
 const Dungeon = preload("res://expedition/dungeon_map.gd")
-const BOARD_SIDE := Dungeon.ROOM_SIDE
+var BOARD_SIDE := Dungeon.ROOM_SIDE
+const Floor = preload("res://expedition/continuous_floor.gd")
+var floor_mode := false
+var floor_state
 const BossTrial = preload("res://expedition/boss_trial.gd")
 var boss_trial := false
 const Tactics = preload("res://expedition/tactical_action_selector.gd")
@@ -44,10 +47,12 @@ var hunger := 0
 var supplies: Array = [2,2,1,1,1,3]
 const SUPPLY_NAMES = ["치유 물약","정신 안정제","활력 물약","화염 두루마리","물 두루마리","붕대"]
 
-func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = false) -> void:
+func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = false, p_floor: bool = false) -> void:
 	seed_value = p_seed
 	boss_trial = p_boss_trial
 	companions = p_companions and boss_trial
+	floor_mode = p_floor
+	if floor_mode: floor_state = Floor.new(); BOARD_SIDE = Floor.SIZE
 	for i in range(2 if companions else 1 if boss_trial else 3):
 		party.append(make_actor(i, ["아린", "브란", "세라"][i], false))
 	message("부상과 기억은 원정을 마쳐도 남습니다. 준비되면 출정하세요.")
@@ -79,6 +84,8 @@ func depart() -> bool:
 	expedition_number += 1
 	food = 27; torches = 5; light = 90; loot = 0; hunger = 0
 	supplies = [2,2,1,1,1,3]
+	if floor_mode:
+		floor_state.build(self); message("1층 · 심부 관문을 찾아 탐험하세요."); return true
 	rooms = Dungeon.generate(seed_value + expedition_number * 7919)
 	if boss_trial: BossTrial.prepare(self)
 	room = 0; visited = [0]
@@ -121,6 +128,7 @@ func enter_room(previous: int = -1) -> void:
 
 func doors() -> Dictionary:
 	var result: Dictionary = {}
+	if floor_mode: return result
 	if rooms.is_empty(): return result
 	for destination in rooms[room].links:
 		var delta: int = destination - room
@@ -136,7 +144,7 @@ func stress(actor: Dictionary, amount: int) -> void:
 	actor.condition = "붕괴" if actor.stress >= 150 else "불안" if actor.stress >= 100 else "평온"
 
 func use_torch() -> bool:
-	if phase not in ["EXPLORE", "EVENT"] or torches <= 0 or light >= 100: return false
+	if (phase not in ["EXPLORE", "EVENT"] and not (floor_mode and phase == "BATTLE" and safe_management())) or torches <= 0 or light >= 100: return false
 	torches -= 1; light = mini(100, light + 50)
 	message("새 횃불을 켰습니다. 밝기 %d" % light)
 	return true
@@ -242,11 +250,17 @@ func melee_reach(a: Vector2i, b: Vector2i) -> bool:
 func can_step(a: Vector2i, b: Vector2i) -> bool:
 	return melee_reach(a,b) and is_free(b)
 
+func combat_enemies() -> Array:
+	return floor_state.threats(self) if floor_mode else enemies.filter(func(e): return e.hp > 0)
+
+func safe_management() -> bool:
+	return phase in ["TOWN","EXPLORE"] or floor_mode and phase == "BATTLE" and floor_state.safe(self)
+
 func auto_attack() -> bool:
 	if phase != "BATTLE": return false
 	var actor: Dictionary = party[selected]
 	if actor.hp <= 0 or actor.ap <= 0: return false
-	var targets: Array = enemies.filter(func(e): return e.hp > 0)
+	var targets: Array = combat_enemies()
 	targets.sort_custom(func(a,b):
 		var av: int = a.hp if actor.basic_target == "LOWEST_HP" else distance(actor.pos,a.pos)
 		var bv: int = b.hp if actor.basic_target == "LOWEST_HP" else distance(actor.pos,b.pos)
@@ -302,6 +316,7 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 
 func act(kind: String, target: Vector2i) -> bool:
 	if phase != "BATTLE" or not inside(target): return false
+	if floor_mode and not floor_state.visible.has(target): return false
 	if boss_trial and kind == "PYLON":
 		if not BossTrial.disable_pylon(self,target): return false
 		finish_player_action(); return true
@@ -349,6 +364,7 @@ func act(kind: String, target: Vector2i) -> bool:
 
 func finish_player_action() -> void:
 	if not boss_trial or phase != "BATTLE" or resolving_companions: return
+	if floor_mode: floor_state.observe(self)
 	var leader := selected
 	resolving_companions = true
 	if companions:
@@ -398,6 +414,7 @@ func cancel_reservation(index: int) -> void:
 
 func companion_choice(actor: Dictionary) -> Dictionary:
 	var reserved := reservation_choice(actor)
+	if reserved.is_empty() and floor_mode and floor_state.safe(self): return floor_state.follow(self,actor)
 	return Tactics.choose(self,actor) if reserved.is_empty() else reserved
 
 func companion_previews() -> Array:
@@ -466,7 +483,7 @@ func roll_essence(enemy: Dictionary) -> void:
 	if not enemy.enemy or enemy.hp > 0 or enemy.get("essence_rolled",false): return
 	enemy.essence_rolled = true
 	for actor in alive():
-		if Growth.gain(actor,100 if boss_trial else 25) > 0: message(actor.name+" · 레벨 %d! 숙련 포인트 획득" % actor.growth.level)
+		if Growth.gain(actor,100 if boss_trial and not floor_mode else 25) > 0: message(actor.name+" · 레벨 %d! 숙련 포인트 획득" % actor.growth.level)
 	var id: String = enemy.get("essence_id","")
 	if not Abilities.DEFINITIONS.has(id): return
 	if Hexaco.sample(seed_value,expedition_number*10000+room*100+enemy.id,"essence",100) >= Abilities.DROP_PERCENT: return
@@ -474,7 +491,7 @@ func roll_essence(enemy: Dictionary) -> void:
 	message("이능 전리품 · "+Abilities.DEFINITIONS[id].item+" → 공용 가방")
 
 func spend_growth(index: int, id: String, stat: bool = false) -> bool:
-	if phase not in ["TOWN","EXPLORE"] or index < 0 or index >= party.size() or party[index].hp <= 0: return false
+	if not safe_management() or index < 0 or index >= party.size() or party[index].hp <= 0: return false
 	return Growth.spend(party[index],id,stat)
 
 func reset_rules(index: int) -> void:
@@ -484,7 +501,7 @@ func reset_rules(index: int) -> void:
 		if Abilities.DEFINITIONS.has(id): actor.rules.append(Rules.make_rule(id,"SELF" if Abilities.DEFINITIONS[id].target == "SELF" else "NEAREST","DANGER" if id == "IRON_HIDE" else "ALWAYS"))
 
 func consume_essence(index: int, id: String) -> bool:
-	if phase not in ["TOWN","EXPLORE"] or index < 0 or index >= party.size() or not Abilities.DEFINITIONS.has(id): return false
+	if not safe_management() or index < 0 or index >= party.size() or not Abilities.DEFINITIONS.has(id): return false
 	var actor: Dictionary = party[index]
 	if actor.hp <= 0 or essences.get(id,0) <= 0 or id in actor.learned_abilities: return false
 	actor.learned_abilities.append(id); essences[id] -= 1
@@ -493,7 +510,7 @@ func consume_essence(index: int, id: String) -> bool:
 	return true
 
 func equip_ability(index: int, slot: int, id: String) -> bool:
-	if phase not in ["TOWN","EXPLORE"] or index < 0 or index >= party.size() or party[index].hp <= 0: return false
+	if not safe_management() or index < 0 or index >= party.size() or party[index].hp <= 0: return false
 	return Abilities.equip(party[index],slot,id)
 
 func enemy_attack_effect(enemy: Dictionary, cells: Array, area: bool = false) -> void:
@@ -537,6 +554,7 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	message("%s · %d 피해%s" % [target.name, lost, " · 사망" if target.hp <= 0 else ""])
 
 func plan_enemies() -> void:
+	if floor_mode: intents.clear(); return
 	if boss_trial: BossTrial.plan(self); return
 	intents.clear()
 	for enemy in enemies:
@@ -553,6 +571,7 @@ func plan_enemies() -> void:
 
 func enemy_attack_turn(enemy: Dictionary) -> void:
 	if enemy.hp <= 0 or alive().is_empty(): return
+	if floor_mode: floor_state.enemy_turn(self,enemy); return
 	if boss_trial: BossTrial.turn(self,enemy); return
 	if enemy.get("charging",false):
 		# Pushing removes the intent: interrupted charge loses the action.
@@ -597,9 +616,11 @@ func end_round() -> bool:
 		for x in range(BOARD_SIDE):
 			var point := Vector2i(x,y)
 			var cell := tile(point)
+			if cell.fire <= 0 and cell.wet <= 0: continue
 			var result := ElementRules.project_existing_fire_tick(cell.fire, cell.wet, 0, world_time)
 			cell.fire = result.fire_after_decay
 			cell.wet = maxi(0, result.wetness_after_suppression - ElementRules.WETNESS_DECAY_PER_ENVIRONMENT_TICK)
+			if result.known_damage <= 0: continue
 			var victim := at(point)
 			if not victim.is_empty() and result.known_damage > 0: damage(victim, result.known_damage, 999, "FIRE")
 	check_battle_end()
@@ -608,9 +629,16 @@ func end_round() -> bool:
 		actor["guarded"] = false
 		actor.iron_guard = false
 		for id in actor.cooldowns: actor.cooldowns[id] = maxi(0,int(actor.cooldowns[id])-1)
-		stress(actor, 2 if light >= 35 else 5)
+		if not floor_mode or not floor_state.safe(self): stress(actor, 2 if light >= 35 else 5)
 		actor.ap = action_budget(actor)
 	round_number += 1
+	if floor_mode:
+		floor_state.observe(self)
+		if round_number % 20 == 0:
+			food = maxi(0,food-1); light = maxi(0,light-2)
+			hunger = clampi(hunger+(5 if food == 0 else 1),0,100)
+			if food == 0 or light < 35:
+				for actor in alive(): stress(actor,(3 if food == 0 else 0)+(2 if light < 35 else 0))
 	if companions and party[selected].hp <= 0: selected = party.find(alive()[0])
 	plan_enemies()
 	return true
@@ -619,6 +647,7 @@ func check_battle_end() -> void:
 	if phase != "BATTLE": return
 	if alive().is_empty():
 		phase = "DEFEAT"; loot = 0; message("원정대가 전멸했습니다.")
+	elif floor_mode: return
 	elif enemies.all(func(a): return a.hp <= 0):
 		loot += 35 if rooms[room].kind != "boss" else 100
 		rooms[room].cleared = true
@@ -632,7 +661,7 @@ func check_battle_end() -> void:
 
 func retreat() -> bool:
 	if phase not in ["EXPLORE", "EVENT", "BATTLE"]: return false
-	var penalty := phase == "BATTLE"
+	var penalty: bool = phase == "BATTLE" and (not floor_mode or not floor_state.safe(self))
 	if penalty:
 		loot /= 2
 		for actor in alive(): stress(actor, 15)

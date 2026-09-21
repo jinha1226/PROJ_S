@@ -60,7 +60,12 @@ func geometry() -> void:
 	origin = Vector2(0,4)
 
 func project(cell: Vector2) -> Vector2:
-	return origin + cell*half_width*2
+	return origin + (cell-Vector2(camera_cell()))*half_width*2
+
+func camera_cell() -> Vector2i:
+	if session == null or not session.floor_mode or session.tiles.is_empty(): return Vector2i.ZERO
+	var focus: Vector2i = session.party[session.selected].pos
+	return Vector2i(clampi(focus.x-4,0,session.BOARD_SIDE-10),clampi(focus.y-4,0,session.BOARD_SIDE-10))
 
 func cell_center(cell: Vector2i) -> Vector2:
 	geometry()
@@ -70,7 +75,7 @@ func cell_at(point: Vector2) -> Vector2i:
 	geometry()
 	var camera := impact_transform()
 	var delta: Vector2 = (point-camera.offset)/camera.zoom-origin
-	return Vector2i(floori(delta.x/(half_width*2)),floori(delta.y/(half_width*2)))
+	return Vector2i(floori(delta.x/(half_width*2)),floori(delta.y/(half_width*2)))+camera_cell()
 
 func tile_polygon(point: Vector2) -> PackedVector2Array:
 	var result := PackedVector2Array()
@@ -121,20 +126,28 @@ func _draw() -> void:
 	if targeting_skill == "BOMB":
 		attacks.clear()
 		var caster: Dictionary = session.party[session.selected if input_actor < 0 else input_actor]
-		for y in range(session.BOARD_SIDE):
-			for x in range(session.BOARD_SIDE):
+		for y in range(camera_cell().y,camera_cell().y+10):
+			for x in range(camera_cell().x,camera_cell().x+10):
 				var cell := Vector2i(x,y)
 				if session.distance(caster.pos,cell) <= session.Abilities.DEFINITIONS.BOMB.range and session.tile(cell).terrain != "wall" and session.TurnCore.Geometry.sees(caster.pos,cell,func(p): return session.tile(p).terrain == "wall"): attacks.append(cell)
-	for depth in range(session.BOARD_SIDE*2-1):
-		for x in range(session.BOARD_SIDE):
-			var y := depth-x
-			if y < 0 or y >= session.BOARD_SIDE: continue
+	for depth in range(19):
+		for local_x in range(10):
+			var local_y := depth-local_x
+			if local_y < 0 or local_y >= 10: continue
+			var x: int = local_x+camera_cell().x
+			var y: int = local_y+camera_cell().y
 			var point := Vector2i(x,y)
+			if session.floor_mode and not session.floor_state.explored.has(point): continue
 			var cell: Dictionary = session.tile(point)
 			var polygon := tile_polygon(Vector2(point))
 			draw_texture_rect(Art.terrain(cell),Rect2(project(Vector2(point)),Vector2.ONE*half_width*2),false)
+			if session.floor_mode and not session.floor_state.visible.has(point):
+				draw_colored_polygon(polygon,Color(0,0,0,0.65)); continue
 			outline(polygon,Color("242a30"))
 			var center := project(Vector2(point)+Vector2.ONE*0.5)
+			if session.floor_mode and session.floor_state.features.has(point):
+				var feature: Dictionary = session.floor_state.features[point]
+				Icons.paint(self,"entry" if feature.kind in ["entry","exit","relic"] else feature.kind,center,half_width*0.5,Color("655a43") if feature.used else Color("e4c98e"))
 			if point in movement:
 				draw_colored_polygon(polygon,Color(0.2,0.85,0.35,0.32)); outline(polygon,Color("71d991"),1.5)
 			if point in attacks:
@@ -163,7 +176,7 @@ func _draw() -> void:
 				draw_circle(Vector2.ZERO,half_width*0.6,Color(0,0,0,0.5))
 				draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
 				var sprite: Texture2D = Art.BOSS if actor.enemy and actor.name == "수문장" else Art.ENEMY if actor.enemy else Art.ACTORS[actor.id]
-				if session.boss_trial and actor.enemy: sprite = Art.BOSS
+				if session.boss_trial and not session.floor_mode and actor.enemy: sprite = Art.BOSS
 				if session.boss_trial and actor.enemy and room.shield:
 					draw_arc(center,half_width*0.9,0,TAU,32,Color("7eeaff"),3,true)
 				var side := half_width*1.65

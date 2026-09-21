@@ -22,7 +22,9 @@ static func shell(ui, tab: String) -> VBoxContainer:
 		skin.set_stylebox(state,"Button",surface(Color("15191d"),Color("74cfca") if state in ["pressed","focus"] else Color("65522a")))
 	skin.set_color("font_color","Button",Color("d0c8b4"))
 	skin.set_color("font_pressed_color","Button",Color("9fece6"))
-	skin.set_stylebox("panel","PopupPanel",StyleBoxEmpty.new())
+	var opaque := surface(Color("101416")); opaque.set_content_margin_all(0)
+	opaque.shadow_size = 0; opaque.set_border_width_all(0)
+	skin.set_stylebox("panel","PopupPanel",opaque)
 	ui.details_popup.theme = skin
 	ui.modal_content.custom_minimum_size = ui.size
 	var canvas := Control.new(); canvas.custom_minimum_size = ui.size; ui.modal_content.add_child(canvas)
@@ -111,7 +113,7 @@ static func status(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	text(body,"부위를 누르면 상세 상태를 확인합니다.",11)
 
 static func can_invest(ui, actor: Dictionary) -> bool:
-	return ui.session.phase in ["TOWN","EXPLORE"] and actor.hp > 0
+	return ui.session.safe_management() and actor.hp > 0
 
 static func mastery(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	var summary := card(list,"Lv.%d · 숙련 포인트 %d" % [actor.growth.level,actor.growth.points])

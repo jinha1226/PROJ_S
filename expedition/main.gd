@@ -13,7 +13,7 @@ var item_detail: VBoxContainer
 const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 const SKILLS = [["PUSH","GUARD"],["ATTACK","GUARD"],["WATER","ELECTRIC"]]
 const SKILL_NAMES = [["밀쳐내기","방어"],["강타","방어"],["물","방전"]]
-var session = Session.new(randi(),true,true)
+var session = Session.new(randi(),true,true,true)
 var mode := ""
 var reservation_actor := -1
 var pending_item := -1
@@ -47,6 +47,7 @@ func _ready() -> void:
 		box.border_color = Color("bba16b") if state in ["hover","pressed","focus"] else Color("50535a")
 		box.set_border_width_all(1); box.set_corner_radius_all(4)
 		box.content_margin_left = 3; box.content_margin_right = 3; skin.set_stylebox(state,"Button",box)
+	skin.set_stylebox("panel","PopupPanel",CharacterUI.surface(Color("101416")))
 	theme = skin
 	var margin := MarginContainer.new(); margin.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	for side in ["left","right","top","bottom"]: margin.add_theme_constant_override("margin_"+side,0 if side in ["left","right"] else 8)
@@ -67,6 +68,7 @@ func _ready() -> void:
 func clear(node: Node) -> void:
 	if node == modal_content:
 		item_popup.hide()
+		details_popup.theme = theme
 		modal_content.custom_minimum_size = Vector2(320,340)
 		details_popup.reset_size()
 	for child in node.get_children(): node.remove_child(child); child.queue_free()
@@ -197,7 +199,7 @@ func refresh() -> void:
 	for node in nav.get_children(): node.custom_minimum_size.y = 49
 
 func depart() -> void:
-	if session.phase == "DEFEAT" or session.alive().is_empty(): session = Session.new(randi(),true,true)
+	if session.phase == "DEFEAT" or session.alive().is_empty(): session = Session.new(randi(),true,true,true)
 	run_action(session.depart)
 
 func select_actor(index: int) -> void:
@@ -264,6 +266,8 @@ func queue_action(kind: String, point: Vector2i) -> void:
 	refresh()
 
 func on_cell(point: Vector2i) -> void:
+	if session.floor_mode and session.phase == "BATTLE" and reservation_actor < 0 and mode.is_empty() and pending_item < 0 and session.floor_state.features.has(point) and not session.floor_state.features[point].used and point != session.party[session.selected].pos and session.distance(session.party[session.selected].pos,point) <= 1:
+		run_action(func(): return session.floor_state.interact(session,point)); return
 	if reservation_actor >= 0:
 		var target: Dictionary = session.at(point)
 		var kind := mode if not mode.is_empty() else "ATTACK" if target.get("enemy",false) else "WAIT" if point == session.party[reservation_actor].pos else "MOVE"
@@ -317,8 +321,9 @@ func open_management(index: int) -> void:
 		1: show_supplies()
 		2: show_tactics()
 		3:
-			modal("원정","목표: 보스 처치 후 귀환\n탐색: %d / 9개 방\n전리품: %d\n자금: %d\n\n" % [session.visited.size(),session.loot,session.bank]+("행동 한 번마다 적도 행동합니다. 자신을 누르면 대기. 미리보기는 시간을 쓰지 않습니다." if session.boss_trial else "전원 행동력 소진 시 적 차례."))
-			if session.phase in ["BATTLE","EXPLORE"]: button(modal_content,"철수 · 전리품 절반" if session.phase == "BATTLE" else "귀환",func(): details_popup.hide(); run_action(session.retreat))
+			var overview: String = "목표: 심부 관문을 돌파하고 출구로 귀환\n1층 · 100×100 연속 지도\n발견한 타일: %d / 10000\n전리품: %d\n자금: %d\n\n" % [session.floor_state.explored.size(),session.loot,session.bank] if session.floor_mode else "목표: 보스 처치 후 귀환\n탐색: %d / 9개 방\n전리품: %d\n자금: %d\n\n" % [session.visited.size(),session.loot,session.bank]
+			modal("원정",overview+("행동 한 번마다 적도 행동합니다. 자신을 누르면 대기. 미리보기는 시간을 쓰지 않습니다." if session.boss_trial else "전원 행동력 소진 시 적 차례."))
+			if session.phase in ["BATTLE","EXPLORE"]: button(modal_content,"귀환" if session.safe_management() else "철수 · 전리품 절반",func(): details_popup.hide(); run_action(session.retreat))
 			if session.phase == "TOWN": button(modal_content,"요양 · 20 자금",func(): details_popup.hide(); run_action(session.rest_town),session.bank >= 20)
 
 func show_character(index: int, tab: String = "상태") -> void:
@@ -441,7 +446,7 @@ func show_item_detail(id: String) -> void:
 	var info := label(item_detail,row.description,12); info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.custom_minimum_size.x = 290
 	if row.category == "이능":
 		for i in range(session.party.size()):
-			button(item_detail,session.party[i].name+"에게 먹이기",func(): item_popup.hide(); confirm_essence(i,id),session.phase in ["TOWN","EXPLORE"] and session.party[i].hp > 0 and id not in session.party[i].learned_abilities)
+			button(item_detail,session.party[i].name+"에게 먹이기",func(): item_popup.hide(); confirm_essence(i,id),session.safe_management() and session.party[i].hp > 0 and id not in session.party[i].learned_abilities)
 	elif row.category == "소모품":
 		if row.slot in [3,4]:
 			button(item_detail,"사용 · 바닥 선택",func(): item_popup.hide(); details_popup.hide(); choose_item(row.slot),session.phase == "BATTLE")
@@ -449,7 +454,7 @@ func show_item_detail(id: String) -> void:
 			for i in range(session.party.size()):
 				button(item_detail,session.party[i].name+"에게 사용",func(): item_popup.hide(); details_popup.hide(); run_action(func(): return session.use_supply(row.slot,Vector2i(-1,-1),i)),session.phase in ["BATTLE","EXPLORE"] and session.party[i].hp > 0)
 	elif id == "torch":
-		button(item_detail,"횃불 사용",func(): item_popup.hide(); details_popup.hide(); run_action(session.use_torch),session.phase == "EXPLORE" and session.light < 100)
+		button(item_detail,"횃불 사용",func(): item_popup.hide(); details_popup.hide(); run_action(session.use_torch),(session.phase == "EXPLORE" or session.floor_mode and session.phase == "BATTLE" and session.safe_management()) and session.light < 100)
 	button(item_detail,"닫기",func(): item_popup.hide()); item_popup.popup_centered(); item_popup.grab_focus()
 
 func popup_list() -> VBoxContainer:

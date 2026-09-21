@@ -23,7 +23,7 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 	for cell in s.movement_cells(actor.id):
 		if danger(s,cell) < here:
 			options.append({"kind":"MOVE","cell":cell,"score":200+here-danger(s,cell),"reason":"위험 회피"})
-	for enemy in s.enemies:
+	for enemy in s.combat_enemies():
 		if enemy.hp <= 0 or not s.melee_reach(actor.pos,enemy.pos): continue
 		var preview: Dictionary = s.attack_preview(enemy.pos,actor.id)
 		if preview.is_empty(): continue
@@ -51,13 +51,13 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 	for id in actor.equipped_abilities:
 		if not s.Abilities.DEFINITIONS.has(id): continue
 		var def: Dictionary = s.Abilities.DEFINITIONS[id]
-		var targets: Array = [actor] if def.target == "SELF" else s.enemies
+		var targets: Array = [actor] if def.target == "SELF" else s.combat_enemies()
 		for target in targets:
 			if not s.Abilities.legal(s,actor,id,target.pos): continue
 			if def.damage > 0:
 				var cells: Array = s.Abilities.cells(s,actor,id,target.pos)
 				if s.alive().any(func(a): return (a.id != actor.id or id == "BOMB") and a.pos in cells): continue
-				if not s.enemies.any(func(e): return e.hp > 0 and e.pos in cells): continue
+				if not s.combat_enemies().any(func(e): return e.hp > 0 and e.pos in cells): continue
 			options.append({"kind":id,"cell":target.pos,"score":40,"reason":def.name})
 	# Safety escape first, then the first matching configured rule. No score
 	# from a lower-priority skill may override an earlier valid rule.
@@ -91,10 +91,11 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 		return attacks[0]
 	options.clear()
 	var goals: Array = []
-	for enemy in s.enemies:
+	for enemy in s.combat_enemies():
 		if enemy.hp <= 0: continue
 		for d in s.DIRECTIONS:
 			if s.is_free(enemy.pos+d) and s.melee_reach(enemy.pos+d,enemy.pos) and danger(s,enemy.pos+d) == 0: goals.append(enemy.pos+d)
+	if goals.is_empty(): return {"kind":"WAIT","cell":actor.pos,"reason":"대기"}
 	var route: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,actor.pos,goals,func(a,b): return s.can_step(a,b) and danger(s,b) == 0,func(_p): return 100)
 	if route.found and route.path.size() > 1:
 		options.append({"kind":"MOVE","cell":route.path[1],"score":1,"reason":"안전한 접근"})

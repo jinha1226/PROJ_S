@@ -37,7 +37,7 @@ static func matches(s, source: Dictionary, candidate: Dictionary, rule: Dictiona
 		"CHARGING": return target.get("charging",false)
 		"DANGER":
 			if s.Tactics.danger(s,source.pos) > 0: return true
-			for foe in s.enemies:
+			for foe in s.combat_enemies():
 				if foe.hp > 0 and s.Tactics.threat(s,foe,source.pos,foe.pos) > 0: return true
 	return false
 

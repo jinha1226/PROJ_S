@@ -9,6 +9,9 @@ var ui_font: Font
 var hovered := -1
 var compact := false
 var minimum_side := 0
+const LegacyMinimap = preload("res://expedition/legacy/party_minimap.gd")
+var floor_minimap
+var floor_stamp := ""
 
 func _ready() -> void:
 	custom_minimum_size = Vector2.ONE * (minimum_side if minimum_side > 0 else 140 if compact else 390)
@@ -32,6 +35,8 @@ func room_at(point: Vector2) -> int:
 
 func _draw() -> void:
 	if session == null or session.rooms.is_empty(): return
+	if session.floor_mode:
+		draw_floor(); return
 	var font: Font = ui_font if ui_font != null else ThemeDB.fallback_font
 	for row in session.rooms:
 		for target in row.links:
@@ -78,6 +83,7 @@ func _gui_input(event: InputEvent) -> void:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			expand_requested.emit(); accept_event()
 		return
+	if session != null and session.floor_mode: return
 	if event is InputEventMouseMotion:
 		hovered = room_at(event.position)
 		mouse_default_cursor_shape = CURSOR_POINTING_HAND if hovered == session.room or session.can_travel(hovered) else CURSOR_ARROW
@@ -85,3 +91,27 @@ func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var id := room_at(event.position)
 		if id >= 0: room_pressed.emit(id); accept_event()
+
+func draw_floor() -> void:
+	if floor_minimap == null:
+		floor_minimap = LegacyMinimap.new(); add_child(floor_minimap)
+	var stamp: String = session.floor_state.epoch+"/"+str(session.world_time)+"/"+str(session.serial)+"/"+str(session.party[session.selected].pos)
+	if floor_stamp != stamp:
+		var observation: Dictionary = session.floor_state.observation(session)
+		var first: bool = floor_minimap.stream_state().epoch != session.floor_state.epoch
+		floor_minimap.set_observation(observation)
+		if first: floor_minimap.set_observation(observation)
+		floor_stamp = stamp
+	floor_minimap.visible = compact
+	floor_minimap.size = size
+	if compact: return
+	var side := minf(size.x,size.y)
+	var step := side/100.0
+	var offset := (size-Vector2.ONE*side)/2
+	draw_rect(Rect2(offset,Vector2.ONE*side),Color("101416"))
+	for point in session.floor_state.explored:
+		var spec: Dictionary = floor_minimap.cell_draw_spec(point)
+		draw_rect(Rect2(offset+Vector2(point)*step,Vector2.ONE*step),spec.color.darkened(0.35))
+		if spec.marker != "":
+			var color := Color("e6c776") if spec.marker == "HERO" else Color("e36762") if spec.marker == "ENEMY" else Color("5ccfc1")
+			draw_circle(offset+(Vector2(point)+Vector2.ONE*0.5)*step,maxf(2,step*0.65),color)
