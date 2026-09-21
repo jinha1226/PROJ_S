@@ -95,7 +95,20 @@ func exercise() -> void:
 	scene.on_cell(game.enemies[0].pos)
 	check(game.enemies[0].hp < enemy_hp and game.round_number == before+1,"touch immediately attacks and advances once")
 	check(scene.pending_attack.is_empty() and scene.attack_button == null,"no attack confirmation")
-	check(scene.board.effects.any(func(e): return e.get("body_injury",false)),"actual body damage marks injury feedback")
+	check(not scene.board.effects.any(func(e): return e.get("body_injury",false)),"ordinary tissue damage does not trigger injury feedback")
+	scene.board.impact_time = 0; scene.board.effect_time = 0; scene.board._process(0.1)
+	check(scene.board.impact_transform().zoom == 1 and is_equal_approx(scene.board.effect_time,0.1),"ordinary hits have no zoom or slow motion")
+	var victim: Dictionary = game.enemies[0]
+	for part in victim.body.parts:
+		if part.part_id in victim.body.LIMB_PART_IDS:
+			for layer in part.layers: layer.integrity = 1
+	game.effects.clear()
+	for attempt in range(100):
+		victim.hp = victim.max_hp
+		game.damage(victim,8,game.party[0].id,"IMPACT")
+		if game.effects[-1].get("body_injury",false): break
+	check(game.effects.any(func(e): return e.get("body_injury",false)),"new limb disability triggers injury feedback")
+	scene.board.effects = game.effects.duplicate(true)
 	scene.board.impact_time = 0; scene.board.effect_time = 0; scene.board._process(0.1)
 	var camera: Dictionary = scene.board.impact_transform()
 	check(camera.zoom > 1 and scene.board.effect_time < 0.1,"body injury zoom and slow animation")
@@ -103,6 +116,16 @@ func exercise() -> void:
 	check(scene.board.cell_at(scene.board.cell_center(hit_cell)*camera.zoom+camera.offset) == hit_cell,"zoomed tile input uses inverse camera")
 	scene.board._process(2)
 	check(scene.board.impact_transform().zoom == 1 and scene.board.effects.is_empty(),"cinematic restores camera and expires")
+	for part in victim.body.parts:
+		if part.part_id in victim.body.LIMB_PART_IDS:
+			part.condition = "DISABLED"
+			part.condition_source_event_id = game.serial
+			for layer in part.layers: layer.integrity = 0
+	game.effects.clear()
+	for attempt in range(20):
+		victim.hp = victim.max_hp
+		game.damage(victim,8,game.party[0].id,"IMPACT")
+	check(not game.effects.any(func(e): return e.get("body_injury",false)),"repeated hits on disabled limbs do not replay cinematic")
 	for viewport_size in [Vector2i(390,844),Vector2i(430,844),Vector2i(412,915)]:
 		root.size = viewport_size
 		for frame in range(5): await process_frame

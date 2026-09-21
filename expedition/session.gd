@@ -519,7 +519,9 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	var key := ("%d/%d/%d" % [seed_value, serial, target.id]).sha256_text()
 	var plan := Injury.assess_hp_loss(target.body, form, lost, target.max_hp, key, target.id + 1)
 	var injury: Dictionary = Injury._apply_plan(target.body, plan, serial)
-	if injury.get("accepted",false) and injury.get("mutated",false):
+	# Tissue wear occurs on ordinary hits too. Only a new functional injury
+	# (including disabled -> severed) warrants the cinematic feedback.
+	if injury.get("accepted",false) and plan.get("condition_before","") != plan.get("condition_after","") and plan.get("condition_after","") in ["DISABLED","SEVERED"]:
 		effect["body_injury"] = true
 		effect["part"] = Body.PART_NAMES.get(plan.get("part_id",""),"신체")
 	target.hp -= lost; Body.sync(target)

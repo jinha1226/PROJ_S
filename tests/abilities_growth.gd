@@ -67,7 +67,7 @@ func exercise() -> void:
 		check(scene.details_popup.size.y <= root.size.y and scene.details_popup.size.x <= root.size.x,"character tab fits mobile: "+tab)
 		var labels: Array = scene.modal_content.find_children("*","Label",true,false)
 		if tab == "숙련": check(not labels.any(func(l): return l.text == "스킬 사용 순서"),"mastery has no ability ordering")
-		if tab == "이능": check(labels.any(func(l): return l.text == "스킬 사용 순서"),"ability tab includes ordering")
+		if tab == "이능": check(scene.modal_content.find_children("EquippedAbility*","PanelContainer",true,false).size() == 2,"ability tab shows only two equipped cards")
 		check(not scene.modal_content.find_children("*","Button",true,false).any(func(b): return b.text == "가방"),"character window has no bag tab")
 	scene.show_essences(); await process_frame
 	scene.confirm_essence(0,"SHOCKWAVE"); await process_frame

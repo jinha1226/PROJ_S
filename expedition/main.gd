@@ -4,6 +4,7 @@ const Board = preload("res://expedition/board.gd")
 const MapView = preload("res://expedition/map_view.gd")
 const Art = preload("res://expedition/mobile_art.gd")
 const InventorySlot = preload("res://expedition/inventory_slot.gd")
+const CharacterUI = preload("res://expedition/character_ui.gd")
 var inventory_filter := "전체"
 var inventory_selected := ""
 var inventory_slots: Array = []
@@ -64,6 +65,10 @@ func _ready() -> void:
 	refresh()
 
 func clear(node: Node) -> void:
+	if node == modal_content:
+		item_popup.hide()
+		modal_content.custom_minimum_size = Vector2(320,340)
+		details_popup.reset_size()
 	for child in node.get_children(): node.remove_child(child); child.queue_free()
 
 func label(parent: Node, text: String, font_size: int = 12) -> Label:
@@ -319,60 +324,40 @@ func open_management(index: int) -> void:
 func show_character(index: int, tab: String = "상태") -> void:
 	tactics_actor = clampi(index,0,session.party.size()-1); character_tab = tab
 	clear(modal_content)
+	var list: VBoxContainer = CharacterUI.shell(self,tab)
 	var actor: Dictionary = session.party[tactics_actor]
-	label(modal_content,actor.name+" · 캐릭터",18)
-	var members := HBoxContainer.new(); modal_content.add_child(members)
-	for i in range(session.party.size()):
-		button(members,session.party[i].name,func(): tactics_expanded = -1; show_character(i,character_tab))
-	var tabs := HBoxContainer.new(); modal_content.add_child(tabs)
-	for title in ["상태","성격","기억","숙련","이능"]:
-		var tab_button := button(tabs,title,func(): show_character(tactics_actor,title))
-		tab_button.toggle_mode = true; tab_button.button_pressed = title == character_tab
-	if tab == "숙련":
-		build_tactics(); return
-	if tab == "이능":
-		build_abilities(); return
-	var body := ""
 	match tab:
-		"상태": body = "Lv.%d · XP %d / %d\n체력 %d/%d · 스트레스 %d\n%s\n\n%s\n\n근력 %d · 민첩 %d · 지능 %d\n일반 공격 기본 위력 %d · 방어 피해 감소 %d%%\n3레벨마다 스탯 1점. 근력: 근접, 민첩: 원거리, 지능: 마법 기본 위력 +2." % [actor.growth.level,actor.growth.xp,Session.Growth.threshold(mini(21,actor.growth.level+1)),actor.hp,actor.max_hp,actor.stress,actor.condition,Session.Body.description(actor),actor.growth.stats.STR,actor.growth.stats.DEX,actor.growth.stats.INT,Session.Growth.power(actor,"MELEE",18),actor.growth.ranks.DEFENSE*4]
-		"성격": body = actor.profile.style_summary().label
-		"기억":
-			for memory in actor.memory.records: body += "%s · 강도 %d\n" % [memory.kind,memory.salience]
-			if body.is_empty(): body = "아직 기록된 기억이 없습니다."
-	var text := RichTextLabel.new(); text.text = body; text.custom_minimum_size = Vector2(300,minf(300,size.y-270)); modal_content.add_child(text)
-	if tab == "상태":
-		label(modal_content,"남은 스탯 포인트 %d" % actor.growth.stat_points)
-		var stats := HBoxContainer.new(); modal_content.add_child(stats)
-		for id in Session.Growth.STATS:
-			button(stats,Session.Growth.STATS[id]+" +",func(): session.spend_growth(tactics_actor,id,true); refresh(); show_character(tactics_actor,"상태"),session.phase in ["TOWN","EXPLORE"] and actor.hp > 0 and actor.growth.stat_points > 0)
-	button(modal_content,"닫기",func(): details_popup.hide()); details_popup.popup_centered()
+		"상태": CharacterUI.status(self,list,actor)
+		"숙련": CharacterUI.mastery(self,list,actor)
+		"이능": CharacterUI.abilities(self,list,actor)
+		"성격": CharacterUI.personality(list,actor)
+		"기억": CharacterUI.memories(self,list,actor)
+	details_popup.popup_centered(Vector2i(size))
 
 func show_tactics() -> void:
 	show_character(tactics_actor,"이능")
 
-func build_tactics() -> void:
-	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(310,minf(400,size.y-330))
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; modal_content.add_child(scroll)
-	var list := VBoxContainer.new(); list.size_flags_horizontal = SIZE_EXPAND_FILL; list.add_theme_constant_override("separation",10); scroll.add_child(list)
-	var actor: Dictionary = session.party[tactics_actor]
-	label(list,"Lv.%d · 숙련 포인트 %d" % [actor.growth.level,actor.growth.points],14)
-	for axis in Session.Growth.AXES:
-		var row := HBoxContainer.new(); list.add_child(row)
-		label(row,"%s %d/10 · %s" % [Session.Growth.AXES[axis],actor.growth.ranks[axis],"피해 감소 +4%p" if axis == "DEFENSE" else "위력 +8%p"],11)
-		button(row,"+",func(): session.spend_growth(tactics_actor,axis); refresh(); show_character(tactics_actor,"숙련"),session.phase in ["TOWN","EXPLORE"] and actor.hp > 0 and actor.growth.points > 0 and actor.growth.ranks[axis] < 10)
-	button(modal_content,"닫기",func(): details_popup.hide()); details_popup.popup_centered()
+func open_rule(index: int) -> void:
+	tactics_expanded = index
+	clear(item_detail)
+	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(310,400)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; item_detail.add_child(scroll)
+	var list := VBoxContainer.new(); list.size_flags_horizontal = SIZE_EXPAND_FILL; scroll.add_child(list)
+	build_skill_rules(list)
+	item_popup.popup_centered()
 
 func build_skill_rules(list: VBoxContainer) -> void:
 	var actor: Dictionary = session.party[tactics_actor]
 	label(list,"스킬 사용 순서",14)
 	for index in range(actor.rules.size()):
+		if index != tactics_expanded: continue
 		var rule: Dictionary = actor.rules[index]
-		var card := VBoxContainer.new(); list.add_child(card)
+		var card := CharacterUI.card(list,"")
 		var header := HBoxContainer.new(); card.add_child(header)
-		button(header,"%d. %s%s ⚙" % [index+1,Session.Rules.SKILLS[rule.skill].name,"" if rule.skill in actor.equipped_abilities else " (미장착)"],func(): tactics_expanded = -1 if tactics_expanded == index else index; show_tactics())
+		label(header,Session.Rules.SKILLS[rule.skill].name,18)
 		var enabled := CheckButton.new(); enabled.text = "자동"; enabled.button_pressed = rule.enabled; enabled.custom_minimum_size.y = 44; header.add_child(enabled)
 		enabled.toggled.connect(func(value): change_tactic_rule(index,"enabled",value))
-		var summary := label(card,Session.Rules.summary(rule),11); summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; summary.custom_minimum_size.x = 290
+		var summary := label(card,Session.Rules.summary(rule),11); summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		if tactics_expanded != index: continue
 		var def: Dictionary = Session.Rules.SKILLS[rule.skill]
 		tactic_pick(card,"누구에게?",def.targets,Session.Rules.TARGET_NAMES,rule.target,func(value): change_tactic_rule(index,"target",value))
@@ -387,23 +372,22 @@ func build_skill_rules(list: VBoxContainer) -> void:
 		if rule.when == "STATUS":
 			tactic_pick(card,"어떤 상태?",Session.Rules.STATUS_NAMES.keys(),Session.Rules.STATUS_NAMES,rule.status,func(value): change_tactic_rule(index,"status",value))
 		var ordering := HBoxContainer.new(); card.add_child(ordering)
-		button(ordering,"↑ 먼저 사용",func(): session.reorder_rule(tactics_actor,index,-1); tactics_expanded = index-1; refresh(); show_tactics(),index > 0)
-		button(ordering,"↓ 나중에 사용",func(): session.reorder_rule(tactics_actor,index,1); tactics_expanded = index+1; refresh(); show_tactics(),index < actor.rules.size()-1)
+		button(ordering,"↑ 먼저 사용",func(): session.reorder_rule(tactics_actor,index,-1); refresh(); show_tactics(); open_rule(index-1),index > 0)
+		button(ordering,"↓ 나중에 사용",func(): session.reorder_rule(tactics_actor,index,1); refresh(); show_tactics(); open_rule(index+1),index < actor.rules.size()-1)
 	var basic := VBoxContainer.new(); list.add_child(basic)
 	label(basic,"기본 행동",14)
 	tactic_pick(basic,"일반 공격 대상",Session.Rules.BASIC_TARGETS,Session.Rules.TARGET_NAMES,actor.basic_target,change_basic_target)
 	var hint := label(basic,"사용할 스킬이 없으면 공격 가능한 적을 공격합니다.\n공격할 수 없으면 안전하게 접근하거나 대기합니다.",11)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; hint.custom_minimum_size.x = 290
-	label(modal_content,"위험 칸 회피 우선 · 자동 OFF여도 직접 사용 가능",10)
-	button(modal_content,"행동방침 기본값 복원",func(): session.reset_rules(tactics_actor); refresh(); show_tactics())
-	button(modal_content,"닫기",func(): details_popup.hide())
-	details_popup.popup_centered()
+	label(list,"위험 칸 회피 우선 · 자동 OFF여도 직접 사용 가능",10)
+	button(list,"행동방침 기본값 복원",func(): session.reset_rules(tactics_actor); refresh(); show_tactics())
+	button(list,"완료",func(): item_popup.hide())
 
 func change_basic_target(value: String) -> void:
-	if session.set_basic_target(tactics_actor,value): refresh(); show_tactics()
+	if session.set_basic_target(tactics_actor,value): refresh(); show_tactics(); open_rule(tactics_expanded)
 
 func change_tactic_rule(index: int, field: String, value: Variant) -> void:
-	if session.update_rule(tactics_actor,index,field,value): refresh(); show_tactics()
+	if session.update_rule(tactics_actor,index,field,value): refresh(); show_tactics(); open_rule(index)
 
 func tactic_pick(parent: Node, title: String, values: Array, names: Dictionary, current: String, changed: Callable) -> void:
 	label(parent,title,12)
@@ -478,9 +462,9 @@ func build_abilities() -> void:
 	label(modal_content,"습득 목록 유지 · 장착 2개 · 전투 밖에서 교체",11)
 	var list := popup_list()
 	for id in actor.learned_abilities:
-		label(list,Session.Rules.SKILLS[id].name,14)
-		var info := label(list,Session.Abilities.DEFINITIONS.get(id,{}).get("description","시작 기술"),11); info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.custom_minimum_size.x = 290
-		var row := HBoxContainer.new(); list.add_child(row)
+		var card := CharacterUI.card(list,Session.Rules.SKILLS[id].name)
+		CharacterUI.text(card,Session.Abilities.DEFINITIONS.get(id,{}).get("description","시작 기술"))
+		var row := HBoxContainer.new(); card.add_child(row)
 		for slot in range(2):
 			button(row,"%d번 장착%s" % [slot+1," 중" if actor.equipped_abilities[slot] == id else ""],func(): session.equip_ability(tactics_actor,slot,id); refresh(); show_character(tactics_actor,"이능"),session.phase in ["TOWN","EXPLORE"] and actor.hp > 0 and id not in actor.equipped_abilities)
 	button(list,"이능 전리품 가방",show_essences)
