@@ -15,6 +15,11 @@ static func paint(canvas: CanvasItem, kind: String, center: Vector2, radius: flo
 			canvas.draw_rect(rect,color,false,2)
 			canvas.draw_line(rect.position+Vector2(0,radius*0.5),rect.end-Vector2(0,radius*0.8),color,2)
 			canvas.draw_rect(Rect2(center-Vector2(2,2),Vector2(4,7)),color)
+		"relic":
+			var gem := PackedVector2Array([center+Vector2(0,-radius),center+Vector2(radius*0.75,0),center+Vector2(0,radius),center+Vector2(-radius*0.75,0)])
+			canvas.draw_colored_polygon(gem,Color("1c3f52"))
+			canvas.draw_polyline(gem+PackedVector2Array([gem[0]]),color,2,true)
+			canvas.draw_line(center+Vector2(-radius*0.75,0),center+Vector2(radius*0.75,0),color,1)
 		"battle", "boss":
 			for direction in [-1,1]:
 				var base := center+Vector2(radius*0.65*direction,radius*0.8)

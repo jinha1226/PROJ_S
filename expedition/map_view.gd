@@ -113,5 +113,5 @@ func draw_floor() -> void:
 		var spec: Dictionary = floor_minimap.cell_draw_spec(point)
 		draw_rect(Rect2(offset+Vector2(point)*step,Vector2.ONE*step),spec.color.darkened(0.35))
 		if spec.marker != "":
-			var color := Color("e6c776") if spec.marker == "HERO" else Color("e36762") if spec.marker == "ENEMY" else Color("5ccfc1")
+			var color := Color("e6c776") if spec.marker == "HERO" else Color("e36762") if spec.marker == "ENEMY" else Color("7fe0ff") if spec.marker == "PORTAL" else Color("5ccfc1")
 			draw_circle(offset+(Vector2(point)+Vector2.ONE*0.5)*step,maxf(2,step*0.65),color)

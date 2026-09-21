@@ -2,7 +2,13 @@ extends RefCounted
 const Source = preload("res://expedition/legacy/four_zone_floor.gd")
 const Registry = preload("res://expedition/legacy/dcss_enemy_registry.gd")
 const MonsterAI = preload("res://expedition/monster_ai.gd")
+const Objective = preload("res://expedition/expedition_objective.gd")
 const SIZE := 100
+## Roster health was tuned for a pair; a lone hero meets the same groups at
+## reduced health so each fight is decided in a few exchanges.
+const SOLO_HP_PERCENT := 45
+const SOLO_HP_MIN := 20
+const SOLO_HP_MAX := 32
 var layout: Dictionary
 var visible: Dictionary = {}
 var explored: Dictionary = {}
@@ -31,7 +37,9 @@ func build(s) -> void:
 	for row in layout.runtime_enemy_roster:
 		var profile: Dictionary = Registry.profile(row.species_id)
 		var enemy: Dictionary = s.make_actor(100+s.enemies.size(),profile.get("display_name","코볼트" if row.species_id == "kobold" else "고블린"),true)
-		enemy.pos = point(row.position); enemy.hp = profile.get("max_health",28); enemy.max_hp = enemy.hp
+		enemy.pos = point(row.position); enemy.hp = profile.get("max_health",28)
+		if s.party.size() == 1: enemy.hp = clampi(enemy.hp*SOLO_HP_PERCENT/100,SOLO_HP_MIN,SOLO_HP_MAX)
+		enemy.max_hp = enemy.hp
 		enemy.group = row.group_id; enemy.home = enemy.pos; enemy.alert = false
 		MonsterAI.configure(enemy,s.enemies.size())
 		enemy.essence_id = ["BOMB","SHOCKWAVE","IRON_HIDE"][s.enemies.size()%3]
@@ -43,9 +51,15 @@ func build(s) -> void:
 		var id := "LOCKED_CHEST" if i%2 == 0 else "DIRT_PILE"
 		features[point(layout.supply_positions[i])] = {"kind":"curio","curio_id":id,"used":false,"label":s.Curios.content.curios[id].name}
 	features[point(layout.entry_position)] = {"kind":"entry","used":false,"label":"귀환 관문"}
-	features[point(layout.transition_portal_position)] = {"kind":"exit","used":false,"label":"1층 출구"}
+	# The legacy relic landmark keeps its old effect as an altar; the mission
+	# relic is a separate single object placed after every other feature.
 	for row in layout.landmarks:
-		features[point(row.position)] = {"kind":"camp" if row.kind == "CAMP" else "relic","used":false,"label":row.label}
+		var p := point(row.position)
+		if features.has(p): continue
+		features[p] = {"kind":"camp" if row.kind == "CAMP" else "altar","used":false,"label":row.label}
+	if not features.has(point(layout.entry_position)) or features[point(layout.entry_position)].kind != "entry":
+		features[point(layout.entry_position)] = {"kind":"entry","used":false,"label":"귀환 관문"}
+	Objective.place(s,self,point(layout.entry_position),point(layout.transition_portal_position))
 	s.rooms = [{"id":0,"name":"1층 · 갈림길 미궁","kind":"floor","links":[],"tiles":s.tiles,"enemies":s.enemies,"started":true,"cleared":false,"shield":false,"pattern":-1,"used":false,"feature":Vector2i(-1,-1)}]
 	s.room = 0; s.phase = "BATTLE"; s.round_number = 1
 	observe(s)
@@ -80,7 +94,15 @@ func observe(s) -> void:
 					explored[p] = true
 					var feature: Dictionary = features.get(p,{})
 					if feature.get("kind","") == "curio": discovered_curios += 1
-					discoveries.append({"position":[x,y],"terrain_id":s.tile(p).terrain,"visibility_state":"MEMORY","marker":"EXIT" if feature.get("kind","") in ["entry","exit"] else "PORTAL" if feature.get("kind","") == "relic" else ""})
+					if feature.get("kind","") == "relic": Objective.discover(s)
+					discoveries.append({"position":[x,y],"terrain_id":s.tile(p).terrain,"visibility_state":"MEMORY","marker":"EXIT" if feature.get("kind","") == "entry" else "PORTAL" if feature.get("kind","") == "relic" else ""})
+
+## Static markers are cached per epoch by the minimap; a state change rewrites
+## the row and starts a new epoch so the next observation rebuilds once.
+func clear_marker(p: Vector2i) -> void:
+	for row in discoveries:
+		if row.position == [p.x,p.y]: row.marker = ""
+	epoch += "+"
 
 func observation(s) -> Dictionary:
 	var markers: Array = []
@@ -98,13 +120,9 @@ func interact(s, p: Vector2i) -> bool:
 	if s.phase != "BATTLE" or s.party[s.selected].hp <= 0 or s.party[s.selected].ap <= 0: return false
 	if not visible.has(p) or not features.has(p) or s.distance(s.party[s.selected].pos,p) > 1: return false
 	var feature: Dictionary = features[p]
-	if feature.kind == "curio": return false # Explicit choice required; never auto-claim.
+	if feature.kind in ["curio","relic"]: return false # Explicit choice required; never auto-claim.
 	if not safe(s): s.message("주변 적을 먼저 처리하세요."); return false
-	if feature.kind == "entry": return s.retreat()
-	if feature.kind == "exit":
-		if s.enemies.any(func(e): return e.hp > 0 and e.group == "F1_G05"):
-			s.message("심부 관문의 적이 출구를 지키고 있습니다."); return false
-		s.loot += 100; return s.retreat()
+	if feature.kind == "entry": return s.return_home()
 	if feature.used: return false
 	feature.used = true
 	if feature.kind == "camp":

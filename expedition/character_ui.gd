@@ -95,6 +95,8 @@ static func status(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	vitals.get_parent().custom_minimum_size.y = 130
 	text(vitals,"체력 %d / %d" % [actor.hp,actor.max_hp]); gauge(vitals,actor.hp,actor.max_hp,Color("9f4544"))
 	text(vitals,"정신 상태 · "+actor.condition); gauge(vitals,actor.stress,200,Color("c6a34c"))
+	if ui.session.floor_mode and ui.session.party.size() == 1:
+		text(vitals,"스트레스 150 이상: 받는 피해 +1 · 정신 안정제로 완화",12)
 	var stats := card(list,"능력치 · 남은 포인트 %d" % actor.growth.stat_points)
 	var attributes := grid(stats,3)
 	for id in Growth.STATS:

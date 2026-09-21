@@ -167,7 +167,7 @@ func _draw() -> void:
 			if session.floor_mode and session.floor_state.features.has(point):
 				var feature: Dictionary = session.floor_state.features[point]
 				var icon: String = session.Curios.definition(feature).get("icon",feature.kind)
-				Icons.paint(self,"entry" if feature.kind in ["entry","exit","relic"] else icon,center,half_width*0.65,Color("655a43") if feature.used else Color("e4c98e"))
+				Icons.paint(self,"entry" if feature.kind in ["entry","altar"] else icon,center,half_width*0.65,Color("655a43") if feature.used else Color("9fe3ff") if feature.kind == "relic" else Color("e4c98e"))
 			if point in attacks:
 				draw_colored_polygon(polygon,Color(0.95,0.15,0.18,0.3)); outline(polygon,Color("f37575"),2)
 			if point == target_cell: outline(polygon,Color.WHITE,3)

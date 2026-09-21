@@ -47,6 +47,12 @@ var hunger := 0
 var supplies: Array = [2,2,1,1,1,3]
 const Curios = preload("res://expedition/curios.gd")
 var exploration_tools: Dictionary = {"KEY":2,"SHOVEL":2}
+const Objective = preload("res://expedition/expedition_objective.gd")
+## Continuous-floor expedition lifecycle. objective/result are per expedition;
+## snapshot holds the persistent state restored on defeat or abandonment.
+var objective: Dictionary = {}
+var snapshot: Dictionary = {}
+var result: Dictionary = {}
 const SUPPLY_NAMES = ["치유 물약","정신 안정제","활력 물약","화염 두루마리","물 두루마리","붕대"]
 
 func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = false, p_floor: bool = false) -> void:
@@ -87,7 +93,9 @@ func depart() -> bool:
 	supplies = [2,2,1,1,1,3]
 	exploration_tools = {"KEY":2,"SHOVEL":2}
 	if floor_mode:
-		floor_state.build(self); message("1층 · 심부 관문을 찾아 탐험하세요."); return true
+		result = {}; objective = {}
+		snapshot = take_snapshot()
+		floor_state.build(self); message("1층 · 심부의 유물을 찾아 입구로 돌아오세요. 유물 없이 귀환해도 전리품은 정산됩니다."); return true
 	rooms = Dungeon.generate(seed_value + expedition_number * 7919)
 	if boss_trial: BossTrial.prepare(self)
 	room = 0; visited = [0]
@@ -142,6 +150,7 @@ func stress(actor: Dictionary, amount: int) -> void:
 	var trauma := int(actor.memory.strongest(["SELF_HARM", "ALLY_LOST"]).get("salience", 0)) / 200
 	var change := amount
 	if amount > 0: change = maxi(1, amount * (650 + actor.profile.value("E")) / 1000 + trauma)
+	if amount > 0 and floor_mode and party.size() == 1: change = ceili(change*0.5)
 	actor.stress = clampi(actor.stress + change, 0, 200)
 	actor.condition = "붕괴" if actor.stress >= 150 else "불안" if actor.stress >= 100 else "평온"
 
@@ -534,6 +543,9 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	if target.get("iron_guard",false): amount = maxi(1,amount / 4)
 	elif target.get("guarded",false): amount = maxi(1,amount / 2)
 	if not target.enemy: amount = Growth.incoming(target,amount)
+	# A solo floor always grants one action; collapse instead exposes the hero
+	# to one extra point of damage. Calming supplies can prevent this penalty.
+	if floor_mode and party.size() == 1 and not target.enemy and target.stress >= 150 and amount > 0: amount += 1
 	serial += 1
 	var lost := mini(int(target.hp), amount)
 	var source_cell: Vector2i = target.pos
@@ -580,7 +592,7 @@ func plan_enemies() -> void:
 		intents.append({"id":enemy.id, "cell":target.pos, "damage":16})
 
 func enemy_attack_turn(enemy: Dictionary) -> void:
-	if enemy.hp <= 0 or alive().is_empty(): return
+	if phase != "BATTLE" or enemy.hp <= 0 or alive().is_empty(): return
 	if floor_mode: floor_state.enemy_turn(self,enemy); return
 	if boss_trial: BossTrial.turn(self,enemy); return
 	if enemy.get("charging",false):
@@ -622,6 +634,7 @@ func end_round() -> bool:
 	for enemy in enemies:
 		enemy_attack_turn(enemy)
 		if alive().is_empty(): break
+	if floor_mode and alive().is_empty(): check_battle_end(); return true
 	for y in range(BOARD_SIDE):
 		for x in range(BOARD_SIDE):
 			var point := Vector2i(x,y)
@@ -657,6 +670,7 @@ func check_battle_end() -> void:
 	if phase != "BATTLE": return
 	if alive().is_empty():
 		phase = "DEFEAT"; loot = 0; message("원정대가 전멸했습니다.")
+		if floor_mode: finish_expedition("DEFEAT")
 	elif floor_mode: return
 	elif enemies.all(func(a): return a.hp <= 0):
 		loot += 35 if rooms[room].kind != "boss" else 100
@@ -670,7 +684,8 @@ func check_battle_end() -> void:
 		message("전투 승리 · 전리품 %d. 부상과 기억을 안고 탐험을 계속합니다." % loot)
 
 func retreat() -> bool:
-	if phase not in ["EXPLORE", "EVENT", "BATTLE"]: return false
+	# The continuous floor only ends at the entry (return_home) or by abandon().
+	if floor_mode or phase not in ["EXPLORE", "EVENT", "BATTLE"]: return false
 	var penalty: bool = phase == "BATTLE" and (not floor_mode or not floor_state.safe(self))
 	if penalty:
 		loot /= 2
@@ -678,6 +693,105 @@ func retreat() -> bool:
 	bank += loot
 	message("귀환 · 전리품 %d 정산%s. 누적 자금 %d" % [loot, " (전투 철수 50% 손실)" if penalty else "", bank])
 	loot = 0; phase = "TOWN"; intents = []; enemies = []; tiles = []
+	return true
+
+func entry_position() -> Vector2i:
+	if not floor_mode: return Vector2i(-1,-1)
+	for p in floor_state.features:
+		if floor_state.features[p].kind == "entry": return p
+	return Vector2i(-1,-1)
+
+func objective_text() -> String:
+	return Objective.text(self) if floor_mode else ""
+
+func pickup_relic() -> bool:
+	return floor_mode and Objective.pickup(self)
+
+func return_error() -> String:
+	if not floor_mode or phase != "BATTLE": return "탐험 중에만 귀환할 수 있습니다."
+	var actor: Dictionary = party[selected]
+	if actor.hp <= 0: return "지금은 행동할 수 없습니다."
+	var entry := entry_position()
+	if entry.x < 0 or (actor.pos != entry and not melee_reach(actor.pos,entry)): return "입구 관문 옆으로 이동하세요."
+	if not floor_state.safe(self): return "주변 적을 먼저 처리하세요."
+	return ""
+
+## Normal end of a floor expedition. No enemy turn follows; the result is
+## fixed first, then the floor data is cleared.
+func return_home() -> bool:
+	if not return_error().is_empty(): return false
+	return finish_expedition("SUCCESS" if Objective.carrying(self) else "PARTIAL")
+
+func abandon() -> bool:
+	if not floor_mode or phase != "BATTLE": return false
+	return finish_expedition("ABANDON")
+
+func actor_snapshot(actor: Dictionary) -> Dictionary:
+	var row: Dictionary = actor.duplicate(true)
+	row.body = actor.body.to_dict(); row.memory = actor.memory.to_dict(); row.profile = actor.profile.to_dict()
+	return row
+
+func actor_restore(row: Dictionary) -> Dictionary:
+	var actor: Dictionary = row.duplicate(true)
+	actor.body = Body.State.from_dict(row.body); actor.memory = Memory.from_dict(row.memory); actor.profile = Hexaco.from_dict(row.profile)
+	actor.reservation = {}; actor.cooldowns = {}; actor.iron_guard = false; actor["guarded"] = false
+	Body.sync(actor)
+	return actor
+
+func take_snapshot() -> Dictionary:
+	return {"party":party.map(actor_snapshot),"essences":essences.duplicate(true),"bank":bank}
+
+func restore_snapshot() -> void:
+	if snapshot.is_empty(): return
+	party = snapshot.party.map(actor_restore)
+	essences = snapshot.essences.duplicate(true); bank = snapshot.bank
+	selected = 0
+
+func injury_count(actor: Dictionary) -> int:
+	var count := 0
+	for part in actor.body.parts:
+		if str(part.condition) in ["DISABLED","SEVERED"]: count += 1
+	return count
+
+## Settles one expedition exactly once. SUCCESS/PARTIAL keep this run's gains;
+## DEFEAT/ABANDON restore the departure snapshot.
+func finish_expedition(reason: String) -> bool:
+	if not floor_mode or not result.is_empty() or snapshot.is_empty(): return false
+	var before: Dictionary = snapshot.party[0]
+	var hero: Dictionary = party[0]
+	var kept: bool = reason in ["SUCCESS","PARTIAL"]
+	var bonus: int = Objective.RECOVERY_BONUS if reason == "SUCCESS" else 0
+	var summary := {"reason":reason,"expedition":expedition_number,"relic":reason == "SUCCESS","loot":loot if kept else 0,"bonus":bonus,"settled":true,
+		"levels":hero.growth.level-int(before.growth.level) if kept else 0,"essences":{},"abilities":[],"injuries":0,"memories":0}
+	if kept:
+		for id in essences:
+			var gained: int = int(essences[id])-int(snapshot.essences.get(id,0))
+			if gained > 0: summary.essences[id] = gained
+		for id in hero.learned_abilities:
+			if id not in before.learned_abilities: summary.abilities.append(id)
+		summary.injuries = injury_count(hero)-injury_count(actor_restore(before))
+		summary.memories = hero.memory.records.size()-before.memory.records.size()
+		bank += loot+bonus
+		objective.state = "DELIVERED" if reason == "SUCCESS" else "LOST"
+		message("귀환 · 전리품 %d%s 정산. 누적 자금 %d" % [loot," + 유물 회수 보너스 %d" % bonus if bonus > 0 else "",bank])
+	else:
+		restore_snapshot()
+		objective.state = "LOST"
+		message("%s · 이번 출정의 획득물을 잃었습니다. 출정 전 상태로 돌아갑니다." % ("패배" if reason == "DEFEAT" else "원정 포기"))
+	summary.bank = bank
+	result = summary
+	loot = 0; phase = "TOWN"; intents = []; enemies = []; tiles = []; effects.clear()
+	return true
+
+## Free town refit: acknowledges the result and restores a survivable state.
+## Distinct from the paid rest; never touches funds.
+func refit() -> bool:
+	if phase != "TOWN" or alive().is_empty(): return false
+	result = {}
+	for actor in alive():
+		actor.hp = maxi(actor.hp,ceili(actor.max_hp*0.8)); actor.stress = mini(actor.stress,60)
+		actor.condition = "평온"; Body.heal(actor)
+	message("무료 재정비 · 최소한의 치료와 휴식. 부위 손상은 유지됩니다.")
 	return true
 
 func rest_town() -> bool:

@@ -4,7 +4,9 @@ func check(value: bool, message: String) -> void:
 	if not value: failures += 1; push_error(message)
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
-	var scene = load("res://expedition/main.gd").new(); root.add_child(scene)
+	var scene = load("res://expedition/main.gd").new()
+	# Default play is solo; this test covers the companion character sheets.
+	scene.session = scene.Session.new(731,true,true,true); root.add_child(scene)
 	await process_frame
 	var actor: Dictionary = scene.session.party[0]
 	var presentation = preload("res://expedition/body_presentation.gd")
