@@ -522,6 +522,10 @@ func enemy_attack_effect(enemy: Dictionary, cells: Array, area: bool = false) ->
 		"cells":cells.duplicate(),"area":area,"amount":0,"form":"IMPACT"})
 	if effects.size() > 32: effects.pop_front()
 
+static func subject_name(value: String) -> String:
+	var last := value.unicode_at(value.length()-1) if not value.is_empty() else 0
+	return value+("이" if last >= 0xAC00 and last <= 0xD7A3 and (last-0xAC00)%28 != 0 else "가")
+
 func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	if target.hp <= 0: return
 	if boss_trial and target.enemy and rooms[room].shield:
@@ -532,8 +536,9 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	serial += 1
 	var lost := mini(int(target.hp), amount)
 	var source_cell: Vector2i = target.pos
+	var source_name: String = {"FIRE":"불길","ELECTRIC":"방전","POISON":"독"}.get(form,"함정")
 	for actor in party + enemies:
-		if actor.id == source: source_cell = actor.pos
+		if actor.id == source: source_cell = actor.pos; source_name = actor.name
 	var effect := {"from":source_cell,"cell":target.pos,"amount":lost,"form":form}
 	effects.append(effect)
 	if effects.size() > 32: effects.pop_front()
@@ -554,7 +559,7 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 			for ally in alive():
 				ally.memory.remember("ALLY_LOST", serial, world_time, target.id + 1, source + 1, 800)
 				stress(ally, 22)
-	message("%s · %d 피해%s" % [target.name, lost, " · 사망" if target.hp <= 0 else ""])
+	message("%s %s에게 %d의 피해를 주었습니다.%s" % [subject_name(source_name),target.name,lost," "+subject_name(target.name)+" 쓰러졌습니다." if target.hp <= 0 else ""])
 
 func plan_enemies() -> void:
 	if floor_mode: intents.clear(); return

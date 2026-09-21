@@ -51,7 +51,7 @@ func run() -> void:
 	check(scene.inventory_rows().filter(func(r): return r.category == "도구").size() == 2,"both tools in common bag")
 	var fresh = Session.new(731,true,true,true); fresh.depart(); scene.session = fresh; scene.refresh()
 	var origin: Vector2i = fresh.party[0].pos
-	var discovery := origin+Vector2i(Session.Floor.sight_side(fresh.light)/2+1,0)
+	var discovery := origin+Vector2i(floori(Session.Floor.sight_radius(fresh.light))+1,0)
 	for x in range(origin.x,discovery.x+1): fresh.tile(Vector2i(x,origin.y)).terrain = "stone"
 	fresh.floor_state.observe(fresh)
 	fresh.floor_state.features[discovery] = {"kind":"curio","curio_id":"DIRT_PILE","used":false,"label":"흙더미"}

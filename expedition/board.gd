@@ -24,6 +24,7 @@ var effects: Array = []
 var effect_time := 0.0
 var impact_time := 0.0
 var companion_previews: Array = []
+var radial_light = preload("res://expedition/radial_light.gd").new()
 
 func injury_focus() -> Dictionary:
 	for effect in effects:
@@ -137,7 +138,8 @@ func _draw() -> void:
 	var camera := impact_transform()
 	draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
 	var movement: Array = session.movement_cells(input_actor)
-	var attacks: Array = session.attack_cells(input_actor) if show_attack_range or input_actor >= 0 else []
+	# Basic melee reach is implicit; only an explicitly selected skill shows range.
+	var attacks: Array = []
 	if targeting_skill == "BOMB":
 		attacks.clear()
 		var caster: Dictionary = session.party[session.selected if input_actor < 0 else input_actor]
@@ -157,7 +159,10 @@ func _draw() -> void:
 			var polygon := tile_polygon(Vector2(point))
 			draw_texture_rect(Art.terrain(cell),Rect2(project(Vector2(point)),Vector2.ONE*half_width*2),false)
 			if session.floor_mode and not session.floor_state.visible.has(point):
-				draw_colored_polygon(polygon,Color(0,0,0,0.65)); continue
+				var observer: Dictionary = session.floor_state.observer(session)
+				if not observer.is_empty() and Vector2(observer.pos).distance_to(Vector2(point)) <= session.floor_state.sight_radius(session.light):
+					draw_colored_polygon(polygon,Color(0,0,0,0.8))
+				continue
 			outline(polygon,Color("242a30"))
 			var center := project(Vector2(point)+Vector2.ONE*0.5)
 			if session.floor_mode and session.floor_state.features.has(point):
@@ -227,6 +232,9 @@ func _draw() -> void:
 			draw_line(center-Vector2(15,-12),center+Vector2(15,-12),color,5,true)
 			draw_arc(center,8+effect_time*45,0,TAU,20,color,2,true)
 		draw_string(ui_font,center+Vector2(-12,-14-effect_time*30),"-%d" % effect.amount,HORIZONTAL_ALIGNMENT_LEFT,-1,20,color)
+	if session.floor_mode:
+		var observer: Dictionary = session.floor_state.observer(session)
+		if not observer.is_empty(): draw_mesh(radial_light.get_mesh(cell_center(observer.pos),size,half_width*2,session.floor_state.sight_radius(session.light)),null)
 	draw_set_transform(Vector2.ZERO)
 	var injury := injury_focus()
 	if not injury.is_empty() and impact_time < 0.45:

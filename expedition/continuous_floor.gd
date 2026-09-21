@@ -50,18 +50,25 @@ func build(s) -> void:
 	observe(s)
 
 static func sight_side(light: int) -> int:
-	# 10x10 at full light; at zero, the actor and two tiles in every direction.
-	return clampi(roundi(5.0+clampi(light,0,100)*0.05),5,10)
+	return ceili(sight_radius(light))*2+1
+
+static func sight_radius(light: int) -> float:
+	return 2.0+clampi(light,0,100)*0.03
+
+func observer(s) -> Dictionary:
+	return s.party[s.selected] if s.party[s.selected].hp > 0 else s.alive()[0] if not s.alive().is_empty() else {}
 
 func observe(s) -> void:
 	visible.clear()
-	var side := sight_side(s.light)
-	var before := (side-1)/2
-	for actor in s.alive():
+	var radius := sight_radius(s.light)
+	var before := ceili(radius)
+	var side := before*2+1
+	var center := observer(s)
+	for actor in ([] if center.is_empty() else [center]):
 		for y in range(maxi(0,actor.pos.y-before),mini(SIZE,actor.pos.y-before+side)):
 			for x in range(maxi(0,actor.pos.x-before),mini(SIZE,actor.pos.x-before+side)):
 				var p := Vector2i(x,y)
-				# Bound the square above; use geometry only for wall/corner occlusion.
+				if Vector2(actor.pos).distance_to(Vector2(p)) > radius: continue
 				if not s.TurnCore.Geometry.sees(actor.pos,p,func(c): return s.tile(c).terrain == "wall",8): continue
 				visible[p] = true
 				if not explored.has(p):

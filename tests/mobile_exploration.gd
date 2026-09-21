@@ -17,13 +17,13 @@ func run() -> void:
 	check(scene.root_layout.get_child(0).find_children("*","Label",true,false).all(func(l): return l.get_theme_font_size("font_size") >= 18),"HUD text enlarged")
 	var s = scene.session
 	var start: Vector2i = s.party[0].pos
-	var target := start+Vector2i(5,0)
+	var target := start+Vector2i(4,0)
 	var turns: int = s.round_number
 	scene.on_cell(target)
 	check(s.party[0].pos != start and s.party[0].pos != target and s.round_number == turns+1,"distant tap advances one step, not teleport")
 	for i in range(10):
 		if scene.navigation.active: scene.navigation_tick()
-	check(s.party[0].pos == target and s.round_number == turns+5 and not scene.navigation.active,"queued movement arrives using five turns")
+	check(s.party[0].pos == target and s.round_number == turns+4 and not scene.navigation.active,"queued movement arrives using four turns")
 	check(scene.navigation.plan_builds == 1,"long route reuses one A* plan")
 	check(not scene.navigation.start(s,Vector2i(99,99)),"unknown destination rejected")
 	scene.toggle_explore(); check(scene.navigation.active and scene.navigation.automatic,"auto exploration starts")
@@ -63,6 +63,9 @@ func run() -> void:
 	scene.refresh(); await process_frame
 	var lines: Array = scene.find_child("RecentLog",true,false).find_children("*","Label",true,false)
 	check(lines.size() == 3 and lines[0].text == "기록 57" and lines[2].text == "기록 59","exactly three recent lines")
+	var log_rect: Rect2 = scene.find_child("RecentLog",true,false).get_global_rect()
+	var field_rect: Rect2 = scene.board.get_global_rect()
+	check(log_rect.position.y < field_rect.end.y and field_rect.end.y-log_rect.position.y <= 20,"log overlaps bottom of game field slightly")
 	scene.show_logs(); await process_frame
 	var history: RichTextLabel = scene.log_popup.find_child("FullHistory",true,false)
 	check(history.text.contains("기록 0") and history.text.contains("기록 59"),"full log retains more than forty entries")
@@ -72,5 +75,13 @@ func run() -> void:
 		root.size = viewport
 		for frame in range(4): await process_frame
 		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"HUD logs and footer fit portrait screen")
+	var target_actor: Dictionary = s.enemies[0]
+	target_actor.hp = 100; target_actor.max_hp = 100
+	var before_hp: int = target_actor.hp
+	s.damage(target_actor,7,s.party[0].id,"IMPACT")
+	check(s.log_lines[-1] == "%s %s에게 %d의 피해를 주었습니다." % [Session.subject_name(s.party[0].name),target_actor.name,before_hp-target_actor.hp],"damage sentence names attacker, target, actual damage")
+	s.damage(target_actor,2,999,"FIRE")
+	check(s.log_lines[-1].begins_with("불길이 "),"environmental damage has a named cause")
+	check(Session.subject_name("아린") == "아린이" and Session.subject_name("세라") == "세라가","Korean subject particles")
 	scene.queue_free(); await process_frame
 	print("Mobile exploration: %d failures" % failures); quit(1 if failures else 0)

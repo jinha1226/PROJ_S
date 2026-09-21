@@ -215,7 +215,14 @@ func refresh() -> void:
 			attack_button.offset_right = 230; attack_button.offset_bottom = -8
 			attack_button.custom_minimum_size.y = 48
 	if session.phase in ["TOWN","DEFEAT"]: button(root_layout,"출정" if session.phase == "TOWN" and not session.alive().is_empty() else "새 원정대",depart)
-	var log_button := button(root_layout,"",show_logs); log_button.name = "RecentLog"; log_button.custom_minimum_size.y = 66
+	var log_holder := Control.new(); log_holder.name = "LogOverlap"; log_holder.custom_minimum_size.y = 48
+	log_holder.mouse_filter = MOUSE_FILTER_IGNORE; root_layout.add_child(log_holder)
+	var log_button := button(log_holder,"",show_logs); log_button.name = "RecentLog"; log_button.custom_minimum_size.y = 66
+	log_button.set_anchors_and_offsets_preset(PRESET_TOP_WIDE)
+	log_button.offset_top = -18; log_button.offset_bottom = 48; log_button.z_index = 2
+	for state in ["normal","hover","pressed","focus","disabled"]:
+		var panel := log_button.get_theme_stylebox(state).duplicate() as StyleBoxFlat
+		panel.bg_color = Color(0.05,0.07,0.09,0.86); log_button.add_theme_stylebox_override(state,panel)
 	var log_box := VBoxContainer.new(); log_box.mouse_filter = MOUSE_FILTER_IGNORE; log_button.add_child(log_box)
 	log_box.set_anchors_and_offsets_preset(PRESET_FULL_RECT); log_box.offset_left = 6; log_box.offset_right = -6; log_box.add_theme_constant_override("separation",0)
 	for i in range(3):
