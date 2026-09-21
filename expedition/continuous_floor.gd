@@ -53,7 +53,7 @@ static func sight_side(light: int) -> int:
 	return ceili(sight_radius(light))*2+1
 
 static func sight_radius(light: int) -> float:
-	return 2.0+clampi(light,0,100)*0.03
+	return 2.0+clampi(light,0,100)*0.05
 
 func observer(s) -> Dictionary:
 	return s.party[s.selected] if s.party[s.selected].hp > 0 else s.alive()[0] if not s.alive().is_empty() else {}

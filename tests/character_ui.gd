@@ -6,6 +6,21 @@ func _initialize() -> void: call_deferred("run")
 func run() -> void:
 	var scene = load("res://expedition/main.gd").new(); root.add_child(scene)
 	await process_frame
+	var actor: Dictionary = scene.session.party[0]
+	var presentation = preload("res://expedition/body_presentation.gd")
+	var snapshot: Dictionary = actor.body.to_dict().duplicate(true)
+	check(presentation.summary(actor) == "건강 · 부위 이상 없음","healthy body has one plain summary")
+	var part: Dictionary = actor.body.parts[0].duplicate(true)
+	part.layers[0].integrity = 600
+	check(presentation.part_state(part) == "상처","tissue damage becomes understandable wound label")
+	part.condition = "DISABLED"
+	check(presentation.part_state(part) == "사용 불가" and presentation.detail(part).contains("기능"),"disabled part describes functional loss")
+	part.condition = "SEVERED"
+	check(presentation.part_state(part) == "절단","severed part stays distinct")
+	check(actor.body.to_dict() == snapshot,"presentation never mutates simulation")
+	scene.show_character(0,"상태")
+	var status_labels: Array = scene.modal_content.find_children("*","Label",true,false)
+	check(not status_labels.any(func(l): return l.text.contains("피부 질김") or l.text.contains("뼈 강도") or l.text.contains("이동 비용")),"raw simulation numbers hidden from body overview")
 	for viewport in [Vector2i(390,844),Vector2i(430,844),Vector2i(412,915)]:
 		root.size = viewport
 		await process_frame

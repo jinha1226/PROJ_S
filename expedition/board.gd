@@ -137,7 +137,6 @@ func _draw() -> void:
 		return
 	var camera := impact_transform()
 	draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
-	var movement: Array = session.movement_cells(input_actor)
 	# Basic melee reach is implicit; only an explicitly selected skill shows range.
 	var attacks: Array = []
 	if targeting_skill == "BOMB":
@@ -169,8 +168,6 @@ func _draw() -> void:
 				var feature: Dictionary = session.floor_state.features[point]
 				var icon: String = session.Curios.definition(feature).get("icon",feature.kind)
 				Icons.paint(self,"entry" if feature.kind in ["entry","exit","relic"] else icon,center,half_width*0.65,Color("655a43") if feature.used else Color("e4c98e"))
-			if point in movement:
-				draw_colored_polygon(polygon,Color(0.2,0.85,0.35,0.32)); outline(polygon,Color("71d991"),1.5)
 			if point in attacks:
 				draw_colored_polygon(polygon,Color(0.95,0.15,0.18,0.3)); outline(polygon,Color("f37575"),2)
 			if point == target_cell: outline(polygon,Color.WHITE,3)

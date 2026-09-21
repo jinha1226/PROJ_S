@@ -3,6 +3,7 @@ extends RefCounted
 const Growth = preload("res://expedition/growth.gd")
 const Body = preload("res://game/rebuilt/body_bridge.gd")
 const Silhouette = preload("res://expedition/body_status_silhouette.gd")
+const BodyPresentation = preload("res://expedition/body_presentation.gd")
 const Emblem = preload("res://expedition/growth_emblem.gd")
 const Art = preload("res://expedition/mobile_art.gd")
 
@@ -93,7 +94,7 @@ static func status(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	var vitals := card(list,"Lv.%d · %s" % [actor.growth.level,actor.name])
 	vitals.get_parent().custom_minimum_size.y = 130
 	text(vitals,"체력 %d / %d" % [actor.hp,actor.max_hp]); gauge(vitals,actor.hp,actor.max_hp,Color("9f4544"))
-	text(vitals,"스트레스 %d / 100 · %s" % [actor.stress,actor.condition]); gauge(vitals,actor.stress,100,Color("c6a34c"))
+	text(vitals,"정신 상태 · "+actor.condition); gauge(vitals,actor.stress,200,Color("c6a34c"))
 	var stats := card(list,"능력치 · 남은 포인트 %d" % actor.growth.stat_points)
 	var attributes := grid(stats,3)
 	for id in Growth.STATS:
@@ -101,16 +102,19 @@ static func status(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		ui.button(box,"+",func(): preview(ui,id,true),can_invest(ui,actor) and actor.growth.stat_points > 0)
 	text(stats,"일반 공격 %d · 피해 감소 %d%%" % [Growth.power(actor,"MELEE",18),actor.growth.ranks.DEFENSE*4])
 	var body := card(list,"육체 상태")
+	text(body,BodyPresentation.summary(actor),18)
+	if actor.attack_factor < 100: text(body,"팔 손상으로 일반 공격력이 감소했습니다.",14)
+	if actor.move_factor > 100: text(body,"다리가 손상되었습니다.",14)
+	if actor.blood < 60: text(body,"혈액이 부족합니다. 회복이 필요합니다.",14)
 	var row := HBoxContainer.new(); body.add_child(row)
 	var silhouette := Silhouette.new(); silhouette.body = {"parts":actor.body.parts}; row.add_child(silhouette)
 	var parts := VBoxContainer.new(); parts.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(parts)
 	for part in actor.body.parts:
-		var integrity := 1000
-		for layer in part.layers: integrity = mini(integrity,layer.integrity)
-		var line = ui.button(parts,"%s · %s" % [Body.PART_NAMES[part.part_id],{"FUNCTIONAL":"정상","DISABLED":"기능 상실","SEVERED":"절단"}[part.condition]],func(): detail(ui,Body.PART_NAMES[part.part_id],"조직 상태 %d%%\n피부 질김 %d · 뼈 강도 %d\n팔 공격 보정 %d%% · 이동 비용 %d%%" % [integrity/10,actor.skin,actor.bone,actor.attack_factor,actor.move_factor]))
-		line.custom_minimum_size.y = 25
-		if part.condition != "FUNCTIONAL": line.add_theme_color_override("font_color",Color("e37870"))
-	text(body,"부위를 누르면 상세 상태를 확인합니다.",11)
+		if BodyPresentation.part_state(part) == "정상": continue
+		var line = ui.button(parts,"%s · %s" % [Body.PART_NAMES[part.part_id],BodyPresentation.part_state(part)],func(): detail(ui,Body.PART_NAMES[part.part_id],BodyPresentation.detail(part)))
+		line.custom_minimum_size.y = 44; line.add_theme_color_override("font_color",BodyPresentation.color(part))
+	if parts.get_child_count() == 0: text(parts,"모든 부위가 정상입니다.",16)
+	text(body,"초록: 정상 · 노랑: 상처 · 빨강: 기능 상실",12)
 
 static func can_invest(ui, actor: Dictionary) -> bool:
 	return ui.session.safe_management() and actor.hp > 0

@@ -1,4 +1,5 @@
 extends Control
+const Presentation = preload("res://expedition/body_presentation.gd")
 var body:Dictionary={}
 func _ready()->void:
 	custom_minimum_size=Vector2(64,126);mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -9,5 +10,5 @@ func _draw()->void:
 	for id in parts:
 		var color:=Color("697071")
 		for part in body.get("parts",[]):
-			if str(part.get("part_id",""))==id and str(part.get("condition","FUNCTIONAL"))!="FUNCTIONAL":color=Color("9f4544")
+			if str(part.get("part_id",""))==id: color=Presentation.color(part)
 		draw_rect(parts[id],color)
