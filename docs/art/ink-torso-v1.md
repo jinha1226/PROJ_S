@@ -1,9 +1,11 @@
 # 먹선 토르소 · 인간 레이어 v1
 
+가독성 수정 v2: 현재 원본은 parts-readable-v2.png. 얼굴의 검은 눈·볼 그림자를 줄이고 피부 면적을 넓혔으며 몸통 명암을 단순화했다. 전체 표시 배율은 유지하고 머리 배치만 92×139에서 110×167로 약 20% 확대했다. 머리 중심 x=128, 하단 y=163을 유지한다. 인게임 배치·docs/art/catalog.json·HTML 미리보기를 함께 갱신했다. 내장 imagegen 편집 프롬프트는 ink-torso-readable-v2-prompts.json.
+
 선택한 짧고 넓은 토르소와 각진 먹선 스타일을 인간 주인공 아린에 적용한다.
 원본 시안은 [torso-rimworld-darkest-v1.png](torso-rimworld-darkest-v1.png).
 
-- 파츠 원본: `assets/characters/ink-torso-v1/parts.png` (1254×1254 RGBA).
+- 현재 파츠 원본: `assets/characters/ink-torso-v1/parts-readable-v2.png` (1254×1254 RGBA). 이전 parts.png는 비교용으로 보존한다.
 - 배치: `assets/characters/ink-torso-v1/catalog.json`. 사용자가 미리보기에서 저장한 `docs/art/catalog.json`의 배치를 반영했다. 좌표 기준은 256×256.
 - 렌더링: 기본복/갑옷 몸통 중 하나 → 머리 → 검과 손 → 방패 순서. 이미지를 합쳐 저장하지 않고 실행 시 AtlasTexture로 겹친다.
 - 인게임 기본 조합은 갑옷·검·방패. 외형만 바뀌며 장비 능력치나 인벤토리 교체와 연결된 상태는 아니다.

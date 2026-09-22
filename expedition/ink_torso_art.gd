@@ -1,7 +1,7 @@
 extends RefCounted
 ## Human prototype: body replacement, then shared head, sword and shield overlays.
 ## This is a visual loadout only; it does not grant equipment stats.
-const PARTS = preload("res://assets/characters/ink-torso-v1/parts.png")
+const PARTS = preload("res://assets/characters/ink-torso-v1/parts-readable-v2.png")
 const Regions = preload("res://expedition/environment_art.gd")
 static var catalog: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/characters/ink-torso-v1/catalog.json"))
 
