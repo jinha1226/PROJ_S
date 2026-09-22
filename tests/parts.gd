@@ -250,6 +250,10 @@ func telegraph() -> void:
 	d = duel(); s = d.s; d.foe.part_id = "ORC_CLEAVER"; d.foe.cooldowns = {}
 	var mate: Dictionary = s.enemies[1]; mate.hp = 30; mate.max_hp = 30; mate.alert = true; mate.pos = d.c+Vector2i(1,1); mate.part_id = ""
 	MonsterAI.turn(s,d.foe)
+	var ring: Array = Abilities.cells(s,d.foe,"ORC_CLEAVER",d.hero.pos)
+	check(ring.size() >= 2 and s.intents.size() == ring.size(),"an area part announces every cell it will hit")
+	check(s.intents.all(func(i): return i.kind == "ORC_CLEAVER" and int(i.damage) == 11),"every announced cell carries the part and its damage")
+	check(s.Rules.lethal_threat(s,d.ally) >= 11,"the ally in the ring is threatened, not only the centre")
 	var ally_hp: int = d.ally.hp; var mate_hp: int = mate.hp; hp = d.hero.hp
 	MonsterAI.turn(s,d.foe)
 	check(d.hero.hp < hp and d.ally.hp < ally_hp and mate.hp == mate_hp,"cleave hits both members in the square and no fellow monster")

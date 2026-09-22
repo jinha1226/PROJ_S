@@ -265,7 +265,7 @@ func _draw() -> void:
 				else:
 					Art.paint_actor(self,actor.id,actor_rect,flash)
 				if actor.enemy and session.floor_mode:
-					var label: String = "시전!" if actor.get("charging",false) else {"MELEE":"근접","RANGED":"사격","CASTER":"마법"}.get(actor.get("role","MELEE"),"")
+					var label: String = ("시전!" if str(actor.get("cast_id","")).is_empty() else "준비!") if actor.get("charging",false) else {"MELEE":"근접","RANGED":"사격","CASTER":"마법"}.get(actor.get("role","MELEE"),"")
 					draw_string(ui_font,center+Vector2(-20,-half_width*0.7),label,HORIZONTAL_ALIGNMENT_CENTER,40,11,Color("ffe2a0"))
 				draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24,3)),Color("191d24"))
 				draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24*float(actor.hp)/actor.max_hp,3)),Color("ce7770") if actor.enemy else Color("9ec987"))

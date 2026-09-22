@@ -54,7 +54,10 @@ static func plan(s) -> void:
 		if enemy.hp <= 0 or not enemy.get("charging",false): continue
 		var id: String = str(enemy.get("cast_id",""))
 		var amount: int = int(Abilities.DEFINITIONS[id].damage) if Abilities.DEFINITIONS.has(id) else SPELL_DAMAGE
-		s.intents.append({"id":enemy.id,"cell":enemy.cast_cell,"damage":amount,"kind":id})
+		# An area part announces every cell it will hit, so threat assessment and
+		# the board see the whole ring, not just its centre.
+		var cells: Array = Abilities.cells(s,enemy,id,enemy.cast_cell) if Abilities.DEFINITIONS.has(id) else [enemy.cast_cell]
+		for cell in cells: s.intents.append({"id":enemy.id,"cell":cell,"damage":amount,"kind":id})
 
 static func turn(s, enemy: Dictionary) -> void:
 	var targets: Array = s.alive()
@@ -62,7 +65,7 @@ static func turn(s, enemy: Dictionary) -> void:
 	if targets.any(func(a): return line(s,enemy.pos,a.pos,9)): enemy.alert = true
 	if not enemy.get("alert",false): return
 	if targets.all(func(a): return distance(enemy.pos,a.pos) > 15):
-		enemy.alert = false; enemy.charging = false; enemy.cast_id = ""; plan(s); return
+		enemy.alert = false; enemy.charging = false; enemy.cast_id = ""; enemy.cast_left = 0; plan(s); return
 	if enemy.get("cast_recovery",0) > 0:
 		enemy.cast_recovery -= 1; return
 	var part: String = str(enemy.get("part_id",""))
