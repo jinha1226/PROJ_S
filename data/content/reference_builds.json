@@ -1,19 +1,19 @@
 {"builds": [
  {"id": "starter", "label": "시작 장비형", "ranks": {}, "stats": {}, "equipped": ["PUSH","GUARD"], "learned": []},
  {"id": "melee_1", "label": "근접형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["PUSH","GUARD"], "learned": [],
-  "rules": [["PUSH","NEAREST","CHARGING"],["GUARD","SELF","HP"]]},
+  "rules": [["PUSH","NEAREST","CHARGING"],["GUARD","SELF","TELEGRAPHED"],["GUARD","SELF","HOLDING_LINE"]]},
  {"id": "b_strike", "label": "시험 강타형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["HEAVY_STRIKE","GUARD"], "learned": ["HEAVY_STRIKE"],
-  "rules": [["HEAVY_STRIKE","NEAREST","ALWAYS"],["GUARD","SELF","HP"]]},
+  "rules": [["HEAVY_STRIKE","NEAREST","ALWAYS"],["GUARD","SELF","TELEGRAPHED"],["GUARD","SELF","HOLDING_LINE"]]},
  {"id": "b_knife", "label": "시험 투척형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["THROWING_KNIFE","GUARD"], "learned": ["THROWING_KNIFE"],
-  "rules": [["THROWING_KNIFE","NEAREST","ALWAYS"],["GUARD","SELF","HP"]]},
+  "rules": [["THROWING_KNIFE","NEAREST","ALWAYS"],["GUARD","SELF","TELEGRAPHED"],["GUARD","SELF","HOLDING_LINE"]]},
  {"id": "b_dressing", "label": "시험 응급처치형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["FIELD_DRESSING","GUARD"], "learned": ["FIELD_DRESSING"],
-  "rules": [["FIELD_DRESSING","SELF","HP"],["GUARD","SELF","HP"]]},
+  "rules": [["FIELD_DRESSING","SELF","HP"],["GUARD","SELF","TELEGRAPHED"],["GUARD","SELF","HOLDING_LINE"]]},
  {"id": "b_lunge", "label": "시험 돌진형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["LUNGE","GUARD"], "learned": ["LUNGE"],
-  "rules": [["LUNGE","NEAREST","ALWAYS"],["GUARD","SELF","HP"]]},
+  "rules": [["LUNGE","NEAREST","ALWAYS"],["GUARD","SELF","TELEGRAPHED"],["GUARD","SELF","HOLDING_LINE"]]},
  {"id": "b_bomb", "label": "폭탄형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["BOMB","GUARD"], "learned": ["BOMB"],
-  "rules": [["BOMB","NEAREST","ALWAYS"],["GUARD","SELF","HP"]]},
+  "rules": [["BOMB","NEAREST","ALWAYS"],["GUARD","SELF","TELEGRAPHED"],["GUARD","SELF","HOLDING_LINE"]]},
  {"id": "b_shockwave", "label": "충격파형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["SHOCKWAVE","GUARD"], "learned": ["SHOCKWAVE"],
-  "rules": [["SHOCKWAVE","SELF","ALWAYS"],["GUARD","SELF","HP"]]},
+  "rules": [["SHOCKWAVE","SELF","ALWAYS"],["GUARD","SELF","TELEGRAPHED"],["GUARD","SELF","HOLDING_LINE"]]},
  {"id": "b_iron", "label": "철갑형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["IRON_HIDE","GUARD"], "learned": ["IRON_HIDE"],
-  "rules": [["IRON_HIDE","SELF","DANGER"],["GUARD","SELF","HP"]]}
+  "rules": [["IRON_HIDE","SELF","TELEGRAPHED"],["GUARD","SELF","TELEGRAPHED"],["GUARD","SELF","HOLDING_LINE"]]}
 ]}

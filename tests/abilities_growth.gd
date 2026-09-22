@@ -36,7 +36,9 @@ func exercise() -> void:
 	s.reset_rules(1)
 	check(s.party[1].rules.any(func(r): return r.skill == "SHOCKWAVE"),"reset retains acquired rule")
 	s.phase = "BATTLE"
-	s.party[0].pos = Vector2i(0,0); s.party[1].pos = Vector2i(3,3); s.enemies[0].pos = Vector2i(4,3); s.enemies[0].recovery = 20
+	# Two cells away: inside the shockwave radius but out of contact, so the
+	# default guard rules stay silent and the acquired skill decides.
+	s.party[0].pos = Vector2i(0,0); s.party[1].pos = Vector2i(3,3); s.enemies[0].pos = Vector2i(5,3); s.enemies[0].recovery = 20
 	check(s.Tactics.choose(s,s.party[1]).kind == "SHOCKWAVE","companion AI can select acquired skill")
 	check(s.reserve_action(1,"SHOCKWAVE",s.party[1].pos),"acquired skill can be reserved")
 	var hp: int = s.enemies[0].hp

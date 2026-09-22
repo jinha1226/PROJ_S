@@ -19,6 +19,8 @@ func exercise() -> void:
 	var boss: Dictionary = s.enemies[0]
 	var turn: int = s.round_number
 	check(s.set_tactic(1,"PUSH","MANUAL"),"manual policy accepted")
+	# The defaults also guard while holding the line, which this ally is doing.
+	s.set_tactic(1,"GUARD","MANUAL")
 	check(not s.set_tactic(1,"PUSH","bad"),"invalid policy rejected")
 	check(s.round_number == turn,"setting policy consumes no time")
 	check(s.Tactics.choose(s,ally).kind == "ATTACK","manual skill not used automatically")
@@ -54,13 +56,15 @@ func exercise() -> void:
 	check(not s.update_rule(1,1,"target","NEAREST"),"self skill rejects enemy target")
 	check(not s.update_rule(1,0,"threshold",101),"invalid threshold rejected")
 	check(s.update_rule(1,0,"enabled",false),"auto skill off")
+	# Rule 2 is the second default guard; this block is about rule 1 alone.
+	s.update_rule(1,2,"enabled",false)
 	s.update_rule(1,1,"when","HP"); s.update_rule(1,1,"threshold",50)
 	ally.hp = 55
 	check(s.Tactics.choose(s,ally).kind == "ATTACK","unmet HP condition skips rule")
 	ally.hp = 20
 	check(s.Tactics.choose(s,ally).kind == "GUARD","HP condition applies to self target")
-	check(ally.rules.size() == 2 and not s.Rules.SKILLS.has("ATTACK"),"basic attack removed from skill rules")
-	check(not s.reorder_rule(1,2,-1),"basic attack cannot be reordered ahead of skills")
+	check(ally.rules.size() == 3 and not s.Rules.SKILLS.has("ATTACK"),"basic attack removed from skill rules")
+	check(not s.reorder_rule(1,3,-1),"basic attack cannot be reordered ahead of skills")
 	s.update_rule(1,0,"enabled",true); s.update_rule(1,0,"when","ALWAYS")
 	check(s.Tactics.choose(s,ally).kind == "PUSH","first matching skill wins")
 	s.reorder_rule(1,1,-1)

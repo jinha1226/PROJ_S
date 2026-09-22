@@ -44,6 +44,10 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 	var s = Session.new(seed,true,size > 1,true,size)
 	s.rules_config = config.rules.duplicate()
 	apply_build(s,config.build)
+	# Manual probes only: replace the build's rule list with [[skill,target,when],...]
+	# so one run can be compared against another rule set without editing data.
+	if config.has("rules_override"):
+		for actor in s.party: actor.rules = config.rules_override.map(func(r): return Rules.make_rule(r[0],r[1],r[2]))
 	var theme: Dictionary = Generator.theme("F1_RUINS")
 	# Light before apply(): apply() ends with observe(); ambush(), and in the
 	# dark the ambush must fire with the arena's own light level.

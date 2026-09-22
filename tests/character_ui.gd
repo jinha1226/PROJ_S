@@ -56,7 +56,8 @@ func run() -> void:
 	scene.session.party[1].learned_abilities.append("BOMB")
 	scene.session.party[1].rules.append(scene.Session.Rules.make_rule("BOMB","NEAREST","ALWAYS"))
 	scene.show_character(1,"이능")
-	check(scene.modal_content.find_children("EquippedAbility*","PanelContainer",true,false).size() == 2,"unequipped ability hidden")
+	# One card per rule on an equipped skill: PUSH plus the two default guards.
+	check(scene.modal_content.find_children("EquippedAbility*","PanelContainer",true,false).size() == 3,"unequipped ability hidden")
 	scene.CharacterUI.replace(scene,0)
 	await process_frame
 	var choices: Array = scene.item_detail.find_children("*","Button",true,false)

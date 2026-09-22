@@ -50,6 +50,7 @@ func run() -> void:
 	catalog()
 	await user_interface()
 	semantics()
+	guard_conditions()
 	print("Skill rule conditions: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 ## 1. Every configurable skill is in the rule catalog and every advertised
@@ -98,7 +99,7 @@ func user_interface() -> void:
 			hero.learned_abilities = ["PUSH","GUARD",id]
 			hero.equipped_abilities = [id,"GUARD"]
 			hero.rules = Rules.defaults(); hero.rules.append(Abilities.default_rule(id))
-			index = 2
+			index = hero.rules.size()-1
 		else:
 			hero.learned_abilities = ["PUSH","GUARD"]
 			hero.equipped_abilities = ["PUSH","GUARD"]
@@ -197,3 +198,74 @@ func self_conditions(id: String) -> void:
 	check(Tactics.threat(f.s,f.foe,f.hero.pos,f.foe.pos) == 0,"%s case: distant foe is no threat" % id)
 	check(Abilities.legal(f.s,f.hero,id,f.hero.pos),"%s stays legal without danger" % id)
 	check(Tactics.choose(f.s,f.hero).kind != id,"%s holds while unthreatened" % id)
+
+## Party arena: `size` members in a straight line with `foes` revived foes the
+## caller then places. Mates start far enough back that nothing is adjacent.
+func party_arena(skill: String, size: int, foes: int) -> Dictionary:
+	var s = Session.new(731,true,size > 1,true,size); s.depart()
+	var c := Fixture.arena(s,8)
+	for i in range(s.party.size()): s.party[i].pos = c+Vector2i(0,2*i)
+	var hero: Dictionary = s.party[0]
+	for actor in s.party:
+		actor.learned_abilities = ["PUSH","GUARD",skill]
+		actor.equipped_abilities = [skill,"GUARD"]
+		actor.cooldowns = {}; actor.ap = 2; actor.iron_guard = false
+	s.intents.clear()
+	var revived: Array = []
+	for i in range(foes):
+		var foe: Dictionary = s.enemies[i]
+		foe.hp = 30; foe.max_hp = 30; foe.role = "MELEE"; foe.alert = true; foe.charging = false
+		foe.pos = c+Vector2i(1,2*i)
+		revived.append(foe)
+	s.floor_state.observe(s)
+	return {"s":s,"hero":hero,"foes":revived,"c":c}
+
+## 4. The two guard conditions: a telegraphed strike on the caster's own cell,
+## and standing in contact while an ally is not.
+func guard_conditions() -> void:
+	check(Rules.defaults().map(func(r): return [r.skill,r.target,r.when]) == [["PUSH","NEAREST","CHARGING"],["GUARD","SELF","TELEGRAPHED"],["GUARD","SELF","HOLDING_LINE"]],"defaults guard on telegraph and on the line")
+	check(Abilities.default_rule("IRON_HIDE").when == "TELEGRAPHED","IRON_HIDE defaults to the telegraph")
+	for id in ["GUARD","IRON_HIDE"]:
+		# Positive: a charging caster has announced this very cell.
+		var f := arena(id,3)
+		f.hero.rules = [Rules.make_rule(id,"SELF","TELEGRAPHED")]
+		f.foe.charging = true
+		# A wide wind-up: every neighbouring cell is covered too, so the escape
+		# branch of Tactics.choose finds nothing safer and the rule decides.
+		f.s.intents = [{"id":f.foe.id,"cell":f.hero.pos,"damage":14}]
+		for d in f.s.DIRECTIONS: f.s.intents.append({"id":f.foe.id,"cell":f.hero.pos+d,"damage":14})
+		check(Rules.telegraphed(f.s,f.hero),"%s case: the intent lands on the hero" % id)
+		check(Tactics.choose(f.s,f.hero).kind == id,"%s fires against a telegraphed strike" % id)
+		# Negative: the same wind-up aimed elsewhere.
+		f = arena(id,3)
+		f.hero.rules = [Rules.make_rule(id,"SELF","TELEGRAPHED")]
+		f.foe.charging = true
+		f.s.intents = [{"id":f.foe.id,"cell":f.c+Vector2i(0,4),"damage":14}]
+		check(not Rules.telegraphed(f.s,f.hero),"%s case: the intent lands elsewhere" % id)
+		check(Tactics.choose(f.s,f.hero).kind != id,"%s ignores a strike aimed elsewhere" % id)
+		# Negative: plain adjacency. This is what DANGER answers and TELEGRAPHED
+		# does not, and it is the round-every-turn case the default retired.
+		f = arena(id,1)
+		f.hero.rules = [Rules.make_rule(id,"SELF","TELEGRAPHED")]
+		check(Tactics.threat(f.s,f.foe,f.hero.pos,f.foe.pos) > 0,"%s case: the adjacent foe is a DANGER threat" % id)
+		check(not Rules.telegraphed(f.s,f.hero),"%s case: adjacency is not a telegraph" % id)
+		check(Abilities.legal(f.s,f.hero,id,f.hero.pos) if Abilities.DEFINITIONS.has(id) else true,"%s stays legal beside a calm foe" % id)
+		check(Tactics.choose(f.s,f.hero).kind != id,"%s holds against a merely adjacent foe" % id)
+		# HOLDING_LINE positive: the hero is in contact, the mates are not.
+		var p := party_arena(id,3,1)
+		for actor in p.s.party: actor.rules = [Rules.make_rule(id,"SELF","HOLDING_LINE")]
+		check(Rules.holding_line(p.s,p.hero),"%s case: the hero alone is in contact" % id)
+		check(Tactics.choose(p.s,p.hero).kind == id,"%s fires while holding the line" % id)
+		check(not Rules.holding_line(p.s,p.s.party[1]),"%s case: a mate out of contact is not holding" % id)
+		# Negative: every member is engaged, so nobody is covering anybody.
+		p = party_arena(id,3,3)
+		for actor in p.s.party:
+			actor.rules = [Rules.make_rule(id,"SELF","HOLDING_LINE")]
+			check(p.s.combat_enemies().any(func(e): return p.s.melee_reach(actor.pos,e.pos)),"%s case: every member is engaged" % id)
+			check(not Rules.holding_line(p.s,actor),"%s holds when the whole party is engaged" % id)
+			check(Tactics.choose(p.s,actor).kind != id,"%s does not fire with the line fully engaged" % id)
+		# Negative: a solo party has no line to hold.
+		var f2 := arena(id,1)
+		f2.hero.rules = [Rules.make_rule(id,"SELF","HOLDING_LINE")]
+		check(not Rules.holding_line(f2.s,f2.hero),"%s case: solo is never holding the line" % id)
+		check(Tactics.choose(f2.s,f2.hero).kind != id,"%s never fires solo" % id)

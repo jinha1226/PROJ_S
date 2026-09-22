@@ -17,13 +17,9 @@ func play(s, build: String, policy: String, variant: String = "") -> Dictionary:
 	for id in SHOPPING:
 		if s.bank >= s.price(id): s.buy(id)
 	Runner.apply_build(s,build)
+	# "default" keeps the build's own rules; "no_guard" strips the guard rules
+	# to price what guarding is worth on top of them.
 	if variant == "no_guard": s.party[0].rules = s.party[0].rules.filter(func(r): return r.skill != "GUARD")
-	elif variant == "guard_danger":
-		for r in s.party[0].rules:
-			if r.skill == "GUARD": r.when = "DANGER"
-	elif variant == "guard_hp30":
-		for r in s.party[0].rules:
-			if r.skill == "GUARD": r.threshold = 30
 	s.depart()
 	var hero: Dictionary = s.party[0]
 	var actions := 0; var heals := 0; var stuck := 0; var uses: Dictionary = {}
@@ -58,7 +54,7 @@ func play(s, build: String, policy: String, variant: String = "") -> Dictionary:
 	return {"reason":s.result.get("reason","STUCK"),"actions":actions,"heals":heals,"hp":hero.hp,"uses":uses}
 func run() -> void:
 	var matrix: Array = []
-	for variant in ["no_guard","guard_danger","guard_hp30"]:
+	for variant in ["default","no_guard"]:
 		for build in ["melee_1","b_strike","b_knife","b_dressing","b_lunge","b_bomb","b_shockwave","b_iron"]: matrix.append([build,"rules",variant])
 	for row in matrix:
 		var wins := 0; var hp_sum := 0; var acts := 0; var uses: Dictionary = {}; var reasons: Array = []
