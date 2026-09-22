@@ -1,18 +1,21 @@
 extends RefCounted
 ## One player action per call through the public session API. No combat math here.
-static func step(s, policy: String) -> bool:
+## Returns the kind of action taken ("HEAL"|"GUARD"|"MOVE"|"ATTACK"|"WAIT"),
+## or "" when the hero could not act — the runner tallies from that word
+## instead of guessing from state diffs.
+static func step(s, policy: String) -> String:
 	var hero: Dictionary = s.party[s.selected]
-	if hero.hp <= 0 or hero.ap <= 0: return false
+	if hero.hp <= 0 or hero.ap <= 0: return ""
 	if policy == "tactical":
-		if hero.hp < 14 and s.supplies[0] > 0 and s.use_supply(0): return true
-		if hero.hp < 10 and s.supplies[5] > 0 and s.use_supply(5): return true
+		if hero.hp < 14 and s.supplies[0] > 0 and s.use_supply(0): return "HEAL"
+		if hero.hp < 10 and s.supplies[5] > 0 and s.use_supply(5): return "HEAL"
 		var adjacent := 0
 		for e in s.combat_enemies():
 			if maxi(absi(e.pos.x-hero.pos.x),absi(e.pos.y-hero.pos.y)) == 1: adjacent += 1
-		if adjacent >= 2 and not hero.get("guarded",false) and s.act("GUARD",hero.pos): return true
-	if s.combat_enemies().is_empty() and approach(s,hero): return true
-	if s.auto_attack(): return true
-	return s.act("WAIT",hero.pos)
+		if adjacent >= 2 and not hero.get("guarded",false) and s.act("GUARD",hero.pos): return "GUARD"
+	if s.combat_enemies().is_empty() and approach(s,hero): return "MOVE"
+	if s.auto_attack(): return "ATTACK"
+	return "WAIT" if s.act("WAIT",hero.pos) else ""
 
 ## Nothing in sight: walk one cell towards the encounter room's centre, the way
 ## a player rounds a pillar instead of waiting out the fight in the doorway.

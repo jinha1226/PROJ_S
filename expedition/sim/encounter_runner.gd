@@ -21,46 +21,67 @@ static func apply_build(s, id: String) -> void:
 			if ability not in actor.learned_abilities: actor.learned_abilities.append(ability)
 		actor.equipped_abilities = row.equipped.duplicate()
 
+## Drains `s.effects` into the running tallies. Called before every player
+## action and once more after the loop, so ambush hits and the strikes of the
+## final round are counted too.
+static func harvest(s, taken: Array, dealt: Dictionary, counters: Dictionary) -> void:
+	for effect in s.effects:
+		if effect.get("kind","") == "ENEMY_ATTACK" or not effect.has("amount"): continue
+		var victim: Dictionary = s.at(effect.cell)
+		if victim.is_empty() or victim.enemy: continue
+		taken[victim.id] += int(effect.amount)
+		if not counters.acted: counters.before_first += int(effect.amount)
+		# The attacker has not moved between its strike and this harvest.
+		var attacker: Dictionary = s.at(effect.from)
+		var key: String = str(attacker.id) if not attacker.is_empty() else str(effect.from)
+		dealt[key] = int(dealt.get(key,0))+int(effect.amount)
+	s.effects.clear()
+
 static func run_one(config: Dictionary, seed: int) -> Dictionary:
 	var size: int = config.party_size
 	var s = Session.new(seed,true,size > 1,true,size)
 	s.rules_config = config.rules.duplicate()
 	apply_build(s,config.build)
 	var theme: Dictionary = Generator.theme("F1_RUINS")
-	Floor.apply(s,theme,Arena.layout(config.arena,theme,seed))
+	# Light before apply(): apply() ends with observe(); ambush(), and in the
+	# dark the ambush must fire with the arena's own light level.
 	s.light = int(config.arena.get("light",90)); s.supplies = config.supplies.duplicate()
+	var cap: int = int(config.rules.get("solo_max_members",0)) if size == 1 else 0
+	Floor.apply(s,theme,Arena.layout(config.arena,theme,seed,cap))
 	var taken: Array = []
 	for _a in s.party: taken.append(0)
 	var dealt: Dictionary = {}
-	var first_death := -1; var heals := 0; var guards := 0; var actions := 0; var before_first := 0; var acted := false
+	var counters := {"acted":false,"before_first":0}
+	var first_death := -1; var heals := 0; var guards := 0; var actions := 0
 	var idle := 0
+	var steps := 0
 	var result := "TIMEOUT"
+	# Whatever apply()'s ambush already did happened before the hero acted.
+	harvest(s,taken,dealt,counters)
 	while s.phase == "BATTLE" and s.round_number <= int(config.max_rounds):
-		var supplies_before: int = s.supplies[0]+s.supplies[5]
-		var guarded_before: bool = s.party[s.selected].get("guarded",false)
-		var ok: bool = Policy.step(s,config.policy)
-		if ok:
-			actions += 1; acted = true; idle = 0
+		steps += 1
+		if steps > int(config.max_rounds)*4: break
+		harvest(s,taken,dealt,counters)
+		var round_before: int = s.round_number
+		var kind: String = Policy.step(s,config.policy)
+		if kind != "":
+			actions += 1; counters.acted = true; idle = 0
+			if kind == "HEAL": heals += 1
+			elif kind == "GUARD": guards += 1
 		else:
 			idle += 1
 			if idle >= 2: s.act("WAIT",s.party[s.selected].pos); idle = 0
-		if s.supplies[0]+s.supplies[5] < supplies_before: heals += 1
-		if not guarded_before and s.party[s.selected].get("guarded",false): guards += 1
-		for effect in s.effects:
-			if effect.get("kind","") == "ENEMY_ATTACK" or not effect.has("amount"): continue
-			var victim := s.at(effect.cell)
-			if victim.is_empty() or victim.enemy: continue
-			taken[victim.id] += int(effect.amount)
-			if not acted: before_first += int(effect.amount)
-			dealt[effect.from] = int(dealt.get(effect.from,0))+int(effect.amount)
-		s.effects.clear()
-		if first_death < 0 and s.party.any(func(a): return a.hp <= 0): first_death = s.round_number
+		# "the round in which the death happened": end_round() increments
+		# round_number when the party survives but returns before the increment
+		# on a wipe, so the round the action started in is the answer either way.
+		if first_death < 0 and s.party.any(func(a): return a.hp <= 0): first_death = round_before
 		if s.enemies.all(func(e): return e.hp <= 0):
 			result = "WIN"; break
+	harvest(s,taken,dealt,counters)
 	if s.phase != "BATTLE" and result != "WIN": result = "DEFEAT"
 	return {"result":result,"rounds":s.round_number,"damage_taken":taken,"hp_end":s.party.map(func(a): return a.hp),
 		"deaths":s.party.filter(func(a): return a.hp <= 0).map(func(a): return a.id),"first_death_round":first_death,
-		"heals_used":heals,"guards_used":guards,"player_actions":actions,"damage_before_first_action":before_first,
+		"heals_used":heals,"guards_used":guards,"player_actions":actions,"damage_before_first_action":int(counters.before_first),
 		"enemy_count":s.enemies.size(),"enemy_damage_dealt":dealt}
 
 static func wilson(wins: int, n: int) -> Array:
@@ -97,8 +118,10 @@ static func run_many(config: Dictionary, seeds: Array) -> Dictionary:
 	for r in runs:
 		for value in r.damage_taken: per_member.append(value)
 		distinct["%s|%d|%s" % [r.result,r.rounds,str(r.damage_taken)]] = true
+	var size: float = maxf(1.0,float(config.party_size))
 	return {"distinct_outcomes":distinct.size(),"samples":runs.size(),"results":results,"win_rate":float(wins)/runs.size(),"win_ci":wilson(wins,runs.size()),
-		"damage":summary(per_member),"damage_wins":summary(runs.filter(func(r): return r.result == "WIN").map(func(r): return r.damage_taken.reduce(func(a,b): return a+b,0))),
+		"damage":summary(per_member),"damage_wins_per_member":summary(runs.filter(func(r): return r.result == "WIN").map(func(r): return r.damage_taken.reduce(func(a,b): return a+b,0)/size)),
+		"guards":summary(runs.map(func(r): return r.guards_used)),
 		"rounds":summary(runs.map(func(r): return r.rounds)),
 		"first_death":summary(runs.filter(func(r): return r.first_death_round > 0).map(func(r): return r.first_death_round)),
 		"before_first":summary(runs.map(func(r): return r.damage_before_first_action)),

@@ -3,7 +3,9 @@ extends RefCounted
 const Builder = preload("res://expedition/encounter_builder.gd")
 const DEFAULT_SPEC := {"size":20,"room":[5,5,9,9],"door":[9,4],"pillars":[[8,8],[10,10]],"party_entry":[9,5],"light":90,"members":[]}
 
-static func layout(spec: Dictionary, theme: Dictionary, seed: int = 1) -> Dictionary:
+## `max_members > 0` keeps only the first N of the given roster — the
+## experiment-only reading of `solo_max_members` (see the design spec §2.2).
+static func layout(spec: Dictionary, theme: Dictionary, seed: int = 1, max_members: int = 0) -> Dictionary:
 	var size: int = spec.size
 	var terrain: Array = []; terrain.resize(size*size); terrain.fill("wall")
 	var rect := Rect2i(spec.room[0],spec.room[1],spec.room[2],spec.room[3])
@@ -18,7 +20,8 @@ static func layout(spec: Dictionary, theme: Dictionary, seed: int = 1) -> Dictio
 	for pillar in spec.pillars:
 		var q := Vector2i(pillar[0],pillar[1]); terrain[q.y*size+q.x] = "wall"; obstacles[q] = true
 	var members: Array = []
-	for row in spec.members:
+	var roster: Array = spec.members if max_members <= 0 else spec.members.slice(0,max_members)
+	for row in roster:
 		var member: Dictionary = Builder.member(Builder.species(row.species_id),row.role)
 		if row.has("pos"): member.pos = Vector2i(row.pos[0],row.pos[1])
 		members.append(member)

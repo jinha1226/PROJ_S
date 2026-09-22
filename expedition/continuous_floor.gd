@@ -60,12 +60,10 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 		for x in range(side):
 			var terrain: String = layout.terrain[y*side+x]
 			s.tiles.append({"terrain":terrain,"source_terrain":terrain,"fire":0,"wet":70 if terrain == "water" else 0,"variant":posmod(x*13+y*7,3),"palette":0})
-	var cap: int = s.solo_rule("solo_max_members")
 	s.enemies = []
 	for e in range(layout.encounters.size()):
 		var encounter: Dictionary = layout.encounters[e]
-		var members: Array = encounter.members if cap <= 0 or s.party.size() != 1 else encounter.members.slice(0,cap)
-		for member in members:
+		for member in encounter.members:
 			var enemy: Dictionary = s.make_actor(100+s.enemies.size(),member.display_name,true)
 			enemy.pos = member.pos; enemy.hp = int(member.max_health)
 			if s.party.size() == 1: enemy.hp = clampi(enemy.hp*SOLO_HP_PERCENT/100,SOLO_HP_MIN,SOLO_HP_MAX)
@@ -79,7 +77,7 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 	for i in range(s.party.size()):
 		s.party[i].pos = layout.entry+Vector2i(0,i); s.party[i].ap = 1
 		s.party[i].reservation = {}
-	if layout.relic.x >= 0: Objective.register(s,layout.relic)
+	if layout.relic != Vector2i(-1,-1): Objective.register(s,layout.relic)
 	else: s.objective = {}
 	s.rooms = [{"id":0,"name":"1층 · "+str(theme.label),"kind":"floor","links":[],"tiles":s.tiles,"enemies":s.enemies,"started":true,"cleared":false,"shield":false,"pattern":-1,"used":false,"feature":Vector2i(-1,-1)}]
 	s.room = 0; s.phase = "BATTLE"; s.round_number = 1

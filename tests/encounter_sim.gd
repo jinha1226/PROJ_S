@@ -40,8 +40,15 @@ func runner() -> void:
 	check(capped.enemy_count == 2,"solo_max_members trims the arena roster")
 	var doubled: Dictionary = Runner.run_one(config(mixed,1,"tactical",{"solo_actions":2,"solo_max_members":0}),3)
 	check(doubled.enemy_count == 3 and doubled.player_actions >= doubled.rounds,"solo_actions 2 grants at least one action per round")
+	# Dark arena: apply()'s ambush strikes before the hero ever acts.
+	var dark: Dictionary = Arena.DEFAULT_SPEC.duplicate(true)
+	dark.light = 20; dark.members = [{"species_id":"dcss_hobgoblin","role":"MELEE","pos":[9,6]}]
+	var ambushed: Dictionary = Runner.run_one({"arena":dark,"party_size":1,"build":"melee_1","policy":"tactical",
+		"rules":Session.DEFAULT_RULES,"supplies":[1,0,0,0,0,1],"max_rounds":60},7)
+	check(ambushed.damage_before_first_action > 0,"ambush damage lands before the first action")
 	var many: Dictionary = Runner.run_many(config(hob,1,"tactical",Session.DEFAULT_RULES),range(100,120))
 	check(many.samples == 20 and many.results.has("WIN") and many.win_rate >= 0.0 and many.win_ci.size() == 2,"run_many aggregates")
+	check(many.has("damage_wins_per_member") and many.has("guards") and many.has("before_first"),"run_many reports per-member win damage, guards and before_first")
 	check(many.damage.has("mean") and many.damage.has("p95") and many.rounds.has("median"),"run_many statistics")
 	check(many.has("distinct_outcomes") and many.distinct_outcomes >= 1 and many.distinct_outcomes <= many.samples,"run_many counts distinct outcomes")
 
@@ -66,12 +73,11 @@ func rules_and_party() -> void:
 	check(solo.act("WAIT",c) and solo.round_number == round_before+1 and solo.party[0].ap == 2,"second action ends the round and refills")
 	solo.rules_config = Session.DEFAULT_RULES.duplicate(); solo.party[0].ap = 1; round_before = solo.round_number
 	check(solo.act("WAIT",c) and solo.round_number == round_before+1,"default rules end the round after one action")
-	# max_members cap on fill.
-	var seen_three := false; var capped_ok := true
+	# The roster cap lives in the arena now; fill() itself is uncapped.
+	var seen_three := false
 	for seed_value in range(60):
 		if Builder.fill(rng(seed_value),1,9,false).size() >= 3: seen_three = true
-		if Builder.fill(rng(seed_value),1,9,false,2).size() > 2: capped_ok = false
-	check(seen_three and capped_ok,"max_members caps fill at two")
+	check(seen_three,"fill can draw three members")
 
 func arena_layout() -> void:
 	var theme: Dictionary = Generator.theme("F1_RUINS")
@@ -106,7 +112,7 @@ func arena_layout() -> void:
 	check(seen.size() > 1,"different seeds place the roster differently")
 	var spotted := false
 	for _i in range(6):
-		Policy.step(s,"simple")
+		var _kind: String = Policy.step(s,"simple")
 		if not s.combat_enemies().is_empty(): spotted = true; break
 	check(spotted,"approach step brings the enemy into view")
 	# The normal floor still builds through apply.

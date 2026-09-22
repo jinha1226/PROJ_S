@@ -33,7 +33,7 @@ var rules_config: Dictionary = {"solo_actions": 1, "solo_max_members": 0}
 | 키 | 값 | 효과 |
 | --- | --- | --- |
 | `solo_actions` | 1(현행) / 2(A안) | 연속 층에서 파티 인원이 1일 때 `action_budget()`이 이 값을 돌려준다. 2일 때 `finish_player_action()`은 선택 배우의 `ap`가 0이 되었을 때만 `end_round()`를 부른다(중간 행동 후에는 관측·기습만 갱신). |
-| `solo_max_members` | 0(제한 없음, 현행) / 2(B안) | `EncounterBuilder.fill(rng, depth, budget, ood, max_members := MAX_MEMBERS)`에 넘길 상한. 파티 인원 1일 때 `continuous_floor.build()`가 이 값을 사용한다. 0이면 `MAX_MEMBERS`. |
+| `solo_max_members` | 0(현행) / 2(B안) | 실험 아레나에서만 적용: `Arena.layout`이 파티 인원 1일 때 구성의 앞 N명만 남긴다. 실제 층 생성에 적용하는 방식(예산 캡 vs 마릿수 캡)은 채택 시 별도 스펙으로 정한다. |
 
 `rules_config`는 `depart()` 전에 설정하고 출정 중 바꾸지 않는다. UI는 이번 범위에서 노출하지 않는다.
 
@@ -53,7 +53,7 @@ func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:   # 레이아웃
 
 ## 3. 아레나 (`expedition/sim/encounter_arena.gd`)
 
-정적 함수 `layout(spec: Dictionary, theme: Dictionary) -> Dictionary`가 §7 계약과 같은 딕셔너리를 만든다.
+정적 함수 `layout(spec: Dictionary, theme: Dictionary, seed := 1, max_members := 0) -> Dictionary`가 §7 계약과 같은 딕셔너리를 만든다. `seed`는 적 배치 RNG, `max_members`는 0보다 클 때 구성의 앞 N명만 남기는 상한이다(§2.2 `solo_max_members`).
 
 입력 `spec`:
 
@@ -81,9 +81,9 @@ func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:   # 레이아웃
 | `simple` | 보이는 적이 있으면 `auto_attack()`, 실패 시 `act("WAIT")`. 회복·스킬 없음. |
 | `tactical` | `solo_balance.gd`의 전투 중 규칙을 옮긴다: HP<14 물약(`use_supply(0)`), HP<10 붕대(`use_supply(5)`), 아니면 `auto_attack()`; 추가로 적이 2마리 이상 인접하면 `GUARD`(`act("GUARD", pos)`)를 한 라운드에 한 번 사용. 회복품은 spec의 `supplies`로 준다. |
 
-공통: 보이는 적이 없으면 조우 방 중앙으로 한 칸 이동(`TurnCore.path`). 두 정책 모두 이 단계를 먼저 거친다(전술 정책은 회복·방어 판단 뒤).
+공통: 보이는 적이 없으면 조우 방 중앙으로 한 칸 이동(`TurnCore.path`). 실제 순서는 `tactical`이 "회복·방어 → 접근 → 자동 공격", `simple`이 "접근 → 자동 공격"이다.
 
-정책은 `step(s) -> bool`(행동을 수행했으면 true)만 제공하고, 라운드 진행은 세션이 한다. 동료는 세션의 기존 자동 행동을 따른다.
+정책은 `step(s, policy) -> String`(수행한 행동의 종류 `"HEAL"|"GUARD"|"MOVE"|"ATTACK"|"WAIT"`, 행동하지 못했으면 `""`)만 제공하고, 라운드 진행은 세션이 한다. 동료는 세션의 기존 자동 행동을 따른다.
 
 ## 5. 실행기와 통계 (`expedition/sim/encounter_runner.gd`)
 
@@ -97,11 +97,11 @@ static func run_many(config: Dictionary, seeds: Array) -> Dictionary
 `run_one`:
 1. `Session.new(seed, true, party_size > 1, true, party_size)`; `s.rules_config = config.rules`; 빌드 적용(§5.1); `s.supplies = config.supplies`.
 2. `Floor.apply(s, theme, Arena.layout(config.arena, theme))`; `s.light = spec.light`.
-3. 라운드 루프: `while s.phase == "BATTLE" and s.round_number <= max_rounds`: 정책 `step(s)`; 정책이 false를 두 번 연속 돌려주면 `act("WAIT")`. 적이 모두 죽으면 `WIN`으로 종료(연속 층은 승리로 phase가 바뀌지 않으므로 `s.enemies.all(hp<=0)`를 검사). `s.phase != "BATTLE"`이면 `DEFEAT`. `max_rounds` 초과는 `TIMEOUT`.
+3. 라운드 루프: `while s.phase == "BATTLE" and s.round_number <= max_rounds`: 정책 `step(s, policy)`; 정책이 빈 문자열을 두 번 연속 돌려주면 `act("WAIT")`. 절대 상한으로 반복 횟수가 `max_rounds * 4`를 넘으면 중단한다. 적이 모두 죽으면 `WIN`으로 종료(연속 층은 승리로 phase가 바뀌지 않으므로 `s.enemies.all(hp<=0)`를 검사). `s.phase != "BATTLE"`이면 `DEFEAT`. `max_rounds` 초과는 `TIMEOUT`.
 4. 결과: `{"result", "rounds", "damage_taken": [개인별], "hp_end": [개인별], "deaths": [id...], "first_death_round", "heals_used", "guards_used", "damage_before_first_action", "enemy_damage_dealt": {enemy_id: amount}}`.
-   `damage_taken`은 `damage()`가 남기는 `effects`를 라운드마다 수거해 합산한다(시작 HP−종료 HP가 아니라 실제 누적 피해).
+   `damage_taken`은 `damage()`가 남기는 `effects`를 **행동 직전마다**(그리고 루프 종료 뒤 한 번 더) 수거해 합산한다(시작 HP−종료 HP가 아니라 실제 누적 피해). `Floor.apply()`의 기습이 남긴 피해도 첫 행동 이전 피해로 잡힌다. `first_death_round`는 "사망이 일어난 라운드"이며, `enemy_damage_dealt`의 키는 가해 적의 `id`다.
 
-`run_many`: 시드마다 `run_one`, 집계: 결과별 개수, 승률과 Wilson 95% 신뢰구간, 피해·라운드의 평균·표준편차·중앙값·p90·p95(결과별과 전체), 개인별 평균 피해, 사망 분포, 회복 사용 평균.
+`run_many`: 시드마다 `run_one`, 집계 키는 `distinct_outcomes`(서로 다른 `(결과, 라운드, 피해)` 조합의 수), `samples`, `results`, `win_rate`, `win_ci`, `damage`(개인별), `damage_wins_per_member`(승리한 전투의 인원 1명당 피해), `guards`, `rounds`, `first_death`, `before_first`(첫 행동 이전 피해), `heals`, `deaths`, `runs`. 각 통계는 평균·표준편차·중앙값·p90·p95다.
 
 ### 5.1 기준 빌드 (`data/content/reference_builds.json`)
 
