@@ -8,6 +8,7 @@ const InventorySlot = preload("res://expedition/inventory_slot.gd")
 const CharacterUI = preload("res://expedition/character_ui.gd")
 var portrait_gesture = preload("res://expedition/legacy/portrait_gesture.gd").new()
 var navigation = preload("res://expedition/exploration_navigation.gd").new()
+const NAVIGATION_STEP_SECONDS := 0.06
 var navigation_clock := 0.0
 var view_side := 13
 var log_popup: PopupPanel
@@ -102,7 +103,7 @@ func _process(delta: float) -> void:
 	if not navigation.active: return
 	if details_popup.visible or map_popup.visible or log_popup.visible or not get_window().has_focus(): stop_navigation(); return
 	navigation_clock += delta
-	if navigation_clock >= 0.2:
+	if navigation_clock >= NAVIGATION_STEP_SECONDS:
 		navigation_clock = 0; navigation_tick()
 
 func navigation_tick() -> void:

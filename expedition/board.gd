@@ -12,6 +12,7 @@ var _pointer_dragged := false
 var touch_start := Vector2.ZERO
 var suppress_mouse_until := 0
 const Art = preload("res://expedition/mobile_art.gd")
+const MEMORY_TINT := Color(0.18,0.20,0.23)
 const Icons = preload("res://expedition/map_icons.gd")
 var session
 var ui_font: Font
@@ -161,15 +162,13 @@ func paint_terrain() -> void:
 			if visibility == 0: continue
 			var cell: Dictionary = session.tile(point)
 			var rect := Rect2(project(Vector2(point)),Vector2.ONE*half_width*2)
-			var tint := Color.WHITE
-			if visibility == 1:
-				var observer: Dictionary = session.floor_state.observer(session)
-				if not observer.is_empty() and Vector2(observer.pos).distance_to(Vector2(point)) <= session.floor_state.sight_radius(session.light): tint = Color(0.2,0.2,0.2)
+			var tint := MEMORY_TINT if visibility == 1 else Color.WHITE
 			if cell.terrain == "wall":
 				draw_rect(rect,Color("090c10"))
 				walls.append({"point":point,"rect":rect,"tint":tint})
 			else:
-				draw_texture_rect(Art.terrain(cell,point),rect,false,tint)
+				if visibility == 1: draw_rect(rect,Color("151b22"))
+				else: draw_texture_rect(Art.terrain(cell,point),rect,false,tint)
 				Art.Masonry.paint_floor_shadow(self,rect,point,is_wall_tile)
 	Art.Masonry.paint_walls(self,walls,is_wall_tile)
 
