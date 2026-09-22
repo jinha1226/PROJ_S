@@ -87,14 +87,14 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 			if def.effect in ["DAMAGE","LUNGE"]: part_score += attack_shift(knobs,low)
 			elif def.effect == "HEAL" and low: part_score += KNOB.retreat_score
 			options.append({"kind":id,"cell":target.pos,"score":part_score,"reason":def.name})
-	# The configured rules are resolved first so that a matched 엄호 can answer
-	# before the escape move: holding the line means not stepping away. Any other
-	# matched rule still yields to the escape, exactly as before.
 	# Below the retreat line staying alive outranks the rule list: open distance.
 	if low:
 		var away: Vector2i = retreat_cell(s,actor)
 		if away != actor.pos:
 			options.append({"kind":"MOVE","cell":away,"score":KNOB.retreat_score+cohesion_shift(s,actor,away,knobs),"reason":"후퇴"})
+	# Otherwise the configured rules are resolved first so that a matched 엄호 can
+	# answer before the escape move: holding the line means not stepping away. Any
+	# other matched rule still yields to the escape, exactly as before.
 	var ruled: Dictionary = {} if low else rule_choice(s,actor,options)
 	if not ruled.is_empty() and s.Abilities.DEFINITIONS.get(ruled.kind,{}).get("target","") == "ALLY": return ruled
 	var escapes: Array = options.filter(func(o): return o.kind == "MOVE")
