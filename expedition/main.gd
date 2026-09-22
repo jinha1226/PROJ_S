@@ -1,4 +1,5 @@
 extends Control
+const SettlementHub = preload("res://expedition/settlement_hub.gd")
 const Session = preload("res://expedition/session.gd")
 const Board = preload("res://expedition/board.gd")
 const MapView = preload("res://expedition/map_view.gd")
@@ -178,6 +179,19 @@ func gauge(parent: Node, value: int, maximum: int, color: Color) -> void:
 	var background := StyleBoxFlat.new(); background.bg_color = Color("0b1016")
 	bar.add_theme_stylebox_override("fill",fill); bar.add_theme_stylebox_override("background",background); parent.add_child(bar)
 
+func resource_gauge(parent: Button, id: String, value: int, color: Color, hint: String) -> void:
+	var bar := ProgressBar.new(); bar.name = id; bar.max_value = 100; bar.value = clampi(value,0,100)
+	bar.show_percentage = false; bar.mouse_filter = MOUSE_FILTER_IGNORE
+	parent.add_child(bar); bar.set_anchors_and_offsets_preset(PRESET_BOTTOM_WIDE)
+	bar.offset_left = 4; bar.offset_right = -4; bar.offset_top = -7; bar.offset_bottom = -3
+	var fill := StyleBoxFlat.new(); fill.bg_color = color; fill.set_corner_radius_all(2)
+	var background := StyleBoxFlat.new(); background.bg_color = Color("080c10")
+	bar.add_theme_stylebox_override("fill",fill); bar.add_theme_stylebox_override("background",background)
+	parent.custom_minimum_size.y = 48; parent.tooltip_text = hint
+	for state in ["normal","hover","pressed","focus","disabled"]:
+		var style := parent.get_theme_stylebox(state).duplicate() as StyleBoxFlat
+		style.content_margin_bottom = 8; parent.add_theme_stylebox_override(state,style)
+
 func refresh() -> void:
 	var elapsed := 0.0
 	var impact_elapsed := 0.0
@@ -190,12 +204,13 @@ func refresh() -> void:
 	if is_instance_valid(board): root_layout.remove_child(board); clear(board)
 	if is_instance_valid(minimap): minimap.get_parent().remove_child(minimap)
 	clear(root_layout); item_buttons.clear(); skill_buttons.clear(); portrait_buttons.clear()
+	auto_explore_button = null; wait_button = null; advance_attack_button = null
 	map_view.session = session; map_view.queue_redraw()
 	var header := HBoxContainer.new(); header.name = "TopHUD"; header.add_theme_constant_override("separation",3); root_layout.add_child(header)
 	if not is_instance_valid(minimap):
 		minimap = MapView.new(); minimap.compact = true; minimap.minimum_side = 44
 		minimap.ui_font = FONT; minimap.expand_requested.connect(show_map)
-	minimap.session = session; minimap.queue_redraw()
+	minimap.session = session; minimap.visible = true; minimap.queue_redraw()
 	minimap.size_flags_horizontal = SIZE_SHRINK_BEGIN; header.add_child(minimap)
 	var place := label(header,("1층" if session.floor_mode else session.rooms[session.room].name) if session.phase in ["BATTLE","EXPLORE"] else "거점",18)
 	place.name = "Location"; place.clip_text = true; place.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -206,8 +221,17 @@ func refresh() -> void:
 	torch_button.name = "TorchButton"; torch_button.custom_minimum_size.x = 44
 	var goal := button(header,"유물찾기",show_goal); goal.name = "ObjectiveChip"
 	goal.custom_minimum_size.x = 56
-	var menu := button(header,"☰",show_objective); menu.name = "ExpeditionMenu"; menu.custom_minimum_size.x = 44
+	var funds := label(header,"자금\n%d" % session.bank,12); funds.name = "Funds"
+	funds.custom_minimum_size.x = 45; funds.clip_text = true
+	funds.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; funds.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	funds.tooltip_text = "자금 %d" % session.bank
+	var menu := button(header,"메뉴",show_objective); menu.name = "ExpeditionMenu"; menu.custom_minimum_size.x = 44
 	for control in [food_button,torch_button,goal,menu]: control.size_flags_horizontal = SIZE_SHRINK_END
+	resource_gauge(food_button,"FoodGauge",100-session.hunger,Color("8ac77c"),"포만감 %d%%" % (100-session.hunger))
+	resource_gauge(torch_button,"TorchGauge",session.light,Color("e6bd62"),"밝기 %d%%" % session.light)
+	if session.phase in ["TOWN","DEFEAT"]:
+		for control in header.get_children(): control.visible = control in [place,funds]
+		place.text = "거점"
 	if not is_instance_valid(board):
 		board = Board.new(); board.ui_font = FONT; board.cell_pressed.connect(on_cell)
 		board.zoom_changed.connect(func(value): view_side = value)
@@ -216,7 +240,7 @@ func refresh() -> void:
 	board.action_footer = not session.boss_trial or not pending_attack.is_empty()
 	root_layout.add_child(board)
 	# The result card takes the board's place until the player refits.
-	board.visible = session.result.is_empty() or session.phase != "TOWN"
+	board.visible = session.phase not in ["TOWN","DEFEAT"]
 	board.show_attack_range = show_attack_range
 	board.input_actor = reservation_actor
 	board.targeting_skill = mode
@@ -240,13 +264,17 @@ func refresh() -> void:
 			attack_button.offset_left = 8; attack_button.offset_top = -56
 			attack_button.offset_right = 230; attack_button.offset_bottom = -8
 			attack_button.custom_minimum_size.y = 48
-	if session.phase == "TOWN" and not session.result.is_empty(): build_result_card()
-	elif session.phase in ["TOWN","DEFEAT"]:
-		var preparation := HBoxContainer.new(); root_layout.add_child(preparation)
-		button(preparation,"출정" if session.phase == "TOWN" and not session.alive().is_empty() else "새 원정대",depart)
-		if session.phase == "TOWN" and session.floor_mode:
-			button(preparation,"상점 · 자금 %d" % session.bank,show_shop)
-			button(preparation,"요양 · 20 자금",func(): run_action(session.rest_town),session.bank >= 20)
+	var in_town: bool = session.phase in ["TOWN","DEFEAT"]
+	for side in ["top","bottom"]: root_layout.get_parent().add_theme_constant_override("margin_"+side,0 if in_town else 8)
+	if in_town:
+		stop_navigation(); header.hide()
+		if not session.result.is_empty():
+			build_result_card()
+		elif session.phase == "TOWN" and not session.alive().is_empty():
+			var hub := SettlementHub.new(); root_layout.add_child(hub); hub.build(self)
+		else:
+			button(root_layout,"새 원정대",depart)
+		return
 	var log_holder := Control.new(); log_holder.name = "LogOverlap"; log_holder.custom_minimum_size.y = 48
 	log_holder.mouse_filter = MOUSE_FILTER_IGNORE; root_layout.add_child(log_holder)
 	var log_button := button(log_holder,"",show_logs); log_button.name = "RecentLog"; log_button.custom_minimum_size.y = 66
@@ -506,11 +534,29 @@ func start_return_walk() -> void:
 		show_return(); return
 	refresh()
 
+func show_infirmary() -> void:
+	clear(modal_content); label(modal_content,"요양소 · 자금 %d" % session.bank,20)
+	for actor in session.party:
+		label(modal_content,"%s · HP %d/%d · 스트레스 %d" % [actor.name,actor.hp,actor.max_hp,actor.stress],14)
+	button(modal_content,"요양 · 20 자금",func(): run_action(session.rest_town); show_infirmary(),session.bank >= 20)
+	button(modal_content,"닫기",func(): details_popup.hide()); details_popup.popup_centered()
+
+func show_town_roster(training: bool) -> void:
+	clear(modal_content); label(modal_content,"훈련장" if training else "숙소",20)
+	for i in range(session.party.size()):
+		button(modal_content,session.party[i].name,func(): show_character(i,"숙련" if training else "상태"))
+	button(modal_content,"닫기",func(): details_popup.hide()); details_popup.popup_centered()
+
+func show_town_settings() -> void:
+	clear(modal_content); label(modal_content,"설정",20)
+	var sound := CheckButton.new(); sound.text = "소리"; sound.custom_minimum_size.y = 44
+	sound.button_pressed = not AudioServer.is_bus_mute(0)
+	sound.toggled.connect(func(enabled): AudioServer.set_bus_mute(0,not enabled)); modal_content.add_child(sound)
+	button(modal_content,"닫기",func(): details_popup.hide()); details_popup.popup_centered()
+
 func show_shop() -> void:
 	stop_navigation(); clear(modal_content)
-	label(modal_content,"출정 준비 · 자금 %d" % session.bank,20)
-	var hint := label(modal_content,"마을에서 식량 %d·횃불 %d·치유 물약 1·붕대 1·열쇠·삽 1개를 무료 지급합니다. 귀환 시 남은 구매·발견 보급품은 구매가 합계의 10%%로 환전(소수점 버림)하며 이월하지 않습니다. 무료 지급분은 환전 제외. 이번 방문 구매분은 출정 전 전액 환불됩니다." % [Session.MIN_KIT.food,Session.MIN_KIT.torches],12)
-	hint.custom_minimum_size.x = popup_width(); hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label(modal_content,"상점 · 자금 %d" % session.bank,20)
 	var list := popup_list()
 	for row in Session.SHOP:
 		var line := HBoxContainer.new(); line.name = "ShopRow_"+str(row.id).replace(":","_"); line.add_theme_constant_override("separation",4); list.add_child(line)

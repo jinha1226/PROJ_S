@@ -153,9 +153,10 @@ static func personality(list: VBoxContainer, actor: Dictionary) -> void:
 	text(list,"성향 수치는 0–1000 기준입니다.",11)
 
 static func memories(ui, list: VBoxContainer, actor: Dictionary) -> void:
-	var names := {"SELF_HARM":["상처를 입음","전투 중 공격을 받았다."],"ALLY_DOWNED":["동료가 쓰러짐","동료가 쓰러지는 모습을 보았다."],"ALLY_LOST":["동료를 잃음","함께하던 동료를 잃었다."],"AID_RECEIVED":["동료의 도움","동료에게 도움을 받았다."],"COMMAND_CONFLICT":["명령과 갈등","명령을 따르는 데 갈등을 겪었다."]}
-	if actor.memory.records.is_empty(): text(card(list,"기억"),"아직 기록된 기억이 없습니다.")
-	for record in actor.memory.records:
+	var names := {"SELF_HARM":["죽음의 문턱","큰 부상을 입거나 빈사 상태에 빠졌다."],"ALLY_DOWNED":["동료가 쓰러짐","동료가 쓰러지는 모습을 보았다."],"ALLY_LOST":["동료를 잃음","함께하던 동료를 잃었다."],"AID_RECEIVED":["동료의 도움","동료에게 도움을 받았다."],"COMMAND_CONFLICT":["명령과 갈등","명령을 따르는 데 갈등을 겪었다."]}
+	var important: Array = actor.memory.records.filter(func(record): return int(record.salience) >= 700)
+	if important.is_empty(): text(card(list,"기억"),"남아 있는 중요 기억 없음")
+	for record in important:
 		var copy: Dictionary = record.duplicate(true)
 		var entry: Array = names.get(record.kind,[record.kind,"기억이 남았다."])
 		var box := card(list,entry[0]); box.get_parent().custom_minimum_size.y = 90

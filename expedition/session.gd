@@ -102,18 +102,31 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 func message(value: String) -> void:
 	log_lines.append(value)
 
+## Persistent memories are landmarks, not a transcript of ordinary hits.
+func remember_important(actor: Dictionary, kind: String, subject: int, instigator: int, salience: int) -> void:
+	actor.memory.records = actor.memory.records.filter(func(record): return int(record.salience) >= 700)
+	var key := "%d/%s" % [expedition_number,kind]
+	if kind != "SELF_HARM": key += "/%d" % subject
+	var recorded: Dictionary = actor.get("important_memories",{})
+	if recorded.has(key): return
+	if actor.memory.remember(kind,serial,world_time,subject,instigator,salience):
+		recorded[key] = true; actor.important_memories = recorded
+
 func alive() -> Array:
 	return party.filter(func(a): return a.hp > 0)
 
 func depart() -> bool:
 	if phase != "TOWN" or alive().is_empty(): return false
+	for actor in party:
+		actor.memory.records = actor.memory.records.filter(func(record): return int(record.salience) >= 700)
+		actor.important_memories = {}
 	expedition_number += 1
 	light = 90; loot = 0; hunger = 0
 	if floor_mode:
 		purchases = {}
 		result = {}; objective = {}
 		snapshot = take_snapshot()
-		floor_state.build(self); message("1층 · 심부의 유물을 찾아 입구로 돌아오세요. 유물 없이 귀환해도 전리품은 정산됩니다."); return true
+		floor_state.build(self); message("1층 진입"); return true
 	food = 27; torches = 5
 	supplies = [2,2,1,1,1,3]
 	exploration_tools = {"KEY":2,"SHOVEL":2}
@@ -207,12 +220,13 @@ func camp() -> bool:
 	for actor in alive():
 		if actor.profile.value("A") > helper.profile.value("A"): helper = actor
 	for actor in alive():
+		var in_crisis: bool = actor.hp*4 <= actor.max_hp or actor.stress >= 100
 		actor.hp = mini(actor.max_hp, actor.hp + 12)
 		Body.heal(actor)
 		stress(actor, -18 - helper.profile.value("A") / 100)
-		if actor.id != helper.id:
+		if actor.id != helper.id and in_crisis:
 			serial += 1
-			actor.memory.remember("AID_RECEIVED", serial, world_time, helper.id + 1, helper.id + 1, 300)
+			remember_important(actor,"AID_RECEIVED",helper.id+1,helper.id+1,750)
 	message("회복의 샘 · %s의 돌봄으로 체력과 스트레스를 회복했습니다." % helper.name)
 	return true
 
@@ -629,15 +643,17 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 		effect["part"] = Body.PART_NAMES.get(plan.get("part_id",""),"신체")
 	target.hp -= lost; Body.sync(target)
 	if floor_mode and target.enemy and lost > 0: Floor.MonsterAI.interrupt(self,target)
-	if target.enemy and target.hp <= 0: roll_essence(target)
 	if not target.enemy:
-		target.memory.remember("SELF_HARM", serial, world_time, source + 1, source + 1, mini(1000, 180 + lost * 18))
+		var entered_crisis: bool = (target.hp+lost)*4 > target.max_hp and target.hp*4 <= target.max_hp
+		if effect.get("body_injury",false) or entered_crisis:
+			remember_important(target,"SELF_HARM",target.id+1,source+1,800 if target.hp <= 0 else 750)
 		stress(target, 5 + lost / 2)
 		if target.hp <= 0:
 			for ally in alive():
-				ally.memory.remember("ALLY_LOST", serial, world_time, target.id + 1, source + 1, 800)
+				remember_important(ally,"ALLY_LOST",target.id+1,source+1,900)
 				stress(ally, 22)
 	message("%s %s에게 %d의 피해를 주었습니다.%s" % [subject_name(source_name),target.name,lost," "+subject_name(target.name)+" 쓰러졌습니다." if target.hp <= 0 else ""])
+	if target.enemy and target.hp <= 0: roll_essence(target)
 
 func plan_enemies() -> void:
 	if floor_mode: Floor.MonsterAI.plan(self); return

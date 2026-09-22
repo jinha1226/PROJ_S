@@ -13,7 +13,9 @@ func exercise() -> void:
 	for seed_value in range(30):
 		var s = Session.new(seed_value,true,true); s.depart()
 		var enemy: Dictionary = s.enemies[0]
+		s.log_lines.clear()
 		s.damage(enemy,999,0,"SLASH")
+		check(s.log_lines[0].contains("쓰러졌습니다"),"lethal damage and defeat are logged before XP and drops")
 		var count: int = s.essences.get("SHOCKWAVE",0)
 		dropped += count
 		check(s.party[0].growth.xp == 100 and s.party[1].growth.xp == 100,"shared XP without last-hit competition")

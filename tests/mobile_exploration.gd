@@ -14,7 +14,8 @@ func run() -> void:
 	scene.set_process(false)
 	for frame in range(4): await process_frame
 	check(scene.root_layout.get_child(0).size.y < 70,"compact HUD height")
-	check(scene.root_layout.get_child(0).find_children("*","Label",true,false).all(func(l): return l.get_theme_font_size("font_size") >= 18),"HUD text enlarged")
+	check(scene.find_child("Location",true,false).get_theme_font_size("font_size") >= 18,"location text enlarged")
+	check(scene.find_child("Funds",true,false).text == "자금\n%d" % scene.session.bank,"compact funds label shows actual bank")
 	var s = scene.session
 	var start: Vector2i = s.party[0].pos
 	var target := start+Vector2i(4,0)

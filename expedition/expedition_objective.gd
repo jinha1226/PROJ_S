@@ -3,7 +3,7 @@ extends RefCounted
 ## this holds registration, discovery and the single pickup executor.
 ## Objective state lives in session.objective; UI, the map and navigation only read it.
 const RELIC_LABEL := "봉인된 유물"
-const RELIC_DESCRIPTION := "심부에 봉인된 유물입니다. 회수해 입구 관문으로 가져가면 임무가 완료됩니다.\n사용·판매·장착은 할 수 없습니다."
+const RELIC_DESCRIPTION := "임무 물품 · 입구에서 반납"
 const RECOVERY_BONUS := 100
 const STATES := ["UNDISCOVERED","DISCOVERED","CARRIED","DELIVERED","LOST"]
 
@@ -31,7 +31,7 @@ static func register(s, pos: Vector2i) -> void:
 static func discover(s) -> void:
 	if s.objective.get("state","") != "UNDISCOVERED": return
 	s.objective.state = "DISCOVERED"
-	s.message(RELIC_LABEL+" 발견 · 인접해서 조사하면 회수할 수 있습니다.")
+	s.message(RELIC_LABEL+" 발견")
 
 static func text(s) -> String:
 	match s.objective.get("state",""):
@@ -42,10 +42,10 @@ static func text(s) -> String:
 
 static func description(s) -> String:
 	match s.objective.get("state",""):
-		"UNDISCOVERED": return "심부의 봉인된 유물을 찾으세요. 아직 위치를 모릅니다.\n유물 없이 입구로 귀환해도 전리품은 정산됩니다."
-		"DISCOVERED": return "봉인된 유물을 발견했습니다. 인접해서 조사하면 회수합니다.\n주변에 적이 보이면 회수할 수 없습니다."
-		"CARRIED": return "유물을 가지고 입구 관문으로 돌아오세요.\n입구에 인접하고 적이 보이지 않을 때 귀환할 수 있습니다."
-		_: return "임무가 종료되었습니다."
+		"UNDISCOVERED": return "유물 찾기"
+		"DISCOVERED": return "유물 회수"
+		"CARRIED": return "입구로 귀환"
+		_: return "임무 종료"
 
 static func carrying(s) -> bool:
 	return s.objective.get("state","") == "CARRIED"

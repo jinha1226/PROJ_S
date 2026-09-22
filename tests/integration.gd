@@ -47,7 +47,8 @@ func _initialize() -> void:
 	s.enemies[0].pos = Vector2i(2,4)
 	var hp: int = s.party[0].hp
 	check(s.end_round() and s.party[0].hp == hp,"enemy attacks reachable front-line target")
-	check(s.party.any(func(a): return not a.memory.records.is_empty() and a.body.revision > 0),"damage creates memory and body injury")
+	check(s.party.any(func(a): return a.body.revision > 0),"damage updates body state")
+	check(s.party.all(func(a): return a.memory.records.all(func(record): return record.salience >= 700)),"only significant injuries become persistent memories")
 	# Isolate the push landing from other enemies' eight-way pursuit.
 	for i in range(1,s.enemies.size()): s.enemies[i].pos = Vector2i(7,i)
 	s.enemies[0].pos = Vector2i(3,3); s.party[0].pos = Vector2i(2,3); s.party[0].ap = 2
@@ -105,5 +106,17 @@ func _initialize() -> void:
 	for actor in dead.party: dead.damage(actor,1000,100,"IMPACT")
 	dead.check_battle_end()
 	check(dead.phase == "DEFEAT" and not dead.depart(),"party wipe")
+	var memories = Session.new()
+	var member: Dictionary = memories.party[0]
+	memories.damage(member,1,100,"IMPACT")
+	check(member.memory.records.is_empty(),"ordinary hit does not become a persistent memory")
+	member.hp = 15
+	memories.damage(member,2,100,"IMPACT")
+	check(member.memory.records.size() == 1 and member.memory.records[0].salience >= 700,"crossing into critical health creates an important memory")
+	member.hp = 15
+	memories.damage(member,2,100,"IMPACT")
+	check(member.memory.records.size() == 1,"repeated critical injury is not recorded again in the same expedition")
+	memories.damage(memories.party[1],999,100,"IMPACT")
+	check(member.memory.records.any(func(record): return record.kind == "ALLY_LOST"),"ally loss remains an important memory")
 	print("Integration: %d checks, %d failures; 100 dungeon seeds" % [checks,failures])
 	quit(1 if failures else 0)

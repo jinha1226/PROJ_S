@@ -19,8 +19,10 @@ func run() -> void:
 	var scene = load("res://expedition/main.tscn").instantiate()
 	scene.session = s; root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
 	await process_frame
-	var rest := button_named(scene.root_layout,"요양 · 20 자금")
+	scene.show_infirmary()
+	var rest := button_named(scene.modal_content,"요양 · 20 자금")
 	check(rest != null and rest.disabled,"solo preparation shows unaffordable rest disabled")
+	scene.details_popup.hide()
 	s.depart()
 	for enemy in s.enemies: enemy.hp = 0
 	s.loot = 100
@@ -30,14 +32,15 @@ func run() -> void:
 	button_named(scene.root_layout,"정비하기").pressed.emit(); await process_frame
 	check(s.party[0].hp == ceili(s.party[0].max_hp*0.8) and s.party[0].stress == 60,"free refit gives 80 percent health and reduces stress")
 	check(s.bank == 100,"free refit keeps earned funds")
-	rest = button_named(scene.root_layout,"요양 · 20 자금")
+	scene.show_infirmary()
+	rest = button_named(scene.modal_content,"요양 · 20 자금")
 	check(rest != null and not rest.disabled,"solo can access paid recovery after refit")
 	rest.pressed.emit(); await process_frame
 	check(s.bank == 80 and s.party[0].hp == s.party[0].max_hp and s.party[0].stress == 20,"rest button spends funds and heals the same hero")
 	for viewport in [Vector2i(390,844),Vector2i(412,915)]:
 		root.size = viewport; scene.refresh()
 		for frame in range(4): await process_frame
-		rest = button_named(scene.root_layout,"요양 · 20 자금")
+		rest = scene.find_child("TownInfirmary",true,false)
 		check(scene.get_global_rect().encloses(rest.get_global_rect()),"rest button fits portrait viewport")
 		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"town layout fits portrait viewport")
 	# Damage changes at collapse, then calming restores the ordinary damage rule.

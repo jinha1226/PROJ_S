@@ -156,13 +156,22 @@ func _draw() -> void:
 			if session.floor_mode and not session.floor_state.explored.has(point): continue
 			var cell: Dictionary = session.tile(point)
 			var polygon := tile_polygon(Vector2(point))
-			draw_texture_rect(Art.terrain(cell),Rect2(project(Vector2(point)),Vector2.ONE*half_width*2),false)
+			var ground_rect := Rect2(project(Vector2(point)),Vector2.ONE*half_width*2)
+			draw_texture_rect(Art.terrain(cell,point),ground_rect,false,Color(0.43,0.46,0.49) if cell.terrain == "wall" else Color.WHITE)
+			if cell.terrain == "wall":
+				var corners := [ground_rect.position,Vector2(ground_rect.end.x,ground_rect.position.y),ground_rect.end,Vector2(ground_rect.position.x,ground_rect.end.y)]
+				var neighbors := [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]
+				for edge in range(4):
+					var neighbor: Vector2i = point+neighbors[edge]
+					if neighbor.x < 0 or neighbor.y < 0 or neighbor.x >= session.BOARD_SIDE or neighbor.y >= session.BOARD_SIDE: continue
+					if session.tile(neighbor).terrain != "wall":
+						draw_line(corners[edge],corners[(edge+1)%4],Color("4b4d4b") if edge in [0,3] else Color("070a0d"),3.0)
 			if session.floor_mode and not session.floor_state.visible.has(point):
 				var observer: Dictionary = session.floor_state.observer(session)
 				if not observer.is_empty() and Vector2(observer.pos).distance_to(Vector2(point)) <= session.floor_state.sight_radius(session.light):
 					draw_colored_polygon(polygon,Color(0,0,0,0.8))
 				continue
-			outline(polygon,Color("242a30"))
+			if cell.terrain not in ["stone","wall"]: outline(polygon,Color(0.08,0.10,0.12,0.25))
 			var center := project(Vector2(point)+Vector2.ONE*0.5)
 			if session.floor_mode and session.floor_state.features.has(point):
 				var feature: Dictionary = session.floor_state.features[point]

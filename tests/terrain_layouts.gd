@@ -30,6 +30,11 @@ func _initialize() -> void:
 	check(Vector2i(9,9) in s.movement_cells(0),"new edge supports eight-way movement")
 	s.party[0].learned_abilities.append("BOMB"); s.party[0].equipped_abilities[0] = "BOMB"
 	check(Vector2i(9,9) in s.Abilities.cells(s,s.party[0],"BOMB",Vector2i(9,8)),"ability AoE covers new edge")
-	check(preload("res://expedition/mobile_art.gd").terrain({"terrain":"wall"}).region == Rect2(144,0,16,16),"wall resolves correct atlas slot")
+	var art = preload("res://expedition/mobile_art.gd")
+	var floor_tile = art.terrain({"terrain":"stone"},Vector2i(1,2))
+	var neighbor = art.terrain({"terrain":"stone"},Vector2i(2,2))
+	check(floor_tile.atlas == art.FLAGSTONE and neighbor.region.position.x == floor_tile.region.end.x,"adjacent stone tiles sample continuous paving")
+	check(art.terrain({"terrain":"wall"},Vector2i(1,2)).atlas == art.FLAGSTONE,"walls use matching masonry")
+	check(art.terrain({"terrain":"stone"},Vector2i(5,6)).region == floor_tile.region,"paving repeat is stable in world space")
 	print("Terrain layouts: %d failures; 100 seeds / 900 rooms" % failures)
 	quit(1 if failures else 0)

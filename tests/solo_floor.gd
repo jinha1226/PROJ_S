@@ -224,8 +224,7 @@ func run() -> void:
 		for frame in range(4): await process_frame
 		var card: Control = scene.find_child("ResultCard",true,false)
 		check(card != null and scene.get_global_rect().encloses(card.get_global_rect()),"result card fits portrait screen")
-		var footer: Control = scene.root_layout.get_child(scene.root_layout.get_child_count()-1)
-		check(scene.get_global_rect().encloses(footer.get_global_rect()) and footer.get_global_rect().position.y > card.get_global_rect().end.y,"result card leaves the footer on screen")
+		check(scene.portrait_buttons.is_empty() and scene.skill_buttons.is_empty() and scene.item_buttons.is_empty() and scene.auto_explore_button == null,"town result omits expedition controls")
 	root.size = Vector2i(390,844)
 
 	# --- companion mode still works --------------------------------------------
