@@ -163,6 +163,9 @@ func paint_terrain() -> void:
 			var cell: Dictionary = session.tile(point)
 			var rect := Rect2(project(Vector2(point)),Vector2.ONE*half_width*2)
 			var tint := MEMORY_TINT if visibility == 1 else Color.WHITE
+			if visibility == 2 and uses_first_floor_art():
+				if cell.terrain == "wall": tint = Color(0.80,0.87,0.96)
+				elif cell.terrain == "stone": tint = Color(1.0,0.94,0.83)
 			if cell.terrain == "wall":
 				draw_rect(rect,Color("090c10"))
 				walls.append({"point":point,"rect":rect,"tint":tint})
@@ -171,7 +174,7 @@ func paint_terrain() -> void:
 				else: draw_texture_rect(Art.terrain(cell,point,uses_first_floor_art()),rect,false,tint)
 				Art.Masonry.paint_floor_shadow(self,rect,point,is_wall_tile)
 				# Keep movement cells readable without outlining the connected walls.
-				draw_rect(rect,Color(0,0,0,0.22 if visibility == 1 else 0.45),false,1.0)
+				draw_rect(rect,Color(0,0,0,0.22 if visibility == 1 else 0.45),false,2.0)
 	Art.Masonry.paint_walls(self,walls,is_wall_tile,Art.FirstFloor.material() if uses_first_floor_art() else {})
 
 func uses_first_floor_art() -> bool:
