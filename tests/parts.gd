@@ -232,6 +232,14 @@ func telegraph() -> void:
 	check(s.act("PUSH",d.foe.pos),"hero pushes the charging foe")
 	check(not d.foe.charging and s.intents.is_empty() and d.foe.cast_recovery == 1 and int(d.foe.cooldowns.HOB_CLUB) == 3,"push cancels the part and burns its cooldown")
 	check(s.stats_interrupts == 1,"interrupt counted")
+	# Only 밀치기 breaks a part charge; an ordinary hit leaves it standing (spec §2.2).
+	# The caster role's own spell is still broken by damage — tests/monster_roles.gd "damage interrupts spell".
+	d = duel(); s = d.s; d.foe.part_id = "HOB_CLUB"; d.foe.cooldowns = {}
+	MonsterAI.turn(s,d.foe)
+	hp = d.hero.hp
+	check(s.act("ATTACK",d.foe.pos) and d.foe.charging and s.intents.size() == 1 and s.stats_interrupts == 0,"a hit leaves the part charge standing")
+	MonsterAI.turn(s,d.foe)
+	check(d.hero.hp < hp and int(s.stats_enemy_skill.get("HOB_CLUB",0)) == 1,"the club still resolves after its owner was hit")
 	# Target steps away: a radius-0 part misses.
 	d = duel(); s = d.s; d.foe.part_id = "HOB_CLUB"; d.foe.cooldowns = {}
 	MonsterAI.turn(s,d.foe)

@@ -57,8 +57,9 @@ func runner() -> void:
 	check(many.damage.has("mean") and many.damage.has("p95") and many.rounds.has("median"),"run_many statistics")
 	check(many.has("distinct_outcomes") and many.distinct_outcomes >= 1 and many.distinct_outcomes <= many.samples,"run_many counts distinct outcomes")
 	check(many.has("enemy_skill_uses_mean") and many.has("interrupts_mean") and many.interrupts_mean >= 0.0,"run_many averages enemy part uses and interrupts")
-	# A hit cancels a charge, so a bot that answers every telegraph breaks them instead of eating them.
-	check(many.interrupts_mean > 0.0,"telegraphed parts are interrupted over twenty runs")
+	# Hits no longer cancel a part charge, so announced parts actually land.
+	var part_mean: float = many.enemy_skill_uses_mean.values().reduce(func(a,b): return a+b,0.0)
+	check(part_mean > 0.0,"monsters land their signature parts over twenty runs")
 
 func rules_and_party() -> void:
 	for size in [1,2,3]:

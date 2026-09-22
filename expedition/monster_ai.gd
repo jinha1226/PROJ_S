@@ -28,6 +28,8 @@ static func line(s, a: Vector2i, b: Vector2i, reach: int) -> bool:
 static func distance(a: Vector2i, b: Vector2i) -> int:
 	return maxi(absi(a.x-b.x),absi(a.y-b.y))
 
+## Cancels any charge. 밀치기 reaches this directly; ordinary damage goes
+## through on_hit(), which spares a part that is merely being wound up.
 static func interrupt(s, enemy: Dictionary) -> void:
 	if not enemy.get("charging",false): return
 	var id: String = str(enemy.get("cast_id",""))
@@ -40,6 +42,11 @@ static func interrupt(s, enemy: Dictionary) -> void:
 	enemy.cast_id = ""; enemy.cast_left = 0
 	s.intents = s.intents.filter(func(i): return i.id != enemy.id)
 	s.message(enemy.name+"의 시전이 끊겼습니다.")
+
+## A hit breaks the caster role's own spell (it needs concentration) but not a
+## signature part: a telegraphed part is answered by dodging, guarding or pushing.
+static func on_hit(s, enemy: Dictionary) -> void:
+	if str(enemy.get("cast_id","")).is_empty(): interrupt(s,enemy)
 
 static func plan(s) -> void:
 	s.intents.clear()

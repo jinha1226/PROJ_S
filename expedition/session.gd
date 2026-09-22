@@ -705,7 +705,7 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 		effect["body_injury"] = true
 		effect["part"] = Body.PART_NAMES.get(plan.get("part_id",""),"신체")
 	target.hp -= lost; Body.sync(target)
-	if floor_mode and target.enemy and lost > 0: Floor.MonsterAI.interrupt(self,target)
+	if floor_mode and target.enemy and lost > 0: Floor.MonsterAI.on_hit(self,target)
 	if not target.enemy:
 		var entered_crisis: bool = (target.hp+lost)*4 > target.max_hp and target.hp*4 <= target.max_hp
 		if effect.get("body_injury",false) or entered_crisis:
