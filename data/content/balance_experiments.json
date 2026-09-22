@@ -14,4 +14,20 @@
     "deep_caster": {"tier": "deep",  "members": [["dcss_orc","MELEE"],["goblin","CASTER"]]},
     "opt_archers": {"tier": "optional", "members": [["kobold","RANGED"],["goblin","RANGED"],["dcss_rat","MELEE"]]},
     "opt_gnoll":   {"tier": "optional", "members": [["dcss_gnoll","MELEE"],["dcss_rat","MELEE"],["dcss_rat","MELEE"]]}
+  }},
+"skill_value": {
+  "seed_set": {"id": "S2", "start": 5000, "count": 60},
+  "party_sizes": [1, 3],
+  "builds": ["melee_1", "b_strike", "b_knife", "b_dressing", "b_lunge", "b_bomb", "b_shockwave", "b_iron"],
+  "policies": ["rules"],
+  "rules": {"current": {"solo_actions": 1, "solo_max_members": 0}},
+  "supplies": [0, 0, 0, 0, 0, 0],
+  "baseline_build": "melee_1",
+  "arenas": {
+    "early_hob":   {"tier": "early", "members": [["dcss_hobgoblin","MELEE"]]},
+    "early_pair":  {"tier": "early", "members": [["kobold","MELEE"],["dcss_rat","MELEE"]]},
+    "deep_mixed":  {"tier": "deep",  "members": [["dcss_hobgoblin","MELEE"],["goblin","RANGED"],["kobold","MELEE"]]},
+    "deep_caster": {"tier": "deep",  "members": [["dcss_orc","MELEE"],["goblin","CASTER"]]},
+    "opt_archers": {"tier": "optional", "members": [["kobold","RANGED"],["goblin","RANGED"],["dcss_rat","MELEE"]]},
+    "opt_gnoll":   {"tier": "optional", "members": [["dcss_gnoll","MELEE"],["dcss_rat","MELEE"],["dcss_rat","MELEE"]]}
   }}}}

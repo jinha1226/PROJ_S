@@ -129,6 +129,7 @@ godot --headless --path . --script res://tests/encounter_sim.gd
 ```bash
 godot --headless --path . --script res://tests/action_economy.gd -- --quick   # 20시드 형식 확인
 godot --headless --path . --script res://tests/action_economy.gd            # 200시드 전체, docs/balance/action-economy.{md,json} 생성
+godot --headless --path . --script res://tests/skill_value.gd -- [--quick]  # 스킬 가치 행렬(기본 60시드), docs/balance/skill-value.{md,json} 생성
 ```
 
 `floor_generator.gd`는 100개 시드에서 방 수·템플릿·간격·문, 8방향 도달성, 고리·막다른 방, 필수 조우가 모든 경로를 덮는지, 예산·가드레일·문 거리, 조우 방 장애물과 5×5 빈 블록, 보상이 주 경로 밖에 있는지, 유물 거리, 재현성을 검사합니다.

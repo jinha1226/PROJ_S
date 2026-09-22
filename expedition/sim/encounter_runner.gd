@@ -58,6 +58,9 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 	var skill_uses: Dictionary = {}
 	var idle := 0
 	var steps := 0
+	# Diagnosis only: absent by default, so the measured path is untouched.
+	var probe: Callable = config.get("probe",Callable())
+	var probing: bool = probe.is_valid()
 	var result := "TIMEOUT"
 	# Whatever apply()'s ambush already did happened before the hero acted.
 	harvest(s,taken,dealt,counters)
@@ -66,6 +69,7 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 		if steps > int(config.max_rounds)*4: break
 		harvest(s,taken,dealt,counters)
 		var round_before: int = s.round_number
+		if probing: probe.call(s,round_before)
 		var kind: String = Policy.step(s,config.policy)
 		if kind != "":
 			actions += 1; counters.acted = true; idle = 0
