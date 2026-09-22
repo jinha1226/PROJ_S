@@ -33,7 +33,7 @@ func _initialize() -> void:
 	s.light = 6; s.round_number = 19; s.floor_state.observe(s)
 	check(s.floor_state.visible.has(Vector2i(58,50)),"pre-decay threshold")
 	s.act("WAIT",s.party[0].pos)
-	check(s.light == 4 and not s.floor_state.visible.has(Vector2i(58,50)),"light decay updates visibility in the same turn")
+	check(s.light == 5 and not s.floor_state.visible.has(Vector2i(58,50)),"light decay updates visibility in the same turn")
 	var glow = preload("res://expedition/radial_light.gd").new()
 	check(glow.darkness(0,5) == 0 and glow.darkness(2,5) < glow.darkness(4,5) and glow.darkness(6,5) > 0.9,"continuous radial fade darkens with distance")
 	var mesh = glow.get_mesh(Vector2(195,195),Vector2(390,430),39,5)

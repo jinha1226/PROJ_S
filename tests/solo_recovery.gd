@@ -15,6 +15,7 @@ func button_named(parent: Node, title: String) -> Button:
 
 func run() -> void:
 	var s = Session.new(0,true,false,true)
+	s.bank = 0 # Provisioning funds are covered elsewhere; this case starts broke.
 	var scene = load("res://expedition/main.tscn").instantiate()
 	scene.session = s; root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
 	await process_frame
@@ -40,6 +41,7 @@ func run() -> void:
 		check(scene.get_global_rect().encloses(rest.get_global_rect()),"rest button fits portrait viewport")
 		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"town layout fits portrait viewport")
 	# Damage changes at collapse, then calming restores the ordinary damage rule.
+	check(s.buy("supply:1"),"calming supply bought in town")
 	s.depart()
 	for enemy in s.enemies: enemy.hp = 0
 	var hero: Dictionary = s.party[0]

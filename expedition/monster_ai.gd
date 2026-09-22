@@ -56,7 +56,7 @@ static func turn(s, enemy: Dictionary) -> void:
 		if line(s,enemy.pos,cell,4):
 			s.enemy_attack_effect(enemy,[cell],true)
 			var victim: Dictionary = s.at(cell)
-			if not victim.is_empty() and not victim.enemy: s.damage(victim,14,enemy.id,"ELECTRIC")
+			if not victim.is_empty() and not victim.enemy: s.damage(victim,14+s.floor_state.enemy_bonus(s.light),enemy.id,"ELECTRIC")
 			s.message(enemy.name+"의 마법이 예고한 지점에 떨어졌습니다.")
 		return
 	targets.sort_custom(func(a,b): return distance(enemy.pos,a.pos) < distance(enemy.pos,b.pos))
@@ -87,4 +87,4 @@ static func turn(s, enemy: Dictionary) -> void:
 static func strike(s, enemy: Dictionary, target: Dictionary, amount: int) -> void:
 	if target.is_empty() or target.enemy: return
 	s.enemy_attack_effect(enemy,[target.pos])
-	s.damage(target,amount,enemy.id,"ELECTRIC" if enemy.get("role","") == "CASTER" else "IMPACT")
+	s.damage(target,amount+s.floor_state.enemy_bonus(s.light),enemy.id,"ELECTRIC" if enemy.get("role","") == "CASTER" else "IMPACT")

@@ -189,7 +189,9 @@ func refresh() -> void:
 		goal.custom_minimum_size = Vector2(0,24); goal.size_flags_horizontal = SIZE_SHRINK_END
 		goal.add_theme_font_size_override("font_size",12); goal.tooltip_text = "원정 목표"
 	var resource := HBoxContainer.new(); resource.add_theme_constant_override("separation",10); location.add_child(resource)
-	for entry in [["식량 %d" % session.food,session.hunger,Color("d9904d")],["횃불 %d" % session.torches,session.light,Color("e6bd62")]]:
+	var torch_caption: String = "횃불 %d" % session.torches
+	if session.floor_mode and session.phase == "BATTLE": torch_caption += " · "+Session.Floor.tier_label(session.light)
+	for entry in [["식량 %d" % session.food,session.hunger,Color("d9904d")],[torch_caption,session.light,Color("e6bd62")]]:
 		var column := VBoxContainer.new(); column.size_flags_horizontal = SIZE_EXPAND_FILL; column.add_theme_constant_override("separation",1); resource.add_child(column)
 		var caption := label(column,entry[0],18); caption.tooltip_text = "배고픔 %d%% · 불빛 %d%%" % [session.hunger,session.light]
 		gauge(column,entry[1],100,entry[2])
@@ -233,6 +235,7 @@ func refresh() -> void:
 		var preparation := HBoxContainer.new(); root_layout.add_child(preparation)
 		button(preparation,"출정" if session.phase == "TOWN" and not session.alive().is_empty() else "새 원정대",depart)
 		if session.phase == "TOWN" and session.floor_mode:
+			button(preparation,"상점 · 자금 %d" % session.bank,show_shop)
 			button(preparation,"요양 · 20 자금",func(): run_action(session.rest_town),session.bank >= 20)
 	var log_holder := Control.new(); log_holder.name = "LogOverlap"; log_holder.custom_minimum_size.y = 48
 	log_holder.mouse_filter = MOUSE_FILTER_IGNORE; root_layout.add_child(log_holder)
@@ -445,7 +448,7 @@ func show_return() -> void:
 	stop_navigation(); clear(modal_content)
 	label(modal_content,"귀환 관문",22)
 	var carrying: bool = Session.Objective.carrying(session)
-	var body := label(modal_content,("유물을 가지고 귀환합니다. 임무 성공 · 전리품 %d + 회수 보너스 %d" % [session.loot,Session.Objective.RECOVERY_BONUS]) if carrying else "유물 없이 귀환합니다. 중도 귀환 · 전리품 %d만 정산합니다." % session.loot,16)
+	var body := label(modal_content,(("유물을 가지고 귀환합니다. 임무 성공 · 전리품 %d + 회수 보너스 %d" % [session.loot,Session.Objective.RECOVERY_BONUS]) if carrying else "유물 없이 귀환합니다. 중도 귀환 · 전리품 %d 정산." % session.loot)+"\n남은 보급품 환전: %d 자금 (무료 지급분 제외)" % session.provision_sale_value(),16)
 	body.custom_minimum_size.x = 300; body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var reason: String = session.return_error()
 	button(modal_content,"귀환 확정",func(): details_popup.hide(); run_action(session.return_home),reason.is_empty())
@@ -459,6 +462,8 @@ func show_objective() -> void:
 	var body := label(modal_content,Session.Objective.description(session),16)
 	body.custom_minimum_size.x = 300; body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label(modal_content,"발견한 타일 %d / 10000 · 전리품 %d · 자금 %d" % [session.floor_state.explored.size(),session.loot,session.bank],13)
+	var tier := label(modal_content,"횃불 %s (밝기 %d) · 어두울수록 전리품·이능 드롭이 늘고 적 피해가 커집니다. 암흑에서는 처음 마주친 적이 기습합니다." % [Session.Floor.tier_label(session.light),session.light],12)
+	tier.custom_minimum_size.x = 300; tier.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	button(modal_content,"입구 위치 보기",func(): details_popup.hide(); show_map(),session.phase == "BATTLE")
 	button(modal_content,"입구까지 이동",start_return_walk,session.phase == "BATTLE" and session.combat_enemies().is_empty())
 	if session.phase == "TOWN": button(modal_content,"요양 · 20 자금",func(): details_popup.hide(); run_action(session.rest_town),session.bank >= 20)
@@ -480,9 +485,26 @@ func start_return_walk() -> void:
 		show_return(); return
 	refresh()
 
+func show_shop() -> void:
+	stop_navigation(); clear(modal_content)
+	label(modal_content,"출정 준비 · 자금 %d" % session.bank,20)
+	var hint := label(modal_content,"마을에서 식량 %d·횃불 %d·치유 물약 1·붕대 1·열쇠·삽 1개를 무료 지급합니다. 귀환 시 남은 구매·발견 보급품은 구매가 합계의 10%%로 환전(소수점 버림)하며 이월하지 않습니다. 무료 지급분은 환전 제외. 이번 방문 구매분은 출정 전 전액 환불됩니다." % [Session.MIN_KIT.food,Session.MIN_KIT.torches],12)
+	hint.custom_minimum_size.x = 300; hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var list := popup_list()
+	for row in Session.SHOP:
+		var line := HBoxContainer.new(); line.name = "ShopRow_"+str(row.id).replace(":","_"); line.add_theme_constant_override("separation",4); list.add_child(line)
+		var caption := label(line,"%s  %d자금 · 보유 %d" % [row.name,row.price,session.stock(row.id)],14); caption.size_flags_horizontal = SIZE_EXPAND_FILL
+		var minus := button(line,"−",func(): session.refund(row.id); refresh(); show_shop(),session.purchases.get(row.id,0) > 0)
+		minus.size_flags_horizontal = SIZE_SHRINK_END; minus.custom_minimum_size = Vector2(48,44)
+		var plus := button(line,"+",func(): session.buy(row.id); refresh(); show_shop(),session.bank >= row.price)
+		plus.size_flags_horizontal = SIZE_SHRINK_END; plus.custom_minimum_size = Vector2(48,44)
+	button(modal_content,"닫기",func(): details_popup.hide())
+	details_popup.popup_centered()
+
 func confirm_abandon() -> void:
-	modal("원정 포기","입구로 돌아가지 않고 원정을 포기합니다.\n\n유물과 이번 출정에서 얻은 전리품·이능·성장을 모두 잃습니다.\n출정 전 상태로 돌아갑니다. 되돌릴 수 없습니다.")
-	button(modal_content,"포기하고 돌아가기",func(): details_popup.hide(); run_action(session.abandon))
+	var reason: String = session.abandon_error()
+	modal("원정 포기","입구로 돌아가지 않고 원정을 포기합니다.\n\n임무 유물과 완료 보너스는 포기합니다.\n전리품·이능·성장·부상·기억은 유지됩니다.\n생존자 스트레스 +20. 남은 구매·발견 보급품은 10%로 환전하며 다음 출정에 이월하지 않습니다.\n\n"+reason)
+	button(modal_content,"포기하고 돌아가기",func(): details_popup.hide(); run_action(session.abandon),reason.is_empty())
 
 func build_result_card() -> void:
 	var card := PanelContainer.new(); card.name = "ResultCard"; card.add_theme_stylebox_override("panel",CharacterUI.surface(Color("151c24"))); card.size_flags_vertical = SIZE_EXPAND_FILL; root_layout.add_child(card)
@@ -491,8 +513,10 @@ func build_result_card() -> void:
 	var titles := {"SUCCESS":"임무 성공","PARTIAL":"중도 귀환","DEFEAT":"패배","ABANDON":"원정 포기"}
 	label(list,"원정 %d · %s" % [r.expedition,titles.get(r.reason,r.reason)],22)
 	label(list,"유물 회수: %s" % ("반납 완료" if r.relic else "없음"),15)
-	if r.reason in ["SUCCESS","PARTIAL"]:
+	if r.reason in ["SUCCESS","PARTIAL","ABANDON"]:
 		label(list,"정산: 전리품 %d%s → 자금 %d" % [r.loot," + 보너스 %d" % r.bonus if r.bonus > 0 else "",r.bank],15)
+		label(list,"보급품 환전 +%d 포함 · 무료 지급분 제외" % r.provisions,13)
+		if r.reason == "ABANDON": label(list,"임무 보상 없음 · 생존자 스트레스 +20",13)
 		var items: Array = []
 		for id in r.essences: items.append("%s ×%d" % [Session.Abilities.DEFINITIONS[id].item,r.essences[id]])
 		label(list,"획득 아이템: "+(", ".join(items) if not items.is_empty() else "없음"),13)

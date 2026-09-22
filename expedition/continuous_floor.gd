@@ -16,6 +16,26 @@ var features: Dictionary = {}
 var discoveries: Array = []
 var epoch := ""
 var discovered_curios := 0
+var seen_enemies: Dictionary = {}
+## Light tiers (Darkest-Dungeon style): darker pays more and hits harder.
+const TIERS := {"BRIGHT":{"min":60,"label":"밝음","loot":100,"drop":50,"bonus":0},
+	"DIM":{"min":35,"label":"어둑","loot":125,"drop":65,"bonus":1},
+	"DARK":{"min":0,"label":"암흑","loot":150,"drop":80,"bonus":2}}
+
+static func light_tier(light: int) -> String:
+	return "BRIGHT" if light >= 60 else "DIM" if light >= 35 else "DARK"
+
+static func tier_label(light: int) -> String:
+	return TIERS[light_tier(light)].label
+
+static func loot_percent(light: int) -> int:
+	return TIERS[light_tier(light)].loot
+
+static func drop_percent(light: int) -> int:
+	return TIERS[light_tier(light)].drop
+
+static func enemy_bonus(light: int) -> int:
+	return TIERS[light_tier(light)].bonus
 
 static func point(p: Vector2i) -> Vector2i:
 	return p*2+Vector2i(2,2)
@@ -23,7 +43,7 @@ static func point(p: Vector2i) -> Vector2i:
 func build(s) -> void:
 	layout = Source.generate(1,s.seed_value+s.expedition_number*7919)
 	epoch = str(s.seed_value)+"/"+str(s.expedition_number)
-	visible.clear(); explored.clear(); discoveries.clear(); features.clear()
+	visible.clear(); explored.clear(); discoveries.clear(); features.clear(); seen_enemies.clear()
 	discovered_curios = 0
 	s.BOARD_SIDE = SIZE; s.tiles = []
 	for y in range(SIZE):
@@ -62,7 +82,7 @@ func build(s) -> void:
 	Objective.place(s,self,point(layout.entry_position),point(layout.transition_portal_position))
 	s.rooms = [{"id":0,"name":"1층 · 갈림길 미궁","kind":"floor","links":[],"tiles":s.tiles,"enemies":s.enemies,"started":true,"cleared":false,"shield":false,"pattern":-1,"used":false,"feature":Vector2i(-1,-1)}]
 	s.room = 0; s.phase = "BATTLE"; s.round_number = 1
-	observe(s)
+	observe(s); ambush(s)
 
 static func sight_side(light: int) -> int:
 	return ceili(sight_radius(light))*2+1
@@ -104,6 +124,19 @@ func clear_marker(p: Vector2i) -> void:
 		if row.position == [p.x,p.y]: row.marker = ""
 	epoch += "+"
 
+## In the dark, an enemy sighted for the first time acts immediately.
+## Every visible enemy is remembered so the ambush fires once per foe.
+func ambush(s) -> void:
+	for enemy in s.enemies:
+		if enemy.hp <= 0 or not visible.has(enemy.pos) or seen_enemies.has(enemy.id): continue
+		seen_enemies[enemy.id] = true
+		if light_tier(s.light) != "DARK" or s.phase != "BATTLE": continue
+		enemy.alert = true
+		s.message("기습! 어둠 속에서 %s이(가) 먼저 움직입니다." % enemy.name)
+		MonsterAI.turn(s,enemy)
+		s.check_battle_end()
+		if s.phase != "BATTLE": return
+
 func observation(s) -> Dictionary:
 	var markers: Array = []
 	for actor in s.party+s.enemies:
@@ -127,8 +160,8 @@ func interact(s, p: Vector2i) -> bool:
 	feature.used = true
 	if feature.kind == "camp":
 		for actor in s.alive(): actor.hp = mini(actor.max_hp,actor.hp+25); s.stress(actor,-20)
-	elif feature.kind == "loot": s.supplies[0] += 1; s.food += 3; s.loot += 15
-	else: s.loot += 25; s.light = 100
+	elif feature.kind == "loot": s.add_stock("supply:0",1); s.add_stock("food",3); s.loot += s.loot_scaled(15)
+	else: s.loot += s.loot_scaled(25); s.light = 100
 	s.message(feature.label+" · 사용 완료"); s.act("WAIT",s.party[s.selected].pos); return true
 
 func enemy_turn(s, enemy: Dictionary) -> void:

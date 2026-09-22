@@ -31,10 +31,11 @@ static func resolve(s, point: Vector2i, option: String) -> bool:
 	var roll: int = s.Hexaco.sample(s.seed_value,s.expedition_number*10000+point.y*100+point.x,"curio",100)
 	var outcome: Dictionary = choice.success if roll < int(choice.chance) else choice.get("failure",{})
 	feature.used = true
-	if choice.has("tool"): s.exploration_tools[choice.tool] -= int(choice.cost)
-	s.loot += int(outcome.get("loot",0)); s.food += int(outcome.get("food",0))
+	if choice.has("tool"): s.add_stock("tool:"+str(choice.tool),-int(choice.cost))
+	var loot: int = s.loot_scaled(int(outcome.get("loot",0)))
+	s.loot += loot; s.add_stock("food",int(outcome.get("food",0)))
 	if outcome.has("damage"): s.damage(actor,int(outcome.damage),999,"IMPACT")
 	if outcome.has("stress"): s.stress(actor,int(outcome.stress))
-	s.message(def.name+" · "+str(outcome.get("text","조사를 마쳤습니다."))+" (전리품 +%d / 식량 +%d)" % [outcome.get("loot",0),outcome.get("food",0)])
+	s.message(def.name+" · "+str(outcome.get("text","조사를 마쳤습니다."))+" (전리품 +%d / 식량 +%d)" % [loot,outcome.get("food",0)])
 	actor.ap -= 1; s.check_battle_end(); s.finish_player_action()
 	return true

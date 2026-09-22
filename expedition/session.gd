@@ -49,18 +49,34 @@ const Curios = preload("res://expedition/curios.gd")
 var exploration_tools: Dictionary = {"KEY":2,"SHOVEL":2}
 const Objective = preload("res://expedition/expedition_objective.gd")
 ## Continuous-floor expedition lifecycle. objective/result are per expedition;
-## snapshot holds the persistent state restored on defeat or abandonment.
+## snapshot holds the persistent state restored on defeat.
 var objective: Dictionary = {}
 var snapshot: Dictionary = {}
 var result: Dictionary = {}
 const SUPPLY_NAMES = ["치유 물약","정신 안정제","활력 물약","화염 두루마리","물 두루마리","붕대"]
+## Town provisioning for the continuous floor: funds buy the kit, the minimum
+## is granted in town; remaining paid/found goods cash out on a safe return.
+const STARTING_FUNDS := 45
+const MIN_KIT := {"food":12,"torches":2,"supplies":[1,0,0,0,0,1],"tools":{"KEY":1,"SHOVEL":1}}
+const SHOP = [{"id":"food","name":"식량","price":1},{"id":"torch","name":"횃불","price":4},
+	{"id":"supply:0","name":"치유 물약","price":8},{"id":"supply:1","name":"정신 안정제","price":6},{"id":"supply:2","name":"활력 물약","price":6},
+	{"id":"supply:3","name":"화염 두루마리","price":5},{"id":"supply:4","name":"물 두루마리","price":4},{"id":"supply:5","name":"붕대","price":3},
+	{"id":"tool:KEY","name":"열쇠","price":6},{"id":"tool:SHOVEL","name":"삽","price":5}]
+var purchases: Dictionary = {}
+const PROVISION_SELL_PERCENT := 10
+const ABANDON_STRESS := 20
+## Free provisions are consumed first and never sold for gold.
+var free_provisions: Dictionary = {}
 
 func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = false, p_floor: bool = false) -> void:
 	seed_value = p_seed
 	boss_trial = p_boss_trial
 	companions = p_companions and boss_trial
 	floor_mode = p_floor
-	if floor_mode: floor_state = Floor.new(); BOARD_SIDE = Floor.SIZE
+	if floor_mode:
+		floor_state = Floor.new(); BOARD_SIDE = Floor.SIZE
+		bank = STARTING_FUNDS; food = 0; torches = 0; supplies = [0,0,0,0,0,0]; exploration_tools = {"KEY":0,"SHOVEL":0}
+		top_up_kit()
 	for i in range(2 if companions else 1 if boss_trial else 3):
 		party.append(make_actor(i, ["아린", "브란", "세라"][i], false))
 	message("부상과 기억은 원정을 마쳐도 남습니다. 준비되면 출정하세요.")
@@ -89,13 +105,15 @@ func alive() -> Array:
 func depart() -> bool:
 	if phase != "TOWN" or alive().is_empty(): return false
 	expedition_number += 1
-	food = 27; torches = 5; light = 90; loot = 0; hunger = 0
-	supplies = [2,2,1,1,1,3]
-	exploration_tools = {"KEY":2,"SHOVEL":2}
+	light = 90; loot = 0; hunger = 0
 	if floor_mode:
+		purchases = {}
 		result = {}; objective = {}
 		snapshot = take_snapshot()
 		floor_state.build(self); message("1층 · 심부의 유물을 찾아 입구로 돌아오세요. 유물 없이 귀환해도 전리품은 정산됩니다."); return true
+	food = 27; torches = 5
+	supplies = [2,2,1,1,1,3]
+	exploration_tools = {"KEY":2,"SHOVEL":2}
 	rooms = Dungeon.generate(seed_value + expedition_number * 7919)
 	if boss_trial: BossTrial.prepare(self)
 	room = 0; visited = [0]
@@ -156,7 +174,7 @@ func stress(actor: Dictionary, amount: int) -> void:
 
 func use_torch() -> bool:
 	if (phase not in ["EXPLORE", "EVENT"] and not (floor_mode and phase == "BATTLE" and safe_management())) or torches <= 0 or light >= 100: return false
-	torches -= 1; light = mini(100, light + 50)
+	add_stock("torch",-1); light = mini(100, light + 50)
 	if floor_mode: floor_state.observe(self)
 	message("새 횃불을 켰습니다. 밝기 %d" % light)
 	return true
@@ -377,7 +395,8 @@ func act(kind: String, target: Vector2i) -> bool:
 
 func finish_player_action() -> void:
 	if not boss_trial or phase != "BATTLE" or resolving_companions: return
-	if floor_mode: floor_state.observe(self)
+	if floor_mode: floor_state.observe(self); floor_state.ambush(self)
+	if phase != "BATTLE": return
 	var leader := selected
 	resolving_companions = true
 	if companions:
@@ -499,7 +518,8 @@ func roll_essence(enemy: Dictionary) -> void:
 		if Growth.gain(actor,100 if boss_trial and not floor_mode else 25) > 0: message(actor.name+" · 레벨 %d! 숙련 포인트 획득" % actor.growth.level)
 	var id: String = enemy.get("essence_id","")
 	if not Abilities.DEFINITIONS.has(id): return
-	if Hexaco.sample(seed_value,expedition_number*10000+room*100+enemy.id,"essence",100) >= Abilities.DROP_PERCENT: return
+	var chance: int = Floor.drop_percent(light) if floor_mode else Abilities.DROP_PERCENT
+	if Hexaco.sample(seed_value,expedition_number*10000+room*100+enemy.id,"essence",100) >= chance: return
 	essences[id] = int(essences.get(id,0))+1
 	message("이능 전리품 · "+Abilities.DEFINITIONS[id].item+" → 공용 가방")
 
@@ -656,12 +676,13 @@ func end_round() -> bool:
 		actor.ap = action_budget(actor)
 	round_number += 1
 	if floor_mode:
+		if round_number % 4 == 0: light = maxi(0,light-1)
 		if round_number % 20 == 0:
-			food = maxi(0,food-1); light = maxi(0,light-2)
+			add_stock("food",-mini(food,1))
 			hunger = clampi(hunger+(5 if food == 0 else 1),0,100)
 			if food == 0 or light < 35:
 				for actor in alive(): stress(actor,(3 if food == 0 else 0)+(2 if light < 35 else 0))
-		floor_state.observe(self)
+		floor_state.observe(self); floor_state.ambush(self)
 	if companions and party[selected].hp <= 0: selected = party.find(alive()[0])
 	plan_enemies()
 	return true
@@ -722,8 +743,13 @@ func return_home() -> bool:
 	if not return_error().is_empty(): return false
 	return finish_expedition("SUCCESS" if Objective.carrying(self) else "PARTIAL")
 
+func abandon_error() -> String:
+	if not floor_mode or phase != "BATTLE" or alive().is_empty(): return "탐험 중에만 포기할 수 있습니다."
+	if not floor_state.safe(self): return "적에게서 벗어난 뒤 원정을 포기할 수 있습니다."
+	return ""
+
 func abandon() -> bool:
-	if not floor_mode or phase != "BATTLE": return false
+	if not abandon_error().is_empty(): return false
 	return finish_expedition("ABANDON")
 
 func actor_snapshot(actor: Dictionary) -> Dictionary:
@@ -753,17 +779,28 @@ func injury_count(actor: Dictionary) -> int:
 		if str(part.condition) in ["DISABLED","SEVERED"]: count += 1
 	return count
 
-## Settles one expedition exactly once. SUCCESS/PARTIAL keep this run's gains;
-## DEFEAT/ABANDON restore the departure snapshot.
+## Safe returns keep gains and injuries; only defeat restores the actor snapshot.
 func finish_expedition(reason: String) -> bool:
-	if not floor_mode or not result.is_empty() or snapshot.is_empty(): return false
+	if not floor_mode or phase not in ["BATTLE","DEFEAT"] or not result.is_empty() or snapshot.is_empty(): return false
+	if reason not in ["SUCCESS","PARTIAL","ABANDON","DEFEAT"]: return false
+	if reason == "ABANDON" and not abandon_error().is_empty(): return false
+	if reason in ["SUCCESS","PARTIAL"]:
+		if not return_error().is_empty() or (reason == "SUCCESS") != Objective.carrying(self): return false
+	if reason == "DEFEAT" and not alive().is_empty(): return false
 	var before: Dictionary = snapshot.party[0]
 	var hero: Dictionary = party[0]
-	var kept: bool = reason in ["SUCCESS","PARTIAL"]
+	var kept: bool = reason in ["SUCCESS","PARTIAL","ABANDON"]
 	var bonus: int = Objective.RECOVERY_BONUS if reason == "SUCCESS" else 0
+	var provision_value := provision_sale_value() if kept else 0
 	var summary := {"reason":reason,"expedition":expedition_number,"relic":reason == "SUCCESS","loot":loot if kept else 0,"bonus":bonus,"settled":true,
-		"levels":hero.growth.level-int(before.growth.level) if kept else 0,"essences":{},"abilities":[],"injuries":0,"memories":0}
+		"levels":hero.growth.level-int(before.growth.level) if kept else 0,"essences":{},"abilities":[],"injuries":0,"memories":0,
+		"provisions":provision_value,"remaining_stock":provision_stock(),"remaining_food":food,"remaining_light":light,
+		"stress_penalty":ABANDON_STRESS if reason == "ABANDON" else 0}
 	if kept:
+		if reason == "ABANDON":
+			for actor in alive():
+				actor.stress = mini(200,actor.stress+ABANDON_STRESS)
+				stress(actor,0) # Refresh condition without personality/trauma modifiers.
 		for id in essences:
 			var gained: int = int(essences[id])-int(snapshot.essences.get(id,0))
 			if gained > 0: summary.essences[id] = gained
@@ -771,16 +808,20 @@ func finish_expedition(reason: String) -> bool:
 			if id not in before.learned_abilities: summary.abilities.append(id)
 		summary.injuries = injury_count(hero)-injury_count(actor_restore(before))
 		summary.memories = hero.memory.records.size()-before.memory.records.size()
-		bank += loot+bonus
+		bank += loot+bonus+provision_value
 		objective.state = "DELIVERED" if reason == "SUCCESS" else "LOST"
-		message("귀환 · 전리품 %d%s 정산. 누적 자금 %d" % [loot," + 유물 회수 보너스 %d" % bonus if bonus > 0 else "",bank])
+		message("귀환 · 전리품 %d + 보급품 환전 %d%s. 누적 자금 %d" % [loot,provision_value," + 유물 회수 보너스 %d" % bonus if bonus > 0 else "",bank])
+		if reason == "ABANDON": message("원정 포기 · 임무 보상 없음. 전리품·성장·부상 유지, 생존자 스트레스 +20.")
 	else:
 		restore_snapshot()
 		objective.state = "LOST"
-		message("%s · 이번 출정의 획득물을 잃었습니다. 출정 전 상태로 돌아갑니다." % ("패배" if reason == "DEFEAT" else "원정 포기"))
+		message("패배 · 이번 출정의 획득물과 보급품을 잃었습니다. 주인공은 출정 전 상태로 복원됩니다.")
 	summary.bank = bank
 	result = summary
 	loot = 0; phase = "TOWN"; intents = []; enemies = []; tiles = []; effects.clear()
+	food = 0; torches = 0; supplies = [0,0,0,0,0,0]; exploration_tools = {"KEY":0,"SHOVEL":0}
+	purchases.clear(); free_provisions.clear()
+	top_up_kit()
 	return true
 
 ## Free town refit: acknowledges the result and restores a survivable state.
@@ -793,6 +834,64 @@ func refit() -> bool:
 		actor.condition = "평온"; Body.heal(actor)
 	message("무료 재정비 · 최소한의 치료와 휴식. 부위 손상은 유지됩니다.")
 	return true
+
+## Count grants separately to prevent free-kit departure/return money farming.
+func top_up_kit() -> void:
+	if not floor_mode or phase != "TOWN": return
+	var minimum := {"food":MIN_KIT.food,"torch":MIN_KIT.torches}
+	for i in range(6): minimum["supply:%d" % i] = MIN_KIT.supplies[i]
+	for id in MIN_KIT.tools: minimum["tool:"+id] = MIN_KIT.tools[id]
+	for id in minimum:
+		var granted: int = maxi(0,int(minimum[id])-stock(id))
+		add_stock(id,granted)
+		free_provisions[id] = int(free_provisions.get(id,0))+granted
+
+func provision_stock() -> Dictionary:
+	var remaining := {}
+	for row in SHOP: remaining[row.id] = stock(row.id)
+	return remaining
+
+func provision_sale_value() -> int:
+	var value := 0
+	for row in SHOP:
+		value += maxi(0,stock(row.id)-int(free_provisions.get(row.id,0)))*int(row.price)
+	return value*PROVISION_SELL_PERCENT/100
+
+func price(id: String) -> int:
+	for row in SHOP:
+		if row.id == id: return int(row.price)
+	return -1
+
+func stock(id: String) -> int:
+	if id == "food": return food
+	if id == "torch": return torches
+	if id.begins_with("supply:"): return int(supplies[int(id.substr(7))])
+	if id.begins_with("tool:"): return int(exploration_tools.get(id.substr(5),0))
+	return 0
+
+func add_stock(id: String, delta: int, free_first: bool = true) -> void:
+	if delta < 0:
+		var free_count: int = int(free_provisions.get(id,0))
+		free_provisions[id] = maxi(0,free_count+delta) if free_first else mini(free_count,maxi(0,stock(id)+delta))
+	if id == "food": food += delta
+	elif id == "torch": torches += delta
+	elif id.begins_with("supply:"): supplies[int(id.substr(7))] += delta
+	elif id.begins_with("tool:"): exploration_tools[id.substr(5)] = int(exploration_tools.get(id.substr(5),0))+delta
+
+func buy(id: String) -> bool:
+	var cost := price(id)
+	if not floor_mode or phase != "TOWN" or cost < 0 or bank < cost: return false
+	bank -= cost; add_stock(id,1); purchases[id] = int(purchases.get(id,0))+1
+	return true
+
+func refund(id: String) -> bool:
+	if not floor_mode or phase != "TOWN" or int(purchases.get(id,0)) <= 0 or stock(id) <= 0: return false
+	bank += price(id); add_stock(id,-1,false); purchases[id] -= 1
+	return true
+
+## Darker floors pay more for what is found (continuous floor only).
+func loot_scaled(amount: int) -> int:
+	return amount*Floor.loot_percent(light)/100 if floor_mode else amount
 
 func rest_town() -> bool:
 	if phase != "TOWN" or bank < 20 or alive().is_empty(): return false
@@ -811,7 +910,12 @@ func use_supply(slot: int, target: Vector2i = Vector2i(-1,-1), recipient: int = 
 	if slot in [3,4]:
 		if recipient != -1: return false
 		# act() advances the world once; do not advance it again below.
-		if not act("FIRE" if slot == 3 else "WATER",target): return false
+		var id := "supply:%d" % slot
+		var free_before: int = int(free_provisions.get(id,0))
+		add_stock(id,-1) # Consume before an action that may end the expedition.
+		if not act("FIRE" if slot == 3 else "WATER",target):
+			add_stock(id,1); free_provisions[id] = free_before
+			return false
 	else:
 		if slot in [0,5] and actor.hp >= actor.max_hp: return false
 		if slot == 1 and actor.stress == 0: return false
@@ -822,7 +926,7 @@ func use_supply(slot: int, target: Vector2i = Vector2i(-1,-1), recipient: int = 
 			1: stress(actor,-25)
 			2: hunger = maxi(0,hunger-30); stress(actor,-10)
 		if phase == "BATTLE": user.ap -= 1
-	supplies[slot] -= 1
+	if slot not in [3,4]: add_stock("supply:%d" % slot,-1)
 	message("%s · %s 사용" % [actor.name,SUPPLY_NAMES[slot]])
 	if slot not in [3,4]: finish_player_action()
 	return true

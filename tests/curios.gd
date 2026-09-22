@@ -5,7 +5,9 @@ func check(ok: bool, reason: String) -> void:
 	if not ok: failures += 1; push_error(reason)
 func _initialize() -> void: call_deferred("run")
 func prepare(seed_value: int = 731, id: String = "LOCKED_CHEST") -> Dictionary:
-	var s = Session.new(seed_value,true,true,true); s.depart()
+	var s = Session.new(seed_value,true,true,true)
+	# The town kit stocks one of each tool; these cases assume two.
+	s.exploration_tools = {"KEY":2,"SHOVEL":2}; s.depart()
 	for enemy in s.enemies: enemy.hp = 0
 	var p: Vector2i = s.floor_state.features.keys().filter(func(cell): return s.floor_state.features[cell].get("curio_id","") == id)[0]
 	s.party[0].pos = p+Vector2i.LEFT; s.party[1].pos = p+Vector2i.LEFT*2

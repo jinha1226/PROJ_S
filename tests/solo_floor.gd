@@ -196,7 +196,7 @@ func run() -> void:
 
 	# --- abandon -----------------------------------------------------------------
 	s.refit(); s.depart(); bank = s.bank; s.loot = 50; s.essences["BOMB"] = 2
-	check(s.abandon() and s.result.reason == "ABANDON" and s.bank == bank and s.essences.get("BOMB",0) == 0,"abandon forfeits expedition gains")
+	check(s.abandon() and s.result.reason == "ABANDON" and s.bank == bank+50+s.result.provisions and s.essences.get("BOMB",0) == 2,"abandon keeps expedition loot and essences")
 	check(not s.abandon(),"abandon once")
 	s.refit()
 	check(s.depart() and s.phase == "BATTLE","redeploy after abandon")
