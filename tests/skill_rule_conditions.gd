@@ -7,7 +7,7 @@ const Fixture = preload("res://tests/floor_fixture.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
 const Tactics = preload("res://expedition/tactical_action_selector.gd")
-const REACH = {"HEAVY_STRIKE":1,"THROWING_KNIFE":4,"LUNGE":3,"BOMB":3}
+const REACH = {"PUSH":1,"HEAVY_STRIKE":1,"THROWING_KNIFE":4,"LUNGE":3,"BOMB":3}
 var failures := 0
 var checks := 0
 func check(ok: bool, reason: String) -> void:
@@ -16,15 +16,15 @@ func check(ok: bool, reason: String) -> void:
 func _initialize() -> void: call_deferred("run")
 
 func configurable() -> Array:
-	return Abilities.DEFINITIONS.keys()+["PUSH","GUARD"]
+	return Abilities.DEFINITIONS.keys()
 
 ## Arena with one hero carrying `skill` and up to two revived foes.
 func arena(skill: String, distance: int, second: int = 0) -> Dictionary:
 	var s = Session.new(731,true,false,true,1); s.depart()
 	var c := Fixture.arena(s,8)
 	var hero: Dictionary = s.party[0]
-	hero.learned_abilities = ["PUSH","GUARD",skill]
 	hero.equipped_abilities = [skill,"GUARD"]
+	hero.rules = [Abilities.default_rule(skill),Abilities.default_rule("GUARD")]
 	hero.cooldowns = {}; hero.ap = 2; hero.iron_guard = false
 	s.intents.clear()
 	var foe: Dictionary = s.enemies[0]
@@ -57,9 +57,9 @@ func run() -> void:
 ## target/condition pair builds a valid rule.
 func catalog() -> void:
 	for id in configurable():
-		check(Rules.SKILLS.has(id),"%s is in the rule catalog" % id)
-		if not Rules.SKILLS.has(id): continue
-		var def: Dictionary = Rules.SKILLS[id]
+		check(Rules.catalog().has(id),"%s is in the rule catalog" % id)
+		if not Rules.catalog().has(id): continue
+		var def: Dictionary = Rules.skill(id)
 		check(not def.targets.is_empty() and not def.conditions.is_empty(),"%s advertises targets and conditions" % id)
 		for target in def.targets:
 			check(Rules.TARGET_NAMES.has(target),"%s target %s has a display name" % [id,target])
@@ -72,13 +72,12 @@ func catalog() -> void:
 		var rule: Dictionary = Abilities.default_rule(id)
 		check(Rules.valid(rule),"%s default rule is valid" % id)
 		check(rule.when == Abilities.DEFINITIONS[id].rule_when,"%s default rule uses its rule_when" % id)
-	# Drop cycling order is data-driven but unchanged for both call sites.
-	check(Abilities.droppable() == ["SHOCKWAVE","BOMB","IRON_HIDE"],"droppable keeps DEFINITIONS order")
-	var pool: Array = Abilities.droppable(); pool.reverse()
-	check([pool[1%pool.size()],pool[2%pool.size()],pool[3%pool.size()]] == ["BOMB","SHOCKWAVE","IRON_HIDE"],"floor cycling keeps its legacy order")
+	# Drops follow the species that owns the part; no species owns one yet.
+	check(Abilities.droppable().is_empty(),"only species parts drop")
+	check(Abilities.species_part("nobody").is_empty(),"an unknown species owns no part")
 	for id in Abilities.DEFINITIONS:
 		var def: Dictionary = Abilities.DEFINITIONS[id]
-		check(def.has("short") and def.has("shape") and def.has("self_hit") and def.has("drop") and def.has("icon"),"%s carries the presentation fields" % id)
+		check(def.has("short") and def.has("shape") and def.has("self_hit") and def.has("icon"),"%s carries the presentation fields" % id)
 		check(Abilities.badge(id) == def.short,"%s badge comes from the catalog" % id)
 	for kind in Abilities.BASIC_BADGES:
 		check(Abilities.badge(kind) == Abilities.BASIC_BADGES[kind],"%s keeps its basic badge" % kind)
@@ -95,16 +94,9 @@ func user_interface() -> void:
 	for id in configurable():
 		var index := 0
 		hero.cooldowns = {}
-		if Abilities.DEFINITIONS.has(id):
-			hero.learned_abilities = ["PUSH","GUARD",id]
-			hero.equipped_abilities = [id,"GUARD"]
-			hero.rules = Rules.defaults(); hero.rules.append(Abilities.default_rule(id))
-			index = hero.rules.size()-1
-		else:
-			hero.learned_abilities = ["PUSH","GUARD"]
-			hero.equipped_abilities = ["PUSH","GUARD"]
-			hero.rules = Rules.defaults()
-			index = 0 if id == "PUSH" else 1
+		hero.equipped_abilities = [id,"GUARD"]
+		hero.rules = Rules.defaults(); hero.rules.append(Abilities.default_rule(id))
+		index = hero.rules.size()-1
 		scene.show_character(0,"이능")
 		await process_frame
 		var policies: Array = scene.modal_content.find_children("*","Button",true,false).filter(func(b): return b.text.begins_with("사용 방침"))
@@ -114,7 +106,7 @@ func user_interface() -> void:
 		var options: Array = picks(scene)
 		check(options.size() >= 3,"%s rule editor builds its pickers" % id)
 		if options.size() < 3: continue
-		var def: Dictionary = Rules.SKILLS[id]
+		var def: Dictionary = Rules.skill(id)
 		check(texts(options[0]) == def.targets.map(func(t): return Rules.TARGET_NAMES[t]),"%s offers exactly its targets" % id)
 		check(texts(options[1]) == def.conditions.map(func(w): return Rules.WHEN_NAMES[w]),"%s offers exactly its conditions" % id)
 		for when in def.conditions:
@@ -137,6 +129,8 @@ func user_interface() -> void:
 func semantics() -> void:
 	for id in Abilities.DEFINITIONS:
 		var def: Dictionary = Abilities.DEFINITIONS[id]
+		# 엄호 is the only ALLY part and has its own section below.
+		if def.target == "ALLY": continue
 		if def.target == "ENEMY": enemy_conditions(id,int(REACH[id]))
 		else: self_conditions(id)
 
@@ -207,8 +201,8 @@ func party_arena(skill: String, size: int, foes: int) -> Dictionary:
 	for i in range(s.party.size()): s.party[i].pos = c+Vector2i(0,2*i)
 	var hero: Dictionary = s.party[0]
 	for actor in s.party:
-		actor.learned_abilities = ["PUSH","GUARD",skill]
 		actor.equipped_abilities = [skill,"GUARD"]
+		actor.rules = [Abilities.default_rule(skill),Abilities.default_rule("GUARD")]
 		actor.cooldowns = {}; actor.ap = 2; actor.iron_guard = false
 	s.intents.clear()
 	var revived: Array = []
@@ -222,8 +216,8 @@ func party_arena(skill: String, size: int, foes: int) -> Dictionary:
 
 ## 4. 엄호 (GUARD/ALLY/ALLY_LETHAL): the only condition the skill advertises.
 func guard_conditions() -> void:
-	check(Rules.defaults().map(func(r): return [r.skill,r.target,r.when]) == [["PUSH","NEAREST","CHARGING"],["GUARD","ALLY","ALLY_LETHAL"]],"defaults push and cover an ally")
-	check(Rules.SKILLS.GUARD.targets == ["ALLY"] and Rules.SKILLS.GUARD.conditions == ["ALLY_LETHAL"],"엄호 advertises one target and one condition")
+	check(Rules.defaults().is_empty(),"an empty slot carries no rule")
+	check(Rules.skill("GUARD").targets == ["ALLY"] and Rules.skill("GUARD").conditions == ["ALLY_LETHAL"],"엄호 advertises one target and one condition")
 	check(Abilities.default_rule("IRON_HIDE").when == "DANGER","IRON_HIDE defaults back to danger")
 	# Positive: an adjacent alert melee foe would finish the wounded ally.
 	var p := cover_arena(5)

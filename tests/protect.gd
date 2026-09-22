@@ -22,6 +22,7 @@ func _initialize() -> void: call_deferred("run")
 func arena(size: int = 3, foes: int = 0) -> Dictionary:
 	var s = Session.new(731,true,size > 1,true,size); s.depart()
 	var c := Fixture.arena(s,8)
+	Fixture.equip_basics(s)
 	s.selected = 0
 	s.intents.clear()
 	var revived: Array = []
@@ -39,7 +40,7 @@ func arena(size: int = 3, foes: int = 0) -> Dictionary:
 	return {"s":s,"c":c,"hero":s.party[0],"ally":s.party[1],"foes":revived}
 
 func run() -> void:
-	check(Rules.defaults().map(func(r): return [r.skill,r.target,r.when]) == [["PUSH","NEAREST","CHARGING"],["GUARD","ALLY","ALLY_LETHAL"]],"defaults are push and 엄호")
+	check(Rules.defaults().is_empty() and Rules.skill("GUARD").conditions == ["ALLY_LETHAL"],"엄호 comes with its part, not as a default rule")
 	legality()
 	redirect()
 	caster_intent()
@@ -160,6 +161,7 @@ func user_interface() -> void:
 	root.size = Vector2i(390,844); root.add_child(scene)
 	scene.depart()
 	var c := Fixture.arena(scene.session,8)
+	Fixture.equip_basics(scene.session)
 	scene.session.selected = 0
 	for actor in scene.session.party: actor.ap = 0
 	scene.session.party[0].ap = 3
@@ -179,6 +181,7 @@ func user_interface() -> void:
 	root.add_child(solo)
 	solo.depart()
 	Fixture.arena(solo.session,8)
+	Fixture.equip_basics(solo.session)
 	solo.refresh()
 	for frame in range(3): await process_frame
 	check(solo.skill_buttons[1].disabled,"a lone hero cannot press 방어")

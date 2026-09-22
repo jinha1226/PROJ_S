@@ -28,7 +28,7 @@ func _initialize() -> void:
 	s.party[0].pos = Vector2i(8,8); s.party[1].pos = Vector2i(1,1); s.enemies[0].pos = Vector2i(8,7)
 	for c in s.tiles: c.terrain = "stone"
 	check(Vector2i(9,9) in s.movement_cells(0),"new edge supports eight-way movement")
-	s.party[0].learned_abilities.append("BOMB"); s.party[0].equipped_abilities[0] = "BOMB"
+	s.party[0].equipped_abilities[0] = "BOMB"
 	check(Vector2i(9,9) in s.Abilities.cells(s,s.party[0],"BOMB",Vector2i(9,8)),"ability AoE covers new edge")
 	# Concave room corners are occluded by both orthogonal walls in LOS.
 	# Their coping still belongs to the visible floor boundary at any distance.

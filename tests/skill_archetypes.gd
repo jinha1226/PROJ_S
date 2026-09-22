@@ -13,7 +13,7 @@ func arena(skill: String) -> Dictionary:
 	var s = Session.new(731,true,false,true,1); s.depart()
 	var c := Fixture.arena(s,8)
 	var hero: Dictionary = s.party[0]
-	hero.learned_abilities = ["PUSH","GUARD",skill]; hero.equipped_abilities = [skill,"GUARD"]; hero.cooldowns = {}
+	hero.equipped_abilities = [skill,"GUARD"]; hero.rules = [Abilities.default_rule(skill),Abilities.default_rule("GUARD")]; hero.cooldowns = {}
 	var foe: Dictionary = s.enemies[0]; foe.hp = 30; foe.max_hp = 30; foe.role = "MELEE"; foe.alert = true
 	foe.pos = c+Vector2i(1,0); s.floor_state.observe(s)
 	hero.ap = 2 # two actions, so one skill use does not end the round
@@ -23,7 +23,7 @@ func run() -> void:
 	for id in ["HEAVY_STRIKE","THROWING_KNIFE","FIELD_DRESSING","LUNGE","BOMB","SHOCKWAVE","IRON_HIDE"]:
 		var def: Dictionary = Abilities.DEFINITIONS[id]
 		check(def.has("effect") and def.has("axis") and def.has("rule_when"),"%s carries effect/axis/rule_when" % id)
-		check(Rules.SKILLS.has(id) and Rules.valid(Abilities.default_rule(id)),"%s has a valid default rule" % id)
+		check(Rules.catalog().has(id) and Rules.valid(Abilities.default_rule(id)),"%s has a valid default rule" % id)
 	check(Abilities.DEFINITIONS.BOMB.axis == "RANGED" and Abilities.DEFINITIONS.SHOCKWAVE.axis == "MAGIC" and Abilities.DEFINITIONS.IRON_HIDE.rule_when == "DANGER","legacy skills keep their axis and rule")
 	check(Abilities.default_rule("FIELD_DRESSING").when == "HP" and Abilities.default_rule("FIELD_DRESSING").subject == "SELF","dressing rule is self HP")
 	# Heavy strike: adjacent only, 28 base, cooldown 3.
@@ -53,7 +53,7 @@ func run() -> void:
 	# Lunge: move beside a foe within three, then strike.
 	f = arena("LUNGE"); s = f.s; f.foe.pos = f.c+Vector2i(3,0); s.floor_state.observe(s)
 	var start: Vector2i = f.hero.pos; hp = f.foe.hp
-	check(Abilities.lunge_cell(s,f.hero,f.foe.pos) == f.c+Vector2i(2,-1),"lunge picks the nearest adjacent cell")
+	check(Abilities.lunge_cell(s,f.hero,"LUNGE",f.foe.pos) == f.c+Vector2i(2,-1),"lunge picks the nearest adjacent cell")
 	check(s.act("LUNGE",f.foe.pos),"lunge accepted at range three")
 	check(f.hero.pos != start and s.melee_reach(f.hero.pos,f.foe.pos) and f.foe.hp < hp and f.hero.cooldowns.LUNGE == 4,"lunge moves adjacent and strikes")
 	f = arena("LUNGE"); s = f.s; f.foe.pos = f.c+Vector2i(4,0); s.floor_state.observe(s)
@@ -69,10 +69,9 @@ func run() -> void:
 	check(s.act("IRON_HIDE",f.hero.pos) and f.hero.iron_guard,"iron hide still guards")
 	# Default rules through the session paths.
 	var s2 = Session.new(5,true,false,true,1); s2.depart()
-	s2.essences["FIELD_DRESSING"] = 1
-	check(s2.consume_essence(0,"FIELD_DRESSING") and s2.party[0].rules.back().when == "HP" and s2.party[0].rules.back().subject == "SELF","consume_essence uses the default rule")
+	s2.party[0].equipped_abilities = ["FIELD_DRESSING","GUARD"]
 	s2.reset_rules(0)
-	check(s2.party[0].rules.any(func(r): return r.skill == "FIELD_DRESSING" and r.when == "HP"),"reset_rules uses the default rule")
+	check(s2.party[0].rules.any(func(r): return r.skill == "FIELD_DRESSING" and r.when == "HP" and r.subject == "SELF"),"reset_rules uses the equipped part's default rule")
 	# Tactics offers every equipped skill as a candidate when legal.
 	for id in ["HEAVY_STRIKE","THROWING_KNIFE","LUNGE","BOMB"]:
 		# A bomb beside the hero would catch the hero, so it is thrown from afar.

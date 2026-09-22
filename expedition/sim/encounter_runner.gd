@@ -18,8 +18,6 @@ static func apply_build(s, id: String) -> void:
 	for actor in s.party:
 		for axis in row.get("ranks",{}): actor.growth.ranks[axis] = int(row.ranks[axis])
 		for stat in row.get("stats",{}): actor.growth.stats[stat] = int(row.stats[stat])
-		for ability in row.get("learned",[]):
-			if ability not in actor.learned_abilities: actor.learned_abilities.append(ability)
 		actor.equipped_abilities = row.equipped.duplicate()
 		if row.has("rules"): actor.rules = row.rules.map(func(r): return Rules.make_rule(r[0],r[1],r[2]))
 
@@ -79,9 +77,8 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 			actions += 1; counters.acted = true; idle = 0
 			if kind == "HEAL": heals += 1
 			elif kind == "GUARD": guards += 1
-			# Only deliberate skill presses: abilities plus the two basic tactics
-			# a rule can order. Moves, waits and plain attacks stay out.
-			if s.Abilities.DEFINITIONS.has(kind) or kind in ["PUSH","GUARD"]:
+			# Only deliberate skill presses. Moves, waits and plain attacks stay out.
+			if s.Abilities.DEFINITIONS.has(kind):
 				skill_uses[kind] = int(skill_uses.get(kind,0))+1
 		else:
 			idle += 1

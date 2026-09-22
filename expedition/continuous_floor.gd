@@ -75,7 +75,7 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 			# Floor drops cycled BOMB, SHOCKWAVE, IRON_HIDE, which is the catalog
 			# pool reversed and started one in; keep it so drops are unchanged.
 			var pool: Array = Abilities.droppable(); pool.reverse()
-			enemy.essence_id = pool[(s.enemies.size()+1) % pool.size()]
+			enemy.essence_id = "" if pool.is_empty() else pool[(s.enemies.size()+1) % pool.size()]
 			s.enemies.append(enemy)
 	for p in layout.features: state.features[p] = layout.features[p].duplicate(true)
 	for i in range(s.party.size()):

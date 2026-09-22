@@ -1,30 +1,41 @@
 extends RefCounted
-## Shared rule schema: UI and AI use the same catalog and validation.
-const SKILLS = {
-	"PUSH":{"name":"밀치기","description":"인접한 적을 한 칸 밀어냅니다.","targets":["NEAREST","LOWEST_HP"],"conditions":["ALWAYS","HP","STATUS","CHARGING","DANGER"]},
-	"GUARD":{"name":"엄호","description":"인접 아군이 받을 피해를 대신 받고 절반만 입습니다.","targets":["ALLY"],"conditions":["ALLY_LETHAL"]},
-	"SHOCKWAVE":{"name":"수렁 충격파","targets":["SELF"],"conditions":["ALWAYS","HP","STATUS","DANGER"]},
-	"BOMB":{"name":"폭탄 투척","targets":["NEAREST","LOWEST_HP"],"conditions":["ALWAYS","HP","STATUS","CHARGING","DANGER"]},
-	"IRON_HIDE":{"name":"철갑 방어","targets":["SELF"],"conditions":["ALWAYS","HP","STATUS","DANGER"]},
-	"HEAVY_STRIKE":{"name":"시험 강타","targets":["NEAREST","LOWEST_HP"],"conditions":["ALWAYS","HP","STATUS","CHARGING","DANGER"]},
-	"THROWING_KNIFE":{"name":"시험 투척","targets":["NEAREST","LOWEST_HP"],"conditions":["ALWAYS","HP","STATUS","CHARGING","DANGER"]},
-	"FIELD_DRESSING":{"name":"시험 응급처치","targets":["SELF"],"conditions":["ALWAYS","HP","STATUS","DANGER"]},
-	"LUNGE":{"name":"시험 돌진","targets":["NEAREST","LOWEST_HP"],"conditions":["ALWAYS","HP","STATUS","CHARGING","DANGER"]}}
+## Shared rule schema: UI and AI use the same catalog and validation. The
+## catalog itself is derived from the parts catalog so that no skill id is
+## listed twice; abilities.gd preloads this file, so it is loaded lazily here.
+const CONDITIONS_BY_TARGET := {
+	"SELF":["ALWAYS","HP","STATUS","DANGER"],
+	"ENEMY":["ALWAYS","HP","STATUS","CHARGING","DANGER"],
+	"ALLY":["ALLY_LETHAL"]}
+const TARGETS_BY_TARGET := {"SELF":["SELF"],"ENEMY":["NEAREST","LOWEST_HP"],"ALLY":["ALLY"]}
+static var _catalog: Dictionary = {}
 const BASIC_TARGETS = ["NEAREST","LOWEST_HP"]
 const BASIC_TARGET_DEFAULT = "NEAREST"
 const TARGET_NAMES = {"NEAREST":"가까운 적","LOWEST_HP":"체력이 낮은 적","SELF":"자신","ALLY":"인접 아군"}
 const WHEN_NAMES = {"ALWAYS":"사용 가능할 때","HP":"체력 기준","STATUS":"특정 상태일 때","CHARGING":"대상이 공격 준비 중","DANGER":"자신이 공격받을 위험","ALLY_LETHAL":"아군이 이번 라운드 공격받으면 죽을 때"}
 const STATUS_NAMES = {"WET":"젖음","FIRE":"불 위에 있음"}
 
+## Rule catalog: {id: {name, description, targets, conditions}} for every part.
+static func catalog() -> Dictionary:
+	if _catalog.is_empty():
+		var definitions: Dictionary = load("res://expedition/abilities.gd").DEFINITIONS
+		for id in definitions:
+			var def: Dictionary = definitions[id]
+			_catalog[id] = {"name":str(def.name),"description":str(def.description),
+				"targets":TARGETS_BY_TARGET[def.target].duplicate(),"conditions":CONDITIONS_BY_TARGET[def.target].duplicate()}
+	return _catalog
+
+static func skill(id: String) -> Dictionary:
+	return catalog().get(id,{})
+
 static func defaults() -> Array:
-	return [make_rule("PUSH","NEAREST","CHARGING"),make_rule("GUARD","ALLY","ALLY_LETHAL")]
+	return []
 
 static func make_rule(skill: String, target: String, when: String) -> Dictionary:
 	return {"skill":skill,"target":target,"when":when,"enabled":true,"subject":"SELF" if target == "SELF" else "TARGET","threshold":50,"comparison":"BELOW","status":"WET"}
 
 static func valid(rule: Dictionary) -> bool:
-	if not SKILLS.has(rule.get("skill","")): return false
-	var def: Dictionary = SKILLS[rule.skill]
+	var def: Dictionary = skill(rule.get("skill",""))
+	if def.is_empty(): return false
 	return rule.get("target") in def.targets and rule.get("when") in def.conditions and rule.get("enabled") is bool and rule.get("subject") in ["SELF","TARGET"] and rule.get("comparison") in ["BELOW","ABOVE"] and rule.get("threshold") is int and rule.threshold >= 10 and rule.threshold <= 100 and STATUS_NAMES.has(rule.get("status",""))
 
 static func matches(s, source: Dictionary, candidate: Dictionary, rule: Dictionary) -> bool:

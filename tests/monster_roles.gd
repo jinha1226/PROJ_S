@@ -9,6 +9,7 @@ func fixture(role: String) -> Dictionary:
 	var s = Session.new(731,true,true,true); s.depart()
 	for tile in s.tiles: tile.terrain = "stone"
 	var c := Fixture.arena(s,10)
+	Fixture.equip_basics(s)
 	s.party[1].hp = 0
 	var e: Dictionary = s.enemies[0]
 	e.hp = e.max_hp; e.role = role; e.pos = c+Vector2i(4,0); e.alert = true

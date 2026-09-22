@@ -41,6 +41,8 @@ var loot := 0
 var bank := 0
 var serial := 0
 var stats_redirects := 0
+var stats_enemy_skill: Dictionary = {}
+var stats_interrupts := 0
 var world_time := 0
 var round_number := 0
 var expedition_number := 0
@@ -88,6 +90,11 @@ func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = f
 	var count: int = clampi(p_party_size,1,3) if p_party_size > 0 else (2 if companions else 1 if boss_trial else 3)
 	for i in range(count):
 		party.append(make_actor(i, ["아린", "브란", "세라"][i], false))
+	# Room and boss modes have no town to buy the basics in: start with them equipped.
+	if not floor_mode:
+		for actor in party:
+			actor.equipped_abilities = ["PUSH","GUARD"]
+			actor.rules = [Abilities.default_rule("PUSH"),Abilities.default_rule("GUARD")]
 
 func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 	var actor := {"id":id, "name":actor_name, "enemy":enemy,
@@ -95,7 +102,7 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"rules":Rules.defaults(),
 		"basic_target":Rules.BASIC_TARGET_DEFAULT,
 		"reservation":{},
-		"learned_abilities":["PUSH","GUARD"],"equipped_abilities":["PUSH","GUARD"],"cooldowns":{},"iron_guard":false,
+		"equipped_abilities":["",""],"cooldowns":{},"iron_guard":false,
 		"growth":Growth.create(),"protected_by":-1,
 		"pos":Vector2i.ZERO, "hp":28 if enemy else 55, "max_hp":28 if enemy else 55,
 		"stress":0, "condition":"평온", "ap":2,
@@ -391,7 +398,6 @@ func act(kind: String, target: Vector2i) -> bool:
 		finish_player_action(); return true
 	var actor: Dictionary = party[selected]
 	if actor.hp <= 0 or actor.ap <= 0: return false
-	if companions and kind in Abilities.STARTERS and kind not in actor.equipped_abilities: return false
 	if Abilities.DEFINITIONS.has(kind):
 		if not Abilities.execute(self,actor,kind,target): return false
 		actor.ap -= 1; check_battle_end(); finish_player_action(); return true
@@ -399,30 +405,13 @@ func act(kind: String, target: Vector2i) -> bool:
 	match kind:
 		"WAIT":
 			if target != actor.pos: return false
-		"GUARD":
-			# 엄호: stand in for an adjacent ally, taking their hits at half.
-			if victim.is_empty() or victim.enemy or victim.id == actor.id or victim.hp <= 0: return false
-			if not melee_reach(actor.pos,target): return false
-			actor["guarded"] = true
-			victim["protected_by"] = actor.id
-			message("%s · 엄호 → %s" % [actor.name,victim.name])
 		"MOVE":
 			if target not in movement_cells(): return false
 			actor.pos = target
-		"ATTACK", "PUSH":
+		"ATTACK":
 			if victim.is_empty() or not victim.enemy or not melee_reach(actor.pos,target): return false
-			if kind == "ATTACK":
-				var hit := TurnCore.physical(Growth.power(actor,"MELEE",18) * actor.attack_factor / 100, 1000, 0, 2)
-				damage(victim, int(hit.damage), actor.id, "SLASH")
-			else:
-				var destination: Vector2i = target + (target - actor.pos)
-				if can_step(target,destination): victim.pos = destination
-				else: damage(victim, Growth.power(actor,"MELEE",8), actor.id, "IMPACT")
-				intents = intents.filter(func(intent): return intent.id != victim.id)
-				if floor_mode: Floor.MonsterAI.interrupt(self,victim)
-				elif boss_trial and victim.get("charging",false):
-					victim.charging = false; victim.fuse = 0; victim.cooldown = 6; victim.recovery = 1
-				message("밀쳐내기 · 적의 예고 공격을 취소했습니다.")
+			var hit := TurnCore.physical(Growth.power(actor,"MELEE",18) * actor.attack_factor / 100, 1000, 0, 2)
+			damage(victim, int(hit.damage), actor.id, "SLASH")
 		"FIRE", "WATER", "ELECTRIC":
 			if distance(actor.pos, target) > 4 or tile(target).terrain == "wall": return false
 			if not preload("res://sim/combat_kernel.gd").sees(actor.pos, target,
@@ -459,24 +448,21 @@ func reservation_choice(actor: Dictionary) -> Dictionary:
 	var order: Dictionary = actor.reservation
 	if order.is_empty() or actor.hp <= 0 or actor.ap <= 0 or phase != "BATTLE": return {}
 	var cell: Vector2i = order.cell
-	if order.kind in Abilities.STARTERS and order.kind not in actor.equipped_abilities: return {}
-	if order.kind in ["ATTACK","PUSH"] or (Abilities.DEFINITIONS.has(order.kind) and Abilities.DEFINITIONS[order.kind].target == "ENEMY"):
+	var def: Dictionary = Abilities.DEFINITIONS.get(order.kind,{})
+	if order.kind == "ATTACK" or def.get("target","") == "ENEMY":
 		var target: Dictionary = {}
 		for enemy in enemies:
 			if enemy.id == order.target_id and enemy.hp > 0: target = enemy; break
 		if target.is_empty(): return {}
-		if Abilities.DEFINITIONS.has(order.kind):
+		if not def.is_empty():
 			if not Abilities.legal(self,actor,order.kind,target.pos): return {}
 		elif attack_preview(target.pos,actor.id).is_empty(): return {}
 		cell = target.pos
 	elif order.kind == "MOVE":
 		if cell not in movement_cells(actor.id): return {}
 	elif order.kind == "WAIT": cell = actor.pos
-	elif order.kind == "GUARD":
-		var mate: Dictionary = at(cell)
-		if mate.is_empty() or mate.enemy or mate.id == actor.id or mate.hp <= 0 or not melee_reach(actor.pos,cell): return {}
-	elif Abilities.DEFINITIONS.has(order.kind):
-		cell = actor.pos
+	elif not def.is_empty():
+		if def.target == "SELF": cell = actor.pos
 		if not Abilities.legal(self,actor,order.kind,cell): return {}
 	else: return {}
 	return {"kind":order.kind,"cell":cell,"reason":"직접 예약","reserved":true}
@@ -604,34 +590,18 @@ func spend_growth(index: int, id: String, stat: bool = false) -> bool:
 func reset_rules(index: int) -> void:
 	var actor: Dictionary = party[index]
 	actor.rules = Rules.defaults(); actor.basic_target = Rules.BASIC_TARGET_DEFAULT
-	for id in actor.learned_abilities:
+	for id in actor.equipped_abilities:
 		if Abilities.DEFINITIONS.has(id): actor.rules.append(Abilities.default_rule(id))
 
 func consume_essence(index: int, id: String) -> bool:
-	if not safe_management() or index < 0 or index >= party.size() or not Abilities.DEFINITIONS.has(id): return false
-	var actor: Dictionary = party[index]
-	if actor.hp <= 0 or essences.get(id,0) <= 0 or id in actor.learned_abilities: return false
-	actor.learned_abilities.append(id); essences[id] -= 1
-	actor.rules.append(Abilities.default_rule(id))
-	message(actor.name+" · "+Abilities.DEFINITIONS[id].name+" 습득")
-	return true
+	return false # Task 2 replaces essences with the shared parts bag.
 
 ## Playtest helper: learn every catalog ability at once so loadouts can be tried without farming.
 func grant_test_loadout() -> bool:
-	if not floor_mode or phase != "TOWN" or party.is_empty(): return false
-	var actor: Dictionary = party[0]
-	var added := 0
-	for id in Abilities.DEFINITIONS:
-		if id in actor.learned_abilities: continue
-		actor.learned_abilities.append(id)
-		actor.rules.append(Abilities.default_rule(id))
-		added += 1
-	message("시험 로드아웃 · 이미 전부 습득" if added == 0 else "시험 로드아웃 · 이능 %d종 습득 — 이능 탭에서 장착하세요." % added)
-	return true
+	return false # Task 2 replaces essences with the shared parts bag.
 
 func equip_ability(index: int, slot: int, id: String) -> bool:
-	if not safe_management() or index < 0 or index >= party.size() or party[index].hp <= 0: return false
-	return Abilities.equip(party[index],slot,id)
+	return false # Task 2 replaces this with town-only equip_part/unequip_part.
 
 func enemy_attack_effect(enemy: Dictionary, cells: Array, area: bool = false) -> void:
 	if cells.is_empty(): return
@@ -921,8 +891,8 @@ func finish_expedition(reason: String) -> bool:
 		for id in essences:
 			var gained: int = int(essences[id])-int(snapshot.essences.get(id,0))
 			if gained > 0: summary.essences[id] = gained
-		for id in hero.learned_abilities:
-			if id not in before.learned_abilities: summary.abilities.append(id)
+		for id in hero.equipped_abilities:
+			if id not in before.equipped_abilities: summary.abilities.append(id)
 		summary.injuries = injury_count(hero)-injury_count(actor_restore(before))
 		summary.memories = hero.memory.records.size()-before.memory.records.size()
 		bank += loot+bonus+provision_value

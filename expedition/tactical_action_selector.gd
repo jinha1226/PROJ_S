@@ -29,30 +29,32 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 		if preview.is_empty(): continue
 		var amount := int(preview.get("damage",0))
 		options.append({"kind":"ATTACK","cell":enemy.pos,"score":amount+(12 if amount >= enemy.hp else 0),"reason":"기본 공격"})
-		var landing: Vector2i = enemy.pos+(enemy.pos-actor.pos)
-		var moved: bool = s.can_step(enemy.pos,landing)
-		var benefit := 0
-		var unsafe := false
-		for ally in s.alive():
-			var before := threat(s,enemy,ally.pos,enemy.pos)
-			var after := 0 if enemy.get("charging",false) else threat(s,enemy,ally.pos,landing if moved else enemy.pos)
-			benefit += before-after
-			if after > before: unsafe = true
-		var bonus: int = 0 if moved else s.Growth.power(actor,"MELEE",8)
-		if moved: bonus += maxi(0,int(s.tile(landing).fire)-int(s.tile(enemy.pos).fire))
-		# Do not push a foe onto healing water or out of another ally's melee reach.
-		if moved:
-			if s.boss_trial and s.rooms[s.room].pattern == 0 and s.tile(landing).terrain == "water": unsafe = true
+		if "PUSH" in actor.equipped_abilities:
+			var landing: Vector2i = enemy.pos+(enemy.pos-actor.pos)
+			var moved: bool = s.can_step(enemy.pos,landing)
+			var benefit := 0
+			var unsafe := false
 			for ally in s.alive():
-				if ally.id != actor.id and s.melee_reach(ally.pos,enemy.pos) and not s.melee_reach(ally.pos,landing) and benefit <= 0: unsafe = true
-		if not unsafe:
-			options.append({"kind":"PUSH","cell":enemy.pos,"score":40+benefit+bonus,"reason":"밀치기"})
+				var before := threat(s,enemy,ally.pos,enemy.pos)
+				var after := 0 if enemy.get("charging",false) else threat(s,enemy,ally.pos,landing if moved else enemy.pos)
+				benefit += before-after
+				if after > before: unsafe = true
+			var bonus: int = 0 if moved else s.Growth.power(actor,"MELEE",8)
+			if moved: bonus += maxi(0,int(s.tile(landing).fire)-int(s.tile(enemy.pos).fire))
+			# Do not push a foe onto healing water or out of another ally's melee reach.
+			if moved:
+				if s.boss_trial and s.rooms[s.room].pattern == 0 and s.tile(landing).terrain == "water": unsafe = true
+				for ally in s.alive():
+					if ally.id != actor.id and s.melee_reach(ally.pos,enemy.pos) and not s.melee_reach(ally.pos,landing) and benefit <= 0: unsafe = true
+			if not unsafe:
+				options.append({"kind":"PUSH","cell":enemy.pos,"score":40+benefit+bonus,"reason":"밀치기"})
 	# 엄호 has no self form: one candidate per adjacent living ally.
-	for mate in s.alive():
-		if mate.id != actor.id and s.melee_reach(actor.pos,mate.pos):
-			options.append({"kind":"GUARD","cell":mate.pos,"score":35,"reason":"엄호"})
+	if "GUARD" in actor.equipped_abilities:
+		for mate in s.alive():
+			if mate.id != actor.id and s.melee_reach(actor.pos,mate.pos):
+				options.append({"kind":"GUARD","cell":mate.pos,"score":35,"reason":"엄호"})
 	for id in actor.equipped_abilities:
-		if not s.Abilities.DEFINITIONS.has(id): continue
+		if not s.Abilities.DEFINITIONS.has(id) or s.Abilities.DEFINITIONS[id].effect in ["PUSH","GUARD"]: continue
 		var def: Dictionary = s.Abilities.DEFINITIONS[id]
 		var targets: Array = [actor] if def.target == "SELF" else s.combat_enemies()
 		for target in targets:
@@ -66,7 +68,7 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 	# before the escape move: holding the line means not stepping away. Any other
 	# matched rule still yields to the escape, exactly as before.
 	var ruled: Dictionary = rule_choice(s,actor,options)
-	if not ruled.is_empty() and ruled.kind == "GUARD": return ruled
+	if not ruled.is_empty() and s.Abilities.DEFINITIONS.get(ruled.kind,{}).get("target","") == "ALLY": return ruled
 	var escapes: Array = options.filter(func(o): return o.kind == "MOVE")
 	if not escapes.is_empty():
 		escapes.sort_custom(func(a,b): return a.score > b.score)
@@ -110,6 +112,6 @@ static func rule_choice(s, actor: Dictionary, options: Array) -> Dictionary:
 			if av != bv: return av < bv
 			return a.score > b.score if a.score != b.score else str(a.cell) < str(b.cell))
 		var choice: Dictionary = matches[0].duplicate()
-		choice.reason = "%d순위 · %s" % [index+1,s.Rules.SKILLS[rule.skill].name]
+		choice.reason = "%d순위 · %s" % [index+1,s.Rules.skill(rule.skill).name]
 		return choice
 	return {}

@@ -276,7 +276,7 @@ func _draw() -> void:
 		if actor.hp <= 0: continue
 		var badge := preview_rect(actor)
 		var text: String = session.Abilities.badge(preview.kind)
-		var color := Color("f1ca79") if preview.kind in session.Rules.SKILLS else Color("a6d8e8")
+		var color := Color("f1ca79") if session.Rules.catalog().has(preview.kind) else Color("a6d8e8")
 		draw_style_box(_preview_background(color),badge)
 		draw_string(ui_font,badge.position+Vector2(2,13),text+(" 예약" if preview.get("reserved",false) else " 예정"),HORIZONTAL_ALIGNMENT_CENTER,badge.size.x-4,10,color)
 	for effect in effects:

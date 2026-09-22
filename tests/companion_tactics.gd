@@ -65,7 +65,7 @@ func exercise() -> void:
 	check(s.Tactics.choose(s,ally).kind == "ATTACK","unmet ally condition skips rule")
 	s.party[0].hp = 5
 	check(s.Tactics.choose(s,ally).kind == "GUARD","lethal condition applies to the ally target")
-	check(ally.rules.size() == 2 and not s.Rules.SKILLS.has("ATTACK"),"basic attack removed from skill rules")
+	check(ally.rules.size() == 2 and not s.Rules.catalog().has("ATTACK"),"basic attack removed from skill rules")
 	check(not s.reorder_rule(1,2,-1),"basic attack cannot be reordered ahead of skills")
 	s.update_rule(1,0,"enabled",true); s.update_rule(1,0,"when","ALWAYS")
 	check(s.Tactics.choose(s,ally).kind == "PUSH","first matching skill wins")

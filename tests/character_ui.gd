@@ -53,18 +53,12 @@ func run() -> void:
 	await process_frame
 	check(scene.session.party[1].growth.ranks.MELEE == before+1,"confirmation invests in companion")
 	check(scene.session.party[0].growth.ranks.MELEE == 0,"hero unaffected")
-	scene.session.party[1].learned_abilities.append("BOMB")
+	scene.session.party[1].equipped_abilities = ["PUSH","GUARD"]
+	scene.session.party[1].rules = [scene.Session.Abilities.default_rule("PUSH"),scene.Session.Abilities.default_rule("GUARD")]
+	# A rule for a part nobody has equipped stays out of the sheet.
 	scene.session.party[1].rules.append(scene.Session.Rules.make_rule("BOMB","NEAREST","ALWAYS"))
 	scene.show_character(1,"이능")
 	check(scene.modal_content.find_children("EquippedAbility*","PanelContainer",true,false).size() == 2,"unequipped ability hidden")
-	scene.CharacterUI.replace(scene,0)
-	await process_frame
-	var choices: Array = scene.item_detail.find_children("*","Button",true,false)
-	var bomb = choices.filter(func(b): return b.text == "폭탄 투척")[0]
-	bomb.pressed.emit()
-	check(scene.session.party[1].equipped_abilities[0] == "BOMB","replace targets originating card")
-	check(scene.session.party[1].equipped_abilities[1] == "GUARD","other slot unchanged")
-	check(scene.session.party[0].equipped_abilities[0] == "PUSH","other actor unchanged")
 	for frame in range(3): await process_frame
 	var policies: Array = scene.modal_content.find_children("*","Button",true,false).filter(func(b): return b.text.begins_with("사용 방침"))
 	policies[0].pressed.emit(); await process_frame

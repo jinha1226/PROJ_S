@@ -32,7 +32,7 @@ func play(s, build: String, policy: String, variant: String = "") -> Dictionary:
 			if policy == "rules":
 				var choice: Dictionary = s.Tactics.choose(s,hero)
 				if s.act(choice.kind,choice.cell):
-					if s.Abilities.DEFINITIONS.has(choice.kind) or choice.kind in ["PUSH","GUARD"]: uses[choice.kind] = int(uses.get(choice.kind,0))+1
+					if s.Abilities.DEFINITIONS.has(choice.kind): uses[choice.kind] = int(uses.get(choice.kind,0))+1
 					actions += 1; continue
 			if s.auto_attack(): actions += 1; continue
 			s.act("WAIT",hero.pos); actions += 1; continue

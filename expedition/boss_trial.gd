@@ -28,7 +28,7 @@ static func spawn(s) -> void:
 	boss.pos = Vector2i(5,4); boss.hp = 64; boss.max_hp = 64
 	boss.cooldown = 4; boss.recovery = 0
 	var drops: Array = Abilities.droppable()
-	boss.essence_id = drops[row.pattern % drops.size()]
+	boss.essence_id = "" if drops.is_empty() else drops[row.pattern % drops.size()]
 	s.enemies.append(boss)
 
 static func plan(s) -> void:

@@ -19,3 +19,11 @@ static func beside(s, p: Vector2i) -> Vector2i:
 		var cell: Vector2i = p+d
 		if s.inside(cell) and s.tile(cell).terrain != "wall" and s.melee_reach(cell,p) and s.at(cell).is_empty(): return cell
 	return Vector2i(-1,-1)
+
+## Equips the two basics on every member with their default rules, the
+## pre-parts starting state most suites assume.
+static func equip_basics(s) -> void:
+	var abilities = load("res://expedition/abilities.gd")
+	for actor in s.party:
+		actor.equipped_abilities = ["PUSH","GUARD"]
+		actor.rules = [abilities.default_rule("PUSH"),abilities.default_rule("GUARD")]

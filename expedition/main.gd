@@ -295,15 +295,15 @@ func refresh() -> void:
 		var skills := HBoxContainer.new(); skills.add_theme_constant_override("separation",3); column.add_child(skills)
 		for slot in range(2):
 			var skill_id: String = actor.equipped_abilities[slot] if session.boss_trial else SKILLS[i][slot]
-			var skill_name: String = Session.Rules.SKILLS.get(skill_id,{}).get("name",skill_id)
+			var skill_name: String = Session.Rules.skill(skill_id).get("name","빈 슬롯" if skill_id.is_empty() else skill_id)
 			var skill := icon_button(skills,Art.skill(slot if session.boss_trial else i*2+slot),func(): choose_skill(i,slot),skill_name)
 			if Session.Abilities.DEFINITIONS.has(skill_id):
 				var caption := label(skill,skill_name+ (" %d" % actor.cooldowns.get(skill_id,0) if actor.cooldowns.get(skill_id,0) > 0 else ""),10)
 				caption.set_anchors_and_offsets_preset(PRESET_BOTTOM_WIDE); caption.offset_top = -16; caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			skill.disabled = session.phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0; skill_buttons.append(skill)
-			if actor.cooldowns.get(skill_id,0) > 0: skill.disabled = true
+			if actor.cooldowns.get(skill_id,0) > 0 or skill_id.is_empty(): skill.disabled = true
 			# 엄호 needs somebody to cover: no adjacent living ally, no button.
-			if skill_id == "GUARD" and not session.party.any(func(m): return m.id != actor.id and m.hp > 0 and session.melee_reach(actor.pos,m.pos)): skill.disabled = true
+			if Session.Abilities.DEFINITIONS.get(skill_id,{}).get("target","") == "ALLY" and not session.party.any(func(m): return m.id != actor.id and m.hp > 0 and session.melee_reach(actor.pos,m.pos)): skill.disabled = true
 		var portrait_box := VBoxContainer.new(); portrait_box.size_flags_horizontal = SIZE_EXPAND_FILL; portrait_box.add_theme_constant_override("separation",2); column.add_child(portrait_box)
 		var portrait := button(portrait_box,"",func(): select_actor(i)); portrait.name = "MemberCard%d" % i
 		portrait.tooltip_text = "짧게: 행동 예약 · 길게: 상태" if session.companions else "길게 누르기: 상태"; portrait.custom_minimum_size.y = 48; portrait_buttons.append(portrait)
@@ -377,7 +377,7 @@ func choose_skill(actor: int, slot: int) -> void:
 		notice = session.party[actor].name+" · 스킬 예약 대상 선택"; refresh(); return
 	if self_target: run_action(func(): return session.act(mode,session.party[actor].pos)); return
 	# 엄호 picks an adjacent ally, not the caster's own cell.
-	notice = "엄호 · 인접 아군 선택" if mode == "GUARD" else "%s · 대상 칸 선택" % Session.Rules.SKILLS.get(mode,{}).get("name",mode)
+	notice = "%s · %s" % [Session.Rules.skill(mode).get("name",mode),"인접 아군 선택" if Session.Abilities.DEFINITIONS.get(mode,{}).get("target","") == "ALLY" else "대상 칸 선택"]
 	refresh()
 
 func choose_item(slot: int) -> void:
@@ -654,12 +654,12 @@ func build_skill_rules(list: VBoxContainer) -> void:
 		var rule: Dictionary = actor.rules[index]
 		var card := CharacterUI.card(list,"")
 		var header := HBoxContainer.new(); card.add_child(header)
-		label(header,Session.Rules.SKILLS[rule.skill].name,18)
+		label(header,Session.Rules.skill(rule.skill).name,18)
 		var enabled := CheckButton.new(); enabled.text = "자동"; enabled.button_pressed = rule.enabled; enabled.custom_minimum_size.y = 44; header.add_child(enabled)
 		enabled.toggled.connect(func(value): change_tactic_rule(index,"enabled",value))
 		var summary := label(card,Session.Rules.summary(rule),11); summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		if tactics_expanded != index: continue
-		var def: Dictionary = Session.Rules.SKILLS[rule.skill]
+		var def: Dictionary = Session.Rules.skill(rule.skill)
 		tactic_pick(card,"누구에게?",def.targets,Session.Rules.TARGET_NAMES,rule.target,func(value): change_tactic_rule(index,"target",value))
 		tactic_pick(card,"언제?",def.conditions,Session.Rules.WHEN_NAMES,rule.when,func(value): change_tactic_rule(index,"when",value))
 		if rule.when in ["HP","STATUS"]:
@@ -762,7 +762,7 @@ func build_abilities() -> void:
 	var actor: Dictionary = session.party[tactics_actor]
 	var list := popup_list()
 	for id in actor.learned_abilities:
-		var card := CharacterUI.card(list,Session.Rules.SKILLS[id].name)
+		var card := CharacterUI.card(list,Session.Rules.skill(id).name)
 		CharacterUI.text(card,Session.Abilities.DEFINITIONS.get(id,{}).get("description","시작 기술"))
 		var row := HBoxContainer.new(); card.add_child(row)
 		for slot in range(2):
