@@ -8,10 +8,12 @@ const WOOD = preload("res://assets/mobile/wood_floor.png")
 const WATER = preload("res://assets/mobile/water.png")
 const TOPDOWN = [preload("res://assets/topdown/floor1_atlas_16x1_16.png"),preload("res://assets/topdown/floor2_atlas_16x1_16.png")]
 const Masonry = preload("res://expedition/masonry_tiles.gd")
+const FirstFloor = preload("res://expedition/floor1_art.gd")
 const FLAGSTONE = preload("res://assets/topdown/flagstone-floor-v1.png")
 static var terrain_cache: Dictionary = {}
 
-static func terrain(cell: Dictionary, point: Vector2i = Vector2i.ZERO) -> AtlasTexture:
+static func terrain(cell: Dictionary, point: Vector2i = Vector2i.ZERO, first_floor: bool = false) -> AtlasTexture:
+	if first_floor: return FirstFloor.terrain(cell,point)
 	if cell.terrain == "stone": return Masonry.floor_tile(point)
 	if cell.terrain == "wall": return Masonry.tile(4+posmod(point.x+point.y*3,4))
 	var palette: int = cell.get("palette",0)

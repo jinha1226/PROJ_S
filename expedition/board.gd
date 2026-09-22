@@ -168,9 +168,12 @@ func paint_terrain() -> void:
 				walls.append({"point":point,"rect":rect,"tint":tint})
 			else:
 				if visibility == 1: draw_rect(rect,Color("151b22"))
-				else: draw_texture_rect(Art.terrain(cell,point),rect,false,tint)
+				else: draw_texture_rect(Art.terrain(cell,point,uses_first_floor_art()),rect,false,tint)
 				Art.Masonry.paint_floor_shadow(self,rect,point,is_wall_tile)
-	Art.Masonry.paint_walls(self,walls,is_wall_tile)
+	Art.Masonry.paint_walls(self,walls,is_wall_tile,Art.FirstFloor.material() if uses_first_floor_art() else {})
+
+func uses_first_floor_art() -> bool:
+	return session.floor_mode and session.floor_state.theme_id == "F1_RUINS"
 
 func _draw() -> void:
 	geometry()
@@ -208,7 +211,11 @@ func _draw() -> void:
 			if session.floor_mode and session.floor_state.features.has(point):
 				var feature: Dictionary = session.floor_state.features[point]
 				var icon: String = session.Curios.definition(feature).get("icon",feature.kind)
-				Icons.paint(self,"entry" if feature.kind in ["entry","altar"] else icon,center,half_width*0.65,Color("655a43") if feature.used else Color("9fe3ff") if feature.kind == "relic" else Color("e4c98e"))
+				var object_id: String = Art.FirstFloor.feature_id(feature) if uses_first_floor_art() else ""
+				if not object_id.is_empty():
+					Art.FirstFloor.paint_object(self,object_id,Rect2(center-Vector2.ONE*half_width,Vector2.ONE*half_width*2),Color("777777") if feature.used else Color.WHITE)
+				else:
+					Icons.paint(self,"entry" if feature.kind in ["entry","altar"] else icon,center,half_width*0.65,Color("655a43") if feature.used else Color("9fe3ff") if feature.kind == "relic" else Color("e4c98e"))
 			if point in attacks:
 				draw_colored_polygon(polygon,Color(0.95,0.15,0.18,0.3)); outline(polygon,Color("f37575"),2)
 			if point == target_cell: outline(polygon,Color.WHITE,3)
