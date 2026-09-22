@@ -24,6 +24,7 @@ func run() -> void:
 	stats()
 	sim()
 	formation()
+	await ui()
 	print("Autobattle: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 ## Three members with the basics equipped, one revived melee foe next to the hero.
@@ -269,3 +270,95 @@ func formation() -> void:
 	s.party[2].pos = d.c+Vector2i(4,4); s.party[0].pos = d.c; s.party[1].pos = d.c+Vector2i(0,1)
 	var step: Dictionary = s.floor_state.follow(s,s.party[0])
 	check(step.kind == "MOVE" and s.distance(step.cell,s.party[2].pos) < s.distance(s.party[0].pos,s.party[2].pos),"followers walk toward the leader, not toward selected")
+
+## The floor-mode battle HUD: member cards without skill buttons, the auto
+## toggle that runs one round per tick, the stop banner, the battle report,
+## the knob tab and the stop options.
+func ui() -> void:
+	var scene = load("res://expedition/main.tscn").instantiate()
+	var s = Session.new(731,true,true,true,3)
+	scene.session = s; root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
+	await process_frame
+	for frame in range(3): await process_frame
+	s.depart(); var c := Fixture.arena(s,8); Fixture.equip_basics(s)
+	var foe: Dictionary = s.enemies[0]; foe.hp = 30; foe.max_hp = 30; foe.role = "MELEE"; foe.alert = true; foe.part_id = ""; foe.pos = c+Vector2i(3,0)
+	s.floor_state.observe(s); scene.refresh()
+	for frame in range(3): await process_frame
+	check(scene.skill_buttons.is_empty() and scene.end_turn_button == null,"floor battle has no skill buttons and no end-turn button")
+	var toggle: Button = scene.find_child("AutoToggle",true,false)
+	var bar = scene.find_child("CommandBar",true,false)
+	check(toggle != null and bar != null and bar.get_child_count() == 5,"auto toggle and five commands")
+	check(scene.find_child("StopBanner",true,false).text.begins_with("전투 시작"),"banner names the stop")
+	check(not s.auto.running and bar.get_children().all(func(b): return not b.disabled),"stopped: commands enabled")
+	check(toggle.text == "▶ 재개" and not scene.item_buttons[0].disabled,"stopped: the toggle resumes and items are usable")
+	var swap: Button = scene.find_child("FormationButton",true,false)
+	check(swap != null and not swap.disabled,"the battle-start stop offers the formation swap")
+	toggle.pressed.emit(); await process_frame
+	# Every action rebuilds the HUD, so each control is looked up again.
+	bar = scene.find_child("CommandBar",true,false)
+	check(s.auto.running and bar.get_children().all(func(b): return b.disabled),"running: commands disabled")
+	check(scene.find_child("AutoToggle",true,false).text == "⏸ 정지" and scene.item_buttons[0].disabled,"running: the toggle stops and items are locked")
+	# This stretch measures the timer, so the soft alerts are switched off.
+	s.auto.stops.ALLY_LETHAL = false; s.auto.stops.HP_LOW = false
+	var round_before: int = s.round_number
+	scene.details_popup.popup_centered(); await process_frame
+	scene._process(scene.auto_interval())
+	check(s.round_number == round_before,"an open popup pauses the timer")
+	scene.details_popup.hide(); await process_frame
+	scene._process(scene.auto_interval())
+	await process_frame
+	check(s.round_number == round_before+1,"the HUD timer runs one round per interval")
+	round_before = s.round_number
+	scene.auto_tick()  # one timer tick = one auto_step when running
+	await process_frame
+	check(s.round_number == round_before+1,"a tick advanced one round")
+	check(scene.find_child("FormationButton",true,false).disabled,"the swap closes once the battle is under way")
+	var card: Button = scene.find_child("MemberCard0",true,false)
+	check(card.find_children("*","Label",true,false).any(func(l): return l.text.contains(s.party[0].last_action)),"member card reports the last action")
+	toggle = scene.find_child("AutoToggle",true,false)
+	toggle.pressed.emit(); await process_frame
+	check(not s.auto.running,"toggle stops")
+	# Speed toggle changes the interval.
+	var speed: Button = scene.find_child("SpeedToggle",true,false)
+	speed.pressed.emit(); await process_frame
+	check(s.auto.speed == 2 and scene.auto_interval() < 0.5,"2x halves the interval")
+	# A command reaches the session and does not resume the run.
+	bar = scene.find_child("CommandBar",true,false)
+	bar.get_child(3).pressed.emit(); await process_frame
+	check(s.party_command == "RETREAT" and not s.auto.running,"a command bar button sets the party command")
+	s.party_command = "FOLLOW"
+	# Battle end shows the report.
+	foe.hp = 0; s.floor_state.observe(s); s.auto.running = true; scene.auto_tick()
+	for frame in range(3): await process_frame
+	var report = scene.find_child("BattleReport",true,false)
+	check(report != null and report.visible and not s.auto.running,"battle report card on battle end")
+	var labels: Array = report.find_children("*","Label",true,false).map(func(l): return l.text)
+	check(labels.any(func(t): return t.begins_with("전투 종료")),"report header")
+	check(labels.any(func(t): return t.begins_with(s.party[0].name)),"report gives every member a row")
+	check(report.find_children("*","Button",true,false).any(func(b): return b.text == "파츠·규칙 보기"),"report links to parts and rules")
+	scene.details_popup.hide()
+	# Personality tab has knob sliders with comfort bands.
+	scene.show_character(0,"성격")
+	for frame in range(3): await process_frame
+	var slider = scene.modal_content.find_child("Knob_posture",true,false)
+	check(slider != null and slider.min_value == -100 and slider.max_value == 100,"posture slider")
+	check(int(slider.value) == int(s.party[0].knobs.posture),"the slider shows the knob it edits")
+	check(scene.modal_content.find_child("Band_posture",true,false) != null,"the comfort band is drawn on the slider")
+	# Safe ground after the battle: the knob may be set, and the session takes it.
+	check(slider.editable == (s.safe_management() and not s.in_combat()),"the slider is editable exactly where knobs may change")
+	slider.value = 40
+	check(s.party[0].knobs.posture == 40,"moving the slider writes the knob through the session")
+	scene.details_popup.hide()
+	# Options popup lists the five stops and the HP threshold.
+	scene.show_auto_options()
+	for frame in range(3): await process_frame
+	var options = scene.find_child("AutoOptions",true,false)
+	check(options != null and options.find_children("*","CheckButton",true,false).size() == 5,"five stop toggles")
+	var death: CheckButton = options.find_child("Stop_DEATH",true,false)
+	death.button_pressed = false
+	check(not s.auto.stops.DEATH,"unchecking a stop writes the session")
+	var threshold: OptionButton = options.find_child("HpThreshold",true,false)
+	check(threshold != null and threshold.item_count == 4,"four HP thresholds")
+	threshold.item_selected.emit(2)
+	check(s.auto.hp_low == 40,"the HP threshold writes the session")
+	scene.details_popup.hide(); scene.queue_free(); await process_frame

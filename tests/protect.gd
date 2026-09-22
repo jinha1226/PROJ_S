@@ -169,7 +169,6 @@ func user_interface() -> void:
 	for frame in range(3): await process_frame
 	var hero: Dictionary = scene.session.party[0]
 	var ally: Dictionary = scene.session.party[1]
-	check(not scene.skill_buttons[1].disabled,"the 방어 slot is live beside an ally")
 	scene.choose_skill(0,1)
 	check(scene.mode == "GUARD" and scene.notice == "엄호 · 인접 아군 선택","the slot asks for an ally, not a cell")
 	scene.on_cell(ally.pos)
@@ -184,6 +183,6 @@ func user_interface() -> void:
 	Fixture.equip_basics(solo.session)
 	solo.refresh()
 	for frame in range(3): await process_frame
-	check(solo.skill_buttons[1].disabled,"a lone hero cannot press 방어")
+	check(not solo.session.act("GUARD",solo.session.party[0].pos),"a lone hero cannot 엄호")
 	solo.queue_free()
 	await process_frame

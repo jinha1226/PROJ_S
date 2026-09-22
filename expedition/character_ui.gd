@@ -6,6 +6,7 @@ const Silhouette = preload("res://expedition/body_status_silhouette.gd")
 const BodyPresentation = preload("res://expedition/body_presentation.gd")
 const Emblem = preload("res://expedition/growth_emblem.gd")
 const Art = preload("res://expedition/mobile_art.gd")
+const Knobs = preload("res://expedition/knobs.gd")
 
 static func surface(color: Color, border: Color = Color("65522a")) -> StyleBoxFlat:
 	var skin := StyleBoxFlat.new(); skin.bg_color = color; skin.border_color = border
@@ -142,7 +143,7 @@ static func detail(ui, title: String, message: String) -> void:
 	ui.clear(ui.item_detail); text(ui.item_detail,title,20); text(ui.item_detail,message)
 	ui.button(ui.item_detail,"닫기",func(): ui.item_popup.hide()); ui.item_popup.popup_centered()
 
-static func personality(list: VBoxContainer, actor: Dictionary) -> void:
+static func personality(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	var box := card(list,actor.profile.style_summary().label)
 	text(box,actor.name+"의 성향")
 	var names := {"H":"정직·겸손","E":"정서성","X":"외향성","A":"우호성","C":"성실성","O":"개방성"}
@@ -150,6 +151,44 @@ static func personality(list: VBoxContainer, actor: Dictionary) -> void:
 		var row := VBoxContainer.new(); row.custom_minimum_size.y = 44; box.add_child(row)
 		text(row,"%s                         %d" % [names[id],actor.profile.value(id)])
 		gauge(row,actor.profile.value(id),1000,Color("69cfc2"))
+	knobs(ui,list,actor)
+
+## The three standing orders, with the band this personality is comfortable in
+## drawn behind the slider. Editable in town and on safe ground only.
+static func knobs(ui, list: VBoxContainer, actor: Dictionary) -> void:
+	var index: int = ui.tactics_actor
+	var editable: bool = ui.session.phase == "TOWN" or (ui.session.floor_mode and ui.session.safe_management() and not ui.session.in_combat())
+	var band: Dictionary = Knobs.comfort(actor.profile)
+	var box := card(list,"행동 성향")
+	text(box,"편안한 범위 밖으로 밀면 전투마다 갈등이 쌓입니다." if editable else "마을이나 안전한 곳에서만 바꿀 수 있습니다.",12)
+	for entry in [["posture","태세 신중 ↔ 공격적"],["cohesion","협동 독자 ↔ 밀집"],["retreat_hp","후퇴선 %d%%"]]:
+		var key: String = entry[0]
+		var bounds: Array = Knobs.RANGE[key]
+		var value: int = int(actor.knobs.get(key,Knobs.DEFAULT[key]))
+		var caption := text(box,entry[1] % value if key == "retreat_hp" else entry[1],14)
+		var track := Control.new(); track.custom_minimum_size = Vector2(0,44)
+		track.size_flags_horizontal = Control.SIZE_EXPAND_FILL; box.add_child(track)
+		var span: float = maxf(1.0,float(bounds[1]-bounds[0]))
+		var rest := ColorRect.new(); rest.color = Color(0.29,0.31,0.33,0.35); rest.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		track.add_child(rest); rest.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		rest.offset_top = 16; rest.offset_bottom = -16
+		var comfort := ColorRect.new(); comfort.name = "Band_"+key
+		comfort.color = Color(0.41,0.81,0.76,0.30); comfort.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		track.add_child(comfort); comfort.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		comfort.anchor_left = clampf((float(band[key][0])-bounds[0])/span,0,1)
+		comfort.anchor_right = clampf((float(band[key][1])-bounds[0])/span,0,1)
+		comfort.offset_left = 0; comfort.offset_right = 0; comfort.offset_top = 14; comfort.offset_bottom = -14
+		var slider := HSlider.new(); slider.name = "Knob_"+key
+		slider.min_value = bounds[0]; slider.max_value = bounds[1]; slider.step = 1; slider.value = value
+		slider.editable = editable; track.add_child(slider)
+		slider.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		var warning := text(box,"⚠ 이 설정은 성격과 맞지 않습니다 — 전투마다 스트레스",11)
+		warning.add_theme_color_override("font_color",Color("d1a05f"))
+		warning.visible = value < int(band[key][0]) or value > int(band[key][1])
+		slider.value_changed.connect(func(moved):
+			if not ui.session.set_knob(index,key,int(moved)): return
+			if key == "retreat_hp": caption.text = entry[1] % int(moved)
+			warning.visible = int(moved) < int(band[key][0]) or int(moved) > int(band[key][1]))
 
 static func memories(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	var names := {"SELF_HARM":["죽음의 문턱","큰 부상을 입거나 빈사 상태에 빠졌다."],"ALLY_DOWNED":["동료가 쓰러짐","동료가 쓰러지는 모습을 보았다."],"ALLY_LOST":["동료를 잃음","함께하던 동료를 잃었다."],"AID_RECEIVED":["동료의 도움","동료에게 도움을 받았다."],"COMMAND_CONFLICT":["명령과 갈등","명령을 따르는 데 갈등을 겪었다."]}

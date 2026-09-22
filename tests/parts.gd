@@ -56,12 +56,11 @@ func ui() -> void:
 	buttons = scene.modal_content.find_children("*","Button",true,false)
 	check(buttons.any(func(b): return b.text == "해제") and buttons.any(func(b): return b.text == "교체"),"equipped slot offers 해제 and 교체")
 	scene.details_popup.hide()
-	# Battle buttons: an empty slot is a disabled "빈 슬롯".
+	# The floor battle is automatic, so an empty slot no longer shows as a
+	# battle button: the parts tab above is where it reads 빈 슬롯.
 	s.depart(); scene.refresh()
 	for frame in range(3): await process_frame
-	check(scene.skill_buttons.size() == 2 and scene.skill_buttons[1].disabled and scene.skill_buttons[1].tooltip_text == "빈 슬롯","empty second slot is disabled")
-	check(scene.skill_buttons[1].find_children("*","Label",true,false).any(func(l): return l.text == "빈 슬롯"),"empty slot carries a visible 빈 슬롯 caption")
-	check(not scene.skill_buttons[0].disabled or s.phase != "BATTLE","push button follows battle state")
+	check(scene.skill_buttons.is_empty() and s.phase == "BATTLE","the floor HUD offers no per-slot skill buttons")
 	# Bag: the parts category exists and the detail offers per-member slot buttons only in town.
 	scene.inventory_filter = "파츠"; scene.show_supplies()
 	for frame in range(3): await process_frame
