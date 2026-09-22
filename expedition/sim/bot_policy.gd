@@ -1,6 +1,6 @@
 extends RefCounted
 ## One player action per call through the public session API. No combat math here.
-## Returns the kind of action taken ("HEAL"|"GUARD"|"MOVE"|"ATTACK"|"WAIT"),
+## Returns the kind of action taken ("HEAL"|"GUARD"|"MOVE"|"ATTACK"|"WAIT"|ability id),
 ## or "" when the hero could not act — the runner tallies from that word
 ## instead of guessing from state diffs.
 static func step(s, policy: String) -> String:
@@ -14,6 +14,12 @@ static func step(s, policy: String) -> String:
 			if maxi(absi(e.pos.x-hero.pos.x),absi(e.pos.y-hero.pos.y)) == 1: adjacent += 1
 		if adjacent >= 2 and not hero.get("guarded",false) and s.act("GUARD",hero.pos): return "GUARD"
 	if s.combat_enemies().is_empty() and approach(s,hero): return "MOVE"
+	if policy == "rules":
+		# The hero reads the same rule list companions do; no potions or bandages
+		# here, so a skill's worth is never masked by supplies.
+		var choice: Dictionary = s.Tactics.choose(s,hero)
+		if s.act(choice.kind,choice.cell): return choice.kind
+		return "WAIT" if s.act("WAIT",hero.pos) else ""
 	if s.auto_attack(): return "ATTACK"
 	return "WAIT" if s.act("WAIT",hero.pos) else ""
 

@@ -19,6 +19,7 @@ func run() -> void:
 	await rules_and_party()
 	await arena_layout()
 	await runner()
+	await rules_policy()
 	print("Encounter sim: %d failures (%d ms)" % [failures,Time.get_ticks_msec()-started]); quit(1 if failures else 0)
 
 func config(members: Array, size: int, policy: String, rules: Dictionary) -> Dictionary:
@@ -118,3 +119,20 @@ func arena_layout() -> void:
 	# The normal floor still builds through apply.
 	var normal = Session.new(731,true,false,true,1); normal.depart()
 	check(normal.BOARD_SIDE == 64 and not normal.objective.is_empty(),"build() still generates the real floor")
+
+func rules_policy() -> void:
+	var hob := [{"species_id":"dcss_hobgoblin","role":"MELEE"}]
+	var cfg: Dictionary = config(hob,1,"rules",Session.DEFAULT_RULES); cfg.build = "b_strike"; cfg.supplies = [0,0,0,0,0,0]
+	var one: Dictionary = Runner.run_one(cfg,11)
+	check(one.result == "WIN" and one.skill_uses.get("HEAVY_STRIKE",0) >= 1,"rules policy uses the equipped strike (%s)" % [one.skill_uses])
+	check(one == Runner.run_one(cfg,11),"rules policy deterministic")
+	# cfg stays on b_strike: cfg2 below carries the dressing build, and run_many(cfg) averages strikes.
+	var mixed := [{"species_id":"dcss_hobgoblin","role":"MELEE"},{"species_id":"goblin","role":"RANGED"},{"species_id":"kobold","role":"MELEE"}]
+	var cfg2: Dictionary = config(mixed,1,"rules",Session.DEFAULT_RULES); cfg2.build = "b_dressing"; cfg2.supplies = [0,0,0,0,0,0]
+	var two: Dictionary = Runner.run_one(cfg2,11)
+	check(two.skill_uses.get("FIELD_DRESSING",0) >= 1,"dressing build heals at least once in a long fight (%s)" % [two.skill_uses])
+	var many: Dictionary = Runner.run_many(cfg,range(1,11))
+	check(many.skill_uses_mean.has("HEAVY_STRIKE") and many.skill_uses_mean.HEAVY_STRIKE >= 1.0,"run_many averages skill uses")
+	for id in ["b_knife","b_lunge","b_bomb","b_shockwave","b_iron","melee_1"]:
+		cfg.build = id
+		check(Runner.run_one(cfg,3).result != "TIMEOUT","%s finishes a solo fight" % id)

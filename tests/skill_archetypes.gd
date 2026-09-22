@@ -33,6 +33,8 @@ func run() -> void:
 	check(hp-f.foe.hp >= 28 and f.hero.cooldowns.HEAVY_STRIKE == 4,"heavy strike deals at least 28 and cools down 3 rounds")
 	f = arena("HEAVY_STRIKE"); s = f.s; f.foe.pos = f.c+Vector2i(2,0); s.floor_state.observe(s)
 	check(not Abilities.legal(s,f.hero,"HEAVY_STRIKE",f.foe.pos),"heavy strike needs adjacency")
+	f = arena("HEAVY_STRIKE"); s = f.s; f.foe.pos = f.c+Vector2i(1,1); s.floor_state.observe(s)
+	check(Abilities.legal(s,f.hero,"HEAVY_STRIKE",f.foe.pos),"heavy strike reaches a diagonal neighbour")
 	# Throwing knife: range 4, line of sight, cooldown 1.
 	f = arena("THROWING_KNIFE"); s = f.s; f.foe.pos = f.c+Vector2i(4,0); s.floor_state.observe(s)
 	hp = f.foe.hp
