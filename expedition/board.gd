@@ -141,7 +141,7 @@ func draw_movement_previews() -> void:
 		draw_colored_polygon(polygon,Color(color,0.13))
 		outline(polygon,Color(color,0.8),2)
 		var side := half_width*1.65
-		draw_texture_rect(Art.ACTORS[preview.actor],Rect2(destination-Vector2.ONE*side/2,Vector2.ONE*side),false,Color(color,0.35))
+		Art.paint_actor(self,preview.actor,Rect2(destination-Vector2.ONE*side/2,Vector2.ONE*side),Color(color,0.35))
 		var direction := (destination-start).normalized()
 		var tip := destination-direction*half_width*0.4
 		var tail := start+direction*half_width*0.6
@@ -259,7 +259,11 @@ func _draw() -> void:
 					if effect.cell == point and effect_time < 0.35:
 						center.x += sin(effect_time*65)*4*(1-effect_time/0.35)
 						flash = Color(2,0.6,0.6)
-				draw_texture_rect(sprite,Rect2(center-Vector2.ONE*side/2,Vector2.ONE*side),false,flash)
+				var actor_rect := Rect2(center-Vector2.ONE*side/2,Vector2.ONE*side)
+				if actor.enemy:
+					draw_texture_rect(sprite,actor_rect,false,flash)
+				else:
+					Art.paint_actor(self,actor.id,actor_rect,flash)
 				if actor.enemy and session.floor_mode:
 					var label: String = "시전!" if actor.get("charging",false) else {"MELEE":"근접","RANGED":"사격","CASTER":"마법"}.get(actor.get("role","MELEE"),"")
 					draw_string(ui_font,center+Vector2(-20,-half_width*0.7),label,HORIZONTAL_ALIGNMENT_CENTER,40,11,Color("ffe2a0"))

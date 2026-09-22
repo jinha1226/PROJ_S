@@ -1,6 +1,7 @@
 extends RefCounted
 const SHEET = preload("res://assets/mobile/ui-atlas.png")
 const ACTORS = [preload("res://assets/mobile/human.png"),preload("res://assets/mobile/dwarf.png"),preload("res://assets/mobile/elf.png")]
+const InkTorso = preload("res://expedition/ink_torso_art.gd")
 const ENEMY = preload("res://assets/mobile/kobold.png")
 const BOSS = preload("res://assets/mobile/fire_lizard.png")
 const STONE = preload("res://assets/mobile/stone_floor_a.png")
@@ -11,6 +12,12 @@ const Masonry = preload("res://expedition/masonry_tiles.gd")
 const FirstFloor = preload("res://expedition/floor1_art.gd")
 const FLAGSTONE = preload("res://assets/topdown/flagstone-floor-v1.png")
 static var terrain_cache: Dictionary = {}
+
+static func paint_actor(canvas: CanvasItem, index: int, rect: Rect2, tint: Color = Color.WHITE) -> void:
+	if index == 0:
+		InkTorso.paint(canvas,rect,tint)
+	else:
+		canvas.draw_texture_rect(ACTORS[index],rect,false,tint)
 
 static func terrain(cell: Dictionary, point: Vector2i = Vector2i.ZERO, first_floor: bool = false) -> AtlasTexture:
 	if first_floor: return FirstFloor.terrain(cell,point)

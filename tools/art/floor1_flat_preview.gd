@@ -12,7 +12,7 @@ func _ready() -> void:
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO,size),Color("15191c"))
-	draw_string(FONT,Vector2(28,36),"1층 · 기존 토르소 캐릭터와 환경",HORIZONTAL_ALIGNMENT_LEFT,-1,24,Color("ded6c4"))
+	draw_string(FONT,Vector2(28,36),"1층 · 레이어 인간 캐릭터와 환경",HORIZONTAL_ALIGNMENT_LEFT,-1,24,Color("ded6c4"))
 	var start := Vector2(44,100)
 	var solid := func(p): return p.x < 0 or p.y < 0 or p.x >= 12 or p.y >= 8 or MAP[p.y][p.x] == "#"
 	var walls: Array = []
@@ -29,7 +29,7 @@ func _draw() -> void:
 	for placement in [["torch_lit",Vector2(2,0)],["torch_lit",Vector2(9,0)],["crate",Vector2(1,3)],["barrel",Vector2(2,3)],["locked_chest",Vector2(9,5)],["altar",Vector2(6,1)],["rubble",Vector2(4,5)]]:
 		Art.paint_object(self,placement[0],Rect2(start+placement[1]*44,Vector2.ONE*44))
 	for i in range(3):
-		draw_texture_rect(Actors.ACTORS[i],Rect2(start+Vector2(4+i,4)*44+Vector2(4,4),Vector2.ONE*36),false)
+		Actors.paint_actor(self,i,Rect2(start+Vector2(4+i,4)*44+Vector2(4,4),Vector2.ONE*36))
 	var ids: Array = Art.catalog.objects.keys()
 	for i in range(ids.size()):
 		var pos := Vector2(28+(i%8)*120,490+(i/8)*140)
