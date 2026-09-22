@@ -49,6 +49,7 @@ godot --path /mnt/d/SS/new
 초상화 위 스킬 두 칸과 아래 파티 공용 소모품 한 줄을 사용합니다.
 `이능` 탭의 `사용 방침`에서 스킬마다 대상과 조건을 정하며, 조건에는 `예고 공격 대상일 때`(적이 예고한 공격이 자기 칸을 노릴 때)와
 `전열에서 아군을 막고 있을 때`(자신만 적과 맞닿아 뒤의 아군을 가리고 있을 때)가 있고 기본 `방어` 규칙은 이 두 조건을 씁니다.
+출정 준비 화면의 '시험 로드아웃'은 플레이테스트용으로 모든 이능을 습득 상태로 만든다(장착은 이능 탭).
 적이 보이지 않는 안전한 곳에서 성장 투자와 파츠 습득·교체가 가능합니다.
 인접한 보급 상자·야영지·중계석을 눌러 한 번씩 이용할 수 있습니다.
 봉인된 유물은 시야에 처음 들어올 때 발견되며, 인접해서 조사하면 회수 팝업이 열립니다.
@@ -124,6 +125,7 @@ godot --headless --path . --script res://tests/floor_templates.gd
 godot --headless --path . --script res://tests/encounter_builder.gd
 godot --headless --path . --script res://tests/floor_generator.gd
 godot --headless --path . --script res://tests/encounter_sim.gd
+godot --headless --path . --script res://tests/test_loadout.gd
 ```
 
 `encounter_sim.gd`는 CI 스위트에 포함됩니다. 행동 경제 실험 전체 행렬은 수동 도구로 따로 돌립니다:

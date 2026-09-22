@@ -22,6 +22,14 @@ func build(ui) -> void:
 	var shade := ColorRect.new(); shade.color = Color(0,0,0,0.45); shade.mouse_filter = MOUSE_FILTER_IGNORE
 	edit.add_child(shade); shade.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	hotspot("TownDepart","출정",Rect2(0.035,0.895,0.93,0.073),ui.depart)
+	# Playtest-only entry point; last in the preparation row, above 출정.
+	if ui.session.floor_mode and ui.session.phase == "TOWN":
+		var loadout = ui.button(self,"시험 로드아웃",func(): ui.run_action(ui.session.grant_test_loadout))
+		loadout.name = "TownTestLoadout"; loadout.tooltip_text = "플레이테스트 · 모든 이능 습득"
+		loadout.custom_minimum_size = Vector2(44,44)
+		loadout.anchor_left = 0.035; loadout.anchor_top = 0.812
+		loadout.anchor_right = 0.66; loadout.anchor_bottom = 0.877
+		loadout.offset_left = 0; loadout.offset_top = 0; loadout.offset_right = 0; loadout.offset_bottom = 0
 	var top := PanelContainer.new(); top.name = "TownHeader"
 	var panel := StyleBoxFlat.new(); panel.bg_color = Color("141719"); panel.border_color = Color("8f7748"); panel.border_width_bottom = 2
 	panel.content_margin_left = 12; panel.content_margin_right = 6

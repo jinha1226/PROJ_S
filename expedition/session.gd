@@ -603,6 +603,19 @@ func consume_essence(index: int, id: String) -> bool:
 	message(actor.name+" · "+Abilities.DEFINITIONS[id].name+" 습득")
 	return true
 
+## Playtest helper: learn every catalog ability at once so loadouts can be tried without farming.
+func grant_test_loadout() -> bool:
+	if not floor_mode or phase != "TOWN" or party.is_empty(): return false
+	var actor: Dictionary = party[0]
+	var added := 0
+	for id in Abilities.DEFINITIONS:
+		if id in actor.learned_abilities: continue
+		actor.learned_abilities.append(id)
+		actor.rules.append(Abilities.default_rule(id))
+		added += 1
+	message("시험 로드아웃 · 이미 전부 습득" if added == 0 else "시험 로드아웃 · 이능 %d종 습득 — 이능 탭에서 장착하세요." % added)
+	return true
+
 func equip_ability(index: int, slot: int, id: String) -> bool:
 	if not safe_management() or index < 0 or index >= party.size() or party[index].hp <= 0: return false
 	return Abilities.equip(party[index],slot,id)
