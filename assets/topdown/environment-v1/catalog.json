@@ -1,0 +1,434 @@
+{
+  "version": 1,
+  "logical_tile_size": 32,
+  "objects": {
+    "pillar_broken": {
+      "rect": [
+        56,
+        88,
+        246,
+        234
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    },
+    "rubble": {
+      "rect": [
+        350,
+        157,
+        259,
+        167
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    },
+    "crates": {
+      "rect": [
+        658,
+        115,
+        249,
+        206
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    },
+    "barrels": {
+      "rect": [
+        974,
+        107,
+        229,
+        219
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    },
+    "torch_lit": {
+      "rect": [
+        136,
+        351,
+        112,
+        253
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    },
+    "torch_unlit": {
+      "rect": [
+        450,
+        404,
+        110,
+        200
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    },
+    "brazier_lit": {
+      "rect": [
+        658,
+        401,
+        236,
+        193
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    },
+    "brazier_unlit": {
+      "rect": [
+        966,
+        456,
+        228,
+        138
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    },
+    "sarcophagus": {
+      "rect": [
+        51,
+        714,
+        263,
+        183
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    },
+    "altar": {
+      "rect": [
+        314,
+        707,
+        302,
+        197
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    },
+    "cage": {
+      "rect": [
+        700,
+        641,
+        166,
+        272
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    },
+    "barricade": {
+      "rect": [
+        950,
+        678,
+        262,
+        235
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    },
+    "bones": {
+      "rect": [
+        46,
+        1029,
+        262,
+        170
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    },
+    "ore": {
+      "rect": [
+        362,
+        1008,
+        241,
+        191
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    },
+    "statue": {
+      "rect": [
+        689,
+        926,
+        174,
+        276
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    },
+    "candles": {
+      "rect": [
+        958,
+        982,
+        242,
+        221
+      ],
+      "source_cell_size": 313.5,
+      "anchor": "bottom_center",
+      "collision": "not_assigned"
+    }
+  },
+  "terrain": {
+    "water_shallow": {
+      "rect": [
+        6,
+        6,
+        302,
+        302
+      ],
+      "animated": false
+    },
+    "water_ripple": {
+      "rect": [
+        320,
+        6,
+        301,
+        302
+      ],
+      "animated": false
+    },
+    "water_deep": {
+      "rect": [
+        633,
+        6,
+        301,
+        302
+      ],
+      "animated": false
+    },
+    "water_rings": {
+      "rect": [
+        946,
+        6,
+        302,
+        302
+      ],
+      "animated": false
+    },
+    "embers": {
+      "rect": [
+        6,
+        320,
+        302,
+        301
+      ],
+      "animated": false
+    },
+    "burning_cracks": {
+      "rect": [
+        320,
+        320,
+        301,
+        301
+      ],
+      "animated": false
+    },
+    "fire": {
+      "rect": [
+        633,
+        320,
+        301,
+        301
+      ],
+      "animated": false
+    },
+    "lava": {
+      "rect": [
+        946,
+        320,
+        302,
+        301
+      ],
+      "animated": false
+    },
+    "moss": {
+      "rect": [
+        6,
+        633,
+        302,
+        301
+      ],
+      "animated": false
+    },
+    "mud": {
+      "rect": [
+        320,
+        633,
+        301,
+        301
+      ],
+      "animated": false
+    },
+    "poison": {
+      "rect": [
+        633,
+        633,
+        301,
+        301
+      ],
+      "animated": false
+    },
+    "corruption": {
+      "rect": [
+        946,
+        633,
+        302,
+        301
+      ],
+      "animated": false
+    },
+    "frost": {
+      "rect": [
+        6,
+        946,
+        302,
+        302
+      ],
+      "animated": false
+    },
+    "ice": {
+      "rect": [
+        320,
+        946,
+        301,
+        302
+      ],
+      "animated": false
+    },
+    "ash": {
+      "rect": [
+        633,
+        946,
+        301,
+        302
+      ],
+      "animated": false
+    },
+    "grating": {
+      "rect": [
+        946,
+        946,
+        302,
+        302
+      ],
+      "animated": false
+    }
+  },
+  "themes": {
+    "flooded_crypt": {
+      "floor_a": [
+        6,
+        6,
+        302,
+        302
+      ],
+      "floor_b": [
+        320,
+        6,
+        301,
+        302
+      ],
+      "front": [
+        633,
+        6,
+        301,
+        302
+      ],
+      "top": [
+        946,
+        6,
+        302,
+        302
+      ]
+    },
+    "abandoned_mine": {
+      "floor_a": [
+        6,
+        320,
+        302,
+        301
+      ],
+      "floor_b": [
+        320,
+        320,
+        301,
+        301
+      ],
+      "front": [
+        633,
+        320,
+        301,
+        301
+      ],
+      "top": [
+        946,
+        320,
+        302,
+        301
+      ]
+    },
+    "burnt_fortress": {
+      "floor_a": [
+        6,
+        633,
+        302,
+        301
+      ],
+      "floor_b": [
+        320,
+        633,
+        301,
+        301
+      ],
+      "front": [
+        633,
+        633,
+        301,
+        301
+      ],
+      "top": [
+        946,
+        633,
+        302,
+        301
+      ]
+    },
+    "frozen_ruins": {
+      "floor_a": [
+        6,
+        946,
+        302,
+        302
+      ],
+      "floor_b": [
+        320,
+        946,
+        301,
+        302
+      ],
+      "front": [
+        633,
+        946,
+        301,
+        302
+      ],
+      "top": [
+        946,
+        946,
+        302,
+        302
+      ]
+    }
+  }
+}

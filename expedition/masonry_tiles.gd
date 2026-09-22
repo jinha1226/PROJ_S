@@ -62,37 +62,40 @@ static func contour_parts(point: Vector2i, is_wall: Callable) -> Array:
 			parts.append(Rect2(Vector2(0 if b.x < 0 else 1-COPING,0 if a.y < 0 else 1-COPING),Vector2.ONE*COPING))
 	return parts
 
-static func paint_walls(canvas: CanvasItem, cells: Array, is_wall: Callable) -> void:
+static func paint_walls(canvas: CanvasItem, cells: Array, is_wall: Callable, material: Dictionary = {}) -> void:
+	var front: AtlasTexture = material.get("front",wall_tile(0))
+	var top: AtlasTexture = material.get("top",wall_tile(3))
 	# Explicit passes prevent a later tile from painting over an earlier corner.
 	for cell in cells:
 		var rect := raised_rect(cell.rect)
-		canvas.draw_texture_rect(wall_tile(3),rect,false,Color(0.22,0.23,0.25)*cell.tint)
+		canvas.draw_texture_rect(top,rect,false,Color(0.22,0.23,0.25)*cell.tint)
 	for cell in cells:
 		if not (exposed(cell.point,is_wall) & SOUTH): continue
 		var rect: Rect2 = cell.rect
 		var face := Rect2(rect.position+Vector2(0,rect.size.y*(1-HEIGHT)),Vector2(rect.size.x,rect.size.y*HEIGHT))
-		var region: Rect2 = wall_tile(0).region
+		var region: Rect2 = front.region
 		region.position.y += region.size.y*0.25; region.size.y *= 0.75
-		canvas.draw_texture_rect_region(WALLS,face,region,cell.tint)
+		canvas.draw_texture_rect_region(front.atlas,face,region,cell.tint)
 		canvas.draw_rect(Rect2(face.position+Vector2(0,face.size.y-1),Vector2(face.size.x,1)),Color("090b0e")*cell.tint)
 	for cell in cells:
 		var rect := raised_rect(cell.rect)
 		for part in contour_parts(cell.point,is_wall):
 			var strip := Rect2(rect.position+part.position*rect.size,part.size*rect.size)
-			paint_coping(canvas,strip,cell.tint)
+			paint_coping(canvas,strip,cell.tint,front)
 
-static func paint_coping(canvas: CanvasItem, rect: Rect2, tint: Color) -> void:
+static func paint_coping(canvas: CanvasItem, rect: Rect2, tint: Color, front: AtlasTexture = null) -> void:
 	# Every orientation uses one material sample and the same physical width.
 	# Texture UV rotation is in the renderer; no independent vertical art is mixed in.
-	var source: Rect2 = wall_tile(0).region
+	if front == null: front = wall_tile(0)
+	var source: Rect2 = front.region
 	var top_left := source.position+source.size*Vector2(0.035,0.035)
 	var extent := source.size*Vector2(0.93,0.13)
 	var uv := PackedVector2Array([top_left,top_left+Vector2(extent.x,0),top_left+extent,top_left+Vector2(0,extent.y)])
-	for i in range(4): uv[i] /= Vector2(WALLS.get_size())
+	for i in range(4): uv[i] /= Vector2(front.atlas.get_size())
 	if rect.size.y > rect.size.x:
 		uv = PackedVector2Array([uv[3],uv[0],uv[1],uv[2]])
 	var points := PackedVector2Array([rect.position,rect.position+Vector2(rect.size.x,0),rect.end,rect.position+Vector2(0,rect.size.y)])
-	canvas.draw_polygon(points,PackedColorArray([tint]),uv,WALLS)
+	canvas.draw_polygon(points,PackedColorArray([tint]),uv,front.atlas)
 
 static func paint_floor_shadow(canvas: CanvasItem, rect: Rect2, point: Vector2i, is_wall: Callable) -> void:
 	# Shadows stay inside the walkable cell; they never change collision or hide actors.
