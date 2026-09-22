@@ -71,16 +71,21 @@ const ABANDON_STRESS := 20
 ## Free provisions are consumed first and never sold for gold.
 var free_provisions: Dictionary = {}
 
-func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = false, p_floor: bool = false) -> void:
+## Experiment rules: the defaults reproduce shipped behaviour byte for byte.
+const DEFAULT_RULES := {"solo_actions":1,"solo_max_members":0}
+var rules_config: Dictionary = DEFAULT_RULES.duplicate()
+
+func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = false, p_floor: bool = false, p_party_size: int = 0) -> void:
 	seed_value = p_seed
 	boss_trial = p_boss_trial
-	companions = p_companions and boss_trial
+	companions = (p_party_size > 1) if p_party_size > 0 else (p_companions and boss_trial)
 	floor_mode = p_floor
 	if floor_mode:
 		floor_state = Floor.new(); BOARD_SIDE = floor_state.size
 		bank = STARTING_FUNDS; food = 0; torches = 0; supplies = [0,0,0,0,0,0]; exploration_tools = {"KEY":0,"SHOVEL":0}
 		top_up_kit()
-	for i in range(2 if companions else 1 if boss_trial else 3):
+	var count: int = clampi(p_party_size,1,3) if p_party_size > 0 else (2 if companions else 1 if boss_trial else 3)
+	for i in range(count):
 		party.append(make_actor(i, ["아린", "브란", "세라"][i], false))
 	message("부상과 기억은 원정을 마쳐도 남습니다. 준비되면 출정하세요.")
 
@@ -283,8 +288,13 @@ func start_battle() -> void:
 	plan_enemies()
 	message("%s · 적은 이동 후 공격합니다. 붉은 칸은 강력한 기술의 예고입니다." % rooms[room].name)
 
+## Rule overrides only bite for a lone hero on the continuous floor.
+func solo_rule(key: String) -> int:
+	if not floor_mode or party.size() != 1: return int(DEFAULT_RULES[key])
+	return int(rules_config.get(key,DEFAULT_RULES[key]))
+
 func action_budget(actor: Dictionary) -> int:
-	if boss_trial: return 1
+	if boss_trial: return solo_rule("solo_actions")
 	return 1 if actor.stress >= 150 else 2
 
 func tile(point: Vector2i) -> Dictionary:
@@ -443,7 +453,7 @@ func finish_player_action() -> void:
 			if act(choice.kind,choice.cell): party[i].last_action = choice.reason
 	selected = leader
 	resolving_companions = false
-	if phase == "BATTLE": end_round()
+	if phase == "BATTLE" and party[selected].ap <= 0: end_round()
 
 func reservation_choice(actor: Dictionary) -> Dictionary:
 	var order: Dictionary = actor.reservation
