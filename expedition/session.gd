@@ -589,14 +589,14 @@ func reset_rules(index: int) -> void:
 	var actor: Dictionary = party[index]
 	actor.rules = Rules.defaults(); actor.basic_target = Rules.BASIC_TARGET_DEFAULT
 	for id in actor.learned_abilities:
-		if Abilities.DEFINITIONS.has(id): actor.rules.append(Rules.make_rule(id,"SELF" if Abilities.DEFINITIONS[id].target == "SELF" else "NEAREST","DANGER" if id == "IRON_HIDE" else "ALWAYS"))
+		if Abilities.DEFINITIONS.has(id): actor.rules.append(Abilities.default_rule(id))
 
 func consume_essence(index: int, id: String) -> bool:
 	if not safe_management() or index < 0 or index >= party.size() or not Abilities.DEFINITIONS.has(id): return false
 	var actor: Dictionary = party[index]
 	if actor.hp <= 0 or essences.get(id,0) <= 0 or id in actor.learned_abilities: return false
 	actor.learned_abilities.append(id); essences[id] -= 1
-	actor.rules.append(Rules.make_rule(id,"SELF" if Abilities.DEFINITIONS[id].target == "SELF" else "NEAREST","DANGER" if id == "IRON_HIDE" else "ALWAYS"))
+	actor.rules.append(Abilities.default_rule(id))
 	message(actor.name+" · "+Abilities.DEFINITIONS[id].name+" 습득")
 	return true
 

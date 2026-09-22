@@ -54,7 +54,7 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 		var targets: Array = [actor] if def.target == "SELF" else s.combat_enemies()
 		for target in targets:
 			if not s.Abilities.legal(s,actor,id,target.pos): continue
-			if def.damage > 0:
+			if def.effect == "DAMAGE":
 				var cells: Array = s.Abilities.cells(s,actor,id,target.pos)
 				if s.alive().any(func(a): return (a.id != actor.id or id == "BOMB") and a.pos in cells): continue
 				if not s.combat_enemies().any(func(e): return e.hp > 0 and e.pos in cells): continue

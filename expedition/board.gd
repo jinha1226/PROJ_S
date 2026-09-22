@@ -228,7 +228,7 @@ func _draw() -> void:
 		var actor: Dictionary = session.party[preview.actor]
 		if actor.hp <= 0: continue
 		var badge := preview_rect(actor)
-		var text: String = {"PUSH":"밀치기","GUARD":"방어","ATTACK":"공격","MOVE":"이동","WAIT":"대기","SHOCKWAVE":"충격파","BOMB":"폭탄","IRON_HIDE":"철갑"}.get(preview.kind,preview.kind)
+		var text: String = {"PUSH":"밀치기","GUARD":"방어","ATTACK":"공격","MOVE":"이동","WAIT":"대기","SHOCKWAVE":"충격파","BOMB":"폭탄","IRON_HIDE":"철갑","HEAVY_STRIKE":"강타","THROWING_KNIFE":"투척","FIELD_DRESSING":"처치","LUNGE":"돌진"}.get(preview.kind,preview.kind)
 		var color := Color("f1ca79") if preview.kind in session.Rules.SKILLS else Color("a6d8e8")
 		draw_style_box(_preview_background(color),badge)
 		draw_string(ui_font,badge.position+Vector2(2,13),text+(" 예약" if preview.get("reserved",false) else " 예정"),HORIZONTAL_ALIGNMENT_CENTER,badge.size.x-4,10,color)
