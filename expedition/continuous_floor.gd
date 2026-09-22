@@ -40,21 +40,32 @@ static func enemy_bonus(light: int) -> int:
 
 func build(s) -> void:
 	var theme: Dictionary = Generator.theme(theme_id)
-	layout = Generator.generate(theme,s.seed_value+s.expedition_number*7919,int(theme.depth))
+	apply(s,theme,Generator.generate(theme,s.seed_value+s.expedition_number*7919,int(theme.depth)))
+
+## Consumes a §7 layout: tiles, enemies, features, party spawn, objective.
+## Static so a simulator can drive the floor without the generator; the session
+## always owns the instance the layout is written into.
+static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
+	var state = s.floor_state
+	state.layout = p_layout
+	var layout: Dictionary = state.layout
 	assert(not layout.is_empty(),"floor generator returned no layout")
-	size = layout.size
-	epoch = str(s.seed_value)+"/"+str(s.expedition_number)
-	visible.clear(); explored.clear(); discoveries.clear(); features.clear(); seen_enemies.clear()
-	discovered_curios = 0
-	s.BOARD_SIDE = size; s.tiles = []
-	for y in range(size):
-		for x in range(size):
-			var terrain: String = layout.terrain[y*size+x]
+	var side: int = layout.size
+	state.size = side
+	state.epoch = str(s.seed_value)+"/"+str(s.expedition_number)
+	state.visible.clear(); state.explored.clear(); state.discoveries.clear(); state.features.clear(); state.seen_enemies.clear()
+	state.discovered_curios = 0
+	s.BOARD_SIDE = side; s.tiles = []
+	for y in range(side):
+		for x in range(side):
+			var terrain: String = layout.terrain[y*side+x]
 			s.tiles.append({"terrain":terrain,"source_terrain":terrain,"fire":0,"wet":70 if terrain == "water" else 0,"variant":posmod(x*13+y*7,3),"palette":0})
+	var cap: int = s.solo_rule("solo_max_members")
 	s.enemies = []
 	for e in range(layout.encounters.size()):
 		var encounter: Dictionary = layout.encounters[e]
-		for member in encounter.members:
+		var members: Array = encounter.members if cap <= 0 or s.party.size() != 1 else encounter.members.slice(0,cap)
+		for member in members:
 			var enemy: Dictionary = s.make_actor(100+s.enemies.size(),member.display_name,true)
 			enemy.pos = member.pos; enemy.hp = int(member.max_health)
 			if s.party.size() == 1: enemy.hp = clampi(enemy.hp*SOLO_HP_PERCENT/100,SOLO_HP_MIN,SOLO_HP_MAX)
@@ -64,14 +75,15 @@ func build(s) -> void:
 			MonsterAI.configure(enemy,member.role)
 			enemy.essence_id = ["BOMB","SHOCKWAVE","IRON_HIDE"][s.enemies.size()%3]
 			s.enemies.append(enemy)
-	for p in layout.features: features[p] = layout.features[p].duplicate(true)
+	for p in layout.features: state.features[p] = layout.features[p].duplicate(true)
 	for i in range(s.party.size()):
 		s.party[i].pos = layout.entry+Vector2i(0,i); s.party[i].ap = 1
 		s.party[i].reservation = {}
-	Objective.register(s,layout.relic)
+	if layout.relic.x >= 0: Objective.register(s,layout.relic)
+	else: s.objective = {}
 	s.rooms = [{"id":0,"name":"1층 · "+str(theme.label),"kind":"floor","links":[],"tiles":s.tiles,"enemies":s.enemies,"started":true,"cleared":false,"shield":false,"pattern":-1,"used":false,"feature":Vector2i(-1,-1)}]
 	s.room = 0; s.phase = "BATTLE"; s.round_number = 1
-	observe(s); ambush(s)
+	state.observe(s); state.ambush(s)
 
 static func sight_side(light: int) -> int:
 	return ceili(sight_radius(light))*2+1
