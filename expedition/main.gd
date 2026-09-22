@@ -510,9 +510,6 @@ func show_party_tactics() -> void:
 			if command == "ATTACK_TARGET": command_targeting = true; notice = "공격 대상 선택"
 			else: session.party_command = command; notice = entry[1]
 			refresh(),available)
-	for entry in [["NONE","자유"],["COLUMN","종대"],["LINE","횡대"],["WEDGE","쐐기"]]:
-		var formation: String = entry[0]
-		button(modal_content,"대형 · "+entry[1],func(): session.formation = formation; details_popup.hide(); refresh(),available)
 	button(modal_content,"닫기",func(): details_popup.hide())
 	details_popup.popup_centered()
 

@@ -22,7 +22,9 @@ const Passives = preload("res://expedition/passives.gd")
 var parts_bag: Dictionary = {}
 const STARTING_PARTS := {"PUSH":1,"GUARD":1}
 var party_command := "FOLLOW"
-var formation := "NONE"
+## Marching order: party indices in the order they follow the leader. The
+## leader is the first living index in the order.
+var formation: Array = [0,1,2]
 var command_target := -1
 var companions := false
 var resolving_companions := false
@@ -102,6 +104,7 @@ func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = f
 	var count: int = clampi(p_party_size,1,3) if p_party_size > 0 else (2 if companions else 1 if boss_trial else 3)
 	for i in range(count):
 		party.append(make_actor(i, ["아린", "브란", "세라"][i], false))
+	formation = range(count)
 	reset_battle_stats()
 	# Room and boss modes have no town to buy the basics in: start with them equipped.
 	if not floor_mode:
@@ -368,6 +371,28 @@ func combat_enemies() -> Array:
 func in_combat() -> bool:
 	return floor_mode and phase == "BATTLE" and not floor_state.safe(self)
 
+## The first living member in the marching order.
+func leader() -> Dictionary:
+	for index in formation:
+		if index < party.size() and party[index].hp > 0: return party[index]
+	return party[0]
+
+func rally_point() -> Vector2i:
+	return leader().pos
+
+## Two members trade cells and places in the marching order. Only while the
+## run is stopped for a battle start, once per battle.
+func swap_formation(a: int, b: int) -> bool:
+	if not in_combat() or auto.last_stop.reason != "BATTLE_START" or auto.last_stop.round != round_number or auto.get("swapped_round",-1) == round_number: return false
+	if a == b or a < 0 or b < 0 or a >= party.size() or b >= party.size() or party[a].hp <= 0 or party[b].hp <= 0: return false
+	var pa: Vector2i = party[a].pos; party[a].pos = party[b].pos; party[b].pos = pa
+	var ia: int = formation.find(a); var ib: int = formation.find(b)
+	formation[ia] = b; formation[ib] = a
+	auto.swapped_round = round_number
+	floor_state.observe(self)
+	message("%s ↔ %s 자리 교환" % [party[a].name,party[b].name])
+	return true
+
 func safe_management() -> bool:
 	return phase in ["TOWN","EXPLORE"] or floor_mode and phase == "BATTLE" and floor_state.safe(self)
 
@@ -531,7 +556,13 @@ func command_choice(actor: Dictionary) -> Dictionary:
 	if party_command == "HOLD_POSITION":
 		if combat_enemies().any(func(e): return melee_reach(actor.pos,e.pos)): return {}
 		return {"kind":"WAIT","cell":actor.pos,"reason":"자리 지키기"}
-	if party_command == "STOP_ATTACK": return floor_state.follow(self,actor) if floor_mode else {"kind":"WAIT","cell":actor.pos,"reason":"공격 중지"}
+	if party_command == "STOP_ATTACK":
+		if not floor_mode: return {"kind":"WAIT","cell":actor.pos,"reason":"공격 중지"}
+		var destination: Vector2i = rally_point()
+		if actor.pos == destination or maxi(absi(actor.pos.x-destination.x),absi(actor.pos.y-destination.y)) <= 1:
+			return {"kind":"WAIT","cell":actor.pos,"reason":"공격 중지"}
+		var route: Dictionary = TurnCore.path(BOARD_SIDE,BOARD_SIDE,actor.pos,[destination],func(a,b): return can_step(a,b),func(_p): return 100)
+		return {"kind":"MOVE","cell":route.path[1],"reason":"공격 중지"} if route.found and route.path.size() > 1 else {"kind":"WAIT","cell":actor.pos,"reason":"공격 중지"}
 	if party_command == "RETREAT":
 		var best: Vector2i = Tactics.retreat_cell(self,actor)
 		return {"kind":"WAIT" if best == actor.pos else "MOVE","cell":best,"reason":"후퇴"}

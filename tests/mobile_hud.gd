@@ -105,7 +105,7 @@ func run() -> void:
 	for foe in duo.enemies: foe.hp = 0
 	duo.party_command = "HOLD_POSITION"
 	check(duo.companion_choice(duo.party[1]).kind == "WAIT","hold command prevents companion movement")
-	duo.party_command = "FOLLOW"; duo.formation = "COLUMN"
+	duo.party_command = "FOLLOW"; duo.formation = [0,1,2]
 	Fixture.arena(duo,8)
 	check(duo.floor_state.follow(duo,duo.party[1]).kind == "WAIT","column formation holds assigned position")
 	var corner = Session.new(818,true,false,true); corner.depart()

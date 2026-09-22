@@ -23,6 +23,7 @@ func run() -> void:
 	knobs()
 	stats()
 	sim()
+	formation()
 	print("Autobattle: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 ## Three members with the basics equipped, one revived melee foe next to the hero.
@@ -246,3 +247,25 @@ func sim() -> void:
 	var s = Session.new(11,true,true,true,3)
 	s.rules_config = Session.DEFAULT_RULES.duplicate()
 	check(Policy.step(s,"rules") == "","no step before depart")
+
+## Formation is the marching order; swapping is only allowed once, at a battle start.
+func formation() -> void:
+	var d := skirmish(0); var s = d.s
+	check(s.formation == [0,1,2] and s.leader().id == 0,"marching order defaults to party order")
+	check(not s.swap_formation(0,1),"no swap while safe — only at battle start")
+	d.foes = [s.enemies[0]]; var foe: Dictionary = d.foes[0]
+	foe.hp = 30; foe.max_hp = 30; foe.role = "MELEE"; foe.alert = true; foe.part_id = ""; foe.pos = d.c+Vector2i(3,0)
+	s.floor_state.observe(s)
+	check(s.auto_stop_reason() == "BATTLE_START","battle start")
+	var a: Vector2i = s.party[0].pos; var b: Vector2i = s.party[1].pos
+	check(s.swap_formation(0,1) and s.party[0].pos == b and s.party[1].pos == a and s.formation == [1,0,2],"swap exchanges cells and order")
+	check(not s.swap_formation(1,2),"one swap per battle")
+	check(s.leader().id == 1 and s.rally_point() == s.party[1].pos,"leader and rally point follow the order")
+	s.auto_step()
+	check(not s.swap_formation(0,1),"not after the first round")
+	# Follow uses the order: the rear member trails the leader when safe.
+	d = skirmish(0); s = d.s
+	s.formation = [2,1,0]
+	s.party[2].pos = d.c+Vector2i(4,4); s.party[0].pos = d.c; s.party[1].pos = d.c+Vector2i(0,1)
+	var step: Dictionary = s.floor_state.follow(s,s.party[0])
+	check(step.kind == "MOVE" and s.distance(step.cell,s.party[2].pos) < s.distance(s.party[0].pos,s.party[2].pos),"followers walk toward the leader, not toward selected")
