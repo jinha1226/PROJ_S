@@ -90,5 +90,5 @@ func run() -> void:
 			# Later expeditions ride the same unfixed combat math as the seed
 			# sweep above, so they only guard the lifecycle until the SRD spec.
 			check(row.reason != "STUCK","repeat expedition %d reaches an ending" % (expedition+1))
-		check(row.actions <= 400 and row.food > 0 and row.light > 0,"repeat expedition stays within supply and action budgets")
+		check(row.actions <= 300 and row.food > 0 and row.light > 0,"repeat expedition stays within supply and action budgets")
 	print("Solo balance: %d failures; %d/%d wins" % [failures,wins,SEEDS]); quit(1 if failures else 0)

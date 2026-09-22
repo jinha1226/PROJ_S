@@ -16,12 +16,6 @@ static func definition(id: String) -> Dictionary:
 		if row.id == id: return row
 	return {}
 
-static func ids_with_tag(tag: String) -> Array:
-	var result: Array = []
-	for row in content.get("templates",[]):
-		if tag in row.tags: result.append(row.id)
-	return result
-
 ## Clockwise quarter turns. (x,y) in the source becomes (height-1-y, x).
 static func rotate(rows: Array, turns: int) -> Array:
 	var current: Array = rows.duplicate()

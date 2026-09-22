@@ -5,8 +5,6 @@ extends RefCounted
 const RELIC_LABEL := "봉인된 유물"
 const RELIC_DESCRIPTION := "심부에 봉인된 유물입니다. 회수해 입구 관문으로 가져가면 임무가 완료됩니다.\n사용·판매·장착은 할 수 없습니다."
 const RECOVERY_BONUS := 100
-const MIN_DISTANCE_RATIO := 0.6
-const FAR_BAND_RATIO := 0.8
 const STATES := ["UNDISCOVERED","DISCOVERED","CARRIED","DELIVERED","LOST"]
 
 static func create(expedition: int, pos: Vector2i) -> Dictionary:

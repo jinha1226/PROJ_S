@@ -35,7 +35,10 @@ func run() -> void:
 	for i in range(3): check(s.act("MOVE",s.party[0].pos+Vector2i.RIGHT),"walk consumes one action")
 	check(s.party[1].pos != before and s.distance(s.party[0].pos,s.party[1].pos) <= 3,"companion follows during exploration")
 	var foe: Dictionary = s.enemies[0]
-	s.party[0].pos = Fixture.beside(s,foe.pos); s.party[1].pos = Fixture.beside(s,s.party[0].pos)
+	s.party[0].pos = Fixture.beside(s,foe.pos)
+	check(s.party[0].pos.x >= 0,"adjacent free cell exists")
+	s.party[1].pos = Fixture.beside(s,s.party[0].pos)
+	check(s.party[1].pos.x >= 0,"adjacent free cell exists")
 	s.floor_state.observe(s)
 	var hp: int = s.party[0].hp
 	s.floor_state.enemy_turn(s,foe)

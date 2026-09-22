@@ -59,11 +59,27 @@ func rooms_and_graph(theme: Dictionary) -> void:
 
 func corridors_and_paint(theme: Dictionary) -> void:
 	var size: int = theme.size
+	var dropped_edge_seeds: int = 0
+	var dropped_edges: int = 0
 	for seed_value in range(100):
 		var rooms: Array = Generator.scatter_rooms(theme,rng(seed_value))
 		if rooms.is_empty(): continue
 		var edges: Array = Generator.build_graph(rooms,theme,rng(seed_value))
+		var planned: int = edges.size()
 		var terrain: Array = Generator.carve(rooms,edges,theme,rng(seed_value))
+		if edges.size() < planned:
+			dropped_edge_seeds += 1
+			dropped_edges += planned-edges.size()
+		# Every edge that survived carve is a corridor you can actually walk.
+		var room_reach: Dictionary = {}
+		for edge in edges:
+			var cells_a: Array = Generator.floor_cells(terrain,size,rooms[edge[0]].rect)
+			var cells_b: Array = Generator.floor_cells(terrain,size,rooms[edge[1]].rect)
+			check(not cells_a.is_empty() and not cells_b.is_empty(),"linked rooms have floor (seed %d)" % seed_value)
+			if cells_a.is_empty() or cells_b.is_empty(): continue
+			if not room_reach.has(edge[0]): room_reach[edge[0]] = Generator.reachable_from(terrain,size,cells_a[0])
+			var reach_edge: Dictionary = room_reach[edge[0]]
+			check(cells_b.any(func(p): return reach_edge.has(p)),"edge %s is walkable terrain (seed %d)" % [edge,seed_value])
 		check(terrain.size() == size*size,"terrain covers the board")
 		for i in range(size):
 			check(terrain[i] == "wall" and terrain[(size-1)*size+i] == "wall" and terrain[i*size] == "wall" and terrain[i*size+size-1] == "wall","border stays wall")
@@ -103,12 +119,19 @@ func corridors_and_paint(theme: Dictionary) -> void:
 		for cell in terrain:
 			if cell in ["rubble","wood","water"]: accents += 1
 		check(accents > 0,"palette accents painted")
+	print("Floor generator: carve dropped an edge on %d of 100 seeds (%d edges total)" % [dropped_edge_seeds,dropped_edges])
 
 func full_layouts(theme: Dictionary) -> void:
 	var size: int = theme.size
 	var total_regenerations := 0
+	var min_usec := 1 << 62
+	var max_usec := 0
+	var sum_usec := 0
 	for seed_value in range(100):
+		var started: int = Time.get_ticks_usec()
 		var layout: Dictionary = Generator.generate(theme,seed_value,1)
+		var spent: int = Time.get_ticks_usec()-started
+		min_usec = mini(min_usec,spent); max_usec = maxi(max_usec,spent); sum_usec += spent
 		check(Generator.validate(layout,theme) == "","layout valid: %s (seed %d)" % [Generator.validate(layout,theme),seed_value])
 		check(layout.size == size and layout.terrain.size() == size*size and layout.theme_id == "F1_RUINS" and layout.depth == 1,"contract scalars")
 		total_regenerations += layout.stats.regenerations
@@ -168,6 +191,19 @@ func full_layouts(theme: Dictionary) -> void:
 				if reach.has(p+d): adjacent = true
 			check(adjacent,"feature reachable or adjacent-reachable from entry (seed %d)" % seed_value)
 		var again: Dictionary = Generator.generate(theme,seed_value,1)
-		check(again.terrain == layout.terrain and again.features.keys() == layout.features.keys() and again.encounters.size() == layout.encounters.size(),"same seed regenerates identically (seed %d)" % seed_value)
+		check(again.terrain == layout.terrain,"same seed regenerates the same terrain (seed %d)" % seed_value)
+		check(again.features == layout.features,"same seed regenerates the same features (seed %d)" % seed_value)
+		check(again.encounters == layout.encounters,"same seed regenerates the same encounters (seed %d)" % seed_value)
+		check(again.entry == layout.entry and again.relic == layout.relic,"same seed regenerates the same entry and relic (seed %d)" % seed_value)
+		check(again.edges == layout.edges,"same seed regenerates the same edges (seed %d)" % seed_value)
 	print("regenerations over 100 seeds: %d" % total_regenerations)
 	check(total_regenerations <= 150,"regeneration is rare enough")
+	print("generate() over 100 seeds: min %.1f ms, avg %.1f ms, max %.1f ms" % [min_usec/1000.0,sum_usec/100000.0,max_usec/1000.0])
+	var blank: Dictionary = Generator.empty_layout(theme,0,1)
+	for key in ["size","seed","theme_id","depth","terrain","rooms","edges","entry","relic","features","encounters","stats"]:
+		check(blank.has(key),"empty_layout carries the %s key" % key)
+	check(blank.terrain.size() == size*size and blank.terrain.all(func(c): return c == "wall"),"empty_layout is all wall")
+	check(blank.rooms.is_empty() and blank.edges.is_empty() and blank.encounters.is_empty() and blank.features.is_empty(),"empty_layout places nothing")
+	check(blank.entry == Vector2i(-1,-1) and blank.relic == Vector2i(-1,-1),"empty_layout has no entry or relic")
+	check(int(blank.stats.regenerations) == Generator.MAX_REGENERATIONS,"empty_layout reports a spent regeneration budget")
+	check(not Generator.validate(blank,theme).is_empty(),"empty_layout never validates")

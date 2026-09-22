@@ -228,7 +228,9 @@ static func carve(rooms: Array, edges: Array, theme: Dictionary, rng: RandomNumb
 		else:
 			for y in range(room.rect.position.y,room.rect.end.y):
 				for x in range(room.rect.position.x,room.rect.end.x): terrain[index_of(size,Vector2i(x,y))] = theme.palette.floor
-	for edge in edges:
+	# `edges` is mutated in place: an edge whose corridor cannot be dug is
+	# dropped so layout.edges always matches the carved terrain.
+	for edge in edges.duplicate():
 		var a: Dictionary = rooms[edge[0]]
 		var b: Dictionary = rooms[edge[1]]
 		var best_pair: Array = []
@@ -238,13 +240,17 @@ static func carve(rooms: Array, edges: Array, theme: Dictionary, rng: RandomNumb
 				var d: int = absi(ca.x-cb.x)+absi(ca.y-cb.y)
 				if d < best_d:
 					best_d = d; best_pair = [ca,cb]
-		if best_pair.is_empty(): continue
+		if best_pair.is_empty():
+			edges.erase(edge)
+			continue
 		var da: Vector2i = best_pair[0]
 		var db: Vector2i = best_pair[1]
 		var from: Vector2i = da+outward(a,da)
 		var to: Vector2i = db+outward(b,db)
 		var path := dig_path(terrain,size,from,to,protected,theme.corridor.wiggle,rng)
-		if path.is_empty(): continue
+		if path.is_empty():
+			edges.erase(edge)
+			continue
 		for p in [da,db]+path:
 			if terrain[index_of(size,p)] == "wall": terrain[index_of(size,p)] = theme.palette.floor
 		if da not in a.doors: a.doors.append(da)
@@ -313,10 +319,11 @@ static func paint(terrain: Array, rooms: Array, theme: Dictionary, rng: RandomNu
 			for p in obstacles: terrain[index_of(size,p)] = "wall"
 			# A pillar must never cut a room in two.
 			var cells_after := floor_cells(terrain,size,room.rect)
-			var reach := reachable_from(terrain,size,cells_after[0])
-			if not cells_after.all(func(p): return reach.has(p)):
-				for p in obstacles: terrain[index_of(size,p)] = theme.palette.floor
-				obstacles.clear()
+			if not cells_after.is_empty():
+				var reach := reachable_from(terrain,size,cells_after[0])
+				if not cells_after.all(func(p): return reach.has(p)):
+					for p in obstacles: terrain[index_of(size,p)] = theme.palette.floor
+					obstacles.clear()
 		elif room.kind == "plain":
 			var cells := floor_cells(terrain,size,room.rect)
 			var accent: String = theme.palette.accents[rng.randi_range(0,theme.palette.accents.size()-1)]
@@ -523,8 +530,20 @@ static func attempt_layout(theme: Dictionary, seed: int, depth: int) -> Dictiona
 	layout.stats.relic_distance = int(reach.get(layout.relic,0))
 	return layout
 
-## Up to MAX_REGENERATIONS retries on seed+attempt; the last attempt is
-## returned (with a pushed error) when none validates.
+## Minimal well-formed layout with every §7 key: all wall, nothing placed. Only
+## used as the last resort of generate() so callers never receive {}.
+static func empty_layout(theme: Dictionary, seed: int, depth: int) -> Dictionary:
+	var size: int = theme.size
+	var terrain: Array = []
+	terrain.resize(size*size); terrain.fill("wall")
+	return {"size":size,"seed":seed,"theme_id":theme.get("id",""),"depth":depth,"terrain":terrain,"rooms":[],"edges":[],
+		"entry":Vector2i(-1,-1),"relic":Vector2i(-1,-1),"features":{},"encounters":[],
+		"stats":{"regenerations":MAX_REGENERATIONS,"relic_distance":0,"max_distance":0}}
+
+## Up to MAX_REGENERATIONS retries on seed+attempt; a failed scatter costs an
+## attempt like a failed validation. The last attempt that produced anything is
+## returned (with a pushed error) when none validates, and empty_layout() when
+## not even one attempt produced rooms -- generate() never returns {}.
 static func generate(theme: Dictionary, seed: int, depth: int) -> Dictionary:
 	var last: Dictionary = {}
 	for attempt in range(MAX_REGENERATIONS+1):
@@ -535,7 +554,7 @@ static func generate(theme: Dictionary, seed: int, depth: int) -> Dictionary:
 			last = layout
 			if validate(layout,theme).is_empty(): return layout
 	push_error("floor generator: no valid layout after %d regenerations (seed %d): %s" % [MAX_REGENERATIONS,seed,validate(last,theme) if not last.is_empty() else "no rooms"])
-	return last
+	return last if not last.is_empty() else empty_layout(theme,seed,depth)
 
 ## Empty string when the layout satisfies the spec; otherwise the first failure.
 static func validate(layout: Dictionary, theme: Dictionary) -> String:

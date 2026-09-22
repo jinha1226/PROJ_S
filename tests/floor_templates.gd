@@ -14,9 +14,12 @@ func run() -> void:
 		for y in range(def.rows.size()):
 			for x in range(width):
 				var edge: bool = x == 0 or y == 0 or x == width-1 or y == def.rows.size()-1
+				var corner: bool = (x == 0 or x == width-1) and (y == 0 or y == def.rows.size()-1)
 				var glyph: String = def.rows[y][x]
 				if edge: check(glyph in ["#","+"],"%s edge is wall or door" % id)
 				else: check(glyph != "+","%s door only on edge" % id)
+				# A corridor cannot approach a corner door head-on, so it never opens.
+				check(not (corner and glyph == "+"),"%s door never on a corner" % id)
 		var parsed: Dictionary = Templates.parse(def.rows)
 		check(parsed.width == width and parsed.height == def.rows.size(),"%s parsed size" % id)
 		check(parsed.doors.size() >= 1,"%s has a door candidate" % id)

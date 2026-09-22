@@ -41,6 +41,7 @@ static func enemy_bonus(light: int) -> int:
 func build(s) -> void:
 	var theme: Dictionary = Generator.theme(theme_id)
 	layout = Generator.generate(theme,s.seed_value+s.expedition_number*7919,int(theme.depth))
+	assert(not layout.is_empty(),"floor generator returned no layout")
 	size = layout.size
 	epoch = str(s.seed_value)+"/"+str(s.expedition_number)
 	visible.clear(); explored.clear(); discoveries.clear(); features.clear(); seen_enemies.clear()
