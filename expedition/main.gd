@@ -293,10 +293,11 @@ func refresh() -> void:
 		var column: BoxContainer = VBoxContainer.new()
 		column.size_flags_horizontal = SIZE_EXPAND_FILL; column.add_theme_constant_override("separation",3); party_row.add_child(column)
 		var skills := HBoxContainer.new(); skills.add_theme_constant_override("separation",3); column.add_child(skills)
+		var part_slots: bool = session.boss_trial or session.floor_mode
 		for slot in range(2):
-			var skill_id: String = actor.equipped_abilities[slot] if session.boss_trial else SKILLS[i][slot]
+			var skill_id: String = actor.equipped_abilities[slot] if part_slots else SKILLS[i][slot]
 			var skill_name: String = Session.Rules.skill(skill_id).get("name","빈 슬롯" if skill_id.is_empty() else skill_id)
-			var skill := icon_button(skills,Art.skill(slot if session.boss_trial else i*2+slot),func(): choose_skill(i,slot),skill_name)
+			var skill := icon_button(skills,Art.skill(slot if part_slots else i*2+slot),func(): choose_skill(i,slot),skill_name)
 			if Session.Abilities.DEFINITIONS.has(skill_id):
 				var caption := label(skill,skill_name+ (" %d" % actor.cooldowns.get(skill_id,0) if actor.cooldowns.get(skill_id,0) > 0 else ""),10)
 				caption.set_anchors_and_offsets_preset(PRESET_BOTTOM_WIDE); caption.offset_top = -16; caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -370,7 +371,7 @@ func confirm_attack() -> void:
 
 func choose_skill(actor: int, slot: int) -> void:
 	if actor < 0 or actor >= session.party.size() or slot not in [0,1] or session.party[actor].hp <= 0: return
-	select_actor(actor); mode = session.party[actor].equipped_abilities[slot] if session.boss_trial else SKILLS[actor][slot]
+	select_actor(actor); mode = session.party[actor].equipped_abilities[slot] if session.boss_trial or session.floor_mode else SKILLS[actor][slot]
 	var self_target: bool = Session.Abilities.DEFINITIONS.get(mode,{}).get("target","") == "SELF"
 	if reservation_actor >= 0:
 		if self_target: queue_action(mode,session.party[actor].pos); return
@@ -629,7 +630,7 @@ func show_character(index: int, tab: String = "상태") -> void:
 	match tab:
 		"상태": CharacterUI.status(self,list,actor)
 		"숙련": CharacterUI.mastery(self,list,actor)
-		"파츠": CharacterUI.abilities(self,list,actor)
+		"파츠": CharacterUI.parts(self,list,actor)
 		"성격": CharacterUI.personality(list,actor)
 		"기억": CharacterUI.memories(self,list,actor)
 	details_popup.popup_centered(Vector2i(size))
@@ -746,6 +747,11 @@ func show_item_detail(id: String) -> void:
 		else:
 			for i in range(session.party.size()):
 				button(item_detail,session.party[i].name+"에게 사용",func(): item_popup.hide(); details_popup.hide(); run_action(func(): return session.use_supply(row.slot,Vector2i(-1,-1),i)),session.phase in ["BATTLE","EXPLORE"] and session.party[i].hp > 0)
+	elif row.category == "파츠":
+		for i in range(session.party.size()):
+			var member: Dictionary = session.party[i]
+			for slot in range(2):
+				button(item_detail,"%s %d번 장착" % [member.name,slot+1],equip_from_bag.bind(i,slot,id),session.phase == "TOWN" and member.hp > 0 and id not in member.equipped_abilities)
 	elif id == "torch":
 		button(item_detail,"횃불 사용",func(): item_popup.hide(); details_popup.hide(); run_action(session.use_torch),(session.phase == "EXPLORE" or session.floor_mode and session.phase == "BATTLE" and session.safe_management()) and session.light < 100)
 	button(item_detail,"닫기",func(): item_popup.hide()); item_popup.popup_centered(); item_popup.grab_focus()
@@ -755,11 +761,5 @@ func popup_list() -> VBoxContainer:
 	var list := VBoxContainer.new(); list.size_flags_horizontal = SIZE_EXPAND_FILL; scroll.add_child(list)
 	return list
 
-func build_abilities() -> void:
-	var actor: Dictionary = session.party[tactics_actor]
-	var list := popup_list()
-	for id in actor.equipped_abilities:
-		if id.is_empty(): continue
-		var card := CharacterUI.card(list,Session.Rules.skill(id).name)
-		CharacterUI.text(card,Session.Abilities.DEFINITIONS.get(id,{}).get("description","시작 기술"))
-	build_skill_rules(list)
+func equip_from_bag(member: int, slot: int, id: String) -> void:
+	if session.equip_part(member,slot,id): item_popup.hide(); refresh(); show_supplies()

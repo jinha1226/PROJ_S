@@ -162,41 +162,52 @@ static func memories(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		text(box,entry[1])
 		ui.button(box,"강도 %d    ›" % record.salience,func(): detail(ui,entry[0],entry[1]+"\n강도 %d\n발생 시각 %d · 사건 %d" % [copy.salience,copy.observed_time,copy.source_event_id]))
 
-static func abilities(ui, list: VBoxContainer, actor: Dictionary) -> void:
-	for index in range(actor.rules.size()):
-		var rule: Dictionary = actor.rules[index]
-		if rule.skill not in actor.equipped_abilities: continue
-		var slot: int = actor.equipped_abilities.find(rule.skill)
-		var box := card(list,""); box.get_parent().name = "EquippedAbility"+str(slot)
+## Two part slots: what is equipped, how it is used, and how to swap it.
+static func parts(ui, list: VBoxContainer, actor: Dictionary) -> void:
+	var town: bool = ui.session.phase == "TOWN" and actor.hp > 0
+	for slot in range(2):
+		var id: String = str(actor.equipped_abilities[slot])
+		var box := card(list,""); box.get_parent().name = "PartSlot"+str(slot)
 		box.get_parent().custom_minimum_size.y = 132
 		var row := HBoxContainer.new(); box.add_child(row)
 		var info := VBoxContainer.new(); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(info)
-		text(info,ui.Session.Rules.skill(rule.skill).name,20)
-		var description: String = ui.Session.Abilities.DEFINITIONS.get(rule.skill,{}).get("description",ui.Session.Rules.skill(rule.skill).get("description",""))
-		text(info,description,13)
 		var actions := VBoxContainer.new(); row.add_child(actions)
-		ui.button(actions,"교체",func(): replace(ui,slot),can_invest(ui,actor))
+		if id.is_empty():
+			text(info,"빈 슬롯",20)
+			text(info,"마을에서 가방의 파츠를 장착합니다.",13)
+			ui.button(actions,"장착",func(): replace(ui,slot),town)
+			continue
+		var def: Dictionary = ui.Session.Abilities.DEFINITIONS[id]
+		text(info,str(def.name),20)
+		text(info,str(def.description),13)
+		ui.button(actions,"교체",func(): replace(ui,slot),town)
+		ui.button(actions,"해제",func(): ui.session.unequip_part(ui.tactics_actor,slot); ui.refresh(); ui.show_character(ui.tactics_actor,"파츠"),town)
+		var index: int = -1
+		for i in range(actor.rules.size()):
+			if actor.rules[i].skill == id: index = i
+		if index < 0: continue
+		var rule: Dictionary = actor.rules[index]
 		var auto = ui.button(actions,"자동 ON" if rule.enabled else "자동 OFF",func(): ui.session.update_rule(ui.tactics_actor,index,"enabled",not rule.enabled); ui.refresh(); ui.show_tactics())
 		auto.toggle_mode = true; auto.button_pressed = rule.enabled
 		var policy = ui.button(box,"사용 방침 · "+ui.Session.Rules.summary(rule)+"  ›",func(): ui.open_rule(index))
 		policy.add_theme_font_size_override("font_size",11)
 		policy.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 
+## The bag, minus what this member already carries, as one tap per part.
 static func replace(ui, slot: int) -> void:
 	var index: int = ui.tactics_actor
 	var actor: Dictionary = ui.session.party[index]
-	ui.clear(ui.item_detail); text(ui.item_detail,"파츠 교체",20)
+	ui.clear(ui.item_detail); text(ui.item_detail,"파츠 장착",20)
 	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(300,260); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; ui.item_detail.add_child(scroll)
 	var list := VBoxContainer.new(); list.size_flags_horizontal = Control.SIZE_EXPAND_FILL; scroll.add_child(list)
 	var count := 0
 	for id in ui.session.parts_bag:
-		if int(ui.session.parts_bag[id]) <= 0: continue
-		if id in actor.equipped_abilities: continue
+		if int(ui.session.parts_bag[id]) <= 0 or id in actor.equipped_abilities: continue
 		count += 1
-		ui.button(list,ui.Session.Rules.skill(id).name,func():
+		ui.button(list,"%s ×%d" % [ui.Session.Rules.skill(id).name,ui.session.parts_bag[id]],func():
 			if ui.session.equip_part(index,slot,id):
 				ui.item_popup.hide(); ui.refresh(); ui.show_character(index,"파츠"),ui.session.phase == "TOWN" and actor.hp > 0)
-	if count == 0: text(list,"교체 가능한 파츠 없음")
+	if count == 0: text(list,"가방에 파츠 없음")
 	ui.button(ui.item_detail,"취소",func(): ui.item_popup.hide()); ui.item_popup.popup_centered()
 
 static func preview(ui, id: String, stat: bool = false) -> void:

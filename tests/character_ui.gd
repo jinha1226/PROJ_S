@@ -62,11 +62,24 @@ func run() -> void:
 	# A rule for a part nobody has equipped stays out of the sheet.
 	scene.session.party[1].rules.append(scene.Session.Rules.make_rule("PUSH","NEAREST","ALWAYS"))
 	scene.show_character(1,"파츠")
-	check(scene.modal_content.find_children("EquippedAbility*","PanelContainer",true,false).size() == 2,"unequipped ability hidden")
+	check(scene.modal_content.find_children("PartSlot*","PanelContainer",true,false).size() == 2,"one card per slot, not per rule")
 	for frame in range(3): await process_frame
 	var policies: Array = scene.modal_content.find_children("*","Button",true,false).filter(func(b): return b.text.begins_with("사용 방침"))
 	policies[0].pressed.emit(); await process_frame
 	check(scene.item_popup.visible,"policy opens child popup")
+	scene.item_popup.hide()
+	# Town equipping goes through the chooser the card opens.
+	scene.session.phase = "TOWN"
+	check(scene.session.unequip_part(1,0) and scene.session.parts_bag.BOMB == 1,"unequipping returns the part to the bag")
+	scene.show_character(1,"파츠")
+	for frame in range(3): await process_frame
+	scene.CharacterUI.replace(scene,0)
+	for frame in range(3): await process_frame
+	var picks: Array = scene.item_detail.find_children("*","Button",true,false).filter(func(b): return b.text == "폭탄 투척 ×1")
+	check(picks.size() == 1 and not picks[0].disabled,"the chooser offers the bagged part in town")
+	picks[0].pressed.emit()
+	for frame in range(3): await process_frame
+	check(scene.session.party[1].equipped_abilities[0] == "BOMB","the chooser equips into the chosen slot")
 	scene.item_popup.hide()
 	scene.queue_free(); await process_frame
 	print("Character UI: %d failures" % failures); quit(1 if failures else 0)

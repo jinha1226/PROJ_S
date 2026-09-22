@@ -56,8 +56,15 @@ func scene_layer() -> void:
 	check(s.equip_part(0,0,"PUSH") and s.equip_part(0,1,"GUARD"),"granted parts can be equipped")
 	scene.show_character(0,"파츠")
 	for frame in range(4): await process_frame
-	var cards: Array = scene.modal_content.find_children("EquippedAbility*","PanelContainer",true,false)
+	var cards: Array = scene.modal_content.find_children("PartSlot*","PanelContainer",true,false)
 	check(cards.size() == 2,"the parts tab renders the equipped cards")
+	scene.CharacterUI.replace(scene,0)
+	for frame in range(3): await process_frame
+	var offered: Array = scene.item_detail.find_children("*","Button",true,false).map(func(b): return b.text)
+	for id in Session.Abilities.DEFINITIONS:
+		if id in s.party[0].equipped_abilities: continue
+		check(Session.Rules.skill(id).name+" ×1" in offered,"the granted bag is offered for the slot: "+id)
+	scene.item_popup.hide()
 	scene.details_popup.hide()
 	s.depart()
 	scene.refresh()

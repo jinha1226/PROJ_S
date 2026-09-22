@@ -24,7 +24,52 @@ func run() -> void:
 	species()
 	passives()
 	telegraph()
+	await ui()
 	print("Parts: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
+
+## The parts tab, the equip chooser, the battle buttons and the bag detail.
+func ui() -> void:
+	var scene = load("res://expedition/main.tscn").instantiate()
+	# Solo floor run, the shipped configuration: one member, two part slots.
+	var s = Session.new(731,false,false,true,1)
+	scene.session = s; root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
+	await process_frame
+	for frame in range(4): await process_frame
+	scene.show_character(0,"파츠")
+	for frame in range(4): await process_frame
+	var heading: Array = scene.modal_content.find_children("*","Label",true,false).filter(func(l): return l.text.begins_with("파츠 슬롯"))
+	check(not heading.is_empty() and heading[0].text == "파츠 슬롯 0 / 2","empty slots heading")
+	var cards: Array = scene.modal_content.find_children("PartSlot*","PanelContainer",true,false)
+	check(cards.size() == 2,"two slot cards")
+	var buttons: Array = scene.modal_content.find_children("*","Button",true,false)
+	check(buttons.filter(func(b): return b.text == "장착").size() == 2,"empty slots offer 장착")
+	scene.CharacterUI.replace(scene,0)
+	for frame in range(3): await process_frame
+	var picks: Array = scene.item_detail.find_children("*","Button",true,false).map(func(b): return b.text)
+	check("밀치기 ×1" in picks and "엄호 ×1" in picks,"chooser lists the bag with counts")
+	scene.item_popup.hide()
+	check(s.equip_part(0,0,"PUSH"),"equip through the session")
+	scene.show_character(0,"파츠")
+	for frame in range(4): await process_frame
+	heading = scene.modal_content.find_children("*","Label",true,false).filter(func(l): return l.text.begins_with("파츠 슬롯"))
+	check(heading[0].text == "파츠 슬롯 1 / 2","heading counts equipped parts")
+	buttons = scene.modal_content.find_children("*","Button",true,false)
+	check(buttons.any(func(b): return b.text == "해제") and buttons.any(func(b): return b.text == "교체"),"equipped slot offers 해제 and 교체")
+	scene.details_popup.hide()
+	# Battle buttons: an empty slot is a disabled "빈 슬롯".
+	s.depart(); scene.refresh()
+	for frame in range(3): await process_frame
+	check(scene.skill_buttons.size() == 2 and scene.skill_buttons[1].disabled and scene.skill_buttons[1].tooltip_text == "빈 슬롯","empty second slot is disabled")
+	check(not scene.skill_buttons[0].disabled or s.phase != "BATTLE","push button follows battle state")
+	# Bag: the parts category exists and the detail offers per-member slot buttons only in town.
+	scene.inventory_filter = "파츠"; scene.show_supplies()
+	for frame in range(3): await process_frame
+	check(scene.inventory_slots.all(func(slot): return slot.row.is_empty() or slot.row.category == "파츠"),"parts filter")
+	scene.show_item_detail("GUARD"); await process_frame
+	var detail: Array = scene.item_detail.find_children("*","Button",true,false)
+	check(detail.any(func(b): return b.text.ends_with("1번 장착") and b.disabled),"equip buttons are disabled outside town")
+	scene.item_popup.hide(); scene.details_popup.hide()
+	scene.queue_free(); await process_frame
 
 ## Every definition carries the part fields and a rule the schema accepts.
 func catalog() -> void:
