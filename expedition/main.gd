@@ -39,7 +39,16 @@ var map_view
 var map_popup: PopupPanel
 var details_popup: PopupPanel
 var modal_content: VBoxContainer
-var notice := ""
+var notice := "":
+	set(value):
+		notice = value
+		if is_instance_valid(toast):
+			toast.text = value
+			toast.visible = not value.is_empty()
+			toast_remaining = 2.5
+var toast: Label
+var toast_remaining := 0.0
+var command_targeting := false
 var item_buttons: Array = []
 var skill_buttons: Array = []
 var portrait_buttons: Array = []
@@ -60,16 +69,25 @@ func _ready() -> void:
 	add_child(margin)
 	root_layout = VBoxContainer.new(); root_layout.add_theme_constant_override("separation",5); margin.add_child(root_layout)
 	map_popup = PopupPanel.new(); add_child(map_popup)
-	var map_box := VBoxContainer.new(); map_box.custom_minimum_size = Vector2(320,400); map_popup.add_child(map_box)
-	map_view = MapView.new(); map_view.session = session; map_view.ui_font = FONT; map_view.minimum_side = 300
+	var map_box := VBoxContainer.new(); map_box.custom_minimum_size = Vector2(300,360); map_popup.add_child(map_box)
+	map_view = MapView.new(); map_view.session = session; map_view.ui_font = FONT; map_view.minimum_side = 280
 	map_view.room_pressed.connect(on_room); map_box.add_child(map_view)
 	button(map_box,"닫기",func(): map_popup.hide())
 	details_popup = PopupPanel.new(); add_child(details_popup)
-	modal_content = VBoxContainer.new(); modal_content.custom_minimum_size = Vector2(320,340); details_popup.add_child(modal_content)
+	modal_content = VBoxContainer.new(); modal_content.custom_minimum_size = Vector2(minf(300,size.x-32),210); details_popup.add_child(modal_content)
 	item_popup = PopupPanel.new(); details_popup.add_child(item_popup)
 	item_popup.transient = true; item_popup.exclusive = true
 	item_detail = VBoxContainer.new(); item_detail.custom_minimum_size = Vector2(300,200); item_popup.add_child(item_detail)
 	log_popup = PopupPanel.new(); add_child(log_popup)
+	toast = Label.new(); toast.name = "NoticeToast"; toast.mouse_filter = MOUSE_FILTER_IGNORE
+	add_child(toast); toast.set_anchors_and_offsets_preset(PRESET_TOP_WIDE)
+	toast.anchor_top = 0.22; toast.anchor_bottom = 0.22
+	toast.offset_left = 16; toast.offset_right = -16
+	toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	toast.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	toast.add_theme_font_size_override("font_size",16)
+	toast.add_theme_stylebox_override("normal",CharacterUI.surface(Color(0.04,0.05,0.07,0.92)))
+	toast.z_index = 10; toast.visible = false
 	refresh()
 
 func stop_navigation() -> void:
@@ -77,6 +95,8 @@ func stop_navigation() -> void:
 	if is_instance_valid(auto_explore_button): auto_explore_button.text = "자동탐험"
 
 func _process(delta: float) -> void:
+	toast_remaining = maxf(0,toast_remaining-delta)
+	if is_instance_valid(toast): toast.visible = toast_remaining > 0 and not notice.is_empty()
 	portrait_gesture.tick(self)
 	if not navigation.active: return
 	if details_popup.visible or map_popup.visible or log_popup.visible or not get_window().has_focus(): stop_navigation(); return
@@ -88,14 +108,7 @@ func navigation_tick() -> void:
 	var step: Vector2i = navigation.next_step(session)
 	if step.x < 0: stop_navigation(); return
 	var health: Array = session.party.map(func(a): return a.hp)
-	var discoveries: int = session.floor_state.discovered_curios
-	var objective_state: String = session.objective.get("state","")
-	var exploring: bool = navigation.automatic
 	run_action(func(): return session.act("MOVE",step),true)
-	if session.objective.get("state","") != objective_state:
-		stop_navigation(); notice = "봉인된 유물 발견 · 인접해서 조사하세요."; refresh(); return
-	if exploring and session.floor_state.discovered_curios > discoveries:
-		stop_navigation(); notice = "조사물 발견 · 타일을 눌러 확인하세요."; refresh(); return
 	if session.party.map(func(a): return a.hp) != health or not session.combat_enemies().is_empty() or session.party[session.selected].pos != step:
 		stop_navigation()
 	elif not navigation.automatic and step == navigation.destination: stop_navigation()
@@ -107,7 +120,7 @@ func toggle_explore() -> void:
 	if navigation.active: stop_navigation(); return
 	mode = ""; pending_item = -1; reservation_actor = -1
 	if navigation.explore(session): auto_explore_button.text = "탐험 중지"
-	else: notice = "주변 적을 처리한 뒤 탐험할 수 있습니다."; refresh()
+	else: notice = "주변에 적이 있습니다"; refresh()
 
 func show_logs() -> void:
 	stop_navigation(); clear(log_popup)
@@ -126,9 +139,9 @@ func clear(node: Node) -> void:
 	if node == modal_content:
 		item_popup.hide()
 		details_popup.theme = theme
-		modal_content.custom_minimum_size = Vector2(320,340)
-		details_popup.reset_size()
+		modal_content.custom_minimum_size = Vector2(minf(300,size.x-32),210)
 	for child in node.get_children(): node.remove_child(child); child.queue_free()
+	if node == modal_content: details_popup.reset_size()
 
 func label(parent: Node, text: String, font_size: int = 12) -> Label:
 	var node := Label.new(); node.text = text; node.add_theme_font_size_override("font_size",font_size)
@@ -172,29 +185,23 @@ func refresh() -> void:
 	if is_instance_valid(minimap): minimap.get_parent().remove_child(minimap)
 	clear(root_layout); item_buttons.clear(); skill_buttons.clear(); portrait_buttons.clear()
 	map_view.session = session; map_view.queue_redraw()
-	var header := HBoxContainer.new(); header.add_theme_constant_override("separation",6); root_layout.add_child(header)
+	var header := HBoxContainer.new(); header.name = "TopHUD"; header.add_theme_constant_override("separation",3); root_layout.add_child(header)
 	if not is_instance_valid(minimap):
-		minimap = MapView.new(); minimap.compact = true; minimap.minimum_side = 52
+		minimap = MapView.new(); minimap.compact = true; minimap.minimum_side = 44
 		minimap.ui_font = FONT; minimap.expand_requested.connect(show_map)
 	minimap.session = session; minimap.queue_redraw()
 	minimap.size_flags_horizontal = SIZE_SHRINK_BEGIN; header.add_child(minimap)
-	var location := VBoxContainer.new(); location.size_flags_horizontal = SIZE_EXPAND_FILL; header.add_child(location)
-	location.add_theme_constant_override("separation",1)
-	var place_row := HBoxContainer.new(); place_row.add_theme_constant_override("separation",4); location.add_child(place_row)
-	var place := label(place_row,session.rooms[session.room].name if session.phase in ["EXPLORE","BATTLE"] else "원정 준비",18)
-	place.clip_text = true; place.size_flags_horizontal = SIZE_EXPAND_FILL
-	if session.floor_mode and session.phase == "BATTLE":
-		# Small objective chip; the HUD row keeps its height.
-		var goal := button(place_row,"◎ "+session.objective_text(),show_objective); goal.name = "ObjectiveChip"
-		goal.custom_minimum_size = Vector2(0,24); goal.size_flags_horizontal = SIZE_SHRINK_END
-		goal.add_theme_font_size_override("font_size",12); goal.tooltip_text = "원정 목표"
-	var resource := HBoxContainer.new(); resource.add_theme_constant_override("separation",10); location.add_child(resource)
-	var torch_caption: String = "횃불 %d" % session.torches
-	if session.floor_mode and session.phase == "BATTLE": torch_caption += " · "+Session.Floor.tier_label(session.light)
-	for entry in [["식량 %d" % session.food,session.hunger,Color("d9904d")],[torch_caption,session.light,Color("e6bd62")]]:
-		var column := VBoxContainer.new(); column.size_flags_horizontal = SIZE_EXPAND_FILL; column.add_theme_constant_override("separation",1); resource.add_child(column)
-		var caption := label(column,entry[0],18); caption.tooltip_text = "배고픔 %d%% · 불빛 %d%%" % [session.hunger,session.light]
-		gauge(column,entry[1],100,entry[2])
+	var place := label(header,("1층" if session.floor_mode else session.rooms[session.room].name) if session.phase in ["BATTLE","EXPLORE"] else "거점",18)
+	place.name = "Location"; place.clip_text = true; place.size_flags_horizontal = SIZE_EXPAND_FILL
+	place.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var food_button := button(header,"식량\n%d" % session.food,func(): run_action(session.use_food),session.phase == "BATTLE" and session.food > 0)
+	food_button.name = "FoodButton"; food_button.custom_minimum_size.x = 44
+	var torch_button := button(header,"횃불\n%d" % session.torches,func(): run_action(session.use_torch),session.phase == "BATTLE" and session.torches > 0)
+	torch_button.name = "TorchButton"; torch_button.custom_minimum_size.x = 44
+	var goal := button(header,"유물찾기",show_goal); goal.name = "ObjectiveChip"
+	goal.custom_minimum_size.x = 56
+	var menu := button(header,"☰",show_objective); menu.name = "ExpeditionMenu"; menu.custom_minimum_size.x = 44
+	for control in [food_button,torch_button,goal,menu]: control.size_flags_horizontal = SIZE_SHRINK_END
 	if not is_instance_valid(board):
 		board = Board.new(); board.ui_font = FONT; board.cell_pressed.connect(on_cell)
 		board.zoom_changed.connect(func(value): view_side = value)
@@ -229,9 +236,6 @@ func refresh() -> void:
 			attack_button.custom_minimum_size.y = 48
 	if session.phase == "TOWN" and not session.result.is_empty(): build_result_card()
 	elif session.phase in ["TOWN","DEFEAT"]:
-		if session.floor_mode and session.phase == "TOWN":
-			var brief := label(root_layout,"심부의 유물을 찾아 입구로 돌아오세요. 유물 없이 귀환해도 전리품은 정산됩니다.",13)
-			brief.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		var preparation := HBoxContainer.new(); root_layout.add_child(preparation)
 		button(preparation,"출정" if session.phase == "TOWN" and not session.alive().is_empty() else "새 원정대",depart)
 		if session.phase == "TOWN" and session.floor_mode:
@@ -250,18 +254,12 @@ func refresh() -> void:
 	for i in range(3):
 		var index: int = session.log_lines.size()-3+i
 		var line := label(log_box,session.log_lines[index] if index >= 0 else "",16); line.clip_text = true
-	var feedback := HBoxContainer.new(); root_layout.add_child(feedback)
-	feedback.visible = not notice.is_empty()
-	var hint := label(feedback,notice,10)
-	hint.size_flags_horizontal = SIZE_EXPAND_FILL
-	hint.clip_text = true; hint.custom_minimum_size.y = 16
 	var party_row := HBoxContainer.new(); party_row.add_theme_constant_override("separation",5); root_layout.add_child(party_row)
 	for i in range(session.party.size()):
 		var actor: Dictionary = session.party[i]
-		var column: BoxContainer = HBoxContainer.new() if session.party.size() == 1 else VBoxContainer.new()
+		var column: BoxContainer = VBoxContainer.new()
 		column.size_flags_horizontal = SIZE_EXPAND_FILL; column.add_theme_constant_override("separation",3); party_row.add_child(column)
 		var skills := HBoxContainer.new(); skills.add_theme_constant_override("separation",3); column.add_child(skills)
-		if session.party.size() == 1: skills.custom_minimum_size.x = 128
 		for slot in range(2):
 			var skill_id: String = actor.equipped_abilities[slot] if session.boss_trial else SKILLS[i][slot]
 			var skill_name: String = Session.Rules.SKILLS.get(skill_id,{}).get("name",skill_id)
@@ -274,30 +272,24 @@ func refresh() -> void:
 		var portrait_box := VBoxContainer.new(); portrait_box.size_flags_horizontal = SIZE_EXPAND_FILL; portrait_box.add_theme_constant_override("separation",2); column.add_child(portrait_box)
 		var portrait := button(portrait_box,"",func(): select_actor(i)); portrait.name = "MemberCard%d" % i
 		portrait.tooltip_text = "짧게: 행동 예약 · 길게: 상태" if session.companions else "길게 누르기: 상태"; portrait.custom_minimum_size.y = 48; portrait_buttons.append(portrait)
-		var face := TextureRect.new(); face.texture = Art.portrait(i); face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED; face.mouse_filter = MOUSE_FILTER_IGNORE
-		portrait.add_child(face); face.set_anchors_and_offsets_preset(PRESET_FULL_RECT); face.offset_bottom = -18; face.offset_top = 2; face.offset_left = 2; face.offset_right = -2
-		var name_label := label(portrait,"%s Lv.%d  %d/%d" % [actor.name,actor.growth.level,actor.hp,actor.max_hp],11); name_label.position = Vector2(4,30)
+		var stats := label(portrait,"%s\nHP %d/%d   MP %s   스트레스 %d" % [actor.name,actor.hp,actor.max_hp,str(actor.mp)+"/"+str(actor.max_mp) if actor.has("mp") else "—",actor.stress],12 if session.party.size() == 1 else 10)
+		stats.set_anchors_and_offsets_preset(PRESET_FULL_RECT); stats.offset_left = 4; stats.offset_right = -4
+		stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; stats.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		if i == session.selected:
 			var gold := portrait.get_theme_stylebox("normal").duplicate(); gold.border_color = Color("e9c575"); gold.set_border_width_all(2); portrait.add_theme_stylebox_override("normal",gold)
 		if actor.hp <= 0: portrait.modulate = Color("636369")
-		gauge(portrait_box,actor.hp,actor.max_hp,Color("8ac77c")); gauge(portrait_box,actor.stress,200,Color("af80d0"))
-		if session.party.size() > 1: column.move_child(skills,column.get_child_count()-1)
 	var shared := HBoxContainer.new(); shared.add_theme_constant_override("separation",4); root_layout.add_child(shared)
 	for slot in range(6):
 		var item := icon_button(shared,Art.item(slot),func(): choose_item(slot),Session.SUPPLY_NAMES[slot],str(session.supplies[slot]))
 		item.disabled = session.phase not in ["BATTLE","EXPLORE"] or session.supplies[slot] == 0; item_buttons.append(item)
 	var nav := HBoxContainer.new(); nav.add_theme_constant_override("separation",4); root_layout.add_child(nav)
 	advance_attack_button = button(nav,"공격",func(): run_action(session.auto_attack),session.phase == "BATTLE")
-	wait_button = button(nav,"한 턴\n대기",func(): run_action(func(): return session.act("WAIT",session.party[session.selected].pos)),session.phase == "BATTLE")
-	auto_explore_button = button(nav,"탐험 중지" if navigation.active else "자동탐험",toggle_explore,session.floor_mode and session.phase == "BATTLE")
-	if reservation_actor >= 0:
-		button(nav,"예약 취소",func(): session.cancel_reservation(reservation_actor); reservation_actor = -1; mode = ""; notice = "예약 취소 · 자동 행동"; refresh())
-	elif session.companions: button(nav,"전술",show_orders)
-	else: button(nav,"원정",show_objective)
-	var essence_count := 0
-	for quantity in session.essences.values(): essence_count += int(quantity)
-	button(nav,"가방"+(" (%d)" % essence_count if essence_count > 0 else ""),show_supplies)
+	var fighting: bool = not session.combat_enemies().is_empty()
+	wait_button = button(nav,"대기" if fighting else "휴식",func(): run_action(func(): return session.act("WAIT",session.party[session.selected].pos) if fighting else session.rest_field()),session.phase == "BATTLE")
+	auto_explore_button = button(nav,"중지" if navigation.active else "자동탐험",toggle_explore,session.floor_mode and session.phase == "BATTLE")
+	button(nav,"전술",show_party_tactics)
+	button(nav,"가방",show_supplies)
 	for node in nav.get_children(): node.custom_minimum_size.y = 49
 
 func depart() -> void:
@@ -321,7 +313,7 @@ func run_action(callback: Callable, navigating: bool = false) -> void:
 	session.effects.clear()
 	var accepted: bool = callback.call()
 	pending_attack = {}
-	notice = "" if accepted else "대상·거리·행동력·보유 수량을 확인하세요."
+	notice = "" if accepted else "지금은 사용할 수 없습니다"
 	if accepted:
 		mode = ""; pending_item = -1; reservation_actor = -1
 		for id in session.essences:
@@ -334,14 +326,14 @@ func run_action(callback: Callable, navigating: bool = false) -> void:
 func preview_attack(point: Vector2i) -> void:
 	pending_attack = session.attack_preview(point)
 	show_attack_range = true
-	notice = "공격 범위 밖이거나 행동력이 없습니다." if pending_attack.is_empty() else "%s · 명중 %d%% · 예상 피해 %d · 공격 버튼으로 확정" % [pending_attack.name,pending_attack.chance,pending_attack.damage]
+	notice = "공격 불가" if pending_attack.is_empty() else "%s · 명중 %d%% · 예상 피해 %d · 공격 버튼으로 확정" % [pending_attack.name,pending_attack.chance,pending_attack.damage]
 	refresh()
 
 func confirm_attack() -> void:
 	if pending_attack.is_empty(): return
 	var current: Dictionary = session.attack_preview(pending_attack.cell)
 	if current != pending_attack:
-		pending_attack = {}; notice = "상황이 바뀌었습니다. 대상을 다시 선택하세요."; refresh(); return
+		pending_attack = {}; notice = "대상을 다시 선택하세요"; refresh(); return
 	var point: Vector2i = pending_attack.cell
 	run_action(func(): return session.act("ATTACK",point))
 
@@ -372,6 +364,12 @@ func queue_action(kind: String, point: Vector2i) -> void:
 
 func on_cell(point: Vector2i) -> void:
 	stop_navigation()
+	if command_targeting:
+		var target: Dictionary = session.at(point)
+		if target in session.combat_enemies():
+			session.command_target = target.id; session.party_command = "ATTACK_TARGET"; command_targeting = false; notice = "집중 공격"
+		else: notice = "시야 안의 적 선택"
+		refresh(); return
 	if session.floor_mode and session.phase == "BATTLE" and reservation_actor < 0 and mode.is_empty() and pending_item < 0:
 		var feature: Dictionary = session.floor_state.features.get(point,{})
 		if feature.get("kind","") == "curio" and session.floor_state.visible.has(point): show_curio(point); return
@@ -400,7 +398,7 @@ func on_cell(point: Vector2i) -> void:
 			show_attack_range = true
 			if session.floor_mode and maxi(absi(point.x-session.party[session.selected].pos.x),absi(point.y-session.party[session.selected].pos.y)) > 1:
 				if navigation.start(session,point): navigation_tick()
-				else: notice = "안전한 곳에서 발견한 타일까지 이동할 수 있습니다."; refresh()
+				else: notice = "이동 불가"; refresh()
 			else: run_action(func(): return session.act("MOVE",point))
 
 func show_map() -> void:
@@ -415,7 +413,7 @@ func show_curio(point: Vector2i) -> void:
 	if def.is_empty(): return
 	label(modal_content,def.name,22)
 	var description := label(modal_content,def.description,17)
-	description.custom_minimum_size.x = 300; description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.custom_minimum_size.x = minf(300,size.x-32); description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if feature.used: label(modal_content,"이미 조사를 마쳤습니다.",16)
 	else:
 		label(modal_content,"조사 시 행동 1회 · 결과는 되돌릴 수 없습니다.",13)
@@ -427,7 +425,7 @@ func show_curio(point: Vector2i) -> void:
 			var reason: String = Session.Curios.error(session,point,id)
 			button(modal_content,caption,func(): details_popup.hide(); run_action(func(): return Session.Curios.resolve(session,point,id)),reason.is_empty())
 			var hint := label(modal_content,reason if not reason.is_empty() else choice.get("warning","안전하게 회수합니다."),14)
-			hint.custom_minimum_size.x = 300; hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			hint.custom_minimum_size.x = minf(300,size.x-32); hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	button(modal_content,"지나가기",func(): details_popup.hide())
 	details_popup.popup_centered()
 
@@ -435,12 +433,12 @@ func show_relic() -> void:
 	stop_navigation(); clear(modal_content)
 	label(modal_content,Session.Objective.RELIC_LABEL,22)
 	var description := label(modal_content,Session.Objective.RELIC_DESCRIPTION,17)
-	description.custom_minimum_size.x = 300; description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.custom_minimum_size.x = minf(300,size.x-32); description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label(modal_content,"회수 시 행동 1회 · 주변에 적이 없어야 합니다.",13)
 	var reason: String = Session.Objective.error(session)
 	button(modal_content,"유물을 회수한다",func(): details_popup.hide(); run_action(session.pickup_relic),reason.is_empty())
 	var hint := label(modal_content,reason if not reason.is_empty() else "회수 후 입구 관문으로 돌아가면 임무가 완료됩니다.",14)
-	hint.custom_minimum_size.x = 300; hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.custom_minimum_size.x = minf(300,size.x-32); hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	button(modal_content,"닫기",func(): details_popup.hide())
 	details_popup.popup_centered()
 
@@ -449,26 +447,43 @@ func show_return() -> void:
 	label(modal_content,"귀환 관문",22)
 	var carrying: bool = Session.Objective.carrying(session)
 	var body := label(modal_content,(("유물을 가지고 귀환합니다. 임무 성공 · 전리품 %d + 회수 보너스 %d" % [session.loot,Session.Objective.RECOVERY_BONUS]) if carrying else "유물 없이 귀환합니다. 중도 귀환 · 전리품 %d 정산." % session.loot)+"\n남은 보급품 환전: %d 자금 (무료 지급분 제외)" % session.provision_sale_value(),16)
-	body.custom_minimum_size.x = 300; body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.custom_minimum_size.x = minf(300,size.x-32); body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var reason: String = session.return_error()
 	button(modal_content,"귀환 확정",func(): details_popup.hide(); run_action(session.return_home),reason.is_empty())
 	if not reason.is_empty(): label(modal_content,reason,14)
 	button(modal_content,"닫기",func(): details_popup.hide())
 	details_popup.popup_centered()
 
+func show_goal() -> void:
+	stop_navigation(); clear(modal_content)
+	label(modal_content,"원정 목표",20)
+	label(modal_content,session.objective_text(),16)
+	button(modal_content,"닫기",func(): details_popup.hide())
+	details_popup.popup_centered()
+
 func show_objective() -> void:
 	stop_navigation(); clear(modal_content)
-	label(modal_content,"원정 목표 · "+session.objective_text(),20)
-	var body := label(modal_content,Session.Objective.description(session),16)
-	body.custom_minimum_size.x = 300; body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label(modal_content,"발견한 타일 %d / 10000 · 전리품 %d · 자금 %d" % [session.floor_state.explored.size(),session.loot,session.bank],13)
-	var tier := label(modal_content,"횃불 %s (밝기 %d) · 어두울수록 전리품·이능 드롭이 늘고 적 피해가 커집니다. 암흑에서는 처음 마주친 적이 기습합니다." % [Session.Floor.tier_label(session.light),session.light],12)
-	tier.custom_minimum_size.x = 300; tier.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	button(modal_content,"입구 위치 보기",func(): details_popup.hide(); show_map(),session.phase == "BATTLE")
+	modal_content.custom_minimum_size.y = 0
+	button(modal_content,"원정 목표",show_goal)
 	button(modal_content,"입구까지 이동",start_return_walk,session.phase == "BATTLE" and session.combat_enemies().is_empty())
-	if session.phase == "TOWN": button(modal_content,"요양 · 20 자금",func(): details_popup.hide(); run_action(session.rest_town),session.bank >= 20)
-	button(modal_content,"주인공 상태",func(): show_character(session.selected,"상태"))
-	button(modal_content,"원정 포기…",confirm_abandon,session.phase == "BATTLE")
+	button(modal_content,"원정포기",confirm_abandon,session.phase == "BATTLE")
+	details_popup.popup_centered()
+
+# Ported from ../playtest/party_encounter_sandbox.gd product tactics menu.
+func show_party_tactics() -> void:
+	stop_navigation(); clear(modal_content)
+	modal_content.custom_minimum_size.y = 0
+	var available: bool = session.companions and session.phase == "BATTLE"
+	for entry in [["ATTACK_TARGET","공격 대상 지정"],["RETREAT","후퇴"],["HOLD_POSITION","자리 지키기"],["STOP_ATTACK","공격 중지"],["FOLLOW","따라오기"]]:
+		var command: String = entry[0]
+		button(modal_content,entry[1],func():
+			details_popup.hide()
+			if command == "ATTACK_TARGET": command_targeting = true; notice = "공격 대상 선택"
+			else: session.party_command = command; notice = entry[1]
+			refresh(),available)
+	for entry in [["NONE","자유"],["COLUMN","종대"],["LINE","횡대"],["WEDGE","쐐기"]]:
+		var formation: String = entry[0]
+		button(modal_content,"대형 · "+entry[1],func(): session.formation = formation; details_popup.hide(); refresh(),available)
 	button(modal_content,"닫기",func(): details_popup.hide())
 	details_popup.popup_centered()
 
@@ -479,8 +494,8 @@ func start_return_walk() -> void:
 	if not session.return_error().is_empty():
 		details_popup.hide()
 		if navigation.start(session,session.entry_position()):
-			notice = "알려진 길을 따라 입구로 이동합니다. 적 발견·피해 시 멈춥니다."
-		else: notice = "입구까지 알려진 안전 경로가 없습니다. 지도에서 경로를 확인하세요."
+			notice = "입구로 이동 중"
+		else: notice = "입구 경로 없음"
 	else:
 		show_return(); return
 	refresh()
@@ -489,7 +504,7 @@ func show_shop() -> void:
 	stop_navigation(); clear(modal_content)
 	label(modal_content,"출정 준비 · 자금 %d" % session.bank,20)
 	var hint := label(modal_content,"마을에서 식량 %d·횃불 %d·치유 물약 1·붕대 1·열쇠·삽 1개를 무료 지급합니다. 귀환 시 남은 구매·발견 보급품은 구매가 합계의 10%%로 환전(소수점 버림)하며 이월하지 않습니다. 무료 지급분은 환전 제외. 이번 방문 구매분은 출정 전 전액 환불됩니다." % [Session.MIN_KIT.food,Session.MIN_KIT.torches],12)
-	hint.custom_minimum_size.x = 300; hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.custom_minimum_size.x = minf(300,size.x-32); hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var list := popup_list()
 	for row in Session.SHOP:
 		var line := HBoxContainer.new(); line.name = "ShopRow_"+str(row.id).replace(":","_"); line.add_theme_constant_override("separation",4); list.add_child(line)
@@ -545,7 +560,7 @@ func on_room(id: int) -> void:
 
 func modal(title: String, body: String) -> void:
 	clear(modal_content); label(modal_content,title,18)
-	var text := RichTextLabel.new(); text.text = body; text.custom_minimum_size = Vector2(300,210); text.size_flags_vertical = SIZE_EXPAND_FILL; modal_content.add_child(text)
+	var text := RichTextLabel.new(); text.text = body; text.custom_minimum_size = Vector2(minf(300,size.x-32),210); text.size_flags_vertical = SIZE_EXPAND_FILL; modal_content.add_child(text)
 	button(modal_content,"닫기",func(): details_popup.hide()); details_popup.popup_centered()
 
 func open_management(index: int) -> void:
@@ -581,7 +596,7 @@ func show_tactics() -> void:
 func open_rule(index: int) -> void:
 	tactics_expanded = index
 	clear(item_detail)
-	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(310,400)
+	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(minf(300,size.x-32),minf(400,size.y-120))
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; item_detail.add_child(scroll)
 	var list := VBoxContainer.new(); list.size_flags_horizontal = SIZE_EXPAND_FILL; scroll.add_child(list)
 	build_skill_rules(list)
@@ -619,7 +634,7 @@ func build_skill_rules(list: VBoxContainer) -> void:
 	label(basic,"기본 행동",14)
 	tactic_pick(basic,"일반 공격 대상",Session.Rules.BASIC_TARGETS,Session.Rules.TARGET_NAMES,actor.basic_target,change_basic_target)
 	var hint := label(basic,"사용할 스킬이 없으면 공격 가능한 적을 공격합니다.\n공격할 수 없으면 안전하게 접근하거나 대기합니다.",11)
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; hint.custom_minimum_size.x = 290
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; hint.custom_minimum_size.x = minf(290,size.x-32)
 	label(list,"위험 칸 회피 우선 · 자동 OFF여도 직접 사용 가능",10)
 	button(list,"행동방침 기본값 복원",func(): session.reset_rules(tactics_actor); refresh(); show_tactics())
 	button(list,"완료",func(): item_popup.hide())
@@ -667,7 +682,7 @@ func build_inventory() -> void:
 		pick.toggle_mode = true; pick.button_pressed = category == inventory_filter
 	var rows: Array = inventory_rows().filter(func(r): return inventory_filter == "전체" or r.category == inventory_filter)
 	label(modal_content,"%s · %d종 보유" % [inventory_filter,rows.size()],12)
-	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(310,minf(300,size.y-310)); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; modal_content.add_child(scroll)
+	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(minf(300,size.x-32),minf(300,size.y-310)); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; modal_content.add_child(scroll)
 	var grid := GridContainer.new(); grid.columns = 4; grid.size_flags_horizontal = SIZE_EXPAND_FILL; grid.add_theme_constant_override("h_separation",4); grid.add_theme_constant_override("v_separation",4); scroll.add_child(grid)
 	inventory_slots.clear()
 	for i in range(maxi(12,int(ceil(rows.size()/4.0))*4)):
@@ -685,7 +700,7 @@ func show_item_detail(id: String) -> void:
 	for slot in inventory_slots:
 		if is_instance_valid(slot): slot.selected = slot.row.get("id","") == id; slot.queue_redraw()
 	clear(item_detail); label(item_detail,"%s × %d" % [row.label,row.quantity],18)
-	var info := label(item_detail,row.description,12); info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.custom_minimum_size.x = 290
+	var info := label(item_detail,row.description,12); info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.custom_minimum_size.x = minf(290,size.x-32)
 	if row.category == "이능":
 		for i in range(session.party.size()):
 			button(item_detail,session.party[i].name+"에게 먹이기",func(): item_popup.hide(); confirm_essence(i,id),session.safe_management() and session.party[i].hp > 0 and id not in session.party[i].learned_abilities)
@@ -700,7 +715,7 @@ func show_item_detail(id: String) -> void:
 	button(item_detail,"닫기",func(): item_popup.hide()); item_popup.popup_centered(); item_popup.grab_focus()
 
 func popup_list() -> VBoxContainer:
-	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(310,minf(330,size.y-300)); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; modal_content.add_child(scroll)
+	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(minf(300,size.x-32),minf(330,size.y-300)); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; modal_content.add_child(scroll)
 	var list := VBoxContainer.new(); list.size_flags_horizontal = SIZE_EXPAND_FILL; scroll.add_child(list)
 	return list
 

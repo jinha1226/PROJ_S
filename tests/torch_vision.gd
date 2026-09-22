@@ -11,7 +11,7 @@ func _initialize() -> void:
 		for x in range(30,71): s.tile(Vector2i(x,y)).terrain = "stone"
 	s.floor_state.explored.clear(); s.floor_state.discoveries.clear()
 	s.light = 100; s.floor_state.observe(s)
-	check(s.floor_state.visible.has(Vector2i(62,62)),"bright light covers zoomed-out viewport corners")
+	check(s.floor_state.visible.has(Vector2i(59,50)) and not s.floor_state.visible.has(Vector2i(60,50)),"bright sight stops at radius nine")
 	check(Session.Floor.darkness_strength(100) == 0 and Session.Floor.darkness_strength(60) == 0,"bright torch removes radial shading")
 	var discovered: int = s.floor_state.explored.size()
 	var previous := discovered+1
@@ -30,10 +30,10 @@ func _initialize() -> void:
 	s.light = 100; s.tile(Vector2i(51,50)).terrain = "wall"; s.floor_state.observe(s)
 	check(not s.floor_state.visible.has(Vector2i(52,50)),"walls still block light")
 	s.tile(Vector2i(51,50)).terrain = "stone"
-	s.light = 6; s.round_number = 19; s.floor_state.observe(s)
+	s.light = 30; s.round_number = 19; s.floor_state.observe(s)
 	check(s.floor_state.visible.has(Vector2i(58,50)),"pre-decay threshold")
 	s.act("WAIT",s.party[0].pos)
-	check(s.light == 5 and not s.floor_state.visible.has(Vector2i(58,50)),"light decay updates visibility in the same turn")
+	check(s.light == 29 and not s.floor_state.visible.has(Vector2i(58,50)),"light decay updates visibility in the same turn")
 	var glow = preload("res://expedition/radial_light.gd").new()
 	check(glow.darkness(0,5) == 0 and glow.darkness(2,5) < glow.darkness(4,5) and glow.darkness(6,5) > 0.9,"continuous radial fade darkens with distance")
 	var mesh = glow.get_mesh(Vector2(195,195),Vector2(390,430),39,5)

@@ -18,6 +18,9 @@ const Rules = preload("res://expedition/tactic_rules.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 const Growth = preload("res://expedition/growth.gd")
 var essences: Dictionary = {}
+var party_command := "FOLLOW"
+var formation := "NONE"
+var command_target := -1
 var companions := false
 var resolving_companions := false
 const CARDINALS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]
@@ -178,6 +181,24 @@ func use_torch() -> bool:
 	if floor_mode: floor_state.observe(self)
 	message("새 횃불을 켰습니다. 밝기 %d" % light)
 	return true
+
+func use_food() -> bool:
+	if phase != "BATTLE" or food <= 0 or alive().is_empty(): return false
+	var actor: Dictionary = party[selected]
+	if actor.hp <= 0 or (actor.hp >= actor.max_hp and hunger == 0): return false
+	add_stock("food",-1); hunger = maxi(0,hunger-20)
+	actor.hp = mini(actor.max_hp,actor.hp+5)
+	message("식량 -1 · 체력 회복")
+	return true
+
+func rest_field() -> bool:
+	if not floor_mode or phase != "BATTLE" or not safe_management() or food <= 0 or party[selected].ap <= 0: return false
+	var actor: Dictionary = party[selected]
+	if actor.hp >= actor.max_hp and actor.stress == 0 and hunger == 0: return false
+	add_stock("food",-1); hunger = maxi(0,hunger-20)
+	actor.hp = mini(actor.max_hp,actor.hp+10); stress(actor,-10)
+	message("휴식 · 식량 -1")
+	return act("WAIT",actor.pos)
 
 func camp() -> bool:
 	if phase != "EXPLORE" or rooms[room].kind != "camp" or rooms[room].used: return false
@@ -446,6 +467,29 @@ func cancel_reservation(index: int) -> void:
 
 func companion_choice(actor: Dictionary) -> Dictionary:
 	var reserved := reservation_choice(actor)
+	if reserved.is_empty() and companions:
+		if party_command == "HOLD_POSITION": return {"kind":"WAIT","cell":actor.pos,"reason":"자리 지키기"}
+		if party_command == "STOP_ATTACK": return floor_state.follow(self,actor) if floor_mode else {"kind":"WAIT","cell":actor.pos,"reason":"공격 중지"}
+		if party_command == "RETREAT":
+			var threats: Array = combat_enemies()
+			var best: Vector2i = actor.pos
+			var score := -1
+			for direction in DIRECTIONS:
+				var cell: Vector2i = actor.pos+direction
+				if not can_step(actor.pos,cell) or not is_free(cell): continue
+				var nearest := 999
+				for enemy in threats: nearest = mini(nearest,distance(cell,enemy.pos))
+				if nearest > score: score = nearest; best = cell
+			return {"kind":"WAIT" if best == actor.pos else "MOVE","cell":best,"reason":"후퇴"}
+		if party_command == "ATTACK_TARGET":
+			for enemy in combat_enemies():
+				if enemy.id != command_target: continue
+				if melee_reach(actor.pos,enemy.pos): return {"kind":"ATTACK","cell":enemy.pos,"reason":"집중 공격"}
+				var goals: Array = []
+				for direction in DIRECTIONS:
+					if is_free(enemy.pos+direction) and melee_reach(enemy.pos+direction,enemy.pos): goals.append(enemy.pos+direction)
+				var route: Dictionary = TurnCore.path(BOARD_SIDE,BOARD_SIDE,actor.pos,goals,func(a,b): return can_step(a,b) and Tactics.danger(self,b) == 0,func(_p): return 100)
+				return {"kind":"MOVE","cell":route.path[1],"reason":"집중 공격 접근"} if route.found and route.path.size() > 1 else {"kind":"WAIT","cell":actor.pos,"reason":"대상 경로 없음"}
 	if reserved.is_empty() and floor_mode and floor_state.safe(self): return floor_state.follow(self,actor)
 	return Tactics.choose(self,actor) if reserved.is_empty() else reserved
 

@@ -35,7 +35,7 @@ jobs:
           set -euo pipefail
           godot --headless --path . --editor --import --quit 2>&1 | tee /tmp/import.log
           ! grep -E 'SCRIPT ERROR:|^ERROR:' /tmp/import.log
-          for suite in integration playthrough ui_smoke mobile_actions enemy_turns boss_trial companion_tactics abilities_growth character_ui terrain_layouts continuous_floor mobile_exploration curios torch_vision monster_roles solo_floor solo_recovery solo_balance torch_tradeoff solo_provisioning expedition_settlement; do
+          for suite in integration playthrough ui_smoke mobile_actions enemy_turns boss_trial companion_tactics abilities_growth character_ui terrain_layouts continuous_floor mobile_exploration curios torch_vision monster_roles solo_floor solo_recovery solo_balance torch_tradeoff solo_provisioning expedition_settlement mobile_hud; do
             godot --headless --path . --script "res://tests/${suite}.gd" 2>&1 | tee "/tmp/${suite}.log"
             ! grep -E 'SCRIPT ERROR:|^ERROR:' "/tmp/${suite}.log"
           done

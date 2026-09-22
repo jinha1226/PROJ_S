@@ -88,8 +88,8 @@ static func sight_side(light: int) -> int:
 	return ceili(sight_radius(light))*2+1
 
 static func sight_radius(light: int) -> float:
-	# Bright light covers even a zoomed-out view; depleted light keeps the old maximum.
-	return lerpf(7.0,18.0,clampf(light/60.0,0,1))
+	# Light changes sight within a bounded seven-to-nine tile radius.
+	return lerpf(7.0,9.0,clampf(light/60.0,0,1))
 
 static func darkness_strength(light: int) -> float:
 	return 1.0-clampf(light/60.0,0,1)
@@ -170,6 +170,14 @@ func enemy_turn(s, enemy: Dictionary) -> void:
 func follow(s, actor: Dictionary) -> Dictionary:
 	var leader: Dictionary = s.party[s.selected]
 	if actor.id == leader.id: leader = s.alive()[0]
+	if s.formation != "NONE":
+		var rank: int = s.alive().filter(func(a): return a.id != s.selected).find(actor)+1
+		var offset := Vector2i(0,rank) if s.formation == "COLUMN" else Vector2i(rank if rank % 2 == 1 else -rank/2,0) if s.formation == "LINE" else Vector2i(1 if rank % 2 == 1 else -1,1)
+		var destination: Vector2i = leader.pos+offset
+		if actor.pos == destination: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}
+		if s.is_free(destination):
+			var route: Dictionary = s.TurnCore.path(SIZE,SIZE,actor.pos,[destination],func(a,b): return s.can_step(a,b),func(_p): return 100)
+			if route.found and route.path.size() > 1: return {"kind":"MOVE","cell":route.path[1],"reason":"대형 이동"}
 	if maxi(absi(actor.pos.x-leader.pos.x),absi(actor.pos.y-leader.pos.y)) <= 1: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}
 	var goals: Array = []
 	for d in s.DIRECTIONS:
