@@ -25,14 +25,14 @@ func run() -> void:
 		if scene.navigation.active: scene.navigation_tick()
 	check(s.party[0].pos == target and s.round_number == turns+4 and not scene.navigation.active,"queued movement arrives using four turns")
 	check(scene.navigation.plan_builds == 1,"long route reuses one A* plan")
-	check(not scene.navigation.start(s,Vector2i(99,99)),"unknown destination rejected")
+	check(not scene.navigation.start(s,Vector2i(s.BOARD_SIDE-1,s.BOARD_SIDE-1)),"unknown destination rejected")
 	scene.toggle_explore(); check(scene.navigation.active and scene.navigation.automatic,"auto exploration starts")
 	turns = s.round_number; scene.navigation_tick()
 	check(s.round_number == turns+1,"auto exploration performs a normal action")
 	s.enemies[0].pos = s.party[0].pos+Vector2i.RIGHT; s.floor_state.observe(s)
 	turns = s.round_number; scene.navigation_tick()
 	check(not scene.navigation.active and s.round_number == turns,"enemy contact stops before another action")
-	s.enemies[0].pos = Vector2i(80,80); s.floor_state.observe(s)
+	s.enemies[0].pos = Vector2i(s.BOARD_SIDE-2,s.BOARD_SIDE-2); s.floor_state.observe(s)
 	scene.refresh(); await process_frame
 	var board = scene.board
 	var position: Vector2i = s.party[0].pos

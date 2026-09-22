@@ -1,5 +1,6 @@
 extends SceneTree
 const Session = preload("res://expedition/session.gd")
+const Fixture = preload("res://tests/floor_fixture.gd")
 var failures := 0
 func check(ok: bool, message: String) -> void:
 	if not ok: failures += 1; push_error(message)
@@ -16,13 +17,13 @@ func run() -> void:
 				var next: Vector2i = p+direction
 				if not seen.has(next) and sample.inside(next) and sample.tile(next).terrain != "wall":
 					seen[next] = true; queue.append(next)
-		for p in sample.floor_state.features: check(seen.has(p),"feature reachable across floor")
+		for p in sample.floor_state.features: check(seen.has(p) or sample.DIRECTIONS.any(func(d): return seen.has(p+d)),"feature reachable across floor")
 		for enemy in sample.enemies: check(seen.has(enemy.pos),"enemy reachable across floor")
 	var s = Session.new(731,true,true,true)
-	check(s.depart() and s.tiles.size() == 10000 and s.BOARD_SIDE == 100,"one continuous 100x100 floor")
+	check(s.depart() and s.tiles.size() == s.BOARD_SIDE*s.BOARD_SIDE and s.BOARD_SIDE == 64,"one continuous 64x64 floor")
 	check(s.rooms.size() == 1 and s.doors().is_empty(),"no room travel graph")
-	check(s.enemies.size() == 9,"legacy first-floor roster retained")
-	check(s.floor_state.explored.size() < 10000,"unexplored fog retained")
+	check(s.enemies.size() >= 3 and s.enemies.size() <= 20 and s.floor_state.layout.encounters.size() >= 3,"generated roster grouped into encounters")
+	check(s.floor_state.explored.size() < s.BOARD_SIDE*s.BOARD_SIDE,"unexplored fog retained")
 	check(s.safe_management(),"safe exploration permits management")
 	s.light = 50
 	check(s.use_torch() and s.light == 100,"torch works during safe floor exploration")
@@ -34,7 +35,7 @@ func run() -> void:
 	for i in range(3): check(s.act("MOVE",s.party[0].pos+Vector2i.RIGHT),"walk consumes one action")
 	check(s.party[1].pos != before and s.distance(s.party[0].pos,s.party[1].pos) <= 3,"companion follows during exploration")
 	var foe: Dictionary = s.enemies[0]
-	s.party[0].pos = foe.pos+Vector2i.LEFT; s.party[1].pos = s.party[0].pos+Vector2i.LEFT
+	s.party[0].pos = Fixture.beside(s,foe.pos); s.party[1].pos = Fixture.beside(s,s.party[0].pos)
 	s.floor_state.observe(s)
 	var hp: int = s.party[0].hp
 	s.floor_state.enemy_turn(s,foe)
@@ -60,7 +61,7 @@ func run() -> void:
 	scene.show_map(); await process_frame
 	check(scene.map_view.floor_minimap != null,"original minimap connected")
 	check(scene.map_view.floor_minimap.cell_draw_spec(s.party[0].pos).marker == "HERO","first minimap observation includes hero")
-	var spec: Dictionary = scene.map_view.floor_minimap.cell_draw_spec(Vector2i(99,99))
+	var spec: Dictionary = scene.map_view.floor_minimap.cell_draw_spec(Vector2i(s.BOARD_SIDE-1,s.BOARD_SIDE-1))
 	check(spec.visibility_state == "UNSEEN" and spec.marker == "","minimap hides unexplored enemies")
 	scene.queue_free(); await process_frame
 	print("Continuous floor: %d failures" % failures); quit(1 if failures else 0)

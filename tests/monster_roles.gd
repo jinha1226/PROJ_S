@@ -1,33 +1,35 @@
 extends SceneTree
 const Session = preload("res://expedition/session.gd")
 const AI = preload("res://expedition/monster_ai.gd")
+const Fixture = preload("res://tests/floor_fixture.gd")
 var failures := 0
 func check(ok: bool, label: String) -> void:
 	if not ok: failures += 1; push_error(label)
-func fixture(role: String):
+func fixture(role: String) -> Dictionary:
 	var s = Session.new(731,true,true,true); s.depart()
 	for tile in s.tiles: tile.terrain = "stone"
-	for enemy in s.enemies: enemy.hp = 0
-	s.party[0].pos = Vector2i(50,50); s.party[1].hp = 0
+	var c := Fixture.arena(s,10)
+	s.party[1].hp = 0
 	var e: Dictionary = s.enemies[0]
-	e.hp = e.max_hp; e.role = role; e.pos = Vector2i(54,50); e.alert = true
-	return s
+	e.hp = e.max_hp; e.role = role; e.pos = c+Vector2i(4,0); e.alert = true
+	return {"s":s,"c":c}
 func _initialize() -> void:
-	var s = fixture("MELEE"); var e: Dictionary = s.enemies[0]
+	var f := fixture("MELEE"); var s = f.s; var c: Vector2i = f.c
+	var e: Dictionary = s.enemies[0]
 	var hp: int = s.party[0].hp
 	AI.turn(s,e)
 	check(AI.distance(e.pos,s.party[0].pos) == 3 and s.party[0].hp == hp,"chaser moves without attacking")
-	e.pos = Vector2i(51,51); AI.turn(s,e)
+	e.pos = c+Vector2i(1,1); AI.turn(s,e)
 	check(s.party[0].hp < hp,"diagonal melee attack")
-	s = fixture("RANGED"); e = s.enemies[0]; hp = s.party[0].hp
+	f = fixture("RANGED"); s = f.s; c = f.c; e = s.enemies[0]; hp = s.party[0].hp
 	AI.turn(s,e)
-	check(e.pos == Vector2i(54,50) and s.party[0].hp < hp,"shooter attacks from range")
-	e.pos = Vector2i(51,50); hp = s.party[0].hp; AI.turn(s,e)
-	check(e.pos == Vector2i(51,50) and s.party[0].hp < hp,"adjacent shooter fights instead of endlessly retreating")
-	s = fixture("RANGED"); e = s.enemies[0]; hp = s.party[0].hp
-	s.tile(Vector2i(52,50)).terrain = "wall"; AI.turn(s,e)
-	check(s.party[0].hp == hp and e.pos != Vector2i(54,50),"blocked shooter repositions without shooting through wall")
-	s = fixture("CASTER"); e = s.enemies[0]; hp = s.party[0].hp
+	check(e.pos == c+Vector2i(4,0) and s.party[0].hp < hp,"shooter attacks from range")
+	e.pos = c+Vector2i(1,0); hp = s.party[0].hp; AI.turn(s,e)
+	check(e.pos == c+Vector2i(1,0) and s.party[0].hp < hp,"adjacent shooter fights instead of endlessly retreating")
+	f = fixture("RANGED"); s = f.s; c = f.c; e = s.enemies[0]; hp = s.party[0].hp
+	s.tile(c+Vector2i(2,0)).terrain = "wall"; AI.turn(s,e)
+	check(s.party[0].hp == hp and e.pos != c+Vector2i(4,0),"blocked shooter repositions without shooting through wall")
+	f = fixture("CASTER"); s = f.s; c = f.c; e = s.enemies[0]; hp = s.party[0].hp
 	AI.turn(s,e); AI.turn(s,e)
 	check(not e.charging and s.party[0].hp < hp,"caster starts with ordinary attacks")
 	hp = s.party[0].hp; AI.turn(s,e); s.plan_enemies()
@@ -46,11 +48,10 @@ func _initialize() -> void:
 	s.floor_state.observe(s)
 	check(s.act("PUSH",e.pos),"push accepted")
 	check(not e.charging and s.intents.is_empty(),"push cancels windup even without damage")
-	s = fixture("CASTER"); e = s.enemies[0]; e.cast_cooldown = 0; AI.turn(s,e)
+	f = fixture("CASTER"); s = f.s; c = f.c; e = s.enemies[0]; e.cast_cooldown = 0; AI.turn(s,e)
 	s.damage(e,999,s.party[0].id,"IMPACT"); s.plan_enemies()
 	check(s.intents.is_empty(),"dead caster leaves no warning")
 	s = Session.new(731,true,true,true); s.depart()
-	check(s.enemies.filter(func(a): return a.role == "MELEE").size() == 5,"five melee units")
-	check(s.enemies.filter(func(a): return a.role == "RANGED").size() == 2,"two ranged units")
-	check(s.enemies.filter(func(a): return a.role == "CASTER").size() == 2,"two casters")
+	check(s.enemies.all(func(a): return a.role in AI.ROLES and a.name.ends_with(AI.ROLES[a.role].label)),"generated roles are labelled")
+	check(s.enemies.any(func(a): return a.role != "MELEE"),"at least one backline enemy on the floor")
 	print("Monster roles: %d failures" % failures); quit(1 if failures else 0)

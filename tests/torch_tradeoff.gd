@@ -3,6 +3,7 @@ extends SceneTree
 const Session = preload("res://expedition/session.gd")
 const Floor = preload("res://expedition/continuous_floor.gd")
 const MonsterAI = preload("res://expedition/monster_ai.gd")
+const Fixture = preload("res://tests/floor_fixture.gd")
 var failures := 0
 func check(ok: bool, reason: String) -> void:
 	if not ok: failures += 1; push_error(reason)
@@ -65,11 +66,11 @@ func run() -> void:
 	for light in [90,20]:
 		var s = solo()
 		var hero: Dictionary = s.party[0]
-		var foe: Dictionary = s.enemies[0]; foe.hp = 20; foe.alert = false
-		hero.pos = Vector2i(50,50); s.light = light
-		for y in range(44,57):
-			for x in range(44,57): s.tile(Vector2i(x,y)).terrain = "stone"
-		foe.pos = Vector2i(51,50)
+		var foe: Dictionary = s.enemies.filter(func(e): return e.role == "MELEE")[0]
+		s.light = light
+		var c := Fixture.arena(s,6)
+		foe.hp = 20; foe.alert = false
+		foe.pos = c+Vector2i(1,0)
 		s.floor_state.seen_enemies.clear(); s.floor_state.observe(s)
 		var hp: int = hero.hp
 		s.act("WAIT",hero.pos)

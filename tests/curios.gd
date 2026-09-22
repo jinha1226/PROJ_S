@@ -1,5 +1,6 @@
 extends SceneTree
 const Session = preload("res://expedition/session.gd")
+const Fixture = preload("res://tests/floor_fixture.gd")
 var failures := 0
 func check(ok: bool, reason: String) -> void:
 	if not ok: failures += 1; push_error(reason)
@@ -10,7 +11,7 @@ func prepare(seed_value: int = 731, id: String = "LOCKED_CHEST") -> Dictionary:
 	s.exploration_tools = {"KEY":2,"SHOVEL":2}; s.depart()
 	for enemy in s.enemies: enemy.hp = 0
 	var p: Vector2i = s.floor_state.features.keys().filter(func(cell): return s.floor_state.features[cell].get("curio_id","") == id)[0]
-	s.party[0].pos = p+Vector2i.LEFT; s.party[1].pos = p+Vector2i.LEFT*2
+	s.party[0].pos = Fixture.beside(s,p); s.party[1].pos = Fixture.beside(s,s.party[0].pos)
 	s.floor_state.observe(s)
 	return {"s":s,"p":p}
 func run() -> void:
@@ -32,7 +33,7 @@ func run() -> void:
 	fixture = prepare(); s = fixture.s; p = fixture.p
 	s.enemies[0].hp = 20; s.enemies[0].pos = p+Vector2i.RIGHT; s.floor_state.observe(s)
 	check(not Session.Curios.resolve(s,p,"TOOL") and not s.floor_state.features[p].used,"visible combat blocks investigation")
-	s.enemies[0].hp = 0; s.party[0].pos = p+Vector2i.LEFT*4; s.floor_state.observe(s)
+	s.enemies[0].hp = 0; Fixture.arena(s,3); s.floor_state.observe(s)
 	check(not Session.Curios.resolve(s,p,"TOOL"),"remote interaction rejected")
 	var saw_failure := false
 	for seed_value in range(12):

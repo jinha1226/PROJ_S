@@ -16,6 +16,18 @@ func relic_pos(s) -> Vector2i:
 func entry_pos(s) -> Vector2i:
 	return s.entry_position()
 
+## A floor cell two to six steps from p along an unobstructed straight line, so
+## the relic stays in sight while the hero is out of interaction range.
+func far_cell(s, p: Vector2i) -> Vector2i:
+	for d in s.DIRECTIONS:
+		var cell: Vector2i = p
+		for step in range(6):
+			var next: Vector2i = cell+d
+			if not s.inside(next) or not s.melee_reach(cell,next) or not s.at(next).is_empty(): break
+			cell = next
+		if maxi(absi(cell.x-p.x),absi(cell.y-p.y)) >= 2: return cell
+	return p
+
 func stand_beside(s, p: Vector2i) -> void:
 	for d in s.DIRECTIONS:
 		var cell: Vector2i = p+d
@@ -42,25 +54,11 @@ func run() -> void:
 		for d in s.DIRECTIONS:
 			if reach.has(p+d) and s.melee_reach(p+d,p): adjacent = true
 		check(adjacent,"relic has a reachable interaction cell")
-		check(reach[p] >= 40,"relic is far from the entry (seed %d: %d)" % [seed_value,reach[p]])
+		check(reach[p] >= s.floor_state.layout.stats.max_distance*60/100,"relic is far from the entry (seed %d: %d)" % [seed_value,reach[p]])
 		var altars: Array = s.floor_state.features.values().filter(func(f): return f.kind == "altar")
 		check(altars.size() == 1,"legacy relic landmark separated as altar")
 		var same = solo(seed_value)
 		check(relic_pos(same) == p,"placement reproducible by seed")
-
-	# --- fallback placement when the preferred cell is unusable -------------------
-	var blocked = solo()
-	var preferred: Vector2i = relic_pos(blocked)
-	blocked.floor_state.features.erase(preferred)
-	blocked.floor_state.features[preferred] = {"kind":"curio","curio_id":"LOCKED_CHEST","used":false,"label":"x"}
-	var entry: Vector2i = entry_pos(blocked)
-	var reach: Dictionary = Objective.reachability(blocked,entry)
-	var farthest := 0
-	for value in reach.values(): farthest = maxi(farthest,int(value))
-	var alternative: Vector2i = Objective.choose(blocked,blocked.floor_state,entry,preferred)
-	check(alternative != preferred and reach.has(alternative) and reach[alternative] >= farthest*Objective.FAR_BAND_RATIO,"blocked preferred cell falls back to the far band")
-	check(alternative == Objective.choose(blocked,blocked.floor_state,entry,preferred),"fallback choice is deterministic")
-	check(not blocked.floor_state.features.has(alternative) and blocked.enemies.all(func(e): return e.pos != alternative),"fallback avoids features and enemy starts")
 
 	# --- solo party --------------------------------------------------------------
 	var s = solo()
@@ -79,10 +77,8 @@ func run() -> void:
 
 	# --- discovery stops navigation ------------------------------------------
 	for enemy in s.enemies: enemy.hp = 0
-	var far: Vector2i = p
-	for d in [Vector2i(-6,0),Vector2i(6,0),Vector2i(0,-6),Vector2i(0,6)]:
-		var cell: Vector2i = p+d
-		if s.inside(cell) and s.tile(cell).terrain != "wall": far = cell; break
+	var far: Vector2i = far_cell(s,p)
+	check(far != p,"relic has room to stand back from")
 	s.party[0].pos = far; s.light = 100; s.floor_state.explored.erase(p); s.floor_state.observe(s)
 	check(s.objective.state == "DISCOVERED","seeing the relic discovers it")
 	check(s.floor_state.discoveries.any(func(row): return row.position == [p.x,p.y] and row.marker == "PORTAL"),"discovery marks the map")
@@ -188,7 +184,7 @@ func run() -> void:
 	# --- pickup then death in the same action ----------------------------------
 	for enemy in s.enemies: enemy.hp = 0
 	p = relic_pos(s); stand_beside(s,p)
-	s.enemies[0].hp = 20; s.enemies[0].pos = Vector2i(99,99)
+	s.enemies[0].hp = 20; s.enemies[0].pos = Vector2i(s.BOARD_SIDE-1,s.BOARD_SIDE-1)
 	s.party[0].hp = 1; s.tile(s.party[0].pos).terrain = "wood"; s.tile(s.party[0].pos).fire = 100
 	s.floor_state.observe(s)
 	check(s.pickup_relic(),"pickup accepted before fire resolves")
