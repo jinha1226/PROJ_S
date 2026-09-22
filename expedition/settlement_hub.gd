@@ -1,6 +1,6 @@
 extends Control
 ## Painted settlement with normalized touch regions; no expedition HUD.
-const BACKGROUND = preload("res://assets/ui/settlement-hub-v1.png")
+const BACKGROUND = preload("res://assets/ui/settlement-hub-flat-v2.png")
 
 func build(ui) -> void:
 	name = "SettlementHub"
