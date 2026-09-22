@@ -5,7 +5,7 @@ var action_footer := false
 signal cell_pressed(cell: Vector2i)
 signal zoom_changed(side: int)
 signal gesture_started
-var view_side := 10
+var view_side := 13
 var camera_gesture = preload("res://expedition/legacy/base_map_camera.gd").new()
 var _pointer_down := false
 var _pointer_dragged := false
@@ -75,7 +75,7 @@ func camera_cell() -> Vector2i:
 	if session == null or not session.floor_mode or session.tiles.is_empty(): return Vector2i.ZERO
 	var focus: Vector2i = session.party[session.selected].pos
 	var side := visible_side()
-	return Vector2i(clampi(focus.x-(side-1)/2,0,session.BOARD_SIDE-side),clampi(focus.y-(side-1)/2,0,session.BOARD_SIDE-side))
+	return focus-Vector2i((side-1)/2,(side-1)/2)
 
 func visible_side() -> int:
 	return view_side if session != null and session.floor_mode else 10
@@ -133,7 +133,7 @@ func _draw() -> void:
 	geometry()
 	draw_rect(Rect2(Vector2.ZERO,size),Color("0b1117"))
 	if session == null or session.tiles.is_empty():
-		draw_string(ui_font,Vector2(18,size.y*0.45),"원정을 준비하세요",HORIZONTAL_ALIGNMENT_CENTER,size.x-36,20,Color("cfbd91"))
+		draw_string(ui_font,Vector2(18,size.y*0.45),"",HORIZONTAL_ALIGNMENT_CENTER,size.x-36,20,Color("cfbd91"))
 		return
 	var camera := impact_transform()
 	draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
@@ -144,6 +144,7 @@ func _draw() -> void:
 		var caster: Dictionary = session.party[session.selected if input_actor < 0 else input_actor]
 		for y in range(camera_cell().y,camera_cell().y+visible_side()):
 			for x in range(camera_cell().x,camera_cell().x+visible_side()):
+				if x < 0 or y < 0 or x >= session.BOARD_SIDE or y >= session.BOARD_SIDE: continue
 				var cell := Vector2i(x,y)
 				if session.distance(caster.pos,cell) <= session.Abilities.DEFINITIONS.BOMB.range and session.tile(cell).terrain != "wall" and session.TurnCore.Geometry.sees(caster.pos,cell,func(p): return session.tile(p).terrain == "wall"): attacks.append(cell)
 	for depth in range(visible_side()*2-1):
@@ -152,6 +153,7 @@ func _draw() -> void:
 			if local_y < 0 or local_y >= visible_side(): continue
 			var x: int = local_x+camera_cell().x
 			var y: int = local_y+camera_cell().y
+			if x < 0 or y < 0 or x >= session.BOARD_SIDE or y >= session.BOARD_SIDE: continue
 			var point := Vector2i(x,y)
 			if session.floor_mode and not session.floor_state.explored.has(point): continue
 			var cell: Dictionary = session.tile(point)
@@ -312,6 +314,7 @@ func _gui_input(event: InputEvent) -> void:
 		camera_gesture.handle(self,event); accept_event(); return
 	if event is InputEventMagnifyGesture or event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_WHEEL_UP,MOUSE_BUTTON_WHEEL_DOWN]:
 		gesture_started.emit()
+		camera_gesture.zoom = 10.0/view_side
 		camera_gesture.handle(self,event); accept_event(); return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.device == InputEvent.DEVICE_ID_EMULATION or Time.get_ticks_msec() < suppress_mouse_until: return

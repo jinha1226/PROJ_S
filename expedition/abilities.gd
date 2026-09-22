@@ -3,9 +3,9 @@ extends RefCounted
 ## GrowthBuildState.commit_mutation_swap: catalog, once-only loot, learned/loadout split.
 const DROP_PERCENT := 50
 const DEFINITIONS = {
-	"SHOCKWAVE":{"name":"수렁 충격파","item":"수렁의 핵","description":"자신 주변 2칸에 피해 16. 동료도 맞습니다. 재사용 3턴.","target":"SELF","range":0,"radius":2,"damage":16,"cooldown":3},
-	"BOMB":{"name":"폭탄 투척","item":"암살자의 화약낭","description":"사거리 4. 대상 주변 1칸에 피해 16. 아군도 맞습니다. 재사용 3턴.","target":"ENEMY","range":4,"radius":1,"damage":16,"cooldown":3},
-	"IRON_HIDE":{"name":"철갑 방어","item":"거인의 철갑핵","description":"이번 적 차례에 받는 피해를 75% 줄입니다. 재사용 3턴.","target":"SELF","range":0,"radius":0,"damage":0,"cooldown":3}}
+	"SHOCKWAVE":{"name":"수렁 충격파","item":"수렁의 핵","description":"범위 2 · 피해 16 · 아군 피해 · 재사용 3턴","target":"SELF","range":0,"radius":2,"damage":16,"cooldown":3},
+	"BOMB":{"name":"폭탄 투척","item":"암살자의 화약낭","description":"사거리 4 · 범위 1 · 피해 16 · 아군 피해 · 재사용 3턴","target":"ENEMY","range":4,"radius":1,"damage":16,"cooldown":3},
+	"IRON_HIDE":{"name":"철갑 방어","item":"거인의 철갑핵","description":"받는 피해 -75% · 1턴 · 재사용 3턴","target":"SELF","range":0,"radius":0,"damage":0,"cooldown":3}}
 const STARTERS = ["PUSH","GUARD"]
 
 static func equip(actor: Dictionary, slot: int, id: String) -> bool:

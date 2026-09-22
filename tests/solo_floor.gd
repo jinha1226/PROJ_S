@@ -208,16 +208,17 @@ func run() -> void:
 		root.size = viewport
 		s.refit(); s.depart(); scene.refresh()
 		for frame in range(4): await process_frame
-		check(scene.root_layout.get_child(0).size.y < 70,"objective chip keeps the HUD compact")
+		check(scene.root_layout.get_child(0).size.y < 70,"HUD stays compact")
 		var chip: Button = scene.find_child("ObjectiveChip",true,false)
-		check(chip != null and chip.text == "유물찾기" and scene.get_global_rect().encloses(chip.get_global_rect()),"objective chip visible and on screen")
+		check(chip == null,"objective chip is absent")
 		check(scene.portrait_buttons.size() == 1 and scene.skill_buttons.size() == 2 and scene.item_buttons.size() == 6,"one portrait, two abilities, shared supplies")
 		for node in scene.item_buttons+scene.skill_buttons+scene.portrait_buttons:
 			check(node.size.y >= 44 and scene.get_global_rect().encloses(node.get_global_rect()),"solo touch targets on screen")
 		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"solo layout fits portrait screen")
 		var nav_texts: Array = scene.root_layout.get_child(scene.root_layout.get_child_count()-1).get_children().map(func(b): return b.text)
 		check("전술" in nav_texts and "원정" not in nav_texts,"footer contains tactics; expedition menu lives in header")
-		chip.pressed.emit(); await process_frame
+		scene.find_child("ExpeditionMenu",true,false).pressed.emit(); await process_frame
+		scene.modal_content.get_child(0).pressed.emit(); await process_frame
 		check(scene.details_popup.visible and scene.details_popup.size.x <= viewport.x,"objective popup fits")
 		scene.details_popup.hide(); await process_frame
 		s.abandon(); scene.refresh()

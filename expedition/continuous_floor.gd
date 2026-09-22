@@ -87,8 +87,8 @@ static func sight_side(light: int) -> int:
 	return ceili(sight_radius(light))*2+1
 
 static func sight_radius(light: int) -> float:
-	# Light changes sight within a bounded seven-to-nine tile radius.
-	return lerpf(7.0,9.0,clampf(light/60.0,0,1))
+	# Light changes sight within a bounded four-to-six tile radius.
+	return lerpf(4.0,6.0,clampf(light/60.0,0,1))
 
 static func darkness_strength(light: int) -> float:
 	return 1.0-clampf(light/60.0,0,1)
@@ -153,7 +153,7 @@ func interact(s, p: Vector2i) -> bool:
 	if not visible.has(p) or not features.has(p) or s.distance(s.party[s.selected].pos,p) > 1: return false
 	var feature: Dictionary = features[p]
 	if feature.kind in ["curio","relic"]: return false # Explicit choice required; never auto-claim.
-	if not safe(s): s.message("주변 적을 먼저 처리하세요."); return false
+	if not safe(s): s.message("주변에 적 있음"); return false
 	if feature.kind == "entry": return s.return_home()
 	if feature.used: return false
 	feature.used = true

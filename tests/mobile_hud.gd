@@ -33,14 +33,24 @@ func run() -> void:
 	check(scene.character_tab == "숙련","training opens mastery")
 	scene.details_popup.hide()
 	check(scene.find_child("TownEdit",true,false).disabled,"unimplemented tile edit stays disabled")
+	check(s.log_lines.is_empty(),"new session has no tutorial log")
 	s.depart()
+	scene.refresh(); await process_frame
+	check(scene.board.visible_side() == 13 and scene.board.camera_cell() == s.party[0].pos-Vector2i(6,6),"default camera centers hero in thirteen tiles even near map edge")
+	check(scene.find_child("ObjectiveChip",true,false) == null,"objective button removed from HUD")
+	var drop: Dictionary = s.make_actor(999,"시험 대상",true)
+	drop.hp = 0; drop.essence_id = "BOMB"
+	while s.Hexaco.sample(s.seed_value,s.expedition_number*10000+s.room*100+drop.id,"essence",100) >= s.Floor.drop_percent(s.light): drop.id += 1
+	scene.run_action(func(): s.roll_essence(drop); return true)
+	check(scene.notice.is_empty() and not scene.toast.visible,"item pickup produces no toast")
+	check(s.log_lines[-1] == Session.Abilities.DEFINITIONS.BOMB.item+" 획득","item pickup uses concise log")
 	var c := Fixture.arena(s,15)
 	s.floor_state.features.clear(); s.floor_state.observe(s)
 	var enemy: Dictionary = s.enemies[0]
-	enemy.hp = 20; enemy.pos = c+Vector2i(10,0); s.floor_state.observe(s)
-	check(s.combat_enemies().is_empty() and scene.navigation.explore(s),"enemy ten tiles away does not stop exploration")
-	enemy.pos = c+Vector2i(9,0); s.floor_state.observe(s)
-	check(scene.navigation.next_step(s).x < 0 and not scene.navigation.active,"enemy inside nine-tile sight stops exploration")
+	enemy.hp = 20; enemy.pos = c+Vector2i(7,0); s.floor_state.observe(s)
+	check(s.combat_enemies().is_empty() and scene.navigation.explore(s),"enemy seven tiles away does not stop exploration")
+	enemy.pos = c+Vector2i(6,0); s.floor_state.observe(s)
+	check(scene.navigation.next_step(s).x < 0 and not scene.navigation.active,"enemy inside six-tile sight stops exploration")
 	s.tile(c+Vector2i(1,0)).terrain = "wall"; enemy.pos = c+Vector2i(2,0); s.floor_state.observe(s)
 	check(s.combat_enemies().is_empty() and scene.navigation.explore(s),"wall-hidden enemy does not block exploration")
 	scene.stop_navigation(); enemy.hp = 0; s.tile(c+Vector2i(1,0)).terrain = "stone"; s.floor_state.observe(s)
@@ -54,11 +64,11 @@ func run() -> void:
 			check(bar != null and bar.get_parent().get_global_rect().encloses(bar.get_global_rect()),"resource gauge stays inside HUD button")
 			check(bar.mouse_filter == Control.MOUSE_FILTER_IGNORE,"gauge does not block item touches")
 		var header: Node = scene.find_child("TopHUD",true,false)
-		check(header.get_children().slice(1).map(func(c): return str(c.name)) == ["Location","FoodButton","TorchButton","ObjectiveChip","Funds","ExpeditionMenu"],"header order")
+		check(header.get_children().slice(1).map(func(c): return str(c.name)) == ["Location","FoodButton","TorchButton","Funds","ExpeditionMenu"],"header order")
 		check(scene.skill_buttons[0].get_global_rect().end.y <= scene.portrait_buttons[0].get_global_rect().position.y,"skills above member card")
 		check(scene.portrait_buttons[0].find_children("*","TextureRect",true,false).is_empty(),"member card has no portrait image")
 		var nav: Node = scene.root_layout.get_child(-1)
-		check(nav.get_children().map(func(c): return c.text) == ["공격","휴식","자동탐험","전술","가방"],"safe footer order")
+		check(nav.get_children().map(func(c): return c.text) == ["공격","대기","자동탐험","전술","가방"],"safe footer order")
 		scene.show_objective(); await process_frame
 		check(scene.modal_content.get_children().map(func(c): return c.text) == ["원정 목표","입구까지 이동","원정포기"],"menu contains exactly three actions")
 		check(scene.details_popup.size.x <= viewport.x,"menu width fits")
@@ -72,10 +82,20 @@ func run() -> void:
 	check(s.torches == torches-1 and s.light == 70,"HUD torch consumes one and raises light")
 	check(scene.find_child("TorchGauge",true,false).value == 70,"torch gauge shows current light after use")
 	s.party[0].stress = 30; food = s.food
+	var before_wait: int = s.round_number
+	var before_hp: int = s.party[0].hp
+	for step in range(3): scene.wait_button.pressed.emit()
+	check(s.round_number == before_wait+3 and s.food == food,"waiting without visible enemies advances turns without spending food")
+	check(s.party[0].hp == before_hp and s.party[0].stress == 30,"waiting does not perform recovery")
+	var saved_food: int = s.food; s.food = 0; scene.refresh()
 	scene.wait_button.pressed.emit()
-	check(s.food == food-1 and s.party[0].stress == 20,"safe rest consumes food and reduces stress")
+	check(s.round_number == before_wait+4 and s.food == 0,"waiting remains available without food")
+	s.food = saved_food
 	enemy.hp = 20; enemy.pos = s.party[0].pos+Vector2i.RIGHT; s.floor_state.observe(s); scene.refresh()
-	check(scene.wait_button.text == "대기" and not s.rest_field(),"rest unavailable with visible enemy")
+	check(scene.wait_button.text == "대기","same wait action with visible enemy")
+	before_wait = s.round_number; food = s.food
+	scene.wait_button.pressed.emit()
+	check(s.round_number == before_wait+1 and s.food == food,"combat wait also advances without food cost")
 	scene.notice = "이동 불가"; check(scene.toast.visible,"toast shown immediately")
 	scene._process(3); check(not scene.toast.visible,"toast expires")
 	scene.show_party_tactics()

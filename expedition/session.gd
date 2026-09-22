@@ -87,7 +87,6 @@ func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = f
 	var count: int = clampi(p_party_size,1,3) if p_party_size > 0 else (2 if companions else 1 if boss_trial else 3)
 	for i in range(count):
 		party.append(make_actor(i, ["아린", "브란", "세라"][i], false))
-	message("부상과 기억은 원정을 마쳐도 남습니다. 준비되면 출정하세요.")
 
 func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 	var actor := {"id":id, "name":actor_name, "enemy":enemy,
@@ -139,7 +138,7 @@ func depart() -> bool:
 	if boss_trial: BossTrial.prepare(self)
 	room = 0; visited = [0]
 	enter_room()
-	message("원정 %d · 폐허의 수문장을 처치하고 귀환하세요." % expedition_number)
+	message("원정 %d" % expedition_number)
 	return true
 
 func can_travel(destination: int) -> bool:
@@ -209,15 +208,6 @@ func use_food() -> bool:
 	message("식량 -1 · 체력 회복")
 	return true
 
-func rest_field() -> bool:
-	if not floor_mode or phase != "BATTLE" or not safe_management() or food <= 0 or party[selected].ap <= 0: return false
-	var actor: Dictionary = party[selected]
-	if actor.hp >= actor.max_hp and actor.stress == 0 and hunger == 0: return false
-	add_stock("food",-1); hunger = maxi(0,hunger-20)
-	actor.hp = mini(actor.max_hp,actor.hp+10); stress(actor,-10)
-	message("휴식 · 식량 -1")
-	return act("WAIT",actor.pos)
-
 func camp() -> bool:
 	if phase != "EXPLORE" or rooms[room].kind != "camp" or rooms[room].used: return false
 	rooms[room].used = true; rooms[room].cleared = true; world_time += 100
@@ -286,7 +276,7 @@ func start_battle() -> void:
 			enemies.append(enemy)
 	selected = party.find(alive()[0])
 	plan_enemies()
-	message("%s · 적은 이동 후 공격합니다. 붉은 칸은 강력한 기술의 예고입니다." % rooms[room].name)
+	message("%s · 전투 시작" % rooms[room].name)
 
 ## Rule overrides only bite for a lone hero on the continuous floor.
 func solo_rule(key: String) -> int:
@@ -574,7 +564,7 @@ func discharge(origin: Vector2i, source: int) -> void:
 			var next: Vector2i = row.pos + direction
 			if inside(next) and next not in seen and conductive(next):
 				seen.append(next); queue.append({"pos":next, "power":row.power - 6})
-	message("방전 · 젖은 칸과 금속을 따라 전류가 흐릅니다. 아군도 피해를 받습니다.")
+	message("방전")
 
 func conductive(point: Vector2i) -> bool:
 	return tile(point).terrain in ["metal", "water"] or tile(point).wet >= 25
@@ -583,13 +573,13 @@ func roll_essence(enemy: Dictionary) -> void:
 	if not enemy.enemy or enemy.hp > 0 or enemy.get("essence_rolled",false): return
 	enemy.essence_rolled = true
 	for actor in alive():
-		if Growth.gain(actor,100 if boss_trial and not floor_mode else 25) > 0: message(actor.name+" · 레벨 %d! 숙련 포인트 획득" % actor.growth.level)
+		if Growth.gain(actor,100 if boss_trial and not floor_mode else 25) > 0: message(actor.name+" · 레벨 %d" % actor.growth.level)
 	var id: String = enemy.get("essence_id","")
 	if not Abilities.DEFINITIONS.has(id): return
 	var chance: int = Floor.drop_percent(light) if floor_mode else Abilities.DROP_PERCENT
 	if Hexaco.sample(seed_value,expedition_number*10000+room*100+enemy.id,"essence",100) >= chance: return
 	essences[id] = int(essences.get(id,0))+1
-	message("이능 전리품 · "+Abilities.DEFINITIONS[id].item+" → 공용 가방")
+	message(Abilities.DEFINITIONS[id].item+" 획득")
 
 func spend_growth(index: int, id: String, stat: bool = false) -> bool:
 	if not safe_management() or index < 0 or index >= party.size() or party[index].hp <= 0: return false
@@ -607,7 +597,7 @@ func consume_essence(index: int, id: String) -> bool:
 	if actor.hp <= 0 or essences.get(id,0) <= 0 or id in actor.learned_abilities: return false
 	actor.learned_abilities.append(id); essences[id] -= 1
 	actor.rules.append(Rules.make_rule(id,"SELF" if Abilities.DEFINITIONS[id].target == "SELF" else "NEAREST","DANGER" if id == "IRON_HIDE" else "ALWAYS"))
-	message(actor.name+" · "+Abilities.DEFINITIONS[id].name+" 습득! 이능 탭에서 장착하세요.")
+	message(actor.name+" · "+Abilities.DEFINITIONS[id].name+" 습득")
 	return true
 
 func equip_ability(index: int, slot: int, id: String) -> bool:
@@ -627,7 +617,7 @@ static func subject_name(value: String) -> String:
 func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	if target.hp <= 0: return
 	if boss_trial and target.enemy and rooms[room].shield:
-		message("보호막 · 전력탑을 먼저 파괴하세요."); return
+		message("보호막 · 피해 무효"); return
 	if target.get("iron_guard",false): amount = maxi(1,amount / 4)
 	elif target.get("guarded",false): amount = maxi(1,amount / 2)
 	if not target.enemy: amount = Growth.incoming(target,amount)
@@ -770,9 +760,9 @@ func check_battle_end() -> void:
 		if boss_trial:
 			rooms[room].shield = false
 			for actor in alive(): actor.hp = actor.max_hp; Body.heal(actor); actor.stress = 0
-			message("패턴 테스트 · 다음 방을 위해 체력과 부상을 회복했습니다.")
+			message("체력 회복")
 		for actor in alive(): stress(actor, -7)
-		message("전투 승리 · 전리품 %d. 부상과 기억을 안고 탐험을 계속합니다." % loot)
+		message("전투 승리 · 전리품 %d" % loot)
 
 func retreat() -> bool:
 	# The continuous floor only ends at the entry (return_home) or by abandon().
@@ -799,12 +789,12 @@ func pickup_relic() -> bool:
 	return floor_mode and Objective.pickup(self)
 
 func return_error() -> String:
-	if not floor_mode or phase != "BATTLE": return "탐험 중에만 귀환할 수 있습니다."
+	if not floor_mode or phase != "BATTLE": return "귀환 불가"
 	var actor: Dictionary = party[selected]
-	if actor.hp <= 0: return "지금은 행동할 수 없습니다."
+	if actor.hp <= 0: return "행동 불가"
 	var entry := entry_position()
-	if entry.x < 0 or (actor.pos != entry and not melee_reach(actor.pos,entry)): return "입구 관문 옆으로 이동하세요."
-	if not floor_state.safe(self): return "주변 적을 먼저 처리하세요."
+	if entry.x < 0 or (actor.pos != entry and not melee_reach(actor.pos,entry)): return "입구에서 귀환 가능"
+	if not floor_state.safe(self): return "주변에 적 있음"
 	return ""
 
 ## Normal end of a floor expedition. No enemy turn follows; the result is
@@ -814,8 +804,8 @@ func return_home() -> bool:
 	return finish_expedition("SUCCESS" if Objective.carrying(self) else "PARTIAL")
 
 func abandon_error() -> String:
-	if not floor_mode or phase != "BATTLE" or alive().is_empty(): return "탐험 중에만 포기할 수 있습니다."
-	if not floor_state.safe(self): return "적에게서 벗어난 뒤 원정을 포기할 수 있습니다."
+	if not floor_mode or phase != "BATTLE" or alive().is_empty(): return "포기 불가"
+	if not floor_state.safe(self): return "주변에 적 있음"
 	return ""
 
 func abandon() -> bool:
@@ -881,11 +871,11 @@ func finish_expedition(reason: String) -> bool:
 		bank += loot+bonus+provision_value
 		objective.state = "DELIVERED" if reason == "SUCCESS" else "LOST"
 		message("귀환 · 전리품 %d + 보급품 환전 %d%s. 누적 자금 %d" % [loot,provision_value," + 유물 회수 보너스 %d" % bonus if bonus > 0 else "",bank])
-		if reason == "ABANDON": message("원정 포기 · 임무 보상 없음. 전리품·성장·부상 유지, 생존자 스트레스 +20.")
+		if reason == "ABANDON": message("원정 포기 · 스트레스 +20")
 	else:
 		restore_snapshot()
 		objective.state = "LOST"
-		message("패배 · 이번 출정의 획득물과 보급품을 잃었습니다. 주인공은 출정 전 상태로 복원됩니다.")
+		message("원정 실패")
 	summary.bank = bank
 	result = summary
 	loot = 0; phase = "TOWN"; intents = []; enemies = []; tiles = []; effects.clear()
@@ -902,7 +892,7 @@ func refit() -> bool:
 	for actor in alive():
 		actor.hp = maxi(actor.hp,ceili(actor.max_hp*0.8)); actor.stress = mini(actor.stress,60)
 		actor.condition = "평온"; Body.heal(actor)
-	message("무료 재정비 · 최소한의 치료와 휴식. 부위 손상은 유지됩니다.")
+	message("재정비")
 	return true
 
 ## Count grants separately to prevent free-kit departure/return money farming.
@@ -968,7 +958,7 @@ func rest_town() -> bool:
 	bank -= 20
 	for actor in alive():
 		stress(actor, -40); actor.hp = mini(actor.max_hp, actor.hp + 20); Body.heal(actor)
-	message("요양 · 자금 20 소비. 기억과 부위 손상은 유지됩니다.")
+	message("요양 · 자금 -20")
 	return true
 
 func use_supply(slot: int, target: Vector2i = Vector2i(-1,-1), recipient: int = -1) -> bool:

@@ -52,16 +52,16 @@ static func carrying(s) -> bool:
 
 ## Empty string when pickup is legal; otherwise the reason shown to the player.
 static func error(s) -> String:
-	if not s.floor_mode or s.phase != "BATTLE": return "탐험 중에만 회수할 수 있습니다."
+	if not s.floor_mode or s.phase != "BATTLE": return "회수 불가"
 	var state: String = s.objective.get("state","")
-	if state == "CARRIED": return "이미 회수했습니다."
-	if state not in ["UNDISCOVERED","DISCOVERED"]: return "회수할 유물이 없습니다."
+	if state == "CARRIED": return "회수 완료"
+	if state not in ["UNDISCOVERED","DISCOVERED"]: return "유물 없음"
 	var p: Vector2i = s.objective.pos
-	if not s.floor_state.visible.has(p) or not s.floor_state.features.has(p): return "보이는 유물을 선택하세요."
+	if not s.floor_state.visible.has(p) or not s.floor_state.features.has(p): return "시야 밖"
 	var actor: Dictionary = s.party[s.selected]
-	if actor.hp <= 0 or actor.ap <= 0: return "지금은 행동할 수 없습니다."
-	if not s.combat_enemies().is_empty(): return "주변 적을 먼저 처리하세요."
-	if actor.pos != p and not s.melee_reach(actor.pos,p): return "유물 옆으로 이동하세요."
+	if actor.hp <= 0 or actor.ap <= 0: return "행동 불가"
+	if not s.combat_enemies().is_empty(): return "주변에 적 있음"
+	if actor.pos != p and not s.melee_reach(actor.pos,p): return "거리 초과"
 	return ""
 
 ## The only place that changes the world relic into a carried objective.
@@ -71,7 +71,7 @@ static func pickup(s) -> bool:
 	s.floor_state.features.erase(p)
 	s.floor_state.clear_marker(p)
 	s.objective.state = "CARRIED"
-	s.message(RELIC_LABEL+" 회수 · 입구 관문으로 돌아가세요.")
+	s.message(RELIC_LABEL+" 획득")
 	var actor: Dictionary = s.party[s.selected]
 	actor.ap -= 1; s.check_battle_end(); s.finish_player_action()
 	return true

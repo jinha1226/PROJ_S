@@ -22,7 +22,7 @@ static func summary(actor: Dictionary) -> String:
 
 static func detail(part: Dictionary) -> String:
 	match part_state(part):
-		"절단": return "잃은 부위입니다. 회복 물약으로 복구되지 않습니다."
-		"사용 불가": return "손상으로 기능을 잃었습니다. 체력 회복만으로 복구되지 않습니다."
-		"상처": return "상처가 있지만 아직 기능은 유지됩니다."
-	return "정상적으로 사용할 수 있습니다."
+		"절단": return "절단 · 물약 회복 불가"
+		"사용 불가": return "기능 상실 · HP 회복과 별개"
+		"상처": return "상처 · 기능 유지"
+	return "정상"

@@ -70,7 +70,7 @@ static func turn(s, enemy: Dictionary) -> void:
 		if not line(s,enemy.pos,target.pos,reach): continue
 		if role == "CASTER" and ready:
 			enemy.charging = true; enemy.cast_cell = target.pos; plan(s)
-			s.message(enemy.name+"가 마법을 준비합니다. 공격하면 시전을 끊을 수 있습니다.")
+			s.message(enemy.name+" · 시전")
 		else: strike(s,enemy,target,ROLES[role].damage)
 		return
 	# Search a bounded set of firing positions, then use the shared pathfinder.

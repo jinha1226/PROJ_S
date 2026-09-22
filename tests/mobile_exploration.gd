@@ -38,10 +38,13 @@ func run() -> void:
 	var board = scene.board
 	var position: Vector2i = s.party[0].pos
 	turns = s.round_number
+	var initial_side: int = board.view_side
 	touch(board,0,Vector2(100,120),true); touch(board,1,Vector2(200,120),true)
 	var drag := InputEventScreenDrag.new(); drag.index = 1; drag.position = Vector2(280,120)
 	board._gui_input(drag)
-	check(board.view_side == 6,"pinch outward zooms in and clamps")
+	check(board.view_side == clampi(roundi(initial_side/1.8),6,24),"pinch scales current camera size")
+	drag.position = Vector2(500,120); board._gui_input(drag)
+	check(board.view_side == 6,"pinch outward clamps at six tiles")
 	touch(board,1,drag.position,false); touch(board,0,Vector2(100,120),false)
 	check(s.round_number == turns and s.party[0].pos == position,"pinch release never moves or consumes a turn")
 	for side in [6,10,16,24]:

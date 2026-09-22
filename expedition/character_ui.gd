@@ -105,9 +105,9 @@ static func status(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	text(stats,"일반 공격 %d · 피해 감소 %d%%" % [Growth.power(actor,"MELEE",18),actor.growth.ranks.DEFENSE*4])
 	var body := card(list,"육체 상태")
 	text(body,BodyPresentation.summary(actor),18)
-	if actor.attack_factor < 100: text(body,"팔 손상으로 일반 공격력이 감소했습니다.",14)
-	if actor.move_factor > 100: text(body,"다리가 손상되었습니다.",14)
-	if actor.blood < 60: text(body,"혈액이 부족합니다. 회복이 필요합니다.",14)
+	if actor.attack_factor < 100: text(body,"팔 손상 · 공격력 감소",14)
+	if actor.move_factor > 100: text(body,"다리 손상",14)
+	if actor.blood < 60: text(body,"혈액 부족",14)
 	var row := HBoxContainer.new(); body.add_child(row)
 	var silhouette := Silhouette.new(); silhouette.body = {"parts":actor.body.parts}; row.add_child(silhouette)
 	var parts := VBoxContainer.new(); parts.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(parts)
@@ -150,7 +150,6 @@ static func personality(list: VBoxContainer, actor: Dictionary) -> void:
 		var row := VBoxContainer.new(); row.custom_minimum_size.y = 44; box.add_child(row)
 		text(row,"%s                         %d" % [names[id],actor.profile.value(id)])
 		gauge(row,actor.profile.value(id),1000,Color("69cfc2"))
-	text(list,"성향 수치는 0–1000 기준입니다.",11)
 
 static func memories(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	var names := {"SELF_HARM":["죽음의 문턱","큰 부상을 입거나 빈사 상태에 빠졌다."],"ALLY_DOWNED":["동료가 쓰러짐","동료가 쓰러지는 모습을 보았다."],"ALLY_LOST":["동료를 잃음","함께하던 동료를 잃었다."],"AID_RECEIVED":["동료의 도움","동료에게 도움을 받았다."],"COMMAND_CONFLICT":["명령과 갈등","명령을 따르는 데 갈등을 겪었다."]}
@@ -182,8 +181,6 @@ static func abilities(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		var policy = ui.button(box,"사용 방침 · "+ui.Session.Rules.summary(rule)+"  ›",func(): ui.open_rule(index))
 		policy.add_theme_font_size_override("font_size",11)
 		policy.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	text(list,"위쪽 스킬부터 사용 조건을 확인합니다.",11)
-	text(list,"교체는 전투 밖에서 가능합니다.",11)
 
 static func replace(ui, slot: int) -> void:
 	var index: int = ui.tactics_actor
@@ -198,7 +195,7 @@ static func replace(ui, slot: int) -> void:
 		ui.button(list,ui.Session.Rules.SKILLS[id].name,func():
 			if ui.session.equip_ability(index,slot,id):
 				ui.item_popup.hide(); ui.refresh(); ui.show_character(index,"이능"),can_invest(ui,actor))
-	if count == 0: text(list,"교체할 이능이 없습니다.\n정수를 획득해 새 이능을 배울 수 있습니다.")
+	if count == 0: text(list,"교체 가능한 이능 없음")
 	ui.button(ui.item_detail,"취소",func(): ui.item_popup.hide()); ui.item_popup.popup_centered()
 
 static func preview(ui, id: String, stat: bool = false) -> void:

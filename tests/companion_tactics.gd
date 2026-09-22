@@ -119,7 +119,7 @@ func exercise() -> void:
 	check(scene.board.companion_previews.size() == 1,"board receives companion action")
 	var header: Node = scene.root_layout.get_child(0)
 	var hud_buttons: Array = header.find_children("*","Button",true,false)
-	check(hud_buttons.map(func(b): return str(b.name)) == ["FoodButton","TorchButton","ObjectiveChip","ExpeditionMenu"],"HUD exposes resource, objective and menu buttons")
+	check(hud_buttons.map(func(b): return str(b.name)) == ["FoodButton","TorchButton","ExpeditionMenu"],"HUD exposes resource and menu buttons")
 	for control in hud_buttons:
 		check(control.size.y >= 44 and scene.get_global_rect().encloses(control.get_global_rect()),"HUD buttons remain usable and on screen")
 	header.get_node("ExpeditionMenu").pressed.emit()
