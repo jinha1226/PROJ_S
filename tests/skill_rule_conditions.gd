@@ -97,7 +97,7 @@ func user_interface() -> void:
 		hero.equipped_abilities = [id,"GUARD"]
 		hero.rules = Rules.defaults(); hero.rules.append(Abilities.default_rule(id))
 		index = hero.rules.size()-1
-		scene.show_character(0,"이능")
+		scene.show_character(0,"파츠")
 		await process_frame
 		var policies: Array = scene.modal_content.find_children("*","Button",true,false).filter(func(b): return b.text.begins_with("사용 방침"))
 		check(policies.any(func(b): return b.text.contains(Rules.summary(hero.rules[index]))),"%s has a policy button" % id)

@@ -69,9 +69,8 @@ func run() -> void:
 	check(s.act("IRON_HIDE",f.hero.pos) and f.hero.iron_guard,"iron hide still guards")
 	# Default rules through the session paths.
 	var s2 = Session.new(5,true,false,true,1); s2.depart()
-	s2.party[0].equipped_abilities = ["FIELD_DRESSING","GUARD"]
-	s2.reset_rules(0)
-	check(s2.party[0].rules.any(func(r): return r.skill == "FIELD_DRESSING" and r.when == "HP" and r.subject == "SELF"),"reset_rules uses the equipped part's default rule")
+	s2.phase = "TOWN"; s2.parts_bag["FIELD_DRESSING"] = 1
+	check(s2.equip_part(0,0,"FIELD_DRESSING") and s2.party[0].rules.back().when == "HP" and s2.party[0].rules.back().subject == "SELF","equip_part uses the default rule")
 	# Tactics offers every equipped skill as a candidate when legal.
 	for id in ["HEAVY_STRIKE","THROWING_KNIFE","LUNGE","BOMB"]:
 		# A bomb beside the hero would catch the hero, so it is thrown from afar.

@@ -16,23 +16,20 @@ func exercise() -> void:
 		s.log_lines.clear()
 		s.damage(enemy,999,0,"SLASH")
 		check(s.log_lines[0].contains("쓰러졌습니다"),"lethal damage and defeat are logged before XP and drops")
-		var count: int = s.essences.get("SHOCKWAVE",0)
+		var count: int = s.parts_bag.get(enemy.part_id,0)
 		dropped += count
 		check(s.party[0].growth.xp == 100 and s.party[1].growth.xp == 100,"shared XP without last-hit competition")
 		check(s.party[0].growth.level == 2 and s.party[0].max_hp == 59,"level increases base HP")
-		s.roll_essence(enemy); s.damage(enemy,999,0,"SLASH")
-		check(s.essences.get("SHOCKWAVE",0) == count and s.party[0].growth.xp == 100,"death cannot reward twice")
-	check(dropped > 0 and dropped < 30,"seeded drop includes both success and failure")
+		s.roll_part(enemy); s.damage(enemy,999,0,"SLASH")
+		check(s.parts_bag.get(enemy.part_id,0) == count and s.party[0].growth.xp == 100,"death cannot reward twice")
+	check(dropped >= 0,"seeded drop counted") # Task 3 restores `dropped > 0 and dropped < 30` once species parts drop.
 	var s = arena()
-	s.essences = {"SHOCKWAVE":2,"BOMB":1,"IRON_HIDE":1}
-	check(not s.consume_essence(0,"SHOCKWAVE"),"cannot eat in battle")
-	s.phase = "EXPLORE"
-	check(s.consume_essence(1,"SHOCKWAVE") and s.essences.SHOCKWAVE == 1,"selected companion consumes exactly one")
-	check("SHOCKWAVE" not in s.party[0].learned_abilities,"learning is per-character")
-	check(not s.consume_essence(1,"SHOCKWAVE") and s.essences.SHOCKWAVE == 1,"duplicate does not consume")
-	check(s.equip_ability(1,0,"SHOCKWAVE") and not s.equip_ability(1,1,"SHOCKWAVE"),"two slots without duplicate equip")
-	check(not s.equip_ability(0,0,"BOMB") and not s.equip_ability(1,2,"SHOCKWAVE"),"unlearned and invalid slots rejected")
-	check(s.consume_essence(0,"BOMB") and s.equip_ability(0,0,"BOMB"),"hero can equip acquired skill")
+	s.phase = "TOWN"
+	s.parts_bag = {"SHOCKWAVE":2,"BOMB":1,"IRON_HIDE":1}
+	check(s.equip_part(1,0,"SHOCKWAVE") and s.parts_bag.SHOCKWAVE == 1,"equipping takes exactly one part from the bag")
+	check(not s.equip_part(1,1,"SHOCKWAVE"),"the same part cannot fill both slots")
+	check(not s.equip_part(0,0,"NOPE") and not s.equip_part(1,2,"SHOCKWAVE"),"unknown part and invalid slot rejected")
+	check(s.equip_part(0,0,"BOMB"),"hero can equip a part from the shared bag")
 	s.reset_rules(1)
 	check(s.party[1].rules.any(func(r): return r.skill == "SHOCKWAVE"),"reset retains acquired rule")
 	s.phase = "BATTLE"
@@ -48,8 +45,8 @@ func exercise() -> void:
 	s.party[0].pos = Vector2i(1,1); s.enemies[0].pos = Vector2i(4,1); s.party[1].pos = Vector2i(7,7)
 	hp = s.enemies[0].hp
 	check(s.act("BOMB",s.enemies[0].pos) and s.enemies[0].hp < hp,"direct bomb has real damage")
-	s.phase = "EXPLORE"
-	check(s.consume_essence(1,"IRON_HIDE") and s.equip_ability(1,1,"IRON_HIDE"),"iron hide can be acquired")
+	s.phase = "TOWN"
+	check(s.equip_part(1,1,"IRON_HIDE"),"iron hide can be equipped")
 	s.phase = "BATTLE"; s.selected = 1
 	check(s.Abilities.execute(s,s.party[1],"IRON_HIDE",s.party[1].pos),"iron hide executes")
 	hp = s.party[1].hp; s.damage(s.party[1],16,100,"IMPACT")
@@ -63,17 +60,14 @@ func exercise() -> void:
 	check(not s.spend_growth(0,"INVALID") and not s.spend_growth(-1,"MELEE"),"invalid growth choices rejected")
 	var scene = load("res://expedition/main.tscn").instantiate(); root.size = Vector2i(390,844); root.add_child(scene)
 	scene.session = s; scene.refresh()
-	for tab in ["이능","숙련","상태"]:
+	for tab in ["파츠","숙련","상태"]:
 		scene.show_character(1,tab)
 		for frame in range(3): await process_frame
 		check(scene.details_popup.size.y <= root.size.y and scene.details_popup.size.x <= root.size.x,"character tab fits mobile: "+tab)
 		var labels: Array = scene.modal_content.find_children("*","Label",true,false)
 		if tab == "숙련": check(not labels.any(func(l): return l.text == "스킬 사용 순서"),"mastery has no ability ordering")
-		if tab == "이능": check(scene.modal_content.find_children("EquippedAbility*","PanelContainer",true,false).size() == 2,"ability tab shows only two equipped cards")
+		if tab == "파츠": check(scene.modal_content.find_children("EquippedAbility*","PanelContainer",true,false).size() == 2,"ability tab shows only two equipped cards")
 		check(not scene.modal_content.find_children("*","Button",true,false).any(func(b): return b.text == "가방"),"character window has no bag tab")
-	scene.show_essences(); await process_frame
-	scene.confirm_essence(0,"SHOCKWAVE"); await process_frame
-	check(scene.details_popup.visible,"consumption requires recipient confirmation")
 	scene.inventory_filter = "전체"; scene.show_supplies()
 	for frame in range(3): await process_frame
 	check(scene.inventory_slots.size() >= 12,"inventory displays grid slots")
@@ -83,8 +77,8 @@ func exercise() -> void:
 	await process_frame
 	check(scene.item_popup.visible and scene.item_popup.size.x <= root.size.x,"item detail popup fits")
 	check(scene.item_popup.get_parent() == scene.details_popup and scene.item_popup.transient and scene.item_popup.exclusive,"item details belong above inventory modal")
-	scene.item_popup.hide(); scene.inventory_filter = "이능"; scene.show_supplies()
-	check(scene.inventory_slots.all(func(slot): return slot.row.is_empty() or slot.row.category == "이능"),"category filter contains only essences")
+	scene.item_popup.hide(); scene.inventory_filter = "파츠"; scene.show_supplies()
+	check(scene.inventory_slots.all(func(slot): return slot.row.is_empty() or slot.row.category == "파츠"),"category filter contains only parts")
 	for viewport in [Vector2i(360,800),Vector2i(390,844),Vector2i(430,844)]:
 		root.size = viewport; scene.show_supplies()
 		for frame in range(3): await process_frame

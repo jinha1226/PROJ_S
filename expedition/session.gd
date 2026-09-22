@@ -17,7 +17,8 @@ const Tactics = preload("res://expedition/tactical_action_selector.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 const Growth = preload("res://expedition/growth.gd")
-var essences: Dictionary = {}
+var parts_bag: Dictionary = {}
+const STARTING_PARTS := {"PUSH":1,"GUARD":1}
 var party_command := "FOLLOW"
 var formation := "NONE"
 var command_target := -1
@@ -67,7 +68,8 @@ const MIN_KIT := {"food":12,"torches":2,"supplies":[1,0,0,0,0,1],"tools":{"KEY":
 const SHOP = [{"id":"food","name":"식량","price":1},{"id":"torch","name":"횃불","price":4},
 	{"id":"supply:0","name":"치유 물약","price":8},{"id":"supply:1","name":"정신 안정제","price":6},{"id":"supply:2","name":"활력 물약","price":6},
 	{"id":"supply:3","name":"화염 두루마리","price":5},{"id":"supply:4","name":"물 두루마리","price":4},{"id":"supply:5","name":"붕대","price":3},
-	{"id":"tool:KEY","name":"열쇠","price":6},{"id":"tool:SHOVEL","name":"삽","price":5}]
+	{"id":"tool:KEY","name":"열쇠","price":6},{"id":"tool:SHOVEL","name":"삽","price":5},
+	{"id":"part:PUSH","name":"밀치기 요령","price":10},{"id":"part:GUARD","name":"엄호 요령","price":10}]
 var purchases: Dictionary = {}
 const PROVISION_SELL_PERCENT := 10
 const ABANDON_STRESS := 20
@@ -86,6 +88,7 @@ func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = f
 	if floor_mode:
 		floor_state = Floor.new(); BOARD_SIDE = floor_state.size
 		bank = STARTING_FUNDS; food = 0; torches = 0; supplies = [0,0,0,0,0,0]; exploration_tools = {"KEY":0,"SHOVEL":0}
+		parts_bag = STARTING_PARTS.duplicate(true)
 		top_up_kit()
 	var count: int = clampi(p_party_size,1,3) if p_party_size > 0 else (2 if companions else 1 if boss_trial else 3)
 	for i in range(count):
@@ -571,16 +574,16 @@ func discharge(origin: Vector2i, source: int) -> void:
 func conductive(point: Vector2i) -> bool:
 	return tile(point).terrain in ["metal", "water"] or tile(point).wet >= 25
 
-func roll_essence(enemy: Dictionary) -> void:
-	if not enemy.enemy or enemy.hp > 0 or enemy.get("essence_rolled",false): return
-	enemy.essence_rolled = true
+func roll_part(enemy: Dictionary) -> void:
+	if not enemy.enemy or enemy.hp > 0 or enemy.get("part_rolled",false): return
+	enemy.part_rolled = true
 	for actor in alive():
 		if Growth.gain(actor,100 if boss_trial and not floor_mode else 25) > 0: message(actor.name+" · 레벨 %d" % actor.growth.level)
-	var id: String = enemy.get("essence_id","")
+	var id: String = str(enemy.get("part_id",""))
 	if not Abilities.DEFINITIONS.has(id): return
 	var chance: int = Floor.drop_percent(light) if floor_mode else Abilities.DROP_PERCENT
 	if Hexaco.sample(seed_value,expedition_number*10000+room*100+enemy.id,"essence",100) >= chance: return
-	essences[id] = int(essences.get(id,0))+1
+	parts_bag[id] = int(parts_bag.get(id,0))+1
 	message(Abilities.DEFINITIONS[id].item+" 획득")
 
 func spend_growth(index: int, id: String, stat: bool = false) -> bool:
@@ -593,15 +596,40 @@ func reset_rules(index: int) -> void:
 	for id in actor.equipped_abilities:
 		if Abilities.DEFINITIONS.has(id): actor.rules.append(Abilities.default_rule(id))
 
-func consume_essence(index: int, id: String) -> bool:
-	return false # Task 2 replaces essences with the shared parts bag.
+## Town only: a part leaves the bag for a slot; the slot's old part returns to the bag.
+func equip_part(index: int, slot: int, id: String) -> bool:
+	if phase != "TOWN" or index < 0 or index >= party.size() or slot < 0 or slot >= 2: return false
+	var actor: Dictionary = party[index]
+	if actor.hp <= 0 or not Abilities.DEFINITIONS.has(id) or int(parts_bag.get(id,0)) <= 0: return false
+	if id in actor.equipped_abilities: return false
+	var old: String = str(actor.equipped_abilities[slot])
+	if not old.is_empty(): unequip_part(index,slot)
+	parts_bag[id] -= 1
+	actor.equipped_abilities[slot] = id
+	actor.reservation = {}
+	if not actor.rules.any(func(r): return r.skill == id): actor.rules.append(Abilities.default_rule(id))
+	return true
 
-## Playtest helper: learn every catalog ability at once so loadouts can be tried without farming.
+func unequip_part(index: int, slot: int) -> bool:
+	if phase != "TOWN" or index < 0 or index >= party.size() or slot < 0 or slot >= 2: return false
+	var actor: Dictionary = party[index]
+	var old: String = str(actor.equipped_abilities[slot])
+	if actor.hp <= 0 or old.is_empty(): return false
+	actor.equipped_abilities[slot] = ""
+	parts_bag[old] = int(parts_bag.get(old,0))+1
+	actor.rules = actor.rules.filter(func(r): return r.skill != old)
+	actor.reservation = {}
+	return true
+
+## Playtest helper: one of every catalog part in the bag, so loadouts can be tried without farming.
 func grant_test_loadout() -> bool:
-	return false # Task 2 replaces essences with the shared parts bag.
-
-func equip_ability(index: int, slot: int, id: String) -> bool:
-	return false # Task 2 replaces this with town-only equip_part/unequip_part.
+	if not floor_mode or phase != "TOWN" or party.is_empty(): return false
+	var added := 0
+	for id in Abilities.DEFINITIONS:
+		if int(parts_bag.get(id,0)) > 0: continue
+		parts_bag[id] = 1; added += 1
+	message("시험 로드아웃 · 이미 전부 보유" if added == 0 else "시험 로드아웃 · 파츠 %d종 지급 — 파츠 탭에서 장착하세요." % added)
+	return true
 
 func enemy_attack_effect(enemy: Dictionary, cells: Array, area: bool = false) -> void:
 	if cells.is_empty(): return
@@ -678,7 +706,7 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 				remember_important(ally,"ALLY_LOST",target.id+1,source+1,900)
 				stress(ally, 22)
 	message("%s %s에게 %d의 피해를 주었습니다.%s" % [subject_name(source_name),target.name,lost," "+subject_name(target.name)+" 쓰러졌습니다." if target.hp <= 0 else ""])
-	if target.enemy and target.hp <= 0: roll_essence(target)
+	if target.enemy and target.hp <= 0: roll_part(target)
 
 func plan_enemies() -> void:
 	if floor_mode: Floor.MonsterAI.plan(self); return
@@ -852,12 +880,12 @@ func actor_restore(row: Dictionary) -> Dictionary:
 	return actor
 
 func take_snapshot() -> Dictionary:
-	return {"party":party.map(actor_snapshot),"essences":essences.duplicate(true),"bank":bank}
+	return {"party":party.map(actor_snapshot),"parts":parts_bag.duplicate(true),"bank":bank}
 
 func restore_snapshot() -> void:
 	if snapshot.is_empty(): return
 	party = snapshot.party.map(actor_restore)
-	essences = snapshot.essences.duplicate(true); bank = snapshot.bank
+	parts_bag = snapshot.parts.duplicate(true); bank = snapshot.bank
 	selected = 0
 
 func injury_count(actor: Dictionary) -> int:
@@ -880,7 +908,7 @@ func finish_expedition(reason: String) -> bool:
 	var bonus: int = Objective.RECOVERY_BONUS if reason == "SUCCESS" else 0
 	var provision_value := provision_sale_value() if kept else 0
 	var summary := {"reason":reason,"expedition":expedition_number,"relic":reason == "SUCCESS","loot":loot if kept else 0,"bonus":bonus,"settled":true,
-		"levels":hero.growth.level-int(before.growth.level) if kept else 0,"essences":{},"abilities":[],"injuries":0,"memories":0,
+		"levels":hero.growth.level-int(before.growth.level) if kept else 0,"parts":{},"injuries":0,"memories":0,
 		"provisions":provision_value,"remaining_stock":provision_stock(),"remaining_food":food,"remaining_light":light,
 		"stress_penalty":ABANDON_STRESS if reason == "ABANDON" else 0}
 	if kept:
@@ -888,11 +916,9 @@ func finish_expedition(reason: String) -> bool:
 			for actor in alive():
 				actor.stress = mini(200,actor.stress+ABANDON_STRESS)
 				stress(actor,0) # Refresh condition without personality/trauma modifiers.
-		for id in essences:
-			var gained: int = int(essences[id])-int(snapshot.essences.get(id,0))
-			if gained > 0: summary.essences[id] = gained
-		for id in hero.equipped_abilities:
-			if id not in before.equipped_abilities: summary.abilities.append(id)
+		for id in parts_bag:
+			var gained: int = int(parts_bag[id])-int(snapshot.parts.get(id,0))
+			if gained > 0: summary.parts[id] = gained
 		summary.injuries = injury_count(hero)-injury_count(actor_restore(before))
 		summary.memories = hero.memory.records.size()-before.memory.records.size()
 		bank += loot+bonus+provision_value
@@ -935,12 +961,15 @@ func top_up_kit() -> void:
 
 func provision_stock() -> Dictionary:
 	var remaining := {}
-	for row in SHOP: remaining[row.id] = stock(row.id)
+	for row in SHOP:
+		if str(row.id).begins_with("part:"): continue
+		remaining[row.id] = stock(row.id)
 	return remaining
 
 func provision_sale_value() -> int:
 	var value := 0
 	for row in SHOP:
+		if str(row.id).begins_with("part:"): continue
 		value += maxi(0,stock(row.id)-int(free_provisions.get(row.id,0)))*int(row.price)
 	return value*PROVISION_SELL_PERCENT/100
 
@@ -954,6 +983,7 @@ func stock(id: String) -> int:
 	if id == "torch": return torches
 	if id.begins_with("supply:"): return int(supplies[int(id.substr(7))])
 	if id.begins_with("tool:"): return int(exploration_tools.get(id.substr(5),0))
+	if id.begins_with("part:"): return int(parts_bag.get(id.substr(5),0))
 	return 0
 
 func add_stock(id: String, delta: int, free_first: bool = true) -> void:
@@ -964,6 +994,7 @@ func add_stock(id: String, delta: int, free_first: bool = true) -> void:
 	elif id == "torch": torches += delta
 	elif id.begins_with("supply:"): supplies[int(id.substr(7))] += delta
 	elif id.begins_with("tool:"): exploration_tools[id.substr(5)] = int(exploration_tools.get(id.substr(5),0))+delta
+	elif id.begins_with("part:"): parts_bag[id.substr(5)] = int(parts_bag.get(id.substr(5),0))+delta
 
 func buy(id: String) -> bool:
 	var cost := price(id)

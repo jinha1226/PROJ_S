@@ -16,28 +16,21 @@ func session_layer() -> void:
 	var s = Session.new(731,false,false,true)
 	var hero: Dictionary = s.party[0]
 	var equipped_before: Array = hero.equipped_abilities.duplicate()
-	var learned_before: Array = hero.learned_abilities.duplicate()
 	var rules_before: int = hero.rules.size()
+	var bag_before: Dictionary = s.parts_bag.duplicate(true)
 	check(s.grant_test_loadout(),"test loadout succeeds in town")
 	var newly: Array = []
 	for id in Session.Abilities.DEFINITIONS:
-		check(id in hero.learned_abilities,"every catalog ability learned: "+id)
-		if id not in learned_before: newly.append(id)
-	check(hero.rules.size() == rules_before+newly.size(),"exactly one rule per newly learned ability")
-	for i in range(rules_before,hero.rules.size()):
-		check(Session.Rules.valid(hero.rules[i]),"granted rule is valid: "+str(hero.rules[i].skill))
-	var granted: Array = []
-	for i in range(rules_before,hero.rules.size()): granted.append(hero.rules[i].skill)
-	granted.sort(); newly.sort()
-	check(granted == newly,"granted rules match the newly learned abilities")
-	check(hero.equipped_abilities == equipped_before,"equipment untouched")
-	check(s.log_lines[-1].begins_with("시험 로드아웃 · 이능"),"grant reports the learned count")
+		check(s.parts_bag.get(id,0) >= 1,"every catalog part is in the bag: "+id)
+		if int(bag_before.get(id,0)) <= 0: newly.append(id)
+	check(not newly.is_empty(),"the grant adds the parts the bag lacked")
+	check(hero.equipped_abilities == equipped_before and hero.rules.size() == rules_before,"equipment and rules untouched")
+	check(s.log_lines[-1] == "시험 로드아웃 · 파츠 %d종 지급 — 파츠 탭에서 장착하세요." % newly.size(),"grant reports the granted count")
 
-	var learned: Array = hero.learned_abilities.duplicate()
-	var rules: int = hero.rules.size()
+	var bag: Dictionary = s.parts_bag.duplicate(true)
 	check(s.grant_test_loadout(),"second call still succeeds")
-	check(hero.learned_abilities == learned and hero.rules.size() == rules,"second call adds nothing")
-	check(s.log_lines[-1] == "시험 로드아웃 · 이미 전부 습득","idempotent call reports nothing new")
+	check(s.parts_bag == bag,"second call adds nothing")
+	check(s.log_lines[-1] == "시험 로드아웃 · 이미 전부 보유","idempotent call reports nothing new")
 
 	s.depart()
 	check(not s.grant_test_loadout(),"test loadout refused outside town")
@@ -59,18 +52,12 @@ func scene_layer() -> void:
 	loadout.pressed.emit()
 	for frame in range(4): await process_frame
 	for id in Session.Abilities.DEFINITIONS:
-		check(id in s.party[0].learned_abilities,"button press learns "+id)
-	scene.show_character(0,"이능")
+		check(s.parts_bag.get(id,0) >= 1,"button press grants "+id)
+	check(s.equip_part(0,0,"PUSH") and s.equip_part(0,1,"GUARD"),"granted parts can be equipped")
+	scene.show_character(0,"파츠")
 	for frame in range(4): await process_frame
 	var cards: Array = scene.modal_content.find_children("EquippedAbility*","PanelContainer",true,false)
-	check(not cards.is_empty(),"ability tab still renders the equipped cards")
-	# Newly learned abilities are unequipped, so the tab lists them through the slot chooser.
-	scene.CharacterUI.replace(scene,0)
-	for frame in range(3): await process_frame
-	var titles: Array = scene.item_detail.find_children("*","Button",true,false).map(func(b): return b.text)
-	for id in Session.Abilities.DEFINITIONS:
-		check(Session.Rules.SKILLS[id].name in titles,"ability tab offers "+id+" for equipping")
-	scene.item_popup.hide()
+	check(cards.size() == 2,"the parts tab renders the equipped cards")
 	scene.details_popup.hide()
 	s.depart()
 	scene.refresh()

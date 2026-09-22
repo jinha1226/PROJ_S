@@ -22,7 +22,7 @@ func run() -> void:
 	check(Floor.light_tier(59) == "DIM" and Floor.light_tier(35) == "DIM","thirty-five to fifty-nine is dim")
 	check(Floor.light_tier(34) == "DARK" and Floor.light_tier(0) == "DARK","below thirty-five is dark")
 	check(Floor.loot_percent(90) == 100 and Floor.loot_percent(50) == 125 and Floor.loot_percent(20) == 150,"loot scales by tier")
-	check(Floor.drop_percent(90) == 50 and Floor.drop_percent(50) == 65 and Floor.drop_percent(20) == 80,"essence drop scales by tier")
+	check(Floor.drop_percent(90) == 50 and Floor.drop_percent(50) == 65 and Floor.drop_percent(20) == 80,"part drop scales by tier")
 	check(Floor.enemy_bonus(90) == 0 and Floor.enemy_bonus(50) == 1 and Floor.enemy_bonus(20) == 2,"enemy damage bonus by tier")
 
 	# Curio loot uses the tier at the moment of investigation.
@@ -39,19 +39,20 @@ func run() -> void:
 	altar.party[0].pos = ap+Vector2i.LEFT; altar.light = 20; altar.floor_state.observe(altar)
 	check(altar.floor_state.interact(altar,ap) and altar.loot == 37,"dark altar pays 150 percent")
 
-	# Essence drops: same seeds, more drops when dark.
+	# Part drops: same seeds, more drops when dark.
 	var bright_drops := 0; var dark_drops := 0
 	for seed_value in range(20):
 		for light in [90,20]:
 			var s = Session.new(seed_value,true,false,true); s.depart(); s.light = light
 			var count := 0
 			for enemy in s.enemies:
-				var before: int = s.essences.values().reduce(func(a,b): return a+b,0)
-				enemy.hp = 0; s.roll_essence(enemy)
-				if s.essences.values().reduce(func(a,b): return a+b,0) > before: count += 1
+				var before: int = s.parts_bag.values().reduce(func(a,b): return a+b,0)
+				enemy.part_id = "BOMB" # Task 3 gives floor monsters their species part.
+				enemy.hp = 0; s.roll_part(enemy)
+				if s.parts_bag.values().reduce(func(a,b): return a+b,0) > before: count += 1
 			if light == 90: bright_drops += count
 			else: dark_drops += count
-	check(dark_drops > bright_drops,"dark floors drop more essences (%d vs %d)" % [dark_drops,bright_drops])
+	check(dark_drops > bright_drops,"dark floors drop more parts (%d vs %d)" % [dark_drops,bright_drops])
 
 	# Enemy damage bonus per tier.
 	for row in [[90,7],[50,8],[20,9]]:

@@ -39,9 +39,9 @@ func run() -> void:
 	check(scene.board.visible_side() == 13 and scene.board.camera_cell() == s.party[0].pos-Vector2i(6,6),"default camera centers hero in thirteen tiles even near map edge")
 	check(scene.find_child("ObjectiveChip",true,false) == null,"objective button removed from HUD")
 	var drop: Dictionary = s.make_actor(999,"시험 대상",true)
-	drop.hp = 0; drop.essence_id = "BOMB"
+	drop.hp = 0; drop.part_id = "BOMB"
 	while s.Hexaco.sample(s.seed_value,s.expedition_number*10000+s.room*100+drop.id,"essence",100) >= s.Floor.drop_percent(s.light): drop.id += 1
-	scene.run_action(func(): s.roll_essence(drop); return true)
+	scene.run_action(func(): s.roll_part(drop); return true)
 	check(scene.notice.is_empty() and not scene.toast.visible,"item pickup produces no toast")
 	check(s.log_lines[-1] == Session.Abilities.DEFINITIONS.BOMB.item+" 획득","item pickup uses concise log")
 	var c := Fixture.arena(s,15)

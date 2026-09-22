@@ -49,11 +49,11 @@ static func shell(ui, tab: String) -> VBoxContainer:
 		member.toggle_mode = true; member.button_pressed = index == ui.tactics_actor
 	var tabs := HBoxContainer.new(); tabs.name = "CharacterTabs"; tabs.add_theme_constant_override("separation",0)
 	place(tabs,design,Rect2(0,110,390,42))
-	for name in ["상태","성격","기억","숙련","이능"]:
+	for name in ["상태","성격","기억","숙련","파츠"]:
 		var button = ui.button(tabs,name,func(): ui.show_character(ui.tactics_actor,name))
 		button.toggle_mode = true; button.button_pressed = tab == name; button.custom_minimum_size.y = 42
 		button.size_flags_stretch_ratio = 1
-	var heading := Label.new(); heading.text = "장착 이능 2 / 2" if tab == "이능" else "현재 상태" if tab == "상태" else tab
+	var heading := Label.new(); heading.text = "파츠 슬롯 %d / 2" % ui.session.party[ui.tactics_actor].equipped_abilities.filter(func(id): return not str(id).is_empty()).size() if tab == "파츠" else "현재 상태" if tab == "상태" else tab
 	heading.add_theme_font_size_override("font_size",19); heading.add_theme_color_override("font_color",Color("d0c8b4"))
 	place(heading,design,Rect2(22,166,346,30))
 	var scroll := ScrollContainer.new(); scroll.name = "CharacterScroll"; scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -185,17 +185,18 @@ static func abilities(ui, list: VBoxContainer, actor: Dictionary) -> void:
 static func replace(ui, slot: int) -> void:
 	var index: int = ui.tactics_actor
 	var actor: Dictionary = ui.session.party[index]
-	ui.clear(ui.item_detail); text(ui.item_detail,"이능 교체",20)
+	ui.clear(ui.item_detail); text(ui.item_detail,"파츠 교체",20)
 	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(300,260); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; ui.item_detail.add_child(scroll)
 	var list := VBoxContainer.new(); list.size_flags_horizontal = Control.SIZE_EXPAND_FILL; scroll.add_child(list)
 	var count := 0
-	for id in actor.learned_abilities:
+	for id in ui.session.parts_bag:
+		if int(ui.session.parts_bag[id]) <= 0: continue
 		if id in actor.equipped_abilities: continue
 		count += 1
 		ui.button(list,ui.Session.Rules.skill(id).name,func():
-			if ui.session.equip_ability(index,slot,id):
-				ui.item_popup.hide(); ui.refresh(); ui.show_character(index,"이능"),can_invest(ui,actor))
-	if count == 0: text(list,"교체 가능한 이능 없음")
+			if ui.session.equip_part(index,slot,id):
+				ui.item_popup.hide(); ui.refresh(); ui.show_character(index,"파츠"),ui.session.phase == "TOWN" and actor.hp > 0)
+	if count == 0: text(list,"교체 가능한 파츠 없음")
 	ui.button(ui.item_detail,"취소",func(): ui.item_popup.hide()); ui.item_popup.popup_centered()
 
 static func preview(ui, id: String, stat: bool = false) -> void:

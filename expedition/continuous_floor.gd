@@ -72,10 +72,7 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 			enemy.group = "F%d_E%02d" % [int(theme.depth),e+1]; enemy.home = enemy.pos; enemy.alert = false
 			enemy.species_id = member.species_id; enemy.tier = encounter.tier; enemy.mandatory = encounter.mandatory
 			MonsterAI.configure(enemy,member.role)
-			# Floor drops cycled BOMB, SHOCKWAVE, IRON_HIDE, which is the catalog
-			# pool reversed and started one in; keep it so drops are unchanged.
-			var pool: Array = Abilities.droppable(); pool.reverse()
-			enemy.essence_id = "" if pool.is_empty() else pool[(s.enemies.size()+1) % pool.size()]
+			enemy.part_id = Abilities.species_part(member.species_id)
 			s.enemies.append(enemy)
 	for p in layout.features: state.features[p] = layout.features[p].duplicate(true)
 	for i in range(s.party.size()):

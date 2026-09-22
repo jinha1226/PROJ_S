@@ -168,7 +168,7 @@ func run() -> void:
 	var hero: Dictionary = s.party[0]
 	bank = s.bank
 	var level: int = hero.growth.level; var memories: int = hero.memory.records.size(); var hp_before: int = hero.hp
-	s.essences["BOMB"] = 3; s.loot = 90; s.objective.state = "CARRIED"
+	s.parts_bag["BOMB"] = 3; s.loot = 90; s.objective.state = "CARRIED"
 	Session.Growth.gain(hero,10000)
 	check(hero.growth.level > level,"expedition growth happened")
 	s.enemies[0].pos = hero.pos+Vector2i.RIGHT; s.floor_state.observe(s)
@@ -176,7 +176,7 @@ func run() -> void:
 	s.damage(hero,50,s.enemies[0].id,"IMPACT")
 	s.check_battle_end()
 	check(s.phase == "TOWN" and s.result.reason == "DEFEAT","defeat ends the expedition")
-	check(s.bank == bank and s.essences.get("BOMB",0) == 0 and s.party[0].growth.level == level and s.party[0].hp == hp_before,"defeat restores the departure snapshot")
+	check(s.bank == bank and s.parts_bag.get("BOMB",0) == 0 and s.party[0].growth.level == level and s.party[0].hp == hp_before,"defeat restores the departure snapshot")
 	check(s.party[0].memory.records.size() == memories and s.objective.state == "LOST","expedition memories and relic are lost")
 	check(s.party[0].hp > 0 and s.alive().size() == 1,"hero survives to redeploy")
 	s.refit(); check(s.depart(),"same hero departs after defeat")
@@ -191,8 +191,8 @@ func run() -> void:
 	check(s.phase == "TOWN" and s.result.reason == "DEFEAT","dying during the pickup action is a defeat, not success")
 
 	# --- abandon -----------------------------------------------------------------
-	s.refit(); s.depart(); bank = s.bank; s.loot = 50; s.essences["BOMB"] = 2
-	check(s.abandon() and s.result.reason == "ABANDON" and s.bank == bank+50+s.result.provisions and s.essences.get("BOMB",0) == 2,"abandon keeps expedition loot and essences")
+	s.refit(); s.depart(); bank = s.bank; s.loot = 50; s.parts_bag["BOMB"] = 2
+	check(s.abandon() and s.result.reason == "ABANDON" and s.bank == bank+50+s.result.provisions and s.parts_bag.get("BOMB",0) == 2,"abandon keeps expedition loot and parts")
 	check(not s.abandon(),"abandon once")
 	s.refit()
 	check(s.depart() and s.phase == "BATTLE","redeploy after abandon")

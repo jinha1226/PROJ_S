@@ -17,6 +17,7 @@ func _initialize() -> void: call_deferred("run")
 func run() -> void:
 	catalog()
 	basic_parts()
+	bag()
 	print("Parts: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 ## Every definition carries the part fields and a rule the schema accepts.
@@ -64,3 +65,56 @@ func basic_parts() -> void:
 	check(not s.act("GUARD",foe.pos) and not s.act("GUARD",hero.pos),"guard rejects foes and self")
 	var legacy = Session.new(731,true,true)
 	check(legacy.party[0].equipped_abilities == ["PUSH","GUARD"] and legacy.party[0].rules.size() == 2,"non-floor modes start with the basics equipped")
+
+## Parts are items: town-only slots, one bag for the party, snapshot rules.
+func bag() -> void:
+	var s = Session.new(731,true,true,true,3)
+	check(s.parts_bag == {"PUSH":1,"GUARD":1},"floor session starts with the two basics in the bag")
+	check(s.stock("part:PUSH") == 1 and s.price("part:GUARD") == 10,"basics are shop goods")
+	var bank: int = s.bank
+	check(s.buy("part:GUARD") and s.parts_bag.GUARD == 2 and s.bank == bank-10,"buying a basic adds to the bag")
+	check(s.refund("part:GUARD") and s.parts_bag.GUARD == 1 and s.bank == bank,"refund returns it")
+	check(not s.provision_stock().has("part:PUSH") and s.provision_sale_value() == 0,"parts are never liquidated")
+	check(not s.equip_part(0,2,"PUSH") and not s.equip_part(0,0,"BOMB") and not s.equip_part(0,0,"NOPE"),"bad slot, empty bag and unknown id refused")
+	check(s.equip_part(0,0,"PUSH") and s.party[0].equipped_abilities[0] == "PUSH" and s.parts_bag.PUSH == 0,"equip takes the part from the bag")
+	check(s.party[0].rules.size() == 1 and s.party[0].rules[0].skill == "PUSH","equip adds the default rule")
+	check(not s.equip_part(0,1,"PUSH"),"same part twice on one member refused")
+	check(not s.equip_part(1,0,"PUSH"),"bag empty for the second member")
+	s.parts_bag.PUSH = 1
+	check(s.equip_part(1,0,"PUSH"),"another member may hold the same part")
+	check(s.equip_part(0,0,"GUARD") and s.parts_bag.PUSH == 1 and s.party[0].equipped_abilities[0] == "GUARD","replacing returns the old part")
+	check(s.party[0].rules.size() == 1 and s.party[0].rules[0].skill == "GUARD","replacing swaps the rule")
+	check(s.unequip_part(0,0) and s.party[0].equipped_abilities[0] == "" and s.parts_bag.GUARD == 1 and s.party[0].rules.is_empty(),"unequip empties the slot and the rule")
+	check(not s.unequip_part(0,0),"empty slot cannot be unequipped")
+	check(s.equip_part(0,0,"PUSH") and s.equip_part(0,1,"GUARD"),"both slots")
+	s.depart()
+	check(not s.equip_part(0,0,"PUSH") and not s.unequip_part(0,1),"slots are locked outside town")
+	# Drops and the snapshot rule.
+	Fixture.arena(s,8)
+	var foe: Dictionary = s.enemies[0]
+	check(foe.part_id == Abilities.species_part(foe.species_id),"floor monsters carry their species part")
+	# Task 3 enables this once species parts exist.
+	if not Abilities.droppable().is_empty():
+		var tries := 0; var got := false
+		for enemy in s.enemies:
+			enemy.hp = 0; s.roll_part(enemy); tries += 1
+			if s.parts_bag.get(enemy.part_id,0) > 0: got = true
+		check(got,"some monster in the roster drops its part (%d tried)" % tries)
+	var carried: Dictionary = s.parts_bag.duplicate(true)
+	s.loot = 10; s.objective.state = "CARRIED"
+	for enemy in s.enemies: enemy.hp = 0
+	s.floor_state.observe(s)
+	check(s.abandon() and s.parts_bag == carried,"abandon keeps found parts")
+	check(s.result.has("parts") and not s.result.has("essences"),"result reports parts")
+	s.refit(); s.depart(); Fixture.arena(s,8)
+	var kept: Dictionary = s.parts_bag.duplicate(true)
+	s.parts_bag["BOMB"] = int(s.parts_bag.get("BOMB",0))+3
+	s.damage(s.party[0],999,999,"IMPACT"); s.damage(s.party[1],999,999,"IMPACT"); s.damage(s.party[2],999,999,"IMPACT"); s.check_battle_end()
+	check(s.result.reason == "DEFEAT" and s.parts_bag == kept,"defeat restores the bag snapshot")
+	# Test loadout.
+	var t = Session.new(731,false,false,true)
+	check(t.grant_test_loadout() and t.log_lines[-1].begins_with("시험 로드아웃 · 파츠"),"test loadout grants parts")
+	for id in Abilities.DEFINITIONS: check(t.parts_bag.get(id,0) >= 1,"loadout has "+id)
+	var snapshot: Dictionary = t.parts_bag.duplicate(true)
+	check(t.grant_test_loadout() and t.parts_bag == snapshot,"loadout is idempotent")
+	t.depart(); check(not t.grant_test_loadout(),"loadout refused outside town")

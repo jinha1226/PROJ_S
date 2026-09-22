@@ -578,7 +578,7 @@ func build_result_card() -> void:
 		label(list,"보급품 환전 +%d" % r.provisions,13)
 		if r.reason == "ABANDON": label(list,"임무 보상 없음 · 생존자 스트레스 +20",13)
 		var items: Array = []
-		for id in r.essences: items.append("%s ×%d" % [Session.Abilities.DEFINITIONS[id].item,r.essences[id]])
+		for id in r.parts: items.append("%s ×%d" % [Session.Abilities.DEFINITIONS[id].item,r.parts[id]])
 		label(list,"획득 아이템: "+(", ".join(items) if not items.is_empty() else "없음"),13)
 		label(list,"숙련: 레벨 +%d · 새 부위 손상 %d · 새 기억 %d" % [r.levels,r.injuries,r.memories],13)
 	else:
@@ -629,13 +629,13 @@ func show_character(index: int, tab: String = "상태") -> void:
 	match tab:
 		"상태": CharacterUI.status(self,list,actor)
 		"숙련": CharacterUI.mastery(self,list,actor)
-		"이능": CharacterUI.abilities(self,list,actor)
+		"파츠": CharacterUI.abilities(self,list,actor)
 		"성격": CharacterUI.personality(list,actor)
 		"기억": CharacterUI.memories(self,list,actor)
 	details_popup.popup_centered(Vector2i(size))
 
 func show_tactics() -> void:
-	show_character(tactics_actor,"이능")
+	show_character(tactics_actor,"파츠")
 
 func open_rule(index: int) -> void:
 	tactics_expanded = index
@@ -706,9 +706,9 @@ func inventory_rows() -> Array:
 	for i in range(6):
 		if session.supplies[i] > 0: rows.append({"id":"supply:%d"%i,"label":Session.SUPPLY_NAMES[i],"quantity":session.supplies[i],"category":"소모품","slot":i,"description":descriptions[i],"icon":Art.item(i)})
 	for id in Session.Abilities.DEFINITIONS:
-		if session.essences.get(id,0) <= 0: continue
+		if session.parts_bag.get(id,0) <= 0: continue
 		var def: Dictionary = Session.Abilities.DEFINITIONS[id]
-		rows.append({"id":id,"label":def.item,"quantity":session.essences[id],"category":"이능","description":"습득: "+def.name+"\n"+def.description,"icon":Art.item(int(def.icon))})
+		rows.append({"id":id,"label":def.item,"quantity":session.parts_bag[id],"category":"파츠","description":def.description,"icon":Art.item(int(def.icon))})
 	if session.floor_mode and Session.Objective.carrying(session):
 		rows.append({"id":"mission:relic","label":Session.Objective.RELIC_LABEL,"quantity":1,"category":"임무","description":Session.Objective.RELIC_DESCRIPTION,"icon":Art.navigation(3)})
 	for entry in [["food","식량",session.food,"이동 시 소모"],["torch","횃불",session.torches,"밝기 +50"]]:
@@ -717,7 +717,7 @@ func inventory_rows() -> Array:
 
 func build_inventory() -> void:
 	var filters := HBoxContainer.new(); modal_content.add_child(filters)
-	for category in ["전체","소모품","이능","자원","도구","임무"]:
+	for category in ["전체","소모품","파츠","자원","도구","임무"]:
 		var pick := button(filters,category,func(): inventory_filter = category; show_supplies())
 		pick.toggle_mode = true; pick.button_pressed = category == inventory_filter
 	var rows: Array = inventory_rows().filter(func(r): return inventory_filter == "전체" or r.category == inventory_filter)
@@ -740,10 +740,7 @@ func show_item_detail(id: String) -> void:
 		if is_instance_valid(slot): slot.selected = slot.row.get("id","") == id; slot.queue_redraw()
 	clear(item_detail); label(item_detail,"%s × %d" % [row.label,row.quantity],18)
 	var info := label(item_detail,row.description,12); info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.custom_minimum_size.x = minf(290,size.x-32)
-	if row.category == "이능":
-		for i in range(session.party.size()):
-			button(item_detail,session.party[i].name+"에게 먹이기",func(): item_popup.hide(); confirm_essence(i,id),session.safe_management() and session.party[i].hp > 0 and id not in session.party[i].learned_abilities)
-	elif row.category == "소모품":
+	if row.category == "소모품":
 		if row.slot in [3,4]:
 			button(item_detail,"사용 · 바닥 선택",func(): item_popup.hide(); details_popup.hide(); choose_item(row.slot),session.phase == "BATTLE")
 		else:
@@ -761,21 +758,8 @@ func popup_list() -> VBoxContainer:
 func build_abilities() -> void:
 	var actor: Dictionary = session.party[tactics_actor]
 	var list := popup_list()
-	for id in actor.learned_abilities:
+	for id in actor.equipped_abilities:
+		if id.is_empty(): continue
 		var card := CharacterUI.card(list,Session.Rules.skill(id).name)
 		CharacterUI.text(card,Session.Abilities.DEFINITIONS.get(id,{}).get("description","시작 기술"))
-		var row := HBoxContainer.new(); card.add_child(row)
-		for slot in range(2):
-			button(row,"%d번 장착%s" % [slot+1," 중" if actor.equipped_abilities[slot] == id else ""],func(): session.equip_ability(tactics_actor,slot,id); refresh(); show_character(tactics_actor,"이능"),session.phase in ["TOWN","EXPLORE"] and actor.hp > 0 and id not in actor.equipped_abilities)
-	button(list,"가방",show_essences)
 	build_skill_rules(list)
-
-func show_essences() -> void:
-	inventory_filter = "이능"; show_supplies()
-
-func confirm_essence(index: int, id: String) -> void:
-	var def: Dictionary = Session.Abilities.DEFINITIONS[id]
-	modal("사용 확인",def.item+" ×1 → "+def.name)
-	button(modal_content,"먹고 습득",func():
-		if session.consume_essence(index,id): refresh(); show_character(index,"이능")
-		else: show_essences())

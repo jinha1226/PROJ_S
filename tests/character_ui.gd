@@ -27,7 +27,7 @@ func run() -> void:
 		root.size = viewport
 		await process_frame
 		for member in range(2):
-			for tab in ["상태","성격","기억","숙련","이능"]:
+			for tab in ["상태","성격","기억","숙련","파츠"]:
 				scene.show_character(member,tab)
 				for frame in range(4): await process_frame
 				check(scene.details_popup.size.x <= viewport.x,"popup fits portrait width: "+tab)
@@ -40,7 +40,7 @@ func run() -> void:
 				check(folio.get_node("CharacterClose").position.y == 768,"fixed close placement")
 				if "--capture" in OS.get_cmdline_user_args() and viewport == Vector2i(390,844) and member == 1:
 					await RenderingServer.frame_post_draw
-					root.get_texture().get_image().save_png("/tmp/folio-"+str(["상태","성격","기억","숙련","이능"].find(tab))+".png")
+					root.get_texture().get_image().save_png("/tmp/folio-"+str(["상태","성격","기억","숙련","파츠"].find(tab))+".png")
 	scene.session.party[1].growth.points = 2
 	scene.show_character(1,"숙련")
 	var before: int = scene.session.party[1].growth.ranks.MELEE
@@ -55,9 +55,13 @@ func run() -> void:
 	check(scene.session.party[0].growth.ranks.MELEE == 0,"hero unaffected")
 	scene.session.party[1].equipped_abilities = ["PUSH","GUARD"]
 	scene.session.party[1].rules = [scene.Session.Abilities.default_rule("PUSH"),scene.Session.Abilities.default_rule("GUARD")]
+	scene.session.parts_bag["BOMB"] = 1
+	check(scene.session.equip_part(1,0,"BOMB") and scene.session.party[1].equipped_abilities == ["BOMB","GUARD"] and scene.session.parts_bag.BOMB == 0,"equipping fills the chosen slot only")
+	check(scene.session.parts_bag.get("PUSH",0) == 2,"the replaced part returns to the bag")
+	check(scene.session.party[0].equipped_abilities == ["",""],"other members keep their own slots")
 	# A rule for a part nobody has equipped stays out of the sheet.
-	scene.session.party[1].rules.append(scene.Session.Rules.make_rule("BOMB","NEAREST","ALWAYS"))
-	scene.show_character(1,"이능")
+	scene.session.party[1].rules.append(scene.Session.Rules.make_rule("PUSH","NEAREST","ALWAYS"))
+	scene.show_character(1,"파츠")
 	check(scene.modal_content.find_children("EquippedAbility*","PanelContainer",true,false).size() == 2,"unequipped ability hidden")
 	for frame in range(3): await process_frame
 	var policies: Array = scene.modal_content.find_children("*","Button",true,false).filter(func(b): return b.text.begins_with("사용 방침"))

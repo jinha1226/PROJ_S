@@ -48,14 +48,14 @@ func run() -> void:
 	var p: Vector2i = s.floor_state.features.keys().filter(func(cell): return s.floor_state.features[cell].get("curio_id","") == "DIRT_PILE")[0]
 	hero.pos = p+Vector2i.LEFT; s.floor_state.observe(s)
 	check(Session.Curios.resolve(s,p,"TOOL"),"recover food through a real curio")
-	s.essences.BOMB = 1; Session.Growth.gain(hero,100)
+	s.parts_bag.BOMB = 1; Session.Growth.gain(hero,100)
 	s.damage(hero,5,999,"IMPACT"); hero.stress = 40
 	var hp: int = hero.hp; var body: Dictionary = hero.body.to_dict()
 	var memories: Dictionary = hero.memory.to_dict()
 	s.objective.state = "CARRIED"
 	check(s.abandon(),"abandon expedition with recovered supplies")
 	check(s.result.reason == "ABANDON" and s.result.bonus == 0 and s.objective.state == "LOST","abandon never pays mission bonus")
-	check(s.essences.BOMB == 1 and s.party[0].growth.level == 2,"abandon preserves loot and growth")
+	check(s.parts_bag.BOMB == 1 and s.party[0].growth.level == 2,"abandon preserves loot and growth")
 	check(s.party[0].hp == hp and s.party[0].body.to_dict() == body and s.party[0].memory.to_dict() == memories,"abandon does not roll back health, injuries or memories")
 	check(s.party[0].stress == 60,"abandon adds fixed twenty stress without trait modifiers")
 	check(s.bank == bank+21 and s.result.remaining_food == 22 and s.food == 12,"found food is sold, not carried, alongside curio loot")
@@ -65,14 +65,14 @@ func run() -> void:
 	check(not s.abandon() and not s.finish_expedition("ABANDON") and s.result.is_empty(),"cannot abandon while enemies are visible")
 	# Defeat retains the old permanent state but forfeits all expedition supplies.
 	clear_enemies(s)
-	var permanent_essences: Dictionary = s.essences.duplicate(true)
+	var permanent_parts: Dictionary = s.parts_bag.duplicate(true)
 	var permanent_level: int = s.party[0].growth.level
 	bank = s.bank
-	s.essences.BOMB += 3; s.add_stock("food",100); s.add_stock("supply:0",5); s.loot = 90
+	s.parts_bag.BOMB += 3; s.add_stock("food",100); s.add_stock("supply:0",5); s.loot = 90
 	Session.Growth.gain(s.party[0],1000)
 	s.damage(s.party[0],999,999,"IMPACT"); s.check_battle_end()
 	check(s.result.reason == "DEFEAT" and s.result.provisions == 0 and s.bank == bank,"defeat pays neither loot nor supply salvage")
-	check(s.essences == permanent_essences and s.party[0].growth.level == permanent_level,"defeat restores permanent gains")
+	check(s.parts_bag == permanent_parts and s.party[0].growth.level == permanent_level,"defeat restores permanent gains")
 	check(s.food == 12 and s.supplies == Session.MIN_KIT.supplies,"defeat discards found goods before free restocking")
 	# The result records actual resources before town grants obscure the run.
 	s.refit(); s.depart(); clear_enemies(s); s.add_stock("food",-s.food)
