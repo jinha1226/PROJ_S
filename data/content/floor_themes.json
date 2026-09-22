@@ -1,0 +1,28 @@
+{
+  "content_schema_version": 1,
+  "content_type": "floor_themes",
+  "themes": {
+    "F1_RUINS": {
+      "label": "갈림길 미궁",
+      "size": 64,
+      "depth": 1,
+      "rooms": {"count": [10, 12], "fight": [4, 6], "fight_size": [[9, 9], [12, 10]], "plain_size": [[5, 5], [8, 7]]},
+      "corridor": {"width": 1, "wiggle": 2, "extra_links": [2, 3]},
+      "palette": {"floor": "stone", "accents": ["rubble", "wood", "water"], "accent_ratio": 0.12},
+      "templates": {"required": ["entry_camp", "relic_vault", "sealed_treasury"], "fight_pool": ["flooded_cistern", "collapsed_store", "timber_gallery"], "fight_picks": 2},
+      "monsters": {"budget": {"early": 3, "mid": 6, "deep": 9, "optional": 5}},
+      "curios": {"locked_chest": [2, 3], "dirt_pile": [2, 3]}
+    },
+    "F2_MINES": {
+      "label": "폐광",
+      "size": 64,
+      "depth": 2,
+      "rooms": {"count": [10, 12], "fight": [4, 6], "fight_size": [[9, 9], [12, 10]], "plain_size": [[5, 5], [8, 7]]},
+      "corridor": {"width": 1, "wiggle": 2, "extra_links": [2, 3]},
+      "palette": {"floor": "stone", "accents": ["metal", "wood"], "accent_ratio": 0.15},
+      "templates": {"required": ["entry_camp", "relic_vault", "sealed_treasury"], "fight_pool": ["flooded_cistern", "collapsed_store", "timber_gallery"], "fight_picks": 2},
+      "monsters": {"budget": {"early": 4, "mid": 8, "deep": 12, "optional": 6}},
+      "curios": {"locked_chest": [2, 3], "dirt_pile": [2, 3]}
+    }
+  }
+}
