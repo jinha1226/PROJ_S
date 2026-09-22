@@ -74,7 +74,7 @@ func _ready() -> void:
 	map_view.room_pressed.connect(on_room); map_box.add_child(map_view)
 	button(map_box,"닫기",func(): map_popup.hide())
 	details_popup = PopupPanel.new(); add_child(details_popup)
-	modal_content = VBoxContainer.new(); modal_content.custom_minimum_size = Vector2(minf(300,size.x-32),210); details_popup.add_child(modal_content)
+	modal_content = VBoxContainer.new(); modal_content.custom_minimum_size = Vector2(popup_width(),210); details_popup.add_child(modal_content)
 	item_popup = PopupPanel.new(); details_popup.add_child(item_popup)
 	item_popup.transient = true; item_popup.exclusive = true
 	item_detail = VBoxContainer.new(); item_detail.custom_minimum_size = Vector2(300,200); item_popup.add_child(item_detail)
@@ -135,11 +135,17 @@ func show_logs() -> void:
 	button(box,"닫기",func(): log_popup.hide())
 	log_popup.popup_centered(Vector2i(size))
 
+## Popup content width. The window, not the HUD's own size, bounds a modal, and
+## the cap leaves room for the panel's own margins on a 320px phone.
+const POPUP_MAX_WIDTH := 288.0
+func popup_width() -> float:
+	return minf(POPUP_MAX_WIDTH,get_viewport_rect().size.x-32)
+
 func clear(node: Node) -> void:
 	if node == modal_content:
 		item_popup.hide()
 		details_popup.theme = theme
-		modal_content.custom_minimum_size = Vector2(minf(300,size.x-32),210)
+		modal_content.custom_minimum_size = Vector2(popup_width(),210)
 	for child in node.get_children(): node.remove_child(child); child.queue_free()
 	if node == modal_content: details_popup.reset_size()
 
@@ -413,7 +419,7 @@ func show_curio(point: Vector2i) -> void:
 	if def.is_empty(): return
 	label(modal_content,def.name,22)
 	var description := label(modal_content,def.description,17)
-	description.custom_minimum_size.x = minf(300,size.x-32); description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.custom_minimum_size.x = popup_width(); description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if feature.used: label(modal_content,"이미 조사를 마쳤습니다.",16)
 	else:
 		label(modal_content,"조사 시 행동 1회 · 결과는 되돌릴 수 없습니다.",13)
@@ -425,7 +431,7 @@ func show_curio(point: Vector2i) -> void:
 			var reason: String = Session.Curios.error(session,point,id)
 			button(modal_content,caption,func(): details_popup.hide(); run_action(func(): return Session.Curios.resolve(session,point,id)),reason.is_empty())
 			var hint := label(modal_content,reason if not reason.is_empty() else choice.get("warning","안전하게 회수합니다."),14)
-			hint.custom_minimum_size.x = minf(300,size.x-32); hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			hint.custom_minimum_size.x = popup_width(); hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	button(modal_content,"지나가기",func(): details_popup.hide())
 	details_popup.popup_centered()
 
@@ -433,12 +439,12 @@ func show_relic() -> void:
 	stop_navigation(); clear(modal_content)
 	label(modal_content,Session.Objective.RELIC_LABEL,22)
 	var description := label(modal_content,Session.Objective.RELIC_DESCRIPTION,17)
-	description.custom_minimum_size.x = minf(300,size.x-32); description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.custom_minimum_size.x = popup_width(); description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label(modal_content,"회수 시 행동 1회 · 주변에 적이 없어야 합니다.",13)
 	var reason: String = Session.Objective.error(session)
 	button(modal_content,"유물을 회수한다",func(): details_popup.hide(); run_action(session.pickup_relic),reason.is_empty())
 	var hint := label(modal_content,reason if not reason.is_empty() else "회수 후 입구 관문으로 돌아가면 임무가 완료됩니다.",14)
-	hint.custom_minimum_size.x = minf(300,size.x-32); hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.custom_minimum_size.x = popup_width(); hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	button(modal_content,"닫기",func(): details_popup.hide())
 	details_popup.popup_centered()
 
@@ -447,7 +453,7 @@ func show_return() -> void:
 	label(modal_content,"귀환 관문",22)
 	var carrying: bool = Session.Objective.carrying(session)
 	var body := label(modal_content,(("유물을 가지고 귀환합니다. 임무 성공 · 전리품 %d + 회수 보너스 %d" % [session.loot,Session.Objective.RECOVERY_BONUS]) if carrying else "유물 없이 귀환합니다. 중도 귀환 · 전리품 %d 정산." % session.loot)+"\n남은 보급품 환전: %d 자금 (무료 지급분 제외)" % session.provision_sale_value(),16)
-	body.custom_minimum_size.x = minf(300,size.x-32); body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.custom_minimum_size.x = popup_width(); body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var reason: String = session.return_error()
 	button(modal_content,"귀환 확정",func(): details_popup.hide(); run_action(session.return_home),reason.is_empty())
 	if not reason.is_empty(): label(modal_content,reason,14)
@@ -504,7 +510,7 @@ func show_shop() -> void:
 	stop_navigation(); clear(modal_content)
 	label(modal_content,"출정 준비 · 자금 %d" % session.bank,20)
 	var hint := label(modal_content,"마을에서 식량 %d·횃불 %d·치유 물약 1·붕대 1·열쇠·삽 1개를 무료 지급합니다. 귀환 시 남은 구매·발견 보급품은 구매가 합계의 10%%로 환전(소수점 버림)하며 이월하지 않습니다. 무료 지급분은 환전 제외. 이번 방문 구매분은 출정 전 전액 환불됩니다." % [Session.MIN_KIT.food,Session.MIN_KIT.torches],12)
-	hint.custom_minimum_size.x = minf(300,size.x-32); hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.custom_minimum_size.x = popup_width(); hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var list := popup_list()
 	for row in Session.SHOP:
 		var line := HBoxContainer.new(); line.name = "ShopRow_"+str(row.id).replace(":","_"); line.add_theme_constant_override("separation",4); list.add_child(line)
@@ -560,7 +566,7 @@ func on_room(id: int) -> void:
 
 func modal(title: String, body: String) -> void:
 	clear(modal_content); label(modal_content,title,18)
-	var text := RichTextLabel.new(); text.text = body; text.custom_minimum_size = Vector2(minf(300,size.x-32),210); text.size_flags_vertical = SIZE_EXPAND_FILL; modal_content.add_child(text)
+	var text := RichTextLabel.new(); text.text = body; text.custom_minimum_size = Vector2(popup_width(),210); text.size_flags_vertical = SIZE_EXPAND_FILL; modal_content.add_child(text)
 	button(modal_content,"닫기",func(): details_popup.hide()); details_popup.popup_centered()
 
 func open_management(index: int) -> void:
@@ -596,7 +602,7 @@ func show_tactics() -> void:
 func open_rule(index: int) -> void:
 	tactics_expanded = index
 	clear(item_detail)
-	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(minf(300,size.x-32),minf(400,size.y-120))
+	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(popup_width(),minf(400,size.y-120))
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; item_detail.add_child(scroll)
 	var list := VBoxContainer.new(); list.size_flags_horizontal = SIZE_EXPAND_FILL; scroll.add_child(list)
 	build_skill_rules(list)
@@ -682,7 +688,7 @@ func build_inventory() -> void:
 		pick.toggle_mode = true; pick.button_pressed = category == inventory_filter
 	var rows: Array = inventory_rows().filter(func(r): return inventory_filter == "전체" or r.category == inventory_filter)
 	label(modal_content,"%s · %d종 보유" % [inventory_filter,rows.size()],12)
-	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(minf(300,size.x-32),minf(300,size.y-310)); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; modal_content.add_child(scroll)
+	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(popup_width(),minf(300,size.y-310)); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; modal_content.add_child(scroll)
 	var grid := GridContainer.new(); grid.columns = 4; grid.size_flags_horizontal = SIZE_EXPAND_FILL; grid.add_theme_constant_override("h_separation",4); grid.add_theme_constant_override("v_separation",4); scroll.add_child(grid)
 	inventory_slots.clear()
 	for i in range(maxi(12,int(ceil(rows.size()/4.0))*4)):
@@ -715,7 +721,7 @@ func show_item_detail(id: String) -> void:
 	button(item_detail,"닫기",func(): item_popup.hide()); item_popup.popup_centered(); item_popup.grab_focus()
 
 func popup_list() -> VBoxContainer:
-	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(minf(300,size.x-32),minf(330,size.y-300)); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; modal_content.add_child(scroll)
+	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(popup_width(),minf(330,size.y-300)); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; modal_content.add_child(scroll)
 	var list := VBoxContainer.new(); list.size_flags_horizontal = SIZE_EXPAND_FILL; scroll.add_child(list)
 	return list
 

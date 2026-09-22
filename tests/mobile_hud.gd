@@ -1,5 +1,6 @@
 extends SceneTree
 const Session = preload("res://expedition/session.gd")
+const Fixture = preload("res://tests/floor_fixture.gd")
 var failures := 0
 func check(ok: bool, message: String) -> void:
 	if not ok: failures += 1; push_error(message)
@@ -9,19 +10,16 @@ func run() -> void:
 	var s = Session.new(731,true,false,true)
 	scene.session = s; root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
 	s.depart()
-	for enemy in s.enemies: enemy.hp = 0
-	s.party[0].pos = Vector2i(50,50)
-	for y in range(35,66):
-		for x in range(35,66): s.tile(Vector2i(x,y)).terrain = "stone"
+	var c := Fixture.arena(s,15)
 	s.floor_state.features.clear(); s.floor_state.observe(s)
 	var enemy: Dictionary = s.enemies[0]
-	enemy.hp = 20; enemy.pos = Vector2i(60,50); s.floor_state.observe(s)
+	enemy.hp = 20; enemy.pos = c+Vector2i(10,0); s.floor_state.observe(s)
 	check(s.combat_enemies().is_empty() and scene.navigation.explore(s),"enemy ten tiles away does not stop exploration")
-	enemy.pos = Vector2i(59,50); s.floor_state.observe(s)
+	enemy.pos = c+Vector2i(9,0); s.floor_state.observe(s)
 	check(scene.navigation.next_step(s).x < 0 and not scene.navigation.active,"enemy inside nine-tile sight stops exploration")
-	s.tile(Vector2i(51,50)).terrain = "wall"; enemy.pos = Vector2i(52,50); s.floor_state.observe(s)
+	s.tile(c+Vector2i(1,0)).terrain = "wall"; enemy.pos = c+Vector2i(2,0); s.floor_state.observe(s)
 	check(s.combat_enemies().is_empty() and scene.navigation.explore(s),"wall-hidden enemy does not block exploration")
-	scene.stop_navigation(); enemy.hp = 0; s.tile(Vector2i(51,50)).terrain = "stone"; s.floor_state.observe(s)
+	scene.stop_navigation(); enemy.hp = 0; s.tile(c+Vector2i(1,0)).terrain = "stone"; s.floor_state.observe(s)
 	for viewport in [Vector2i(320,640),Vector2i(360,780),Vector2i(390,844),Vector2i(430,932)]:
 		root.size = viewport; scene.refresh()
 		for frame in range(5): await process_frame
@@ -57,7 +55,7 @@ func run() -> void:
 	duo.party_command = "HOLD_POSITION"
 	check(duo.companion_choice(duo.party[1]).kind == "WAIT","hold command prevents companion movement")
 	duo.party_command = "FOLLOW"; duo.formation = "COLUMN"
-	duo.party[0].pos = Vector2i(50,50); duo.party[1].pos = Vector2i(50,51)
+	Fixture.arena(duo,8)
 	check(duo.floor_state.follow(duo,duo.party[1]).kind == "WAIT","column formation holds assigned position")
 	scene.queue_free(); await process_frame
 	print("Mobile HUD: %d failures" % failures); quit(1 if failures else 0)

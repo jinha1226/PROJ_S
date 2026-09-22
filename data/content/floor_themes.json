@@ -10,7 +10,7 @@
       "corridor": {"width": 1, "wiggle": 2, "extra_links": [2, 3]},
       "palette": {"floor": "stone", "accents": ["rubble", "wood", "water"], "accent_ratio": 0.12},
       "templates": {"required": ["entry_camp", "relic_vault", "sealed_treasury"], "fight_pool": ["flooded_cistern", "collapsed_store", "timber_gallery"], "fight_picks": 2},
-      "monsters": {"budget": {"early": 3, "mid": 6, "deep": 9, "optional": 5}},
+      "monsters": {"budget": {"early": 3, "mid": 5, "deep": 6, "optional": 5}},
       "curios": {"locked_chest": [2, 3], "dirt_pile": [2, 3]}
     },
     "F2_MINES": {
