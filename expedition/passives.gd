@@ -19,9 +19,9 @@ static func adjacent_allies(s, actor: Dictionary) -> int:
 		if other.id != actor.id and other.hp > 0 and other.enemy == actor.enemy and s.melee_reach(actor.pos,other.pos): count += 1
 	return count
 
-## Strictly below the halfway mark, halves rounded down: 27 of 55 is not yet half.
+## Strictly below 50% of maximum health.
 static func under_half(actor: Dictionary) -> bool:
-	return int(actor.hp) < int(actor.max_hp)/2
+	return int(actor.hp)*2 < int(actor.max_hp)
 
 ## Damage `attacker` is about to deal to `target`, before 엄호 redirects it.
 static func outgoing(s, attacker: Dictionary, target: Dictionary, amount: int) -> int:

@@ -172,7 +172,7 @@ func passives() -> void:
 	check(d.foe.hp == foe_hp,"no retaliation at range")
 	# DIRTY: +3 against targets under half health.
 	d = duel(); s = d.s; d.foe.part_id = "KOBOLD_SLING"
-	d.hero.hp = int(d.hero.max_hp/2)
+	d.hero.hp = ceili(d.hero.max_hp/2.0)
 	check(Passives.outgoing(s,d.foe,d.hero,7) == 7,"dirty needs strictly under half")
 	d.hero.hp -= 1
 	check(Passives.outgoing(s,d.foe,d.hero,7) == 10,"dirty adds three under half")
