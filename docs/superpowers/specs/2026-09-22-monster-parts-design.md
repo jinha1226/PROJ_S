@@ -44,7 +44,7 @@
 | kind | 훅 | 효과 |
 | --- | --- | --- |
 | `PACK` | outgoing | 공격자와 인접한 같은 진영 생존자 1명당 +`value` |
-| `RETALIATE` | incoming | 인접한 공격자에게 `value` 피해를 되돌려줌(form `RETALIATE`, 되돌린 피해에는 패시브를 적용하지 않음) |
+| `RETALIATE` | after_hit | 피해가 들어온 뒤, 인접한 공격자에게 `value` 피해를 되돌려줌(form `RETALIATE`, 되돌린 피해에는 패시브를 적용하지 않음) |
 | `DIRTY` | outgoing | 대상 HP가 최대의 50% 미만이면 +`value` |
 | `AMBUSHER` | outgoing | 대상이 같은 진영 생존자와 인접해 있지 않으면 +`value` |
 | `THICK_HIDE` | incoming | 받는 피해 −`value`, 최소 1 |
@@ -52,19 +52,20 @@
 | `REGEN` | round_start | 라운드 시작마다 HP +`value` (최대 HP까지) |
 | `AMPHIBIOUS` | outgoing | 자신이 선 칸이 `water`이거나 `wet > 0`이면 +`value` |
 
-훅은 세 개뿐이다.
+훅은 네 개뿐이다. 피해량을 바꾸는 둘은 순수 함수이고, 부작용은 `after_hit`·`round_start`에만 있다.
 
 ```gdscript
 # expedition/passives.gd (static)
 static func of(actor: Dictionary) -> Array        # 적용 중인 passive 딕셔너리 목록
 static func outgoing(s, attacker: Dictionary, target: Dictionary, amount: int) -> int
-static func incoming(s, target: Dictionary, attacker: Dictionary, amount: int, form: String) -> int  # RETALIATE 부작용 포함
+static func incoming(s, target: Dictionary, amount: int) -> int
+static func after_hit(s, target: Dictionary, attacker: Dictionary, form: String) -> void   # RETALIATE
 static func round_start(s, actor: Dictionary) -> void
 ```
 
 - `of(actor)`: 파티원은 `equipped_abilities`의 각 id가 `DEFINITIONS`에 있고 `passive`가 비어 있지 않으면 포함. 적은 `actor.part_id`의 passive.
-- 훅 호출 지점은 `session.damage()` 한 곳(outgoing → incoming 순, `source`가 액터일 때만; 불·함정·`RETALIATE` form은 outgoing 생략)과 `session.end_round()`의 라운드 시작 처리(생존 파티원 + 생존 적) 한 곳. 다른 곳에서 패시브를 읽지 않는다.
-- `RETALIATE`는 `incoming` 안에서 `s.damage(attacker, value, target.id, "RETALIATE")`를 호출한다. `damage()`는 form이 `RETALIATE`이면 outgoing·incoming 훅을 모두 건너뛰므로 서로 반격하는 무한 루프가 없다. 반격은 공격자가 `melee_reach`로 인접할 때만.
+- 훅 호출 지점은 `session.damage()` 한 곳(`outgoing`은 엄호 재지정 전에 공격자·의도 대상으로, `incoming`은 방어 감산 뒤 최종 수령자에게, `after_hit`은 HP 차감 뒤)과 `session.end_round()`의 라운드 시작 처리(생존 파티원 + 생존 적) 한 곳. 다른 곳에서 패시브를 읽지 않는다. `source`가 액터가 아니면(불·함정 999) outgoing·after_hit을 건너뛴다.
+- `RETALIATE`는 `after_hit` 안에서 `s.damage(attacker, value, target.id, "RETALIATE")`를 호출한다. `damage()`는 form이 `RETALIATE`이면 outgoing·incoming·after_hit 훅을 모두 건너뛰므로 서로 반격하는 무한 루프가 없다. 반격은 공격자가 살아 있고 `melee_reach`로 인접할 때만.
 - 종류를 추가하려면 표에 한 줄, `passives.gd`의 `match`에 한 분기. 세 훅 밖의 효과(이동력 등)는 이 설계의 범위가 아니며, 필요해지면 훅을 추가하는 별도 설계로 다룬다.
 
 ### 1.6 기본 파츠: 밀치기·엄호
@@ -84,7 +85,8 @@ static func round_start(s, actor: Dictionary) -> void
 ### 1.7 획득 경로
 
 - 시작 가방 `STARTING_PARTS := {"PUSH":1,"GUARD":1}`: 새 세션의 `parts_bag`이 이것으로 시작한다. 시작 시 장착은 비어 있다.
-- 마을 상점(`SHOP`)에 `{"id":"part:PUSH","name":"밀치기 요령","price":10}`, `{"id":"part:GUARD","name":"엄호 요령","price":10}` 두 행을 더한다. `stock`·`add_stock`은 `part:` 접두어를 `parts_bag`으로 연결한다. `buy`·`refund`·`purchases` 처리는 다른 상품과 같고, `MIN_KIT`·`top_up_kit`에는 넣지 않는다.
+- 마을 상점(`SHOP`)에 `{"id":"part:PUSH","name":"밀치기 요령","price":10}`, `{"id":"part:GUARD","name":"엄호 요령","price":10}` 두 행을 더한다. `stock`·`add_stock`은 `part:` 접두어를 `parts_bag`으로 연결한다. `buy`·`refund`·`purchases` 처리는 다른 상품과 같고, `MIN_KIT`·`top_up_kit`에는 넣지 않는다. `provision_stock`·`provision_sale_value`는 `part:` 행을 건너뛴다(파츠는 귀환 시 환전되지 않고 가방에 남는다).
+- 층 모드가 아닌 구 방 모드·보스 시련에는 마을 상점이 없으므로, `_init`이 모든 파티원에게 밀치기·엄호를 장착시키고 기본 규칙을 넣은 채 시작한다(이전 동작 유지, 가방 계산 없음). 층 모드는 빈 슬롯 + 시작 가방.
 - 종족 파츠는 드롭으로만 얻는다(§1.5).
 
 ### 1.3 액터 필드
