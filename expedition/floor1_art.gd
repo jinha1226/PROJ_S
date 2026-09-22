@@ -1,6 +1,6 @@
 extends RefCounted
 ## First-floor art only; gameplay uses the existing terrain and feature data.
-const MATERIALS = preload("res://assets/topdown/floor1-ink-v2/materials.png")
+const MATERIALS = preload("res://assets/topdown/floor1-ink-v2/materials-soft-v3.png")
 const PROPS = preload("res://assets/topdown/floor1-ink-v2/props.png")
 const Regions = preload("res://expedition/environment_art.gd")
 static var catalog: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/topdown/floor1-ink-v2/catalog.json"))
