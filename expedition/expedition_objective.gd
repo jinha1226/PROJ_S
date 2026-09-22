@@ -1,7 +1,7 @@
 extends RefCounted
-## Mission relic for the continuous floor: seeded placement, discovery, and the
-## single pickup executor. Objective state lives in session.objective; UI, the
-## map and navigation only read it.
+## Mission relic for the continuous floor: placement is the generator's job;
+## this holds registration, discovery and the single pickup executor.
+## Objective state lives in session.objective; UI, the map and navigation only read it.
 const RELIC_LABEL := "봉인된 유물"
 const RELIC_DESCRIPTION := "심부에 봉인된 유물입니다. 회수해 입구 관문으로 가져가면 임무가 완료됩니다.\n사용·판매·장착은 할 수 없습니다."
 const RECOVERY_BONUS := 100
@@ -27,45 +27,8 @@ static func reachability(s, origin: Vector2i) -> Dictionary:
 			dist[next] = int(dist[p])+1; queue.append(next)
 	return dist
 
-static func has_interaction_cell(s, reach: Dictionary, p: Vector2i) -> bool:
-	for d in s.DIRECTIONS:
-		if reach.has(p+d) and s.melee_reach(p+d,p): return true
-	return false
-
-static func blocked(s, floor_state, p: Vector2i, entry: Vector2i) -> bool:
-	if p == entry or floor_state.features.has(p): return true
-	if s.tile(p).terrain in ["wall","water"] or s.tile(p).fire > 0: return true
-	for enemy in s.enemies:
-		if enemy.pos == p: return true
-	return false
-
-## Chooses the relic cell. The legacy deep exit is the preferred candidate;
-## otherwise a seeded pick from the farthest 20% band; finally the farthest
-## reachable cell. Never loops and never returns an unreachable cell.
-static func choose(s, floor_state, entry: Vector2i, preferred: Vector2i) -> Vector2i:
-	var reach := reachability(s,entry)
-	var farthest := 0
-	for value in reach.values(): farthest = maxi(farthest,int(value))
-	if reach.has(preferred) and not blocked(s,floor_state,preferred,entry) and has_interaction_cell(s,reach,preferred) and reach[preferred] >= farthest*MIN_DISTANCE_RATIO:
-		return preferred
-	var band: Array = []
-	for p in reach:
-		if reach[p] >= farthest*FAR_BAND_RATIO and not blocked(s,floor_state,p,entry) and has_interaction_cell(s,reach,p): band.append(p)
-	band.sort_custom(func(a,b): return reach[a] > reach[b] if reach[a] != reach[b] else (a.y < b.y if a.y != b.y else a.x < b.x))
-	if not band.is_empty():
-		return band[s.Hexaco.sample(s.seed_value,s.expedition_number,"relic",band.size())]
-	var fallback := Vector2i(-1,-1)
-	for p in reach:
-		if p == entry or not has_interaction_cell(s,reach,p): continue
-		if fallback.x < 0 or reach[p] > reach[fallback]: fallback = p
-	if fallback.x < 0: push_error("mission relic: no reachable cell on floor")
-	return fallback
-
-static func place(s, floor_state, entry: Vector2i, preferred: Vector2i) -> Vector2i:
-	var p := choose(s,floor_state,entry,preferred)
-	if p.x >= 0: floor_state.features[p] = {"kind":"relic","used":false,"label":RELIC_LABEL}
-	s.objective = create(s.expedition_number,p)
-	return p
+static func register(s, pos: Vector2i) -> void:
+	s.objective = create(s.expedition_number,pos)
 
 static func discover(s) -> void:
 	if s.objective.get("state","") != "UNDISCOVERED": return

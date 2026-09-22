@@ -570,7 +570,7 @@ func open_management(index: int) -> void:
 		1: show_supplies()
 		2: show_tactics()
 		3:
-			var overview: String = "목표: %s\n1층 · 100×100 연속 지도\n발견한 타일: %d / 10000\n전리품: %d\n자금: %d\n\n" % [session.objective_text(),session.floor_state.explored.size(),session.loot,session.bank] if session.floor_mode else "목표: 보스 처치 후 귀환\n탐색: %d / 9개 방\n전리품: %d\n자금: %d\n\n" % [session.visited.size(),session.loot,session.bank]
+			var overview: String = "목표: %s\n1층 · %d×%d 연속 지도\n발견한 타일: %d / %d\n전리품: %d\n자금: %d\n\n" % [session.objective_text(),session.BOARD_SIDE,session.BOARD_SIDE,session.floor_state.explored.size(),session.BOARD_SIDE*session.BOARD_SIDE,session.loot,session.bank] if session.floor_mode else "목표: 보스 처치 후 귀환\n탐색: %d / 9개 방\n전리품: %d\n자금: %d\n\n" % [session.visited.size(),session.loot,session.bank]
 			modal("원정",overview+("행동 한 번마다 적도 행동합니다. 자신을 누르면 대기. 미리보기는 시간을 쓰지 않습니다." if session.boss_trial else "전원 행동력 소진 시 적 차례."))
 			if session.floor_mode and session.phase == "BATTLE": button(modal_content,"원정 목표 · 포기",func(): show_objective())
 			elif session.phase in ["BATTLE","EXPLORE"]: button(modal_content,"귀환" if session.safe_management() else "철수 · 전리품 절반",func(): details_popup.hide(); run_action(session.retreat))

@@ -7,8 +7,8 @@ const ROLES := {
 	"CASTER":{"label":"술사","range":4,"damage":4},
 }
 
-static func configure(enemy: Dictionary, index: int) -> void:
-	enemy.role = ["MELEE","MELEE","RANGED","MELEE","CASTER","MELEE","RANGED","MELEE","CASTER"][index%9]
+static func configure(enemy: Dictionary, role: String) -> void:
+	enemy.role = role if ROLES.has(role) else "MELEE"
 	enemy.name += " " + ROLES[enemy.role].label
 	enemy.charging = false
 	enemy.cast_cooldown = 2

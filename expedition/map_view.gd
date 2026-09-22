@@ -106,7 +106,7 @@ func draw_floor() -> void:
 	floor_minimap.size = size
 	if compact: return
 	var side := minf(size.x,size.y)
-	var step := side/100.0
+	var step := side/float(session.BOARD_SIDE)
 	var offset := (size-Vector2.ONE*side)/2
 	draw_rect(Rect2(offset,Vector2.ONE*side),Color("101416"))
 	for point in session.floor_state.explored:

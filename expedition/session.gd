@@ -77,7 +77,7 @@ func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = f
 	companions = p_companions and boss_trial
 	floor_mode = p_floor
 	if floor_mode:
-		floor_state = Floor.new(); BOARD_SIDE = Floor.SIZE
+		floor_state = Floor.new(); BOARD_SIDE = floor_state.size
 		bank = STARTING_FUNDS; food = 0; torches = 0; supplies = [0,0,0,0,0,0]; exploration_tools = {"KEY":0,"SHOVEL":0}
 		top_up_kit()
 	for i in range(2 if companions else 1 if boss_trial else 3):

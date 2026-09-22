@@ -1,14 +1,15 @@
 extends RefCounted
-const Source = preload("res://expedition/legacy/four_zone_floor.gd")
-const Registry = preload("res://expedition/legacy/dcss_enemy_registry.gd")
+const Generator = preload("res://expedition/floor_generator.gd")
 const MonsterAI = preload("res://expedition/monster_ai.gd")
 const Objective = preload("res://expedition/expedition_objective.gd")
-const SIZE := 100
+const THEME_ID := "F1_RUINS"
 ## Roster health was tuned for a pair; a lone hero meets the same groups at
 ## reduced health so each fight is decided in a few exchanges.
 const SOLO_HP_PERCENT := 45
 const SOLO_HP_MIN := 20
 const SOLO_HP_MAX := 32
+var size := 64
+var theme_id := THEME_ID
 var layout: Dictionary
 var visible: Dictionary = {}
 var explored: Dictionary = {}
@@ -37,50 +38,37 @@ static func drop_percent(light: int) -> int:
 static func enemy_bonus(light: int) -> int:
 	return TIERS[light_tier(light)].bonus
 
-static func point(p: Vector2i) -> Vector2i:
-	return p*2+Vector2i(2,2)
-
 func build(s) -> void:
-	layout = Source.generate(1,s.seed_value+s.expedition_number*7919)
+	var theme: Dictionary = Generator.theme(theme_id)
+	layout = Generator.generate(theme,s.seed_value+s.expedition_number*7919,int(theme.depth))
+	size = layout.size
 	epoch = str(s.seed_value)+"/"+str(s.expedition_number)
 	visible.clear(); explored.clear(); discoveries.clear(); features.clear(); seen_enemies.clear()
 	discovered_curios = 0
-	s.BOARD_SIDE = SIZE; s.tiles = []
-	for y in range(SIZE):
-		for x in range(SIZE):
-			var source := Vector2i((x-2)/2,(y-2)/2)
-			var terrain := "wall"
-			if x >= 2 and y >= 2 and x < 98 and y < 98: terrain = layout.terrain[source.y*48+source.x]
-			var translated: String = {"floor":"stone","stone_floor":"stone","rubble":"stone","wood_floor":"wood","shallow_water":"water"}.get(terrain,terrain)
-			s.tiles.append({"terrain":translated,"source_terrain":terrain,"fire":0,"wet":70 if translated == "water" else 0,"variant":posmod(x*13+y*7,3),"palette":0})
+	s.BOARD_SIDE = size; s.tiles = []
+	for y in range(size):
+		for x in range(size):
+			var terrain: String = layout.terrain[y*size+x]
+			s.tiles.append({"terrain":terrain,"source_terrain":terrain,"fire":0,"wet":70 if terrain == "water" else 0,"variant":posmod(x*13+y*7,3),"palette":0})
 	s.enemies = []
-	for row in layout.runtime_enemy_roster:
-		var profile: Dictionary = Registry.profile(row.species_id)
-		var enemy: Dictionary = s.make_actor(100+s.enemies.size(),profile.get("display_name","코볼트" if row.species_id == "kobold" else "고블린"),true)
-		enemy.pos = point(row.position); enemy.hp = profile.get("max_health",28)
-		if s.party.size() == 1: enemy.hp = clampi(enemy.hp*SOLO_HP_PERCENT/100,SOLO_HP_MIN,SOLO_HP_MAX)
-		enemy.max_hp = enemy.hp
-		enemy.group = row.group_id; enemy.home = enemy.pos; enemy.alert = false
-		MonsterAI.configure(enemy,s.enemies.size())
-		enemy.essence_id = ["BOMB","SHOCKWAVE","IRON_HIDE"][s.enemies.size()%3]
-		s.enemies.append(enemy)
+	for e in range(layout.encounters.size()):
+		var encounter: Dictionary = layout.encounters[e]
+		for member in encounter.members:
+			var enemy: Dictionary = s.make_actor(100+s.enemies.size(),member.display_name,true)
+			enemy.pos = member.pos; enemy.hp = int(member.max_health)
+			if s.party.size() == 1: enemy.hp = clampi(enemy.hp*SOLO_HP_PERCENT/100,SOLO_HP_MIN,SOLO_HP_MAX)
+			enemy.max_hp = enemy.hp
+			enemy.group = "F%d_E%02d" % [int(theme.depth),e+1]; enemy.home = enemy.pos; enemy.alert = false
+			enemy.species_id = member.species_id; enemy.tier = encounter.tier; enemy.mandatory = encounter.mandatory
+			MonsterAI.configure(enemy,member.role)
+			enemy.essence_id = ["BOMB","SHOCKWAVE","IRON_HIDE"][s.enemies.size()%3]
+			s.enemies.append(enemy)
+	for p in layout.features: features[p] = layout.features[p].duplicate(true)
 	for i in range(s.party.size()):
-		s.party[i].pos = point(layout.entry_position)+Vector2i(0,i); s.party[i].ap = 1
+		s.party[i].pos = layout.entry+Vector2i(0,i); s.party[i].ap = 1
 		s.party[i].reservation = {}
-	for i in range(layout.supply_positions.size()):
-		var id := "LOCKED_CHEST" if i%2 == 0 else "DIRT_PILE"
-		features[point(layout.supply_positions[i])] = {"kind":"curio","curio_id":id,"used":false,"label":s.Curios.content.curios[id].name}
-	features[point(layout.entry_position)] = {"kind":"entry","used":false,"label":"귀환 관문"}
-	# The legacy relic landmark keeps its old effect as an altar; the mission
-	# relic is a separate single object placed after every other feature.
-	for row in layout.landmarks:
-		var p := point(row.position)
-		if features.has(p): continue
-		features[p] = {"kind":"camp" if row.kind == "CAMP" else "altar","used":false,"label":row.label}
-	if not features.has(point(layout.entry_position)) or features[point(layout.entry_position)].kind != "entry":
-		features[point(layout.entry_position)] = {"kind":"entry","used":false,"label":"귀환 관문"}
-	Objective.place(s,self,point(layout.entry_position),point(layout.transition_portal_position))
-	s.rooms = [{"id":0,"name":"1층 · 갈림길 미궁","kind":"floor","links":[],"tiles":s.tiles,"enemies":s.enemies,"started":true,"cleared":false,"shield":false,"pattern":-1,"used":false,"feature":Vector2i(-1,-1)}]
+	Objective.register(s,layout.relic)
+	s.rooms = [{"id":0,"name":"1층 · "+str(theme.label),"kind":"floor","links":[],"tiles":s.tiles,"enemies":s.enemies,"started":true,"cleared":false,"shield":false,"pattern":-1,"used":false,"feature":Vector2i(-1,-1)}]
 	s.room = 0; s.phase = "BATTLE"; s.round_number = 1
 	observe(s); ambush(s)
 
@@ -104,8 +92,8 @@ func observe(s) -> void:
 	var side := before*2+1
 	var center := observer(s)
 	for actor in ([] if center.is_empty() else [center]):
-		for y in range(maxi(0,actor.pos.y-before),mini(SIZE,actor.pos.y-before+side)):
-			for x in range(maxi(0,actor.pos.x-before),mini(SIZE,actor.pos.x-before+side)):
+		for y in range(maxi(0,actor.pos.y-before),mini(size,actor.pos.y-before+side)):
+			for x in range(maxi(0,actor.pos.x-before),mini(size,actor.pos.x-before+side)):
 				var p := Vector2i(x,y)
 				if Vector2(actor.pos).distance_to(Vector2(p)) > radius: continue
 				if not s.TurnCore.Geometry.sees(actor.pos,p,func(c): return s.tile(c).terrain == "wall",before): continue
@@ -141,7 +129,7 @@ func observation(s) -> Dictionary:
 	var markers: Array = []
 	for actor in s.party+s.enemies:
 		if actor.hp > 0 and visible.has(actor.pos): markers.append({"position":[actor.pos.x,actor.pos.y],"marker":"ENEMY" if actor.enemy else "HERO"})
-	return {"width":SIZE,"height":SIZE,"epoch":epoch,"cells":discoveries,"discovery_rows":discoveries,"static_count":discoveries.size(),"visible":visible.keys().map(func(p): return [p.x,p.y]),"markers":markers}
+	return {"width":size,"height":size,"epoch":epoch,"cells":discoveries,"discovery_rows":discoveries,"static_count":discoveries.size(),"visible":visible.keys().map(func(p): return [p.x,p.y]),"markers":markers}
 
 func threats(s) -> Array:
 	return s.enemies.filter(func(e): return e.hp > 0 and visible.has(e.pos))
@@ -176,13 +164,13 @@ func follow(s, actor: Dictionary) -> Dictionary:
 		var destination: Vector2i = leader.pos+offset
 		if actor.pos == destination: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}
 		if s.is_free(destination):
-			var route: Dictionary = s.TurnCore.path(SIZE,SIZE,actor.pos,[destination],func(a,b): return s.can_step(a,b),func(_p): return 100)
+			var route: Dictionary = s.TurnCore.path(size,size,actor.pos,[destination],func(a,b): return s.can_step(a,b),func(_p): return 100)
 			if route.found and route.path.size() > 1: return {"kind":"MOVE","cell":route.path[1],"reason":"대형 이동"}
 	if maxi(absi(actor.pos.x-leader.pos.x),absi(actor.pos.y-leader.pos.y)) <= 1: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}
 	var goals: Array = []
 	for d in s.DIRECTIONS:
 		if s.is_free(leader.pos+d): goals.append(leader.pos+d)
 	if not goals.is_empty():
-		var route: Dictionary = s.TurnCore.path(SIZE,SIZE,actor.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100)
+		var route: Dictionary = s.TurnCore.path(size,size,actor.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100)
 		if route.found and route.path.size() > 1: return {"kind":"MOVE","cell":route.path[1],"reason":"동료 따라가기"}
 	return {"kind":"WAIT","cell":actor.pos,"reason":"대기"}
