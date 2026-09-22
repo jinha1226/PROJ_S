@@ -22,7 +22,7 @@ func exercise() -> void:
 		check(s.party[0].growth.level == 2 and s.party[0].max_hp == 59,"level increases base HP")
 		s.roll_part(enemy); s.damage(enemy,999,0,"SLASH")
 		check(s.parts_bag.get(enemy.part_id,0) == count and s.party[0].growth.xp == 100,"death cannot reward twice")
-	check(dropped >= 0,"seeded drop counted") # Task 3 restores `dropped > 0 and dropped < 30` once species parts drop.
+	check(dropped > 0 and dropped < 30,"drops are seeded, not certain (%d of 30)" % dropped)
 	var s = arena()
 	s.phase = "TOWN"
 	s.parts_bag = {"SHOCKWAVE":2,"BOMB":1,"IRON_HIDE":1}

@@ -7,6 +7,7 @@ const Fixture = preload("res://tests/floor_fixture.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
 const Tactics = preload("res://expedition/tactical_action_selector.gd")
+## Distance to place the foe at; parts not listed are exercised at their own range.
 const REACH = {"PUSH":1,"HEAVY_STRIKE":1,"THROWING_KNIFE":4,"LUNGE":3,"BOMB":3}
 var failures := 0
 var checks := 0
@@ -72,8 +73,8 @@ func catalog() -> void:
 		var rule: Dictionary = Abilities.default_rule(id)
 		check(Rules.valid(rule),"%s default rule is valid" % id)
 		check(rule.when == Abilities.DEFINITIONS[id].rule_when,"%s default rule uses its rule_when" % id)
-	# Drops follow the species that owns the part; no species owns one yet.
-	check(Abilities.droppable().is_empty(),"only species parts drop")
+	# Drops follow the species that owns the part.
+	check(not Abilities.droppable().is_empty() and Abilities.droppable().all(func(id): return not str(Abilities.DEFINITIONS[id].species).is_empty()),"only species parts drop")
 	check(Abilities.species_part("nobody").is_empty(),"an unknown species owns no part")
 	for id in Abilities.DEFINITIONS:
 		var def: Dictionary = Abilities.DEFINITIONS[id]
@@ -131,7 +132,7 @@ func semantics() -> void:
 		var def: Dictionary = Abilities.DEFINITIONS[id]
 		# 엄호 is the only ALLY part and has its own section below.
 		if def.target == "ALLY": continue
-		if def.target == "ENEMY": enemy_conditions(id,int(REACH[id]))
+		if def.target == "ENEMY": enemy_conditions(id,int(REACH.get(id,def.range)))
 		else: self_conditions(id)
 
 func enemy_conditions(id: String, reach: int) -> void:

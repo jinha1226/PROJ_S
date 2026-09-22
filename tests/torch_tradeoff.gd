@@ -47,17 +47,16 @@ func run() -> void:
 			var count := 0
 			for enemy in s.enemies:
 				var before: int = s.parts_bag.values().reduce(func(a,b): return a+b,0)
-				enemy.part_id = "BOMB" # Task 3 gives floor monsters their species part.
 				enemy.hp = 0; s.roll_part(enemy)
 				if s.parts_bag.values().reduce(func(a,b): return a+b,0) > before: count += 1
 			if light == 90: bright_drops += count
 			else: dark_drops += count
 	check(dark_drops > bright_drops,"dark floors drop more parts (%d vs %d)" % [dark_drops,bright_drops])
 
-	# Enemy damage bonus per tier.
+	# Enemy damage bonus per tier, measured on a foe without a part passive.
 	for row in [[90,7],[50,8],[20,9]]:
 		var s = solo()
-		var foe: Dictionary = s.enemies[0]; foe.hp = 20; foe.alert = true
+		var foe: Dictionary = s.enemies[0]; foe.hp = 20; foe.alert = true; foe.part_id = ""
 		s.party[0].pos = foe.pos+Vector2i.LEFT; s.light = row[0]; s.floor_state.observe(s)
 		var hp: int = s.party[0].hp
 		MonsterAI.strike(s,foe,s.party[0],7)
@@ -70,7 +69,7 @@ func run() -> void:
 		var foe: Dictionary = s.enemies.filter(func(e): return e.role == "MELEE")[0]
 		s.light = light
 		var c := Fixture.arena(s,6)
-		foe.hp = 20; foe.alert = false
+		foe.hp = 20; foe.alert = false; foe.part_id = ""
 		foe.pos = c+Vector2i(1,0)
 		s.floor_state.seen_enemies.clear(); s.floor_state.observe(s)
 		var hp: int = hero.hp

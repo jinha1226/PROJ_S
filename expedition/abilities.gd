@@ -14,7 +14,15 @@ const DEFINITIONS = {
 	"HEAVY_STRIKE":{"name":"시험 강타","item":"시험용 강타 문양","description":"인접 대상 · 피해 28 · 재사용 3턴","target":"ENEMY","range":1,"radius":0,"damage":28,"cooldown":3,"effect":"DAMAGE","axis":"MELEE","rule_when":"ALWAYS","short":"강타","shape":"SQUARE","self_hit":false,"icon":5,"species":"","passive":NO_PASSIVE,"enemy":IMMEDIATE,"allies_hit":false,"tile_wet":0},
 	"THROWING_KNIFE":{"name":"시험 투척","item":"시험용 투척 문양","description":"사거리 4 · 피해 10 · 재사용 1턴","target":"ENEMY","range":4,"radius":0,"damage":10,"cooldown":1,"effect":"DAMAGE","axis":"RANGED","rule_when":"ALWAYS","short":"투척","shape":"SQUARE","self_hit":false,"icon":5,"species":"","passive":NO_PASSIVE,"enemy":IMMEDIATE,"allies_hit":false,"tile_wet":0},
 	"FIELD_DRESSING":{"name":"시험 응급처치","item":"시험용 처치 문양","description":"자신 체력 +15 · 재사용 4턴","target":"SELF","range":0,"radius":0,"damage":0,"heal":15,"cooldown":4,"effect":"HEAL","axis":"","rule_when":"HP","short":"응급","shape":"SQUARE","self_hit":false,"icon":5,"species":"","passive":NO_PASSIVE,"enemy":IMMEDIATE,"allies_hit":false,"tile_wet":0},
-	"LUNGE":{"name":"시험 돌진","item":"시험용 돌진 문양","description":"사거리 3 · 적 옆으로 이동 후 피해 12 · 재사용 3턴","target":"ENEMY","range":3,"radius":0,"damage":12,"cooldown":3,"effect":"LUNGE","axis":"MELEE","rule_when":"ALWAYS","short":"돌진","shape":"SQUARE","self_hit":false,"icon":5,"species":"","passive":NO_PASSIVE,"enemy":IMMEDIATE,"allies_hit":false,"tile_wet":0}}
+	"LUNGE":{"name":"시험 돌진","item":"시험용 돌진 문양","description":"사거리 3 · 적 옆으로 이동 후 피해 12 · 재사용 3턴","target":"ENEMY","range":3,"radius":0,"damage":12,"cooldown":3,"effect":"LUNGE","axis":"MELEE","rule_when":"ALWAYS","short":"돌진","shape":"SQUARE","self_hit":false,"icon":5,"species":"","passive":NO_PASSIVE,"enemy":IMMEDIATE,"allies_hit":false,"tile_wet":0},
+	"RAT_GNAW":{"name":"물어뜯기","item":"쥐 이빨","description":"무리: 인접 아군당 피해 +1 · 물어뜯기: 인접 대상 피해 9 · 재사용 2턴","target":"ENEMY","range":1,"radius":0,"damage":9,"cooldown":2,"effect":"DAMAGE","axis":"MELEE","rule_when":"ALWAYS","short":"물기","shape":"SQUARE","self_hit":false,"icon":5,"species":"dcss_rat","passive":{"kind":"PACK","value":1},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0},
+	"LIZARD_TAIL":{"name":"꼬리치기","item":"도마뱀 꼬리","description":"반격: 인접한 공격자에게 피해 2 · 꼬리치기: 대상 주위 3×3 피해 6 · 재사용 3턴","target":"ENEMY","range":1,"radius":1,"damage":6,"cooldown":3,"effect":"DAMAGE","axis":"MELEE","rule_when":"ALWAYS","short":"꼬리","shape":"SQUARE","self_hit":false,"icon":5,"species":"dcss_frilled_lizard","passive":{"kind":"RETALIATE","value":2},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0},
+	"KOBOLD_SLING":{"name":"투석","item":"코볼트 투석끈","description":"비열: 체력 절반 미만 대상에 피해 +3 · 투석: 사거리 4 피해 7 · 재사용 2턴","target":"ENEMY","range":4,"radius":0,"damage":7,"cooldown":2,"effect":"DAMAGE","axis":"RANGED","rule_when":"ALWAYS","short":"투석","shape":"SQUARE","self_hit":false,"icon":5,"species":"kobold","passive":{"kind":"DIRTY","value":3},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0},
+	"GOBLIN_SHIV":{"name":"기습","item":"고블린 단검","description":"기습: 고립된 대상에 피해 +3 · 기습: 사거리 3 이동 후 피해 10 · 재사용 3턴","target":"ENEMY","range":3,"radius":0,"damage":10,"cooldown":3,"effect":"LUNGE","axis":"MELEE","rule_when":"ALWAYS","short":"기습","shape":"SQUARE","self_hit":false,"icon":5,"species":"goblin","passive":{"kind":"AMBUSHER","value":3},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0},
+	"HOB_CLUB":{"name":"내려치기","item":"홉고블린 곤봉","description":"두꺼운 가죽: 받는 피해 -1 · 내려치기: 인접 대상 피해 14 · 재사용 3턴","target":"ENEMY","range":1,"radius":0,"damage":14,"cooldown":3,"effect":"DAMAGE","axis":"MELEE","rule_when":"ALWAYS","short":"곤봉","shape":"SQUARE","self_hit":false,"icon":5,"species":"dcss_hobgoblin","passive":{"kind":"THICK_HIDE","value":1},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0},
+	"ORC_CLEAVER":{"name":"휘두르기","item":"오크 도끼","description":"피의 갈망: 자신 체력 절반 미만이면 피해 +3 · 휘두르기: 대상 주위 3×3 피해 11 · 재사용 3턴","target":"ENEMY","range":1,"radius":1,"damage":11,"cooldown":3,"effect":"DAMAGE","axis":"MELEE","rule_when":"ALWAYS","short":"도끼","shape":"SQUARE","self_hit":false,"icon":5,"species":"dcss_orc","passive":{"kind":"BLOODLUST","value":3},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0},
+	"GNOLL_SPEAR":{"name":"창 찌르기","item":"놀 창","description":"재생: 라운드마다 체력 +2 · 창 찌르기: 사거리 2 피해 12 · 재사용 3턴","target":"ENEMY","range":2,"radius":0,"damage":12,"cooldown":3,"effect":"DAMAGE","axis":"MELEE","rule_when":"ALWAYS","short":"창","shape":"SQUARE","self_hit":false,"icon":5,"species":"dcss_gnoll","passive":{"kind":"REGEN","value":2},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0},
+	"RIVER_RAT_SPLASH":{"name":"물세례","item":"강쥐 가죽","description":"물갈퀴: 젖은 칸에서 피해 +3 · 물세례: 사거리 3 · 3×3 피해 5 · 칸을 적심 · 재사용 3턴","target":"ENEMY","range":3,"radius":1,"damage":5,"cooldown":3,"effect":"DAMAGE","axis":"RANGED","rule_when":"ALWAYS","short":"물","shape":"SQUARE","self_hit":false,"icon":5,"species":"dcss_river_rat","passive":{"kind":"AMPHIBIOUS","value":3},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":70}}
 ## Actions that are not catalog parts.
 const BASIC_BADGES := {"ATTACK":"공격","MOVE":"이동","WAIT":"대기"}
 
@@ -114,9 +122,11 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 			actor.hp = mini(int(actor.max_hp),int(actor.hp)+int(def.heal))
 			s.Body.heal(actor)
 		"GUARD":
-			actor["guarded"] = true
-			victim["protected_by"] = actor.id
-			s.message("%s · 엄호 → %s" % [actor.name,victim.name])
+			if victim.is_empty(): s.message(actor.name+"의 "+def.name+"가 빗나갔습니다.")
+			else:
+				actor["guarded"] = true
+				victim["protected_by"] = actor.id
+				s.message("%s · 엄호 → %s" % [actor.name,victim.name])
 		"PUSH":
 			if victim.is_empty(): s.message(actor.name+"의 "+def.name+"가 빗나갔습니다.")
 			else:

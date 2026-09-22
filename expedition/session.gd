@@ -17,6 +17,7 @@ const Tactics = preload("res://expedition/tactical_action_selector.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 const Growth = preload("res://expedition/growth.gd")
+const Passives = preload("res://expedition/passives.gd")
 var parts_bag: Dictionary = {}
 const STARTING_PARTS := {"PUSH":1,"GUARD":1}
 var party_command := "FOLLOW"
@@ -660,8 +661,17 @@ func protection_recipient(target: Dictionary) -> Dictionary:
 		current = next
 	return current
 
+func actor_by_id(id: int) -> Dictionary:
+	for actor in party+enemies:
+		if actor.id == id: return actor
+	return {}
+
 func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	if target.hp <= 0: return
+	var attacker: Dictionary = actor_by_id(source)
+	# Retaliation is plain damage: it never triggers passives again.
+	var passive_hit: bool = form != "RETALIATE"
+	if passive_hit and not attacker.is_empty(): amount = Passives.outgoing(self,attacker,target,amount)
 	# 엄호: the protector steps in front. Counted and logged once, and only when
 	# the hit really lands on somebody else.
 	var recipient: Dictionary = protection_recipient(target)
@@ -674,6 +684,7 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	if target.get("iron_guard",false): amount = maxi(1,amount / 4)
 	elif target.get("guarded",false): amount = maxi(1,amount / 2)
 	if not target.enemy: amount = Growth.incoming(target,amount)
+	if passive_hit: amount = Passives.incoming(self,target,amount)
 	# A solo floor always grants one action; collapse instead exposes the hero
 	# to one extra point of damage. Calming supplies can prevent this penalty.
 	if floor_mode and party.size() == 1 and not target.enemy and target.stress >= 150 and amount > 0: amount += 1
@@ -681,8 +692,7 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	var lost := mini(int(target.hp), amount)
 	var source_cell: Vector2i = target.pos
 	var source_name: String = {"FIRE":"불길","ELECTRIC":"방전","POISON":"독"}.get(form,"함정")
-	for actor in party + enemies:
-		if actor.id == source: source_cell = actor.pos; source_name = actor.name
+	if not attacker.is_empty(): source_cell = attacker.pos; source_name = attacker.name
 	var effect := {"from":source_cell,"cell":target.pos,"amount":lost,"form":form}
 	effects.append(effect)
 	if effects.size() > 32: effects.pop_front()
@@ -706,6 +716,7 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 				remember_important(ally,"ALLY_LOST",target.id+1,source+1,900)
 				stress(ally, 22)
 	message("%s %s에게 %d의 피해를 주었습니다.%s" % [subject_name(source_name),target.name,lost," "+subject_name(target.name)+" 쓰러졌습니다." if target.hp <= 0 else ""])
+	if passive_hit: Passives.after_hit(self,target,attacker,form)
 	if target.enemy and target.hp <= 0: roll_part(target)
 
 func plan_enemies() -> void:
@@ -784,6 +795,7 @@ func end_round() -> bool:
 	for actor in party: actor["guarded"] = false; actor["protected_by"] = -1
 	check_battle_end()
 	if phase != "BATTLE": return true
+	for actor in alive()+enemies: Passives.round_start(self,actor)
 	for actor in alive():
 		actor.iron_guard = false
 		for id in actor.cooldowns: actor.cooldowns[id] = maxi(0,int(actor.cooldowns[id])-1)

@@ -5,6 +5,8 @@ const Session = preload("res://expedition/session.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
+const Passives = preload("res://expedition/passives.gd")
+const Builder = preload("res://expedition/encounter_builder.gd")
 var failures := 0
 var checks := 0
 
@@ -18,6 +20,8 @@ func run() -> void:
 	catalog()
 	basic_parts()
 	bag()
+	species()
+	passives()
 	print("Parts: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 ## Every definition carries the part fields and a rule the schema accepts.
@@ -93,13 +97,11 @@ func bag() -> void:
 	Fixture.arena(s,8)
 	var foe: Dictionary = s.enemies[0]
 	check(foe.part_id == Abilities.species_part(foe.species_id),"floor monsters carry their species part")
-	# Task 3 enables this once species parts exist.
-	if not Abilities.droppable().is_empty():
-		var tries := 0; var got := false
-		for enemy in s.enemies:
-			enemy.hp = 0; s.roll_part(enemy); tries += 1
-			if s.parts_bag.get(enemy.part_id,0) > 0: got = true
-		check(got,"some monster in the roster drops its part (%d tried)" % tries)
+	var tries := 0; var got := false
+	for enemy in s.enemies:
+		enemy.hp = 0; s.roll_part(enemy); tries += 1
+		if s.parts_bag.get(enemy.part_id,0) > 0: got = true
+	check(got,"some monster in the roster drops its part (%d tried)" % tries)
 	var carried: Dictionary = s.parts_bag.duplicate(true)
 	s.loot = 10; s.objective.state = "CARRIED"
 	for enemy in s.enemies: enemy.hp = 0
@@ -108,7 +110,7 @@ func bag() -> void:
 	check(s.result.has("parts") and not s.result.has("essences"),"result reports parts")
 	s.refit(); s.depart(); Fixture.arena(s,8)
 	var kept: Dictionary = s.parts_bag.duplicate(true)
-	s.parts_bag["BOMB"] = int(s.parts_bag.get("BOMB",0))+3
+	s.parts_bag["HOB_CLUB"] = int(s.parts_bag.get("HOB_CLUB",0))+3
 	s.damage(s.party[0],999,999,"IMPACT"); s.damage(s.party[1],999,999,"IMPACT"); s.damage(s.party[2],999,999,"IMPACT"); s.check_battle_end()
 	check(s.result.reason == "DEFEAT" and s.parts_bag == kept,"defeat restores the bag snapshot")
 	# Test loadout.
@@ -118,3 +120,90 @@ func bag() -> void:
 	var snapshot: Dictionary = t.parts_bag.duplicate(true)
 	check(t.grant_test_loadout() and t.parts_bag == snapshot,"loadout is idempotent")
 	t.depart(); check(not t.grant_test_loadout(),"loadout refused outside town")
+
+## One part per species on the roster, every passive kind known.
+func species() -> void:
+	for row in Builder.table():
+		var id: String = Abilities.species_part(row.species_id)
+		check(not id.is_empty(),"%s has a signature part" % row.species_id)
+		if id.is_empty(): continue
+		var owners: Array = Abilities.DEFINITIONS.keys().filter(func(k): return Abilities.DEFINITIONS[k].species == row.species_id)
+		check(owners.size() == 1,"%s has exactly one part" % row.species_id)
+		var def: Dictionary = Abilities.DEFINITIONS[id]
+		check(def.passive.kind in Passives.KINDS,"%s passive kind known" % id)
+		check(int(def.enemy.prep) == 1,"%s floor-1 prep is 1" % id)
+		check(int(def.damage) <= 14,"%s damage within the floor-1 cap" % id)
+		check(int(def.passive.value) >= 1 and int(def.passive.value) <= 3,"%s passive value 1..3" % id)
+
+## Two-member floor arena: hero at c, ally at c+(0,1), foe at c+(1,0), all fresh.
+func duel() -> Dictionary:
+	var s = Session.new(731,true,true,true,3); s.depart()
+	var c := Fixture.arena(s,8)
+	Fixture.equip_basics(s)
+	var foe: Dictionary = s.enemies[0]
+	foe.hp = 30; foe.max_hp = 30; foe.role = "MELEE"; foe.alert = true; foe.charging = false; foe.cast_recovery = 0
+	foe.pos = c+Vector2i(1,0); foe.part_id = ""
+	s.party[1].pos = c+Vector2i(0,1); s.party[2].pos = c+Vector2i(-3,-3)
+	s.light = 90; s.floor_state.observe(s); s.selected = 0
+	for actor in s.party: actor.ap = 0
+	s.party[0].ap = 3
+	return {"s":s,"c":c,"hero":s.party[0],"ally":s.party[1],"far":s.party[2],"foe":foe}
+
+func passives() -> void:
+	# PACK: +1 per adjacent living ally of the attacker.
+	var d := duel(); var s = d.s
+	d.foe.part_id = "RAT_GNAW"
+	var second: Dictionary = s.enemies[1]; second.hp = 30; second.max_hp = 30; second.pos = d.c+Vector2i(2,0); second.alert = true
+	var third: Dictionary = s.enemies[2]; third.hp = 30; third.max_hp = 30; third.pos = d.c+Vector2i(2,1); third.alert = true
+	check(Passives.outgoing(s,d.foe,d.hero,7) == 9,"pack adds one per adjacent ally (two)")
+	second.hp = 0
+	check(Passives.outgoing(s,d.foe,d.hero,7) == 8,"dead allies do not count")
+	# RETALIATE: adjacent attacker takes 2 after the hit; no chain.
+	d = duel(); s = d.s
+	d.hero.equipped_abilities = ["LIZARD_TAIL","GUARD"]
+	var foe_hp: int = d.foe.hp
+	s.damage(d.hero,5,d.foe.id,"IMPACT")
+	check(d.foe.hp == foe_hp-2,"retaliate returns two to the adjacent attacker")
+	d.foe.part_id = "LIZARD_TAIL"; foe_hp = d.foe.hp; var hero_hp: int = d.hero.hp
+	s.damage(d.hero,5,d.foe.id,"IMPACT")
+	check(d.foe.hp == foe_hp-2 and d.hero.hp < hero_hp,"retaliation itself is not retaliated")
+	d.foe.pos = d.c+Vector2i(3,0); foe_hp = d.foe.hp
+	s.damage(d.hero,5,d.foe.id,"IMPACT")
+	check(d.foe.hp == foe_hp,"no retaliation at range")
+	# DIRTY: +3 against targets under half health.
+	d = duel(); s = d.s; d.foe.part_id = "KOBOLD_SLING"
+	d.hero.hp = int(d.hero.max_hp/2)
+	check(Passives.outgoing(s,d.foe,d.hero,7) == 7,"dirty needs strictly under half")
+	d.hero.hp -= 1
+	check(Passives.outgoing(s,d.foe,d.hero,7) == 10,"dirty adds three under half")
+	# AMBUSHER: +3 against a target with no adjacent living ally.
+	d = duel(); s = d.s; d.foe.part_id = "GOBLIN_SHIV"
+	check(Passives.outgoing(s,d.foe,d.hero,7) == 7,"ally adjacent: no ambush bonus")
+	check(Passives.outgoing(s,d.foe,d.far,7) == 10,"isolated target: ambush bonus")
+	# THICK_HIDE: -1, never below 1.
+	d = duel(); s = d.s; d.foe.part_id = "HOB_CLUB"
+	check(Passives.incoming(s,d.foe,5) == 4 and Passives.incoming(s,d.foe,1) == 1,"thick hide subtracts one, floor one")
+	# BLOODLUST: +3 when the attacker is under half.
+	d = duel(); s = d.s; d.foe.part_id = "ORC_CLEAVER"
+	check(Passives.outgoing(s,d.foe,d.hero,7) == 7,"bloodlust off at full health")
+	d.foe.hp = 14
+	check(Passives.outgoing(s,d.foe,d.hero,7) == 10,"bloodlust on under half")
+	# REGEN: +2 at round start, capped.
+	d = duel(); s = d.s; d.foe.part_id = "GNOLL_SPEAR"; d.foe.hp = 20
+	Passives.round_start(s,d.foe)
+	check(d.foe.hp == 22,"regen heals two")
+	d.foe.hp = 29; Passives.round_start(s,d.foe)
+	check(d.foe.hp == 30,"regen never exceeds max")
+	# AMPHIBIOUS: +3 on wet or water.
+	d = duel(); s = d.s; d.foe.part_id = "RIVER_RAT_SPLASH"
+	check(Passives.outgoing(s,d.foe,d.hero,7) == 7,"dry: no bonus")
+	s.tile(d.foe.pos).wet = 40
+	check(Passives.outgoing(s,d.foe,d.hero,7) == 10,"wet: bonus")
+	# Hooks are wired: an equipped part's passive changes a real hit, and round start regenerates.
+	d = duel(); s = d.s; d.hero.equipped_abilities = ["HOB_CLUB","GUARD"]
+	hero_hp = d.hero.hp
+	s.damage(d.hero,6,d.foe.id,"IMPACT")
+	check(d.hero.hp == hero_hp-5,"equipped thick hide applies inside damage()")
+	d.foe.part_id = "GNOLL_SPEAR"; d.foe.hp = 20
+	s.act("WAIT",d.hero.pos); s.act("WAIT",d.hero.pos); s.act("WAIT",d.hero.pos)
+	check(d.foe.hp >= 22,"regen runs at round start for monsters")

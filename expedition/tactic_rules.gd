@@ -30,8 +30,8 @@ static func skill(id: String) -> Dictionary:
 static func defaults() -> Array:
 	return []
 
-static func make_rule(skill: String, target: String, when: String) -> Dictionary:
-	return {"skill":skill,"target":target,"when":when,"enabled":true,"subject":"SELF" if target == "SELF" else "TARGET","threshold":50,"comparison":"BELOW","status":"WET"}
+static func make_rule(id: String, target: String, when: String) -> Dictionary:
+	return {"skill":id,"target":target,"when":when,"enabled":true,"subject":"SELF" if target == "SELF" else "TARGET","threshold":50,"comparison":"BELOW","status":"WET"}
 
 static func valid(rule: Dictionary) -> bool:
 	var def: Dictionary = skill(rule.get("skill",""))
