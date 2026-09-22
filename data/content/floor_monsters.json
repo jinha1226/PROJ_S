@@ -1,0 +1,14 @@
+{
+  "content_schema_version": 1,
+  "content_type": "floor_monsters",
+  "species": [
+    {"species_id": "dcss_rat", "display_name": "쥐", "max_health": 25, "min_depth": 1, "max_depth": 3, "rarity": 1000, "curve": "FALL", "threat": 1, "roles": ["MELEE"], "band": null},
+    {"species_id": "dcss_frilled_lizard", "display_name": "목도리 도마뱀", "max_health": 20, "min_depth": 1, "max_depth": 3, "rarity": 640, "curve": "FALL", "threat": 1, "roles": ["MELEE"], "band": null},
+    {"species_id": "kobold", "display_name": "코볼트", "max_health": 28, "min_depth": 1, "max_depth": 4, "rarity": 1000, "curve": "FLAT", "threat": 2, "roles": ["MELEE","RANGED"], "band": null},
+    {"species_id": "goblin", "display_name": "고블린", "max_health": 28, "min_depth": 1, "max_depth": 4, "rarity": 1000, "curve": "FLAT", "threat": 2, "roles": ["MELEE","RANGED","CASTER"], "band": null},
+    {"species_id": "dcss_hobgoblin", "display_name": "홉고블린", "max_health": 55, "min_depth": 1, "max_depth": 5, "rarity": 1000, "curve": "PEAK", "threat": 3, "roles": ["MELEE"], "band": null},
+    {"species_id": "dcss_orc", "display_name": "오크", "max_health": 70, "min_depth": 1, "max_depth": 6, "rarity": 1000, "curve": "RISE", "threat": 4, "roles": ["MELEE","RANGED","CASTER"], "band": null},
+    {"species_id": "dcss_gnoll", "display_name": "놀", "max_health": 130, "min_depth": 1, "max_depth": 8, "rarity": 200, "curve": "PEAK", "threat": 5, "roles": ["MELEE"], "band": {"followers": ["dcss_rat","dcss_frilled_lizard"], "count": [2, 2]}},
+    {"species_id": "dcss_river_rat", "display_name": "강쥐", "max_health": 110, "min_depth": 2, "max_depth": 6, "rarity": 600, "curve": "RISE", "threat": 6, "roles": ["MELEE"], "band": null}
+  ]
+}
