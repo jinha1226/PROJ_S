@@ -59,7 +59,7 @@ func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:   # 레이아웃
 
 ```json
 {"size": 20, "room": [5, 5, 9, 9], "door": [9, 4], "pillars": [[8, 8], [10, 10]],
- "party_entry": [9, 3], "light": 90,
+ "party_entry": [9, 5], "light": 90,
  "members": [{"species_id": "dcss_hobgoblin", "role": "MELEE", "pos": [9, 12]}, ...]}
 ```
 
@@ -70,6 +70,8 @@ func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:   # 레이아웃
 
 파티는 `entry`에서 시작하고(`apply`가 `entry+(0,i)`로 세운다), 밝기는 `s.light = spec.light`로 세션에 직접 넣는다.
 
+파티는 방 안 첫 줄(문 열 아래)에서 시작하고, 적이 보이지 않으면 봇이 방 중앙 쪽으로 한 칸씩 접근한다 — 실제 플레이에서 기둥 뒤의 적을 찾아 방으로 들어서는 행동을 모델링한다.
+
 ## 4. 봇 정책 (`expedition/sim/bot_policy.gd`)
 
 한 라운드의 플레이어 행동을 실행하는 정적 함수. 세션의 공개 행동 API만 쓴다.
@@ -78,6 +80,8 @@ func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:   # 레이아웃
 | --- | --- |
 | `simple` | 보이는 적이 있으면 `auto_attack()`, 실패 시 `act("WAIT")`. 회복·스킬 없음. |
 | `tactical` | `solo_balance.gd`의 전투 중 규칙을 옮긴다: HP<14 물약(`use_supply(0)`), HP<10 붕대(`use_supply(5)`), 아니면 `auto_attack()`; 추가로 적이 2마리 이상 인접하면 `GUARD`(`act("GUARD", pos)`)를 한 라운드에 한 번 사용. 회복품은 spec의 `supplies`로 준다. |
+
+공통: 보이는 적이 없으면 조우 방 중앙으로 한 칸 이동(`TurnCore.path`). 두 정책 모두 이 단계를 먼저 거친다(전술 정책은 회복·방어 판단 뒤).
 
 정책은 `step(s) -> bool`(행동을 수행했으면 true)만 제공하고, 라운드 진행은 세션이 한다. 동료는 세션의 기존 자동 행동을 따른다.
 
@@ -134,7 +138,7 @@ static func run_many(config: Dictionary, seeds: Array) -> Dictionary
   }}}}
 ```
 
-아레나 공통: `size 20`, `room [5,5,9,9]`, `door [9,4]`, `pillars [[8,8],[10,10]]`, `party_entry [9,3]`, `light 90`. `members`의 `pos`는 `EncounterBuilder.place()`가 정한다(앵커 없음 → 문에서 가장 먼 칸). B안에서는 3마리 구성의 마지막 멤버를 잘라 2마리로 만든다(`solo_max_members`가 조우 생성이 아니라 주어진 구성에 적용되는 경우의 규칙; 파티 인원 1일 때만).
+아레나 공통: `size 20`, `room [5,5,9,9]`, `door [9,4]`, `pillars [[8,8],[10,10]]`, `party_entry [9,5]`, `light 90`. `members`의 `pos`는 `EncounterBuilder.place()`가 정한다(앵커 없음 → 문에서 가장 먼 칸). B안에서는 3마리 구성의 마지막 멤버를 잘라 2마리로 만든다(`solo_max_members`가 조우 생성이 아니라 주어진 구성에 적용되는 경우의 규칙; 파티 인원 1일 때만).
 
 솔로 HP 스케일(`SOLO_HP_PERCENT` 등)은 파티 인원 1일 때 `apply`에서 현행대로 적용된다. 이는 실험 조건의 일부이며 표 머리말에 기록한다.
 

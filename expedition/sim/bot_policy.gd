@@ -10,5 +10,16 @@ static func step(s, policy: String) -> bool:
 		for e in s.combat_enemies():
 			if maxi(absi(e.pos.x-hero.pos.x),absi(e.pos.y-hero.pos.y)) == 1: adjacent += 1
 		if adjacent >= 2 and not hero.get("guarded",false) and s.act("GUARD",hero.pos): return true
+	if s.combat_enemies().is_empty() and approach(s,hero): return true
 	if s.auto_attack(): return true
 	return s.act("WAIT",hero.pos)
+
+## Nothing in sight: walk one cell towards the encounter room's centre, the way
+## a player rounds a pillar instead of waiting out the fight in the doorway.
+static func approach(s, hero: Dictionary) -> bool:
+	var rooms: Array = s.floor_state.layout.get("rooms",[])
+	if rooms.is_empty(): return false
+	var target: Vector2i = Rect2i(rooms[0].rect).get_center()
+	if hero.pos == target: return false
+	var route: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,hero.pos,[target],func(a,b): return s.can_step(a,b),func(_p): return 100)
+	return s.act("MOVE",route.path[1]) if route.found and route.path.size() > 1 else false

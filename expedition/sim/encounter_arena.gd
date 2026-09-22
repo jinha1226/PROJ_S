@@ -1,7 +1,7 @@
 extends RefCounted
 ## Fixed fight room as a §7 layout so the real floor/session code runs unchanged.
 const Builder = preload("res://expedition/encounter_builder.gd")
-const DEFAULT_SPEC := {"size":20,"room":[5,5,9,9],"door":[9,4],"pillars":[[8,8],[10,10]],"party_entry":[9,3],"light":90,"members":[]}
+const DEFAULT_SPEC := {"size":20,"room":[5,5,9,9],"door":[9,4],"pillars":[[8,8],[10,10]],"party_entry":[9,5],"light":90,"members":[]}
 
 static func layout(spec: Dictionary, theme: Dictionary) -> Dictionary:
 	var size: int = spec.size
