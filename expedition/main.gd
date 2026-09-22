@@ -22,7 +22,9 @@ var item_detail: VBoxContainer
 const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 const SKILLS = [["PUSH","GUARD"],["ATTACK","GUARD"],["WATER","ELECTRIC"]]
 const SKILL_NAMES = [["밀쳐내기","엄호"],["강타","엄호"],["물","방전"]]
-var session = Session.new(randi(),true,false,true)
+## Members on a floor expedition; every fresh session in this scene uses it.
+const PARTY_SIZE := 2
+var session = Session.new(randi(),true,false,true,PARTY_SIZE)
 var mode := ""
 var reservation_actor := -1
 var pending_item := -1
@@ -482,7 +484,7 @@ func build_auto_rows() -> void:
 		node.add_theme_font_size_override("font_size",11)
 
 func depart() -> void:
-	if session.phase == "DEFEAT" or session.alive().is_empty(): session = Session.new(randi(),true,false,true)
+	if session.phase == "DEFEAT" or session.alive().is_empty(): session = Session.new(randi(),true,false,true,PARTY_SIZE)
 	run_action(session.depart)
 
 func select_actor(index: int) -> void:
