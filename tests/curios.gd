@@ -56,14 +56,16 @@ func run() -> void:
 	check(not scene.details_popup.visible and s.round_number == turn and not s.floor_state.features[p].used,"skip keeps object and time unchanged")
 	check(scene.inventory_rows().filter(func(r): return r.category == "도구").size() == 2,"both tools in common bag")
 	var fresh = Session.new(731,true,true,true); fresh.depart(); scene.session = fresh; scene.refresh()
+	for enemy in fresh.enemies: enemy.hp = 0
 	var origin: Vector2i = fresh.party[0].pos
 	var discovery := origin+Vector2i(floori(Session.Floor.sight_radius(fresh.light))+1,0)
 	for x in range(origin.x,discovery.x+1): fresh.tile(Vector2i(x,origin.y)).terrain = "stone"
 	fresh.floor_state.observe(fresh)
 	fresh.floor_state.features[discovery] = {"kind":"curio","curio_id":"DIRT_PILE","used":false,"label":"흙더미"}
 	scene.navigation.explore(fresh); scene.navigation.planned_path = [origin,origin+Vector2i.RIGHT]; scene.navigation.destination = origin+Vector2i.RIGHT
+	var discoveries_before: int = fresh.floor_state.discovered_curios
 	turn = fresh.round_number; scene.navigation_tick()
-	check(not scene.navigation.active and fresh.round_number == turn+1 and scene.notice.contains("조사물 발견"),"new discovery stops auto exploration after one step")
+	check(scene.navigation.active and fresh.round_number == turn+1 and fresh.floor_state.discovered_curios > discoveries_before,"discovering a curio keeps safe auto exploration running")
 	var count: int = fresh.floor_state.discovered_curios; fresh.floor_state.observe(fresh)
 	check(fresh.floor_state.discovered_curios == count,"known objects are not rediscovered every turn")
 	scene.queue_free(); await process_frame

@@ -118,7 +118,15 @@ func exercise() -> void:
 	check(scene.session.party.size() == 2,"leader and one companion")
 	check(scene.board.companion_previews.size() == 1,"board receives companion action")
 	var header: Node = scene.root_layout.get_child(0)
-	check(header.find_children("*","Button",true,false).is_empty(),"HUD has no character or resource buttons")
+	var hud_buttons: Array = header.find_children("*","Button",true,false)
+	check(hud_buttons.map(func(b): return str(b.name)) == ["FoodButton","TorchButton","ObjectiveChip","ExpeditionMenu"],"HUD exposes resource, objective and menu buttons")
+	for control in hud_buttons:
+		check(control.size.y >= 44 and scene.get_global_rect().encloses(control.get_global_rect()),"HUD buttons remain usable and on screen")
+	header.get_node("ExpeditionMenu").pressed.emit()
+	await process_frame
+	check(scene.details_popup.visible,"HUD menu opens")
+	check(scene.modal_content.get_children().map(func(c): return c.text) == ["원정 목표","입구까지 이동","원정포기"],"HUD menu contains the three expedition actions")
+	scene.details_popup.hide()
 	var nav: Node = scene.root_layout.get_child(scene.root_layout.get_child_count()-1)
 	check(nav.get_child(2).text == "자동탐험","automatic exploration replaces status in footer")
 	var hold := InputEventScreenTouch.new(); hold.index = 0; hold.pressed = true
