@@ -12,7 +12,11 @@ const DIRECTIONS4 := [Vector2i.UP,Vector2i.DOWN,Vector2i.LEFT,Vector2i.RIGHT]
 const DIRECTIONS8 := [Vector2i.UP,Vector2i.LEFT,Vector2i.RIGHT,Vector2i.DOWN,Vector2i(-1,-1),Vector2i(1,-1),Vector2i(-1,1),Vector2i(1,1)]
 
 static func theme(id: String) -> Dictionary:
-	return content.get("themes",{}).get(id,{})
+	var row: Dictionary = content.get("themes",{}).get(id,{})
+	if row.is_empty(): return {}
+	row = row.duplicate(true)
+	row.id = id
+	return row
 
 static func outer(rect: Rect2i) -> Rect2i:
 	return Rect2i(rect.position-Vector2i.ONE,rect.size+Vector2i(2,2))
@@ -332,3 +336,262 @@ static func paint(terrain: Array, rooms: Array, theme: Dictionary, rng: RandomNu
 				if room.doors.all(func(d): return maxi(absi(p.x-d.x),absi(p.y-d.y)) > 1): terrain[index_of(size,p)] = accent
 		result[room.id] = {"obstacles":obstacles}
 	return result
+
+static func adjacency(rooms: Array, edges: Array) -> Dictionary:
+	var result: Dictionary = {}
+	for room in rooms:
+		result[room.id] = []
+	for e in edges:
+		result[e[0]].append(e[1])
+		result[e[1]].append(e[0])
+	return result
+
+static func graph_distances(rooms: Array, edges: Array, origin: int) -> Dictionary:
+	var adj := adjacency(rooms,edges)
+	var dist: Dictionary = {origin:0}
+	var queue: Array = [origin]
+	var cursor := 0
+	while cursor < queue.size():
+		var id: int = queue[cursor]
+		cursor += 1
+		for next in adj[id]:
+			if not dist.has(next):
+				dist[next] = int(dist[id])+1
+				queue.append(next)
+	return dist
+
+## Shortest room path by edge count; rooms in `blocked` are impassable (the
+## destination itself still counts as reached). Empty when no route remains.
+static func graph_path(rooms: Array, edges: Array, from: int, to: int, blocked: Dictionary) -> Array:
+	var adj := adjacency(rooms,edges)
+	var previous: Dictionary = {from:-1}
+	var queue: Array = [from]
+	var cursor := 0
+	while cursor < queue.size():
+		var id: int = queue[cursor]
+		cursor += 1
+		if id == to:
+			var path: Array = [to]
+			while previous[path[path.size()-1]] != -1:
+				path.append(previous[path[path.size()-1]])
+			path.reverse()
+			return path
+		for next in adj[id]:
+			if previous.has(next) or (blocked.has(next) and next != to): continue
+			previous[next] = id
+			queue.append(next)
+	return []
+
+static func is_fight_room(room: Dictionary, theme: Dictionary) -> bool:
+	return room.kind == "fight" or (room.kind == "template" and (room.template_id in theme.templates.fight_pool or room.template_id == "relic_vault"))
+
+## Tiers by graph distance, spine rooms, mandatory (articulation -> shortest
+## path) and optional (treasury neighbour, dead ends) encounter rooms.
+static func choose_encounter_rooms(rooms: Array, edges: Array, theme: Dictionary) -> Dictionary:
+	var entry := room_index(rooms,"entry_camp")
+	var relic := room_index(rooms,"relic_vault")
+	var treasury := room_index(rooms,"sealed_treasury")
+	var dist := graph_distances(rooms,edges,entry)
+	var adj := adjacency(rooms,edges)
+	var relic_neighbours: Array = adj[relic]
+	for room in rooms:
+		var d: int = int(dist.get(room.id,99))
+		room.tier = "deep" if room.id == relic or room.id in relic_neighbours else "early" if d <= 2 else "mid"
+	var spine := graph_path(rooms,edges,entry,relic,{})
+	for room in rooms:
+		room.spine = room.id in spine
+	var mandatory: Array = [relic]
+	for room in rooms:
+		if room.id in [entry,relic,treasury] or not is_fight_room(room,theme): continue
+		if graph_path(rooms,edges,entry,relic,{room.id:true}).is_empty(): mandatory.append(room.id)
+	if mandatory.size() < 2:
+		for id in spine:
+			if id in mandatory or id in [entry,treasury] or not is_fight_room(rooms[id],theme): continue
+			mandatory.append(id)
+			if mandatory.size() >= 2: break
+	var optional: Array = []
+	if treasury >= 0:
+		for id in adj[treasury]:
+			if id not in mandatory and is_fight_room(rooms[id],theme) and id != entry: optional.append(id)
+	for room in rooms:
+		if optional.size() >= 2: break
+		if room.id in mandatory or room.id in optional or room.id in [entry,treasury] or not is_fight_room(room,theme): continue
+		if adj[room.id].size() == 1: optional.append(room.id)
+	if optional.is_empty():
+		for room in rooms:
+			if room.id not in mandatory and room.id not in [entry,treasury] and is_fight_room(room,theme):
+				optional.append(room.id)
+				break
+	return {"mandatory":mandatory,"optional":optional.slice(0,2)}
+
+static func room_anchor(room: Dictionary) -> Vector2i:
+	if room.kind == "template" and room.parsed.anchor != Vector2i(-1,-1): return room.rect.position-Vector2i.ONE+room.parsed.anchor
+	return Vector2i(-1,-1)
+
+static func room_backline(room: Dictionary) -> Array:
+	if room.kind != "template": return []
+	return room.parsed.backline.map(func(p): return room.rect.position-Vector2i.ONE+p)
+
+## One encounter per chosen room; feature cells and earlier members stay
+## reserved so nothing shares a cell. Empty when a pack will not fit.
+static func build_encounters(layout: Dictionary, theme: Dictionary, painted: Dictionary, rng: RandomNumberGenerator, depth: int) -> Array:
+	var rooms: Array = layout.rooms
+	var chosen := choose_encounter_rooms(rooms,layout.edges,theme)
+	var result: Array = []
+	var reserved: Dictionary = {}
+	for p in layout.features:
+		reserved[p] = true
+	for id in chosen.mandatory+chosen.optional:
+		var room: Dictionary = rooms[id]
+		var mandatory: bool = id in chosen.mandatory
+		var budget: int = theme.monsters.budget[room.tier] if mandatory else theme.monsters.budget.optional
+		var members := Encounters.fill(rng,depth,budget,room.tier == "deep" or not mandatory)
+		var obstacles: Dictionary = painted.get(id,{}).get("obstacles",{}).duplicate()
+		for p in reserved:
+			obstacles[p] = true
+		if not Encounters.place(members,floor_cells(layout.terrain,layout.size,room.rect),room.doors,room_anchor(room),room_backline(room),obstacles,rng): return []
+		for m in members:
+			reserved[m.pos] = true
+		result.append({"room":id,"tier":room.tier,"mandatory":mandatory,"budget":budget,"members":members})
+	return result
+
+## Template features first (entry, relic, altar, the treasury chests, the
+## store's dirt, the camp), then chests on dead-end branch rooms, dirt in
+## branch corners and an optional mid-tier camp -- never on the spine.
+static func place_features(layout: Dictionary, theme: Dictionary, rng: RandomNumberGenerator) -> void:
+	var rooms: Array = layout.rooms
+	var size: int = layout.size
+	var features: Dictionary = {}
+	for room in rooms:
+		if room.kind != "template": continue
+		for p in room.parsed.features:
+			var cell: Vector2i = room.rect.position-Vector2i.ONE+p
+			features[cell] = room.parsed.features[p].duplicate(true)
+			if features[cell].kind == "entry": layout.entry = cell
+			if features[cell].kind == "relic": layout.relic = cell
+	var count := func(kind: String, curio_id: String) -> int:
+		return features.values().filter(func(f): return f.kind == kind and f.get("curio_id","") == curio_id).size()
+	var adj := adjacency(rooms,layout.edges)
+	var branch_plain: Array = rooms.filter(func(r): return r.kind == "plain" and not r.spine)
+	var dead_end_plain: Array = branch_plain.filter(func(r): return adj[r.id].size() == 1)
+	var is_corner := func(room: Dictionary, p: Vector2i) -> bool:
+		return (p.x == room.rect.position.x or p.x == room.rect.end.x-1) and (p.y == room.rect.position.y or p.y == room.rect.end.y-1)
+	var free_cell := func(room: Dictionary, corner: bool) -> Vector2i:
+		var cells: Array = floor_cells(layout.terrain,size,room.rect).filter(func(p): return not features.has(p) and room.doors.all(func(d): return maxi(absi(p.x-d.x),absi(p.y-d.y)) > 1))
+		if corner:
+			var corners: Array = cells.filter(func(p): return is_corner.call(room,p))
+			if not corners.is_empty(): cells = corners
+		if cells.is_empty(): return Vector2i(-1,-1)
+		return cells[rng.randi_range(0,cells.size()-1)]
+	var chest_target: int = rng.randi_range(theme.curios.locked_chest[0],theme.curios.locked_chest[1])
+	var chest_rooms: Array = dead_end_plain if not dead_end_plain.is_empty() else branch_plain
+	var guard := 0
+	while count.call("curio","LOCKED_CHEST") < chest_target and not chest_rooms.is_empty() and guard < 20:
+		guard += 1
+		var cell: Vector2i = free_cell.call(chest_rooms[rng.randi_range(0,chest_rooms.size()-1)],false)
+		if cell.x >= 0: features[cell] = Templates.feature_for("$")
+	var dirt_target: int = rng.randi_range(theme.curios.dirt_pile[0],theme.curios.dirt_pile[1])
+	guard = 0
+	while count.call("curio","DIRT_PILE") < dirt_target and not branch_plain.is_empty() and guard < 20:
+		guard += 1
+		var cell: Vector2i = free_cell.call(branch_plain[rng.randi_range(0,branch_plain.size()-1)],true)
+		if cell.x >= 0: features[cell] = Templates.feature_for("^")
+	var mid_plain: Array = rooms.filter(func(r): return r.kind == "plain" and r.tier == "mid")
+	if not mid_plain.is_empty() and rng.randi_range(0,1) == 1:
+		var cell: Vector2i = free_cell.call(mid_plain[rng.randi_range(0,mid_plain.size()-1)],false)
+		if cell.x >= 0: features[cell] = Templates.feature_for("C")
+	layout.features = features
+
+static func attempt_layout(theme: Dictionary, seed: int, depth: int) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	var rooms := scatter_rooms(theme,rng)
+	if rooms.is_empty(): return {}
+	var edges := build_graph(rooms,theme,rng)
+	var terrain := carve(rooms,edges,theme,rng)
+	var painted := paint(terrain,rooms,theme,rng)
+	var layout := {"size":theme.size,"seed":seed,"theme_id":theme.get("id",""),"depth":depth,"terrain":terrain,"rooms":rooms,"edges":edges,
+		"entry":Vector2i(-1,-1),"relic":Vector2i(-1,-1),"features":{},"encounters":[],"stats":{"regenerations":0,"relic_distance":0,"max_distance":0}}
+	choose_encounter_rooms(rooms,edges,theme) # sets tier/spine before features
+	place_features(layout,theme,rng)
+	layout.encounters = build_encounters(layout,theme,painted,rng,depth)
+	var reach := reachable_from(terrain,theme.size,layout.entry)
+	var farthest := 0
+	for v in reach.values():
+		farthest = maxi(farthest,int(v))
+	layout.stats.max_distance = farthest
+	layout.stats.relic_distance = int(reach.get(layout.relic,0))
+	return layout
+
+## Up to MAX_REGENERATIONS retries on seed+attempt; the last attempt is
+## returned (with a pushed error) when none validates.
+static func generate(theme: Dictionary, seed: int, depth: int) -> Dictionary:
+	var last: Dictionary = {}
+	for attempt in range(MAX_REGENERATIONS+1):
+		var layout := attempt_layout(theme,seed+attempt,depth)
+		if not layout.is_empty():
+			layout.stats.regenerations = attempt
+			layout.seed = seed
+			last = layout
+			if validate(layout,theme).is_empty(): return layout
+	push_error("floor generator: no valid layout after %d regenerations (seed %d): %s" % [MAX_REGENERATIONS,seed,validate(last,theme) if not last.is_empty() else "no rooms"])
+	return last
+
+## Empty string when the layout satisfies the spec; otherwise the first failure.
+static func validate(layout: Dictionary, theme: Dictionary) -> String:
+	if layout.is_empty(): return "empty layout"
+	var size: int = layout.size
+	var rooms: Array = layout.rooms
+	if rooms.size() < theme.rooms.count[0] or rooms.size() > theme.rooms.count[1]: return "room count"
+	for id in theme.templates.required:
+		if room_index(rooms,id) < 0: return "missing template "+id
+	if layout.entry.x < 0 or layout.relic.x < 0: return "entry or relic missing"
+	var reach := reachable_from(layout.terrain,size,layout.entry)
+	for room in rooms:
+		for p in floor_cells(layout.terrain,size,room.rect):
+			if not reach.has(p): return "room %d unreachable" % room.id
+	for p in layout.features:
+		var ok := reach.has(p)
+		for d in DIRECTIONS8:
+			if reach.has(p+d): ok = true
+		if not ok: return "feature unreachable at %s" % p
+		if not rooms.any(func(r): return r.rect.has_point(p)): return "feature in corridor at %s" % p
+	if layout.stats.relic_distance < layout.stats.max_distance*60/100: return "relic too close"
+	# Reward counts: a floor whose plain rooms all sit on the spine cannot hold
+	# the themed curios, so it is regenerated rather than shipped short.
+	var tally: Dictionary = {}
+	for p in layout.features:
+		var f: Dictionary = layout.features[p]
+		var key: String = f.kind+("/"+f.curio_id if f.kind == "curio" else "")
+		tally[key] = int(tally.get(key,0))+1
+	if int(tally.get("entry",0)) != 1 or int(tally.get("relic",0)) != 1 or int(tally.get("altar",0)) != 1: return "entry, relic and altar must be unique"
+	if int(tally.get("camp",0)) < 1 or int(tally.get("camp",0)) > 2: return "camp count %d" % int(tally.get("camp",0))
+	var chests: int = int(tally.get("curio/LOCKED_CHEST",0))
+	if chests < theme.curios.locked_chest[0] or chests > theme.curios.locked_chest[1]: return "chest count %d" % chests
+	var dirt: int = int(tally.get("curio/DIRT_PILE",0))
+	if dirt < theme.curios.dirt_pile[0] or dirt > theme.curios.dirt_pile[1]: return "dirt count %d" % dirt
+	var mandatory: Array = layout.encounters.filter(func(e): return e.mandatory)
+	var optional: Array = layout.encounters.filter(func(e): return not e.mandatory)
+	if mandatory.size() < 2 or mandatory.size() > 3: return "mandatory encounters %d" % mandatory.size()
+	if optional.size() < 1 or optional.size() > 2: return "optional encounters %d" % optional.size()
+	var blocked: Dictionary = {}
+	for e in mandatory:
+		blocked[e.room] = true
+	if not graph_path(rooms,layout.edges,room_index(rooms,"entry_camp"),room_index(rooms,"relic_vault"),blocked).is_empty(): return "route skips mandatory encounters"
+	var taken: Dictionary = {}
+	for p in layout.features:
+		taken[p] = true
+	for e in layout.encounters:
+		if not Encounters.valid(e.members,e.budget).is_empty(): return "encounter invalid: "+Encounters.valid(e.members,e.budget)
+		for m in e.members:
+			if taken.has(m.pos): return "overlap at %s" % m.pos
+			taken[m.pos] = true
+			for d in rooms[e.room].doors:
+				if maxi(absi(m.pos.x-d.x),absi(m.pos.y-d.y)) < 3: return "member too close to door"
+	var adj := adjacency(rooms,layout.edges)
+	var leaves := 0
+	for id in adj:
+		if adj[id].size() == 1: leaves += 1
+	if leaves < 2: return "fewer than two dead ends"
+	if layout.edges.size() < rooms.size(): return "no loop"
+	return ""

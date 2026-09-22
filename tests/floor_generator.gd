@@ -13,6 +13,7 @@ func run() -> void:
 	check(Generator.theme("nope").is_empty(),"unknown theme is empty")
 	await rooms_and_graph(theme)
 	await corridors_and_paint(theme)
+	await full_layouts(theme)
 	print("Floor generator: %d failures" % failures); quit(1 if failures else 0)
 
 func rooms_and_graph(theme: Dictionary) -> void:
@@ -102,4 +103,71 @@ func corridors_and_paint(theme: Dictionary) -> void:
 		for cell in terrain:
 			if cell in ["rubble","wood","water"]: accents += 1
 		check(accents > 0,"palette accents painted")
-		check(terrain == Generator.carve(rooms,edges,theme,rng(seed_value)) or true,"carve consumed rng; determinism is checked through generate() in Task 5")
+
+func full_layouts(theme: Dictionary) -> void:
+	var size: int = theme.size
+	var total_regenerations := 0
+	for seed_value in range(100):
+		var layout: Dictionary = Generator.generate(theme,seed_value,1)
+		check(Generator.validate(layout,theme) == "","layout valid: %s (seed %d)" % [Generator.validate(layout,theme),seed_value])
+		check(layout.size == size and layout.terrain.size() == size*size and layout.theme_id == "F1_RUINS" and layout.depth == 1,"contract scalars")
+		total_regenerations += layout.stats.regenerations
+		check(layout.stats.regenerations <= 5,"regenerations bounded")
+		var mandatory: Array = layout.encounters.filter(func(e): return e.mandatory)
+		var optional: Array = layout.encounters.filter(func(e): return not e.mandatory)
+		check(mandatory.size() >= 2 and mandatory.size() <= 3,"two or three mandatory encounters (seed %d: %d)" % [seed_value,mandatory.size()])
+		check(optional.size() >= 1 and optional.size() <= 2,"one or two optional encounters (seed %d: %d)" % [seed_value,optional.size()])
+		var relic_room: int = Generator.room_index(layout.rooms,"relic_vault")
+		check(mandatory.any(func(e): return e.room == relic_room and e.tier == "deep"),"relic vault holds a deep mandatory encounter")
+		# Blocking every mandatory room cuts entry from relic: no route skips them all.
+		var blocked: Dictionary = {}
+		for e in mandatory:
+			blocked[e.room] = true
+		check(Generator.graph_path(layout.rooms,layout.edges,Generator.room_index(layout.rooms,"entry_camp"),relic_room,blocked).is_empty(),"mandatory rooms cover every entry->relic route (seed %d)" % seed_value)
+		var budgets: Dictionary = theme.monsters.budget
+		for e in layout.encounters:
+			var expected: int = budgets.optional if not e.mandatory else budgets[e.tier]
+			check(e.budget == expected,"encounter budget matches tier")
+			var members: Array = e.members
+			check(Generator.Encounters.valid(members,e.budget) == "","encounter members valid (seed %d room %d)" % [seed_value,e.room])
+			var room: Dictionary = layout.rooms[e.room]
+			for m in members:
+				check(room.rect.has_point(m.pos) and layout.terrain[m.pos.y*size+m.pos.x] != "wall","member stands on room floor")
+				for d in room.doors:
+					check(maxi(absi(m.pos.x-d.x),absi(m.pos.y-d.y)) >= 3,"member three cells from doors (seed %d)" % seed_value)
+				check(m.role in ["MELEE","RANGED","CASTER"] and m.has("species_id") and m.has("display_name") and m.has("max_health"),"member fields")
+		var all_positions: Array = []
+		for e in layout.encounters:
+			for m in e.members:
+				all_positions.append(m.pos)
+		for p in layout.features:
+			all_positions.append(p)
+		check(all_positions.size() == all_positions.reduce(func(acc,p): return acc if p in acc else acc+[p],[]).size(),"no two objects share a cell (seed %d)" % seed_value)
+		var kinds: Dictionary = {}
+		for p in layout.features:
+			var f: Dictionary = layout.features[p]
+			var key: String = f.kind+("/"+f.curio_id if f.kind == "curio" else "")
+			kinds[key] = int(kinds.get(key,0))+1
+			var in_room: bool = layout.rooms.any(func(r): return r.rect.has_point(p))
+			check(in_room,"feature %s inside a room, never a corridor (seed %d)" % [key,seed_value])
+		check(kinds.get("entry",0) == 1 and kinds.get("relic",0) == 1 and kinds.get("altar",0) == 1,"one entry, relic and altar")
+		check(kinds.get("curio/LOCKED_CHEST",0) >= theme.curios.locked_chest[0] and kinds.get("curio/LOCKED_CHEST",0) <= theme.curios.locked_chest[1],"chest count in theme range (%d)" % kinds.get("curio/LOCKED_CHEST",0))
+		check(kinds.get("curio/DIRT_PILE",0) >= theme.curios.dirt_pile[0] and kinds.get("curio/DIRT_PILE",0) <= theme.curios.dirt_pile[1],"dirt count in theme range (%d)" % kinds.get("curio/DIRT_PILE",0))
+		check(kinds.get("camp",0) >= 1 and kinds.get("camp",0) <= 2,"one or two camps")
+		for p in layout.features:
+			var f: Dictionary = layout.features[p]
+			if f.kind in ["curio","altar"]:
+				var owner: Dictionary = layout.rooms.filter(func(r): return r.rect.has_point(p))[0]
+				check(not owner.spine or owner.kind == "template","procedurally placed rewards stay off the spine (seed %d)" % seed_value)
+				check(layout.encounters.all(func(e): return e.room != owner.id) or owner.template_id == "collapsed_store","chests and dirt avoid fight rooms unless the template carries them")
+		check(layout.stats.relic_distance >= layout.stats.max_distance*60/100,"relic far from entry (seed %d: %d of %d)" % [seed_value,layout.stats.relic_distance,layout.stats.max_distance])
+		var reach: Dictionary = Generator.reachable_from(layout.terrain,size,layout.entry)
+		for p in layout.features:
+			var adjacent := reach.has(p)
+			for d in Generator.DIRECTIONS8:
+				if reach.has(p+d): adjacent = true
+			check(adjacent,"feature reachable or adjacent-reachable from entry (seed %d)" % seed_value)
+		var again: Dictionary = Generator.generate(theme,seed_value,1)
+		check(again.terrain == layout.terrain and again.features.keys() == layout.features.keys() and again.encounters.size() == layout.encounters.size(),"same seed regenerates identically (seed %d)" % seed_value)
+	print("regenerations over 100 seeds: %d" % total_regenerations)
+	check(total_regenerations <= 150,"regeneration is rare enough")
