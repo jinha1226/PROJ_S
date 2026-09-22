@@ -40,6 +40,7 @@ var light := 90
 var loot := 0
 var bank := 0
 var serial := 0
+var stats_redirects := 0
 var world_time := 0
 var round_number := 0
 var expedition_number := 0
@@ -95,7 +96,7 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"basic_target":Rules.BASIC_TARGET_DEFAULT,
 		"reservation":{},
 		"learned_abilities":["PUSH","GUARD"],"equipped_abilities":["PUSH","GUARD"],"cooldowns":{},"iron_guard":false,
-		"growth":Growth.create(),
+		"growth":Growth.create(),"protected_by":-1,
 		"pos":Vector2i.ZERO, "hp":28 if enemy else 55, "max_hp":28 if enemy else 55,
 		"stress":0, "condition":"평온", "ap":2,
 		"body":Body.create(id, seed_value, enemy),
@@ -261,7 +262,7 @@ func interact_room(point: Vector2i) -> bool:
 func start_battle() -> void:
 	phase = "BATTLE"; round_number = 1
 	for actor in party: actor.reservation = {}
-	for actor in party: actor.ap = action_budget(actor); actor["guarded"] = false
+	for actor in party: actor.ap = action_budget(actor); actor["guarded"] = false; actor["protected_by"] = -1
 	if boss_trial:
 		BossTrial.spawn(self); selected = 0; plan_enemies()
 		message(rooms[room].name+" · 전투 시작"); return
@@ -396,9 +397,15 @@ func act(kind: String, target: Vector2i) -> bool:
 		actor.ap -= 1; check_battle_end(); finish_player_action(); return true
 	var victim := at(target)
 	match kind:
-		"GUARD", "WAIT":
+		"WAIT":
 			if target != actor.pos: return false
-			if kind == "GUARD": actor["guarded"] = true
+		"GUARD":
+			# 엄호: stand in for an adjacent ally, taking their hits at half.
+			if victim.is_empty() or victim.enemy or victim.id == actor.id or victim.hp <= 0: return false
+			if not melee_reach(actor.pos,target): return false
+			actor["guarded"] = true
+			victim["protected_by"] = actor.id
+			message("%s · 엄호 → %s" % [actor.name,victim.name])
 		"MOVE":
 			if target not in movement_cells(): return false
 			actor.pos = target
@@ -464,7 +471,10 @@ func reservation_choice(actor: Dictionary) -> Dictionary:
 		cell = target.pos
 	elif order.kind == "MOVE":
 		if cell not in movement_cells(actor.id): return {}
-	elif order.kind in ["GUARD","WAIT"]: cell = actor.pos
+	elif order.kind == "WAIT": cell = actor.pos
+	elif order.kind == "GUARD":
+		var mate: Dictionary = at(cell)
+		if mate.is_empty() or mate.enemy or mate.id == actor.id or mate.hp <= 0 or not melee_reach(actor.pos,cell): return {}
 	elif Abilities.DEFINITIONS.has(order.kind):
 		cell = actor.pos
 		if not Abilities.legal(self,actor,order.kind,cell): return {}
@@ -529,7 +539,10 @@ func set_tactic(index: int, skill: String, policy: String) -> bool:
 	for rule in party[index].rules:
 		if rule.skill == skill:
 			rule.enabled = policy != "MANUAL"
-			rule.when = "CHARGING" if policy == "PROTECT" else "HP" if policy == "LOW_HP" else "DANGER" if policy == "DANGER" else "ALWAYS"
+			# 엄호 has one condition, so every legacy GUARD policy maps onto it;
+			# only the enabled flag still separates MANUAL from the rest.
+			if skill == "GUARD": rule.when = "ALLY_LETHAL"; rule.target = "ALLY"
+			else: rule.when = "CHARGING" if policy == "PROTECT" else "HP" if policy == "LOW_HP" else "DANGER" if policy == "DANGER" else "ALWAYS"
 			rule.subject = "SELF"
 	return true
 
@@ -630,8 +643,34 @@ static func subject_name(value: String) -> String:
 	var last := value.unicode_at(value.length()-1) if not value.is_empty() else 0
 	return value+("이" if last >= 0xAC00 and last <= 0xD7A3 and (last-0xAC00)%28 != 0 else "가")
 
+## Follows the 엄호 chain from `target` to the member who actually takes the
+## hit. A protector who has fallen or stepped out of contact covers nobody, and
+## a mutual guard collapses: the first member the chain revisits eats the hit
+## itself, at half through its own `guarded`, and nothing is redirected.
+func protection_recipient(target: Dictionary) -> Dictionary:
+	var current: Dictionary = target
+	var seen: Dictionary = {current.id:true}
+	while true:
+		var guardian: int = int(current.get("protected_by",-1))
+		if guardian < 0: return current
+		var next: Dictionary = {}
+		for mate in party:
+			if mate.id == guardian and mate.hp > 0 and melee_reach(mate.pos,current.pos): next = mate; break
+		if next.is_empty(): return current
+		if seen.has(next.id): return next
+		seen[next.id] = true
+		current = next
+	return current
+
 func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	if target.hp <= 0: return
+	# 엄호: the protector steps in front. Counted and logged once, and only when
+	# the hit really lands on somebody else.
+	var recipient: Dictionary = protection_recipient(target)
+	if recipient.id != target.id:
+		stats_redirects += 1
+		message("%s %s 대신 맞습니다." % [subject_name(recipient.name),target.name])
+		target = recipient
 	if boss_trial and target.enemy and rooms[room].shield:
 		message("보호막 · 피해 무효"); return
 	if target.get("iron_guard",false): amount = maxi(1,amount / 4)
@@ -742,10 +781,12 @@ func end_round() -> bool:
 			if result.known_damage <= 0: continue
 			var victim := at(point)
 			if not victim.is_empty() and result.known_damage > 0: damage(victim, result.known_damage, 999, "FIRE")
+	# The round's guards end with the round, win or lose: a cleared room must not
+	# carry 엄호 into EXPLORE.
+	for actor in party: actor["guarded"] = false; actor["protected_by"] = -1
 	check_battle_end()
 	if phase != "BATTLE": return true
 	for actor in alive():
-		actor["guarded"] = false
 		actor.iron_guard = false
 		for id in actor.cooldowns: actor.cooldowns[id] = maxi(0,int(actor.cooldowns[id])-1)
 		if not floor_mode or not floor_state.safe(self): stress(actor, 2 if light >= 35 else 5)
@@ -836,7 +877,7 @@ func actor_snapshot(actor: Dictionary) -> Dictionary:
 func actor_restore(row: Dictionary) -> Dictionary:
 	var actor: Dictionary = row.duplicate(true)
 	actor.body = Body.State.from_dict(row.body); actor.memory = Memory.from_dict(row.memory); actor.profile = Hexaco.from_dict(row.profile)
-	actor.reservation = {}; actor.cooldowns = {}; actor.iron_guard = false; actor["guarded"] = false
+	actor.reservation = {}; actor.cooldowns = {}; actor.iron_guard = false; actor["guarded"] = false; actor["protected_by"] = -1
 	Body.sync(actor)
 	return actor
 

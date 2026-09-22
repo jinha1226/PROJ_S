@@ -24,7 +24,7 @@ func run() -> void:
 		var def: Dictionary = Abilities.DEFINITIONS[id]
 		check(def.has("effect") and def.has("axis") and def.has("rule_when"),"%s carries effect/axis/rule_when" % id)
 		check(Rules.SKILLS.has(id) and Rules.valid(Abilities.default_rule(id)),"%s has a valid default rule" % id)
-	check(Abilities.DEFINITIONS.BOMB.axis == "RANGED" and Abilities.DEFINITIONS.SHOCKWAVE.axis == "MAGIC" and Abilities.DEFINITIONS.IRON_HIDE.rule_when == "TELEGRAPHED","legacy skills keep their axis and rule")
+	check(Abilities.DEFINITIONS.BOMB.axis == "RANGED" and Abilities.DEFINITIONS.SHOCKWAVE.axis == "MAGIC" and Abilities.DEFINITIONS.IRON_HIDE.rule_when == "DANGER","legacy skills keep their axis and rule")
 	check(Abilities.default_rule("FIELD_DRESSING").when == "HP" and Abilities.default_rule("FIELD_DRESSING").subject == "SELF","dressing rule is self HP")
 	# Heavy strike: adjacent only, 28 base, cooldown 3.
 	var f := arena("HEAVY_STRIKE"); var s = f.s

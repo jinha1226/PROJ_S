@@ -47,8 +47,8 @@ godot --path /mnt/d/SS/new
 상단은 작은 미니맵과 위치, 한 줄로 배치한 식량·횃불 수량 및 게이지로 구성합니다.
 게임 화면 아래에는 최근 로그 세 줄을 표시하며, 누르면 전체 화면에서 이번 실행의 전체 기록을 읽을 수 있습니다.
 초상화 위 스킬 두 칸과 아래 파티 공용 소모품 한 줄을 사용합니다.
-`이능` 탭의 `사용 방침`에서 스킬마다 대상과 조건을 정하며, 조건에는 `예고 공격 대상일 때`(적이 예고한 공격이 자기 칸을 노릴 때)와
-`전열에서 아군을 막고 있을 때`(자신만 적과 맞닿아 뒤의 아군을 가리고 있을 때)가 있고 기본 `방어` 규칙은 이 두 조건을 씁니다.
+`이능` 탭의 `사용 방침`에서 스킬마다 대상과 조건을 정합니다. 기본 스킬 `엄호`는 인접한 아군 한 명을 골라 이번 라운드에
+그 아군이 받을 피해를 대신 받고 절반만 입습니다(조건은 `아군이 이번 라운드 공격받으면 죽을 때` 하나뿐이며, 인접 아군이 없으면 버튼이 꺼집니다).
 출정 준비 화면의 '시험 로드아웃'은 플레이테스트용으로 모든 이능을 습득 상태로 만든다(장착은 이능 탭).
 적이 보이지 않는 안전한 곳에서 성장 투자와 파츠 습득·교체가 가능합니다.
 인접한 보급 상자·야영지·중계석을 눌러 한 번씩 이용할 수 있습니다.
@@ -126,6 +126,7 @@ godot --headless --path . --script res://tests/encounter_builder.gd
 godot --headless --path . --script res://tests/floor_generator.gd
 godot --headless --path . --script res://tests/encounter_sim.gd
 godot --headless --path . --script res://tests/test_loadout.gd
+godot --headless --path . --script res://tests/protect.gd
 ```
 
 `encounter_sim.gd`는 CI 스위트에 포함됩니다. 행동 경제 실험 전체 행렬은 수동 도구로 따로 돌립니다:
@@ -134,7 +135,7 @@ godot --headless --path . --script res://tests/test_loadout.gd
 godot --headless --path . --script res://tests/action_economy.gd -- --quick   # 20시드 형식 확인
 godot --headless --path . --script res://tests/action_economy.gd            # 200시드 전체, docs/balance/action-economy.{md,json} 생성
 godot --headless --path . --script res://tests/skill_value.gd -- [--quick]  # 스킬 가치 행렬(기본 60시드), docs/balance/skill-value.{md,json} 생성
-godot --headless --path . --script res://tests/party_guard_probe.gd            # 3인 파티 방어 규칙 신·구 비교(시드 5000-5059)
+godot --headless --path . --script res://tests/party_guard_probe.gd            # 3인 파티 엄호 규칙 유무 비교(시드 5000-5059)
 ```
 
 `floor_generator.gd`는 100개 시드에서 방 수·템플릿·간격·문, 8방향 도달성, 고리·막다른 방, 필수 조우가 모든 경로를 덮는지, 예산·가드레일·문 거리, 조우 방 장애물과 5×5 빈 블록, 보상이 주 경로 밖에 있는지, 유물 거리, 재현성을 검사합니다.

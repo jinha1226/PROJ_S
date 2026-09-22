@@ -19,8 +19,6 @@ func exercise() -> void:
 	var boss: Dictionary = s.enemies[0]
 	var turn: int = s.round_number
 	check(s.set_tactic(1,"PUSH","MANUAL"),"manual policy accepted")
-	# The defaults also guard while holding the line, which this ally is doing.
-	s.set_tactic(1,"GUARD","MANUAL")
 	check(not s.set_tactic(1,"PUSH","bad"),"invalid policy rejected")
 	check(s.round_number == turn,"setting policy consumes no time")
 	check(s.Tactics.choose(s,ally).kind == "ATTACK","manual skill not used automatically")
@@ -48,32 +46,37 @@ func exercise() -> void:
 	check(s.Tactics.choose(s,ally).kind == "PUSH","offense uses burning landing")
 	s.set_tactic(1,"PUSH","MANUAL"); s.set_tactic(1,"GUARD","DANGER")
 	ally.priority = "GUARD"
+	# 엄호 needs a covered ally: the leader steps in beside the boss and is one
+	# hit from death, which is the rule's only condition.
+	s.party[0].pos = Vector2i(4,3); s.party[0].hp = 5
 	check(s.Tactics.choose(s,ally).kind == "GUARD","guard condition and priority")
+	s.party[0].hp = 55
+	check(s.Tactics.choose(s,ally).kind != "GUARD","a healthy leader needs no cover")
+	s.set_tactic(1,"GUARD","MANUAL"); s.set_tactic(1,"PUSH","OFFENSE")
 	s.intents = [{"id":boss.id,"cell":ally.pos,"damage":16}]
 	check(s.Tactics.choose(s,ally).kind == "MOVE","escape takes precedence over skill policy")
 	s = arena(); ally = s.party[1]
 	turn = s.round_number
-	check(not s.update_rule(1,1,"target","NEAREST"),"self skill rejects enemy target")
+	check(not s.update_rule(1,1,"target","NEAREST"),"ally skill rejects enemy target")
 	check(not s.update_rule(1,0,"threshold",101),"invalid threshold rejected")
 	check(s.update_rule(1,0,"enabled",false),"auto skill off")
-	# Rule 2 is the second default guard; this block is about rule 1 alone.
-	s.update_rule(1,2,"enabled",false)
-	s.update_rule(1,1,"when","HP"); s.update_rule(1,1,"threshold",50)
-	ally.hp = 55
-	check(s.Tactics.choose(s,ally).kind == "ATTACK","unmet HP condition skips rule")
-	ally.hp = 20
-	check(s.Tactics.choose(s,ally).kind == "GUARD","HP condition applies to self target")
-	check(ally.rules.size() == 3 and not s.Rules.SKILLS.has("ATTACK"),"basic attack removed from skill rules")
-	check(not s.reorder_rule(1,3,-1),"basic attack cannot be reordered ahead of skills")
+	# 엄호's only condition: the leader beside the ally must be about to die.
+	s.party[0].pos = Vector2i(4,3)
+	check(s.Tactics.choose(s,ally).kind == "ATTACK","unmet ally condition skips rule")
+	s.party[0].hp = 5
+	check(s.Tactics.choose(s,ally).kind == "GUARD","lethal condition applies to the ally target")
+	check(ally.rules.size() == 2 and not s.Rules.SKILLS.has("ATTACK"),"basic attack removed from skill rules")
+	check(not s.reorder_rule(1,2,-1),"basic attack cannot be reordered ahead of skills")
 	s.update_rule(1,0,"enabled",true); s.update_rule(1,0,"when","ALWAYS")
 	check(s.Tactics.choose(s,ally).kind == "PUSH","first matching skill wins")
 	s.reorder_rule(1,1,-1)
 	check(s.Tactics.choose(s,ally).kind == "GUARD","skill reordering still applies")
 	check(s.round_number == turn,"all editor changes are free")
+	s.reorder_rule(1,0,1)
 	s.update_rule(1,1,"enabled",false)
-	s.update_rule(1,0,"when","STATUS"); s.update_rule(1,0,"status","WET")
+	s.update_rule(1,0,"when","STATUS"); s.update_rule(1,0,"status","WET"); s.update_rule(1,0,"subject","SELF")
 	s.tile(ally.pos).wet = 50
-	check(s.Tactics.choose(s,ally).kind == "GUARD","shared status condition")
+	check(s.Tactics.choose(s,ally).kind == "PUSH","shared status condition on the actor's own tile")
 	s.tile(ally.pos).wet = 0
 	check(s.Tactics.choose(s,ally).kind == "ATTACK","unmet skills fall back to basic attack")
 	var other: Dictionary = s.enemies[0].duplicate(true)
@@ -90,8 +93,9 @@ func exercise() -> void:
 	s.enemies.clear()
 	check(s.Tactics.choose(s,ally).kind == "WAIT","no enemies falls back to wait")
 	s = arena(); s.selected = 0; ally = s.party[1]
+	s.party[0].pos = Vector2i(3,3)
 	turn = s.round_number
-	check(s.reserve_action(1,"GUARD",ally.pos),"reserve companion guard")
+	check(s.reserve_action(1,"GUARD",s.party[0].pos),"reserve companion guard")
 	check(s.selected == 0 and s.round_number == turn and not ally.get("guarded",false),"reservation does not switch control or execute")
 	check(s.companion_previews()[0].get("reserved",false),"reserved action is previewed")
 	check(s.reserve_action(1,"ATTACK",s.enemies[0].pos),"reservation can be replaced")
@@ -103,7 +107,7 @@ func exercise() -> void:
 	check(not s.companion_previews()[0].get("reserved",false),"invalidated target falls back to automatic action")
 	s.act("WAIT",s.party[0].pos)
 	check(ally.reservation.is_empty(),"invalidated reservation is consumed")
-	check(s.reserve_action(1,"GUARD",ally.pos),"reserve before cancel")
+	check(s.reserve_action(1,"GUARD",s.party[0].pos),"reserve before cancel")
 	s.cancel_reservation(1)
 	check(ally.reservation.is_empty(),"explicit cancellation")
 	check(s.reserve_action(1,"MOVE",ally.pos+Vector2i(0,1)),"adjacent movement can be reserved")
@@ -156,7 +160,16 @@ func exercise() -> void:
 	check(scene.session.selected == 0 and scene.reservation_actor == 1,"portrait starts reservation without switching control")
 	check(scene.board.companion_previews[0].actor == 1,"companion preview retains same actor")
 	var ui_turn: int = scene.session.round_number
+	# 엄호 needs a neighbour, so put the leader beside the companion first.
+	var leader: Dictionary = scene.session.party[0]
+	for d in scene.session.DIRECTIONS:
+		if scene.session.is_free(leader.pos+d) and scene.session.melee_reach(leader.pos+d,leader.pos):
+			scene.session.party[1].pos = leader.pos+d; break
+	scene.refresh()
+	scene.select_actor(1)
 	scene.choose_skill(1,1)
+	check(scene.mode == "GUARD" and scene.session.round_number == ui_turn,"엄호 asks for the ally instead of queueing at once")
+	scene.on_cell(leader.pos)
 	check(scene.session.party[1].reservation.kind == "GUARD" and scene.session.round_number == ui_turn,"companion skill click queues without advancing time")
 	check(scene.reservation_actor == -1 and scene.session.selected == 0,"reservation returns input to leader")
 	check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"two-member mobile layout fits")

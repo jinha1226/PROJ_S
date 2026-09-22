@@ -19,7 +19,7 @@ var item_popup: PopupPanel
 var item_detail: VBoxContainer
 const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 const SKILLS = [["PUSH","GUARD"],["ATTACK","GUARD"],["WATER","ELECTRIC"]]
-const SKILL_NAMES = [["밀쳐내기","방어"],["강타","방어"],["물","방전"]]
+const SKILL_NAMES = [["밀쳐내기","엄호"],["강타","엄호"],["물","방전"]]
 var session = Session.new(randi(),true,false,true)
 var mode := ""
 var reservation_actor := -1
@@ -301,6 +301,8 @@ func refresh() -> void:
 				caption.set_anchors_and_offsets_preset(PRESET_BOTTOM_WIDE); caption.offset_top = -16; caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			skill.disabled = session.phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0; skill_buttons.append(skill)
 			if actor.cooldowns.get(skill_id,0) > 0: skill.disabled = true
+			# 엄호 needs somebody to cover: no adjacent living ally, no button.
+			if skill_id == "GUARD" and not session.party.any(func(m): return m.id != actor.id and m.hp > 0 and session.melee_reach(actor.pos,m.pos)): skill.disabled = true
 		var portrait_box := VBoxContainer.new(); portrait_box.size_flags_horizontal = SIZE_EXPAND_FILL; portrait_box.add_theme_constant_override("separation",2); column.add_child(portrait_box)
 		var portrait := button(portrait_box,"",func(): select_actor(i)); portrait.name = "MemberCard%d" % i
 		portrait.tooltip_text = "짧게: 행동 예약 · 길게: 상태" if session.companions else "길게 누르기: 상태"; portrait.custom_minimum_size.y = 48; portrait_buttons.append(portrait)
@@ -368,12 +370,14 @@ func confirm_attack() -> void:
 func choose_skill(actor: int, slot: int) -> void:
 	if actor < 0 or actor >= session.party.size() or slot not in [0,1] or session.party[actor].hp <= 0: return
 	select_actor(actor); mode = session.party[actor].equipped_abilities[slot] if session.boss_trial else SKILLS[actor][slot]
-	var self_target: bool = mode == "GUARD" or Session.Abilities.DEFINITIONS.get(mode,{}).get("target","") == "SELF"
+	var self_target: bool = Session.Abilities.DEFINITIONS.get(mode,{}).get("target","") == "SELF"
 	if reservation_actor >= 0:
 		if self_target: queue_action(mode,session.party[actor].pos); return
 		notice = session.party[actor].name+" · 스킬 예약 대상 선택"; refresh(); return
 	if self_target: run_action(func(): return session.act(mode,session.party[actor].pos)); return
-	notice = "%s · 대상 칸 선택" % Session.Rules.SKILLS.get(mode,{}).get("name",mode); refresh()
+	# 엄호 picks an adjacent ally, not the caster's own cell.
+	notice = "엄호 · 인접 아군 선택" if mode == "GUARD" else "%s · 대상 칸 선택" % Session.Rules.SKILLS.get(mode,{}).get("name",mode)
+	refresh()
 
 func choose_item(slot: int) -> void:
 	stop_navigation()

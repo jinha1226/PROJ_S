@@ -9,10 +9,6 @@ static func step(s, policy: String) -> String:
 	if policy == "tactical":
 		if hero.hp < 14 and s.supplies[0] > 0 and s.use_supply(0): return "HEAL"
 		if hero.hp < 10 and s.supplies[5] > 0 and s.use_supply(5): return "HEAL"
-		var adjacent := 0
-		for e in s.combat_enemies():
-			if maxi(absi(e.pos.x-hero.pos.x),absi(e.pos.y-hero.pos.y)) == 1: adjacent += 1
-		if adjacent >= 2 and not hero.get("guarded",false) and s.act("GUARD",hero.pos): return "GUARD"
 	if s.combat_enemies().is_empty() and approach(s,hero): return "MOVE"
 	if policy == "rules":
 		# The hero reads the same rule list companions do; no potions or bandages

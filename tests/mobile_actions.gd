@@ -21,7 +21,9 @@ func _initialize() -> void:
 	s.party[0].pos = Vector2i(1,2)
 	s.tile(Vector2i(1,3)).terrain = "wood"; s.tile(Vector2i(1,3)).wet = 0
 	check(s.use_supply(3,Vector2i(1,3)) and s.supplies[3] == 0 and s.party[0].ap == before-1,"scroll applies fire and consumes one AP")
-	check(s.act("GUARD",s.party[0].pos),"guard activation")
+	# 엄호 covers an adjacent ally; the protector still halves what reaches it.
+	s.party[1].pos = Vector2i(2,2)
+	check(s.act("GUARD",s.party[1].pos),"guard activation")
 	var hp: int = s.party[0].hp
 	s.damage(s.party[0],10,100,"IMPACT")
 	check(s.party[0].hp == hp-5,"guard reduces damage")

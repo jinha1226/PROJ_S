@@ -47,7 +47,10 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 				if ally.id != actor.id and s.melee_reach(ally.pos,enemy.pos) and not s.melee_reach(ally.pos,landing) and benefit <= 0: unsafe = true
 		if not unsafe:
 			options.append({"kind":"PUSH","cell":enemy.pos,"score":40+benefit+bonus,"reason":"밀치기"})
-	options.append({"kind":"GUARD","cell":actor.pos,"score":35,"reason":"방어"})
+	# 엄호 has no self form: one candidate per adjacent living ally.
+	for mate in s.alive():
+		if mate.id != actor.id and s.melee_reach(actor.pos,mate.pos):
+			options.append({"kind":"GUARD","cell":mate.pos,"score":35,"reason":"엄호"})
 	for id in actor.equipped_abilities:
 		if not s.Abilities.DEFINITIONS.has(id): continue
 		var def: Dictionary = s.Abilities.DEFINITIONS[id]
@@ -59,27 +62,16 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 				if s.alive().any(func(a): return (a.id != actor.id or def.self_hit) and a.pos in cells): continue
 				if not s.combat_enemies().any(func(e): return e.hp > 0 and e.pos in cells): continue
 			options.append({"kind":id,"cell":target.pos,"score":40,"reason":def.name})
-	# Safety escape first, then the first matching configured rule. No score
-	# from a lower-priority skill may override an earlier valid rule.
+	# The configured rules are resolved first so that a matched 엄호 can answer
+	# before the escape move: holding the line means not stepping away. Any other
+	# matched rule still yields to the escape, exactly as before.
+	var ruled: Dictionary = rule_choice(s,actor,options)
+	if not ruled.is_empty() and ruled.kind == "GUARD": return ruled
 	var escapes: Array = options.filter(func(o): return o.kind == "MOVE")
 	if not escapes.is_empty():
 		escapes.sort_custom(func(a,b): return a.score > b.score)
 		return escapes[0]
-	for index in range(actor.rules.size()):
-		var rule: Dictionary = actor.rules[index]
-		if rule.skill not in actor.equipped_abilities: continue
-		var matches: Array = options.filter(func(o): return s.Rules.matches(s,actor,o,rule))
-		if matches.is_empty(): continue
-		matches.sort_custom(func(a,b):
-			var first: Dictionary = s.at(a.cell)
-			var second: Dictionary = s.at(b.cell)
-			var av: int = first.hp if rule.target == "LOWEST_HP" else s.distance(actor.pos,a.cell)
-			var bv: int = second.hp if rule.target == "LOWEST_HP" else s.distance(actor.pos,b.cell)
-			if av != bv: return av < bv
-			return a.score > b.score if a.score != b.score else str(a.cell) < str(b.cell))
-		var choice: Dictionary = matches[0].duplicate()
-		choice.reason = "%d순위 · %s" % [index+1,s.Rules.SKILLS[rule.skill].name]
-		return choice
+	if not ruled.is_empty(): return ruled
 	# Basic attack is a fallback, never a reorderable skill rule.
 	var attacks: Array = options.filter(func(o): return o.kind == "ATTACK")
 	if not attacks.is_empty():
@@ -102,3 +94,22 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 	options.append({"kind":"WAIT","cell":actor.pos,"score":0,"reason":"대기"})
 	options.sort_custom(func(a,b): return a.score > b.score if a.score != b.score else str(a.kind)+str(a.cell) < str(b.kind)+str(b.cell))
 	return options[0]
+
+## First matching configured rule, or {} — the ranking the rule list promises.
+static func rule_choice(s, actor: Dictionary, options: Array) -> Dictionary:
+	for index in range(actor.rules.size()):
+		var rule: Dictionary = actor.rules[index]
+		if rule.skill not in actor.equipped_abilities: continue
+		var matches: Array = options.filter(func(o): return s.Rules.matches(s,actor,o,rule))
+		if matches.is_empty(): continue
+		matches.sort_custom(func(a,b):
+			var first: Dictionary = s.at(a.cell)
+			var second: Dictionary = s.at(b.cell)
+			var av: int = first.hp if rule.target in ["LOWEST_HP","ALLY"] else s.distance(actor.pos,a.cell)
+			var bv: int = second.hp if rule.target in ["LOWEST_HP","ALLY"] else s.distance(actor.pos,b.cell)
+			if av != bv: return av < bv
+			return a.score > b.score if a.score != b.score else str(a.cell) < str(b.cell))
+		var choice: Dictionary = matches[0].duplicate()
+		choice.reason = "%d순위 · %s" % [index+1,s.Rules.SKILLS[rule.skill].name]
+		return choice
+	return {}
