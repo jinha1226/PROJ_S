@@ -41,4 +41,4 @@ func _draw() -> void:
 	var badge := Rect2(bounds.end-extent-Vector2(6,4),extent+Vector2(5,3))
 	draw_rect(badge,Color("080e14"))
 	draw_string(font,badge.position+Vector2(2,font.get_ascent(11)),count,HORIZONTAL_ALIGNMENT_LEFT,-1,11,Color("eee4ce"))
-	if row.category == "이능": draw_circle(Vector2(9,9),3,Color("d1b16d"))
+	if row.category == "파츠": draw_circle(Vector2(9,9),3,Color("d1b16d"))

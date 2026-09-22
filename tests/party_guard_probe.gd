@@ -5,7 +5,10 @@ extends SceneTree
 ## deliberately absent: self-guard no longer exists in the engine, so that rule
 ## can no longer be expressed, let alone measured against these numbers.
 ## Not part of the CI suite. Usage:
-##   godot --headless --path . --script res://tests/party_guard_probe.gd
+##   godot --headless --path . --script res://tests/party_guard_probe.gd -- [--seeds N]
+## `--seeds N` widens the seed set past the shipped 60. Deaths are rare in these
+## arenas, so the 60-seed run can read the two columns as a tie for want of
+## events rather than for want of a difference.
 const Runner = preload("res://expedition/sim/encounter_runner.gd")
 const Arena = preload("res://expedition/sim/encounter_arena.gd")
 static var experiments: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/balance_experiments.json"))
@@ -23,8 +26,12 @@ func spec(arena_id: String) -> Dictionary:
 
 func run() -> void:
 	var ex: Dictionary = experiments.experiments.action_economy
-	var seeds: Array = range(5000,5060)
-	print("party 3 · policy rules · seeds 5000-5059 (%d) · arenas %s" % [seeds.size(),", ".join(ARENAS)])
+	var count := 60
+	var args: PackedStringArray = OS.get_cmdline_user_args()
+	for i in range(args.size()-1):
+		if args[i] == "--seeds": count = maxi(1,int(args[i+1]))
+	var seeds: Array = range(5000,5000+count)
+	print("party 3 · policy rules · seeds 5000-%d (%d) · arenas %s" % [4999+count,seeds.size(),", ".join(ARENAS)])
 	print("%-9s %-11s %-12s %8s %10s %8s %8s %10s  %s" % ["rules","build","arena","win","dmg/member","deaths","guards","redirects","hero skill uses/run"])
 	for variant in ["guard","no_guard"]:
 		for build_id in BUILDS:

@@ -9,6 +9,8 @@ const Floor = preload("res://expedition/continuous_floor.gd")
 const DOMINANT_PP := 0.20
 const DOMINANT_ARENAS := 4
 const USE_FLOOR := 0.2
+## G4 (설계 §5.2): 적이 자기 시그니처 파츠를 쓰는 전투당 평균의 하한.
+const ENEMY_USE_FLOOR := 0.5
 static var experiments: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/balance_experiments.json"))
 
 func _initialize() -> void: call_deferred("run")
@@ -50,7 +52,8 @@ func run() -> void:
 		if cells.is_empty(): cells = ex.arenas.keys().map(func(id): return {"party":1,"arena":id})
 		diagnoses[build_id] = diagnose(ex,build_id,cells,seeds.slice(0,3))
 		print("diagnose %s: %s" % [build_id,diagnoses[build_id].line])
-	write_report(table,verdicts,diagnoses,ex,seeds,Time.get_ticks_msec()-started,quick)
+	var absent: Array = absent_rows(ex,seeds)
+	write_report(table,verdicts,diagnoses,absent,ex,seeds,Time.get_ticks_msec()-started,quick)
 	quit(0)
 
 func matrix_config(ex: Dictionary, arena_id: String, size: int, build_id: String) -> Dictionary:
@@ -140,6 +143,49 @@ func diagnose(ex: Dictionary, build_id: String, cells: Array, seeds: Array) -> D
 	if legal_rounds == 0: line = "합법인 라운드 없음(0/%d) — 사거리/조건 확인" % total_rounds
 	return {"skill":skill,"cells":cells.size(),"legal_rounds":legal_rounds,"rounds":total_rounds,"line":line}
 
+## Gate G4 covers all eight parts, but two species (목도리 도마뱀·강쥐) hold no
+## seat in the six matrix arenas. Each gets a one-species arena on the same seed
+## set so no part in the catalog goes unmeasured.
+func absent_rows(ex: Dictionary, seeds: Array) -> Array:
+	var seated: Dictionary = {}
+	for arena_id in ex.arenas:
+		for pair in ex.arenas[arena_id].members: seated[str(pair[0])] = true
+	var out: Array = []
+	for part_id in Abilities.droppable():
+		var species: String = str(Abilities.DEFINITIONS[part_id].species)
+		if seated.has(species): continue
+		var spec: Dictionary = Arena.DEFAULT_SPEC.duplicate(true)
+		spec.tier = "early"
+		spec.members = [{"species_id":species,"role":"MELEE"}]
+		# Averaged over the same build x party grid as 표 3: `melee_1` alone would
+		# read near zero, because its PUSH-on-CHARGING rule cancels the telegraph
+		# of a lone monster almost every round.
+		var cells: Array = []
+		for size in ex.party_sizes:
+			for build_id in ex.builds:
+				cells.append(float(Runner.run_many({"arena":spec,"party_size":size,"build":build_id,
+					"policy":ex.policies[0],"rules":ex.rules[ex.rules.keys()[0]],"supplies":ex.supplies,
+					"max_rounds":60},seeds).enemy_skill_uses_mean.get(part_id,0.0)))
+		var mean := 0.0
+		for v in cells: mean += v
+		mean /= maxi(1,cells.size())
+		out.append({"part":part_id,"species":species,"mean":mean,"lowest":float(cells.min()),"cells":cells.size()})
+		print("absent %s %s: mean %.2f lowest %.2f over %d cells" % [species,part_id,mean,float(cells.min()),cells.size()])
+	return out
+
+## The signature parts of the species that stand in `arena_id`, in roster order.
+func arena_parts(ex: Dictionary, arena_id: String) -> Array:
+	var out: Array = []
+	for pair in ex.arenas[arena_id].members:
+		var part_id: String = Abilities.species_part(str(pair[0]))
+		if not part_id.is_empty() and not part_id in out: out.append(part_id)
+	return out
+
+func interrupt_mean(table: Array) -> float:
+	var total := 0.0
+	for r in table: total += float(r.stats.interrupts_mean)
+	return total/maxi(1,table.size())
+
 func commit_hash() -> String:
 	var root: String = ProjectSettings.globalize_path("res://")
 	var output: Array = []
@@ -157,7 +203,7 @@ func spec_line(ex: Dictionary) -> String:
 	var spec: Dictionary = Arena.DEFAULT_SPEC
 	return "size %d · room %s · door %s · pillars %s · party_entry %s · light %d · supplies %s" % [spec.size,str(spec.room),str(spec.door),str(spec.pillars),str(spec.party_entry),spec.light,str(ex.supplies.map(func(v): return int(v)))]
 
-func write_report(table: Array, verdicts: Dictionary, diagnoses: Dictionary, ex: Dictionary, seeds: Array, elapsed: int, quick: bool) -> void:
+func write_report(table: Array, verdicts: Dictionary, diagnoses: Dictionary, absent: Array, ex: Dictionary, seeds: Array, elapsed: int, quick: bool) -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://docs/balance"))
 	var today := Time.get_date_string_from_system()
 	var base: String = ex.baseline_build
@@ -166,6 +212,8 @@ func write_report(table: Array, verdicts: Dictionary, diagnoses: Dictionary, ex:
 	lines.append("")
 	lines.append("생성: `tests/skill_value.gd`(수동 도구) · 커밋 `%s` · 날짜 %s%s" % [commit_hash(),today," · **--quick 실행(축약 시드)**" if quick else ""])
 	lines.append("근거: [밸런스 방법론](../balance-method.ko.md) §5 · 설계: [스킬 원형 설계](../superpowers/specs/2026-09-22-skill-archetypes-design.md) §5")
+	lines.append("")
+	lines.append("**몬스터 파츠 도입 후 첫 측정.** 적도 자기 시그니처 파츠를 예고하고 쓰는 환경에서 전 빌드를 다시 잰 결과다 — 이전 보고서의 수치와 직접 비교하지 않는다. 게이트 판정은 [파츠 밸런스 게이트](parts-gates.md)에 있다.")
 	lines.append("")
 	lines.append("- 시드 묶음: `%s` %d개 (%d~%d)" % [ex.seed_set.id,seeds.size(),int(seeds[0]),int(seeds[seeds.size()-1])])
 	lines.append("- 규칙: `%s` (`solo_actions %d` / `solo_max_members %d`) 하나만 쓴다 — 이번 실험의 축은 빌드다." % [ex.rules.keys()[0],int(ex.rules[ex.rules.keys()[0]].solo_actions),int(ex.rules[ex.rules.keys()[0]].solo_max_members)])
@@ -233,6 +281,31 @@ func write_report(table: Array, verdicts: Dictionary, diagnoses: Dictionary, ex:
 		lines.append("| `%s` | %s | %.2f | %+.1f | %d/%d | %d/%d | %d/%d |" % [build_id,pb.skill,pb.use_mean,pb.mean_win_delta*100.0,
 			up,pb.deltas.size(),down,pb.deltas.size(),pb.dominant_arenas,ex.arenas.size()])
 	lines.append("")
+	lines.append("## 표 3 — 적 시그니처 파츠 사용 (아레나 × 파츠)")
+	lines.append("")
+	lines.append("한 전투에서 그 종족이 자기 시그니처 파츠를 실제로 해결한 횟수의 평균이다(`run_many.enemy_skill_uses_mean`). 각 칸은 그 아레나의 모든 빌드·인원 조합(%d칸)을 평균한 값이고, `최소`는 그 조합들 중 가장 낮은 칸이다. 게이트 G4의 기준은 전투당 평균 ≥ %.1f회다." % [ex.builds.size()*ex.party_sizes.size(),ENEMY_USE_FLOOR])
+	lines.append("")
+	lines.append("| 아레나 | 종족 | 파츠 | 전투당 평균 | 최소 칸 | 판정 |")
+	lines.append("| --- | --- | --- | --- | --- | --- |")
+	for arena_id in ex.arenas:
+		for part_id in arena_parts(ex,arena_id):
+			var values: Array = table.filter(func(r): return r.arena == arena_id).map(func(r): return float(r.stats.enemy_skill_uses_mean.get(part_id,0.0)))
+			var mean := 0.0
+			for v in values: mean += v
+			mean /= maxi(1,values.size())
+			var lowest: float = values.min() if not values.is_empty() else 0.0
+			lines.append("| `%s` | %s | `%s` | %.2f | %.2f | %s |" % [arena_id,Abilities.DEFINITIONS[part_id].species,part_id,mean,lowest,"통과" if mean >= ENEMY_USE_FLOOR else "**미달**"])
+	lines.append("")
+	lines.append("준비가 끊긴 횟수(밀치기·피격)는 `interrupts_mean`으로 같은 행렬에서 잰다 — 전 칸 평균 %.2f회/전투." % interrupt_mean(table))
+	lines.append("")
+	if not absent.is_empty():
+		lines.append("행렬의 6아레나에 자리가 없는 종족은 같은 시드 묶음으로 1종족 아레나를 따로 돌려 잰다 — G4가 파츠 8종을 빠짐없이 덮게 하기 위해서다(표 3과 같은 빌드 %d × 인원 %d 격자, `rules` 정책, 물자 0)." % [ex.builds.size(),ex.party_sizes.size()])
+		lines.append("")
+		lines.append("| 종족 | 파츠 | 전투당 평균 | 최소 칸 | 판정 |")
+		lines.append("| --- | --- | --- | --- | --- |")
+		for r in absent:
+			lines.append("| %s | `%s` | %.2f | %.2f | %s |" % [r.species,r.part,r.mean,r.lowest,"통과" if r.mean >= ENEMY_USE_FLOOR else "**미달**"])
+		lines.append("")
 	lines.append("## 후보 판정 (설계 §5-4, 사전 고정)")
 	lines.append("")
 	lines.append("- **지배 후보**: 1인에서 아레나 %d개 중 %d개 이상에서 Δ승률 ≥ +%.0fpp." % [ex.arenas.size(),DOMINANT_ARENAS,DOMINANT_PP*100.0])
@@ -281,7 +354,7 @@ func write_report(table: Array, verdicts: Dictionary, diagnoses: Dictionary, ex:
 	md.close()
 	var payload := {"generated":today,"commit":commit_hash(),"quick":quick,"elapsed_ms":elapsed,
 		"seed_set":{"id":ex.seed_set.id,"start":int(seeds[0]),"count":seeds.size()},
-		"baseline_build":base,"table":table,"verdicts":verdicts,"diagnoses":diagnoses}
+		"baseline_build":base,"table":table,"verdicts":verdicts,"diagnoses":diagnoses,"absent_species":absent}
 	var js := FileAccess.open("res://docs/balance/skill-value.json",FileAccess.WRITE)
 	js.store_string(JSON.stringify(payload,"  ")+"\n")
 	js.close()

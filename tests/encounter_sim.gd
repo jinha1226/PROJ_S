@@ -144,3 +144,9 @@ func rules_policy() -> void:
 	for id in ["b_knife","b_lunge","b_bomb","b_shockwave","b_iron","melee_1"]:
 		cfg.build = id
 		check(Runner.run_one(cfg,3).result != "TIMEOUT","%s finishes a solo fight" % id)
+	# The `early_hob` arena of the balance matrix, three members, rules policy:
+	# the hobgoblin must actually land its signature part over the seed set, or
+	# every enemy-usage gate downstream is measuring an idle monster.
+	var trio: Dictionary = config(hob,3,"rules",Session.DEFAULT_RULES); trio.supplies = [0,0,0,0,0,0]
+	var trio_many: Dictionary = Runner.run_many(trio,range(200,220))
+	check(float(trio_many.enemy_skill_uses_mean.get("HOB_CLUB",0.0)) > 0.0,"the hobgoblin uses HOB_CLUB against a trio (%s)" % [trio_many.enemy_skill_uses_mean])

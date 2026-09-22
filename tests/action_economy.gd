@@ -130,6 +130,8 @@ func write_report(table: Array, verdicts: Dictionary, ex: Dictionary, seeds: Arr
 	lines.append("생성: `tests/action_economy.gd`(수동 도구) · 커밋 `%s` · 날짜 %s%s" % [commit_hash(),today," · **--quick 실행(축약 시드)**" if quick else ""])
 	lines.append("근거: [밸런스 방법론](../balance-method.ko.md) §8-1 · 설계: [조우 시뮬레이터 설계](../superpowers/specs/2026-09-22-encounter-sim-design.md) §5.2·§6")
 	lines.append("")
+	lines.append("**몬스터 파츠 도입 후 첫 측정.** 적이 시그니처 파츠를 예고하고 쓰는 환경에서 다시 돌린 결과다 — 이전 보고서의 수치와 직접 비교하지 않는다. 게이트 판정은 [파츠 밸런스 게이트](parts-gates.md)에 있다.")
+	lines.append("")
 	lines.append("- 시드 묶음: `%s` %d개 (%d~%d)" % [ex.seed_set.id,seeds.size(),int(seeds[0]),int(seeds[seeds.size()-1])])
 	lines.append("- 솔로 HP 스케일: `SOLO_HP_PERCENT %d` / `SOLO_HP_MIN %d` / `SOLO_HP_MAX %d` (파티 인원 1일 때만 적용, 실험 조건의 일부)" % [Floor.SOLO_HP_PERCENT,Floor.SOLO_HP_MIN,Floor.SOLO_HP_MAX])
 	lines.append("- 봇 정책: `%s` (`expedition/sim/bot_policy.gd`: 회복·방어 → 접근 → 자동 공격)" % ex.policies[0])
