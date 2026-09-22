@@ -1,0 +1,18 @@
+{
+  "tool": "built-in image_gen",
+  "references": [
+    {
+      "role": "primary official screenshot",
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/294100/80e383ef19353058791efe17a6485849246c9c17/ss_80e383ef19353058791efe17a6485849246c9c17.1920x1080.jpg"
+    },
+    {
+      "role": "secondary community mod screenshot; body proportions and orientations",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3408858383"
+    },
+    {
+      "role": "project palette",
+      "path": "assets/topdown/floor1-flat-v1/materials.png"
+    }
+  ],
+  "prompt": "Use case: stylized-concept. Draw ONE new three-character fantasy pawn sprite concept sheet grounded closely in the ACTUAL RimWorld screenshots provided. Image 1 is an official Steam gameplay screenshot: PRIMARY reference for drawing language, eyes, line thickness, head-to-body proportion and clothing. Image 2 is a community body-type and orientation screenshot: SECONDARY reference for the south-facing silhouette, especially Male-South and Thin-South; adapt that anatomy with CLOTHING, do not draw nude bodies. Image 3 is our dungeon material atlas: palette compatibility only, do not reproduce tiles. Study visible pawns rather than relying on generic chibi conventions. Observed visual features to reproduce: small black dot/short dash eyes spaced across lower face, no detailed nose or mouth; compact head with broad upper skull and narrower rounded jaw/chin; moderately thin black outlines, NOT thick sticker borders; head overlaps the shoulder region, shoulders wider than head, torso extends downward as an elongated simplified clothed shape with a slightly tapered lower edge and rounded corners. No drawn arms, hands, legs or feet. The whole pawn is a coherent standing map symbol, NOT a large portrait on a tiny bean. Approximate design target human head including hair 40-45% of overall height, visible torso 55-60%, head width around 65-75% of shoulder width. Use restrained flat colors, one subdued shadow shape per material, no gradients or texture, no polygon facets, no bevel. Three isolated south-facing clothed pawns at equal baseline, left HUMAN, center DWARF, right ELF. Human: short plain brown hair, tan face with two tiny black eyes, medium shoulders, long simple slate grey medieval tunic with just a small collar notch. Dwarf: shorter overall, notably broad shoulders and torso, balding crown, small eyes above a compact rust-brown beard that does NOT hide the whole body, charcoal-grey tunic. Elf: lean longer torso, narrower chin, small restrained pointed ears not huge wings, ash-blond hair tucked back, small black eyes, muted grey tunic. Original fantasy characters rendered using the reference's economical pawn visual grammar. No hats, armour, weapons, decorative belts, buttons or accessories. Elevated orthographic south-facing map view, no isometric perspective. One wide image with three evenly spaced isolated complete sprites, plenty of padding, all similar rendering scale, transparent background, no text labels, no floor, no cast shadow, no UI. Keep forms simple enough to read at 48-64 pixels. Do not reproduce the screenshots' interface, names, scenery or existing characters. The screenshot reference must govern the result: adult map-pawn proportions, visible tiny eyes, thin consistent outlines and simple elongated clothing."
+}
