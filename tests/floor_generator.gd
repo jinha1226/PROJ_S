@@ -9,6 +9,7 @@ func rng(seed_value: int) -> RandomNumberGenerator:
 	var r := RandomNumberGenerator.new(); r.seed = seed_value; return r
 func run() -> void:
 	var theme: Dictionary = Generator.theme("F1_RUINS")
+	check(theme.monsters.max_members == 2,"first floor explicitly caps encounter actions at two enemies")
 	check(theme.size == 64 and theme.depth == 1,"theme loads")
 	check(Generator.theme("nope").is_empty(),"unknown theme is empty")
 	await rooms_and_graph(theme)

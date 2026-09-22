@@ -71,9 +71,9 @@ static func choose_role(rng: RandomNumberGenerator, members: Array, row: Diction
 	return pick_weighted(rng,roles,weights)
 
 ## Empty string when the group is legal for the budget; otherwise the reason.
-static func valid(members: Array, budget: int) -> String:
+static func valid(members: Array, budget: int, max_members: int = MAX_MEMBERS) -> String:
 	if members.is_empty(): return "empty"
-	if members.size() > MAX_MEMBERS: return "too many"
+	if members.size() > max_members: return "too many"
 	var total := 0
 	for m in members: total += int(m.get("threat",threat(m)))
 	if total < budget-1: return "too weak (%d < %d)" % [total,budget-1]
@@ -87,13 +87,13 @@ static func valid(members: Array, budget: int) -> String:
 		if pairs[key] > 2: return "three of a kind"
 	return ""
 
-static func attempt(rng: RandomNumberGenerator, depth: int, budget: int, ood: bool) -> Array:
+static func attempt(rng: RandomNumberGenerator, depth: int, budget: int, ood: bool, max_members: int = MAX_MEMBERS) -> Array:
 	var members: Array = []
 	var remaining := budget
 	var table_depth := depth
 	if ood and rng.randi_range(1,100) <= OOD_PERCENT: table_depth = depth+1
 	var draws := 0
-	while remaining >= 1 and members.size() < MAX_MEMBERS:
+	while remaining >= 1 and members.size() < max_members:
 		# A bounded number of draws: a table whose guardrails saturate must not spin.
 		draws += 1
 		if draws > MAX_DRAWS: break
@@ -107,7 +107,7 @@ static func attempt(rng: RandomNumberGenerator, depth: int, budget: int, ood: bo
 		if row.band != null and members.filter(func(m): return m.species_id == row.species_id).size() == 1:
 			var count: int = rng.randi_range(int(row.band.count[0]),int(row.band.count[1]))
 			for _i in range(count):
-				if members.size() >= MAX_MEMBERS: break
+				if members.size() >= max_members: break
 				var follower_id: String = row.band.followers[rng.randi_range(0,row.band.followers.size()-1)]
 				var follower := member(species(follower_id),"MELEE")
 				members.append(follower); remaining -= follower.threat
@@ -119,16 +119,16 @@ static func attempt(rng: RandomNumberGenerator, depth: int, budget: int, ood: bo
 				members[i] = member(row,"RANGED"); break
 	return members
 
-static func fill(rng: RandomNumberGenerator, depth: int, budget: int, ood: bool) -> Array:
+static func fill(rng: RandomNumberGenerator, depth: int, budget: int, ood: bool, max_members: int = MAX_MEMBERS) -> Array:
 	for _try in range(MAX_REROLLS):
-		var members := attempt(rng,depth,budget,ood)
-		if valid(members,budget).is_empty(): return members
+		var members := attempt(rng,depth,budget,ood,max_members)
+		if valid(members,budget,max_members).is_empty(): return members
 	# Fallback: the strongest single species that fits, always legal for budget-1..budget+1.
 	var rows: Array = candidates(depth,budget+1)
 	rows.sort_custom(func(a,b): return int(a.threat) > int(b.threat))
 	for row in rows:
 		var solo := [member(row,"MELEE")]
-		if valid(solo,budget).is_empty(): return solo
+		if valid(solo,budget,max_members).is_empty(): return solo
 	return [member(rows[0] if not rows.is_empty() else species("kobold"),"MELEE")]
 
 static func chebyshev(a: Vector2i, b: Vector2i) -> int:

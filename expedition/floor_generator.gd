@@ -450,7 +450,7 @@ static func build_encounters(layout: Dictionary, theme: Dictionary, painted: Dic
 		var room: Dictionary = rooms[id]
 		var mandatory: bool = id in chosen.mandatory
 		var budget: int = theme.monsters.budget[room.tier] if mandatory else theme.monsters.budget.optional
-		var members := Encounters.fill(rng,depth,budget,room.tier == "deep" or not mandatory)
+		var members := Encounters.fill(rng,depth,budget,room.tier == "deep" or not mandatory,int(theme.monsters.get("max_members",Encounters.MAX_MEMBERS)))
 		var obstacles: Dictionary = painted.get(id,{}).get("obstacles",{}).duplicate()
 		for p in reserved:
 			obstacles[p] = true
@@ -599,7 +599,7 @@ static func validate(layout: Dictionary, theme: Dictionary) -> String:
 	for p in layout.features:
 		taken[p] = true
 	for e in layout.encounters:
-		if not Encounters.valid(e.members,e.budget).is_empty(): return "encounter invalid: "+Encounters.valid(e.members,e.budget)
+		if not Encounters.valid(e.members,e.budget,int(theme.monsters.get("max_members",Encounters.MAX_MEMBERS))).is_empty(): return "encounter invalid: "+Encounters.valid(e.members,e.budget,int(theme.monsters.get("max_members",Encounters.MAX_MEMBERS)))
 		for m in e.members:
 			if taken.has(m.pos): return "overlap at %s" % m.pos
 			taken[m.pos] = true

@@ -37,6 +37,13 @@ func run() -> void:
 			for m in members:
 				check(m.has("display_name") and m.max_health > 0 and m.role in ["MELEE","RANGED","CASTER"],"member carries name, health and role")
 			check(members == Builder.fill(rng(seed_value),1,budget,budget >= 9),"fill is deterministic per seed")
+	# A threat budget alone does not bound the enemy action count.
+	for seed_value in range(200):
+		for budget in [3,5,6]:
+			var capped: Array = Builder.fill(rng(seed_value),1,budget,true,2)
+			check(capped.size() <= 2 and Builder.valid(capped,budget,2).is_empty(),"F1 count cap and threat budget both hold")
+	var trio := [Builder.member(row("kobold"),"MELEE"),Builder.member(row("dcss_rat"),"MELEE"),Builder.member(row("goblin"),"RANGED")]
+	check(Builder.valid(trio,6).is_empty() and Builder.valid(trio,6,2) == "too many","count cap rejects an otherwise legal budget-six trio")
 	check(seen_backline and seen_gnoll_band,"large encounters and gnoll bands both occur")
 	check(Builder.valid([{"species_id":"kobold","role":"MELEE","threat":2},{"species_id":"kobold","role":"MELEE","threat":2},{"species_id":"dcss_rat","role":"MELEE","threat":1}],5) != "","three melee without backline is rejected")
 	check(Builder.valid([{"species_id":"goblin","role":"CASTER","threat":4},{"species_id":"goblin","role":"CASTER","threat":4}],9) != "","two casters rejected")
