@@ -98,6 +98,9 @@ func tile_polygon(point: Vector2) -> PackedVector2Array:
 	for offset in [Vector2.ZERO,Vector2.RIGHT,Vector2.ONE,Vector2.DOWN]: result.append(project(point+offset))
 	return result
 
+func is_wall_tile(point: Vector2i) -> bool:
+	return not session.inside(point) or session.tile(point).terrain == "wall"
+
 func outline(points: PackedVector2Array, color: Color, width: float = 1) -> void:
 	var closed := points.duplicate(); closed.append(points[0]); draw_polyline(closed,color,width,true)
 
@@ -159,15 +162,11 @@ func _draw() -> void:
 			var cell: Dictionary = session.tile(point)
 			var polygon := tile_polygon(Vector2(point))
 			var ground_rect := Rect2(project(Vector2(point)),Vector2.ONE*half_width*2)
-			draw_texture_rect(Art.terrain(cell,point),ground_rect,false,Color(0.43,0.46,0.49) if cell.terrain == "wall" else Color.WHITE)
 			if cell.terrain == "wall":
-				var corners := [ground_rect.position,Vector2(ground_rect.end.x,ground_rect.position.y),ground_rect.end,Vector2(ground_rect.position.x,ground_rect.end.y)]
-				var neighbors := [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]
-				for edge in range(4):
-					var neighbor: Vector2i = point+neighbors[edge]
-					if neighbor.x < 0 or neighbor.y < 0 or neighbor.x >= session.BOARD_SIDE or neighbor.y >= session.BOARD_SIDE: continue
-					if session.tile(neighbor).terrain != "wall":
-						draw_line(corners[edge],corners[(edge+1)%4],Color("4b4d4b") if edge in [0,3] else Color("070a0d"),3.0)
+				Art.Masonry.paint_wall(self,ground_rect,point,is_wall_tile)
+			else:
+				draw_texture_rect(Art.terrain(cell,point),ground_rect,false)
+				Art.Masonry.paint_floor_shadow(self,ground_rect,point,is_wall_tile)
 			if session.floor_mode and not session.floor_state.visible.has(point):
 				var observer: Dictionary = session.floor_state.observer(session)
 				if not observer.is_empty() and Vector2(observer.pos).distance_to(Vector2(point)) <= session.floor_state.sight_radius(session.light):

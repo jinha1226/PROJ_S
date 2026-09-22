@@ -32,9 +32,13 @@ func _initialize() -> void:
 	check(Vector2i(9,9) in s.Abilities.cells(s,s.party[0],"BOMB",Vector2i(9,8)),"ability AoE covers new edge")
 	var art = preload("res://expedition/mobile_art.gd")
 	var floor_tile = art.terrain({"terrain":"stone"},Vector2i(1,2))
-	var neighbor = art.terrain({"terrain":"stone"},Vector2i(2,2))
-	check(floor_tile.atlas == art.FLAGSTONE and neighbor.region.position.x == floor_tile.region.end.x,"adjacent stone tiles sample continuous paving")
-	check(art.terrain({"terrain":"wall"},Vector2i(1,2)).atlas == art.FLAGSTONE,"walls use matching masonry")
-	check(art.terrain({"terrain":"stone"},Vector2i(5,6)).region == floor_tile.region,"paving repeat is stable in world space")
+	check(floor_tile.atlas == art.Masonry.SHEET,"stone uses the masonry atlas")
+	check(art.terrain({"terrain":"wall"},Vector2i(1,2)).atlas == art.Masonry.SHEET,"walls use matching masonry")
+	check(art.terrain({"terrain":"stone"},Vector2i(1,2)).region == floor_tile.region,"paving is stable across redraws")
+	for mask in range(16):
+		var walls := {Vector2i.ZERO:true}
+		for direction in range(4):
+			if not (mask & (1 << direction)): walls[art.Masonry.DIRECTIONS[direction]] = true
+		check(art.Masonry.exposed(Vector2i.ZERO,func(p): return walls.has(p)) == mask,"wall junction resolves every cardinal combination")
 	print("Terrain layouts: %d failures; 100 seeds / 900 rooms" % failures)
 	quit(1 if failures else 0)

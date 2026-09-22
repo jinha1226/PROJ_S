@@ -7,19 +7,13 @@ const STONE = preload("res://assets/mobile/stone_floor_a.png")
 const WOOD = preload("res://assets/mobile/wood_floor.png")
 const WATER = preload("res://assets/mobile/water.png")
 const TOPDOWN = [preload("res://assets/topdown/floor1_atlas_16x1_16.png"),preload("res://assets/topdown/floor2_atlas_16x1_16.png")]
+const Masonry = preload("res://expedition/masonry_tiles.gd")
 const FLAGSTONE = preload("res://assets/topdown/flagstone-floor-v1.png")
 static var terrain_cache: Dictionary = {}
 
 static func terrain(cell: Dictionary, point: Vector2i = Vector2i.ZERO) -> AtlasTexture:
-	if cell.terrain in ["stone","wall"]:
-		var tile := Vector2i(posmod(point.x,4),posmod(point.y,4))
-		var stone_key := 100+tile.y*4+tile.x
-		if not terrain_cache.has(stone_key):
-			var stone := AtlasTexture.new(); stone.atlas = FLAGSTONE
-			var unit := Vector2(FLAGSTONE.get_size())/4.0
-			stone.region = Rect2(Vector2(tile)*unit,unit); stone.filter_clip = true
-			terrain_cache[stone_key] = stone
-		return terrain_cache[stone_key]
+	if cell.terrain == "stone": return Masonry.floor_tile(point)
+	if cell.terrain == "wall": return Masonry.tile(4+posmod(point.x+point.y*3,4))
 	var palette: int = cell.get("palette",0)
 	var index: int = {"stone":[0,2,3][cell.get("variant",0)],"wood":4,"water":7,"metal":5,"wall":9}.get(cell.terrain,0)
 	var key := palette*16+index
