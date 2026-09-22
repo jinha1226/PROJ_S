@@ -14,6 +14,7 @@ var floor_state
 const BossTrial = preload("res://expedition/boss_trial.gd")
 var boss_trial := false
 const Tactics = preload("res://expedition/tactical_action_selector.gd")
+const Knobs = preload("res://expedition/knobs.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 const Growth = preload("res://expedition/growth.gd")
@@ -118,6 +119,11 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"stress":0, "condition":"평온", "ap":2,
 		"body":Body.create(id, seed_value, enemy),
 		"profile":Hexaco.generated(seed_value, id + 1), "memory":Memory.new()}
+	# The knobs start where this personality is comfortable, so nobody is born
+	# in conflict with their own standing orders.
+	actor["knobs"] = Knobs.defaults(actor.profile)
+	actor["conflicted"] = false
+	actor["ignoring"] = false
 	Body.sync(actor)
 	return actor
 
@@ -509,15 +515,7 @@ func command_choice(actor: Dictionary) -> Dictionary:
 		return {"kind":"WAIT","cell":actor.pos,"reason":"자리 지키기"}
 	if party_command == "STOP_ATTACK": return floor_state.follow(self,actor) if floor_mode else {"kind":"WAIT","cell":actor.pos,"reason":"공격 중지"}
 	if party_command == "RETREAT":
-		var threats: Array = combat_enemies()
-		var best: Vector2i = actor.pos
-		var score := -1
-		for direction in DIRECTIONS:
-			var cell: Vector2i = actor.pos+direction
-			if not can_step(actor.pos,cell) or not is_free(cell): continue
-			var nearest := 999
-			for enemy in threats: nearest = mini(nearest,distance(cell,enemy.pos))
-			if nearest > score: score = nearest; best = cell
+		var best: Vector2i = Tactics.retreat_cell(self,actor)
 		return {"kind":"WAIT" if best == actor.pos else "MOVE","cell":best,"reason":"후퇴"}
 	if party_command == "ATTACK_TARGET":
 		for enemy in combat_enemies():
@@ -548,6 +546,9 @@ func auto_step() -> bool:
 	remember_round()
 	for actor in party:
 		var guard := 0
+		if actor.hp > 0 and actor.ap > 0 and int(actor.stress) >= 100 and not bool(actor.get("ignoring",false)):
+			actor.ignoring = true
+			message(actor.name+" · 자기 방식대로 움직입니다")
 		while actor.hp > 0 and actor.ap > 0 and phase == "BATTLE" and guard < 4:
 			guard += 1
 			var choice: Dictionary = command_choice(actor)
@@ -558,6 +559,18 @@ func auto_step() -> bool:
 			else: break
 	if phase == "BATTLE": end_round()
 	return true
+
+## A member whose standing orders sit outside their comfort band pays for them
+## when the fighting starts: stress every battle, one memory per expedition.
+func open_battle_conflicts() -> void:
+	for actor in alive():
+		actor.ignoring = false
+		actor.conflicted = Knobs.conflicted(actor)
+		if not actor.conflicted: continue
+		stress(actor,8)
+		serial += 1
+		remember_important(actor,"COMMAND_CONFLICT",actor.id+1,0,600)
+		message(actor.name+" · 명령과 갈등")
 
 ## Snapshot of what auto_stop_reason compares against next round.
 func remember_round() -> void:
@@ -588,10 +601,14 @@ func auto_stop_reason() -> String:
 			continue
 		auto.last_stop = {"reason":reason,"round":round_number}
 		auto.stops_log.append(reason)
+		if reason == "BATTLE_START": open_battle_conflicts()
 		remember_round()
 		return reason
 	# Nothing was raised, but a hard event happened: consume it so it cannot re-fire.
-	if hard: remember_round()
+	if hard:
+		if applies.BATTLE_START: open_battle_conflicts()
+		remember_round()
+	for a in alive(): a.conflicted = Knobs.conflicted(a)
 	return ""
 
 func companion_previews() -> Array:
@@ -603,6 +620,17 @@ func companion_previews() -> Array:
 		choice.actor = actor.id
 		previews.append(choice)
 	return previews
+
+## Town and safe ground only: a standing order is not rewritten mid-fight.
+## Whether it conflicts with the personality is judged when it matters, not stored.
+func set_knob(index: int, key: String, value: int) -> bool:
+	if not safe_management() or in_combat(): return false
+	if index < 0 or index >= party.size() or party[index].hp <= 0: return false
+	if not Knobs.RANGE.has(key): return false
+	var bounds: Array = Knobs.RANGE[key]
+	if value < int(bounds[0]) or value > int(bounds[1]): return false
+	party[index].knobs[key] = value
+	return true
 
 func set_tactic(index: int, skill: String, policy: String) -> bool:
 	if index < 0 or index >= party.size(): return false

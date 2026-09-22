@@ -6,6 +6,7 @@ const Generator = preload("res://expedition/floor_generator.gd")
 const Arena = preload("res://expedition/sim/encounter_arena.gd")
 const Policy = preload("res://expedition/sim/bot_policy.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
+const Knobs = preload("res://expedition/knobs.gd")
 static var builds: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/reference_builds.json"))
 
 static func build(id: String) -> Dictionary:
@@ -20,6 +21,9 @@ static func apply_build(s, id: String) -> void:
 		for stat in row.get("stats",{}): actor.growth.stats[stat] = int(row.stats[stat])
 		actor.equipped_abilities = row.equipped.duplicate()
 		if row.has("rules"): actor.rules = row.rules.map(func(r): return Rules.make_rule(r[0],r[1],r[2]))
+		# A build measures the build: without knobs of its own it fights on the
+		# neutral defaults, not on whatever personality the seed rolled.
+		actor.knobs = row.knobs.duplicate() if row.has("knobs") else Knobs.DEFAULT.duplicate()
 
 ## Drains `s.effects` into the running tallies. Called before every player
 ## action and once more after the loop, so ambush hits and the strikes of the

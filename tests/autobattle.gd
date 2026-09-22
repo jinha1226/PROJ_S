@@ -4,6 +4,8 @@ extends SceneTree
 const Session = preload("res://expedition/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
+const Knobs = preload("res://expedition/knobs.gd")
+const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
 var failures := 0
 var checks := 0
 func check(ok: bool, reason: String) -> void:
@@ -15,6 +17,7 @@ func run() -> void:
 	auto()
 	stops()
 	commands()
+	knobs()
 	print("Autobattle: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 ## Three members with the basics equipped, one revived melee foe next to the hero.
@@ -116,10 +119,11 @@ func stops() -> void:
 	check(s.auto.stops_log.back() == "BATTLE_END","stops are logged for the battle report")
 
 ## Strands `s.party[index]` at `cell` with a healthy, alert `foe` beside it, so
-## that no ally can 엄호 the killing blow away. False when the arena offers no
-## free cell for the foe.
+## that no ally can 엄호 the killing blow away. The retreat line is switched off
+## for that member, or it would simply walk away from the blow. False when the
+## arena offers no free cell for the foe.
 func cut_off(s, index: int, foe: Dictionary, cell: Vector2i) -> bool:
-	s.party[index].hp = 1; s.party[index].pos = cell
+	s.party[index].hp = 1; s.party[index].pos = cell; s.party[index].knobs.retreat_hp = 0
 	var beside: Vector2i = Fixture.beside(s,cell)
 	if beside == Vector2i(-1,-1): return false
 	foe.hp = foe.max_hp; foe.alert = true; foe.pos = beside
@@ -150,3 +154,55 @@ func commands() -> void:
 	check(d.foes[0].hp < hp,"attack target makes the hero hit the marked foe")
 	s.party_command = "FOLLOW"
 	check(not s.reserve_action(1,"WAIT",s.party[1].pos),"reservations are gone in floor mode")
+
+func profile(values: Dictionary) -> DungeonHexacoProfile:
+	return Hexaco.new({"H":500,"E":500,"X":500,"A":500,"C":500,"O":500}.merged(values,true))
+
+func knobs() -> void:
+	# Formulas from spec §3.3 on fixed profiles.
+	var bold := profile({"X":900,"E":100,"A":900,"C":1000})
+	var timid := profile({"X":100,"E":900,"A":100,"C":0})
+	check(Knobs.defaults(bold) == {"posture":80,"cohesion":80,"retreat_hp":14},"bold defaults")
+	check(Knobs.defaults(timid) == {"posture":-80,"cohesion":-80,"retreat_hp":46},"timid defaults")
+	check(Knobs.comfort(bold).posture == [10,150] and Knobs.comfort(timid).posture == [-100,-60],"comfort half-width grows with C (70 vs 20)")
+	check(Knobs.comfort(timid).retreat_hp == [36,56],"retreat comfort half-width 10 at C 0")
+	var d := skirmish(); var s = d.s
+	var hero: Dictionary = d.hero
+	check(hero.knobs == Knobs.defaults(hero.profile),"new actors start at their personality defaults")
+	check(not s.set_knob(0,"posture",120) and not s.set_knob(0,"nope",1),"range and key validated")
+	s.phase = "TOWN"
+	check(s.set_knob(0,"posture",-100) and hero.knobs.posture == -100,"knobs change in town")
+	s.phase = "BATTLE"
+	check(not s.set_knob(0,"posture",0),"not while fighting")
+	# Conflict: forced far outside the comfort band.
+	hero.profile = bold; hero.knobs = Knobs.defaults(bold); hero.knobs.posture = -100
+	check(Knobs.conflicted(hero),"posture -100 conflicts with a bold profile")
+	var stress: int = hero.stress; var memories: int = hero.memory.records.size()
+	d.foes[0].pos = d.c+Vector2i(3,0); s.floor_state.observe(s)
+	check(s.auto_stop_reason() == "BATTLE_START","battle starts")
+	check(hero.stress > stress and hero.memory.records.size() == memories+1,"conflict costs stress and a COMMAND_CONFLICT memory at battle start")
+	check(hero.memory.records.back().kind == "COMMAND_CONFLICT","memory kind")
+	hero.stress = 120; s.stress(hero,0)
+	check(hero.condition == "불안" and Knobs.effective(hero).posture == 80,"an anxious member falls back to personality")
+	hero.stress = 160; s.stress(hero,0)
+	check(Knobs.effective(hero).posture == 100,"a collapsed bold member goes all-in")
+	hero.stress = 0; s.stress(hero,0); hero.knobs.posture = 60
+	check(not Knobs.conflicted(hero) and Knobs.effective(hero).posture == 60,"inside the band the knob is used as set")
+	# Tactics: posture +100 ignores fire-only danger, -100 flees it.
+	d = skirmish(); s = d.s; hero = d.hero
+	d.foes[0].pos = d.c+Vector2i(1,0); s.floor_state.observe(s)
+	s.tile(hero.pos).fire = 40
+	hero.knobs = {"posture":100,"cohesion":0,"retreat_hp":0}
+	check(s.Tactics.choose(s,hero).kind == "ATTACK","aggressive: fire underfoot does not stop the attack")
+	hero.knobs.posture = -100
+	check(s.Tactics.choose(s,hero).kind == "MOVE","cautious: leaves the fire")
+	s.tile(hero.pos).fire = 0
+	# Cohesion +100 avoids moving away from allies; retreat line prefers distance.
+	hero.knobs = {"posture":0,"cohesion":100,"retreat_hp":0}
+	d.foes[0].pos = d.c+Vector2i(4,0); s.floor_state.observe(s)
+	var choice: Dictionary = s.Tactics.choose(s,hero)
+	check(choice.kind != "MOVE" or s.alive().any(func(a): return a.id != hero.id and s.melee_reach(choice.cell,a.pos)),"cohesive hero does not step out of contact with allies")
+	hero.knobs = {"posture":0,"cohesion":0,"retreat_hp":50}; hero.hp = int(hero.max_hp*0.4)
+	d.foes[0].pos = d.c+Vector2i(1,0); s.floor_state.observe(s)
+	choice = s.Tactics.choose(s,hero)
+	check(choice.kind == "MOVE" and s.distance(choice.cell,d.foes[0].pos) > 1,"below the retreat line the hero opens distance")
