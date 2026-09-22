@@ -21,9 +21,9 @@
 <button id="reset">위치 초기화</button> <button id="save">배치 JSON 저장</button>
 <p>갑옷은 몸통 교체 파츠입니다. 검에는 손이 포함되어 있으며, 이 파일에서 게임 본편은 변경하지 않습니다.</p>
 </section></div><p id="error" role="alert"></p>
-<p><a href="../../assets/characters/ink-torso-v1/parts-readable-v2.png">원본 투명 파츠 시트</a> · <a href="ink-torso-readable-v2-prompts.json">생성 프롬프트</a></p></main>
+<p><a href="../../assets/characters/ink-torso-v1/parts.png">원본 투명 파츠 시트</a> · <a href="ink-torso-v1-prompts.json">생성 프롬프트</a></p></main>
 <script>
-const original={"canvas":[256,256],"order":["body","head","sword","shield"],"parts":{"cloth":{"source":[405,220,430,390],"destination":[49,100,154,131]},"armor":{"source":[837,220,417,390],"destination":[52,98,154,131]},"head":{"source":[40,80,350,530],"destination":[73,-4,110,167]},"sword":{"source":[40,642,327,561],"destination":[20,66,91,156]},"shield":{"source":[451,700,353,465],"destination":[164,127,77,102]}}};
+const original={"canvas":[256,256],"order":["body","head","sword","shield"],"parts":{"cloth":{"source":[405,220,430,390],"destination":[49,100,154,131]},"armor":{"source":[837,220,417,390],"destination":[52,98,154,131]},"head":{"source":[40,80,350,530],"destination":[63.6,-31.6,128.8,194.6]},"sword":{"source":[40,642,327,561],"destination":[20,66,91,156]},"shield":{"source":[451,700,353,465],"destination":[164,127,77,102]}}};
 let data=structuredClone(original);
 const $=id=>document.getElementById(id);
 const atlas=new Image(),tile=new Image();
@@ -32,7 +32,7 @@ atlas.onload=()=>{atlasReady=true;draw()};
 tile.onload=()=>{tileReady=true;draw()};
 atlas.onerror=()=>{$("error").textContent="파츠 이미지를 읽지 못했습니다. 프로젝트 안에서 미리보기 파일을 열어 주세요."};
 tile.onerror=()=>{$("error").textContent="타일 이미지를 읽지 못해 단색 배경으로 표시합니다."};
-atlas.src="../../assets/characters/ink-torso-v1/parts-readable-v2.png";
+atlas.src="../../assets/characters/ink-torso-v1/parts.png";
 tile.src="../../assets/topdown/floor1-ink-v2/materials-soft-v3.png";
 function paint(canvas){
  const ctx=canvas.getContext("2d");ctx.clearRect(0,0,canvas.width,canvas.height);ctx.save();ctx.scale(canvas.width/256,canvas.height/256);

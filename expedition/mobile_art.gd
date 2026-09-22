@@ -16,7 +16,7 @@ static var terrain_cache: Dictionary = {}
 static func paint_actor(canvas: CanvasItem, index: int, rect: Rect2, tint: Color = Color.WHITE) -> void:
 	# Keep the lower edge anchored while allowing the head above the movement cell.
 	# The layered human has more transparent canvas padding than the legacy pawns.
-	var extent := rect.size*(2.0 if index == 0 else 1.67)
+	var extent := rect.size*(2.4 if index == 0 else 1.67)
 	var display := Rect2(rect.position+Vector2((rect.size.x-extent.x)*0.5,rect.size.y-extent.y),extent)
 	if index == 0:
 		InkTorso.paint(canvas,display,tint)
