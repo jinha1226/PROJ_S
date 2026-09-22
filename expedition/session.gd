@@ -795,7 +795,9 @@ func end_round() -> bool:
 	for actor in party: actor["guarded"] = false; actor["protected_by"] = -1
 	check_battle_end()
 	if phase != "BATTLE": return true
-	for actor in alive()+enemies: Passives.round_start(self,actor)
+	# Round-start passives run for the fighters only: the whole 64×64 roster is
+	# not in this battle, so a distant monster must not regenerate off-screen.
+	for actor in alive()+combat_enemies(): Passives.round_start(self,actor)
 	for actor in alive():
 		actor.iron_guard = false
 		for id in actor.cooldowns: actor.cooldowns[id] = maxi(0,int(actor.cooldowns[id])-1)

@@ -1,7 +1,9 @@
 extends RefCounted
 ## Part passives. A closed list of kinds and four hooks; nothing else in the
 ## game reads a passive. Party members carry the passives of their equipped
-## parts, monsters the passive of their species part.
+## parts, monsters the passive of their species part: a passive belongs to the
+## species, so a monster whose `part_id` is not its own species part (a boss
+## trial boss carries one for drops only) has no passive at all.
 const Abilities = preload("res://expedition/abilities.gd")
 const KINDS := ["PACK","RETALIATE","DIRTY","AMBUSHER","THICK_HIDE","BLOODLUST","REGEN","AMPHIBIOUS"]
 
@@ -10,7 +12,9 @@ static func of(actor: Dictionary) -> Array:
 	var result: Array = []
 	for id in ids:
 		var def: Dictionary = Abilities.DEFINITIONS.get(id,{})
-		if not def.is_empty() and not def.passive.is_empty(): result.append(def.passive)
+		if def.is_empty() or def.passive.is_empty(): continue
+		if actor.enemy and str(def.species) != str(actor.get("species_id","")): continue
+		result.append(def.passive)
 	return result
 
 static func adjacent_allies(s, actor: Dictionary) -> int:
@@ -45,9 +49,10 @@ static func incoming(s, target: Dictionary, amount: int) -> int:
 	return amount
 
 ## After the hit landed. Retaliation is plain damage with its own form so it
-## never triggers passives again.
+## never triggers passives again, and only a defender who survived the hit
+## strikes back.
 static func after_hit(s, target: Dictionary, attacker: Dictionary, form: String) -> void:
-	if form == "RETALIATE" or attacker.is_empty() or attacker.hp <= 0: return
+	if form == "RETALIATE" or attacker.is_empty() or attacker.hp <= 0 or target.hp <= 0: return
 	for passive in of(target):
 		match passive.kind:
 			"RETALIATE":

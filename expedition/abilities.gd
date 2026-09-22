@@ -141,7 +141,10 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 		"LUNGE":
 			var cell := lunge_cell(s,actor,id,target)
 			if cell != Vector2i(-1,-1): actor.pos = cell
-			if victim.is_empty() or cell == Vector2i(-1,-1): s.message(actor.name+"의 "+def.name+"가 빗나갔습니다.")
+			# A telegraphed lunge lands on the announced cell, but never on the
+			# caster's own side: a fellow monster who stepped in is a miss.
+			var spared: bool = not victim.is_empty() and not def.allies_hit and victim.enemy == actor.enemy
+			if victim.is_empty() or spared or cell == Vector2i(-1,-1): s.message(actor.name+"의 "+def.name+"가 빗나갔습니다.")
 			else:
 				s.effects.append({"kind":"ENEMY_ATTACK","from":actor.pos,"cell":target,"cells":[target],"area":false,"amount":0,"form":"SLASH"})
 				s.damage(victim,power(s,actor,def),actor.id,"SLASH")

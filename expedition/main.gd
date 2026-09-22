@@ -298,7 +298,8 @@ func refresh() -> void:
 			var skill_id: String = actor.equipped_abilities[slot] if part_slots else SKILLS[i][slot]
 			var skill_name: String = Session.Rules.skill(skill_id).get("name","빈 슬롯" if skill_id.is_empty() else skill_id)
 			var skill := icon_button(skills,Art.skill(slot if part_slots else i*2+slot),func(): choose_skill(i,slot),skill_name)
-			if Session.Abilities.DEFINITIONS.has(skill_id):
+			# An empty slot gets the same caption so the gap reads as "빈 슬롯".
+			if Session.Abilities.DEFINITIONS.has(skill_id) or skill_id.is_empty():
 				var caption := label(skill,skill_name+ (" %d" % actor.cooldowns.get(skill_id,0) if actor.cooldowns.get(skill_id,0) > 0 else ""),10)
 				caption.set_anchors_and_offsets_preset(PRESET_BOTTOM_WIDE); caption.offset_top = -16; caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			skill.disabled = session.phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0; skill_buttons.append(skill)

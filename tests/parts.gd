@@ -60,6 +60,7 @@ func ui() -> void:
 	s.depart(); scene.refresh()
 	for frame in range(3): await process_frame
 	check(scene.skill_buttons.size() == 2 and scene.skill_buttons[1].disabled and scene.skill_buttons[1].tooltip_text == "빈 슬롯","empty second slot is disabled")
+	check(scene.skill_buttons[1].find_children("*","Label",true,false).any(func(l): return l.text == "빈 슬롯"),"empty slot carries a visible 빈 슬롯 caption")
 	check(not scene.skill_buttons[0].disabled or s.phase != "BATTLE","push button follows battle state")
 	# Bag: the parts category exists and the detail offers per-member slot buttons only in town.
 	scene.inventory_filter = "파츠"; scene.show_supplies()
@@ -196,10 +197,16 @@ func duel() -> Dictionary:
 	s.party[0].ap = 3
 	return {"s":s,"c":c,"hero":s.party[0],"ally":s.party[1],"far":s.party[2],"foe":foe}
 
+## Gives a monster a part together with the species it belongs to: a passive
+## only applies to the species that owns the part.
+func give_part(foe: Dictionary, id: String) -> void:
+	foe.part_id = id
+	foe.species_id = str(Abilities.DEFINITIONS[id].species)
+
 func passives() -> void:
 	# PACK: +1 per adjacent living ally of the attacker.
 	var d := duel(); var s = d.s
-	d.foe.part_id = "RAT_GNAW"
+	give_part(d.foe,"RAT_GNAW")
 	var second: Dictionary = s.enemies[1]; second.hp = 30; second.max_hp = 30; second.pos = d.c+Vector2i(2,0); second.alert = true
 	var third: Dictionary = s.enemies[2]; third.hp = 30; third.max_hp = 30; third.pos = d.c+Vector2i(2,1); third.alert = true
 	check(Passives.outgoing(s,d.foe,d.hero,7) == 9,"pack adds one per adjacent ally (two)")
@@ -211,38 +218,44 @@ func passives() -> void:
 	var foe_hp: int = d.foe.hp
 	s.damage(d.hero,5,d.foe.id,"IMPACT")
 	check(d.foe.hp == foe_hp-2,"retaliate returns two to the adjacent attacker")
-	d.foe.part_id = "LIZARD_TAIL"; foe_hp = d.foe.hp; var hero_hp: int = d.hero.hp
+	give_part(d.foe,"LIZARD_TAIL"); foe_hp = d.foe.hp; var hero_hp: int = d.hero.hp
 	s.damage(d.hero,5,d.foe.id,"IMPACT")
 	check(d.foe.hp == foe_hp-2 and d.hero.hp < hero_hp,"retaliation itself is not retaliated")
 	d.foe.pos = d.c+Vector2i(3,0); foe_hp = d.foe.hp
 	s.damage(d.hero,5,d.foe.id,"IMPACT")
 	check(d.foe.hp == foe_hp,"no retaliation at range")
+	# Only a defender who survived the hit strikes back.
+	d = duel(); s = d.s
+	d.hero.equipped_abilities = ["LIZARD_TAIL","GUARD"]
+	d.hero.hp = 1; foe_hp = d.foe.hp
+	s.damage(d.hero,5,d.foe.id,"IMPACT")
+	check(d.hero.hp <= 0 and d.foe.hp == foe_hp,"a slain defender does not retaliate")
 	# DIRTY: +3 against targets under half health.
-	d = duel(); s = d.s; d.foe.part_id = "KOBOLD_SLING"
+	d = duel(); s = d.s; give_part(d.foe,"KOBOLD_SLING")
 	d.hero.hp = ceili(d.hero.max_hp/2.0)
 	check(Passives.outgoing(s,d.foe,d.hero,7) == 7,"dirty needs strictly under half")
 	d.hero.hp -= 1
 	check(Passives.outgoing(s,d.foe,d.hero,7) == 10,"dirty adds three under half")
 	# AMBUSHER: +3 against a target with no adjacent living ally.
-	d = duel(); s = d.s; d.foe.part_id = "GOBLIN_SHIV"
+	d = duel(); s = d.s; give_part(d.foe,"GOBLIN_SHIV")
 	check(Passives.outgoing(s,d.foe,d.hero,7) == 7,"ally adjacent: no ambush bonus")
 	check(Passives.outgoing(s,d.foe,d.far,7) == 10,"isolated target: ambush bonus")
 	# THICK_HIDE: -1, never below 1.
-	d = duel(); s = d.s; d.foe.part_id = "HOB_CLUB"
+	d = duel(); s = d.s; give_part(d.foe,"HOB_CLUB")
 	check(Passives.incoming(s,d.foe,5) == 4 and Passives.incoming(s,d.foe,1) == 1,"thick hide subtracts one, floor one")
 	# BLOODLUST: +3 when the attacker is under half.
-	d = duel(); s = d.s; d.foe.part_id = "ORC_CLEAVER"
+	d = duel(); s = d.s; give_part(d.foe,"ORC_CLEAVER")
 	check(Passives.outgoing(s,d.foe,d.hero,7) == 7,"bloodlust off at full health")
 	d.foe.hp = 14
 	check(Passives.outgoing(s,d.foe,d.hero,7) == 10,"bloodlust on under half")
 	# REGEN: +2 at round start, capped.
-	d = duel(); s = d.s; d.foe.part_id = "GNOLL_SPEAR"; d.foe.hp = 20
+	d = duel(); s = d.s; give_part(d.foe,"GNOLL_SPEAR"); d.foe.hp = 20
 	Passives.round_start(s,d.foe)
 	check(d.foe.hp == 22,"regen heals two")
 	d.foe.hp = 29; Passives.round_start(s,d.foe)
 	check(d.foe.hp == 30,"regen never exceeds max")
 	# AMPHIBIOUS: +3 on wet or water.
-	d = duel(); s = d.s; d.foe.part_id = "RIVER_RAT_SPLASH"
+	d = duel(); s = d.s; give_part(d.foe,"RIVER_RAT_SPLASH")
 	check(Passives.outgoing(s,d.foe,d.hero,7) == 7,"dry: no bonus")
 	s.tile(d.foe.pos).wet = 40
 	check(Passives.outgoing(s,d.foe,d.hero,7) == 10,"wet: bonus")
@@ -251,14 +264,33 @@ func passives() -> void:
 	hero_hp = d.hero.hp
 	s.damage(d.hero,6,d.foe.id,"IMPACT")
 	check(d.hero.hp == hero_hp-5,"equipped thick hide applies inside damage()")
-	d.foe.part_id = "GNOLL_SPEAR"; d.foe.hp = 20
+	give_part(d.foe,"GNOLL_SPEAR"); d.foe.hp = 20
+	# A monster far outside the fight is on the roster but not in it: no regen.
+	var distant: Dictionary = s.enemies[1]
+	var spot := Vector2i(-1,-1)
+	for y in range(1,s.BOARD_SIDE-1):
+		for x in range(1,s.BOARD_SIDE-1):
+			var p := Vector2i(x,y)
+			if maxi(absi(p.x-d.c.x),absi(p.y-d.c.y)) >= 20 and s.tile(p).terrain != "wall" and s.at(p).is_empty(): spot = p; break
+		if spot != Vector2i(-1,-1): break
+	check(spot != Vector2i(-1,-1),"a far cell exists for the distant monster")
+	distant.hp = 20; distant.max_hp = 30; distant.alert = false; distant.pos = spot
+	give_part(distant,"GNOLL_SPEAR")
+	check(not s.combat_enemies().any(func(e): return e.id == distant.id),"the distant monster is not in the fight")
 	s.act("WAIT",d.hero.pos); s.act("WAIT",d.hero.pos); s.act("WAIT",d.hero.pos)
 	check(d.foe.hp >= 22,"regen runs at round start for monsters")
+	check(distant.hp == 20,"a monster outside the fight does not regenerate")
+	# A passive belongs to the species: a boss trial boss carries a part for its
+	# drop only, so it grants no passive.
+	var trial = Session.new(731,true,true); trial.depart()
+	var boss: Dictionary = trial.enemies[0]
+	check(not str(boss.get("part_id","")).is_empty(),"the boss carries a droppable part")
+	check(Passives.of(boss).is_empty(),"a part that is not the species part grants no passive")
 
 func telegraph() -> void:
 	# Hobgoblin in contact: announces, resolves next round, cools down.
 	var d := duel(); var s = d.s
-	d.foe.part_id = "HOB_CLUB"; d.foe.cooldowns = {}
+	give_part(d.foe,"HOB_CLUB"); d.foe.cooldowns = {}
 	MonsterAI.turn(s,d.foe)
 	check(d.foe.charging and d.foe.cast_id == "HOB_CLUB" and d.foe.cast_cell == d.hero.pos,"in contact the part is announced first")
 	check(s.intents.size() == 1 and s.intents[0].kind == "HOB_CLUB" and int(s.intents[0].damage) == 14 and s.intents[0].cell == d.hero.pos,"intent carries the part and its damage")
@@ -272,27 +304,27 @@ func telegraph() -> void:
 	MonsterAI.turn(s,d.foe)
 	check(not d.foe.charging and int(d.foe.cooldowns.HOB_CLUB) == 3,"on cooldown the role attack runs and the cooldown ticks")
 	# Interrupt by push: cooldown consumed, one round of recovery.
-	d = duel(); s = d.s; d.foe.part_id = "HOB_CLUB"; d.foe.cooldowns = {}
+	d = duel(); s = d.s; give_part(d.foe,"HOB_CLUB"); d.foe.cooldowns = {}
 	MonsterAI.turn(s,d.foe)
 	check(s.act("PUSH",d.foe.pos),"hero pushes the charging foe")
 	check(not d.foe.charging and s.intents.is_empty() and d.foe.cast_recovery == 1 and int(d.foe.cooldowns.HOB_CLUB) == 3,"push cancels the part and burns its cooldown")
 	check(s.stats_interrupts == 1,"interrupt counted")
 	# Only 밀치기 breaks a part charge; an ordinary hit leaves it standing (spec §2.2).
 	# The caster role's own spell is still broken by damage — tests/monster_roles.gd "damage interrupts spell".
-	d = duel(); s = d.s; d.foe.part_id = "HOB_CLUB"; d.foe.cooldowns = {}
+	d = duel(); s = d.s; give_part(d.foe,"HOB_CLUB"); d.foe.cooldowns = {}
 	MonsterAI.turn(s,d.foe)
 	hp = d.hero.hp
 	check(s.act("ATTACK",d.foe.pos) and d.foe.charging and s.intents.size() == 1 and s.stats_interrupts == 0,"a hit leaves the part charge standing")
 	MonsterAI.turn(s,d.foe)
 	check(d.hero.hp < hp and int(s.stats_enemy_skill.get("HOB_CLUB",0)) == 1,"the club still resolves after its owner was hit")
 	# Target steps away: a radius-0 part misses.
-	d = duel(); s = d.s; d.foe.part_id = "HOB_CLUB"; d.foe.cooldowns = {}
+	d = duel(); s = d.s; give_part(d.foe,"HOB_CLUB"); d.foe.cooldowns = {}
 	MonsterAI.turn(s,d.foe)
 	d.hero.pos = d.c+Vector2i(-1,0); hp = d.hero.hp
 	MonsterAI.turn(s,d.foe)
 	check(d.hero.hp == hp and s.log_lines[-1].contains("빗나갔습니다"),"an empty announced cell is a miss")
 	# Area part spares the caster's own side.
-	d = duel(); s = d.s; d.foe.part_id = "ORC_CLEAVER"; d.foe.cooldowns = {}
+	d = duel(); s = d.s; give_part(d.foe,"ORC_CLEAVER"); d.foe.cooldowns = {}
 	var mate: Dictionary = s.enemies[1]; mate.hp = 30; mate.max_hp = 30; mate.alert = true; mate.pos = d.c+Vector2i(1,1); mate.part_id = ""
 	MonsterAI.turn(s,d.foe)
 	var ring: Array = Abilities.cells(s,d.foe,"ORC_CLEAVER",d.hero.pos)
@@ -302,12 +334,26 @@ func telegraph() -> void:
 	var ally_hp: int = d.ally.hp; var mate_hp: int = mate.hp; hp = d.hero.hp
 	MonsterAI.turn(s,d.foe)
 	check(d.hero.hp < hp and d.ally.hp < ally_hp and mate.hp == mate_hp,"cleave hits both members in the square and no fellow monster")
+	# A telegraphed lunge never stabs a fellow monster who took the cell.
+	d = duel(); s = d.s; give_part(d.foe,"GOBLIN_SHIV"); d.foe.cooldowns = {}
+	d.foe.pos = d.c+Vector2i(2,0); s.floor_state.observe(s)
+	MonsterAI.turn(s,d.foe)
+	check(d.foe.charging and d.foe.cast_id == "GOBLIN_SHIV" and d.foe.cast_cell == d.hero.pos,"the shiv is announced on the hero's cell")
+	var cell: Vector2i = d.foe.cast_cell
+	d.hero.pos = d.c+Vector2i(-2,0)
+	var comrade: Dictionary = s.enemies[1]
+	comrade.hp = 30; comrade.max_hp = 30; comrade.alert = true; comrade.pos = cell; comrade.part_id = ""
+	s.floor_state.observe(s)
+	MonsterAI.turn(s,d.foe)
+	check(comrade.hp == 30,"the announced cell's new occupant is a fellow monster and takes nothing")
+	check(s.log_lines[-1].contains("빗나갔습니다"),"a lunge onto one's own side is a miss")
+	check(int(s.stats_enemy_skill.get("GOBLIN_SHIV",0)) == 1,"the use is still counted")
 	# A prep 0 part fires at once; a longer charge keeps its announcement until the count runs out.
 	# (DEFINITIONS is a const dictionary and read-only at runtime, so prep comes from the catalog.)
-	d = duel(); s = d.s; d.foe.part_id = "HEAVY_STRIKE"; d.foe.cooldowns = {}
+	d = duel(); s = d.s; give_part(d.foe,"HEAVY_STRIKE"); d.foe.cooldowns = {}
 	hp = d.hero.hp; MonsterAI.turn(s,d.foe)
 	check(int(Abilities.DEFINITIONS.HEAVY_STRIKE.enemy.prep) == 0 and d.hero.hp < hp and not d.foe.charging,"prep 0 resolves immediately")
-	d = duel(); s = d.s; d.foe.part_id = "HOB_CLUB"; d.foe.cooldowns = {}
+	d = duel(); s = d.s; give_part(d.foe,"HOB_CLUB"); d.foe.cooldowns = {}
 	hp = d.hero.hp; MonsterAI.turn(s,d.foe)
 	d.foe.cast_left = 2
 	MonsterAI.turn(s,d.foe)
@@ -315,7 +361,7 @@ func telegraph() -> void:
 	MonsterAI.turn(s,d.foe)
 	check(d.hero.hp < hp,"it resolves once the count runs out")
 	# Caster role keeps its spell when the part is on cooldown; the part goes first when both are ready.
-	d = duel(); s = d.s; d.foe.part_id = "KOBOLD_SLING"; d.foe.cooldowns = {}; d.foe.role = "CASTER"; d.foe.cast_cooldown = 0
+	d = duel(); s = d.s; give_part(d.foe,"KOBOLD_SLING"); d.foe.cooldowns = {}; d.foe.role = "CASTER"; d.foe.cast_cooldown = 0
 	d.foe.pos = d.c+Vector2i(3,0); s.floor_state.observe(s)
 	MonsterAI.turn(s,d.foe)
 	check(d.foe.charging and d.foe.cast_id == "KOBOLD_SLING","part before role spell")
