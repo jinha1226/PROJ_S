@@ -26,7 +26,9 @@ func spec(arena_id: String) -> Dictionary:
 
 func run() -> void:
 	var ex: Dictionary = experiments.experiments.action_economy
-	var count := 60
+	# Default 300, not 60: deaths run at roughly one per ten runs in these arenas,
+	# and sixty seeds put too few of them on the board for the two columns to differ.
+	var count := 300
 	var args: PackedStringArray = OS.get_cmdline_user_args()
 	for i in range(args.size()-1):
 		if args[i] == "--seeds": count = maxi(1,int(args[i+1]))
