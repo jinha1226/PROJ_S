@@ -170,6 +170,8 @@ func paint_terrain() -> void:
 				if visibility == 1: draw_rect(rect,Color("151b22"))
 				else: draw_texture_rect(Art.terrain(cell,point,uses_first_floor_art()),rect,false,tint)
 				Art.Masonry.paint_floor_shadow(self,rect,point,is_wall_tile)
+				# Keep movement cells readable without outlining the connected walls.
+				draw_rect(rect,Color(0,0,0,0.22 if visibility == 1 else 0.45),false,1.0)
 	Art.Masonry.paint_walls(self,walls,is_wall_tile,Art.FirstFloor.material() if uses_first_floor_art() else {})
 
 func uses_first_floor_art() -> bool:
