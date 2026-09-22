@@ -17,9 +17,7 @@ func traversable(s, a: Vector2i, b: Vector2i) -> bool:
 	if not s.floor_state.explored.has(b) or not s.inside(b) or s.tile(b).terrain == "wall": return false
 	# Never inspect hidden actors or hazards while planning remembered ground.
 	if s.floor_state.visible.has(b) and (not s.is_free(b) or s.tile(b).fire > 0 or s.Tactics.danger(s,b) > 0): return false
-	if a.x != b.x and a.y != b.y:
-		for flank in [Vector2i(a.x,b.y),Vector2i(b.x,a.y)]:
-			if not s.floor_state.explored.has(flank) or s.tile(flank).terrain == "wall": return false
+	if not s.walk_reach(a,b): return false
 	return true
 
 func route(s, target: Vector2i) -> Array:

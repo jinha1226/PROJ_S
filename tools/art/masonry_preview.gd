@@ -13,8 +13,9 @@ func _ready() -> void:
 	queue_redraw()
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO,size),Color("101215"))
-	draw_string(FONT,Vector2(24,34),"벽·바닥 타일 v1",HORIZONTAL_ALIGNMENT_LEFT,-1,24,Color("d4c5a8"))
-	for i in range(16): draw_texture_rect(Tiles.tile(i),Rect2(24+i*60,54,56,56),false)
+	draw_string(FONT,Vector2(24,34),"벽·바닥 타일 v2",HORIZONTAL_ALIGNMENT_LEFT,-1,24,Color("d4c5a8"))
+	for i in range(4): draw_texture_rect(Tiles.tile(i),Rect2(24+i*60,54,56,56),false)
+	for i in range(4): draw_texture_rect(Tiles.wall_tile(i),Rect2(294+i*90,54,80,80),false)
 	var titles := ["방 / 출입구","꺾인 복도","기둥 / 안쪽 모서리"]
 	for example in range(3):
 		var start := Vector2(24+example*330,170)

@@ -81,17 +81,7 @@ func search(snapshot:Dictionary,cells:Dictionary,start:Vector2i,exhausted:Dictio
 
 func can_step(from:Vector2i,to:Vector2i)->bool:
 	if not _in_bounds(to) or not flags[to.y*width+to.x]&SAFE:return false
-	var delta:=to-from
-	if delta.x==0 or delta.y==0:return true
-	var flank_count:=0;var gateway:=false
-	for flank in [from+Vector2i(delta.x,0),from+Vector2i(0,delta.y)]:
-		if not _in_bounds(flank):continue
-		var bits:=int(flags[flank.y*width+flank.x])
-		if not bits&PASSABLE:continue
-		if bits&OCCUPIED:return false
-		flank_count+=1;gateway=gateway or bool(bits&GATEWAY)
-	return flank_count==2 or flank_count==1 and (gateway \
-		or bool(flags[from.y*width+from.x]&GATEWAY) or bool(flags[to.y*width+to.x]&GATEWAY))
+	return from != to and maxi(absi(to.x-from.x),absi(to.y-from.y)) == 1
 
 func _is_frontier(p:Vector2i)->bool:
 	for delta in [Vector2i.UP,Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT]:

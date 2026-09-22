@@ -10,8 +10,7 @@ const STATES := ["UNDISCOVERED","DISCOVERED","CARRIED","DELIVERED","LOST"]
 static func create(expedition: int, pos: Vector2i) -> Dictionary:
 	return {"expedition":expedition,"relic_id":"SEALED_RELIC_%d" % expedition,"pos":pos,"state":"UNDISCOVERED"}
 
-## Player-rule reachability from origin: eight-way, diagonal blocked by either
-## orthogonal wall (Session.melee_reach). Actors are not obstacles here.
+## Eight-way movement permits corner cutting. Actors are not obstacles here.
 static func reachability(s, origin: Vector2i) -> Dictionary:
 	var dist: Dictionary = {origin:0}
 	var queue: Array = [origin]
@@ -21,7 +20,7 @@ static func reachability(s, origin: Vector2i) -> Dictionary:
 		for d in s.DIRECTIONS:
 			var next: Vector2i = p+d
 			if dist.has(next) or not s.inside(next) or s.tile(next).terrain == "wall": continue
-			if not s.melee_reach(p,next): continue
+			if not s.walk_reach(p,next): continue
 			dist[next] = int(dist[p])+1; queue.append(next)
 	return dist
 

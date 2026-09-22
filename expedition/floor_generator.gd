@@ -273,8 +273,7 @@ static func floor_cells(terrain: Array, size: int, rect: Rect2i) -> Array:
 			if terrain[index_of(size,Vector2i(x,y))] != "wall": result.append(Vector2i(x,y))
 	return result
 
-## Same rule as Session.melee_reach: diagonal steps need both orthogonal
-## neighbours open.
+## Same rule as Session.walk_reach: only the destination must be open.
 static func reachable_from(terrain: Array, size: int, origin: Vector2i) -> Dictionary:
 	var dist: Dictionary = {origin:0}
 	var queue: Array = [origin]
@@ -284,7 +283,6 @@ static func reachable_from(terrain: Array, size: int, origin: Vector2i) -> Dicti
 		for d in DIRECTIONS8:
 			var next: Vector2i = p+d
 			if dist.has(next) or not inside(size,next) or terrain[index_of(size,next)] == "wall": continue
-			if d.x != 0 and d.y != 0 and (terrain[index_of(size,Vector2i(p.x,next.y))] == "wall" or terrain[index_of(size,Vector2i(next.x,p.y))] == "wall"): continue
 			dist[next] = int(dist[p])+1; queue.append(next)
 	return dist
 

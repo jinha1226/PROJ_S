@@ -312,8 +312,11 @@ func melee_reach(a: Vector2i, b: Vector2i) -> bool:
 		if tile(Vector2i(a.x,b.y)).terrain == "wall" or tile(Vector2i(b.x,a.y)).terrain == "wall": return false
 	return true
 
+func walk_reach(a: Vector2i, b: Vector2i) -> bool:
+	return inside(a) and inside(b) and a != b and maxi(absi(a.x-b.x),absi(a.y-b.y)) == 1 and tile(b).terrain != "wall"
+
 func can_step(a: Vector2i, b: Vector2i) -> bool:
-	return melee_reach(a,b) and is_free(b)
+	return walk_reach(a,b) and is_free(b)
 
 func combat_enemies() -> Array:
 	return floor_state.threats(self) if floor_mode else enemies.filter(func(e): return e.hp > 0)

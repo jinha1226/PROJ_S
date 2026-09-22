@@ -211,7 +211,7 @@ func eight_way_checks() -> void:
 	s.tile(Vector2i(3,2)).terrain = "wall"
 	turn = s.round_number
 	check(Vector2i(3,3) not in s.attack_cells() and not s.act("ATTACK",boss.pos),"diagonal attack cannot cut wall corner")
-	check(not s.can_step(Vector2i(2,2),Vector2i(3,3)),"diagonal movement cannot cut wall corner")
+	check(not s.can_step(Vector2i(2,2),Vector2i(3,3)),"occupied diagonal destination stays blocked")
 	check(s.round_number == turn,"invalid diagonal action is free")
 	s.tile(Vector2i(3,2)).terrain = "stone"
 	check(s.act("PUSH",boss.pos) and boss.pos == Vector2i(4,4),"diagonal push uses matching diagonal displacement")

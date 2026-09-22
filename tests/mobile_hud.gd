@@ -108,5 +108,29 @@ func run() -> void:
 	duo.party_command = "FOLLOW"; duo.formation = "COLUMN"
 	Fixture.arena(duo,8)
 	check(duo.floor_state.follow(duo,duo.party[1]).kind == "WAIT","column formation holds assigned position")
+	var corner = Session.new(818,true,false,true); corner.depart()
+	var origin := Fixture.arena(corner,15); corner.floor_state.features.clear()
+	for foe in corner.enemies: foe.hp = 0
+	scene.session = corner
+	for direction in [Vector2i(1,1),Vector2i(1,-1),Vector2i(-1,1),Vector2i(-1,-1)]:
+		for blocked in [1,2]:
+			corner.party[0].pos = origin; corner.party[0].ap = 1
+			for offset in corner.DIRECTIONS: corner.tile(origin+offset).terrain = "stone"
+			corner.tile(origin+Vector2i(direction.x,0)).terrain = "wall"
+			if blocked == 2: corner.tile(origin+Vector2i(0,direction.y)).terrain = "wall"
+			var destination: Vector2i = origin+direction
+			corner.floor_state.observe(corner); scene.refresh()
+			check(corner.can_step(origin,destination) and corner.floor_state.visible.has(destination),"diagonal corner destination is walkable and tappable")
+			check(scene.navigation.route(corner,destination) == [origin,destination],"automatic route uses the same direct diagonal")
+			check(Session.Objective.reachability(corner,origin)[destination] == 1,"objective reachability uses corner-cutting movement")
+			var before: int = corner.round_number
+			scene.on_cell(destination)
+			check(corner.party[0].pos == destination and corner.round_number == before+1,"tap moves diagonally past one or two corner walls in one turn")
+	corner.party[0].pos = origin; corner.party[0].ap = 1
+	corner.tile(origin+Vector2i.ONE).terrain = "wall"
+	check(not corner.can_step(origin,origin+Vector2i.ONE),"wall destination remains blocked")
+	corner.tile(origin+Vector2i.ONE).terrain = "stone"
+	corner.enemies[0].hp = 20; corner.enemies[0].pos = origin+Vector2i.ONE
+	check(not corner.can_step(origin,origin+Vector2i.ONE),"occupied destination remains blocked")
 	scene.queue_free(); await process_frame
 	print("Mobile HUD: %d failures" % failures); quit(1 if failures else 0)

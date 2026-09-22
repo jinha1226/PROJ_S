@@ -111,7 +111,9 @@ func observe(s) -> void:
 			for x in range(maxi(0,actor.pos.x-before),mini(size,actor.pos.x-before+side)):
 				var p := Vector2i(x,y)
 				if Vector2(actor.pos).distance_to(Vector2(p)) > radius: continue
-				if not s.TurnCore.Geometry.sees(actor.pos,p,func(c): return s.tile(c).terrain == "wall",before): continue
+				# Adjacent tiles stay readable so legal diagonal steps can be tapped at corners.
+				var adjacent: bool = maxi(absi(p.x-actor.pos.x),absi(p.y-actor.pos.y)) <= 1
+				if not adjacent and not s.TurnCore.Geometry.sees(actor.pos,p,func(c): return s.tile(c).terrain == "wall",before): continue
 				visible[p] = true
 				if not explored.has(p):
 					explored[p] = true
