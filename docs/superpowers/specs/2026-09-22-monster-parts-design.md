@@ -68,7 +68,8 @@ static func round_start(s, actor: Dictionary) -> void
 ### 1.3 액터 필드
 
 - `learned_abilities` **삭제**. `essences` **삭제**.
-- `equipped_abilities`: 유지. 슬롯 2칸, 각 칸은 기본 행동 id(`PUSH`/`GUARD`) 또는 파츠 id. 기본값 `["PUSH","GUARD"]`. 파츠를 끼면 그 칸의 기본 행동을 잃는다 — 전투 버튼이 액터당 2개인 현 UI를 그대로 쓰기 위한 결정이며, "무엇을 포기하고 무엇을 끼우나"가 빌드 선택이 된다.
+- `equipped_abilities`: 유지하되 의미는 **파츠 슬롯 2칸**. 각 칸은 파츠 id 또는 `""`(빈칸). 기본값 `["",""]` — 파츠를 얻기 전에는 비어 있다.
+- 기본 행동 `PUSH`·`GUARD`(`Abilities.STARTERS`)는 슬롯을 차지하지 않는 **상시 행동**이다. "장착 안 하면 못 씀" 검사(`session.act`·`reservation_choice`의 `kind in STARTERS and not in equipped_abilities`, `Tactics.rule_choice`의 `rule.skill not in equipped_abilities`)는 "STARTERS가 아니고 장착도 안 됐으면 건너뜀"으로 바뀐다. 규칙 카탈로그·`Rules.defaults()`는 그대로.
 - `session.parts_bag: Dictionary {part_id: count}` — 파티 공용 가방. 스냅샷(`take_snapshot`/`restore_snapshot`)에 `essences` 자리 대신 들어간다. `finish_expedition` 결과 요약의 `essences` 키는 `parts`로 이름을 바꾸고 같은 방식(스냅샷 대비 증가분)으로 계산한다.
 - 적: `enemy.part_id` (종족 시그니처 id, 없으면 `""`), `enemy.cooldowns` (파티원과 같은 딕셔너리), 준비 상태 `charging / cast_id / cast_cell / cast_left`. 기존 `essence_id`는 `part_id`로 이름을 바꾼다(보스 시련 포함).
 
@@ -79,9 +80,14 @@ static func round_start(s, actor: Dictionary) -> void
 func equip_part(index: int, slot: int, id: String) -> bool
 ```
 
-- 조건: `phase == "TOWN"`, 살아 있는 파티원, `slot in [0,1]`, `id`가 `Abilities.STARTERS`에 있거나 `parts_bag[id] > 0`. 같은 파티원의 다른 칸에 이미 같은 id가 있으면 실패(같은 파츠 2개 장착 불가; 서로 다른 파티원은 각자 같은 파츠를 낄 수 있다).
-- 실행: 그 칸에 있던 것이 파츠였으면 `parts_bag[old] += 1`; 기본 행동이었으면 그냥 버린다(기본 행동은 무한). 새 id가 파츠면 `parts_bag[id] -= 1`. `actor.reservation = {}`.
-- 규칙: 빠진 파츠의 규칙(`rule.skill == old`)은 `actor.rules`에서 제거, 새 파츠는 `Abilities.default_rule(id)`를 뒤에 추가(이미 있으면 추가 안 함). 기본 행동으로 되돌릴 때는 `Rules.defaults()`에서 그 스킬의 규칙을 찾아 추가한다.
+```gdscript
+func unequip_part(index: int, slot: int) -> bool
+```
+
+- `equip_part` 조건: `phase == "TOWN"`, 살아 있는 파티원, `slot in [0,1]`, `Abilities.DEFINITIONS.has(id)`, `parts_bag[id] > 0`. 같은 파티원의 다른 칸에 이미 같은 id가 있으면 실패(같은 파츠 2개 장착 불가; 서로 다른 파티원은 각자 같은 파츠를 낄 수 있다).
+- `equip_part` 실행: 그 칸에 파츠가 있었으면 먼저 `parts_bag[old] += 1`(교체). `parts_bag[id] -= 1`, 칸에 `id`. `actor.reservation = {}`.
+- `unequip_part`: 같은 조건에서 칸을 `""`로 비우고 파츠를 가방으로 되돌린다. 빈칸이면 실패.
+- 규칙: 빠진 파츠의 규칙(`rule.skill == old`)은 `actor.rules`에서 제거, 새 파츠는 `Abilities.default_rule(id)`를 뒤에 추가(이미 있으면 추가 안 함).
 - 기존 `Abilities.equip`·`session.equip_ability`·`consume_essence`는 삭제. `reset_rules`는 `Rules.defaults()` + 장착된 파츠의 `default_rule`.
 - `grant_test_loadout()`: `phase == "TOWN"`에서 `DEFINITIONS`의 모든 id를 `parts_bag`에 1개씩 넣는다(있으면 더하지 않음). 메시지: "시험 로드아웃 · 파츠 %d종 지급 — 파츠 탭에서 장착하세요."
 
@@ -150,19 +156,21 @@ static func power(s, actor, def) -> int             # 파티원: Growth.power(ac
 
 역할 기본 공격(근접 7 / 궁수 6 / 술사 4·시전 14)은 그대로. 아래는 그 위에 얹는 시그니처. 수치는 초기값이며 §5의 게이트로 조정한다. 모든 종족 `enemy.prep = 1`, `enemy.target = "NEAREST"`.
 
+1층 기준의 힘 상한: 액티브 피해는 역할 기본 공격(근접 7)보다 조금 높은 정도이고, 가장 무거운 한 방(홉고블린 내려치기)도 기존 술사 시전(14)을 넘지 않는다. 패시브는 +1~+3 범위. 플레이어가 끼면 `Growth.power`가 붙지만 기본 공격(18)보다 낮은 값이며, 파츠의 가치는 사거리·범위·이동·패시브에서 나온다.
+
 | 종족 | 파츠 id · 아이템 | 패시브 | 액티브 (target / range / radius / damage / cd / effect / axis) |
 | --- | --- | --- | --- |
-| 쥐 `dcss_rat` | `RAT_GNAW` · 쥐 이빨 | `PACK` 2 | 물어뜯기: ENEMY / 1 / 0 / 12 / 2 / DAMAGE / MELEE |
-| 목도리 도마뱀 `dcss_frilled_lizard` | `LIZARD_TAIL` · 도마뱀 꼬리 | `RETALIATE` 3 | 꼬리치기: ENEMY / 1 / 1 / 8 / 3 / DAMAGE / MELEE · `allies_hit false` · shape SQUARE |
-| 코볼트 `kobold` | `KOBOLD_SLING` · 코볼트 투석끈 | `DIRTY` 4 | 투석: ENEMY / 4 / 0 / 9 / 2 / DAMAGE / RANGED |
-| 고블린 `goblin` | `GOBLIN_SHIV` · 고블린 단검 | `AMBUSHER` 5 | 기습: ENEMY / 3 / 0 / 14 / 3 / LUNGE / MELEE |
-| 홉고블린 `dcss_hobgoblin` | `HOB_CLUB` · 홉고블린 곤봉 | `THICK_HIDE` 2 | 내려치기: ENEMY / 1 / 0 / 20 / 3 / DAMAGE / MELEE |
-| 오크 `dcss_orc` | `ORC_CLEAVER` · 오크 도끼 | `BLOODLUST` 5 | 휘두르기: ENEMY / 1 / 1 / 14 / 3 / DAMAGE / MELEE · `allies_hit false` · shape SQUARE |
-| 놀 `dcss_gnoll` | `GNOLL_SPEAR` · 놀 창 | `REGEN` 3 | 창 찌르기: ENEMY / 2 / 0 / 16 / 3 / DAMAGE / MELEE |
-| 강쥐 `dcss_river_rat` | `RIVER_RAT_SPLASH` · 강쥐 가죽 | `AMPHIBIOUS` 4 | 물세례: ENEMY / 3 / 1 / 6 / 3 / DAMAGE / RANGED · `allies_hit false` · shape SQUARE · `tile_wet 70` |
+| 쥐 `dcss_rat` | `RAT_GNAW` · 쥐 이빨 | `PACK` 1 | 물어뜯기: ENEMY / 1 / 0 / 9 / 2 / DAMAGE / MELEE |
+| 목도리 도마뱀 `dcss_frilled_lizard` | `LIZARD_TAIL` · 도마뱀 꼬리 | `RETALIATE` 2 | 꼬리치기: ENEMY / 1 / 1 / 6 / 3 / DAMAGE / MELEE · `allies_hit false` · shape SQUARE |
+| 코볼트 `kobold` | `KOBOLD_SLING` · 코볼트 투석끈 | `DIRTY` 3 | 투석: ENEMY / 4 / 0 / 7 / 2 / DAMAGE / RANGED |
+| 고블린 `goblin` | `GOBLIN_SHIV` · 고블린 단검 | `AMBUSHER` 3 | 기습: ENEMY / 3 / 0 / 10 / 3 / LUNGE / MELEE |
+| 홉고블린 `dcss_hobgoblin` | `HOB_CLUB` · 홉고블린 곤봉 | `THICK_HIDE` 1 | 내려치기: ENEMY / 1 / 0 / 14 / 3 / DAMAGE / MELEE |
+| 오크 `dcss_orc` | `ORC_CLEAVER` · 오크 도끼 | `BLOODLUST` 3 | 휘두르기: ENEMY / 1 / 1 / 11 / 3 / DAMAGE / MELEE · `allies_hit false` · shape SQUARE |
+| 놀 `dcss_gnoll` | `GNOLL_SPEAR` · 놀 창 | `REGEN` 2 | 창 찌르기: ENEMY / 2 / 0 / 12 / 3 / DAMAGE / MELEE |
+| 강쥐 `dcss_river_rat` | `RIVER_RAT_SPLASH` · 강쥐 가죽 | `AMPHIBIOUS` 3 | 물세례: ENEMY / 3 / 1 / 5 / 3 / DAMAGE / RANGED · `allies_hit false` · shape SQUARE · `tile_wet 70` |
 
 - `rule_when`은 전부 `ALWAYS`. `short`는 액티브 이름 두 글자(물기·꼬리·투석·기습·곤봉·도끼·창·물). `icon`은 기존 폴백 5.
-- `description`은 "패시브 · 액티브" 한 줄: 예) 쥐 이빨 — "무리: 인접 아군당 피해 +2 · 물어뜯기: 인접 대상 피해 12 · 재사용 2턴".
+- `description`은 "패시브 · 액티브" 한 줄: 예) 쥐 이빨 — "무리: 인접 아군당 피해 +1 · 물어뜯기: 인접 대상 피해 9 · 재사용 2턴".
 - 범위 1 파츠(꼬리치기·휘두르기)는 대상 칸 중심 3×3. 적이 쓰면 `allies_hit false`라 같은 무리를 다치게 하지 않고, 플레이어가 쓰면 파티원을 다치게 하지 않는다.
 - 놀 창(range 2)의 사거리 판정은 기존 `legal`의 Manhattan 거리(range > 1)를 그대로 따른다.
 
@@ -182,17 +190,17 @@ static func power(s, actor, def) -> int             # 파티원: Growth.power(ac
 
 ### 4.2 파츠 탭 (`character_ui.gd`, `main.gd`)
 
-- 탭 이름 "이능" → "파츠". 머리글 "장착 슬롯 2 / 2".
-- 슬롯 카드 2장: 현재 id의 이름, 파츠면 패시브·액티브 설명 한 줄씩, 기본 행동이면 설명 한 줄. "교체" 버튼은 `phase == "TOWN"`에서만 활성. 교체 목록: 기본 행동 2개(항상) + `parts_bag`에서 수량 > 0인 파츠(수량 표시). 선택 시 `session.equip_part(index, slot, id)`.
+- 탭 이름 "이능" → "파츠". 머리글 "파츠 슬롯 N / 2"(N = 장착 수).
+- 슬롯 카드 2장: 파츠면 이름 + 패시브·액티브 설명 한 줄씩 + "해제"·"교체" 버튼, 빈칸이면 "빈 슬롯" + "장착" 버튼. 버튼은 `phase == "TOWN"`에서만 활성. 장착·교체 목록: `parts_bag`에서 수량 > 0인 파츠(수량 표시), 없으면 "가방에 파츠 없음". 선택 시 `session.equip_part(index, slot, id)`, 해제는 `session.unequip_part(index, slot)`.
 - 규칙 목록(사용 방침)은 그대로: 장착된 것의 규칙만 보인다(`rule_choice`가 이미 미장착 규칙을 건너뛰고, `equip_part`가 규칙을 넣고 뺀다).
 - 가방(`show_supplies`) 카테고리 "이능" → "파츠": 행은 `parts_bag`, 설명은 "패시브 · 액티브", 상세 버튼은 "<이름> 1번 / 2번 장착"(TOWN에서만). "먹이기"·`confirm_essence` 삭제.
 - 결과 화면: `r.parts` 목록 표시(`item ×n`).
-- 전투 버튼: 변경 없음(슬롯 id로 이름·쿨다운 표시). 파츠의 `Rules.skill(id).name`이 버튼 캡션이 된다.
+- 전투 버튼(`main.gd` 파티 열): 액터당 **2행 × 2열** 격자. 1행은 기본 행동(층·보스 시련: `PUSH`,`GUARD`; 구 방 모드: 기존 `SKILLS[i]` 표), 2행은 파츠 슬롯 2칸. 빈 슬롯은 비활성 버튼에 캡션 "빈 슬롯". 파츠 버튼 캡션은 `Rules.skill(id).name`과 쿨다운. `skill_buttons`는 액터당 4개가 되며 `tests/ui_smoke.gd`의 슬롯 수 검사는 `party.size()*4`로 바꾼다. 터치 크기(≥48px)·화면 안 검사는 그대로 통과해야 한다.
 - 적 예고: 기존 예고 칸 표시에 파츠 short 텍스트.
 
 ### 4.3 시뮬레이터·기준 빌드
 
-- `reference_builds.json`: `learned` 키 삭제. `apply_build`는 `equipped`만 적용한다. 파츠 빌드 8개 추가: `p_rat p_lizard p_kobold p_goblin p_hob p_orc p_gnoll p_river`, 각각 `equipped [<파츠>, "GUARD"]`, `ranks {"MELEE":1}`, `rules [[<파츠>,"NEAREST","ALWAYS"],["GUARD","ALLY","ALLY_LETHAL"]]`.
+- `reference_builds.json`: `learned` 키 삭제. `equipped`는 파츠 슬롯만 뜻하므로 기존 빌드의 `"PUSH"`,`"GUARD"`는 `""`로 바꾼다(`starter`·`melee_1`은 `["",""]`, `b_strike`는 `["HEAVY_STRIKE",""]` 등). `apply_build`는 `equipped`만 적용한다. 파츠 빌드 8개 추가: `p_rat p_lizard p_kobold p_goblin p_hob p_orc p_gnoll p_river`, 각각 `equipped [<파츠>, ""]`, `ranks {"MELEE":1}`, `rules [[<파츠>,"NEAREST","ALWAYS"],["PUSH","NEAREST","CHARGING"],["GUARD","ALLY","ALLY_LETHAL"]]`. 기존 빌드의 `rules`에도 `PUSH` 규칙이 없으면 같은 자리에 넣는다(기본 행동이 상시가 되었으므로 규칙 봇이 밀치기를 계속 고려하게).
 - `balance_experiments.json`의 `skill_value.builds`에 파츠 8개 추가. `docs/balance/skill-value.md`를 재생성한다(적도 시그니처를 쓰는 새 환경에서 전 빌드 재측정 — 이전 보고서와 직접 비교하지 않고 머리말에 "몬스터 파츠 도입 후" 명시).
 - `encounter_runner.run_one`에 `enemy_skill_uses: {part_id: count}`와 `interrupts: int`(밀치기·피격으로 끊긴 준비 횟수)를 추가하고 `run_many`에 평균(`enemy_skill_uses_mean`, `interrupts_mean`)을 넣는다. 계측은 세션 카운터로 한다: `stats_enemy_skill: Dictionary`는 적이 `resolve`/`execute`할 때, `stats_interrupts: int`는 `MonsterAI.interrupt`가 파츠 준비를 끊을 때 올린다(`stats_redirects`와 같은 방식). 로그 문자열은 세지 않는다.
 
@@ -203,11 +211,11 @@ static func power(s, actor, def) -> int             # 파티원: Growth.power(ac
 새 스위트 `tests/parts.gd` (`.github/workflows/deploy-pages.yml` 목록에 추가):
 
 1. 정의 검증: `floor_monsters.json`의 각 종족에 `species_part`가 정확히 하나; 모든 파츠의 `passive.kind`가 `Passives.KINDS`에 있음; `enemy.prep`이 0~2; `effect`가 4종 중 하나; `Rules.valid(Abilities.default_rule(id))`가 전 정의에서 참.
-2. 패시브 8종 각각 한 케이스(수치까지): PACK 인접 아군 2명 → +4, RETALIATE 인접 공격자 3 피해·비인접 0·반격에 반격 없음, DIRTY 대상 49%에서 +4·50%에서 +0, AMBUSHER 고립 대상 +5·인접 아군 있으면 +0, THICK_HIDE 3 피해 → 1(최소 1), BLOODLUST 자신 49% +5, REGEN 라운드 시작 +3·최대 초과 없음, AMPHIBIOUS 젖은 칸 +4·마른 칸 +0.
-3. 적 예고: 홉고블린이 인접 파티원을 보면 `charging`·`intents[0].kind == "HOB_CLUB"`·`damage 20`; 다음 라운드 해결 시 파티원 HP −(20+어둠 보너스−THICK_HIDE 없음)·`cooldowns` 설정; 준비 중 밀치기 → intent 제거·`cast_recovery 1`·쿨다운 = 정의 cooldown; prep 0 데이터로 바꾸면 즉발; prep 2면 두 라운드 뒤 해결.
+2. 패시브 8종 각각 한 케이스(수치까지): PACK 인접 아군 2명 → +2, RETALIATE 인접 공격자 2 피해·비인접 0·반격에 반격 없음, DIRTY 대상 49%에서 +3·50%에서 +0, AMBUSHER 고립 대상 +3·인접 아군 있으면 +0, THICK_HIDE 2 피해 → 1(최소 1), BLOODLUST 자신 49% +3, REGEN 라운드 시작 +2·최대 초과 없음, AMPHIBIOUS 젖은 칸 +3·마른 칸 +0.
+3. 적 예고: 홉고블린이 인접 파티원을 보면 `charging`·`intents[0].kind == "HOB_CLUB"`·`damage 14`; 다음 라운드 해결 시 파티원 HP −(14+어둠 보너스, `Growth.incoming` 적용)·`cooldowns` 설정; 준비 중 밀치기 → intent 제거·`cast_recovery 1`·쿨다운 = 정의 cooldown; prep 0 데이터로 바꾸면 즉발; prep 2면 두 라운드 뒤 해결.
 4. 예고 해결에서 대상이 칸을 비우면 피해 0(radius 0), 범위 파츠는 남은 칸을 맞힘. `allies_hit false`인 오크 휘두르기가 인접한 다른 적을 안 맞힘.
 5. 플레이어: 파츠 장착 후 `act(id, cell)` 즉발·쿨다운·AP 차감; `Growth.power` 적용.
-6. 장착 규칙: TOWN 밖에서 `equip_part` 실패; 가방 0개면 실패; 같은 파티원에 같은 파츠 2개 실패; 다른 파티원은 각자 가능; 교체 시 이전 파츠가 가방으로 복귀, 기본 행동은 복귀 없음; 규칙이 추가·제거됨.
+6. 장착 규칙: 새 세션의 슬롯이 `["",""]`; 슬롯이 비어도 `act("PUSH")`·`act("GUARD")`·규칙 봇의 밀치기·엄호가 동작; TOWN 밖에서 `equip_part`·`unequip_part` 실패; 가방 0개면 실패; 같은 파티원에 같은 파츠 2개 실패; 다른 파티원은 각자 가능; 교체·해제 시 이전 파츠가 가방으로 복귀; 규칙이 추가·제거됨.
 7. 스냅샷: 원정 중 획득한 파츠가 DEFEAT/ABANDON에 소실·SUCCESS/PARTIAL에 유지(기존 `expedition_settlement`·`solo_floor` 검사를 `parts_bag`으로 바꿔 유지).
 8. 드롭: 쥐를 죽이면 `RAT_GNAW`가 확률로 가방에 들어감(빛 단계별 확률 검사는 `torch_tradeoff`에서 유지).
 9. `Rules.catalog()`가 파츠 8종을 포함하고 `Rules.skill("PUSH")`가 기본 행동을 돌려줌.
@@ -241,5 +249,5 @@ static func power(s, actor, def) -> int             # 파티원: Growth.power(ac
 | `expedition/board.gd` | 예고 칸 파츠 텍스트 |
 | `expedition/main.gd`, `expedition/character_ui.gd` | 파츠 탭·가방·결과 |
 | `expedition/sim/encounter_runner.gd`, `data/content/reference_builds.json`, `data/content/balance_experiments.json` | 빌드·계측 |
-| `tests/parts.gd` 신규, 기존 12개 스위트 수정, `.github/workflows/deploy-pages.yml` | 검증 |
+| `tests/parts.gd` 신규, 기존 13개 스위트 수정(`ui_smoke` 포함), `.github/workflows/deploy-pages.yml` | 검증 |
 | `docs/balance/skill-value.md`·`.json`, `docs/balance/action-economy.md`·`.json` | 재생성 |
