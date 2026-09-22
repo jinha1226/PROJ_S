@@ -43,6 +43,7 @@ func runner() -> void:
 	var many: Dictionary = Runner.run_many(config(hob,1,"tactical",Session.DEFAULT_RULES),range(100,120))
 	check(many.samples == 20 and many.results.has("WIN") and many.win_rate >= 0.0 and many.win_ci.size() == 2,"run_many aggregates")
 	check(many.damage.has("mean") and many.damage.has("p95") and many.rounds.has("median"),"run_many statistics")
+	check(many.has("distinct_outcomes") and many.distinct_outcomes >= 1 and many.distinct_outcomes <= many.samples,"run_many counts distinct outcomes")
 
 func rules_and_party() -> void:
 	for size in [1,2,3]:
@@ -94,8 +95,15 @@ func arena_layout() -> void:
 	check(s.enemies.size() == 2 and s.enemies[0].role == "MELEE" and s.enemies[1].role == "RANGED","enemies configured with their roles")
 	check(s.party[0].pos == Vector2i(9,5) and s.objective.is_empty(),"party at entry, no objective")
 	check(s.floor_state.visible.has(s.party[0].pos),"observation ran")
-	var same = Session.new(5,true,false,true,1); Floor.apply(same,theme,Arena.layout(spec,theme))
-	check(same.enemies.map(func(e): return e.pos) == s.enemies.map(func(e): return e.pos),"arena placement deterministic")
+	var same = Session.new(5,true,false,true,1); Floor.apply(same,theme,Arena.layout(spec,theme,1))
+	check(same.enemies.map(func(e): return e.pos) == s.enemies.map(func(e): return e.pos),"arena placement deterministic for one seed")
+	# Different seeds must move the roster: the seed is what the confidence interval samples over.
+	var trio_spec: Dictionary = Arena.DEFAULT_SPEC.duplicate(true)
+	trio_spec.members = [{"species_id":"dcss_hobgoblin","role":"MELEE"},{"species_id":"goblin","role":"RANGED"},{"species_id":"kobold","role":"MELEE"}]
+	var seen: Dictionary = {}
+	for seed_value in range(1,21):
+		seen[str(Arena.layout(trio_spec,theme,seed_value).encounters[0].members.map(func(m): return m.pos))] = true
+	check(seen.size() > 1,"different seeds place the roster differently")
 	var spotted := false
 	for _i in range(6):
 		Policy.step(s,"simple")

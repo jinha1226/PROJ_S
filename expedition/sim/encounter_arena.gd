@@ -3,7 +3,7 @@ extends RefCounted
 const Builder = preload("res://expedition/encounter_builder.gd")
 const DEFAULT_SPEC := {"size":20,"room":[5,5,9,9],"door":[9,4],"pillars":[[8,8],[10,10]],"party_entry":[9,5],"light":90,"members":[]}
 
-static func layout(spec: Dictionary, theme: Dictionary) -> Dictionary:
+static func layout(spec: Dictionary, theme: Dictionary, seed: int = 1) -> Dictionary:
 	var size: int = spec.size
 	var terrain: Array = []; terrain.resize(size*size); terrain.fill("wall")
 	var rect := Rect2i(spec.room[0],spec.room[1],spec.room[2],spec.room[3])
@@ -28,7 +28,7 @@ static func layout(spec: Dictionary, theme: Dictionary) -> Dictionary:
 			if not obstacles.has(Vector2i(x,y)): floor_cells.append(Vector2i(x,y))
 	var unplaced: Array = members.filter(func(m): return not m.has("pos"))
 	if not unplaced.is_empty():
-		var rng := RandomNumberGenerator.new(); rng.seed = 1
+		var rng := RandomNumberGenerator.new(); rng.seed = seed
 		assert(Builder.place(unplaced,floor_cells,[door],Vector2i(-1,-1),[],obstacles,rng),"arena placement failed")
 	var room := {"id":0,"rect":rect,"kind":"fight","template_id":"","rows":[],"parsed":{},"doors":[door],"tier":spec.get("tier","deep"),"spine":true}
 	return {"size":size,"seed":0,"theme_id":theme.get("id",""),"depth":int(theme.depth),"terrain":terrain,"rooms":[room],"edges":[],

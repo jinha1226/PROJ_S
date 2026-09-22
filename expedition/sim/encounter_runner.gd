@@ -27,7 +27,7 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 	s.rules_config = config.rules.duplicate()
 	apply_build(s,config.build)
 	var theme: Dictionary = Generator.theme("F1_RUINS")
-	Floor.apply(s,theme,Arena.layout(config.arena,theme))
+	Floor.apply(s,theme,Arena.layout(config.arena,theme,seed))
 	s.light = int(config.arena.get("light",90)); s.supplies = config.supplies.duplicate()
 	var taken: Array = []
 	for _a in s.party: taken.append(0)
@@ -93,10 +93,13 @@ static func run_many(config: Dictionary, seeds: Array) -> Dictionary:
 	for r in runs: results[r.result] = int(results.get(r.result,0))+1
 	var wins: int = int(results.get("WIN",0))
 	var per_member: Array = []
+	var distinct: Dictionary = {}
 	for r in runs:
 		for value in r.damage_taken: per_member.append(value)
-	return {"samples":runs.size(),"results":results,"win_rate":float(wins)/runs.size(),"win_ci":wilson(wins,runs.size()),
+		distinct["%s|%d|%s" % [r.result,r.rounds,str(r.damage_taken)]] = true
+	return {"distinct_outcomes":distinct.size(),"samples":runs.size(),"results":results,"win_rate":float(wins)/runs.size(),"win_ci":wilson(wins,runs.size()),
 		"damage":summary(per_member),"damage_wins":summary(runs.filter(func(r): return r.result == "WIN").map(func(r): return r.damage_taken.reduce(func(a,b): return a+b,0))),
 		"rounds":summary(runs.map(func(r): return r.rounds)),
 		"first_death":summary(runs.filter(func(r): return r.first_death_round > 0).map(func(r): return r.first_death_round)),
+		"before_first":summary(runs.map(func(r): return r.damage_before_first_action)),
 		"heals":summary(runs.map(func(r): return r.heals_used)),"deaths":runs.reduce(func(acc,r): return acc+r.deaths.size(),0),"runs":runs}

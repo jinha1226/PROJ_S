@@ -1,0 +1,17 @@
+{"experiments": {"action_economy": {
+  "seed_set": {"id": "S1", "start": 1000, "count": 200},
+  "party_sizes": [1, 2, 3],
+  "builds": ["starter", "melee_1"],
+  "policies": ["tactical"],
+  "rules": {"current": {"solo_actions": 1, "solo_max_members": 0},
+            "A":       {"solo_actions": 2, "solo_max_members": 0},
+            "B":       {"solo_actions": 1, "solo_max_members": 2}},
+  "supplies": [1, 0, 0, 0, 0, 1],
+  "arenas": {
+    "early_hob":   {"tier": "early", "members": [["dcss_hobgoblin","MELEE"]]},
+    "early_pair":  {"tier": "early", "members": [["kobold","MELEE"],["dcss_rat","MELEE"]]},
+    "deep_mixed":  {"tier": "deep",  "members": [["dcss_hobgoblin","MELEE"],["goblin","RANGED"],["kobold","MELEE"]]},
+    "deep_caster": {"tier": "deep",  "members": [["dcss_orc","MELEE"],["goblin","CASTER"]]},
+    "opt_archers": {"tier": "optional", "members": [["kobold","RANGED"],["goblin","RANGED"],["dcss_rat","MELEE"]]},
+    "opt_gnoll":   {"tier": "optional", "members": [["dcss_gnoll","MELEE"],["dcss_rat","MELEE"],["dcss_rat","MELEE"]]}
+  }}}}
