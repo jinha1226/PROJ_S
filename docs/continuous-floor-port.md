@@ -1,5 +1,7 @@
 # 연속 1층 이식 기록
 
+**2026-09-22 이후**: 고정 4구역 층은 절차 생성기(`expedition/floor_generator.gd`)로 대체되었다. 아래 기록은 이식 이력용이다.
+
 ## 적용 범위
 
 기본 실행은 `Session.new(seed, true, true, true)`로 연속 층 모드를 사용한다.

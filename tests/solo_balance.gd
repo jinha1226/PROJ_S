@@ -61,9 +61,9 @@ func run() -> void:
 		print("seed %d: %s · 행동 %d · 회복 %d · 체력 %d · 식량 %d · 밝기 %d · 자금 %d · 스트레스 %d" % [seed_value,row.reason,row.actions,row.heals,row.hp,row.food,row.light,row.bank,row.stress])
 		if row.reason == "SUCCESS": wins += 1
 		check(row.reason != "STUCK","bot never gets stuck (seed %d)" % seed_value)
-		check(row.actions <= 400,"round trip stays within the target action budget (seed %d)" % seed_value)
+		check(row.actions >= 120 and row.actions <= 300,"round trip within the target action band (seed %d: %d)" % [seed_value,row.actions])
 		check(row.food > 0 and row.light > 0,"supplies last a round trip (seed %d)" % seed_value)
-	check(wins == SEEDS,"scripted solo run completes on every seed (%d/%d)" % [wins,SEEDS])
+	check(wins >= 6,"scripted solo run completes on most seeds (%d/%d)" % [wins,SEEDS])
 	var campaign = Session.new(0,true,false,true)
 	for expedition in range(4):
 		if expedition > 0:

@@ -12,11 +12,12 @@ godot --path /mnt/d/SS/new
 
 ## 플레이
 
-출정 → 연속된 **100×100 1층** 탐험 → 심부의 **봉인된 유물** 회수 → 입구 관문으로 귀환 → 결과 정산 → 정비 → 재출정.
+출정 → **64×64 절차 생성 1층** 탐험 → 심부의 **봉인된 유물** 회수 → 입구 관문으로 귀환 → 결과 정산 → 정비 → 재출정.
 유물을 가지고 입구로 돌아와야 임무 성공이며, 유물 없이 귀환하면 중도 귀환으로 전리품만 정산합니다.
 전 층 탐색이나 모든 적 처치는 요구하지 않습니다. [솔로 1층 · 유물 회수 계획](docs/solo-floor1-relic-plan.md).
-기존 SS의 48×48 `four_zone_floor` 구조를 2배 확대하고 외곽을 추가했습니다.
-입구 야영지·바위 회랑·침수 저장고·심부 관문을 통로로 오갑니다.
+
+층은 출정마다 새로 생성됩니다. 방 10~12개가 고리 있는 그래프로 이어지고, 입구 야영지·유물의 방·봉인된 보고와 침수 저장고·무너진 창고·목재 회랑 중 2개가 손으로 그린 템플릿으로 들어갑니다. 조우는 방 안에만 있으며 어떤 길로 가도 필수 조우 2~3회를 지나고, 막다른 방의 선택 조우 1~2회는 피할 수 있습니다. 무리 구성은 DCSS식 깊이 테이블(종족별 출현 구간·희귀도·곡선)과 위협 예산(초입 3·중간 6·심부 9·선택 5)으로 정하며, 3마리 이상이면 후위가 하나 이상, 술사는 최대 하나입니다. 상자·흙더미·제단은 주 경로 밖 가지에만 있습니다. [설계](docs/superpowers/specs/2026-09-22-floor-generator-design.md).
+
 3×3 방 선택은 기본 플레이에서 사용하지 않습니다.
 화면에는 주인공 주변 10×10 타일이 보이며 카메라가 따라갑니다.
 상단 미니맵은 발견한 지형과 현재 보이는 캐릭터를 표시하고, 누르면 전체 지도가 열립니다.
@@ -117,8 +118,12 @@ godot --headless --path . --script res://tests/torch_tradeoff.gd
 godot --headless --path . --script res://tests/solo_provisioning.gd
 godot --headless --path . --script res://tests/expedition_settlement.gd
 godot --headless --path . --script res://tests/solo_balance.gd
+godot --headless --path . --script res://tests/floor_templates.gd
+godot --headless --path . --script res://tests/encounter_builder.gd
+godot --headless --path . --script res://tests/floor_generator.gd
 ```
 
+`floor_generator.gd`는 100개 시드에서 방 수·템플릿·간격·문, 8방향 도달성, 고리·막다른 방, 필수 조우가 모든 경로를 덮는지, 예산·가드레일·문 거리, 조우 방 장애물과 5×5 빈 블록, 보상이 주 경로 밖에 있는지, 유물 거리, 재현성을 검사합니다.
 `solo_floor.gd`는 100개 시드의 유물 배치(1개, 입구·조사물·적과 비중첩, 8방향 도달 가능),
 발견 전 은닉과 자동 이동 정지, 무료 팝업과 1행동 회수, 중복 회수·반납·정산 방지,
 입구 귀환의 성공/중도 귀환 구분, 패배 스냅샷 복원과 포기 획득물 유지, 무료 정비, 모바일 세로 배치를 검사합니다.
