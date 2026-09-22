@@ -30,6 +30,34 @@ func _initialize() -> void:
 	check(Vector2i(9,9) in s.movement_cells(0),"new edge supports eight-way movement")
 	s.party[0].learned_abilities.append("BOMB"); s.party[0].equipped_abilities[0] = "BOMB"
 	check(Vector2i(9,9) in s.Abilities.cells(s,s.party[0],"BOMB",Vector2i(9,8)),"ability AoE covers new edge")
+	# Concave room corners are occluded by both orthogonal walls in LOS.
+	# Their coping still belongs to the visible floor boundary at any distance.
+	var floor_session = Session.new(731,true,false,true); floor_session.depart()
+	for cell in floor_session.tiles: cell.terrain = "wall"
+	for enemy in floor_session.enemies: enemy.hp = 0
+	var c := Vector2i(25,25)
+	for y in range(5):
+		for x in range(5): floor_session.tile(c+Vector2i(x,y)).terrain = "stone"
+	var board = preload("res://expedition/board.gd").new(); board.session = floor_session
+	for corner in [Vector2i(-1,-1),Vector2i(5,-1),Vector2i(5,5),Vector2i(-1,5)]:
+		var point: Vector2i = c+corner
+		var near := c+Vector2i(clampi(corner.x,0,4),clampi(corner.y,0,4))
+		floor_session.floor_state.explored.clear()
+		floor_session.party[0].pos = near; floor_session.floor_state.observe(floor_session)
+		check(board.terrain_visibility(point) == 2,"corner coping appears at contact")
+		floor_session.party[0].pos = near+Vector2i(1 if corner.x < 0 else -1,1 if corner.y < 0 else -1)
+		floor_session.floor_state.observe(floor_session)
+		check(board.terrain_visibility(point) == 2,"corner coping stays bright one tile away")
+		floor_session.floor_state.explored.clear(); floor_session.floor_state.observe(floor_session)
+		check(not floor_session.floor_state.visible.has(point),"fixture corner is actually occluded")
+		check(board.terrain_visibility(point) == 2,"unvisited corner closes a visible room outline")
+		check(not floor_session.floor_state.explored.has(point),"rendering does not reveal the corner to gameplay")
+	check(board.terrain_visibility(c+Vector2i(-4,-4)) == 0,"unknown wall interiors remain hidden")
+	floor_session.floor_state.visible.clear()
+	check(board.terrain_visibility(c+Vector2i(-1,-1)) == 1,"remembered floor retains its wall outline")
+	floor_session.tile(c+Vector2i(-2,-2)).terrain = "stone"
+	check(board.terrain_visibility(c+Vector2i(-2,-2)) == 0,"hidden floors behind the wall stay hidden")
+	board.free()
 	var art = preload("res://expedition/mobile_art.gd")
 	var floor_tile = art.terrain({"terrain":"stone"},Vector2i(1,2))
 	check(floor_tile.atlas == art.Masonry.SHEET,"stone uses the masonry atlas")

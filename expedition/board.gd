@@ -100,8 +100,23 @@ func tile_polygon(point: Vector2) -> PackedVector2Array:
 
 func is_wall_tile(point: Vector2i) -> bool:
 	if not session.inside(point): return true
-	if session.floor_mode and not session.floor_state.explored.has(point): return true
 	return session.tile(point).terrain == "wall"
+
+# Wall geometry belongs to the room boundary, not to actor line of sight.
+# Draw its one-cell rim from adjacent known floors without revealing those
+# walls to gameplay, the minimap, or any actor/feature behind them.
+func terrain_visibility(point: Vector2i) -> int:
+	if not session.inside(point): return 0
+	if not session.floor_mode: return 2
+	var state = session.floor_state
+	var known := 2 if state.visible.has(point) else 1 if state.explored.has(point) else 0
+	if not is_wall_tile(point): return known
+	for direction in session.DIRECTIONS:
+		var neighbor: Vector2i = point+direction
+		if not session.inside(neighbor) or is_wall_tile(neighbor): continue
+		if state.visible.has(neighbor): return 2
+		if state.explored.has(neighbor): known = maxi(known,1)
+	return known
 
 func outline(points: PackedVector2Array, color: Color, width: float = 1) -> void:
 	var closed := points.duplicate(); closed.append(points[0]); draw_polyline(closed,color,width,true)
@@ -142,11 +157,12 @@ func paint_terrain() -> void:
 		for x in range(camera.x,camera.x+visible_side()):
 			var point := Vector2i(x,y)
 			if not session.inside(point): continue
-			if session.floor_mode and not session.floor_state.explored.has(point): continue
+			var visibility := terrain_visibility(point)
+			if visibility == 0: continue
 			var cell: Dictionary = session.tile(point)
 			var rect := Rect2(project(Vector2(point)),Vector2.ONE*half_width*2)
 			var tint := Color.WHITE
-			if session.floor_mode and not session.floor_state.visible.has(point):
+			if visibility == 1:
 				var observer: Dictionary = session.floor_state.observer(session)
 				if not observer.is_empty() and Vector2(observer.pos).distance_to(Vector2(point)) <= session.floor_state.sight_radius(session.light): tint = Color(0.2,0.2,0.2)
 			if cell.terrain == "wall":
