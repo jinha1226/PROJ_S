@@ -25,7 +25,8 @@ var formation := "NONE"
 var command_target := -1
 var companions := false
 var resolving_companions := false
-const AUTO_STOPS := ["BATTLE_START","ALLY_LETHAL","HP_LOW","DEATH","BATTLE_END"]
+## Evaluation priority: the hard events first, then the soft alerts.
+const AUTO_STOPS := ["BATTLE_START","BATTLE_END","DEATH","ALLY_LETHAL","HP_LOW"]
 ## Auto-battle state: whether the UI is advancing rounds, which events stop it,
 ## and what the previous round looked like so that "newly" can be judged.
 var auto := {"running":false,"stops":{"BATTLE_START":true,"ALLY_LETHAL":true,"HP_LOW":true,"DEATH":true,"BATTLE_END":true},
@@ -146,7 +147,7 @@ func depart() -> bool:
 	if floor_mode:
 		purchases = {}
 		result = {}; objective = {}
-		auto.prev_threats = 0; auto.prev_low = []; auto.prev_alive = party.size()
+		auto.prev_threats = 0; auto.prev_low = []; auto.prev_alive = alive().size()
 		auto.stops_log = []; auto.last_stop = {"reason":"","round":-99}
 		snapshot = take_snapshot()
 		floor_state.build(self); message("1층 진입"); return true
@@ -551,9 +552,10 @@ func auto_step() -> bool:
 			guard += 1
 			var choice: Dictionary = command_choice(actor)
 			if choice.is_empty(): choice = Tactics.choose(self,actor)
-			if not act_as(actor,choice.kind,choice.cell,false):
-				if not act_as(actor,"WAIT",actor.pos,false): break
-			actor.last_action = choice.reason
+			# last_action reports what actually ran, not what was wanted.
+			if act_as(actor,choice.kind,choice.cell,false): actor.last_action = choice.reason
+			elif act_as(actor,"WAIT",actor.pos,false): actor.last_action = "대기"
+			else: break
 	if phase == "BATTLE": end_round()
 	return true
 
@@ -563,26 +565,34 @@ func remember_round() -> void:
 	auto.prev_low = alive().filter(func(a): return a.hp*100/a.max_hp <= int(auto.hp_low)).map(func(a): return a.id)
 	auto.prev_alive = alive().size()
 
-## First stop event that applies at the start of this round, or "".
+## The first stop event that applies at the start of this round, or "".
+## Every applicable event is considered in AUTO_STOPS priority order, so a
+## disabled or suppressed one never swallows a lower-priority event.
 func auto_stop_reason() -> String:
 	if not floor_mode or phase != "BATTLE": return ""
 	var threats: int = combat_enemies().size()
-	var reason := ""
-	if threats > 0 and int(auto.prev_threats) == 0: reason = "BATTLE_START"
-	elif threats == 0 and int(auto.prev_threats) > 0: reason = "BATTLE_END"
-	elif alive().size() < int(auto.prev_alive): reason = "DEATH"
-	elif alive().any(func(a): return Rules.lethal_threat(self,a) >= a.hp): reason = "ALLY_LETHAL"
-	elif alive().any(func(a): return a.hp*100/a.max_hp <= int(auto.hp_low) and a.id not in auto.prev_low): reason = "HP_LOW"
-	if reason.is_empty() or not bool(auto.stops.get(reason,false)):
-		if reason in ["BATTLE_START","BATTLE_END","DEATH"]: remember_round()
-		return ""
-	# Repeated alerts are suppressed for three rounds; the hard events never are.
-	if reason in ["ALLY_LETHAL","HP_LOW"] and auto.last_stop.reason == reason and round_number-int(auto.last_stop.round) < 3:
-		return ""
-	auto.last_stop = {"reason":reason,"round":round_number}
-	auto.stops_log.append(reason)
-	remember_round()
-	return reason
+	var living: Array = alive()
+	var applies := {
+		"BATTLE_START": threats > 0 and int(auto.prev_threats) == 0,
+		"BATTLE_END": threats == 0 and int(auto.prev_threats) > 0,
+		"DEATH": living.size() < int(auto.prev_alive),
+		"ALLY_LETHAL": living.any(func(a): return Rules.lethal_threat(self,a) >= a.hp),
+		"HP_LOW": living.any(func(a): return a.hp*100/a.max_hp <= int(auto.hp_low) and a.id not in auto.prev_low)}
+	var hard := false
+	for reason in AUTO_STOPS:
+		if not applies[reason]: continue
+		if reason in ["BATTLE_START","BATTLE_END","DEATH"]: hard = true
+		if not bool(auto.stops.get(reason,false)): continue
+		# Repeated alerts are suppressed for three rounds; the hard events never are.
+		if reason in ["ALLY_LETHAL","HP_LOW"] and auto.last_stop.reason == reason and round_number-int(auto.last_stop.round) < 3:
+			continue
+		auto.last_stop = {"reason":reason,"round":round_number}
+		auto.stops_log.append(reason)
+		remember_round()
+		return reason
+	# Nothing was raised, but a hard event happened: consume it so it cannot re-fire.
+	if hard: remember_round()
+	return ""
 
 func companion_previews() -> Array:
 	var previews: Array = []
