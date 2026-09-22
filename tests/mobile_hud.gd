@@ -91,19 +91,20 @@ func run() -> void:
 	s.party[0].stress = 30; food = s.food
 	var before_wait: int = s.round_number
 	var before_hp: int = s.party[0].hp
-	# Tapping the hero's own cell is the wait action now that the footer is auto-battle.
-	for step in range(3): scene.on_cell(s.party[0].pos)
+	# Floor mode has no wait button and the board only commands while fighting,
+	# so the waiting itself is checked on the session.
+	for step in range(3): scene.run_action(func(): return s.act("WAIT",s.party[0].pos))
 	check(s.round_number == before_wait+3 and s.food == food,"waiting without visible enemies advances turns without spending food")
 	check(s.party[0].hp == before_hp and s.party[0].stress == 30,"waiting does not perform recovery")
 	var saved_food: int = s.food; s.food = 0; scene.refresh()
-	scene.on_cell(s.party[0].pos)
+	scene.run_action(func(): return s.act("WAIT",s.party[0].pos))
 	check(s.round_number == before_wait+4 and s.food == 0,"waiting remains available without food")
 	s.food = saved_food
 	enemy.hp = 20; enemy.pos = s.party[0].pos+Vector2i.RIGHT; s.floor_state.observe(s); scene.refresh()
 	check(scene.find_child("AutoToggle",true,false).text == "▶ 재개","a visible enemy leaves the run stopped")
 	before_wait = s.round_number; food = s.food
-	scene.on_cell(s.party[0].pos)
-	check(s.round_number == before_wait+1 and s.food == food,"combat wait also advances without food cost")
+	Fixture.fight_round(s); scene.refresh()
+	check(s.round_number == before_wait+1 and s.food == food,"an auto round also advances without food cost")
 	scene.notice = "이동 불가"; check(scene.toast.visible,"toast shown immediately")
 	scene._process(3); check(not scene.toast.visible,"toast expires")
 	scene.show_party_tactics()

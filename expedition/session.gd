@@ -382,8 +382,12 @@ func rally_point() -> Vector2i:
 
 ## Two members trade cells and places in the marching order. Only while the
 ## run is stopped for a battle start, once per battle.
+func can_swap_formation() -> bool:
+	return in_combat() and auto.last_stop.reason == "BATTLE_START" and int(auto.last_stop.round) == round_number \
+		and int(auto.get("swapped_round",-1)) != round_number and alive().size() >= 2
+
 func swap_formation(a: int, b: int) -> bool:
-	if not in_combat() or auto.last_stop.reason != "BATTLE_START" or auto.last_stop.round != round_number or auto.get("swapped_round",-1) == round_number: return false
+	if not can_swap_formation(): return false
 	if a == b or a < 0 or b < 0 or a >= party.size() or b >= party.size() or party[a].hp <= 0 or party[b].hp <= 0: return false
 	var pa: Vector2i = party[a].pos; party[a].pos = party[b].pos; party[b].pos = pa
 	var ia: int = formation.find(a); var ib: int = formation.find(b)

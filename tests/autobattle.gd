@@ -284,6 +284,11 @@ func ui() -> void:
 	var foe: Dictionary = s.enemies[0]; foe.hp = 30; foe.max_hp = 30; foe.role = "MELEE"; foe.alert = true; foe.part_id = ""; foe.pos = c+Vector2i(3,0)
 	s.floor_state.observe(s); scene.refresh()
 	for frame in range(3): await process_frame
+	check(scene.find_child("StopBanner",true,false).text.is_empty(),"a bare refresh raises no stop event")
+	# The HUD asks for a stop event at the end of a player action — here the
+	# torch that was lit as the pack came into sight.
+	scene.find_child("TorchButton",true,false).pressed.emit()
+	for frame in range(3): await process_frame
 	check(scene.skill_buttons.is_empty() and scene.end_turn_button == null,"floor battle has no skill buttons and no end-turn button")
 	var toggle: Button = scene.find_child("AutoToggle",true,false)
 	var bar = scene.find_child("CommandBar",true,false)
@@ -293,6 +298,15 @@ func ui() -> void:
 	check(toggle.text == "▶ 재개" and not scene.item_buttons[0].disabled,"stopped: the toggle resumes and items are usable")
 	var swap: Button = scene.find_child("FormationButton",true,false)
 	check(swap != null and not swap.disabled,"the battle-start stop offers the formation swap")
+	# 개입은 명령만: the board marks the focus target and does nothing else.
+	var foe_hp: int = foe.hp
+	var stopped_round: int = s.round_number
+	scene.on_cell(foe.pos)
+	check(s.party_command == "ATTACK_TARGET" and s.command_target == foe.id and foe.hp == foe_hp,"tapping a foe concentrates the party without attacking")
+	scene.on_cell(s.party[0].pos)
+	check(s.round_number == stopped_round and s.party[0].pos == c,"tapping own cell neither waits nor moves while fighting")
+	s.party_command = "FOLLOW"
+	bar = scene.find_child("CommandBar",true,false)
 	toggle.pressed.emit(); await process_frame
 	# Every action rebuilds the HUD, so each control is looked up again.
 	bar = scene.find_child("CommandBar",true,false)
@@ -361,4 +375,21 @@ func ui() -> void:
 	check(threshold != null and threshold.item_count == 4,"four HP thresholds")
 	threshold.item_selected.emit(2)
 	check(s.auto.hp_low == 40,"the HP threshold writes the session")
-	scene.details_popup.hide(); scene.queue_free(); await process_frame
+	scene.details_popup.hide()
+	# The report is a summary, not a stop: switching BATTLE_END off still shows it.
+	s.auto.stops.BATTLE_END = false
+	var second: Dictionary = s.enemies[1]
+	second.hp = 24; second.max_hp = 24; second.role = "MELEE"; second.alert = true; second.part_id = ""; second.pos = s.party[0].pos+Vector2i(1,0)
+	s.floor_state.observe(s)
+	scene.run_action(func(): return true)  # any accepted player action asks for the stop event
+	check(s.auto.last_stop.reason == "BATTLE_START","the second pack opens a new battle")
+	s.auto.running = true
+	for round_index in range(12):
+		if not s.in_combat(): break
+		scene.auto_tick()
+	for frame in range(3): await process_frame
+	check(not s.in_combat(),"the second pack is dealt with")
+	var second_report = scene.find_child("BattleReport",true,false)
+	check(second_report != null and second_report.visible,"the report follows a battle end that raises no stop")
+	scene.details_popup.hide()
+	scene.queue_free(); await process_frame

@@ -62,6 +62,7 @@ var tactics_expanded := -1
 var auto_clock := 0.0
 var stop_text := ""
 var formation_pick := -1
+var battle_reported := false
 
 func _ready() -> void:
 	var skin := Theme.new(); skin.default_font = FONT; skin.default_font_size = 12
@@ -117,12 +118,22 @@ func auto_tick() -> void:
 	if not reason.is_empty():
 		session.auto.running = false
 		note_stop(reason)
-		if reason == "BATTLE_END": show_battle_report()
+		if reason == "BATTLE_END": report_battle()
 		refresh(); return
 	# Nothing to fight: the run would spin on a refused auto_step.
 	if not session.in_combat():
 		session.auto.running = false; refresh(); return
+	battle_reported = false
 	run_action(session.auto_step)
+	# The report is a summary, not a stop: it follows every battle, including
+	# one whose BATTLE_END stop the player switched off.
+	if not session.in_combat(): report_battle()
+
+## The report of the battle that just ended, once.
+func report_battle() -> void:
+	if battle_reported: return
+	battle_reported = true
+	show_battle_report()
 
 func toggle_auto() -> void:
 	stop_navigation()
@@ -137,17 +148,19 @@ func toggle_speed() -> void:
 	refresh()
 
 ## `auto_stop_reason` has side effects, so the HUD asks it in exactly two
-## places: every auto tick, and here — where the party has just walked into
-## sight of a foe and BATTLE_START is the only answer it can give (nothing
-## threatened last round, so no other event can be swallowed).
-func check_battle_start() -> void:
+## places: every auto tick, and once at the end of every player action — a
+## battle can begin or end by hand while the run is stopped.
+func check_stop() -> void:
 	if not session.floor_mode or session.auto.running: return
-	if not session.in_combat() or int(session.auto.prev_threats) > 0: return
 	var reason: String = session.auto_stop_reason()
-	if not reason.is_empty(): note_stop(reason)
+	if reason.is_empty(): return
+	note_stop(reason)
+	if reason == "BATTLE_END": report_battle()
 
 func note_stop(reason: String) -> void:
 	stop_text = stop_message(reason)
+	# A fresh battle owes the player a fresh report.
+	if reason == "BATTLE_START": battle_reported = false
 	auto_clock = 0.0
 
 ## The Korean sentence of a stop event, with whoever caused it.
@@ -173,12 +186,6 @@ func set_command(id: String) -> void:
 	if command_targeting: notice = "공격 대상 선택"
 	else: session.party_command = id
 	refresh()
-
-## Two members trade cells: only while stopped at a battle start, once.
-func can_swap_formation() -> bool:
-	return session.floor_mode and session.in_combat() and not session.auto.running \
-		and session.auto.last_stop.reason == "BATTLE_START" and int(session.auto.last_stop.round) == session.round_number \
-		and int(session.auto.get("swapped_round",-1)) != session.round_number
 
 func show_formation() -> void:
 	stop_navigation(); BattleHud.formation(self)
@@ -298,7 +305,6 @@ func resource_gauge(parent: Button, id: String, value: int, color: Color, hint: 
 		style.content_margin_bottom = 8; parent.add_theme_stylebox_override(state,style)
 
 func refresh() -> void:
-	check_battle_start()
 	var elapsed := 0.0
 	var impact_elapsed := 0.0
 	# Opening an order/selection must not erase an attack that just resolved.
@@ -373,7 +379,7 @@ func refresh() -> void:
 	var in_town: bool = session.phase in ["TOWN","DEFEAT"]
 	for side in ["top","bottom"]: root_layout.get_parent().add_theme_constant_override("margin_"+side,0 if in_town else 8)
 	if in_town:
-		stop_navigation(); header.hide()
+		stop_navigation(); header.hide(); stop_text = ""; battle_reported = false
 		if not session.result.is_empty():
 			build_result_card()
 		elif session.phase == "TOWN" and not session.alive().is_empty():
@@ -441,7 +447,7 @@ func refresh() -> void:
 		toggle.name = "AutoToggle"
 		var speed := button(nav,"%d×" % int(session.auto.speed),toggle_speed)
 		speed.name = "SpeedToggle"; speed.custom_minimum_size.x = 40; speed.size_flags_horizontal = SIZE_SHRINK_CENTER
-		var swap := button(nav,"진형 교환",show_formation,can_swap_formation())
+		var swap := button(nav,"진형 교환",show_formation,session.can_swap_formation() and not session.auto.running)
 		swap.name = "FormationButton"
 		auto_explore_button = button(nav,"중지" if navigation.active else "자동탐험",toggle_explore,session.phase == "BATTLE" and not session.auto.running)
 		button(nav,"가방",show_supplies,not session.auto.running)
@@ -502,6 +508,7 @@ func run_action(callback: Callable, navigating: bool = false) -> void:
 		if not session.boss_trial and not session.floor_mode and session.phase == "BATTLE" and session.alive().all(func(a): return a.ap <= 0): session.end_round()
 	action_effects = session.effects.duplicate(true); session.effects.clear()
 	reset_effects = accepted
+	check_stop()
 	refresh()
 
 func preview_attack(point: Vector2i) -> void:
@@ -548,10 +555,12 @@ func queue_action(kind: String, point: Vector2i) -> void:
 func on_cell(point: Vector2i) -> void:
 	stop_navigation()
 	if command_targeting:
-		var target: Dictionary = session.at(point)
-		if target in session.combat_enemies():
-			session.command_target = target.id; session.party_command = "ATTACK_TARGET"; command_targeting = false; notice = "집중 공격"
-		else: notice = "시야 안의 적 선택"
+		focus_enemy(point)
+		refresh(); return
+	# 개입은 명령만: while the fighting is on, a tap marks the focus target and
+	# nothing else — no move, no attack, no wait, no curio.
+	if session.floor_mode and session.in_combat():
+		focus_enemy(point)
 		refresh(); return
 	if session.floor_mode and session.phase == "BATTLE" and reservation_actor < 0 and mode.is_empty() and pending_item < 0:
 		var feature: Dictionary = session.floor_state.features.get(point,{})
@@ -583,6 +592,16 @@ func on_cell(point: Vector2i) -> void:
 				if navigation.start(session,point): navigation_tick()
 				else: notice = "이동 불가"; refresh()
 			else: run_action(func(): return session.act("MOVE",point))
+
+## A tap on a visible foe concentrates the party on it; any other cell clears
+## the targeting prompt instead of acting.
+func focus_enemy(point: Vector2i) -> void:
+	var target: Dictionary = session.at(point)
+	if target in session.combat_enemies():
+		session.command_target = target.id; session.party_command = "ATTACK_TARGET"
+		command_targeting = false; notice = "집중 공격"
+	elif command_targeting:
+		command_targeting = false; notice = ""
 
 func show_map() -> void:
 	stop_navigation()
