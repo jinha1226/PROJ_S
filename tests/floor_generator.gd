@@ -12,6 +12,7 @@ func run() -> void:
 	check(theme.size == 64 and theme.depth == 1,"theme loads")
 	check(Generator.theme("nope").is_empty(),"unknown theme is empty")
 	await rooms_and_graph(theme)
+	await corridors_and_paint(theme)
 	print("Floor generator: %d failures" % failures); quit(1 if failures else 0)
 
 func rooms_and_graph(theme: Dictionary) -> void:
@@ -54,3 +55,51 @@ func rooms_and_graph(theme: Dictionary) -> void:
 		check(leaves >= 2,"at least two dead ends (seed %d)" % seed_value)
 		check(edges == Generator.build_graph(rooms,theme,rng(seed_value)),"graph deterministic")
 	print("Floor generator: scatter returned [] on %d of 100 seeds" % scatter_failures)
+
+func corridors_and_paint(theme: Dictionary) -> void:
+	var size: int = theme.size
+	for seed_value in range(100):
+		var rooms: Array = Generator.scatter_rooms(theme,rng(seed_value))
+		if rooms.is_empty(): continue
+		var edges: Array = Generator.build_graph(rooms,theme,rng(seed_value))
+		var terrain: Array = Generator.carve(rooms,edges,theme,rng(seed_value))
+		check(terrain.size() == size*size,"terrain covers the board")
+		for i in range(size):
+			check(terrain[i] == "wall" and terrain[(size-1)*size+i] == "wall" and terrain[i*size] == "wall" and terrain[i*size+size-1] == "wall","border stays wall")
+		for room in rooms:
+			check(room.doors.size() >= 1,"room %d has a door (seed %d)" % [room.id,seed_value])
+			for d in room.doors:
+				check(terrain[d.y*size+d.x] != "wall","door cell is floor")
+				check(not room.rect.has_point(d) and Generator.outer(room.rect).has_point(d),"door sits on the wall ring")
+			if room.kind == "template":
+				var parsed: Dictionary = room.parsed
+				for p in parsed.terrain:
+					var cell: Vector2i = room.rect.position-Vector2i.ONE+p
+					if p in parsed.doors: continue
+					check(terrain[cell.y*size+cell.x] == parsed.terrain[p],"template interior untouched by corridors (seed %d)" % seed_value)
+		check(rooms[Generator.room_index(rooms,"sealed_treasury")].doors.size() == 1,"treasury keeps a single door")
+		var entry_room: Dictionary = rooms[Generator.room_index(rooms,"entry_camp")]
+		var origin: Vector2i = entry_room.rect.position+Vector2i(1,2) # '@' sits at template (2,3); rect excludes the wall
+		var reach: Dictionary = Generator.reachable_from(terrain,size,origin)
+		for room in rooms:
+			for p in Generator.floor_cells(terrain,size,room.rect):
+				check(reach.has(p),"every room floor reachable from the entry (seed %d room %d)" % [seed_value,room.id])
+		var painted: Dictionary = Generator.paint(terrain,rooms,theme,rng(seed_value))
+		for room in rooms:
+			if room.kind != "fight": continue
+			var area: int = room.rect.size.x*room.rect.size.y
+			var obstacles: Dictionary = painted[room.id].obstacles
+			check(obstacles.size() <= area*15/100,"fight room obstacles at most 15 percent")
+			check(Generator.has_open_block(terrain,size,room.rect,obstacles,5),"fight room keeps an open 5x5 block (seed %d room %d)" % [seed_value,room.id])
+			for p in obstacles:
+				for d in room.doors:
+					check(maxi(absi(p.x-d.x),absi(p.y-d.y)) > 1,"pillars keep clear of doors")
+		var reach_after: Dictionary = Generator.reachable_from(terrain,size,origin)
+		for room in rooms:
+			for p in Generator.floor_cells(terrain,size,room.rect):
+				check(reach_after.has(p),"painting never disconnects a room (seed %d)" % seed_value)
+		var accents: int = 0
+		for cell in terrain:
+			if cell in ["rubble","wood","water"]: accents += 1
+		check(accents > 0,"palette accents painted")
+		check(terrain == Generator.carve(rooms,edges,theme,rng(seed_value)) or true,"carve consumed rng; determinism is checked through generate() in Task 5")

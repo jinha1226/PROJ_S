@@ -144,3 +144,191 @@ static func build_graph(rooms: Array, theme: Dictionary, rng: RandomNumberGenera
 		edges.append([pair.a,pair.b]); used["%d/%d" % [pair.a,pair.b]] = true; extra -= 1
 	if anchor >= 0: edges.append([mini(anchor,treasury),maxi(anchor,treasury)])
 	return edges
+
+static func index_of(size: int, p: Vector2i) -> int:
+	return p.y*size+p.x
+
+static func inside(size: int, p: Vector2i) -> bool:
+	return p.x >= 0 and p.y >= 0 and p.x < size and p.y < size
+
+## Door candidates on the wall ring: template '+' cells, or the middle ±2 of
+## each side for procedural rooms (corners excluded).
+static func door_candidates(room: Dictionary) -> Array:
+	var shell := outer(room.rect)
+	if room.kind == "template":
+		return room.parsed.doors.map(func(p): return shell.position+p)
+	var result: Array = []
+	var cx: int = room.rect.position.x+room.rect.size.x/2
+	var cy: int = room.rect.position.y+room.rect.size.y/2
+	for dx in range(-2,3):
+		var x: int = cx+dx
+		if x > room.rect.position.x and x < room.rect.end.x-1:
+			result.append(Vector2i(x,shell.position.y))
+			result.append(Vector2i(x,shell.end.y-1))
+	for dy in range(-2,3):
+		var y: int = cy+dy
+		if y > room.rect.position.y and y < room.rect.end.y-1:
+			result.append(Vector2i(shell.position.x,y))
+			result.append(Vector2i(shell.end.x-1,y))
+	return result
+
+static func outward(room: Dictionary, door: Vector2i) -> Vector2i:
+	var shell := outer(room.rect)
+	if door.y == shell.position.y: return Vector2i.UP
+	if door.y == shell.end.y-1: return Vector2i.DOWN
+	if door.x == shell.position.x: return Vector2i.LEFT
+	return Vector2i.RIGHT
+
+## Noisy Dijkstra between two cells: walls cost 3, existing floor 1, plus
+## rng noise up to `wiggle` so corridors bend like DCSS join_the_dots.
+## Protected cells (template shells) are impassable.
+static func dig_path(terrain: Array, size: int, start: Vector2i, goal: Vector2i, protected: Dictionary, wiggle: int, rng: RandomNumberGenerator) -> Array:
+	var noise: Dictionary = {}
+	var cost: Dictionary = {start:0.0}
+	var previous: Dictionary = {}
+	var open: Array = [start]
+	while not open.is_empty():
+		var best := 0
+		for i in range(1,open.size()):
+			if cost[open[i]] < cost[open[best]]: best = i
+		var current: Vector2i = open.pop_at(best)
+		if current == goal: break
+		for d in DIRECTIONS4:
+			var next: Vector2i = current+d
+			if not inside(size,next) or next.x == 0 or next.y == 0 or next.x == size-1 or next.y == size-1: continue
+			if protected.has(next) and next != goal: continue
+			if not noise.has(next): noise[next] = rng.randf()*wiggle
+			var step: float = (1.0 if terrain[index_of(size,next)] != "wall" else 3.0)+noise[next]
+			var total: float = cost[current]+step
+			if not cost.has(next) or total < cost[next]:
+				cost[next] = total; previous[next] = current
+				if next not in open: open.append(next)
+	if not previous.has(goal) and start != goal: return []
+	var path: Array = [goal]
+	while path[path.size()-1] != start: path.append(previous[path[path.size()-1]])
+	path.reverse()
+	return path
+
+static func carve(rooms: Array, edges: Array, theme: Dictionary, rng: RandomNumberGenerator) -> Array:
+	var size: int = theme.size
+	var terrain: Array = []
+	terrain.resize(size*size); terrain.fill("wall")
+	var protected: Dictionary = {}
+	for room in rooms:
+		room.doors = []
+		if room.kind == "template":
+			Templates.stamp(terrain,size,room.rect.position-Vector2i.ONE,room.parsed)
+			var shell := outer(room.rect)
+			for y in range(shell.position.y,shell.end.y):
+				for x in range(shell.position.x,shell.end.x): protected[Vector2i(x,y)] = true
+		else:
+			for y in range(room.rect.position.y,room.rect.end.y):
+				for x in range(room.rect.position.x,room.rect.end.x): terrain[index_of(size,Vector2i(x,y))] = theme.palette.floor
+	for edge in edges:
+		var a: Dictionary = rooms[edge[0]]
+		var b: Dictionary = rooms[edge[1]]
+		var best_pair: Array = []
+		var best_d := 1 << 30
+		for ca in door_candidates(a):
+			for cb in door_candidates(b):
+				var d: int = absi(ca.x-cb.x)+absi(ca.y-cb.y)
+				if d < best_d:
+					best_d = d; best_pair = [ca,cb]
+		if best_pair.is_empty(): continue
+		var da: Vector2i = best_pair[0]
+		var db: Vector2i = best_pair[1]
+		var from: Vector2i = da+outward(a,da)
+		var to: Vector2i = db+outward(b,db)
+		var path := dig_path(terrain,size,from,to,protected,theme.corridor.wiggle,rng)
+		if path.is_empty(): continue
+		for p in [da,db]+path:
+			if terrain[index_of(size,p)] == "wall": terrain[index_of(size,p)] = theme.palette.floor
+		if da not in a.doors: a.doors.append(da)
+		if db not in b.doors: b.doors.append(db)
+	# Corridors that brushed a procedural room's wall ring opened extra doors.
+	for room in rooms:
+		if room.kind == "template": continue
+		var shell := outer(room.rect)
+		for y in range(shell.position.y,shell.end.y):
+			for x in range(shell.position.x,shell.end.x):
+				var p := Vector2i(x,y)
+				if room.rect.has_point(p): continue
+				if terrain[index_of(size,p)] != "wall" and p not in room.doors and (x == shell.position.x or x == shell.end.x-1) != (y == shell.position.y or y == shell.end.y-1): room.doors.append(p)
+	return terrain
+
+static func floor_cells(terrain: Array, size: int, rect: Rect2i) -> Array:
+	var result: Array = []
+	for y in range(rect.position.y,rect.end.y):
+		for x in range(rect.position.x,rect.end.x):
+			if terrain[index_of(size,Vector2i(x,y))] != "wall": result.append(Vector2i(x,y))
+	return result
+
+## Same rule as Session.melee_reach: diagonal steps need both orthogonal
+## neighbours open.
+static func reachable_from(terrain: Array, size: int, origin: Vector2i) -> Dictionary:
+	var dist: Dictionary = {origin:0}
+	var queue: Array = [origin]
+	var cursor := 0
+	while cursor < queue.size():
+		var p: Vector2i = queue[cursor]; cursor += 1
+		for d in DIRECTIONS8:
+			var next: Vector2i = p+d
+			if dist.has(next) or not inside(size,next) or terrain[index_of(size,next)] == "wall": continue
+			if d.x != 0 and d.y != 0 and (terrain[index_of(size,Vector2i(p.x,next.y))] == "wall" or terrain[index_of(size,Vector2i(next.x,p.y))] == "wall"): continue
+			dist[next] = int(dist[p])+1; queue.append(next)
+	return dist
+
+static func has_open_block(terrain: Array, size: int, rect: Rect2i, obstacles: Dictionary, side: int) -> bool:
+	for y in range(rect.position.y,rect.end.y-side+1):
+		for x in range(rect.position.x,rect.end.x-side+1):
+			var open := true
+			for yy in range(y,y+side):
+				for xx in range(x,x+side):
+					var p := Vector2i(xx,yy)
+					if obstacles.has(p) or terrain[index_of(size,p)] == "wall": open = false
+			if open: return true
+	return false
+
+static func paint(terrain: Array, rooms: Array, theme: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
+	var size: int = theme.size
+	var result: Dictionary = {}
+	for room in rooms:
+		var obstacles: Dictionary = {}
+		if room.kind == "fight":
+			var cells := floor_cells(terrain,size,room.rect)
+			var wanted: int = cells.size()*10/100
+			var candidates: Array = cells.filter(func(p): return room.doors.all(func(d): return maxi(absi(p.x-d.x),absi(p.y-d.y)) > 1))
+			for _i in range(wanted):
+				if candidates.is_empty(): break
+				var p: Vector2i = candidates.pop_at(rng.randi_range(0,candidates.size()-1))
+				obstacles[p] = true
+				candidates = candidates.filter(func(q): return maxi(absi(q.x-p.x),absi(q.y-p.y)) > 1)
+			var keys: Array = obstacles.keys()
+			while not has_open_block(terrain,size,room.rect,obstacles,5) and not keys.is_empty():
+				obstacles.erase(keys.pop_back())
+			for p in obstacles: terrain[index_of(size,p)] = "wall"
+			# A pillar must never cut a room in two.
+			var cells_after := floor_cells(terrain,size,room.rect)
+			var reach := reachable_from(terrain,size,cells_after[0])
+			if not cells_after.all(func(p): return reach.has(p)):
+				for p in obstacles: terrain[index_of(size,p)] = theme.palette.floor
+				obstacles.clear()
+		elif room.kind == "plain":
+			var cells := floor_cells(terrain,size,room.rect)
+			var accent: String = theme.palette.accents[rng.randi_range(0,theme.palette.accents.size()-1)]
+			var wanted: int = int(cells.size()*theme.palette.accent_ratio)
+			var seed_cell: Vector2i = cells[rng.randi_range(0,cells.size()-1)]
+			var cluster: Array = [seed_cell]
+			var seen: Dictionary = {seed_cell:true}
+			var cursor := 0
+			while cluster.size() < wanted and cursor < cluster.size():
+				for d in DIRECTIONS4:
+					var next: Vector2i = cluster[cursor]+d
+					if room.rect.has_point(next) and not seen.has(next) and rng.randi_range(0,2) > 0:
+						seen[next] = true; cluster.append(next)
+						if cluster.size() >= wanted: break
+				cursor += 1
+			for p in cluster:
+				if room.doors.all(func(d): return maxi(absi(p.x-d.x),absi(p.y-d.y)) > 1): terrain[index_of(size,p)] = accent
+		result[room.id] = {"obstacles":obstacles}
+	return result
