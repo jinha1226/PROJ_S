@@ -148,7 +148,7 @@ func unequip_part(index: int, slot: int) -> bool
 ```
 
 - 술사 역할의 시전은 파츠 시도 다음 순서이므로, 둘 다 가능하면 파츠가 먼저다.
-- `interrupt(s, enemy)`(밀치기 또는 피격): charging 해제, `cast_recovery = 1`, 파츠 준비였으면 `cooldowns[cast_id] = DEFINITIONS[cast_id].cooldown`(역할 시전이면 기존대로 `cast_cooldown = 3`), intents에서 제거, 메시지 "시전이 끊겼습니다" 유지.
+- `interrupt(s, enemy)`: charging 해제, `cast_recovery = 1`, 파츠 준비였으면 `cooldowns[cast_id] = DEFINITIONS[cast_id].cooldown`(역할 시전이면 기존대로 `cast_cooldown = 3`), intents에서 제거, 메시지 "시전이 끊겼습니다" 유지. **끊는 조건**: 밀치기는 무엇이든 끊는다. 피격(`session.damage`)은 역할 시전(`cast_id == ""`, 집중이 필요한 마법)만 끊고 파츠 준비는 끊지 않는다 — 준비 동작은 맞아도 이어지므로, 파츠에 대한 대응은 "피하거나·엄호하거나·밀친다"이다. (피격이 파츠도 끊게 하면 1:1에서 매 라운드 공격하는 것만으로 모든 파츠가 취소되어 예고가 무의미해진다는 시뮬 결과에 따른 결정.)
 - 적 쿨다운은 파티원과 달리 `end_round`가 아니라 위 4단계에서 줄인다(적 턴이 곧 라운드 1회).
 
 ### 2.3 `Abilities`의 양측 공용화
