@@ -12,7 +12,7 @@ func _ready() -> void:
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO,size),Color("15191c"))
-	draw_string(FONT,Vector2(28,36),"1층 · 레이어 인간 캐릭터와 환경",HORIZONTAL_ALIGNMENT_LEFT,-1,24,Color("ded6c4"))
+	draw_string(FONT,Vector2(28,36),"1층 · 먹선 캐릭터와 환경",HORIZONTAL_ALIGNMENT_LEFT,-1,24,Color("ded6c4"))
 	var start := Vector2(44,100)
 	var solid := func(p): return p.x < 0 or p.y < 0 or p.x >= 12 or p.y >= 8 or MAP[p.y][p.x] == "#"
 	var walls: Array = []

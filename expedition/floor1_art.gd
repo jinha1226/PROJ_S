@@ -1,12 +1,12 @@
 extends RefCounted
 ## First-floor art only; gameplay uses the existing terrain and feature data.
-const MATERIALS = preload("res://assets/topdown/floor1-flat-v1/materials.png")
-const PROPS = preload("res://assets/topdown/floor1-flat-v1/props.png")
+const MATERIALS = preload("res://assets/topdown/floor1-ink-v2/materials.png")
+const PROPS = preload("res://assets/topdown/floor1-ink-v2/props.png")
 const Regions = preload("res://expedition/environment_art.gd")
-static var catalog: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/topdown/floor1-flat-v1/catalog.json"))
+static var catalog: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/topdown/floor1-ink-v2/catalog.json"))
 
 static func tile(id: String) -> AtlasTexture:
-	return Regions.region(MATERIALS,catalog.materials[id],"floor1-flat/material/"+id)
+	return Regions.region(MATERIALS,catalog.materials[id],"floor1-ink/material/"+id)
 
 static func material() -> Dictionary:
 	return {"front":tile("front"),"top":tile("top")}
@@ -21,6 +21,6 @@ static func feature_id(feature: Dictionary) -> String:
 	return {"entry":"gate","altar":"altar","relic":"relic","camp":"campfire"}.get(feature.kind,"")
 
 static func paint_object(canvas: CanvasItem, id: String, cell: Rect2, tint: Color = Color.WHITE) -> void:
-	var texture := Regions.region(PROPS,catalog.objects[id].rect,"floor1-flat/object/"+id)
+	var texture := Regions.region(PROPS,catalog.objects[id].rect,"floor1-ink/object/"+id)
 	var extent := texture.get_size()*cell.size.x/float(catalog.objects[id].source_cell_size)
 	canvas.draw_texture_rect(texture,Rect2(cell.position+Vector2((cell.size.x-extent.x)*0.5,cell.size.y-extent.y),extent),false,tint)
