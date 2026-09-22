@@ -1,0 +1,4 @@
+{"builds": [
+ {"id": "starter", "label": "시작 장비형", "ranks": {}, "stats": {}, "equipped": ["PUSH","GUARD"], "learned": []},
+ {"id": "melee_1", "label": "근접형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["PUSH","GUARD"], "learned": []}
+]}

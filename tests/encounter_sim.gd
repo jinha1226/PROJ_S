@@ -5,6 +5,8 @@ const Fixture = preload("res://tests/floor_fixture.gd")
 const Arena = preload("res://expedition/sim/encounter_arena.gd")
 const Floor = preload("res://expedition/continuous_floor.gd")
 const Generator = preload("res://expedition/floor_generator.gd")
+const Runner = preload("res://expedition/sim/encounter_runner.gd")
+const Policy = preload("res://expedition/sim/bot_policy.gd")
 var failures := 0
 func check(ok: bool, reason: String) -> void:
 	if not ok: failures += 1; push_error(reason)
@@ -13,9 +15,34 @@ func rng(seed_value: int) -> RandomNumberGenerator:
 	var r := RandomNumberGenerator.new(); r.seed = seed_value; return r
 
 func run() -> void:
+	var started := Time.get_ticks_msec()
 	await rules_and_party()
 	await arena_layout()
-	print("Encounter sim: %d failures" % failures); quit(1 if failures else 0)
+	await runner()
+	print("Encounter sim: %d failures (%d ms)" % [failures,Time.get_ticks_msec()-started]); quit(1 if failures else 0)
+
+func config(members: Array, size: int, policy: String, rules: Dictionary) -> Dictionary:
+	var spec: Dictionary = Arena.DEFAULT_SPEC.duplicate(true); spec.members = members
+	return {"arena":spec,"party_size":size,"build":"melee_1","policy":policy,"rules":rules,"supplies":[1,0,0,0,0,1],"max_rounds":60}
+
+func runner() -> void:
+	check(Runner.wilson(0,10)[0] == 0.0 and absf(Runner.wilson(5,10)[0]-0.237) < 0.01 and absf(Runner.wilson(5,10)[1]-0.763) < 0.01,"wilson interval")
+	check(Runner.percentile([1,2,3,4,5],0.5) == 3.0 and Runner.percentile([1,2,3,4,5],0.9) == 5.0,"percentiles")
+	var hob := [{"species_id":"dcss_hobgoblin","role":"MELEE"}]
+	var one: Dictionary = Runner.run_one(config(hob,1,"tactical",Session.DEFAULT_RULES),11)
+	check(one.result in ["WIN","DEFEAT","TIMEOUT"] and one.rounds >= 1 and one.damage_taken.size() == 1,"run_one returns a result")
+	check(one == Runner.run_one(config(hob,1,"tactical",Session.DEFAULT_RULES),11),"run_one deterministic")
+	check(Runner.run_one(config(hob,1,"simple",Session.DEFAULT_RULES),11).result != "TIMEOUT","simple policy finishes a solo fight")
+	var trio: Dictionary = Runner.run_one(config(hob,3,"tactical",Session.DEFAULT_RULES),11)
+	check(trio.damage_taken.size() == 3 and trio.result == "WIN","a trio beats a lone hobgoblin")
+	var mixed := [{"species_id":"dcss_hobgoblin","role":"MELEE"},{"species_id":"goblin","role":"RANGED"},{"species_id":"kobold","role":"MELEE"}]
+	var capped: Dictionary = Runner.run_one(config(mixed,1,"tactical",{"solo_actions":1,"solo_max_members":2}),3)
+	check(capped.enemy_count == 2,"solo_max_members trims the arena roster")
+	var doubled: Dictionary = Runner.run_one(config(mixed,1,"tactical",{"solo_actions":2,"solo_max_members":0}),3)
+	check(doubled.enemy_count == 3 and doubled.player_actions >= doubled.rounds,"solo_actions 2 grants at least one action per round")
+	var many: Dictionary = Runner.run_many(config(hob,1,"tactical",Session.DEFAULT_RULES),range(100,120))
+	check(many.samples == 20 and many.results.has("WIN") and many.win_rate >= 0.0 and many.win_ci.size() == 2,"run_many aggregates")
+	check(many.damage.has("mean") and many.damage.has("p95") and many.rounds.has("median"),"run_many statistics")
 
 func rules_and_party() -> void:
 	for size in [1,2,3]:
