@@ -14,10 +14,14 @@ const FLAGSTONE = preload("res://assets/topdown/flagstone-floor-v1.png")
 static var terrain_cache: Dictionary = {}
 
 static func paint_actor(canvas: CanvasItem, index: int, rect: Rect2, tint: Color = Color.WHITE) -> void:
+	# Keep the lower edge anchored while allowing the head above the movement cell.
+	# The layered human has more transparent canvas padding than the legacy pawns.
+	var extent := rect.size*(1.5 if index == 0 else 1.25)
+	var display := Rect2(rect.position+Vector2((rect.size.x-extent.x)*0.5,rect.size.y-extent.y),extent)
 	if index == 0:
-		InkTorso.paint(canvas,rect,tint)
+		InkTorso.paint(canvas,display,tint)
 	else:
-		canvas.draw_texture_rect(ACTORS[index],rect,false,tint)
+		canvas.draw_texture_rect(ACTORS[index],display,false,tint)
 
 static func terrain(cell: Dictionary, point: Vector2i = Vector2i.ZERO, first_floor: bool = false) -> AtlasTexture:
 	if first_floor: return FirstFloor.terrain(cell,point)
