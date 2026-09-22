@@ -12,7 +12,8 @@ func fixture(role: String) -> Dictionary:
 	Fixture.equip_basics(s)
 	s.party[1].hp = 0
 	var e: Dictionary = s.enemies[0]
-	e.hp = e.max_hp; e.role = role; e.pos = c+Vector2i(4,0); e.alert = true
+	# Role behaviour only: the signature part is tested in tests/parts.gd and would go first.
+	e.hp = e.max_hp; e.role = role; e.pos = c+Vector2i(4,0); e.alert = true; e.part_id = ""
 	return {"s":s,"c":c}
 func _initialize() -> void:
 	var f := fixture("MELEE"); var s = f.s; var c: Vector2i = f.c

@@ -7,6 +7,7 @@ const Rules = preload("res://expedition/tactic_rules.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Passives = preload("res://expedition/passives.gd")
 const Builder = preload("res://expedition/encounter_builder.gd")
+const MonsterAI = preload("res://expedition/monster_ai.gd")
 var failures := 0
 var checks := 0
 
@@ -22,6 +23,7 @@ func run() -> void:
 	bag()
 	species()
 	passives()
+	telegraph()
 	print("Parts: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 ## Every definition carries the part fields and a rule the schema accepts.
@@ -207,3 +209,60 @@ func passives() -> void:
 	d.foe.part_id = "GNOLL_SPEAR"; d.foe.hp = 20
 	s.act("WAIT",d.hero.pos); s.act("WAIT",d.hero.pos); s.act("WAIT",d.hero.pos)
 	check(d.foe.hp >= 22,"regen runs at round start for monsters")
+
+func telegraph() -> void:
+	# Hobgoblin in contact: announces, resolves next round, cools down.
+	var d := duel(); var s = d.s
+	d.foe.part_id = "HOB_CLUB"; d.foe.cooldowns = {}
+	MonsterAI.turn(s,d.foe)
+	check(d.foe.charging and d.foe.cast_id == "HOB_CLUB" and d.foe.cast_cell == d.hero.pos,"in contact the part is announced first")
+	check(s.intents.size() == 1 and s.intents[0].kind == "HOB_CLUB" and int(s.intents[0].damage) == 14 and s.intents[0].cell == d.hero.pos,"intent carries the part and its damage")
+	check(s.Rules.lethal_threat(s,d.hero) >= 14,"lethal threat reads the announced damage")
+	var hp: int = d.hero.hp
+	MonsterAI.turn(s,d.foe)
+	check(not d.foe.charging and s.intents.is_empty(),"resolved on the next turn")
+	check(d.hero.hp == hp-s.Growth.incoming(d.hero,14+s.floor_state.enemy_bonus(s.light)),"club lands for its damage plus the darkness bonus")
+	check(int(d.foe.cooldowns.HOB_CLUB) == 4,"cooldown set (3 + 1)")
+	check(int(s.stats_enemy_skill.get("HOB_CLUB",0)) == 1,"enemy skill use counted")
+	MonsterAI.turn(s,d.foe)
+	check(not d.foe.charging and int(d.foe.cooldowns.HOB_CLUB) == 3,"on cooldown the role attack runs and the cooldown ticks")
+	# Interrupt by push: cooldown consumed, one round of recovery.
+	d = duel(); s = d.s; d.foe.part_id = "HOB_CLUB"; d.foe.cooldowns = {}
+	MonsterAI.turn(s,d.foe)
+	check(s.act("PUSH",d.foe.pos),"hero pushes the charging foe")
+	check(not d.foe.charging and s.intents.is_empty() and d.foe.cast_recovery == 1 and int(d.foe.cooldowns.HOB_CLUB) == 3,"push cancels the part and burns its cooldown")
+	check(s.stats_interrupts == 1,"interrupt counted")
+	# Target steps away: a radius-0 part misses.
+	d = duel(); s = d.s; d.foe.part_id = "HOB_CLUB"; d.foe.cooldowns = {}
+	MonsterAI.turn(s,d.foe)
+	d.hero.pos = d.c+Vector2i(-1,0); hp = d.hero.hp
+	MonsterAI.turn(s,d.foe)
+	check(d.hero.hp == hp and s.log_lines[-1].contains("빗나갔습니다"),"an empty announced cell is a miss")
+	# Area part spares the caster's own side.
+	d = duel(); s = d.s; d.foe.part_id = "ORC_CLEAVER"; d.foe.cooldowns = {}
+	var mate: Dictionary = s.enemies[1]; mate.hp = 30; mate.max_hp = 30; mate.alert = true; mate.pos = d.c+Vector2i(1,1); mate.part_id = ""
+	MonsterAI.turn(s,d.foe)
+	var ally_hp: int = d.ally.hp; var mate_hp: int = mate.hp; hp = d.hero.hp
+	MonsterAI.turn(s,d.foe)
+	check(d.hero.hp < hp and d.ally.hp < ally_hp and mate.hp == mate_hp,"cleave hits both members in the square and no fellow monster")
+	# A prep 0 part fires at once; a longer charge keeps its announcement until the count runs out.
+	# (DEFINITIONS is a const dictionary and read-only at runtime, so prep comes from the catalog.)
+	d = duel(); s = d.s; d.foe.part_id = "HEAVY_STRIKE"; d.foe.cooldowns = {}
+	hp = d.hero.hp; MonsterAI.turn(s,d.foe)
+	check(int(Abilities.DEFINITIONS.HEAVY_STRIKE.enemy.prep) == 0 and d.hero.hp < hp and not d.foe.charging,"prep 0 resolves immediately")
+	d = duel(); s = d.s; d.foe.part_id = "HOB_CLUB"; d.foe.cooldowns = {}
+	hp = d.hero.hp; MonsterAI.turn(s,d.foe)
+	d.foe.cast_left = 2
+	MonsterAI.turn(s,d.foe)
+	check(d.foe.charging and d.hero.hp == hp and s.intents.size() == 1 and d.foe.cast_left == 1,"a two-round charge is still announced after one more turn")
+	MonsterAI.turn(s,d.foe)
+	check(d.hero.hp < hp,"it resolves once the count runs out")
+	# Caster role keeps its spell when the part is on cooldown; the part goes first when both are ready.
+	d = duel(); s = d.s; d.foe.part_id = "KOBOLD_SLING"; d.foe.cooldowns = {}; d.foe.role = "CASTER"; d.foe.cast_cooldown = 0
+	d.foe.pos = d.c+Vector2i(3,0); s.floor_state.observe(s)
+	MonsterAI.turn(s,d.foe)
+	check(d.foe.charging and d.foe.cast_id == "KOBOLD_SLING","part before role spell")
+	# Player use is immediate and grows with the melee axis.
+	d = duel(); s = d.s; d.hero.equipped_abilities = ["HOB_CLUB","GUARD"]; d.hero.cooldowns = {}
+	var foe_hp: int = d.foe.hp
+	check(s.act("HOB_CLUB",d.foe.pos) and d.foe.hp == foe_hp-s.Growth.power(d.hero,"MELEE",14) and d.hero.ap == 2 and int(d.hero.cooldowns.HOB_CLUB) == 4,"player club is immediate, scaled and cooled")

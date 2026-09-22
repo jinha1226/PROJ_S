@@ -41,17 +41,24 @@ func runner() -> void:
 	check(capped.enemy_count == 2,"solo_max_members trims the arena roster")
 	var doubled: Dictionary = Runner.run_one(config(mixed,1,"tactical",{"solo_actions":2,"solo_max_members":0}),3)
 	check(doubled.enemy_count == 3 and doubled.player_actions >= doubled.rounds,"solo_actions 2 grants at least one action per round")
-	# Dark arena: apply()'s ambush strikes before the hero ever acts.
+	# Dark arena: apply()'s ambush gives the monster a free turn before the hero acts,
+	# which it now spends announcing its signature part.
 	var dark: Dictionary = Arena.DEFAULT_SPEC.duplicate(true)
 	dark.light = 20; dark.members = [{"species_id":"dcss_hobgoblin","role":"MELEE","pos":[9,6]}]
+	var ambush_seen := {"acted":false}
 	var ambushed: Dictionary = Runner.run_one({"arena":dark,"party_size":1,"build":"melee_1","policy":"tactical",
-		"rules":Session.DEFAULT_RULES,"supplies":[1,0,0,0,0,1],"max_rounds":60},7)
-	check(ambushed.damage_before_first_action > 0,"ambush damage lands before the first action")
+		"rules":Session.DEFAULT_RULES,"supplies":[1,0,0,0,0,1],"max_rounds":60,
+		"probe":func(s,round_number): if round_number == 1 and not s.intents.is_empty(): ambush_seen.acted = true},7)
+	check(ambushed.damage_before_first_action > 0 or ambush_seen.acted,"the ambusher strikes or announces before the first action")
+	check(ambushed.enemy_skill_uses is Dictionary and ambushed.interrupts is int,"run_one reports enemy part uses and interrupts")
 	var many: Dictionary = Runner.run_many(config(hob,1,"tactical",Session.DEFAULT_RULES),range(100,120))
 	check(many.samples == 20 and many.results.has("WIN") and many.win_rate >= 0.0 and many.win_ci.size() == 2,"run_many aggregates")
 	check(many.has("damage_wins_per_member") and many.has("guards") and many.has("before_first"),"run_many reports per-member win damage, guards and before_first")
 	check(many.damage.has("mean") and many.damage.has("p95") and many.rounds.has("median"),"run_many statistics")
 	check(many.has("distinct_outcomes") and many.distinct_outcomes >= 1 and many.distinct_outcomes <= many.samples,"run_many counts distinct outcomes")
+	check(many.has("enemy_skill_uses_mean") and many.has("interrupts_mean") and many.interrupts_mean >= 0.0,"run_many averages enemy part uses and interrupts")
+	# A hit cancels a charge, so a bot that answers every telegraph breaks them instead of eating them.
+	check(many.interrupts_mean > 0.0,"telegraphed parts are interrupted over twenty runs")
 
 func rules_and_party() -> void:
 	for size in [1,2,3]:

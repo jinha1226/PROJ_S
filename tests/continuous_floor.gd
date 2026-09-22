@@ -42,6 +42,7 @@ func run() -> void:
 	check(s.party[1].pos.x >= 0,"adjacent free cell exists")
 	s.floor_state.observe(s)
 	var hp: int = s.party[0].hp
+	foe.part_id = "" # Role behaviour only; the signature part would be announced first (tests/parts.gd).
 	s.floor_state.enemy_turn(s,foe)
 	check(s.party[0].hp < hp,"legacy tactical selector attacks adjacent enemy")
 	var scene = load("res://expedition/main.gd").new(); scene.session = s

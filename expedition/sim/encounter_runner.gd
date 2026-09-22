@@ -94,7 +94,7 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 	return {"result":result,"rounds":s.round_number,"damage_taken":taken,"hp_end":s.party.map(func(a): return a.hp),
 		"deaths":s.party.filter(func(a): return a.hp <= 0).map(func(a): return a.id),"first_death_round":first_death,
 		"heals_used":heals,"guards_used":guards,"protect_redirects":s.stats_redirects,"skill_uses":skill_uses,"player_actions":actions,"damage_before_first_action":int(counters.before_first),
-		"enemy_count":s.enemies.size(),"enemy_damage_dealt":dealt}
+		"enemy_count":s.enemies.size(),"enemy_damage_dealt":dealt,"enemy_skill_uses":s.stats_enemy_skill.duplicate(),"interrupts":s.stats_interrupts}
 
 static func wilson(wins: int, n: int) -> Array:
 	if n == 0: return [0.0,0.0]
@@ -141,9 +141,20 @@ static func run_many(config: Dictionary, seeds: Array) -> Dictionary:
 		var total := 0
 		for r in runs: total += int(r.skill_uses.get(key,0))
 		skill_uses_mean[key] = float(total)/runs.size()
+	var enemy_skill_keys: Dictionary = {}
+	for r in runs:
+		for key in r.enemy_skill_uses: enemy_skill_keys[key] = true
+	var enemy_skill_uses_mean: Dictionary = {}
+	for key in enemy_skill_keys:
+		var total := 0
+		for r in runs: total += int(r.enemy_skill_uses.get(key,0))
+		enemy_skill_uses_mean[key] = float(total)/runs.size()
+	var interrupts_total := 0
+	for r in runs: interrupts_total += int(r.interrupts)
+	var interrupts_mean := float(interrupts_total)/runs.size()
 	return {"distinct_outcomes":distinct.size(),"samples":runs.size(),"results":results,"win_rate":float(wins)/runs.size(),"win_ci":wilson(wins,runs.size()),
 		"damage":summary(per_member),"damage_wins_per_member":summary(runs.filter(func(r): return r.result == "WIN").map(func(r): return r.damage_taken.reduce(func(a,b): return a+b,0)/size)),
-		"guards":summary(runs.map(func(r): return r.guards_used)),"redirects":summary(runs.map(func(r): return r.protect_redirects)),"skill_uses_mean":skill_uses_mean,
+		"guards":summary(runs.map(func(r): return r.guards_used)),"redirects":summary(runs.map(func(r): return r.protect_redirects)),"skill_uses_mean":skill_uses_mean,"enemy_skill_uses_mean":enemy_skill_uses_mean,"interrupts_mean":interrupts_mean,
 		"rounds":summary(runs.map(func(r): return r.rounds)),
 		"first_death":summary(runs.filter(func(r): return r.first_death_round > 0).map(func(r): return r.first_death_round)),
 		"before_first":summary(runs.map(func(r): return r.damage_before_first_action)),
