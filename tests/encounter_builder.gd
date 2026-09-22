@@ -63,4 +63,11 @@ func run() -> void:
 	for y in range(1,3):
 		for x in range(1,4): tiny.append(Vector2i(x,y))
 	check(not Builder.place(members,tiny,[Vector2i(2,0)],Vector2i(-1,-1),[],{},rng(1)),"a 3x2 room cannot keep members three cells from the door")
+	# Starvation: a one-row table whose guardrails saturate must still terminate.
+	var original_table: Array = Builder.content.species
+	Builder.content.species = [{"species_id":"goblin","display_name":"고블린","max_health":28,"min_depth":1,"max_depth":4,"rarity":1000,"curve":"FLAT","threat":2,"roles":["CASTER"],"band":null}]
+	var starved: Array = Builder.fill(rng(1),1,9,false)
+	Builder.content.species = original_table
+	check(starved.size() >= 1 and starved.size() <= 4,"a saturated single-role table still returns a bounded group")
+	check(Builder.table().size() == 8,"the species table is restored")
 	print("Encounter builder: %d failures" % failures); quit(1 if failures else 0)

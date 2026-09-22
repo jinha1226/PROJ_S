@@ -7,6 +7,7 @@ const ROLE_BONUS := {"MELEE":0,"RANGED":1,"CASTER":2}
 const ROLE_WEIGHTS := {"MELEE":60,"RANGED":30,"CASTER":10}
 const MAX_MEMBERS := 4
 const MAX_REROLLS := 20
+const MAX_DRAWS := 40
 const OOD_PERCENT := 10
 
 static func table() -> Array:
@@ -91,7 +92,11 @@ static func attempt(rng: RandomNumberGenerator, depth: int, budget: int, ood: bo
 	var remaining := budget
 	var table_depth := depth
 	if ood and rng.randi_range(1,100) <= OOD_PERCENT: table_depth = depth+1
+	var draws := 0
 	while remaining >= 1 and members.size() < MAX_MEMBERS:
+		# A bounded number of draws: a table whose guardrails saturate must not spin.
+		draws += 1
+		if draws > MAX_DRAWS: break
 		var rows: Array = candidates(table_depth,remaining+1)
 		if rows.is_empty(): break
 		var row: Dictionary = pick_weighted(rng,rows,rows.map(func(r): return weight(r,table_depth)))
