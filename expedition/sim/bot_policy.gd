@@ -11,11 +11,9 @@ static func step(s, policy: String) -> String:
 		if hero.hp < 10 and s.supplies[5] > 0 and s.use_supply(5): return "HEAL"
 	if s.combat_enemies().is_empty() and approach(s,hero): return "MOVE"
 	if policy == "rules":
-		# The hero reads the same rule list companions do; no potions or bandages
-		# here, so a skill's worth is never masked by supplies.
-		var choice: Dictionary = s.Tactics.choose(s,hero)
-		if s.act(choice.kind,choice.cell): return choice.kind
-		return "WAIT" if s.act("WAIT",hero.pos) else ""
+		# The hero and the party read the same rule list the game runs; one call
+		# is one round, so the runner's tallies come from battle_stats.
+		return "AUTO" if s.auto_step() else ""
 	if s.auto_attack(): return "ATTACK"
 	return "WAIT" if s.act("WAIT",hero.pos) else ""
 

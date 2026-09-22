@@ -6,6 +6,9 @@ const Fixture = preload("res://tests/floor_fixture.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
 const Knobs = preload("res://expedition/knobs.gd")
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
+const Runner = preload("res://expedition/sim/encounter_runner.gd")
+const Policy = preload("res://expedition/sim/bot_policy.gd")
+const Arena = preload("res://expedition/sim/encounter_arena.gd")
 var failures := 0
 var checks := 0
 func check(ok: bool, reason: String) -> void:
@@ -18,6 +21,8 @@ func run() -> void:
 	stops()
 	commands()
 	knobs()
+	stats()
+	sim()
 	print("Autobattle: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 ## Three members with the basics equipped, one revived melee foe next to the hero.
@@ -206,3 +211,38 @@ func knobs() -> void:
 	d.foes[0].pos = d.c+Vector2i(1,0); s.floor_state.observe(s)
 	choice = s.Tactics.choose(s,hero)
 	check(choice.kind == "MOVE" and s.distance(choice.cell,d.foes[0].pos) > 1,"below the retreat line the hero opens distance")
+
+## The battle report's tallies: one dictionary per battle, reset at BATTLE_START.
+func stats() -> void:
+	var d := skirmish(); var s = d.s
+	d.foes[0].pos = d.c+Vector2i(1,0); s.floor_state.observe(s)
+	check(s.auto_stop_reason() == "BATTLE_START" and s.battle_stats.rounds == 0 and s.battle_stats.enemies == 1,"battle start resets the stats")
+	s.auto_step()
+	var m: Dictionary = s.member_stats(d.hero.id)
+	check(s.battle_stats.rounds == 1 and m.dealt > 0,"hero damage is tallied")
+	check(s.battle_stats.members.has(s.party[1].id),"every member has a row")
+	d.foes[0].hp = 30
+	s.party[1].pos = d.c+Vector2i(0,1); d.hero.ap = 1
+	s.act_as(d.hero,"GUARD",s.party[1].pos,false)
+	d.foes[0].pos = d.c+Vector2i(1,1); s.floor_state.observe(s)
+	s.damage(s.party[1],6,d.foes[0].id,"IMPACT")
+	m = s.member_stats(d.hero.id)
+	check(m.guards == 1 and m.covers == 1 and m.redirected == 3,"guard count and redirected damage")
+	check(s.member_stats(s.party[1].id).taken == 0,"the covered member took nothing")
+	d.foes[0].hp = 1; s.damage(d.foes[0],5,d.hero.id,"SLASH")
+	s.floor_state.observe(s)
+	check(s.auto_stop_reason() == "BATTLE_END" and s.battle_stats.kills >= 1 and s.battle_stats.stops == ["BATTLE_START","BATTLE_END"],"kills and stops recorded at battle end")
+	check(not s.has_method("stats_redirects") and not s.get("stats_redirects"),"old counters are gone")
+
+## The simulator drives the rules policy through the same auto_step.
+func sim() -> void:
+	var hob := [{"species_id":"dcss_hobgoblin","role":"MELEE"}]
+	var arena: Dictionary = Arena.DEFAULT_SPEC.duplicate(true); arena.members = hob
+	var config := {"arena":arena,"party_size":3,"build":"melee_1","policy":"rules","rules":Session.DEFAULT_RULES,"supplies":[0,0,0,0,0,0],"max_rounds":40}
+	var one: Dictionary = Runner.run_one(config,11)
+	check(one.result in ["WIN","DEFEAT","TIMEOUT"] and one.rounds >= 1,"rules policy runs through auto_step")
+	check(one == Runner.run_one(config,11),"still deterministic")
+	check(one.has("skill_uses") and one.has("guards_used") and one.has("heals_used") and one.has("protect_redirects") and one.has("enemy_skill_uses") and one.has("interrupts"),"metric keys unchanged")
+	var s = Session.new(11,true,true,true,3)
+	s.rules_config = Session.DEFAULT_RULES.duplicate()
+	check(Policy.step(s,"rules") == "","no step before depart")

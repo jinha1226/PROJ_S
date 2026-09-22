@@ -119,13 +119,18 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 	match def.effect:
 		"SHIELD": actor.iron_guard = true
 		"HEAL":
+			var before: int = int(actor.hp)
 			actor.hp = mini(int(actor.max_hp),int(actor.hp)+int(def.heal))
 			s.Body.heal(actor)
+			var row: Dictionary = s.member_stats(actor.id)
+			if not row.is_empty(): row.healed += int(actor.hp)-before
 		"GUARD":
 			if victim.is_empty(): s.message(actor.name+"의 "+def.name+"가 빗나갔습니다.")
 			else:
 				actor["guarded"] = true
 				victim["protected_by"] = actor.id
+				var row: Dictionary = s.member_stats(actor.id)
+				if not row.is_empty(): row.guards += 1
 				s.message("%s · 엄호 → %s" % [actor.name,victim.name])
 		"PUSH":
 			if victim.is_empty(): s.message(actor.name+"의 "+def.name+"가 빗나갔습니다.")
@@ -163,4 +168,9 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 				if int(def.tile_wet) > 0: s.tile(cell).wet = maxi(int(s.tile(cell).wet),int(def.tile_wet))
 			if hit == 0 and def.target != "SELF": s.message(actor.name+"의 "+def.name+"가 빗나갔습니다.")
 	if int(def.cooldown) > 0: actor.cooldowns[id] = int(def.cooldown)+1
-	if actor.enemy: s.stats_enemy_skill[id] = int(s.stats_enemy_skill.get(id,0))+1
+	# Who pressed what, for the battle report: the monsters' parts in one pot,
+	# each member's in their own row.
+	if actor.enemy: s.battle_stats.enemy_parts[id] = int(s.battle_stats.enemy_parts.get(id,0))+1
+	else:
+		var row: Dictionary = s.member_stats(actor.id)
+		if not row.is_empty(): row.parts[id] = int(row.parts.get(id,0))+1

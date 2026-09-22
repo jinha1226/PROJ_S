@@ -38,7 +38,7 @@ static func interrupt(s, enemy: Dictionary) -> void:
 	if id.is_empty(): enemy.cast_cooldown = 3
 	else:
 		enemy.cooldowns[id] = int(Abilities.DEFINITIONS[id].cooldown)
-		s.stats_interrupts += 1
+		s.battle_stats.interrupts = int(s.battle_stats.get("interrupts",0))+1
 	enemy.cast_id = ""; enemy.cast_left = 0
 	s.intents = s.intents.filter(func(i): return i.id != enemy.id)
 	s.message(enemy.name+"의 시전이 끊겼습니다.")

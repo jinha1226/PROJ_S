@@ -49,9 +49,10 @@ var light := 90
 var loot := 0
 var bank := 0
 var serial := 0
-var stats_redirects := 0
-var stats_enemy_skill: Dictionary = {}
-var stats_interrupts := 0
+## Everything the battle report reads, gathered while the battle runs.
+## Reset when a battle starts; outside floor mode nothing resets it, so the
+## rows simply accumulate for whoever asks.
+var battle_stats: Dictionary = {}
 var world_time := 0
 var round_number := 0
 var expedition_number := 0
@@ -101,6 +102,7 @@ func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = f
 	var count: int = clampi(p_party_size,1,3) if p_party_size > 0 else (2 if companions else 1 if boss_trial else 3)
 	for i in range(count):
 		party.append(make_actor(i, ["아린", "브란", "세라"][i], false))
+	reset_battle_stats()
 	# Room and boss modes have no town to buy the basics in: start with them equipped.
 	if not floor_mode:
 		for actor in party:
@@ -140,6 +142,21 @@ func remember_important(actor: Dictionary, kind: String, subject: int, instigato
 	if actor.memory.remember(kind,serial,world_time,subject,instigator,salience):
 		recorded[key] = true; actor.important_memories = recorded
 
+## Clears the report and opens one row per member. The simulator calls this
+## itself at the arena, where no BATTLE_START stop event runs.
+func reset_battle_stats() -> void:
+	battle_stats = {"rounds":0,"enemies":combat_enemies().size() if phase == "BATTLE" else 0,"kills":0,"members":{},
+		"interrupts":0,"enemy_parts":{},"drops":{},"stops":[]}
+	for actor in party:
+		battle_stats.members[actor.id] = {"dealt":0,"taken":0,"guards":0,"covers":0,"redirected":0,
+			"parts":{},"healed":0,"downed":false,"conflict":bool(actor.get("conflicted",false))}
+
+## The row of one member, empty for an id that is not in the party — which is
+## what every tally below tests before it writes.
+func member_stats(id: int) -> Dictionary:
+	if not battle_stats.has("members"): reset_battle_stats()
+	return battle_stats.members.get(id,{})
+
 func alive() -> Array:
 	return party.filter(func(a): return a.hp > 0)
 
@@ -150,6 +167,7 @@ func depart() -> bool:
 		actor.important_memories = {}
 	expedition_number += 1
 	light = 90; loot = 0; hunger = 0
+	reset_battle_stats()
 	if floor_mode:
 		purchases = {}
 		result = {}; objective = {}
@@ -541,6 +559,7 @@ func companion_choice(actor: Dictionary) -> Dictionary:
 ## command or the rules, then the round ends. Game UI and simulator both call this.
 func auto_step() -> bool:
 	if not in_combat() or alive().is_empty(): return false
+	battle_stats.rounds = int(battle_stats.get("rounds",0))+1
 	# Snapshot before anyone acts: the stop events ask what changed *during* the
 	# round, so a death or a cleared field inside this step must still be a delta.
 	remember_round()
@@ -601,12 +620,15 @@ func auto_stop_reason() -> String:
 			continue
 		auto.last_stop = {"reason":reason,"round":round_number}
 		auto.stops_log.append(reason)
-		if reason == "BATTLE_START": open_battle_conflicts()
+		# The report belongs to one battle: the conflicts are opened first so
+		# that the fresh rows already carry who fights against their orders.
+		if reason == "BATTLE_START": open_battle_conflicts(); reset_battle_stats()
+		battle_stats.stops.append(reason)
 		remember_round()
 		return reason
 	# Nothing was raised, but a hard event happened: consume it so it cannot re-fire.
 	if hard:
-		if applies.BATTLE_START: open_battle_conflicts()
+		if applies.BATTLE_START: open_battle_conflicts(); reset_battle_stats()
 		remember_round()
 	for a in alive(): a.conflicted = Knobs.conflicted(a)
 	return ""
@@ -697,6 +719,7 @@ func roll_part(enemy: Dictionary) -> void:
 	var chance: int = Floor.drop_percent(light) if floor_mode else Abilities.DROP_PERCENT
 	if Hexaco.sample(seed_value,expedition_number*10000+room*100+enemy.id,"essence",100) >= chance: return
 	parts_bag[id] = int(parts_bag.get(id,0))+1
+	battle_stats.drops[id] = int(battle_stats.drops.get(id,0))+1
 	message(Abilities.DEFINITIONS[id].item+" 획득")
 
 func spend_growth(index: int, id: String, stat: bool = false) -> bool:
@@ -787,8 +810,10 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	# 엄호: the protector steps in front. Counted and logged once, and only when
 	# the hit really lands on somebody else.
 	var recipient: Dictionary = protection_recipient(target)
-	if recipient.id != target.id:
-		stats_redirects += 1
+	var covered: bool = recipient.id != target.id
+	if covered:
+		var cover_row: Dictionary = member_stats(recipient.id)
+		if not cover_row.is_empty(): cover_row.covers += 1
 		message("%s %s 대신 맞습니다." % [subject_name(recipient.name),target.name])
 		target = recipient
 	if boss_trial and target.enemy and rooms[room].shield:
@@ -816,6 +841,12 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	if injury.get("accepted",false) and plan.get("condition_before","") != plan.get("condition_after","") and plan.get("condition_after","") in ["DISABLED","SEVERED"]:
 		effect["body_injury"] = true
 		effect["part"] = Body.PART_NAMES.get(plan.get("part_id",""),"신체")
+	var dealt_row: Dictionary = member_stats(source) if not attacker.is_empty() and not attacker.enemy else {}
+	if not dealt_row.is_empty(): dealt_row.dealt += lost
+	var taken_row: Dictionary = member_stats(target.id) if not target.enemy else {}
+	if not taken_row.is_empty():
+		taken_row.taken += lost
+		if covered: taken_row.redirected += lost
 	target.hp -= lost; Body.sync(target)
 	if floor_mode and target.enemy and lost > 0: Floor.MonsterAI.on_hit(self,target)
 	if not target.enemy:
@@ -824,12 +855,15 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 			remember_important(target,"SELF_HARM",target.id+1,source+1,800 if target.hp <= 0 else 750)
 		stress(target, 5 + lost / 2)
 		if target.hp <= 0:
+			if not taken_row.is_empty(): taken_row.downed = true
 			for ally in alive():
 				remember_important(ally,"ALLY_LOST",target.id+1,source+1,900)
 				stress(ally, 22)
 	message("%s %s에게 %d의 피해를 주었습니다.%s" % [subject_name(source_name),target.name,lost," "+subject_name(target.name)+" 쓰러졌습니다." if target.hp <= 0 else ""])
 	if passive_hit: Passives.after_hit(self,target,attacker,form)
-	if target.enemy and target.hp <= 0: roll_part(target)
+	if target.enemy and target.hp <= 0:
+		battle_stats.kills = int(battle_stats.get("kills",0))+1
+		roll_part(target)
 
 func plan_enemies() -> void:
 	if floor_mode: Floor.MonsterAI.plan(self); return

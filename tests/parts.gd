@@ -300,7 +300,7 @@ func telegraph() -> void:
 	check(not d.foe.charging and s.intents.is_empty(),"resolved on the next turn")
 	check(d.hero.hp == hp-s.Growth.incoming(d.hero,14+s.floor_state.enemy_bonus(s.light)),"club lands for its damage plus the darkness bonus")
 	check(int(d.foe.cooldowns.HOB_CLUB) == 4,"cooldown set (3 + 1)")
-	check(int(s.stats_enemy_skill.get("HOB_CLUB",0)) == 1,"enemy skill use counted")
+	check(int(s.battle_stats.enemy_parts.get("HOB_CLUB",0)) == 1,"enemy skill use counted")
 	MonsterAI.turn(s,d.foe)
 	check(not d.foe.charging and int(d.foe.cooldowns.HOB_CLUB) == 3,"on cooldown the role attack runs and the cooldown ticks")
 	# Interrupt by push: cooldown consumed, one round of recovery.
@@ -308,15 +308,15 @@ func telegraph() -> void:
 	MonsterAI.turn(s,d.foe)
 	check(s.act("PUSH",d.foe.pos),"hero pushes the charging foe")
 	check(not d.foe.charging and s.intents.is_empty() and d.foe.cast_recovery == 1 and int(d.foe.cooldowns.HOB_CLUB) == 3,"push cancels the part and burns its cooldown")
-	check(s.stats_interrupts == 1,"interrupt counted")
+	check(s.battle_stats.interrupts == 1,"interrupt counted")
 	# Only 밀치기 breaks a part charge; an ordinary hit leaves it standing (spec §2.2).
 	# The caster role's own spell is still broken by damage — tests/monster_roles.gd "damage interrupts spell".
 	d = duel(); s = d.s; give_part(d.foe,"HOB_CLUB"); d.foe.cooldowns = {}
 	MonsterAI.turn(s,d.foe)
 	hp = d.hero.hp
-	check(s.act("ATTACK",d.foe.pos) and d.foe.charging and s.intents.size() == 1 and s.stats_interrupts == 0,"a hit leaves the part charge standing")
+	check(s.act("ATTACK",d.foe.pos) and d.foe.charging and s.intents.size() == 1 and s.battle_stats.interrupts == 0,"a hit leaves the part charge standing")
 	MonsterAI.turn(s,d.foe)
-	check(d.hero.hp < hp and int(s.stats_enemy_skill.get("HOB_CLUB",0)) == 1,"the club still resolves after its owner was hit")
+	check(d.hero.hp < hp and int(s.battle_stats.enemy_parts.get("HOB_CLUB",0)) == 1,"the club still resolves after its owner was hit")
 	# Target steps away: a radius-0 part misses.
 	d = duel(); s = d.s; give_part(d.foe,"HOB_CLUB"); d.foe.cooldowns = {}
 	MonsterAI.turn(s,d.foe)
@@ -347,7 +347,7 @@ func telegraph() -> void:
 	MonsterAI.turn(s,d.foe)
 	check(comrade.hp == 30,"the announced cell's new occupant is a fellow monster and takes nothing")
 	check(s.log_lines[-1].contains("빗나갔습니다"),"a lunge onto one's own side is a miss")
-	check(int(s.stats_enemy_skill.get("GOBLIN_SHIV",0)) == 1,"the use is still counted")
+	check(int(s.battle_stats.enemy_parts.get("GOBLIN_SHIV",0)) == 1,"the use is still counted")
 	# A prep 0 part fires at once; a longer charge keeps its announcement until the count runs out.
 	# (DEFINITIONS is a const dictionary and read-only at runtime, so prep comes from the catalog.)
 	d = duel(); s = d.s; give_part(d.foe,"HEAVY_STRIKE"); d.foe.cooldowns = {}

@@ -56,12 +56,13 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 	s.light = int(config.arena.get("light",90)); s.supplies = config.supplies.duplicate()
 	var cap: int = int(config.rules.get("solo_max_members",0)) if size == 1 else 0
 	Floor.apply(s,theme,Arena.layout(config.arena,theme,seed,cap))
+	# No stop events run here, so the arena opens the battle report itself.
+	s.reset_battle_stats()
 	var taken: Array = []
 	for _a in s.party: taken.append(0)
 	var dealt: Dictionary = {}
 	var counters := {"acted":false,"before_first":0}
-	var first_death := -1; var heals := 0; var guards := 0; var actions := 0
-	var skill_uses: Dictionary = {}
+	var first_death := -1; var heals := 0; var actions := 0
 	var idle := 0
 	var steps := 0
 	# Diagnosis only: absent by default, so the measured path is untouched.
@@ -79,11 +80,9 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 		var kind: String = Policy.step(s,config.policy)
 		if kind != "":
 			actions += 1; counters.acted = true; idle = 0
+			# A potion is the one action no part records; everything the party
+			# pressed is tallied in battle_stats and summed after the loop.
 			if kind == "HEAL": heals += 1
-			elif kind == "GUARD": guards += 1
-			# Only deliberate skill presses. Moves, waits and plain attacks stay out.
-			if s.Abilities.DEFINITIONS.has(kind):
-				skill_uses[kind] = int(skill_uses.get(kind,0))+1
 		else:
 			idle += 1
 			if idle >= 2: s.act("WAIT",s.party[s.selected].pos); idle = 0
@@ -95,10 +94,19 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 			result = "WIN"; break
 	harvest(s,taken,dealt,counters)
 	if s.phase != "BATTLE" and result != "WIN": result = "DEFEAT"
+	# Every member's presses, whichever policy pressed them.
+	var skill_uses: Dictionary = {}
+	var guards := 0; var redirects := 0
+	for id in s.battle_stats.members:
+		var row: Dictionary = s.battle_stats.members[id]
+		guards += int(row.guards); redirects += int(row.covers)
+		for part in row.parts:
+			skill_uses[part] = int(skill_uses.get(part,0))+int(row.parts[part])
+			if s.Abilities.DEFINITIONS[part].effect == "HEAL": heals += int(row.parts[part])
 	return {"result":result,"rounds":s.round_number,"damage_taken":taken,"hp_end":s.party.map(func(a): return a.hp),
 		"deaths":s.party.filter(func(a): return a.hp <= 0).map(func(a): return a.id),"first_death_round":first_death,
-		"heals_used":heals,"guards_used":guards,"protect_redirects":s.stats_redirects,"skill_uses":skill_uses,"player_actions":actions,"damage_before_first_action":int(counters.before_first),
-		"enemy_count":s.enemies.size(),"enemy_damage_dealt":dealt,"enemy_skill_uses":s.stats_enemy_skill.duplicate(),"interrupts":s.stats_interrupts}
+		"heals_used":heals,"guards_used":guards,"protect_redirects":redirects,"skill_uses":skill_uses,"player_actions":actions,"damage_before_first_action":int(counters.before_first),
+		"enemy_count":s.enemies.size(),"enemy_damage_dealt":dealt,"enemy_skill_uses":s.battle_stats.enemy_parts.duplicate(),"interrupts":int(s.battle_stats.interrupts)}
 
 static func wilson(wins: int, n: int) -> Array:
 	if n == 0: return [0.0,0.0]
