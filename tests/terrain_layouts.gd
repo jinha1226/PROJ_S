@@ -40,5 +40,30 @@ func _initialize() -> void:
 		for direction in range(4):
 			if not (mask & (1 << direction)): walls[art.Masonry.DIRECTIONS[direction]] = true
 		check(art.Masonry.exposed(Vector2i.ZERO,func(p): return walls.has(p)) == mask,"wall junction resolves every cardinal combination")
+	# Every adjacent wall pair must share the same coping profile at its seam.
+	# Covers straight runs, concave/convex corners, ends and T/cross junctions.
+	for mask in range(1024):
+		var walls := {Vector2i(1,1):true,Vector2i(2,1):true}
+		var bit := 0
+		for y in range(3):
+			for x in range(4):
+				var p := Vector2i(x,y)
+				if walls.has(p): continue
+				if mask & (1 << bit): walls[p] = true
+				bit += 1
+		var solid := func(p): return walls.has(p)
+		var left: Array = art.Masonry.contour_parts(Vector2i(1,1),solid)
+		var right: Array = art.Masonry.contour_parts(Vector2i(2,1),solid)
+		for sample in [0.01,0.12,0.30,0.50,0.70,0.88,0.99]:
+			var lhs: bool = left.any(func(r): return r.has_point(Vector2(0.999,sample)))
+			var rhs: bool = right.any(func(r): return r.has_point(Vector2(0.001,sample)))
+			check(lhs == rhs,"coping continues across horizontal wall seams")
+		var rotated := {}
+		for p in walls: rotated[Vector2i(p.y,p.x)] = true
+		var solid_rotated := func(p): return rotated.has(p)
+		var upper: Array = art.Masonry.contour_parts(Vector2i(1,1),solid_rotated)
+		var lower: Array = art.Masonry.contour_parts(Vector2i(1,2),solid_rotated)
+		for sample in [0.01,0.12,0.30,0.50,0.70,0.88,0.99]:
+			check(upper.any(func(r): return r.has_point(Vector2(sample,0.999))) == lower.any(func(r): return r.has_point(Vector2(sample,0.001))),"coping continues across vertical wall seams")
 	print("Terrain layouts: %d failures; 100 seeds / 900 rooms" % failures)
 	quit(1 if failures else 0)

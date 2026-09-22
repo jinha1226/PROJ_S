@@ -99,7 +99,9 @@ func tile_polygon(point: Vector2) -> PackedVector2Array:
 	return result
 
 func is_wall_tile(point: Vector2i) -> bool:
-	return not session.inside(point) or session.tile(point).terrain == "wall"
+	if not session.inside(point): return true
+	if session.floor_mode and not session.floor_state.explored.has(point): return true
+	return session.tile(point).terrain == "wall"
 
 func outline(points: PackedVector2Array, color: Color, width: float = 1) -> void:
 	var closed := points.duplicate(); closed.append(points[0]); draw_polyline(closed,color,width,true)
@@ -132,6 +134,29 @@ func draw_movement_previews() -> void:
 		draw_line(tail,tip,color,2.5,true)
 		draw_colored_polygon(PackedVector2Array([tip,tip-direction*8+normal*5,tip-direction*8-normal*5]),color)
 
+func paint_terrain() -> void:
+	var walls: Array = []
+	var camera := camera_cell()
+	# One additional row supplies the raised portion of walls below the viewport.
+	for y in range(camera.y,camera.y+visible_side()+1):
+		for x in range(camera.x,camera.x+visible_side()):
+			var point := Vector2i(x,y)
+			if not session.inside(point): continue
+			if session.floor_mode and not session.floor_state.explored.has(point): continue
+			var cell: Dictionary = session.tile(point)
+			var rect := Rect2(project(Vector2(point)),Vector2.ONE*half_width*2)
+			var tint := Color.WHITE
+			if session.floor_mode and not session.floor_state.visible.has(point):
+				var observer: Dictionary = session.floor_state.observer(session)
+				if not observer.is_empty() and Vector2(observer.pos).distance_to(Vector2(point)) <= session.floor_state.sight_radius(session.light): tint = Color(0.2,0.2,0.2)
+			if cell.terrain == "wall":
+				draw_rect(rect,Color("090c10"))
+				walls.append({"point":point,"rect":rect,"tint":tint})
+			else:
+				draw_texture_rect(Art.terrain(cell,point),rect,false,tint)
+				Art.Masonry.paint_floor_shadow(self,rect,point,is_wall_tile)
+	Art.Masonry.paint_walls(self,walls,is_wall_tile)
+
 func _draw() -> void:
 	geometry()
 	draw_rect(Rect2(Vector2.ZERO,size),Color("0b1117"))
@@ -140,6 +165,7 @@ func _draw() -> void:
 		return
 	var camera := impact_transform()
 	draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
+	paint_terrain()
 	# Basic melee reach is implicit; only an explicitly selected skill shows range.
 	var attacks: Array = []
 	if session.Abilities.DEFINITIONS.has(targeting_skill) and session.Abilities.DEFINITIONS[targeting_skill].target == "ENEMY" and session.Abilities.DEFINITIONS[targeting_skill].range > 0:
@@ -161,17 +187,7 @@ func _draw() -> void:
 			if session.floor_mode and not session.floor_state.explored.has(point): continue
 			var cell: Dictionary = session.tile(point)
 			var polygon := tile_polygon(Vector2(point))
-			var ground_rect := Rect2(project(Vector2(point)),Vector2.ONE*half_width*2)
-			if cell.terrain == "wall":
-				Art.Masonry.paint_wall(self,ground_rect,point,is_wall_tile)
-			else:
-				draw_texture_rect(Art.terrain(cell,point),ground_rect,false)
-				Art.Masonry.paint_floor_shadow(self,ground_rect,point,is_wall_tile)
-			if session.floor_mode and not session.floor_state.visible.has(point):
-				var observer: Dictionary = session.floor_state.observer(session)
-				if not observer.is_empty() and Vector2(observer.pos).distance_to(Vector2(point)) <= session.floor_state.sight_radius(session.light):
-					draw_colored_polygon(polygon,Color(0,0,0,0.8))
-				continue
+			if session.floor_mode and not session.floor_state.visible.has(point): continue
 			if cell.terrain not in ["stone","wall"]: outline(polygon,Color(0.08,0.10,0.12,0.25))
 			var center := project(Vector2(point)+Vector2.ONE*0.5)
 			if session.floor_mode and session.floor_state.features.has(point):

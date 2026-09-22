@@ -40,42 +40,59 @@ static func exposed(point: Vector2i, is_wall: Callable) -> int:
 		if not is_wall.call(point+DIRECTIONS[i]): mask |= 1 << i
 	return mask
 
-static func paint_wall(canvas: CanvasItem, rect: Rect2, point: Vector2i, is_wall: Callable) -> void:
+## 0x72-style construction: one raised wall mass, a continuous coping outline,
+## and south-facing masonry below it. Side walls are the SAME coping, not facades.
+const HEIGHT := 0.72
+const COPING := 0.23
+
+static func raised_rect(rect: Rect2) -> Rect2:
+	return Rect2(rect.position-Vector2(0,rect.size.y*HEIGHT),rect.size)
+
+static func contour_parts(point: Vector2i, is_wall: Callable) -> Array:
 	var mask := exposed(point,is_wall)
-	var front := (mask & SOUTH) != 0
-	var face := 0 if front else 1 if mask & EAST else 2 if mask & WEST else 3
-	# Raise the back edge only into solid wall space; never cover a walkable cell.
-	var raised := rect
-	if front and is_wall.call(point+Vector2i.UP):
-		raised.position.y -= rect.size.y*0.30
-		raised.size.y += rect.size.y*0.30
-	canvas.draw_texture_rect(wall_tile(face),raised,false,Color.WHITE if face != 3 else Color(0.52,0.55,0.60))
-	# Narrow exposed side ends preserve vertical coping at outside corners.
-	if front and mask & EAST:
-		var strip := Rect2(rect.position+Vector2(rect.size.x*0.80,0),Vector2(rect.size.x*0.20,rect.size.y))
-		canvas.draw_texture_rect_region(WALLS,strip,Rect2(Vector2(WALLS.get_width()*0.5,0),Vector2(WALLS.get_width()*0.10,WALLS.get_height()*0.5)))
-	if front and mask & WEST:
-		var strip := Rect2(rect.position,Vector2(rect.size.x*0.20,rect.size.y))
-		canvas.draw_texture_rect_region(WALLS,strip,Rect2(Vector2(WALLS.get_width()*0.40,WALLS.get_height()*0.5),Vector2(WALLS.get_width()*0.10,WALLS.get_height()*0.5)))
-	var rim := maxf(1,rect.size.x*0.07)
-	var shade := Color("101114")
-	var highlight := Color("5a5650")
-	# Edge treatment is shared, so junctions never depend on AI-generated corners.
-	if mask & NORTH:
-		canvas.draw_rect(Rect2(rect.position,Vector2(rect.size.x,rim)),highlight)
-		canvas.draw_line(rect.position+Vector2(0,rim),rect.position+Vector2(rect.size.x,rim),shade,1)
-	if mask & WEST:
-		canvas.draw_rect(Rect2(rect.position,Vector2(rim,rect.size.y)),highlight)
-		canvas.draw_line(rect.position+Vector2(rim,0),rect.position+Vector2(rim,rect.size.y),shade,1)
-	if mask & EAST: canvas.draw_rect(Rect2(rect.position+Vector2(rect.size.x-rim,0),Vector2(rim,rect.size.y)),shade)
-	if mask & SOUTH: canvas.draw_rect(Rect2(rect.position+Vector2(0,rect.size.y-rim),Vector2(rect.size.x,rim)),shade)
-	# Concave junctions: two connected walls with an open diagonal.
+	var parts: Array = []
+	if mask & NORTH: parts.append(Rect2(0,0,1,COPING))
+	if mask & EAST: parts.append(Rect2(1-COPING,0,COPING,1))
+	if mask & SOUTH: parts.append(Rect2(0,1-COPING,1,COPING))
+	if mask & WEST: parts.append(Rect2(0,0,COPING,1))
 	for corner in range(4):
 		var a: Vector2i = [Vector2i.UP,Vector2i.UP,Vector2i.DOWN,Vector2i.DOWN][corner]
 		var b: Vector2i = [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.RIGHT,Vector2i.LEFT][corner]
 		if is_wall.call(point+a) and is_wall.call(point+b) and not is_wall.call(point+a+b):
-			var offset := Vector2(0 if b.x < 0 else rect.size.x-rim,0 if a.y < 0 else rect.size.y-rim)
-			canvas.draw_rect(Rect2(rect.position+offset,Vector2.ONE*rim),highlight if corner == 0 else shade)
+			parts.append(Rect2(Vector2(0 if b.x < 0 else 1-COPING,0 if a.y < 0 else 1-COPING),Vector2.ONE*COPING))
+	return parts
+
+static func paint_walls(canvas: CanvasItem, cells: Array, is_wall: Callable) -> void:
+	# Explicit passes prevent a later tile from painting over an earlier corner.
+	for cell in cells:
+		var rect := raised_rect(cell.rect)
+		canvas.draw_texture_rect(wall_tile(3),rect,false,Color(0.22,0.23,0.25)*cell.tint)
+	for cell in cells:
+		if not (exposed(cell.point,is_wall) & SOUTH): continue
+		var rect: Rect2 = cell.rect
+		var face := Rect2(rect.position+Vector2(0,rect.size.y*(1-HEIGHT)),Vector2(rect.size.x,rect.size.y*HEIGHT))
+		var region: Rect2 = wall_tile(0).region
+		region.position.y += region.size.y*0.25; region.size.y *= 0.75
+		canvas.draw_texture_rect_region(WALLS,face,region,cell.tint)
+		canvas.draw_rect(Rect2(face.position+Vector2(0,face.size.y-1),Vector2(face.size.x,1)),Color("090b0e")*cell.tint)
+	for cell in cells:
+		var rect := raised_rect(cell.rect)
+		for part in contour_parts(cell.point,is_wall):
+			var strip := Rect2(rect.position+part.position*rect.size,part.size*rect.size)
+			paint_coping(canvas,strip,cell.tint)
+
+static func paint_coping(canvas: CanvasItem, rect: Rect2, tint: Color) -> void:
+	# Every orientation uses one material sample and the same physical width.
+	# Texture UV rotation is in the renderer; no independent vertical art is mixed in.
+	var source: Rect2 = wall_tile(0).region
+	var top_left := source.position+source.size*Vector2(0.035,0.035)
+	var extent := source.size*Vector2(0.93,0.13)
+	var uv := PackedVector2Array([top_left,top_left+Vector2(extent.x,0),top_left+extent,top_left+Vector2(0,extent.y)])
+	for i in range(4): uv[i] /= Vector2(WALLS.get_size())
+	if rect.size.y > rect.size.x:
+		uv = PackedVector2Array([uv[3],uv[0],uv[1],uv[2]])
+	var points := PackedVector2Array([rect.position,rect.position+Vector2(rect.size.x,0),rect.end,rect.position+Vector2(0,rect.size.y)])
+	canvas.draw_polygon(points,PackedColorArray([tint]),uv,WALLS)
 
 static func paint_floor_shadow(canvas: CanvasItem, rect: Rect2, point: Vector2i, is_wall: Callable) -> void:
 	# Shadows stay inside the walkable cell; they never change collision or hide actors.
