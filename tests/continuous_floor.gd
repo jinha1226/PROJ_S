@@ -23,6 +23,7 @@ func run() -> void:
 	check(s.depart() and s.tiles.size() == s.BOARD_SIDE*s.BOARD_SIDE and s.BOARD_SIDE == 64,"one continuous 64x64 floor")
 	check(s.rooms.size() == 1 and s.doors().is_empty(),"no room travel graph")
 	check(s.enemies.size() >= 3 and s.enemies.size() <= 20 and s.floor_state.layout.encounters.size() >= 3,"generated roster grouped into encounters")
+	check([s.enemies[0].essence_id,s.enemies[1].essence_id,s.enemies[2].essence_id] == ["BOMB","SHOCKWAVE","IRON_HIDE"],"floor essence drops keep their cycling order")
 	check(s.floor_state.explored.size() < s.BOARD_SIDE*s.BOARD_SIDE,"unexplored fog retained")
 	check(s.safe_management(),"safe exploration permits management")
 	s.light = 50

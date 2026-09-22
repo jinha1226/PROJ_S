@@ -3,14 +3,27 @@ extends RefCounted
 ## GrowthBuildState.commit_mutation_swap: catalog, once-only loot, learned/loadout split.
 const DROP_PERCENT := 50
 const DEFINITIONS = {
-	"SHOCKWAVE":{"name":"수렁 충격파","item":"수렁의 핵","description":"범위 2 · 피해 16 · 아군 피해 · 재사용 3턴","target":"SELF","range":0,"radius":2,"damage":16,"cooldown":3,"effect":"DAMAGE","axis":"MAGIC","rule_when":"ALWAYS"},
-	"BOMB":{"name":"폭탄 투척","item":"암살자의 화약낭","description":"사거리 4 · 범위 1 · 피해 16 · 아군 피해 · 재사용 3턴","target":"ENEMY","range":4,"radius":1,"damage":16,"cooldown":3,"effect":"DAMAGE","axis":"RANGED","rule_when":"ALWAYS"},
-	"IRON_HIDE":{"name":"철갑 방어","item":"거인의 철갑핵","description":"받는 피해 -75% · 1턴 · 재사용 3턴","target":"SELF","range":0,"radius":0,"damage":0,"cooldown":3,"effect":"SHIELD","axis":"","rule_when":"DANGER"},
-	"HEAVY_STRIKE":{"name":"시험 강타","item":"시험용 강타 문양","description":"인접 대상 · 피해 28 · 재사용 3턴","target":"ENEMY","range":1,"radius":0,"damage":28,"cooldown":3,"effect":"DAMAGE","axis":"MELEE","rule_when":"ALWAYS"},
-	"THROWING_KNIFE":{"name":"시험 투척","item":"시험용 투척 문양","description":"사거리 4 · 피해 10 · 재사용 1턴","target":"ENEMY","range":4,"radius":0,"damage":10,"cooldown":1,"effect":"DAMAGE","axis":"RANGED","rule_when":"ALWAYS"},
-	"FIELD_DRESSING":{"name":"시험 응급처치","item":"시험용 처치 문양","description":"자신 체력 +15 · 재사용 4턴","target":"SELF","range":0,"radius":0,"damage":0,"heal":15,"cooldown":4,"effect":"HEAL","axis":"","rule_when":"HP"},
-	"LUNGE":{"name":"시험 돌진","item":"시험용 돌진 문양","description":"사거리 3 · 적 옆으로 이동 후 피해 12 · 재사용 3턴","target":"ENEMY","range":3,"radius":0,"damage":12,"cooldown":3,"effect":"LUNGE","axis":"MELEE","rule_when":"ALWAYS"}}
+	"SHOCKWAVE":{"name":"수렁 충격파","item":"수렁의 핵","description":"범위 2 · 피해 16 · 아군 피해 · 재사용 3턴","target":"SELF","range":0,"radius":2,"damage":16,"cooldown":3,"effect":"DAMAGE","axis":"MAGIC","rule_when":"ALWAYS","short":"충격파","shape":"CIRCLE","self_hit":false,"drop":true,"icon":4},
+	"BOMB":{"name":"폭탄 투척","item":"암살자의 화약낭","description":"사거리 4 · 범위 1 · 피해 16 · 아군 피해 · 재사용 3턴","target":"ENEMY","range":4,"radius":1,"damage":16,"cooldown":3,"effect":"DAMAGE","axis":"RANGED","rule_when":"ALWAYS","short":"폭탄","shape":"SQUARE","self_hit":true,"drop":true,"icon":3},
+	"IRON_HIDE":{"name":"철갑 방어","item":"거인의 철갑핵","description":"받는 피해 -75% · 1턴 · 재사용 3턴","target":"SELF","range":0,"radius":0,"damage":0,"cooldown":3,"effect":"SHIELD","axis":"","rule_when":"DANGER","short":"철갑","shape":"SQUARE","self_hit":false,"drop":true,"icon":5},
+	"HEAVY_STRIKE":{"name":"시험 강타","item":"시험용 강타 문양","description":"인접 대상 · 피해 28 · 재사용 3턴","target":"ENEMY","range":1,"radius":0,"damage":28,"cooldown":3,"effect":"DAMAGE","axis":"MELEE","rule_when":"ALWAYS","short":"강타","shape":"SQUARE","self_hit":false,"drop":false,"icon":5},
+	"THROWING_KNIFE":{"name":"시험 투척","item":"시험용 투척 문양","description":"사거리 4 · 피해 10 · 재사용 1턴","target":"ENEMY","range":4,"radius":0,"damage":10,"cooldown":1,"effect":"DAMAGE","axis":"RANGED","rule_when":"ALWAYS","short":"투척","shape":"SQUARE","self_hit":false,"drop":false,"icon":5},
+	"FIELD_DRESSING":{"name":"시험 응급처치","item":"시험용 처치 문양","description":"자신 체력 +15 · 재사용 4턴","target":"SELF","range":0,"radius":0,"damage":0,"heal":15,"cooldown":4,"effect":"HEAL","axis":"","rule_when":"HP","short":"응급","shape":"SQUARE","self_hit":false,"drop":false,"icon":5},
+	"LUNGE":{"name":"시험 돌진","item":"시험용 돌진 문양","description":"사거리 3 · 적 옆으로 이동 후 피해 12 · 재사용 3턴","target":"ENEMY","range":3,"radius":0,"damage":12,"cooldown":3,"effect":"LUNGE","axis":"MELEE","rule_when":"ALWAYS","short":"돌진","shape":"SQUARE","self_hit":false,"drop":false,"icon":5}}
 const STARTERS = ["PUSH","GUARD"]
+## Basic actions, not catalog abilities: the only remaining literal id list.
+const BASIC_BADGES := {"PUSH":"밀치기","GUARD":"방어","ATTACK":"공격","MOVE":"이동","WAIT":"대기"}
+
+## Ability ids that drop as essences, in DEFINITIONS insertion order.
+static func droppable() -> Array:
+	var result: Array = []
+	for id in DEFINITIONS:
+		if DEFINITIONS[id].drop: result.append(id)
+	return result
+
+## Short badge text for any action kind, catalog ability or basic action.
+static func badge(kind: String) -> String:
+	return str(DEFINITIONS[kind].short) if DEFINITIONS.has(kind) else str(BASIC_BADGES.get(kind,kind))
 
 static func default_rule(id: String) -> Dictionary:
 	var def: Dictionary = DEFINITIONS[id]
@@ -45,7 +58,7 @@ static func cells(s, actor: Dictionary, id: String, target: Vector2i) -> Array:
 	for y in range(maxi(0,center.y-def.radius),mini(s.BOARD_SIDE,center.y+def.radius+1)):
 		for x in range(maxi(0,center.x-def.radius),mini(s.BOARD_SIDE,center.x+def.radius+1)):
 			var cell := Vector2i(x,y)
-			var in_range: bool = s.distance(center,cell) <= def.radius if id == "SHOCKWAVE" else maxi(absi(center.x-x),absi(center.y-y)) <= def.radius
+			var in_range: bool = s.distance(center,cell) <= def.radius if def.shape == "CIRCLE" else maxi(absi(center.x-x),absi(center.y-y)) <= def.radius
 			if in_range and s.tile(cell).terrain != "wall" and s.TurnCore.Geometry.sees(center,cell,func(p): return s.tile(p).terrain == "wall"): result.append(cell)
 	return result
 
@@ -86,7 +99,7 @@ static func execute(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 			for victim in s.party+s.enemies:
 				if victim.hp > 0 and victim.id != actor.id and victim.pos in affected: s.damage(victim,power,actor.id,"IMPACT")
 			# Bombs can also hit the caster; self-centered shockwaves cannot.
-			if id == "BOMB" and actor.pos in affected: s.damage(actor,power,actor.id,"IMPACT")
+			if def.self_hit and actor.pos in affected: s.damage(actor,power,actor.id,"IMPACT")
 	actor.cooldowns[id] = int(def.cooldown)+1
 	s.message(actor.name+" · "+def.name)
 	return true

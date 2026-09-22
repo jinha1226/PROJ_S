@@ -450,12 +450,12 @@ func reservation_choice(actor: Dictionary) -> Dictionary:
 	if order.is_empty() or actor.hp <= 0 or actor.ap <= 0 or phase != "BATTLE": return {}
 	var cell: Vector2i = order.cell
 	if order.kind in Abilities.STARTERS and order.kind not in actor.equipped_abilities: return {}
-	if order.kind in ["ATTACK","PUSH","BOMB"]:
+	if order.kind in ["ATTACK","PUSH"] or (Abilities.DEFINITIONS.has(order.kind) and Abilities.DEFINITIONS[order.kind].target == "ENEMY"):
 		var target: Dictionary = {}
 		for enemy in enemies:
 			if enemy.id == order.target_id and enemy.hp > 0: target = enemy; break
 		if target.is_empty(): return {}
-		if order.kind == "BOMB":
+		if Abilities.DEFINITIONS.has(order.kind):
 			if not Abilities.legal(self,actor,order.kind,target.pos): return {}
 		elif attack_preview(target.pos,actor.id).is_empty(): return {}
 		cell = target.pos

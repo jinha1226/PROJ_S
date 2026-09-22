@@ -142,14 +142,14 @@ func _draw() -> void:
 	draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
 	# Basic melee reach is implicit; only an explicitly selected skill shows range.
 	var attacks: Array = []
-	if targeting_skill == "BOMB":
+	if session.Abilities.DEFINITIONS.has(targeting_skill) and session.Abilities.DEFINITIONS[targeting_skill].target == "ENEMY" and session.Abilities.DEFINITIONS[targeting_skill].range > 0:
 		attacks.clear()
 		var caster: Dictionary = session.party[session.selected if input_actor < 0 else input_actor]
 		for y in range(camera_cell().y,camera_cell().y+visible_side()):
 			for x in range(camera_cell().x,camera_cell().x+visible_side()):
 				if x < 0 or y < 0 or x >= session.BOARD_SIDE or y >= session.BOARD_SIDE: continue
 				var cell := Vector2i(x,y)
-				if session.distance(caster.pos,cell) <= session.Abilities.DEFINITIONS.BOMB.range and session.tile(cell).terrain != "wall" and session.TurnCore.Geometry.sees(caster.pos,cell,func(p): return session.tile(p).terrain == "wall"): attacks.append(cell)
+				if session.distance(caster.pos,cell) <= int(session.Abilities.DEFINITIONS[targeting_skill].range) and session.tile(cell).terrain != "wall" and session.TurnCore.Geometry.sees(caster.pos,cell,func(p): return session.tile(p).terrain == "wall"): attacks.append(cell)
 	for depth in range(visible_side()*2-1):
 		for local_x in range(visible_side()):
 			var local_y := depth-local_x
@@ -228,7 +228,7 @@ func _draw() -> void:
 		var actor: Dictionary = session.party[preview.actor]
 		if actor.hp <= 0: continue
 		var badge := preview_rect(actor)
-		var text: String = {"PUSH":"밀치기","GUARD":"방어","ATTACK":"공격","MOVE":"이동","WAIT":"대기","SHOCKWAVE":"충격파","BOMB":"폭탄","IRON_HIDE":"철갑","HEAVY_STRIKE":"강타","THROWING_KNIFE":"투척","FIELD_DRESSING":"처치","LUNGE":"돌진"}.get(preview.kind,preview.kind)
+		var text: String = session.Abilities.badge(preview.kind)
 		var color := Color("f1ca79") if preview.kind in session.Rules.SKILLS else Color("a6d8e8")
 		draw_style_box(_preview_background(color),badge)
 		draw_string(ui_font,badge.position+Vector2(2,13),text+(" 예약" if preview.get("reserved",false) else " 예정"),HORIZONTAL_ALIGNMENT_CENTER,badge.size.x-4,10,color)

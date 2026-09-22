@@ -703,7 +703,7 @@ func inventory_rows() -> Array:
 	for id in Session.Abilities.DEFINITIONS:
 		if session.essences.get(id,0) <= 0: continue
 		var def: Dictionary = Session.Abilities.DEFINITIONS[id]
-		rows.append({"id":id,"label":def.item,"quantity":session.essences[id],"category":"이능","description":"습득: "+def.name+"\n"+def.description,"icon":Art.item(3 if id == "BOMB" else 4 if id == "SHOCKWAVE" else 5)})
+		rows.append({"id":id,"label":def.item,"quantity":session.essences[id],"category":"이능","description":"습득: "+def.name+"\n"+def.description,"icon":Art.item(int(def.icon))})
 	if session.floor_mode and Session.Objective.carrying(session):
 		rows.append({"id":"mission:relic","label":Session.Objective.RELIC_LABEL,"quantity":1,"category":"임무","description":Session.Objective.RELIC_DESCRIPTION,"icon":Art.navigation(3)})
 	for entry in [["food","식량",session.food,"이동 시 소모"],["torch","횃불",session.torches,"밝기 +50"]]:

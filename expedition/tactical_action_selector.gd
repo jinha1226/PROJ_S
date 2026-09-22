@@ -56,7 +56,7 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 			if not s.Abilities.legal(s,actor,id,target.pos): continue
 			if def.effect == "DAMAGE":
 				var cells: Array = s.Abilities.cells(s,actor,id,target.pos)
-				if s.alive().any(func(a): return (a.id != actor.id or id == "BOMB") and a.pos in cells): continue
+				if s.alive().any(func(a): return (a.id != actor.id or def.self_hit) and a.pos in cells): continue
 				if not s.combat_enemies().any(func(e): return e.hp > 0 and e.pos in cells): continue
 			options.append({"kind":id,"cell":target.pos,"score":40,"reason":def.name})
 	# Safety escape first, then the first matching configured rule. No score

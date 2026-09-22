@@ -172,7 +172,7 @@ static func abilities(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		var row := HBoxContainer.new(); box.add_child(row)
 		var info := VBoxContainer.new(); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(info)
 		text(info,ui.Session.Rules.SKILLS[rule.skill].name,20)
-		var description: String = ui.Session.Abilities.DEFINITIONS.get(rule.skill,{}).get("description","인접한 적을 한 칸 밀어냅니다." if rule.skill == "PUSH" else "다음 공격의 피해를 줄입니다.")
+		var description: String = ui.Session.Abilities.DEFINITIONS.get(rule.skill,{}).get("description",ui.Session.Rules.SKILLS[rule.skill].get("description",""))
 		text(info,description,13)
 		var actions := VBoxContainer.new(); row.add_child(actions)
 		ui.button(actions,"교체",func(): replace(ui,slot),can_invest(ui,actor))

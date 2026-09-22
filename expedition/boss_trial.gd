@@ -1,4 +1,5 @@
 extends RefCounted
+const Abilities = preload("res://expedition/abilities.gd")
 ## Simplified SPD-inspired patterns, implemented independently for an 10x10 arena.
 const NAMES = ["수렁 포식자", "폭탄 암살자", "과부하 거인"]
 const HINTS = ["폭발 후 탈진 틈에 공격 · 물에서 회복", "폭탄 예고 회피 · 순간이동한 보스 추격", "보호막 가동 시 전력탑 옆에서 탑 터치"]
@@ -26,7 +27,8 @@ static func spawn(s) -> void:
 	var boss: Dictionary = s.make_actor(100+s.room,NAMES[row.pattern],true)
 	boss.pos = Vector2i(5,4); boss.hp = 64; boss.max_hp = 64
 	boss.cooldown = 4; boss.recovery = 0
-	boss.essence_id = ["SHOCKWAVE","BOMB","IRON_HIDE"][row.pattern]
+	var drops: Array = Abilities.droppable()
+	boss.essence_id = drops[row.pattern % drops.size()]
 	s.enemies.append(boss)
 
 static func plan(s) -> void:

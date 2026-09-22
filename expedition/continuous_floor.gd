@@ -2,6 +2,7 @@ extends RefCounted
 const Generator = preload("res://expedition/floor_generator.gd")
 const MonsterAI = preload("res://expedition/monster_ai.gd")
 const Objective = preload("res://expedition/expedition_objective.gd")
+const Abilities = preload("res://expedition/abilities.gd")
 const THEME_ID := "F1_RUINS"
 ## Roster health was tuned for a pair; a lone hero meets the same groups at
 ## reduced health so each fight is decided in a few exchanges.
@@ -71,7 +72,10 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 			enemy.group = "F%d_E%02d" % [int(theme.depth),e+1]; enemy.home = enemy.pos; enemy.alert = false
 			enemy.species_id = member.species_id; enemy.tier = encounter.tier; enemy.mandatory = encounter.mandatory
 			MonsterAI.configure(enemy,member.role)
-			enemy.essence_id = ["BOMB","SHOCKWAVE","IRON_HIDE"][s.enemies.size()%3]
+			# Floor drops cycled BOMB, SHOCKWAVE, IRON_HIDE, which is the catalog
+			# pool reversed and started one in; keep it so drops are unchanged.
+			var pool: Array = Abilities.droppable(); pool.reverse()
+			enemy.essence_id = pool[(s.enemies.size()+1) % pool.size()]
 			s.enemies.append(enemy)
 	for p in layout.features: state.features[p] = layout.features[p].duplicate(true)
 	for i in range(s.party.size()):
