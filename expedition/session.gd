@@ -25,6 +25,11 @@ var formation := "NONE"
 var command_target := -1
 var companions := false
 var resolving_companions := false
+const AUTO_STOPS := ["BATTLE_START","ALLY_LETHAL","HP_LOW","DEATH","BATTLE_END"]
+## Auto-battle state: whether the UI is advancing rounds, which events stop it,
+## and what the previous round looked like so that "newly" can be judged.
+var auto := {"running":false,"stops":{"BATTLE_START":true,"ALLY_LETHAL":true,"HP_LOW":true,"DEATH":true,"BATTLE_END":true},
+	"hp_low":30,"speed":1,"prev_threats":0,"prev_low":[],"prev_alive":0,"last_stop":{"reason":"","round":-99},"stops_log":[]}
 const CARDINALS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]
 const DIRECTIONS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN, Vector2i(-1,-1), Vector2i(1,-1), Vector2i(-1,1), Vector2i(1,1)]
 var rooms: Array = []
@@ -141,6 +146,8 @@ func depart() -> bool:
 	if floor_mode:
 		purchases = {}
 		result = {}; objective = {}
+		auto.prev_threats = 0; auto.prev_low = []; auto.prev_alive = party.size()
+		auto.stops_log = []; auto.last_stop = {"reason":"","round":-99}
 		snapshot = take_snapshot()
 		floor_state.build(self); message("1층 진입"); return true
 	food = 27; torches = 5
@@ -333,6 +340,9 @@ func can_step(a: Vector2i, b: Vector2i) -> bool:
 func combat_enemies() -> Array:
 	return floor_state.threats(self) if floor_mode else enemies.filter(func(e): return e.hp > 0)
 
+func in_combat() -> bool:
+	return floor_mode and phase == "BATTLE" and not floor_state.safe(self)
+
 func safe_management() -> bool:
 	return phase in ["TOWN","EXPLORE"] or floor_mode and phase == "BATTLE" and floor_state.safe(self)
 
@@ -395,22 +405,30 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 	return {"actor":actor.id,"target":victim.id,"cell":target,"name":victim.name,"chance":100,"damage":amount}
 
 func act(kind: String, target: Vector2i) -> bool:
+	return act_as(party[selected],kind,target,true)
+
+## One action by `actor`. `chain` runs the legacy follow-up (companions acting
+## after the hero, round end on empty AP); auto_step passes false and drives
+## the round itself.
+func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = true) -> bool:
 	if phase != "BATTLE" or not inside(target): return false
 	if floor_mode and not floor_state.visible.has(target): return false
 	if boss_trial and kind == "PYLON":
 		if not BossTrial.disable_pylon(self,target): return false
-		finish_player_action(); return true
-	var actor: Dictionary = party[selected]
+		if chain: finish_player_action()
+		return true
 	if actor.hp <= 0 or actor.ap <= 0: return false
 	if Abilities.DEFINITIONS.has(kind):
 		if not Abilities.execute(self,actor,kind,target): return false
-		actor.ap -= 1; check_battle_end(); finish_player_action(); return true
+		actor.ap -= 1; check_battle_end()
+		if chain: finish_player_action()
+		return true
 	var victim := at(target)
 	match kind:
 		"WAIT":
 			if target != actor.pos: return false
 		"MOVE":
-			if target not in movement_cells(): return false
+			if target not in movement_cells(party.find(actor)): return false
 			actor.pos = target
 		"ATTACK":
 			if victim.is_empty() or not victim.enemy or not melee_reach(actor.pos,target): return false
@@ -428,7 +446,7 @@ func act(kind: String, target: Vector2i) -> bool:
 		_: return false
 	actor.ap -= 1
 	check_battle_end()
-	finish_player_action()
+	if chain: finish_player_action()
 	return true
 
 func finish_player_action() -> void:
@@ -472,6 +490,7 @@ func reservation_choice(actor: Dictionary) -> Dictionary:
 	return {"kind":order.kind,"cell":cell,"reason":"직접 예약","reserved":true}
 
 func reserve_action(index: int, kind: String, cell: Vector2i) -> bool:
+	if floor_mode: return false
 	if not companions or phase != "BATTLE" or index < 0 or index >= party.size() or index == selected: return false
 	var actor: Dictionary = party[index]
 	var previous: Dictionary = actor.reservation
@@ -482,33 +501,88 @@ func reserve_action(index: int, kind: String, cell: Vector2i) -> bool:
 func cancel_reservation(index: int) -> void:
 	if index >= 0 and index < party.size(): party[index].reservation = {}
 
+## The party command's answer for `actor`, or {} when the rules decide.
+func command_choice(actor: Dictionary) -> Dictionary:
+	if party_command == "HOLD_POSITION":
+		if combat_enemies().any(func(e): return melee_reach(actor.pos,e.pos)): return {}
+		return {"kind":"WAIT","cell":actor.pos,"reason":"자리 지키기"}
+	if party_command == "STOP_ATTACK": return floor_state.follow(self,actor) if floor_mode else {"kind":"WAIT","cell":actor.pos,"reason":"공격 중지"}
+	if party_command == "RETREAT":
+		var threats: Array = combat_enemies()
+		var best: Vector2i = actor.pos
+		var score := -1
+		for direction in DIRECTIONS:
+			var cell: Vector2i = actor.pos+direction
+			if not can_step(actor.pos,cell) or not is_free(cell): continue
+			var nearest := 999
+			for enemy in threats: nearest = mini(nearest,distance(cell,enemy.pos))
+			if nearest > score: score = nearest; best = cell
+		return {"kind":"WAIT" if best == actor.pos else "MOVE","cell":best,"reason":"후퇴"}
+	if party_command == "ATTACK_TARGET":
+		for enemy in combat_enemies():
+			if enemy.id != command_target: continue
+			if melee_reach(actor.pos,enemy.pos): return {"kind":"ATTACK","cell":enemy.pos,"reason":"집중 공격"}
+			var goals: Array = []
+			for direction in DIRECTIONS:
+				if is_free(enemy.pos+direction) and melee_reach(enemy.pos+direction,enemy.pos): goals.append(enemy.pos+direction)
+			var route: Dictionary = TurnCore.path(BOARD_SIDE,BOARD_SIDE,actor.pos,goals,func(a,b): return can_step(a,b) and Tactics.danger(self,b) == 0,func(_p): return 100)
+			return {"kind":"MOVE","cell":route.path[1],"reason":"집중 공격 접근"} if route.found and route.path.size() > 1 else {"kind":"WAIT","cell":actor.pos,"reason":"대상 경로 없음"}
+	return {}
+
 func companion_choice(actor: Dictionary) -> Dictionary:
 	var reserved := reservation_choice(actor)
-	if reserved.is_empty() and companions:
-		if party_command == "HOLD_POSITION": return {"kind":"WAIT","cell":actor.pos,"reason":"자리 지키기"}
-		if party_command == "STOP_ATTACK": return floor_state.follow(self,actor) if floor_mode else {"kind":"WAIT","cell":actor.pos,"reason":"공격 중지"}
-		if party_command == "RETREAT":
-			var threats: Array = combat_enemies()
-			var best: Vector2i = actor.pos
-			var score := -1
-			for direction in DIRECTIONS:
-				var cell: Vector2i = actor.pos+direction
-				if not can_step(actor.pos,cell) or not is_free(cell): continue
-				var nearest := 999
-				for enemy in threats: nearest = mini(nearest,distance(cell,enemy.pos))
-				if nearest > score: score = nearest; best = cell
-			return {"kind":"WAIT" if best == actor.pos else "MOVE","cell":best,"reason":"후퇴"}
-		if party_command == "ATTACK_TARGET":
-			for enemy in combat_enemies():
-				if enemy.id != command_target: continue
-				if melee_reach(actor.pos,enemy.pos): return {"kind":"ATTACK","cell":enemy.pos,"reason":"집중 공격"}
-				var goals: Array = []
-				for direction in DIRECTIONS:
-					if is_free(enemy.pos+direction) and melee_reach(enemy.pos+direction,enemy.pos): goals.append(enemy.pos+direction)
-				var route: Dictionary = TurnCore.path(BOARD_SIDE,BOARD_SIDE,actor.pos,goals,func(a,b): return can_step(a,b) and Tactics.danger(self,b) == 0,func(_p): return 100)
-				return {"kind":"MOVE","cell":route.path[1],"reason":"집중 공격 접근"} if route.found and route.path.size() > 1 else {"kind":"WAIT","cell":actor.pos,"reason":"대상 경로 없음"}
-	if reserved.is_empty() and floor_mode and floor_state.safe(self): return floor_state.follow(self,actor)
-	return Tactics.choose(self,actor) if reserved.is_empty() else reserved
+	if not reserved.is_empty(): return reserved
+	if companions:
+		var ordered := command_choice(actor)
+		if not ordered.is_empty(): return ordered
+	if floor_mode and floor_state.safe(self): return floor_state.follow(self,actor)
+	return Tactics.choose(self,actor)
+
+## One rules-driven round: every living member spends its AP through the
+## command or the rules, then the round ends. Game UI and simulator both call this.
+func auto_step() -> bool:
+	if not in_combat() or alive().is_empty(): return false
+	# Snapshot before anyone acts: the stop events ask what changed *during* the
+	# round, so a death or a cleared field inside this step must still be a delta.
+	remember_round()
+	for actor in party:
+		var guard := 0
+		while actor.hp > 0 and actor.ap > 0 and phase == "BATTLE" and guard < 4:
+			guard += 1
+			var choice: Dictionary = command_choice(actor)
+			if choice.is_empty(): choice = Tactics.choose(self,actor)
+			if not act_as(actor,choice.kind,choice.cell,false):
+				if not act_as(actor,"WAIT",actor.pos,false): break
+			actor.last_action = choice.reason
+	if phase == "BATTLE": end_round()
+	return true
+
+## Snapshot of what auto_stop_reason compares against next round.
+func remember_round() -> void:
+	auto.prev_threats = combat_enemies().size()
+	auto.prev_low = alive().filter(func(a): return a.hp*100/a.max_hp <= int(auto.hp_low)).map(func(a): return a.id)
+	auto.prev_alive = alive().size()
+
+## First stop event that applies at the start of this round, or "".
+func auto_stop_reason() -> String:
+	if not floor_mode or phase != "BATTLE": return ""
+	var threats: int = combat_enemies().size()
+	var reason := ""
+	if threats > 0 and int(auto.prev_threats) == 0: reason = "BATTLE_START"
+	elif threats == 0 and int(auto.prev_threats) > 0: reason = "BATTLE_END"
+	elif alive().size() < int(auto.prev_alive): reason = "DEATH"
+	elif alive().any(func(a): return Rules.lethal_threat(self,a) >= a.hp): reason = "ALLY_LETHAL"
+	elif alive().any(func(a): return a.hp*100/a.max_hp <= int(auto.hp_low) and a.id not in auto.prev_low): reason = "HP_LOW"
+	if reason.is_empty() or not bool(auto.stops.get(reason,false)):
+		if reason in ["BATTLE_START","BATTLE_END","DEATH"]: remember_round()
+		return ""
+	# Repeated alerts are suppressed for three rounds; the hard events never are.
+	if reason in ["ALLY_LETHAL","HP_LOW"] and auto.last_stop.reason == reason and round_number-int(auto.last_stop.round) < 3:
+		return ""
+	auto.last_stop = {"reason":reason,"round":round_number}
+	auto.stops_log.append(reason)
+	remember_round()
+	return reason
 
 func companion_previews() -> Array:
 	var previews: Array = []
