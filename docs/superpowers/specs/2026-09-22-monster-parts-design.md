@@ -127,7 +127,7 @@ func unequip_part(index: int, slot: int) -> bool
 
 `MonsterAI`의 술사 시전(`charging/cast_cell`)을 일반화한다. 준비 상태는 `{charging: bool, cast_id: String, cast_cell: Vector2i, cast_left: int}`이며 `cast_id == ""`는 기존 역할 시전(피해 14, 사거리 4)이다.
 
-`plan(s)`는 준비 중인 적마다 intent `{"id", "cell", "damage", "kind"}`를 만든다. `kind`는 `cast_id`(역할 시전이면 `""`), `damage`는 파츠면 `DEFINITIONS[cast_id].damage`, 역할 시전이면 14. `Rules.lethal_threat`는 `intent.damage`를 그대로 읽으므로 변경 없음. `board.gd`는 예고 칸 표시에 `kind`가 비어 있지 않으면 `Abilities.badge(kind)` 텍스트를 덧붙인다.
+`plan(s)`는 준비 중인 적마다 intent `{"id", "cell", "damage", "kind"}`를 만든다. 범위 파츠(radius > 0)는 `Abilities.cells(s, enemy, cast_id, cast_cell)`가 돌려주는 **칸마다 하나씩** intent를 만든다(같은 id·damage·kind) — 위협 평가(`lethal_threat`·`Tactics.danger/threat`)와 예고 표시가 별도 수정 없이 범위 전체를 보게 하기 위해서다. 역할 시전은 한 칸. `kind`는 `cast_id`(역할 시전이면 `""`), `damage`는 파츠면 `DEFINITIONS[cast_id].damage`, 역할 시전이면 14. `Rules.lethal_threat`는 `intent.damage`를 그대로 읽으므로 변경 없음. `board.gd`는 예고 칸 표시에 `kind`가 비어 있지 않으면 `Abilities.badge(kind)` 텍스트를 덧붙인다.
 
 ### 2.2 턴 순서 (`MonsterAI.turn`)
 
