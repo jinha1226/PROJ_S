@@ -33,8 +33,8 @@ func play(s) -> Dictionary:
 	while s.phase == "BATTLE" and actions < 1500:
 		var target: Vector2i = s.objective.pos if goal == "relic" else s.entry_position()
 		if not s.combat_enemies().is_empty():
-			if hero.hp < 24 and s.supplies[0] > 0 and s.use_supply(0): heals += 1; actions += 1; continue
-			if hero.hp < 16 and s.supplies[5] > 0 and s.use_supply(5): heals += 1; actions += 1; continue
+			if hero.hp < 14 and s.supplies[0] > 0 and s.use_supply(0): heals += 1; actions += 1; continue
+			if hero.hp < 10 and s.supplies[5] > 0 and s.use_supply(5): heals += 1; actions += 1; continue
 			if s.auto_attack(): actions += 1; continue
 			s.act("WAIT",hero.pos); actions += 1; continue
 		if hero.stress >= 125 and s.supplies[1] > 0 and s.use_supply(1): actions += 1; continue
@@ -69,7 +69,9 @@ func run() -> void:
 	# Smoke guard, not the design target. The 6/8 completion goal moves to the
 	# upcoming SRD-based combat/balance spec; until the combat math is replaced
 	# this only pins the measured floor so a regression below it is caught.
-	check(wins >= 2,"scripted solo run completes on the measured floor (%d/%d)" % [wins,SEEDS])
+	# Healing earlier (24/16 instead of 14/10) was measured and rejected: the
+	# bot stops wasting supplies but finishes one seed fewer, 2/8 against 3/8.
+	check(wins >= 3,"scripted solo run completes on the measured floor (%d/%d)" % [wins,SEEDS])
 	var campaign = Session.new(0,true,false,true)
 	for expedition in range(4):
 		if expedition > 0:
