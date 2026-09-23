@@ -80,6 +80,7 @@ var effects: Array = []
 var lookahead_enabled := true
 var supplies: Array = [0,0,0,0,0]
 const Curios = preload("res://expedition/curios.gd")
+const BossAI = preload("res://expedition/boss_ai.gd")
 const SUPPLY_NAMES = ["치유 물약","정신 안정제","활력 물약","화염 두루마리","물 두루마리"]
 
 ## Experiment rules: the defaults reproduce shipped behaviour byte for byte.
@@ -473,7 +474,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 	if not floor_state.visible.has(target) and not following: return false
 	var display_event := _presentation_action(actor,kind,target) if presentation != null else {}
 	if kind == "PYLON":
-		if not preload("res://expedition/boss_ai.gd").disable_pylon(self,target): return false
+		if not BossAI.disable_pylon(self,target): return false
 		if presentation != null: presentation.capture(self,actor.id,display_event)
 		if chain: finish_player_action()
 		return true

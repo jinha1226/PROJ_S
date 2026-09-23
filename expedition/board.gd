@@ -230,8 +230,25 @@ func movement_previews() -> Array:
 		result.append({"actor":actor.id,"sprite":actor_sprite(actor),"from":actor.pos,"cell":preview.cell,"reserved":preview.get("reserved",false)})
 	return result
 
+## A companion's planned step, drawn ahead of it: the destination tile, a ghost
+## of the pawn standing on it and an arrow from where it stands now.
 func draw_movement_previews() -> void:
-	pass
+	for preview in movement_previews():
+		var start := cell_center(preview.from)
+		var destination := cell_center(preview.cell)
+		var color := Color("f1ca79") if preview.reserved else Color("a6d8e8")
+		var polygon := tile_polygon(Vector2(preview.cell))
+		draw_colored_polygon(polygon,Color(color,0.13))
+		outline(polygon,Color(color,0.8),2)
+		var side := half_width*1.65
+		Art.paint_actor(self,int(preview.sprite),Rect2(destination-Vector2.ONE*side/2,Vector2.ONE*side),Color(color,0.35))
+		var direction := (destination-start).normalized()
+		var tip := destination-direction*half_width*0.4
+		var tail := start+direction*half_width*0.6
+		var normal := Vector2(-direction.y,direction.x)
+		draw_line(tail,tip,Color(0,0,0,0.7),5,true)
+		draw_line(tail,tip,color,2.5,true)
+		draw_colored_polygon(PackedVector2Array([tip,tip-direction*8+normal*5,tip-direction*8-normal*5]),color)
 
 func paint_terrain() -> void:
 	var walls: Array = []
@@ -261,7 +278,7 @@ func paint_terrain() -> void:
 	Art.Masonry.paint_walls(self,walls,is_wall_tile,Art.FirstFloor.material() if uses_first_floor_art() else {})
 
 func uses_first_floor_art() -> bool:
-	return true and session.floor_state.theme_id == "F1_RUINS"
+	return session.floor_state.theme_id == "F1_RUINS"
 
 func _draw() -> void:
 	for visual in actor_visuals.values():
@@ -337,7 +354,7 @@ func _draw() -> void:
 				var sprite: Texture2D = Art.BOSS if actor.get("boss",false) else Art.ENEMY if actor.enemy else Art.ACTORS[actor_sprite(actor)]
 				var side := half_width*1.65
 				var flash := Color.WHITE
-				if actor.enemy and true:
+				if actor.enemy:
 					flash = {"MELEE":Color.WHITE,"RANGED":Color("b8d9a2"),"CASTER":Color("c5a5ef")}.get(actor.get("role","MELEE"),Color.WHITE)
 				for effect in effects:
 					if effect.get("kind","") == "ENEMY_ATTACK": continue
@@ -408,7 +425,7 @@ func _draw_foreground(canvas: Node2D) -> void:
 		if not seen and not (npc and actor.get("awake",false)): continue
 		var fade: float = 1.0 if seen else 0.5
 		var center := cell_center(actor.pos)
-		if actor.enemy and true:
+		if actor.enemy:
 			var role: String = "준비!" if actor.get("charging",false) else {"MELEE":"근접","RANGED":"사격","CASTER":"마법"}.get(actor.get("role","MELEE"),"")
 			canvas.draw_string(ui_font,center+Vector2(-20,-half_width*0.7),role,HORIZONTAL_ALIGNMENT_CENTER,40,11,Color("ffe2a0"))
 		if npc:
