@@ -1,5 +1,5 @@
 extends Node2D
-## Draws UI-only plans below actor sprites and above terrain.
+## Draws UI-only plans above actor sprites but below HP, damage and speech.
 var board: Control
 var intents: Array = []
 
@@ -19,7 +19,8 @@ func _draw() -> void:
 		if board.session.floor_mode and (not visible.has(from) or not visible.has(cell)): continue
 		var viewport := Rect2(Vector2.ZERO,board.size)
 		if not viewport.has_point(board.cell_center(from)) or not viewport.has_point(board.cell_center(cell)): continue
-		var source: Dictionary = board.display_at(from)
+		var displayed_actors: Array = board.visual_state.get("actors",[]) if board.is_presenting() else board.session.party
+		var source: Dictionary = board._actor_for_id(displayed_actors,actor_id)
 		if source.is_empty() or int(source.get("id",-1)) != actor_id or int(source.get("hp",0)) <= 0: continue
 		if int(row.get("target_id",-1)) >= 0:
 			var target: Dictionary = board.display_at(cell)
@@ -29,10 +30,13 @@ func _draw() -> void:
 		if intent == "ATTACK":
 			var a: Vector2 = board.cell_center(from); var b: Vector2 = board.cell_center(cell)
 			var direction: Vector2 = (b-a).normalized()
-			draw_line(a+direction*board.half_width*0.55,b-direction*board.half_width*0.55,Color(color,0.16),1.5,true)
-			var marker: Vector2 = b-direction*board.half_width*0.52
-			draw_arc(marker,4.0,0,TAU,16,Color(color,0.35),1.5,true)
-			draw_line(marker+Vector2(-2.5,-2.5),marker+Vector2(2.5,2.5),Color(color,0.35),1.0,true)
+			draw_line(a+direction*board.half_width*0.55,b-direction*board.half_width*0.55,Color(color,0.55),1.0,true)
+			# Four short brackets identify the target, unlike an actor selection ring.
+			var radius: float = maxf(6.0,board.half_width*0.62)
+			for corner in [Vector2(-1,-1),Vector2(1,-1),Vector2(-1,1),Vector2(1,1)]:
+				var marker: Vector2 = b+corner*radius
+				draw_line(marker,marker-Vector2(corner.x*4,0),Color(color,0.70),1.0,true)
+				draw_line(marker,marker-Vector2(0,corner.y*4),Color(color,0.70),1.0,true)
 		elif intent in ["APPROACH","RETREAT","EVADE"]:
 			var points: Array = row.get("path",[])
 			if points.is_empty(): points = [from,cell]
@@ -43,20 +47,20 @@ func _draw() -> void:
 				if board.session.floor_mode and (not visible.has(p0) or not visible.has(p1)): continue
 				segments.append([board.cell_center(p0),board.cell_center(p1)])
 			if segments.is_empty(): continue
-			for segment in segments: _dashed(segment[0],segment[1],Color(color,0.16),1.5)
+			for segment in segments: _dashed(segment[0],segment[1],Color(color,0.55),1.0)
 			var last_segment: Array = segments[-1]
 			var direction: Vector2 = (last_segment[1]-last_segment[0]).normalized()
 			var tip: Vector2 = last_segment[1]
 			var normal := Vector2(-direction.y,direction.x)
-			draw_colored_polygon(PackedVector2Array([tip,tip-direction*7+normal*4,tip-direction*7-normal*4]),Color(color,0.32))
+			draw_colored_polygon(PackedVector2Array([tip,tip-direction*7+normal*4,tip-direction*7-normal*4]),Color(color,0.65))
 		elif intent == "PROTECT":
 			var center: Vector2 = board.cell_center(cell)
-			draw_line(center+Vector2(-5,0),center,Color(color,0.35),2,true)
-			draw_line(center,center+Vector2(5,0),Color(color,0.35),2,true)
-			draw_line(center+Vector2(-5,0),center+Vector2(-4,5),Color(color,0.35),2,true)
-			draw_line(center+Vector2(5,0),center+Vector2(4,5),Color(color,0.35),2,true)
-			draw_line(center+Vector2(-4,5),center+Vector2(0,8),Color(color,0.35),2,true)
-			draw_line(center+Vector2(4,5),center+Vector2(0,8),Color(color,0.35),2,true)
+			draw_line(center+Vector2(-5,0),center,Color(color,0.70),2,true)
+			draw_line(center,center+Vector2(5,0),Color(color,0.70),2,true)
+			draw_line(center+Vector2(-5,0),center+Vector2(-4,5),Color(color,0.70),2,true)
+			draw_line(center+Vector2(5,0),center+Vector2(4,5),Color(color,0.70),2,true)
+			draw_line(center+Vector2(-4,5),center+Vector2(0,8),Color(color,0.70),2,true)
+			draw_line(center+Vector2(4,5),center+Vector2(0,8),Color(color,0.70),2,true)
 	draw_set_transform(Vector2.ZERO)
 
 func _dashed(a: Vector2, b: Vector2, color: Color, width: float) -> void:

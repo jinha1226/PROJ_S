@@ -63,6 +63,17 @@ func run() -> void:
 	while scene.board.is_presenting() and steps < 30:
 		scene.board._advance_playback(1.0); steps += 1
 	check(not scene.board.is_presenting(),"queue drains and returns control")
+	# An executed move remains readable after impact/AP depletion, without
+	# consulting the already advanced live session.
+	var actor: Dictionary = scene.session.party[0]
+	var move := {"actor_id":actor.id,"kind":"MOVE","from":actor.pos,"cell":actor.pos+Vector2i.RIGHT,"intent":"APPROACH","path":[actor.pos,actor.pos+Vector2i.RIGHT]}
+	var state: Dictionary = Presentation.snapshot(scene.session)
+	state.companion_intents = []
+	scene.board.play_frames([{"before":state,"after":state,"effects":[],"actor":actor.id,"executed_intent":move}])
+	scene.board._advance_playback(0.20)
+	check(scene.board.displayed_companion_intents() == [move],"executed route remains visible after the impact point")
+	scene.board._advance_playback(1.0)
+
 	await process_frame
 	check(scene.board.companion_intents == scene.session.companion_intent_snapshot(),"all companion previews recompute after playback")
 	scene.queue_free(); await process_frame

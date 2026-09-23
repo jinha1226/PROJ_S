@@ -279,15 +279,15 @@ func _draw() -> void:
 	for visual in actor_visuals.values():
 		if is_instance_valid(visual): visual.visible = false
 	if not is_instance_valid(foreground):
-		foreground = Node2D.new(); foreground.z_index = 2
+		foreground = Node2D.new(); foreground.z_index = 3
 		add_child(foreground)
 		foreground.draw.connect(func(): _draw_foreground(foreground))
 	if not is_instance_valid(intent_overlay):
 		intent_overlay = IntentOverlay.new()
 		intent_overlay.board = self
-		intent_overlay.z_index = 0
+		intent_overlay.z_index = 2
 		add_child(intent_overlay)
-	intent_overlay.intents = visual_state.get("companion_intents",[]) if is_presenting() else companion_intents
+	intent_overlay.intents = displayed_companion_intents()
 	intent_overlay.queue_redraw()
 	foreground.queue_redraw()
 	geometry()
@@ -539,3 +539,14 @@ func _label_visible(actor: Dictionary) -> bool:
 	if actor.is_empty() or int(actor.get("hp",0)) <= 0: return false
 	var visible: Dictionary = visual_state.get("visible",{}) if is_presenting() else session.floor_state.visible
 	return (not session.floor_mode or visible.has(actor.pos)) and Rect2(Vector2.ZERO,size).has_point(cell_center(actor.pos))
+
+## Keep the action being replayed readable through its entire frame, even
+## after its AP was spent. Other members use only this frame's snapshot.
+func displayed_companion_intents() -> Array:
+	if not is_presenting(): return companion_intents
+	var rows: Array = visual_state.get("companion_intents",[]).duplicate(true)
+	var executed: Dictionary = playback[0].get("executed_intent",{})
+	if not executed.is_empty():
+		rows = rows.filter(func(row): return int(row.get("actor_id",-1)) != int(executed.actor_id))
+		rows.append(executed.duplicate(true))
+	return rows
