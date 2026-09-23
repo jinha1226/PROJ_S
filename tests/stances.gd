@@ -135,6 +135,14 @@ func skirmisher() -> void:
 	check(pick.kind == "MOVE" and near(pick.cell,f.foes[0].pos) > 1,"adjacent: steps away rather than trading blows")
 	f.foes[0].pos = hero.pos+Vector2i(3,0); s.floor_state.observe(s)
 	check(s.Tactics.choose(s,hero).kind == "KOBOLD_SLING","with room again it fires")
+	# Contact is eight-way: a foe diagonally adjacent is contact too, so the
+	# sling stays silent and the skirmisher opens distance rather than trading
+	# blows (the rule filter in tactical_action_selector.gd already used
+	# melee_reach here; the stance's own band now agrees).
+	f.foes[0].pos = hero.pos+Vector2i(1,1); s.floor_state.observe(s)
+	pick = s.Tactics.choose(s,hero)
+	check(pick.kind == "MOVE" and near(pick.cell,f.foes[0].pos) >= 2,"diagonal contact: opens distance, not KOBOLD_SLING or ATTACK/WAIT")
+	f.foes[0].pos = hero.pos+Vector2i(3,0); s.floor_state.observe(s)
 	# Without a ranged part: approach, strike, break away.
 	var g := field(["SKIRMISHER","CHARGER","CHARGER"]); var t = g.s; var h: Dictionary = t.party[0]
 	g.foes[0].pos = h.pos+Vector2i(2,0); t.floor_state.observe(t)

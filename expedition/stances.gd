@@ -224,9 +224,13 @@ static func skirmisher(s, actor: Dictionary, target: Dictionary, knobs: Dictiona
 		if s.Tactics.danger(s,cell) < s.Tactics.danger(s,actor.pos): options.append({"kind":"MOVE","cell":cell,"score":200,"reason":"위험 회피"})
 	var part := ranged_part(actor)
 	var d: int = s.distance(actor.pos,target.pos)
+	# Contact is eight-way (movement's own definition, matching the rule filter
+	# in tactical_action_selector.gd), and any foe counts, not only the shared
+	# target — a diagonal attacker must trigger the opening step just the same.
+	var in_contact: bool = s.combat_enemies().any(func(e): return s.melee_reach(actor.pos,e.pos))
 	if not part.is_empty():
 		var reach: int = int(Abilities.DEFINITIONS[part].range)-(1 if int(knobs.posture) > 50 else 0)
-		if d < 2:
+		if in_contact:
 			var away: Vector2i = s.Tactics.retreat_cell(s,actor)
 			if away != actor.pos: options.append({"kind":"MOVE","cell":away,"score":120,"reason":"거리 · 이탈"})
 		elif d <= reach:
@@ -301,6 +305,7 @@ static func in_role(s, actor: Dictionary) -> bool:
 			if target.is_empty(): return false
 			var part := ranged_part(actor)
 			if part.is_empty(): return bool(actor.get("hit_and_run",false)) or s.melee_reach(actor.pos,target.pos)
+			if s.combat_enemies().any(func(e): return s.melee_reach(actor.pos,e.pos)): return false
 			var d: int = s.distance(actor.pos,target.pos)
 			return d >= 2 and d <= int(Abilities.DEFINITIONS[part].range)
 		_:
