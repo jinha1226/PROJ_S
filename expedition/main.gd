@@ -42,6 +42,9 @@ var show_attack_range := false
 var action_effects: Array = []
 var reset_effects := false
 var root_layout: VBoxContainer
+## Where the retained board and minimap wait while a screen that has no floor
+## on it is up. They stay children of this scene, so they are freed with it.
+var parked: Node
 var board
 var end_turn_button: Button
 var wait_button: Button
@@ -90,6 +93,7 @@ func _ready() -> void:
 	for side in ["left","right","top","bottom"]: margin.add_theme_constant_override("margin_"+side,0 if side in ["left","right"] else 8)
 	add_child(margin)
 	root_layout = VBoxContainer.new(); root_layout.add_theme_constant_override("separation",5); margin.add_child(root_layout)
+	parked = Node.new(); parked.name = "Parked"; add_child(parked)
 	map_popup = PopupPanel.new(); add_child(map_popup)
 	var map_box := VBoxContainer.new(); map_box.custom_minimum_size = Vector2(300,360); map_popup.add_child(map_box)
 	map_view = MapView.new(); map_view.session = session; map_view.ui_font = FONT; map_view.minimum_side = 280
@@ -356,7 +360,10 @@ func refresh() -> void:
 		if board.get_parent() != null: board.get_parent().remove_child(board)
 		clear(board)
 		board.actor_visuals.clear(); board.foreground = null; board.intent_overlay = null
-	if is_instance_valid(minimap) and minimap.get_parent() != null: minimap.get_parent().remove_child(minimap)
+		board.visible = false; parked.add_child(board)
+	if is_instance_valid(minimap) and minimap.get_parent() != null:
+		minimap.get_parent().remove_child(minimap)
+		minimap.visible = false; parked.add_child(minimap)
 	clear(root_layout); item_buttons.clear(); skill_buttons.clear(); portrait_buttons.clear()
 	auto_explore_button = null; wait_button = null; advance_attack_button = null
 	if mode_arena_setup:
@@ -370,7 +377,8 @@ func refresh() -> void:
 	if not is_instance_valid(minimap):
 		minimap = MapView.new(); minimap.compact = true; minimap.minimum_side = 44
 		minimap.ui_font = FONT; minimap.expand_requested.connect(show_map)
-	minimap.session = session; minimap.queue_redraw(); header.add_child(minimap)
+	if minimap.get_parent() != null: minimap.get_parent().remove_child(minimap)
+	minimap.session = session; minimap.visible = true; minimap.queue_redraw(); header.add_child(minimap)
 	var place := label(header,"%d층" % session.depth,18); place.name = "Location"; place.size_flags_horizontal = SIZE_EXPAND_FILL
 	place.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var food_label := label(header,"식량 %d" % session.food,14); food_label.name = "FoodLabel"
@@ -381,6 +389,8 @@ func refresh() -> void:
 		board.zoom_changed.connect(func(value): view_side = value)
 		board.gesture_started.connect(stop_navigation); board.playback_finished.connect(finish_presentation)
 	board.session = session; board.view_side = view_side; board.action_footer = not pending_attack.is_empty()
+	if board.get_parent() != null: board.get_parent().remove_child(board)
+	board.visible = true
 	board.size_flags_vertical = SIZE_EXPAND_FILL; root_layout.add_child(board); board.queue_redraw()
 	board.show_attack_range = show_attack_range; board.targeting_skill = mode
 	board.effects = action_effects; action_effects = []; board.target_cell = pending_attack.get("cell",Vector2i(-1,-1))
