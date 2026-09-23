@@ -25,6 +25,8 @@ var formation := "NONE"
 var command_target := -1
 var companions := false
 var resolving_companions := false
+# Optional UI recorder; headless simulations never allocate presentation snapshots.
+var presentation = null
 const CARDINALS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]
 const DIRECTIONS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN, Vector2i(-1,-1), Vector2i(1,-1), Vector2i(-1,1), Vector2i(1,1)]
 var rooms: Array = []
@@ -432,6 +434,7 @@ func act(kind: String, target: Vector2i) -> bool:
 	return true
 
 func finish_player_action() -> void:
+	if presentation != null: presentation.capture(self,selected)
 	if not boss_trial or phase != "BATTLE" or resolving_companions: return
 	if floor_mode: floor_state.observe(self); floor_state.ambush(self)
 	if phase != "BATTLE": return
@@ -636,7 +639,7 @@ func enemy_attack_effect(enemy: Dictionary, cells: Array, area: bool = false) ->
 	if cells.is_empty(): return
 	effects.append({"kind":"ENEMY_ATTACK","from":enemy.pos,"cell":cells[0],
 		"cells":cells.duplicate(),"area":area,"amount":0,"form":"IMPACT"})
-	if effects.size() > 32: effects.pop_front()
+	if presentation == null and effects.size() > 32: effects.pop_front()
 
 static func subject_name(value: String) -> String:
 	var last := value.unicode_at(value.length()-1) if not value.is_empty() else 0
@@ -695,7 +698,7 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	if not attacker.is_empty(): source_cell = attacker.pos; source_name = attacker.name
 	var effect := {"from":source_cell,"cell":target.pos,"amount":lost,"form":form}
 	effects.append(effect)
-	if effects.size() > 32: effects.pop_front()
+	if presentation == null and effects.size() > 32: effects.pop_front()
 	var key := ("%d/%d/%d" % [seed_value, serial, target.id]).sha256_text()
 	var plan := Injury.assess_hp_loss(target.body, form, lost, target.max_hp, key, target.id + 1)
 	var injury: Dictionary = Injury._apply_plan(target.body, plan, serial)
@@ -736,6 +739,10 @@ func plan_enemies() -> void:
 		intents.append({"id":enemy.id, "cell":target.pos, "damage":16})
 
 func enemy_attack_turn(enemy: Dictionary) -> void:
+	_enemy_attack_turn(enemy)
+	if presentation != null: presentation.capture(self,enemy.id)
+
+func _enemy_attack_turn(enemy: Dictionary) -> void:
 	if phase != "BATTLE" or enemy.hp <= 0 or alive().is_empty(): return
 	if floor_mode: floor_state.enemy_turn(self,enemy); return
 	if boss_trial: BossTrial.turn(self,enemy); return

@@ -1,6 +1,7 @@
 extends Control
 const SettlementHub = preload("res://expedition/settlement_hub.gd")
 const Session = preload("res://expedition/session.gd")
+const Presentation = preload("res://expedition/battle_presentation.gd")
 const Board = preload("res://expedition/board.gd")
 const MapView = preload("res://expedition/map_view.gd")
 const Art = preload("res://expedition/mobile_art.gd")
@@ -97,6 +98,7 @@ func stop_navigation() -> void:
 	if is_instance_valid(auto_explore_button): auto_explore_button.text = "자동탐험"
 
 func _process(delta: float) -> void:
+	if is_instance_valid(board) and board.is_presenting(): return
 	toast_remaining = maxf(0,toast_remaining-delta)
 	if is_instance_valid(toast): toast.visible = toast_remaining > 0 and not notice.is_empty()
 	portrait_gesture.tick(self)
@@ -194,6 +196,7 @@ func resource_gauge(parent: Button, id: String, value: int, color: Color, hint: 
 		style.content_margin_bottom = 8; parent.add_theme_stylebox_override(state,style)
 
 func refresh() -> void:
+	if is_instance_valid(board) and board.is_presenting(): return
 	var elapsed := 0.0
 	var impact_elapsed := 0.0
 	# Opening an order/selection must not erase an attack that just resolved.
@@ -202,7 +205,9 @@ func refresh() -> void:
 		impact_elapsed = board.impact_time
 	reset_effects = false
 	# Retain the renderer and minimap's incremental cache across action refreshes.
-	if is_instance_valid(board): root_layout.remove_child(board); clear(board)
+	if is_instance_valid(board):
+		root_layout.remove_child(board); clear(board)
+		board.actor_visuals.clear(); board.foreground = null
 	if is_instance_valid(minimap): minimap.get_parent().remove_child(minimap)
 	clear(root_layout); item_buttons.clear(); skill_buttons.clear(); portrait_buttons.clear()
 	auto_explore_button = null; wait_button = null; advance_attack_button = null
@@ -235,6 +240,7 @@ func refresh() -> void:
 		board = Board.new(); board.ui_font = FONT; board.cell_pressed.connect(on_cell)
 		board.zoom_changed.connect(func(value): view_side = value)
 		board.gesture_started.connect(stop_navigation)
+		board.playback_finished.connect(func(): action_effects = []; reset_effects = true; refresh())
 	board.session = session; board.view_side = view_side; board.queue_redraw()
 	board.action_footer = not session.boss_trial or not pending_attack.is_empty()
 	root_layout.add_child(board)
@@ -248,6 +254,11 @@ func refresh() -> void:
 	board.impact_time = impact_elapsed
 	board.target_cell = pending_attack.get("cell",Vector2i(-1,-1))
 	board.companion_previews = session.companion_previews()
+	board.next_action = {}
+	if session.floor_mode and session.phase == "BATTLE" and not session.combat_enemies().is_empty():
+		var selected_actor: Dictionary = session.party[session.selected]
+		if selected_actor.hp > 0 and selected_actor.ap > 0:
+			board.next_action = session.companion_choice(selected_actor).duplicate(true)
 	attack_button = null
 	end_turn_button = null
 	if session.phase == "BATTLE":
@@ -344,14 +355,25 @@ func select_actor(index: int) -> void:
 	session.selected = index; mode = ""; pending_item = -1; notice = session.party[index].name; refresh()
 
 func run_action(callback: Callable, navigating: bool = false) -> void:
+	if is_instance_valid(board) and board.is_presenting(): return
 	if not navigating: stop_navigation()
 	session.effects.clear()
+	var recorder = Presentation.new()
+	var show_battle: bool = is_processing() and session.floor_mode and session.phase == "BATTLE" and not session.combat_enemies().is_empty()
+	if show_battle:
+		recorder.begin(session); session.presentation = recorder
 	var accepted: bool = callback.call()
 	pending_attack = {}
 	notice = "" if accepted else "사용 불가"
 	if accepted:
 		mode = ""; pending_item = -1; reservation_actor = -1
 		if not session.boss_trial and session.phase == "BATTLE" and session.alive().all(func(a): return a.ap <= 0): session.end_round()
+	if show_battle: recorder.finish(session)
+	session.presentation = null
+	if accepted and show_battle and not recorder.frames.is_empty() and is_instance_valid(board):
+		session.effects.clear(); action_effects = []
+		board.play_frames(recorder.frames)
+		return
 	action_effects = session.effects.duplicate(true); session.effects.clear()
 	reset_effects = accepted
 	refresh()

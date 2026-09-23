@@ -25,6 +25,53 @@ var effects: Array = []
 var effect_time := 0.0
 var impact_time := 0.0
 var companion_previews: Array = []
+signal playback_finished
+const ActorVisual = preload("res://expedition/battle_actor_visual.gd")
+var playback: Array = []
+var playback_clock := 0.0
+var playback_speed := 1.0
+var visual_state: Dictionary = {}
+var playback_focus := Vector2i.ZERO
+var actor_visuals: Dictionary = {}
+var foreground: Node2D
+var next_action: Dictionary = {}
+
+func is_presenting() -> bool:
+	return not playback.is_empty()
+
+func play_frames(frames: Array) -> void:
+	if frames.is_empty(): return
+	playback_focus = frames[0].before.focus
+	playback = frames.duplicate(true)
+	playback_clock = 0.0
+	visual_state = playback[0].before
+	effects = []; effect_time = 0.0; impact_time = 0.0
+	queue_redraw()
+
+func display_at(point: Vector2i) -> Dictionary:
+	if not is_presenting(): return session.at(point)
+	for actor in visual_state.actors:
+		if actor.pos == point: return actor
+	return {}
+
+func _advance_playback(delta: float) -> void:
+	playback_clock += delta*playback_speed
+	var frame: Dictionary = playback[0]
+	# Wind-up / target highlight, then impact and HP loss, then recovery.
+	if playback_clock >= 0.18:
+		visual_state = frame.after
+		effects = frame.effects
+		effect_time = playback_clock-0.18
+		impact_time = effect_time
+	if playback_clock >= (0.68 if not frame.effects.is_empty() else 0.32):
+		playback.pop_front(); playback_clock = 0.0
+		effects = []; effect_time = 0.0; impact_time = 0.0
+		if playback.is_empty():
+			visual_state = {}
+			playback_finished.emit()
+		else: visual_state = playback[0].before
+	queue_redraw()
+
 var radial_light = preload("res://expedition/radial_light.gd").new()
 
 func injury_focus() -> Dictionary:
@@ -44,6 +91,8 @@ func preview_rect(actor: Dictionary) -> Rect2:
 	return Rect2(Vector2(clampf(center.x-29,0,maxf(0,size.x-58)),maxf(origin.y,center.y-half_width-19)),Vector2(58,18))
 
 func _process(delta: float) -> void:
+	if is_presenting():
+		_advance_playback(delta); return
 	if effects.is_empty(): return
 	var slow_delta := minf(delta,maxf(0,0.3-impact_time)) if not injury_focus().is_empty() else 0.0
 	impact_time += delta
@@ -74,7 +123,7 @@ func project(cell: Vector2) -> Vector2:
 
 func camera_cell() -> Vector2i:
 	if session == null or not session.floor_mode or session.tiles.is_empty(): return Vector2i.ZERO
-	var focus: Vector2i = session.party[session.selected].pos
+	var focus: Vector2i = playback_focus if is_presenting() else session.party[session.selected].pos
 	var side := visible_side()
 	return focus-Vector2i((side-1)/2,(side-1)/2)
 
@@ -110,13 +159,15 @@ func terrain_visibility(point: Vector2i) -> int:
 	if not session.inside(point): return 0
 	if not session.floor_mode: return 2
 	var state = session.floor_state
-	var known := 2 if state.visible.has(point) else 1 if state.explored.has(point) else 0
+	var seen: Dictionary = visual_state.visible if is_presenting() else state.visible
+	var known_cells: Dictionary = visual_state.explored if is_presenting() else state.explored
+	var known := 2 if seen.has(point) else 1 if known_cells.has(point) else 0
 	if not is_wall_tile(point): return known
 	for direction in session.DIRECTIONS:
 		var neighbor: Vector2i = point+direction
 		if not session.inside(neighbor) or is_wall_tile(neighbor): continue
-		if state.visible.has(neighbor): return 2
-		if state.explored.has(neighbor): known = maxi(known,1)
+		if seen.has(neighbor): return 2
+		if known_cells.has(neighbor): known = maxi(known,1)
 	return known
 
 func outline(points: PackedVector2Array, color: Color, width: float = 1) -> void:
@@ -133,6 +184,7 @@ func movement_previews() -> Array:
 	return result
 
 func draw_movement_previews() -> void:
+	if session.floor_mode: return
 	for preview in movement_previews():
 		var start := cell_center(preview.from)
 		var destination := cell_center(preview.cell)
@@ -181,6 +233,13 @@ func uses_first_floor_art() -> bool:
 	return session.floor_mode and session.floor_state.theme_id == "F1_RUINS"
 
 func _draw() -> void:
+	for visual in actor_visuals.values():
+		if is_instance_valid(visual): visual.visible = false
+	if not is_instance_valid(foreground):
+		foreground = Node2D.new(); foreground.z_index = 2
+		add_child(foreground)
+		foreground.draw.connect(func(): _draw_foreground(foreground))
+	foreground.queue_redraw()
 	geometry()
 	draw_rect(Rect2(Vector2.ZERO,size),Color("0b1117"))
 	if session == null or session.tiles.is_empty():
@@ -207,10 +266,10 @@ func _draw() -> void:
 			var y: int = local_y+camera_cell().y
 			if x < 0 or y < 0 or x >= session.BOARD_SIDE or y >= session.BOARD_SIDE: continue
 			var point := Vector2i(x,y)
-			if session.floor_mode and not session.floor_state.explored.has(point): continue
+			if session.floor_mode and not (visual_state.explored if is_presenting() else session.floor_state.explored).has(point): continue
 			var cell: Dictionary = session.tile(point)
 			var polygon := tile_polygon(Vector2(point))
-			if session.floor_mode and not session.floor_state.visible.has(point): continue
+			if session.floor_mode and not (visual_state.visible if is_presenting() else session.floor_state.visible).has(point): continue
 			if cell.terrain not in ["stone","wall"]: outline(polygon,Color(0.08,0.10,0.12,0.25))
 			var center := project(Vector2(point)+Vector2.ONE*0.5)
 			if session.floor_mode and session.floor_state.features.has(point):
@@ -228,7 +287,7 @@ func _draw() -> void:
 			if session.doors().has(point):
 				outline(polygon,Color("c2aa76"),2)
 				Icons.paint(self,"entry",center,half_width*0.3,Color("d8c28d"))
-			for intent in session.intents:
+			for intent in (visual_state.intents if is_presenting() else session.intents):
 				if intent.cell == point:
 					draw_colored_polygon(polygon,Color(1,0.45,0.05,0.4)); outline(polygon,Color("ffb447"),3)
 					draw_string(ui_font,center+Vector2(-4,4),"!"+(session.Abilities.badge(intent.kind) if not str(intent.get("kind","")).is_empty() else ""),HORIZONTAL_ALIGNMENT_LEFT,-1,12 if not str(intent.get("kind","")).is_empty() else 18,Color.WHITE)
@@ -240,7 +299,7 @@ func _draw() -> void:
 				draw_circle(center-Vector2(0,half_width*0.5),6,Color("bffaff"))
 			if room.kind in ["camp","loot"] and room.feature == point:
 				Icons.paint(self,room.kind,center-Vector2(0,5),half_width*0.45,Color("68716a") if room.used else Color("b5d4a6") if room.kind == "camp" else Color("e0b96e"))
-			var actor: Dictionary = session.at(point)
+			var actor: Dictionary = display_at(point)
 			if not actor.is_empty():
 				if not actor.enemy and actor.id == session.selected: outline(polygon,Color("e8c276"),2)
 				draw_set_transform(center*camera.zoom+camera.offset,0,Vector2(1,0.45)*camera.zoom)
@@ -260,54 +319,84 @@ func _draw() -> void:
 						center.x += sin(effect_time*65)*4*(1-effect_time/0.35)
 						flash = Color(2,0.6,0.6)
 				var actor_rect := Rect2(center-Vector2.ONE*side/2,Vector2.ONE*side)
-				if actor.enemy:
-					draw_texture_rect(sprite,actor_rect,false,flash)
-				else:
-					Art.paint_actor(self,actor.id,actor_rect,flash)
-				if actor.enemy and session.floor_mode:
-					var label: String = ("시전!" if str(actor.get("cast_id","")).is_empty() else "준비!") if actor.get("charging",false) else {"MELEE":"근접","RANGED":"사격","CASTER":"마법"}.get(actor.get("role","MELEE"),"")
-					draw_string(ui_font,center+Vector2(-20,-half_width*0.7),label,HORIZONTAL_ALIGNMENT_CENTER,40,11,Color("ffe2a0"))
-				draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24,3)),Color("191d24"))
-				draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24*float(actor.hp)/actor.max_hp,3)),Color("ce7770") if actor.enemy else Color("9ec987"))
+				# Separate sprite canvas permits an alpha-based one-screen-pixel rim.
+				var key: String = str(actor.enemy)+"/"+str(actor.id)
+				if not actor_visuals.has(key) or not is_instance_valid(actor_visuals[key]):
+					actor_visuals[key] = ActorVisual.new(); add_child(actor_visuals[key])
+				var visual = actor_visuals[key]
+				visual.visible = true; visual.actor = actor; visual.rect = actor_rect
+				visual.tint = flash; visual.boss = sprite == Art.BOSS
+				visual.position = camera.offset; visual.scale = Vector2.ONE*camera.zoom
+				visual.z_index = 1; move_child(visual,get_child_count()-1)
+				visual.queue_redraw()
+				paint_actor_base(center,actor)
+
 	draw_movement_previews()
-	# Draw after all actors, so another tile cannot paint over the intent badge.
-	for preview in companion_previews:
-		var actor: Dictionary = session.party[preview.actor]
+	draw_set_transform(Vector2.ZERO)
+
+func paint_actor_base(center: Vector2, actor: Dictionary) -> void:
+	var color := Color("eea38c") if actor.enemy else Color("b9dcd6")
+	var base := center+Vector2(0,half_width*0.65)
+	if actor.enemy:
+		outline(PackedVector2Array([base+Vector2(-half_width*0.65,0),base+Vector2(0,-half_width*0.23),base+Vector2(half_width*0.65,0),base+Vector2(0,half_width*0.23)]),color,1.5)
+	else:
+		draw_set_transform(base*impact_transform().zoom+impact_transform().offset,0,Vector2(1,0.36)*impact_transform().zoom)
+		draw_arc(Vector2.ZERO,half_width*0.65,0,TAU,32,color,2.0,true)
+		draw_set_transform(impact_transform().offset,0,Vector2.ONE*impact_transform().zoom)
+
+func _draw_foreground(canvas: Node2D) -> void:
+	if session == null or session.tiles.is_empty(): return
+	var camera := impact_transform()
+	canvas.draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
+	var actors: Array = visual_state.actors if is_presenting() else session.party+session.enemies
+	for actor in actors:
 		if actor.hp <= 0: continue
-		var badge := preview_rect(actor)
-		var text: String = session.Abilities.badge(preview.kind)
-		var color := Color("f1ca79") if session.Rules.catalog().has(preview.kind) else Color("a6d8e8")
-		draw_style_box(_preview_background(color),badge)
-		draw_string(ui_font,badge.position+Vector2(2,13),text+(" 예약" if preview.get("reserved",false) else " 예정"),HORIZONTAL_ALIGNMENT_CENTER,badge.size.x-4,10,color)
+		if session.floor_mode and not (visual_state.visible if is_presenting() else session.floor_state.visible).has(actor.pos): continue
+		var center := cell_center(actor.pos)
+		if actor.enemy and session.floor_mode:
+			var role: String = "준비!" if actor.get("charging",false) else {"MELEE":"근접","RANGED":"사격","CASTER":"마법"}.get(actor.get("role","MELEE"),"")
+			canvas.draw_string(ui_font,center+Vector2(-20,-half_width*0.7),role,HORIZONTAL_ALIGNMENT_CENTER,40,11,Color("ffe2a0"))
+		canvas.draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24,3)),Color("191d24"))
+		canvas.draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24*float(actor.hp)/actor.max_hp,3)),Color("ce7770") if actor.enemy else Color("9ec987"))
+	if is_presenting():
+		var frame: Dictionary = playback[0]
+		for actor in frame.before.actors:
+			if actor.id == frame.actor:
+				canvas.draw_arc(cell_center(actor.pos),half_width*0.85,0,TAU,32,Color("fff0b0"),2,true)
+		if playback_clock < 0.18:
+			for hit in frame.effects:
+				canvas.draw_line(cell_center(hit.from),cell_center(hit.cell),Color(1,0.85,0.5,0.7),2,true)
+	else:
+		paint_decision(canvas)
 	for effect in effects:
 		if effect.get("kind","") == "ENEMY_ATTACK":
-			draw_enemy_attack(effect); continue
+			draw_enemy_attack(effect,canvas); continue
 		if effect_time >= 0.75: continue
 		var center := cell_center(effect.cell)-Vector2(0,half_width*0.65)
 		var fade := 1.0-effect_time/0.75
 		var color := Color(1,0.85,0.5,fade) if effect.form != "ELECTRIC" else Color(0.4,0.8,1,fade)
 		if effect_time < 0.28:
-			draw_line(cell_center(effect.from)-Vector2(0,half_width*0.65),center,color,3,true)
-			draw_line(center-Vector2(15,-12),center+Vector2(15,-12),color,5,true)
-			draw_arc(center,8+effect_time*45,0,TAU,20,color,2,true)
-		draw_string(ui_font,center+Vector2(-12,-14-effect_time*30),"-%d" % effect.amount,HORIZONTAL_ALIGNMENT_LEFT,-1,20,color)
+			canvas.draw_line(cell_center(effect.from)-Vector2(0,half_width*0.65),center,color,3,true)
+			canvas.draw_line(center-Vector2(15,-12),center+Vector2(15,-12),color,5,true)
+			canvas.draw_arc(center,8+effect_time*45,0,TAU,20,color,2,true)
+		canvas.draw_string(ui_font,center+Vector2(-12,-14-effect_time*30),"-%d" % effect.amount,HORIZONTAL_ALIGNMENT_LEFT,-1,20,color)
 	if session.floor_mode:
 		var observer: Dictionary = session.floor_state.observer(session)
 		var strength: float = session.floor_state.darkness_strength(session.light)
-		if not observer.is_empty() and strength > 0: draw_mesh(radial_light.get_mesh(cell_center(observer.pos),size,half_width*2,session.floor_state.sight_radius(session.light),strength),null)
-	draw_set_transform(Vector2.ZERO)
+		if not observer.is_empty() and strength > 0: canvas.draw_mesh(radial_light.get_mesh(cell_center(observer.pos),size,half_width*2,session.floor_state.sight_radius(session.light),strength),null)
+	canvas.draw_set_transform(Vector2.ZERO)
 	var injury := injury_focus()
 	if not injury.is_empty() and impact_time < 0.45:
 		var fade := 1.0-impact_time/0.45
-		draw_rect(Rect2(Vector2.ZERO,size),Color(0.65,0.03,0.02,0.16*fade))
+		canvas.draw_rect(Rect2(Vector2.ZERO,size),Color(0.65,0.03,0.02,0.16*fade))
 		var point := cell_center(injury.cell)
 		point = point*camera.zoom+camera.offset
 		for i in range(8):
 			var direction := Vector2.RIGHT.rotated(i*TAU/8)
-			draw_line(point+direction*(12+impact_time*35),point+direction*(28+impact_time*80),Color(1,0.7,0.45,fade),3,true)
-		draw_string(ui_font,Vector2(clampf(point.x-65,2,maxf(2,size.x-132)),maxf(20,point.y-30)),str(injury.get("part","신체"))+" 손상!",HORIZONTAL_ALIGNMENT_CENTER,130,16,Color(1,0.85,0.7,fade))
+			canvas.draw_line(point+direction*(12+impact_time*35),point+direction*(28+impact_time*80),Color(1,0.7,0.45,fade),3,true)
+		canvas.draw_string(ui_font,Vector2(clampf(point.x-65,2,maxf(2,size.x-132)),maxf(20,point.y-30)),str(injury.get("part","신체"))+" 손상!",HORIZONTAL_ALIGNMENT_CENTER,130,16,Color(1,0.85,0.7,fade))
 
-func draw_enemy_attack(effect: Dictionary) -> void:
+func draw_enemy_attack(effect: Dictionary, canvas: Node2D) -> void:
 	var fade := clampf(1.0-effect_time,0,1)
 	var impact := Color(1,0.25,0.12,fade)
 	var center := Vector2.ZERO
@@ -315,24 +404,24 @@ func draw_enemy_attack(effect: Dictionary) -> void:
 		var point := cell_center(cell)
 		center += point
 		var polygon := tile_polygon(Vector2(cell))
-		draw_colored_polygon(polygon,Color(1,0.12,0.04,fade*(0.55 if effect_time < 0.2 else 0.22)))
-		outline(polygon,impact,3)
+		canvas.draw_colored_polygon(polygon,Color(1,0.12,0.04,fade*(0.55 if effect_time < 0.2 else 0.22)))
+		canvas.draw_polyline(PackedVector2Array([polygon[0],polygon[1],polygon[2],polygon[3],polygon[0]]),impact,3,true)
 		var radius := half_width*(0.25+minf(effect_time*3,0.7))
-		draw_arc(point,radius,0,TAU,20,Color(1,0.8,0.4,fade),2,true)
+		canvas.draw_arc(point,radius,0,TAU,20,Color(1,0.8,0.4,fade),2,true)
 		if effect_time < 0.4:
 			for direction in [Vector2.UP,Vector2.RIGHT,Vector2.DOWN,Vector2.LEFT]:
-				draw_line(point+direction*radius*0.45,point+direction*radius,impact,3,true)
+				canvas.draw_line(point+direction*radius*0.45,point+direction*radius,impact,3,true)
 	center /= maxf(1,effect.cells.size())
 	if not effect.area:
 		var start := cell_center(effect.from)
 		var tip := start.lerp(center,clampf(effect_time*8,0,1))
-		draw_line(start,tip,impact,5,true)
+		canvas.draw_line(start,tip,impact,5,true)
 		var slash := Vector2(half_width*0.5,-half_width*0.5)
-		draw_line(center-slash,center+slash,Color(1,0.85,0.65,fade),4,true)
+		canvas.draw_line(center-slash,center+slash,Color(1,0.85,0.65,fade),4,true)
 	var caption := "폭발!" if effect.area else "공격!"
 	var box := Rect2(Vector2(clampf(center.x-30,0,maxf(0,size.x-60)),center.y-half_width-20),Vector2(60,20))
-	draw_style_box(_preview_background(impact),box)
-	draw_string(ui_font,box.position+Vector2(2,15),caption,HORIZONTAL_ALIGNMENT_CENTER,56,13,Color(1,0.85,0.65,fade))
+	canvas.draw_style_box(_preview_background(impact),box)
+	canvas.draw_string(ui_font,box.position+Vector2(2,15),caption,HORIZONTAL_ALIGNMENT_CENTER,56,13,Color(1,0.85,0.65,fade))
 
 func _preview_background(color: Color) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
@@ -367,6 +456,26 @@ func _gui_input(event: InputEvent) -> void:
 		gesture_started.emit(); emit_cell(event.position); accept_event()
 
 func emit_cell(position: Vector2) -> void:
+	if is_presenting(): return
 	if position.y < origin.y or position.y >= origin.y+size.x: return
 	var point := cell_at(position)
 	if session != null and session.inside(point): cell_pressed.emit(point)
+
+func paint_decision(canvas: Node2D) -> void:
+	if next_action.is_empty() or session.phase != "BATTLE": return
+	var actor: Dictionary = session.party[session.selected]
+	if actor.hp <= 0: return
+	var start := cell_center(actor.pos)
+	var end := cell_center(next_action.cell)
+	var color := Color("bde2dc")
+	if start.distance_to(end) > 1:
+		var direction := (end-start).normalized()
+		var tip := end-direction*half_width*0.35
+		canvas.draw_line(start,tip,Color(0,0,0,0.8),4,true)
+		canvas.draw_line(start,tip,color,2,true)
+		var normal := Vector2(-direction.y,direction.x)
+		canvas.draw_colored_polygon(PackedVector2Array([tip,tip-direction*7+normal*4,tip-direction*7-normal*4]),color)
+	var caption: String = next_action.get("reason","대기")
+	var box := Rect2(Vector2(clampf(start.x-48,2,maxf(2,size.x-98)),clampf(start.y-half_width*2.6,2,maxf(2,size.y-22))),Vector2(96,20))
+	canvas.draw_style_box(_preview_background(color),box)
+	canvas.draw_string(ui_font,box.position+Vector2(3,14),caption,HORIZONTAL_ALIGNMENT_CENTER,90,11,color)
