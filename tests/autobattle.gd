@@ -128,6 +128,18 @@ func stops() -> void:
 	d.foes[0].hp = 0; s.floor_state.observe(s)
 	check(s.auto_stop_reason() == "BATTLE_END","no foes left stops for battle end")
 	check(s.auto.stops_log.back() == "BATTLE_END","stops are logged for the battle report")
+	# A retreat belongs to the fight it was called in: the end of the battle
+	# clears the standing order, stop event or none.
+	d = skirmish(); s = d.s; s.auto_step()
+	s.party_command = "RETREAT"; s.command_target = d.foes[0].id
+	for dead in d.foes: dead.hp = 0
+	s.floor_state.observe(s)
+	check(s.auto_stop_reason() == "BATTLE_END" and s.party_command == "FOLLOW" and s.command_target == -1,"the end of the battle calls the retreat off")
+	d = skirmish(); s = d.s; s.auto.stops.BATTLE_END = false; s.auto_step()
+	s.party_command = "RETREAT"
+	for dead in d.foes: dead.hp = 0
+	s.floor_state.observe(s)
+	check(s.auto_stop_reason() == "" and s.party_command == "FOLLOW","a consumed battle end clears it too")
 
 ## Strands `s.party[index]` at `cell` with a healthy, alert `foe` beside it, so
 ## that no ally can 엄호 the killing blow away. The retreat line is switched off

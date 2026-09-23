@@ -8,6 +8,7 @@ const Art = preload("res://expedition/mobile_art.gd")
 const InventorySlot = preload("res://expedition/inventory_slot.gd")
 const CharacterUI = preload("res://expedition/character_ui.gd")
 const BattleHud = preload("res://expedition/battle_hud.gd")
+const ArenaSetup = preload("res://expedition/arena_setup.gd")
 const Stances = preload("res://expedition/stances.gd")
 var portrait_gesture = preload("res://expedition/legacy/portrait_gesture.gd").new()
 var navigation = preload("res://expedition/exploration_navigation.gd").new()
@@ -27,6 +28,13 @@ const SKILL_NAMES = [["밀쳐내기","엄호"],["강타","엄호"],["물","방�
 ## Members on a floor expedition; every fresh session in this scene uses it.
 const PARTY_SIZE := 3
 var session = Session.new(randi(),true,false,true,PARTY_SIZE)
+## Battle test mode: the town session set aside while a throwaway arena session
+## fights, the setup screen's own state, and whether that screen is showing.
+var town_session = null
+var arena_config := {"arena":"early_hob","seed":0,"fixed_seed":false,"size":PARTY_SIZE,
+	"members":[{"stance":"CHARGER","parts":["",""]},{"stance":"CHARGER","parts":["",""]},{"stance":"CHARGER","parts":["",""]}],
+	"custom":[["",""],["",""],["",""]]}
+var mode_arena_setup := false
 var mode := ""
 var reservation_actor := -1
 var pending_item := -1
@@ -198,6 +206,34 @@ func toggle_retreat() -> void:
 func show_battle_report() -> void:
 	stop_navigation(); BattleHud.report(self)
 
+## Battle test mode (§3): the setup screen, a throwaway arena session started
+## from it, and the way back to the town session it set aside.
+func show_arena_setup() -> void:
+	stop_navigation(); details_popup.hide()
+	session.auto.running = false
+	mode_arena_setup = true
+	refresh()
+
+func start_arena() -> void:
+	if town_session == null: town_session = session
+	mode_arena_setup = false
+	if not bool(arena_config.fixed_seed): arena_config.seed = randi() % 100000
+	var arena: Dictionary = Session.ARENA_PRESETS.get(str(arena_config.arena),{}).duplicate(true)
+	if str(arena_config.arena) == "custom":
+		arena.members = arena_config.custom.filter(func(row): return not str(row[0]).is_empty()).map(func(row): return [str(row[0]),str(row[1])])
+	details_popup.hide()
+	session = Session.arena_test(int(arena_config.seed),int(arena_config.size),arena,arena_config.members)
+	stop_text = ""; battle_reported = false; action_effects = []; reset_effects = true
+	check_stop()
+	refresh()
+
+func leave_arena() -> void:
+	mode_arena_setup = false
+	details_popup.hide()
+	if town_session != null: session = town_session; town_session = null
+	stop_text = ""; battle_reported = false; action_effects = []; reset_effects = true
+	refresh()
+
 func _process(delta: float) -> void:
 	if is_instance_valid(board) and board.is_presenting(): return
 	toast_remaining = maxf(0,toast_remaining-delta)
@@ -346,12 +382,14 @@ func refresh() -> void:
 		board.zoom_changed.connect(func(value): view_side = value)
 		board.gesture_started.connect(stop_navigation)
 		board.playback_finished.connect(finish_presentation)
+	# A test session never returns to town: its defeat card is the battle report.
+	var in_town: bool = mode_arena_setup or (session.phase in ["TOWN","DEFEAT"] and town_session == null)
 	board.session = session; board.view_side = view_side; board.queue_redraw()
 	# The floor HUD has no end-turn button, so the board keeps no footer strip.
 	board.action_footer = not session.boss_trial and not session.floor_mode or not pending_attack.is_empty()
 	root_layout.add_child(board)
 	# The result card takes the board's place until the player refits.
-	board.visible = session.phase not in ["TOWN","DEFEAT"]
+	board.visible = not in_town
 	board.show_attack_range = show_attack_range
 	board.input_actor = reservation_actor
 	board.targeting_skill = mode
@@ -382,10 +420,12 @@ func refresh() -> void:
 			attack_button.offset_left = 8; attack_button.offset_top = -56
 			attack_button.offset_right = 230; attack_button.offset_bottom = -8
 			attack_button.custom_minimum_size.y = 48
-	var in_town: bool = session.phase in ["TOWN","DEFEAT"]
 	for side in ["top","bottom"]: root_layout.get_parent().add_theme_constant_override("margin_"+side,0 if in_town else 8)
 	if in_town:
-		stop_navigation(); header.hide(); stop_text = ""; battle_reported = false
+		stop_navigation(); header.hide()
+		if mode_arena_setup:
+			root_layout.add_child(ArenaSetup.build(self)); return
+		stop_text = ""; battle_reported = false
 		if not session.result.is_empty():
 			build_result_card()
 		elif session.phase == "TOWN" and not session.alive().is_empty():

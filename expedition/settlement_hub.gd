@@ -30,6 +30,12 @@ func build(ui) -> void:
 		loadout.anchor_left = 0.035; loadout.anchor_top = 0.812
 		loadout.anchor_right = 0.66; loadout.anchor_bottom = 0.877
 		loadout.offset_left = 0; loadout.offset_top = 0; loadout.offset_right = 0; loadout.offset_bottom = 0
+		var arena = ui.button(self,"전투 시험",ui.show_arena_setup)
+		arena.name = "TownArena"; arena.tooltip_text = "플레이테스트 · 파츠와 태세를 골라 아레나에서 시험"
+		arena.custom_minimum_size = Vector2(44,44)
+		arena.anchor_left = 0.67; arena.anchor_top = 0.812
+		arena.anchor_right = 0.965; arena.anchor_bottom = 0.877
+		arena.offset_left = 0; arena.offset_top = 0; arena.offset_right = 0; arena.offset_bottom = 0
 	var top := PanelContainer.new(); top.name = "TownHeader"
 	var panel := StyleBoxFlat.new(); panel.bg_color = Color("141719"); panel.border_color = Color("8f7748"); panel.border_width_bottom = 2
 	panel.content_margin_left = 12; panel.content_margin_right = 6

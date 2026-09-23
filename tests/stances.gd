@@ -6,6 +6,7 @@ const Stances = preload("res://expedition/stances.gd")
 const Knobs = preload("res://expedition/knobs.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
+const CharacterUI = preload("res://expedition/character_ui.gd")
 var failures := 0
 var checks := 0
 func check(ok: bool, reason: String) -> void:
@@ -94,6 +95,15 @@ func mistakes() -> void:
 	check(Stances.mistake_kind(hero) == "RECKLESS","bold at ease: reckless mistakes")
 	hero.profile = profile({"C":500,"X":100,"E":900}); hero.stance = "SKIRMISHER"
 	check(Stances.mistake_kind(hero) == "HESITATE","timid at ease: hesitation")
+	# The named cause is the largest of the three terms, not the first one that applies.
+	hero.profile = profile({"C":480,"X":900,"E":100}); hero.stance = "GUARDIAN"; hero.stress = 0
+	check(CharacterUI.cause(hero) == "태세 강제","careless 8 against a forcing 20: the stance is the reason")
+	hero.stance = "CHARGER"
+	check(CharacterUI.cause(hero) == "성실 낮음","nothing forced: carelessness is all that is left")
+	hero.profile = profile({"C":1000,"X":900,"E":100}); hero.stress = 160
+	check(CharacterUI.cause(hero) == "불안","a collapsed member at ease: the stress is the reason")
+	hero.stress = 0
+	check(CharacterUI.cause(hero) == "안정","conscientious, comfortable and calm: no reason at all")
 	# Deterministic per seed/round/member.
 	s.depart()
 	var a := Stances.mistaken(s,hero); var b := Stances.mistaken(s,hero)
@@ -415,8 +425,16 @@ func ui() -> void:
 ## The spec's largest reason for a member's mistake chance, restated here so
 ## the label is checked against the rule and not against itself.
 func cause(actor: Dictionary) -> String:
-	var chosen: String = str(actor.get("stance",Stances.default_stance(actor.profile)))
-	if actor.profile.value("C") < 500: return "성실 낮음"
-	if not Stances.comfortable(actor.profile,chosen): return "태세 강제"
-	if int(actor.stress) >= 100: return "불안"
-	return "안정"
+	var profile = actor.profile
+	var chosen: String = str(actor.get("stance",Stances.default_stance(profile)))
+	var careless: int = (1000-profile.value("C"))/60 if profile.value("C") < 500 else 0
+	var forced := 0
+	if not Stances.comfortable(profile,chosen):
+		var apt := Stances.aptitude(profile)
+		forced = mini(20,(int(apt[Stances.default_stance(profile)])-int(apt[chosen]))/40)
+	var before: int = Stances.MISTAKE_BASE+(1000-profile.value("C"))/60+forced
+	var after: int = before*2 if int(actor.stress) >= 150 else before*3/2 if int(actor.stress) >= 100 else before
+	var anxious: int = after-before
+	if careless > 0 and careless >= forced and careless >= anxious: return "성실 낮음"
+	if forced > 0 and forced >= anxious: return "태세 강제"
+	return "불안" if anxious > 0 else "안정"

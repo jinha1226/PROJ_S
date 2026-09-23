@@ -181,13 +181,25 @@ static func stances(ui, list: VBoxContainer, actor: Dictionary) -> void:
 
 ## "실수 확률 12% · 성실 낮음": the chance, then the largest reason behind it.
 static func mistake_line(actor: Dictionary) -> String:
+	return "실수 확률 %d%% · %s" % [Stances.mistake_chance(actor),cause(actor)]
+
+## Whichever of the three terms of `Stances.mistake_chance` adds the most:
+## carelessness (only once it is a fault, C below 500), the stance the member
+## was forced into, or what the stress multiplier piles on top.
+static func cause(actor: Dictionary) -> String:
 	var profile = actor.profile
 	var chosen: String = str(actor.get("stance",Stances.default_stance(profile)))
-	var cause := "안정"
-	if profile.value("C") < 500: cause = "성실 낮음"
-	elif not Stances.comfortable(profile,chosen): cause = "태세 강제"
-	elif int(actor.stress) >= 100: cause = "불안"
-	return "실수 확률 %d%% · %s" % [Stances.mistake_chance(actor),cause]
+	var careless: int = (1000-profile.value("C"))/60 if profile.value("C") < 500 else 0
+	var forced := 0
+	if not Stances.comfortable(profile,chosen):
+		var apt := Stances.aptitude(profile)
+		forced = mini(20,(int(apt[Stances.default_stance(profile)])-int(apt[chosen]))/40)
+	var before: int = Stances.MISTAKE_BASE+(1000-profile.value("C"))/60+forced
+	var after: int = before*2 if int(actor.stress) >= 150 else before*3/2 if int(actor.stress) >= 100 else before
+	var anxious: int = after-before
+	if careless > 0 and careless >= forced and careless >= anxious: return "성실 낮음"
+	if forced > 0 and forced >= anxious: return "태세 강제"
+	return "불안" if anxious > 0 else "안정"
 
 ## Taking a stance rebuilds the tab: the ⚠ badges and the mistake line both
 ## depend on it.
