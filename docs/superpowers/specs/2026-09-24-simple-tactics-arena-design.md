@@ -34,7 +34,7 @@ static func mistake_chance(actor) -> int   # 퍼센트, 0~40
 
 ### 1.3 갈등 제거
 
-- `open_battle_conflicts`의 스트레스 +8·`COMMAND_CONFLICT` 기억·"갈등" 메시지 삭제. `Knobs.conflicted`는 UI 배지용(⚠)으로만 남긴다. `actor.conflicted`·`ignoring` 필드는 유지하되 스트레스 효과 없음.
+- `open_battle_conflicts`의 스트레스 +8·`COMMAND_CONFLICT` 기억·"갈등" 메시지 삭제. `Knobs.conflicted`는 UI 배지용(⚠)으로만 남긴다. `actor.conflicted`는 UI 배지로 유지(스트레스 효과 없음), `ignoring` 필드는 삭제한다 — 불안해도 손잡이를 갈아치우지 않으니 읽는 곳이 없다.
 - `Stances.effective`·`Knobs.effective`의 "불안하면 기본값" 규칙은 삭제하고 1.1의 ×1.5/×2로 대체한다(불안한 멤버는 자주 실수하지, 항상 딴 짓하진 않는다).
 
 ### 1.4 기본값·자동

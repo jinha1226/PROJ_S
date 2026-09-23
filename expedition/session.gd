@@ -619,10 +619,14 @@ func auto_step() -> bool:
 	remember_round()
 	for actor in party:
 		var guard := 0
+		# One roll per member per round, so one tally however many actions it spends.
+		var noted := false
 		while actor.hp > 0 and actor.ap > 0 and phase == "BATTLE" and guard < 4:
 			guard += 1
 			var choice: Dictionary = command_choice(actor)
 			if choice.is_empty(): choice = Tactics.choose(self,actor)
+			if not noted and str(choice.get("mistake","")) != "":
+				note_mistake(actor,str(choice.mistake)); noted = true
 			# last_action reports what actually ran, not what was wanted.
 			if act_as(actor,choice.kind,choice.cell,false): actor.last_action = choice.reason
 			elif act_as(actor,"WAIT",actor.pos,false): actor.last_action = "대기"
@@ -648,12 +652,13 @@ const MISTAKE_NAMES := {"HESITATE":"머뭇거림","RECKLESS":"무모함","REVERT
 
 ## One mistake by `actor` this round: tallied for the battle report, and
 ## announced once per battle so the log says why the round went sideways.
-func note_mistake(actor: Dictionary) -> void:
+## Only auto_step calls this — a choice that was merely previewed costs nothing.
+func note_mistake(actor: Dictionary, kind: String) -> void:
 	var row: Dictionary = member_stats(actor.id)
 	if row.is_empty(): return
 	var first: bool = int(row.get("mistakes",0)) == 0
 	row.mistakes = int(row.get("mistakes",0))+1
-	if first: message("%s · %s" % [actor.name,MISTAKE_NAMES.get(Stances.mistake_kind(actor),"실수")])
+	if first: message("%s · %s" % [actor.name,MISTAKE_NAMES.get(kind,"실수")])
 
 ## Snapshot of what auto_stop_reason compares against next round.
 func remember_round() -> void:

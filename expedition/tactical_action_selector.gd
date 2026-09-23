@@ -38,19 +38,25 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 	var low: bool = actor.hp*100/actor.max_hp <= int(knobs.retreat_hp)
 	# A mistake round: the member hesitates, overreaches, or falls back on the
 	# stance it would have picked itself. Staying alive still comes first.
+	# `choose` only reports it — `mistake` on the returned choice — so that a UI
+	# preview costs nothing; auto_step is what tallies it.
+	var mistake := ""
 	if not low and Stances.mistaken(s,actor):
-		s.note_mistake(actor)
-		match Stances.mistake_kind(actor):
-			"HESITATE": return {"kind":"WAIT","cell":actor.pos,"reason":"머뭇거림"}
+		var kind: String = Stances.mistake_kind(actor)
+		match kind:
+			"HESITATE": return {"kind":"WAIT","cell":actor.pos,"reason":"머뭇거림","mistake":kind}
 			"RECKLESS":
 				var bold: Dictionary = knobs.duplicate(); bold.posture = 100
 				var reckless: Array = Stances.candidates(s,actor,"CHARGER",bold)
+				# Nothing to overreach with: the round is an ordinary one, and
+				# nothing is reported, so the tally matches what actually ran.
 				if not reckless.is_empty():
 					reckless.sort_custom(rank)
 					var pick: Dictionary = reckless[0]
 					pick.reason = "무모함 · "+str(pick.reason)
+					pick.mistake = kind
 					return pick
-			"REVERT": stance = Stances.default_stance(actor.profile)
+			"REVERT": stance = Stances.default_stance(actor.profile); mistake = kind
 	var options: Array = []
 	rule_candidates(s,actor,knobs,low,options)
 	# Below the retreat line staying alive outranks everything below it.
@@ -71,9 +77,13 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 	var stance_options: Array = Stances.candidates(s,actor,stance,knobs)
 	for o in stance_options:
 		if o.kind == "MOVE": o.score += cohesion_shift(s,actor,o.cell,knobs)
-	if stance_options.is_empty(): return {"kind":"WAIT","cell":actor.pos,"reason":"대기"}
+	# A REVERT is only a mistake once the stance it reverted to is what answers:
+	# a rule that would have won anyway is the same round either way.
+	if stance_options.is_empty(): return {"kind":"WAIT","cell":actor.pos,"reason":"대기","mistake":mistake}
 	stance_options.sort_custom(rank)
-	return stance_options[0]
+	var chosen: Dictionary = stance_options[0]
+	if mistake != "": chosen.mistake = mistake
+	return chosen
 
 ## Score first, then a stable name so that two equal candidates never flip.
 static func rank(a, b) -> bool:

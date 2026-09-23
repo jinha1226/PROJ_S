@@ -117,6 +117,15 @@ func mistakes() -> void:
 	h.profile = profile({"C":0,"X":900,"E":100}); h.stance = "GUARDIAN"  # far outside -> REVERT to CHARGER
 	t.intents = []; f.foes[0].charging = false; t.floor_state.observe(t)
 	check(str(t.Tactics.choose(t,h).reason).begins_with("돌격"),"revert: acts on its own stance")
+	check(t.Tactics.choose(t,h).get("mistake","") == "REVERT","the choice reports the mistake it came from")
+	# `choose` reports; only a round that is actually played tallies.
+	t.reset_battle_stats()
+	var tallied: int = int(t.member_stats(h.id).mistakes)
+	t.Tactics.choose(t,h); t.Tactics.choose(t,h)
+	check(int(t.member_stats(h.id).mistakes) == tallied,"previewing a choice tallies nothing")
+	for member in t.party: member.ap = 1
+	t.auto_step()
+	check(int(t.member_stats(h.id).mistakes) == tallied+1,"one auto_step tallies exactly one mistake")
 	t.mistake_override[h.id] = false
 	# No conflict stress any more.
 	var d := skirmish_for_conflict()
