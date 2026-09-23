@@ -28,7 +28,10 @@ static func build(ui) -> Control:
 	for i in range(int(ui.arena_config.size)): member_card(ui,list,i,probe.party[i])
 	var buttons := HBoxContainer.new(); buttons.add_theme_constant_override("separation",4); root.add_child(buttons)
 	var back = ui.button(buttons,"마을로",ui.leave_arena); back.name = "ArenaBack"
-	var start = ui.button(buttons,"시작",ui.start_arena); start.name = "ArenaStart"
+	# A hand-made arena with nobody in it is not a fight; the presets always are.
+	var empty: bool = str(ui.arena_config.arena) == "custom" and ui.arena_config.custom.all(func(row): return str(row[0]).is_empty())
+	var start = ui.button(buttons,"시작",ui.start_arena,not empty); start.name = "ArenaStart"
+	start.tooltip_text = "적을 하나 이상 고르세요" if empty else "고른 구성으로 전투를 시작합니다"
 	return root
 
 ## The arena roster and the party size.
@@ -92,8 +95,10 @@ static func custom_row(ui, list: VBoxContainer) -> void:
 		row.add_child(pick)
 
 static func choose_foe(ui, slot: int, table: Array, choice: int) -> void:
-	if choice <= 0: ui.arena_config.custom[slot] = ["",""]; return
-	ui.arena_config.custom[slot] = [str(table[(choice-1)/ROLES.size()].species_id),ROLES[(choice-1)%ROLES.size()]]
+	if choice <= 0: ui.arena_config.custom[slot] = ["",""]
+	else: ui.arena_config.custom[slot] = [str(table[(choice-1)/ROLES.size()].species_id),ROLES[(choice-1)%ROLES.size()]]
+	# An empty roster closes 시작, so the screen is rebuilt on every foe change.
+	ui.show_arena_setup()
 
 ## A party size change keeps the cards it already has and fills the rest.
 static func resize(ui, count: int) -> void:
@@ -121,11 +126,21 @@ static func member_card(ui, list: VBoxContainer, index: int, probe: Dictionary) 
 		pick.add_item("빈 슬롯")
 		for id in ids: pick.add_item(str(Abilities.DEFINITIONS[id].name))
 		pick.select(ids.find(str(setup.parts[slot]))+1)
-		pick.item_selected.connect(func(choice): setup.parts[slot] = "" if choice <= 0 else str(ids[choice-1]))
+		# One part, one slot: what the other slot holds cannot be picked again.
+		var other: int = ids.find(str(setup.parts[1-slot]))
+		if other >= 0: pick.set_item_disabled(other+1,true)
+		pick.item_selected.connect(func(choice): choose_part(ui,index,slot,ids,choice))
 		slots.add_child(pick)
 	# The seed rolls the personality, so the chance is quoted with its seed.
 	probe["stance"] = str(setup.stance)
-	CharacterUI.text(box,"실수 확률 %d%% · 시드 %d 기준" % [Stances.mistake_chance(probe),int(ui.arena_config.seed)],12)
+	var chance := CharacterUI.text(box,"실수 확률 %d%% · 시드 %d 기준" % [Stances.mistake_chance(probe),int(ui.arena_config.seed)],12)
+	chance.tooltip_text = "시드 고정이 꺼져 있으면 시작 시 시드가 새로 정해져 값이 달라집니다."
+	chance.mouse_filter = Control.MOUSE_FILTER_STOP
+
+## The other slot's picker has to grey the part out, so a pick rebuilds the screen.
+static func choose_part(ui, index: int, slot: int, ids: Array, choice: int) -> void:
+	ui.arena_config.members[index].parts[slot] = "" if choice <= 0 else str(ids[choice-1])
+	ui.show_arena_setup()
 
 static func choose_stance(ui, index: int, id: String) -> void:
 	ui.arena_config.members[index].stance = id

@@ -54,6 +54,13 @@ func scene() -> void:
 	check(scene.find_children("ArenaMember*","Control",true,false).size() == 3,"three member cards")
 	var part0 = scene.find_child("ArenaPart_0_0",true,false)
 	check(part0 != null and part0.item_count == Abilities.DEFINITIONS.size()+1,"part picker lists every catalog part plus empty")
+	# One part, one slot: the pair of pickers cannot both land on the same part.
+	var club: int = Abilities.DEFINITIONS.keys().find("HOB_CLUB")+1
+	part0.item_selected.emit(club)
+	for frame in range(3): await process_frame
+	check(scene.arena_config.members[0].parts[0] == "HOB_CLUB","the part choice is recorded")
+	check(scene.find_child("ArenaPart_0_1",true,false).is_item_disabled(club),"the other slot greys the part out")
+	check(not scene.find_child("ArenaPart_1_1",true,false).is_item_disabled(club),"another member may still take it")
 	scene.find_child("ArenaStance_0_SKIRMISHER",true,false).pressed.emit(); await process_frame
 	check(scene.arena_config.members[0].stance == "SKIRMISHER","stance choice recorded")
 	scene.find_child("ArenaStart",true,false).pressed.emit()
@@ -90,8 +97,11 @@ func custom() -> void:
 	for frame in range(3): await process_frame
 	var foes: Array = scene.find_children("ArenaFoe*","Control",true,false)
 	check(foes.size() == 3 and foes[0].item_count == 25,"three foe slots, none plus eight species by three roles")
+	check(scene.find_child("ArenaStart",true,false).disabled,"an empty hand-made roster is not a fight")
 	foes[0].item_selected.emit(1)
+	for frame in range(3): await process_frame
 	check(scene.arena_config.custom[0] == ["dcss_rat","MELEE"],"the foe choice is recorded as a species and a role")
+	check(not scene.find_child("ArenaStart",true,false).disabled,"one foe is enough to start")
 	scene.find_child("ArenaStart",true,false).pressed.emit()
 	for frame in range(4): await process_frame
 	check(scene.session.enemies.size() == 1 and scene.session.party.size() == 1,"the hand-made roster is what spawns")
