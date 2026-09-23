@@ -73,3 +73,9 @@ godot --headless --path . --script res://tests/stance_gate.gd
 godot --headless --path . --script res://tests/ranged_probe.gd
 godot --headless --path . --script res://tests/utility.gd
 ```
+
+## 병합 후 추가 판정 (2026-09-25)
+
+- **깊은 층 예산 상한.** `theme_for()`의 예산 배율 `1 + 0.25·(depth−2)`은 8층부터 카탈로그가 채울 수 있는 위협 합을 넘겨 층 생성이 실패했다(`encounter invalid: too weak`). 이제 예산은 "깊이 6 카탈로그에서 짤 수 있는 가장 강한 합법 무리(최대 인원, 종족·역할당 2)의 80%"로 상한을 둔다(`Floor.strongest_pack`). Plan A가 넣었던 빌더 폴백 탐색은 이 문제를 가리던 것이라 별도 보류 상태를 유지한다. `tests/floor_descent.gd`가 7~12층 × 시드 3개 생성을 검사한다.
+- **NPC 무리도 카탈로그 깊이 6으로 클램프**(`NpcRoster.spawn_pack`). 9층 이후 단일 코볼드 폴백을 막는다(`tests/npc_roster.gd deep_packs`).
+- **영입은 EXPLORE에서만**(`Session.offer`, `Recruit.can_aid/propose`). 전투 중 제안 팝업이 자동 진행을 끊지 않는다(`tests/recruit.gd battle_gate`).

@@ -204,8 +204,9 @@ func recruit(npc: Dictionary) -> bool:
 
 ## An npc beside the party asks to come along. One offer stands at a time and
 ## the npc will not ask again for twenty rounds after an answer.
+## An NPC only speaks up while the party is exploring: never into a battle.
 func offer(npc: Dictionary) -> bool:
-	if pending_offer >= 0 or npc.state != "MET" or round_number < int(npc.get("offered_until",-99)): return false
+	if phase != "EXPLORE" or pending_offer >= 0 or npc.state != "MET" or round_number < int(npc.get("offered_until",-99)): return false
 	pending_offer = npc.id
 	return true
 

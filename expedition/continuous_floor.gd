@@ -31,12 +31,31 @@ static func theme_for(depth: int) -> Dictionary:
 	var theme: Dictionary = Generator.theme("F1_RUINS" if depth % 2 == 1 else "F2_MINES")
 	if depth >= 3:
 		var scale: float = 1.0+0.25*(depth-2)
-		for key in theme.monsters.budget: theme.monsters.budget[key] = roundi(theme.monsters.budget[key]*scale)
 		theme.monsters.max_members = mini(4,2+int(depth/3))
+		# Deep budgets are capped at what the catalog can actually fill: the
+		# generator draws from the mature rows (depth 6) and a pack obeys the
+		# builder's pair rule, so beyond ~80% of the strongest legal pack the
+		# random fill only fails and the floor never validates.
+		var cap: int = strongest_pack(6,int(theme.monsters.max_members))*4/5
+		for key in theme.monsters.budget: theme.monsters.budget[key] = mini(roundi(theme.monsters.budget[key]*scale),cap)
 	theme.depth = depth
 	theme.boss = depth % 3 == 0
 	if theme.boss: theme.templates.required = ["entry_camp","boss_lair","sealed_treasury"]
 	return theme
+
+## Threat total of the strongest pack the builder could legally assemble at
+## `depth`: strongest rows first, at most two of one species/role, `max_members` units.
+static func strongest_pack(depth: int, max_members: int) -> int:
+	var rows: Array = Generator.Encounters.candidates(depth,999)
+	rows.sort_custom(func(a,b): return int(a.threat) > int(b.threat))
+	var total := 0
+	var taken := 0
+	for row in rows:
+		for role in row.roles:
+			var copies: int = mini(2,max_members-taken)
+			if copies <= 0: return total
+			total += int(row.threat)*copies; taken += copies
+	return total
 
 func build(s) -> void:
 	var theme: Dictionary = theme_for(s.depth)

@@ -118,7 +118,8 @@ static func place(s) -> void:
 static func spawn_pack(s, npc: Dictionary, room: Dictionary) -> void:
 	var d: int = depth(s)
 	var theme: Dictionary = Generator.theme(str(s.floor_state.layout.get("theme_id","F1_RUINS")))
-	var members: Array = Encounters.pack(theme,3,d,s.seed_value+d*100000+npc.id)
+	# The catalog ends at depth 8; deeper packs reuse its mature rows like the floor's own encounters do.
+	var members: Array = Encounters.pack(theme,3,mini(d,6),s.seed_value+d*100000+npc.id)
 	var cells: Array = Generator.floor_cells(s.floor_state.layout.terrain,s.floor_state.layout.size,room.rect).filter(func(p): return s.at(p).is_empty() and s.distance(p,npc.pos) <= 2 and p != npc.pos)
 	for i in range(mini(members.size(),cells.size())):
 		var m: Dictionary = members[i].duplicate(true)

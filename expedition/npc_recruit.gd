@@ -13,6 +13,7 @@ static func hero(s) -> int:
 	return int(s.party[0].id)+1
 
 static func can_aid(s, npc: Dictionary) -> String:
+	if s.phase != "EXPLORE": return "전투 중"
 	if npc.hp <= 0 or npc.state != "MET": return "대상 아님"
 	if not s.alive().any(func(a): return s.melee_reach(a.pos,npc.pos)): return "거리 초과"
 	if not (bool(npc.get("hungry",false)) or npc.hp*100 < npc.max_hp*50): return "도울 일이 없음"
@@ -46,6 +47,7 @@ static func dialogue(s, npc: Dictionary) -> Dictionary:
 ## The player asks. Shared food is a promise and skips the roll; otherwise the
 ## npc's own extraversion and warmth answer, once every twenty rounds.
 static func propose(s, npc: Dictionary) -> Dictionary:
+	if s.phase != "EXPLORE": return {"accepted":false,"line":"지금은 싸울 때다"}
 	var d := dialogue(s,npc)
 	if not d.can_propose: return {"accepted":false,"line":d.line}
 	if not aided(s,npc):

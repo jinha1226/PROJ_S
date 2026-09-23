@@ -24,9 +24,21 @@ func set_facets(npc: Dictionary, x: int, a: int) -> void:
 
 func run() -> void:
 	aid(); aid_death(); memory_survives(); chance(); ask(); offer(); full_party(); duo_close(); duo_strained(); partner_dead()
-	marching_order(); comrade_dies(); stale_offer(); kinds(); history()
+	marching_order(); comrade_dies(); stale_offer(); kinds(); history(); battle_gate()
 	await scene()
 	print("Recruit: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
+
+## Recruitment is an exploring-time conversation: nothing is offered, shared or proposed mid-battle.
+func battle_gate() -> void:
+	var f := solo(77); var s = f.s; var npc: Dictionary = f.npc
+	set_facets(npc,1000,1000); npc.hungry = true
+	s.phase = "BATTLE"
+	check(not s.offer(npc) and s.pending_offer < 0,"no offer during a battle")
+	check(Recruit.can_aid(s,npc) == "전투 중" and not s.aid(npc) and s.food == 3,"no food shared during a battle")
+	var answer: Dictionary = s.propose(npc)
+	check(not answer.accepted and answer.line == "지금은 싸울 때다" and npc.state == "MET","no proposal during a battle")
+	s.phase = "EXPLORE"
+	check(s.aid(npc) and s.propose(npc).accepted,"exploring again: aid and proposal work")
 
 func aid() -> void:
 	var f := solo(); var s = f.s; var npc: Dictionary = f.npc

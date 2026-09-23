@@ -9,6 +9,14 @@ func check(ok: bool, reason: String) -> void:
 	if not ok: failures += 1; push_error(reason)
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
+	# Deep floors: the scaled budget stays within what the catalog can fill, so every depth generates.
+	for depth in range(7,13):
+		var deep: Dictionary = Floor.theme_for(depth)
+		var cap: int = Floor.strongest_pack(6,int(deep.monsters.max_members))*4/5
+		check(deep.monsters.budget.values().all(func(b): return int(b) <= cap),"depth %d budgets capped at 80%% of the strongest legal pack" % depth)
+		for seed in range(3):
+			var layout: Dictionary = Generator.generate(deep,seed,depth)
+			check(Generator.validate(layout,deep).is_empty() and int(layout.stats.regenerations) < Generator.MAX_REGENERATIONS,"depth %d seed %d generates a valid floor" % [depth,seed])
 	check(Floor.theme_for(1).id == "F1_RUINS" and Floor.theme_for(2).id == "F2_MINES" and Floor.theme_for(3).id == "F1_RUINS","alternating themes")
 	for id in ["F1_RUINS","F2_MINES"]:
 		var theme: Dictionary = Generator.theme(id)

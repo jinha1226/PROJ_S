@@ -10,7 +10,7 @@ func check(ok: bool, reason: String) -> void:
 func _initialize() -> void: call_deferred("run")
 
 func run() -> void:
-	roster(); placement(); reappearance()
+	roster(); placement(); reappearance(); deep_packs()
 	print("NPC roster: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func roster() -> void:
@@ -30,6 +30,19 @@ func roster() -> void:
 	check(rows.filter(func(n): return n.partner < 0).all(func(n): return n.bond == ""),"singles have no bond")
 	var again: Array = Roster.generate(Session.new(41,false,false,true,1))
 	check(again.map(func(n): return [n.name,n.partner,n.bond,n.stance]) == rows.map(func(n): return [n.name,n.partner,n.bond,n.stance]),"deterministic per seed")
+
+## Below the catalog's last depth a FIGHTING npc still gets a real pack, not the builder's single-kobold fallback.
+func deep_packs() -> void:
+	var seen := 0
+	for seed in range(6):
+		var s = Session.new(500+seed,false,false,true,1); s.depart()
+		s.depth = 10; s.floor_state.build(s); Roster.place(s)
+		for n in s.npcs:
+			if Roster.situation(n) != "FIGHTING": continue
+			var pack: Array = s.enemies.filter(func(e): return e.get("npc_pack",-1) == n.id)
+			seen += 1
+			check(not pack.is_empty() and pack.all(func(e): return e.species_id != "kobold"),"depth 10 pack is drawn from the mature catalog (seed %d)" % seed)
+	check(seen > 0,"some deep floor placed a fighting npc")
 
 func placement() -> void:
 	var s = Session.new(42,false,false,true,1); s.depart()
