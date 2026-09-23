@@ -1,6 +1,6 @@
 # 태세 게이트 G7 결과
 
-생성: `tests/stance_gate.gd`(수동 도구) · 커밋 `33a9c7a` · 날짜 2026-09-23
+생성: `tests/stance_gate.gd`(수동 도구) · 커밋 `7f1bc21-dirty` · 날짜 2026-09-23
 근거: [밸런스 방법론](../balance-method.ko.md) §5 · 설계: [태세 설계](../superpowers/specs/2026-09-23-stances-design.md) §4
 
 - 시드 묶음: `S4` 40개 (8000~8039)
@@ -9,7 +9,7 @@
 - **물자 0**: `supplies [0, 0, 0, 0, 0, 0]` — 태세의 값이 회복품에 가려지지 않는다.
 - 아레나 공통 spec: size 20 · room [5, 5, 9, 9] · door [9, 4] · pillars [[8, 8], [10, 10]] · party_entry [9, 5] · light 90 · supplies [0, 0, 0, 0, 0, 0]
 - 행렬: 빌드 4 × 아레나 6 × 시드 40 = 960전투
-- 실행 시간: 43.4초
+- 실행 시간: 52.1초
 - 솔로 HP 스케일: `SOLO_HP_PERCENT 45` / `SOLO_HP_MIN 20` / `SOLO_HP_MAX 32` (3인 실험이라 적용되지 않는다)
 
 > 명중 판정이 없으므로 같은 커밋·같은 시드·같은 빌드는 같은 전투를 낸다 — 표의 모든 칸은 재실행으로 재현된다.
@@ -39,184 +39,59 @@
 
 | 빌드 | 아레나 | 티어 | 승률 [95% CI] | 평균 피해(개인별) | 평균 라운드 | 역할 유지 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `stance_mixed` | `early_hob` | early | 1.00 [0.91, 1.00] | 21.0 | 19.1 | 돌 0.51 (124/242) 거 0.83 (202/242) 호 1.00 (40/40) |
-| `stance_mixed` | `early_pair` | early | 1.00 [0.91, 1.00] | 7.7 | 10.9 | 돌 0.51 (136/266) 거 0.74 (198/266) 호 0.97 (258/266) |
-| `stance_mixed` | `deep_mixed` | deep | 0.72 [0.57, 0.84] | 29.0 | 19.1 | 돌 0.43 (229/527) 거 0.81 (431/535) 호 0.82 (436/529) |
-| `stance_mixed` | `deep_caster` | deep | 0.55 [0.40, 0.69] | 27.6 | 18.0 | 돌 0.41 (163/395) 거 0.79 (278/354) 호 1.00 (210/210) |
-| `stance_mixed` | `opt_archers` | optional | 0.93 [0.80, 0.97] | 22.4 | 16.1 | 돌 0.38 (187/486) 거 0.73 (359/492) 호 0.93 (410/443) |
-| `stance_mixed` | `opt_gnoll` | optional | 0.95 [0.83, 0.99] | 16.7 | 20.6 | 돌 0.55 (365/668) 거 0.86 (580/675) 호 0.92 (604/659) |
-| `stance_charger` | `early_hob` | early | 1.00 [0.91, 1.00] | 18.7 | 16.0 | 돌 0.57 (160/280) |
-| `stance_charger` | `early_pair` | early | 1.00 [0.91, 1.00] | 8.1 | 10.2 | 돌 0.40 (293/726) |
-| `stance_charger` | `deep_mixed` | deep | 0.88 [0.74, 0.95] | 21.3 | 12.4 | 돌 0.44 (438/1002) |
-| `stance_charger` | `deep_caster` | deep | 0.55 [0.40, 0.69] | 27.8 | 17.2 | 돌 0.48 (463/967) |
-| `stance_charger` | `opt_archers` | optional | 1.00 [0.91, 1.00] | 18.1 | 11.6 | 돌 0.39 (404/1048) |
-| `stance_charger` | `opt_gnoll` | optional | 1.00 [0.91, 1.00] | 12.9 | 13.8 | 돌 0.53 (711/1341) |
-| `stance_skirmisher` | `early_hob` | early | 1.00 [0.91, 1.00] | 0.0 | 9.0 | 거 0.92 (440/480) |
-| `stance_skirmisher` | `early_pair` | early | 1.00 [0.91, 1.00] | 4.7 | 12.0 | 거 0.77 (512/669) |
-| `stance_skirmisher` | `deep_mixed` | deep | 0.95 [0.83, 0.99] | 23.8 | 17.8 | 거 0.68 (1107/1633) |
-| `stance_skirmisher` | `deep_caster` | deep | 0.78 [0.62, 0.88] | 27.5 | 20.0 | 거 0.63 (730/1158) |
-| `stance_skirmisher` | `opt_archers` | optional | 0.80 [0.65, 0.90] | 28.3 | 18.8 | 거 0.60 (947/1566) |
-| `stance_skirmisher` | `opt_gnoll` | optional | 1.00 [0.91, 1.00] | 12.1 | 18.6 | 거 0.81 (1460/1811) |
-| `stance_guardian` | `early_hob` | early | 1.00 [0.91, 1.00] | 40.2 | 31.4 | 호 0.44 (184/416) |
-| `stance_guardian` | `early_pair` | early | 1.00 [0.91, 1.00] | 7.6 | 12.9 | 호 0.97 (1068/1104) |
-| `stance_guardian` | `deep_mixed` | deep | 0.28 [0.16, 0.43] | 42.5 | 32.3 | 호 0.70 (1969/2818) |
-| `stance_guardian` | `deep_caster` | deep | 0.50 [0.35, 0.65] | 38.5 | 33.0 | 호 0.68 (1639/2397) |
-| `stance_guardian` | `opt_archers` | optional | 0.35 [0.22, 0.50] | 42.3 | 32.3 | 호 0.71 (1904/2668) |
-| `stance_guardian` | `opt_gnoll` | optional | 0.88 [0.74, 0.95] | 24.5 | 32.7 | 호 0.77 (2691/3516) |
+| `stance_mixed` | `early_hob` | early | 1.00 [0.91, 1.00] | 5.6 | 11.8 | 돌 0.08 (13/169) 거 0.93 (158/169) 호 1.00 (148/148) |
+| `stance_mixed` | `early_pair` | early | 1.00 [0.91, 1.00] | 5.9 | 11.5 | 돌 0.46 (137/297) 거 0.69 (205/297) 호 0.92 (264/286) |
+| `stance_mixed` | `deep_mixed` | deep | 0.88 [0.74, 0.95] | 24.6 | 17.2 | 돌 0.42 (218/513) 거 0.70 (359/510) 호 0.93 (437/470) |
+| `stance_mixed` | `deep_caster` | deep | 0.78 [0.62, 0.88] | 24.9 | 19.6 | 돌 0.39 (170/433) 거 0.66 (285/429) 호 0.89 (270/304) |
+| `stance_mixed` | `opt_archers` | optional | 0.93 [0.80, 0.97] | 26.7 | 20.3 | 돌 0.35 (192/546) 거 0.66 (400/604) 호 0.95 (539/568) |
+| `stance_mixed` | `opt_gnoll` | optional | 0.95 [0.83, 0.99] | 17.9 | 22.4 | 돌 0.55 (419/762) 거 0.80 (580/723) 호 0.92 (644/702) |
+| `stance_charger` | `early_hob` | early | 1.00 [0.91, 1.00] | 6.0 | 12.9 | 돌 0.24 (142/588) |
+| `stance_charger` | `early_pair` | early | 1.00 [0.91, 1.00] | 5.6 | 9.4 | 돌 0.34 (219/643) |
+| `stance_charger` | `deep_mixed` | deep | 0.93 [0.80, 0.97] | 19.0 | 12.2 | 돌 0.41 (432/1041) |
+| `stance_charger` | `deep_caster` | deep | 0.75 [0.60, 0.86] | 25.9 | 17.2 | 돌 0.38 (362/954) |
+| `stance_charger` | `opt_archers` | optional | 0.97 [0.87, 1.00] | 17.6 | 12.0 | 돌 0.34 (369/1070) |
+| `stance_charger` | `opt_gnoll` | optional | 1.00 [0.91, 1.00] | 14.3 | 13.7 | 돌 0.53 (703/1320) |
+| `stance_skirmisher` | `early_hob` | early | 1.00 [0.91, 1.00] | 2.0 | 12.5 | 거 0.77 (662/858) |
+| `stance_skirmisher` | `early_pair` | early | 1.00 [0.91, 1.00] | 5.0 | 13.6 | 거 0.74 (760/1030) |
+| `stance_skirmisher` | `deep_mixed` | deep | 0.65 [0.50, 0.78] | 33.9 | 26.0 | 거 0.62 (1444/2324) |
+| `stance_skirmisher` | `deep_caster` | deep | 0.75 [0.60, 0.86] | 32.0 | 22.5 | 거 0.64 (1128/1774) |
+| `stance_skirmisher` | `opt_archers` | optional | 0.65 [0.50, 0.78] | 35.4 | 24.7 | 거 0.49 (1035/2093) |
+| `stance_skirmisher` | `opt_gnoll` | optional | 0.68 [0.52, 0.80] | 24.6 | 38.7 | 거 0.69 (2562/3736) |
+| `stance_guardian` | `early_hob` | early | 1.00 [0.91, 1.00] | 1.1 | 10.8 | 호 1.00 (636/636) |
+| `stance_guardian` | `early_pair` | early | 1.00 [0.91, 1.00] | 4.5 | 11.2 | 호 0.99 (941/951) |
+| `stance_guardian` | `deep_mixed` | deep | 0.88 [0.74, 0.95] | 24.4 | 20.3 | 호 0.93 (1777/1901) |
+| `stance_guardian` | `deep_caster` | deep | 0.68 [0.52, 0.80] | 28.0 | 25.7 | 호 0.91 (1823/2001) |
+| `stance_guardian` | `opt_archers` | optional | 0.65 [0.50, 0.78] | 31.8 | 26.4 | 호 0.88 (2013/2291) |
+| `stance_guardian` | `opt_gnoll` | optional | 0.95 [0.83, 0.99] | 15.7 | 25.2 | 호 0.92 (2477/2683) |
 
 ## 표 2 — 태세별 역할 유지 비율
 
 | 빌드 | 아레나 | 돌격형 | 거리형 | 호위형 |
 | --- | --- |  --- | --- | --- |
-| `stance_mixed` | `early_hob` | 0.51 (124/242) | 0.83 (202/242) | 1.00 (40/40) |
-| `stance_mixed` | `early_pair` | 0.51 (136/266) | 0.74 (198/266) | 0.97 (258/266) |
-| `stance_mixed` | `deep_mixed` | 0.43 (229/527) | 0.81 (431/535) | 0.82 (436/529) |
-| `stance_mixed` | `deep_caster` | 0.41 (163/395) | 0.79 (278/354) | 1.00 (210/210) |
-| `stance_mixed` | `opt_archers` | 0.38 (187/486) | 0.73 (359/492) | 0.93 (410/443) |
-| `stance_mixed` | `opt_gnoll` | 0.55 (365/668) | 0.86 (580/675) | 0.92 (604/659) |
-| `stance_charger` | `early_hob` | 0.57 (160/280) | — | — |
-| `stance_charger` | `early_pair` | 0.40 (293/726) | — | — |
-| `stance_charger` | `deep_mixed` | 0.44 (438/1002) | — | — |
-| `stance_charger` | `deep_caster` | 0.48 (463/967) | — | — |
-| `stance_charger` | `opt_archers` | 0.39 (404/1048) | — | — |
-| `stance_charger` | `opt_gnoll` | 0.53 (711/1341) | — | — |
-| `stance_skirmisher` | `early_hob` | — | 0.92 (440/480) | — |
-| `stance_skirmisher` | `early_pair` | — | 0.77 (512/669) | — |
-| `stance_skirmisher` | `deep_mixed` | — | 0.68 (1107/1633) | — |
-| `stance_skirmisher` | `deep_caster` | — | 0.63 (730/1158) | — |
-| `stance_skirmisher` | `opt_archers` | — | 0.60 (947/1566) | — |
-| `stance_skirmisher` | `opt_gnoll` | — | 0.81 (1460/1811) | — |
-| `stance_guardian` | `early_hob` | — | — | 0.44 (184/416) |
-| `stance_guardian` | `early_pair` | — | — | 0.97 (1068/1104) |
-| `stance_guardian` | `deep_mixed` | — | — | 0.70 (1969/2818) |
-| `stance_guardian` | `deep_caster` | — | — | 0.68 (1639/2397) |
-| `stance_guardian` | `opt_archers` | — | — | 0.71 (1904/2668) |
-| `stance_guardian` | `opt_gnoll` | — | — | 0.77 (2691/3516) |
-
-## 게이트 G7 판정 (스펙 §4, 사전 고정)
-
-- **혼합 파티**(`stance_mixed`, 돌·거·호): 아레나 6개 **전부**에서 승률 ≥ 0.85.
-- **단일 태세 파티**: 각 빌드가 아레나 6개 중 4개 이상에서 승률 ≥ 0.60 (어느 태세도 사장 아님).
-
-| 빌드 | 기준 | 충족 아레나 | 판정 |
-| --- | --- | --- | --- |
-| `stance_mixed` | 전 아레나 ≥ 0.85 | 4/6 (미달: `deep_mixed`, `deep_caster`) | **미달** |
-| `stance_charger` | 4/6 아레나 ≥ 0.60 | 5/6 (`early_hob`, `early_pair`, `deep_mixed`, `opt_archers`, `opt_gnoll`) | 통과 |
-| `stance_skirmisher` | 4/6 아레나 ≥ 0.60 | 6/6 (`early_hob`, `early_pair`, `deep_mixed`, `deep_caster`, `opt_archers`, `opt_gnoll`) | 통과 |
-| `stance_guardian` | 4/6 아레나 ≥ 0.60 | 3/6 (`early_hob`, `early_pair`, `opt_gnoll`) | **미달** |
-
-**G7 종합: 미달**
-
-솔로 기준(`tests/solo_balance.gd` ≥ 3/8)은 이 도구가 아니라 CI 스위트가 잰다 — 아래 "솔로 기준" 절에 결과를 손으로 적는다.
-
-
----
-
-> 여기서부터는 **손으로 적은 절**이다. 위의 본문은 `tests/stance_gate.gd`가 파일 전체를 덮어쓰며 생성하므로, 도구를 다시 돌린 뒤에는 이 아래를 다시 붙여야 한다. 위의 표가 **2차 측정**(호위형 동반 전진 도입 후, 커밋 `33a9c7a`)이고, 1차 측정은 아래에 그대로 남겨 두었다.
-
-## 2차 측정 요약 — 무엇이 바뀌었나
-
-설계 §2.3에 **(d-1) 동반 전진**을 넣었다: 보호 대상이 위협받지 않고 자기 사거리 안에도 적이 없으면, 공통 표적 쪽으로 MOVE(점수 50, 목표 칸은 `P`로부터 `keep+1` 이내)를 후보에 넣는다. 1차 측정의 진단 — "서로를 호위하는 파티는 전진 후보가 없어 전투가 성립하지 않는다" — 에 대한 설계 수정이며 점수 조정이 아니다.
-
-승률(1차 → 2차):
-
-| 빌드 | early_hob | early_pair | deep_mixed | deep_caster | opt_archers | opt_gnoll | 게이트 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `stance_mixed` | 1.00 → 1.00 | 1.00 → 1.00 | **0.85 → 0.72** | 0.55 → 0.55 | 0.93 → 0.93 | 0.97 → 0.95 | 5/6 → **4/6** 미달 |
-| `stance_charger` | 1.00 → 1.00 | 1.00 → 1.00 | 0.88 → 0.88 | 0.55 → 0.55 | 1.00 → 1.00 | 1.00 → 1.00 | 5/6 통과(무변화) |
-| `stance_skirmisher` | 1.00 → 1.00 | 1.00 → 1.00 | 0.95 → 0.95 | 0.78 → 0.78 | 0.82 → 0.82 | 1.00 → 1.00 | 6/6 통과(무변화) |
-| `stance_guardian` | 1.00 → 1.00 | 1.00 → 1.00 | 0.23 → 0.28 | 0.42 → 0.50 | **0.07 → 0.35** | 0.78 → 0.88 | 3/6 → **3/6** 미달 |
-
-- **의도한 효과는 나왔다**: 호위형 단일 파티의 교착이 풀렸다. `opt_archers` 0.07 → 0.35, 평균 라운드 35.6 → 32.3, 인원당 피해 47.5 → 42.3. 네 아레나 전부에서 올랐다.
-- **그러나 기준 0.60을 넘긴 아레나 수는 3개 그대로다**(1.00·1.00·0.88). 0.50·0.35·0.28은 아직 기준 아래다.
-- **대가가 있다**: 혼합 파티의 `deep_mixed`가 0.85 → 0.72로 떨어져 혼합 게이트 충족 아레나가 5/6에서 4/6이 됐다. 혼합 파티의 호위형이 이제 거리형 곁을 떠나 전진하기 때문이다 — 호위형 역할 유지 0.89 → 0.82, 인원당 피해 27.3 → 29.0.
-- 솔로 기준은 영향 없음: 1인 파티에는 보호 대상이 없어 호위형 코드가 실행되지 않는다. **3/8 유지, 통과.**
-
-## 3차 측정 — 돌격형 예고 회피 문턱(보류)
-
-같은 라운드에 지시받은 두 번째 변경(돌격형의 예고 회피 문턱 `posture ≤ −60` → `≤ 0`)은 **측정 후 트리에 넣지 않았다**. 설계 §4의 솔로 기준을 깨기 때문이다.
-
-| 측정 | mixed deep_mixed | mixed deep_caster | charger deep_caster | guardian opt_archers | `solo_balance` |
-| --- | --- | --- | --- | --- | --- |
-| 1차(기준선) | 0.85 | 0.55 | 0.55 | 0.07 | **3/8 통과** |
-| 2차(동반 전진만, 현재 트리) | 0.72 | 0.55 | 0.55 | 0.35 | **3/8 통과** |
-| 3차(동반 전진 + 예고 문턱 0) | 0.60 | 0.53 | **0.90** | 0.35 | **2/8 미달** |
-
-- 돌격형 단일 파티의 `deep_caster`는 0.55 → 0.90으로 크게 오른다(가설은 두 번 다 맞았다).
-- 그러나 **솔로 완주가 3/8 → 2/8로 떨어진다**(시드 1이 SUCCESS → DEFEAT). 솔로 영웅은 돌격형이므로 이 문턱을 정통으로 맞는다. 설계 §4의 솔로 기준 ≥ 3/8은 구속력 있는 게이트이고 `tests/solo_balance.gd`는 CI 스위트에 있으므로, 이 변경을 넣으면 **CI가 빨개진다**.
-- 혼합 파티의 `deep_mixed`도 0.72 → 0.60으로 더 떨어진다.
-- 따라서 `expedition/stances.gd`의 문턱은 설계 §2.1대로 `−60`을 유지하고, 그 이유를 코드 주석에 남겼다. **이 항목은 컨트롤러의 판단이 필요하다** — 솔로 기준을 유지하려면 이 변경은 들어갈 수 없다.
-
-## 알려진 공백 (이 계획에서는 더 조정하지 않는다)
-
-컨트롤러 판정에 따라 여기서 멈춘다. 남은 미달은 다음과 같고, 다음 계획의 입력으로 넘긴다.
-
-- **혼합 파티 `deep_caster` 0.55 < 0.85** (1차·2차 모두). 돌격형의 예고 회피로도, 호위형의 동반 전진으로도 오르지 않았다. 같은 아레나에서 거리형 단일이 0.78로 가장 높다.
-- **혼합 파티 `deep_mixed` 0.72 < 0.85**. 동반 전진이 만든 새 공백이다 — 호위형이 거리형 곁을 떠나는 값과 전진의 값이 아레나마다 반대로 나온다. `keep+1` 밴드를 `deep_mixed`처럼 적이 흩어진 아레나에서 어떻게 잡을지가 다음 질문이다.
-- **호위형 단일 파티 3/6 < 4/6**. 교착은 풀렸지만 `deep_mixed` 0.28·`opt_archers` 0.35·`deep_caster` 0.50은 아직 기준 아래다. 호위형 셋은 여전히 딜러가 없다.
-- 위 G7 표들은 거리형의 "접촉" 판정이 접촉 8방향(`melee_reach`, 규칙 필터와 일치)이 아니라 맨해튼 거리로 새고 있던 상태에서 측정됐다(대각선 인접 시 슬링이 규칙 풀에서는 빠지지만 이탈 후보가 나오지 않아 거리형이 맞대응하던 결함). 이 결함은 커밋 `7b0b142`에서 고쳤다. 이 계획에서는 게이트를 다시 돌리지 않으며, 다음 균형 라운드에서 재측정한다.
-
-## 1차 측정 (동반 전진 이전, 커밋 `a396702`)
-
-아래는 위와 같은 시드 묶음·같은 도구로 잰 첫 측정이다. 본문 표와 직접 비교할 수 있다.
-
-## 표 1 — 빌드 × 아레나
-
-| 빌드 | 아레나 | 티어 | 승률 [95% CI] | 평균 피해(개인별) | 평균 라운드 | 역할 유지 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `stance_mixed` | `early_hob` | early | 1.00 [0.91, 1.00] | 21.0 | 19.1 | 돌 0.51 (124/242) 거 0.83 (202/242) 호 1.00 (40/40) |
-| `stance_mixed` | `early_pair` | early | 1.00 [0.91, 1.00] | 4.5 | 9.7 | 돌 0.51 (132/260) 거 0.76 (197/260) 호 1.00 (260/260) |
-| `stance_mixed` | `deep_mixed` | deep | 0.85 [0.71, 0.93] | 27.3 | 21.1 | 돌 0.44 (258/582) 거 0.83 (500/605) 호 0.89 (535/603) |
-| `stance_mixed` | `deep_caster` | deep | 0.55 [0.40, 0.69] | 28.3 | 18.1 | 돌 0.47 (189/399) 거 0.78 (278/358) 호 1.00 (214/214) |
-| `stance_mixed` | `opt_archers` | optional | 0.93 [0.80, 0.97] | 21.1 | 15.5 | 돌 0.42 (195/462) 거 0.77 (366/473) 호 0.92 (430/466) |
-| `stance_mixed` | `opt_gnoll` | optional | 0.97 [0.87, 1.00] | 14.3 | 19.1 | 돌 0.56 (342/614) 거 0.84 (526/626) 호 0.95 (575/605) |
-| `stance_charger` | `early_hob` | early | 1.00 [0.91, 1.00] | 18.7 | 16.0 | 돌 0.57 (160/280) |
-| `stance_charger` | `early_pair` | early | 1.00 [0.91, 1.00] | 8.1 | 10.2 | 돌 0.40 (293/726) |
-| `stance_charger` | `deep_mixed` | deep | 0.88 [0.74, 0.95] | 21.3 | 12.4 | 돌 0.44 (438/1002) |
-| `stance_charger` | `deep_caster` | deep | 0.55 [0.40, 0.69] | 28.0 | 17.2 | 돌 0.47 (452/959) |
-| `stance_charger` | `opt_archers` | optional | 1.00 [0.91, 1.00] | 18.1 | 11.6 | 돌 0.39 (404/1048) |
-| `stance_charger` | `opt_gnoll` | optional | 1.00 [0.91, 1.00] | 12.9 | 13.8 | 돌 0.53 (711/1341) |
-| `stance_skirmisher` | `early_hob` | early | 1.00 [0.91, 1.00] | 0.0 | 9.0 | 거 0.92 (440/480) |
-| `stance_skirmisher` | `early_pair` | early | 1.00 [0.91, 1.00] | 4.7 | 12.0 | 거 0.77 (512/669) |
-| `stance_skirmisher` | `deep_mixed` | deep | 0.95 [0.83, 0.99] | 23.8 | 17.8 | 거 0.68 (1107/1633) |
-| `stance_skirmisher` | `deep_caster` | deep | 0.78 [0.62, 0.88] | 27.5 | 20.0 | 거 0.63 (730/1158) |
-| `stance_skirmisher` | `opt_archers` | optional | 0.82 [0.68, 0.91] | 28.1 | 18.6 | 거 0.61 (951/1557) |
-| `stance_skirmisher` | `opt_gnoll` | optional | 1.00 [0.91, 1.00] | 12.1 | 18.6 | 거 0.81 (1460/1811) |
-| `stance_guardian` | `early_hob` | early | 1.00 [0.91, 1.00] | 40.2 | 31.4 | 호 0.44 (184/416) |
-| `stance_guardian` | `early_pair` | early | 1.00 [0.91, 1.00] | 10.3 | 16.0 | 호 0.94 (1243/1324) |
-| `stance_guardian` | `deep_mixed` | deep | 0.23 [0.12, 0.38] | 45.7 | 44.6 | 호 0.73 (2519/3439) |
-| `stance_guardian` | `deep_caster` | deep | 0.42 [0.29, 0.58] | 43.7 | 36.5 | 호 0.72 (1890/2637) |
-| `stance_guardian` | `opt_archers` | optional | 0.07 [0.03, 0.20] | 47.5 | 35.6 | 호 0.78 (2084/2655) |
-| `stance_guardian` | `opt_gnoll` | optional | 0.78 [0.62, 0.88] | 26.4 | 39.0 | 호 0.80 (3132/3923) |
-
-## 표 2 — 태세별 역할 유지 비율
-
-| 빌드 | 아레나 | 돌격형 | 거리형 | 호위형 |
-| --- | --- |  --- | --- | --- |
-| `stance_mixed` | `early_hob` | 0.51 (124/242) | 0.83 (202/242) | 1.00 (40/40) |
-| `stance_mixed` | `early_pair` | 0.51 (132/260) | 0.76 (197/260) | 1.00 (260/260) |
-| `stance_mixed` | `deep_mixed` | 0.44 (258/582) | 0.83 (500/605) | 0.89 (535/603) |
-| `stance_mixed` | `deep_caster` | 0.47 (189/399) | 0.78 (278/358) | 1.00 (214/214) |
-| `stance_mixed` | `opt_archers` | 0.42 (195/462) | 0.77 (366/473) | 0.92 (430/466) |
-| `stance_mixed` | `opt_gnoll` | 0.56 (342/614) | 0.84 (526/626) | 0.95 (575/605) |
-| `stance_charger` | `early_hob` | 0.57 (160/280) | — | — |
-| `stance_charger` | `early_pair` | 0.40 (293/726) | — | — |
-| `stance_charger` | `deep_mixed` | 0.44 (438/1002) | — | — |
-| `stance_charger` | `deep_caster` | 0.47 (452/959) | — | — |
-| `stance_charger` | `opt_archers` | 0.39 (404/1048) | — | — |
-| `stance_charger` | `opt_gnoll` | 0.53 (711/1341) | — | — |
-| `stance_skirmisher` | `early_hob` | — | 0.92 (440/480) | — |
-| `stance_skirmisher` | `early_pair` | — | 0.77 (512/669) | — |
-| `stance_skirmisher` | `deep_mixed` | — | 0.68 (1107/1633) | — |
-| `stance_skirmisher` | `deep_caster` | — | 0.63 (730/1158) | — |
-| `stance_skirmisher` | `opt_archers` | — | 0.61 (951/1557) | — |
-| `stance_skirmisher` | `opt_gnoll` | — | 0.81 (1460/1811) | — |
-| `stance_guardian` | `early_hob` | — | — | 0.44 (184/416) |
-| `stance_guardian` | `early_pair` | — | — | 0.94 (1243/1324) |
-| `stance_guardian` | `deep_mixed` | — | — | 0.73 (2519/3439) |
-| `stance_guardian` | `deep_caster` | — | — | 0.72 (1890/2637) |
-| `stance_guardian` | `opt_archers` | — | — | 0.78 (2084/2655) |
-| `stance_guardian` | `opt_gnoll` | — | — | 0.80 (3132/3923) |
+| `stance_mixed` | `early_hob` | 0.08 (13/169) | 0.93 (158/169) | 1.00 (148/148) |
+| `stance_mixed` | `early_pair` | 0.46 (137/297) | 0.69 (205/297) | 0.92 (264/286) |
+| `stance_mixed` | `deep_mixed` | 0.42 (218/513) | 0.70 (359/510) | 0.93 (437/470) |
+| `stance_mixed` | `deep_caster` | 0.39 (170/433) | 0.66 (285/429) | 0.89 (270/304) |
+| `stance_mixed` | `opt_archers` | 0.35 (192/546) | 0.66 (400/604) | 0.95 (539/568) |
+| `stance_mixed` | `opt_gnoll` | 0.55 (419/762) | 0.80 (580/723) | 0.92 (644/702) |
+| `stance_charger` | `early_hob` | 0.24 (142/588) | — | — |
+| `stance_charger` | `early_pair` | 0.34 (219/643) | — | — |
+| `stance_charger` | `deep_mixed` | 0.41 (432/1041) | — | — |
+| `stance_charger` | `deep_caster` | 0.38 (362/954) | — | — |
+| `stance_charger` | `opt_archers` | 0.34 (369/1070) | — | — |
+| `stance_charger` | `opt_gnoll` | 0.53 (703/1320) | — | — |
+| `stance_skirmisher` | `early_hob` | — | 0.77 (662/858) | — |
+| `stance_skirmisher` | `early_pair` | — | 0.74 (760/1030) | — |
+| `stance_skirmisher` | `deep_mixed` | — | 0.62 (1444/2324) | — |
+| `stance_skirmisher` | `deep_caster` | — | 0.64 (1128/1774) | — |
+| `stance_skirmisher` | `opt_archers` | — | 0.49 (1035/2093) | — |
+| `stance_skirmisher` | `opt_gnoll` | — | 0.69 (2562/3736) | — |
+| `stance_guardian` | `early_hob` | — | — | 1.00 (636/636) |
+| `stance_guardian` | `early_pair` | — | — | 0.99 (941/951) |
+| `stance_guardian` | `deep_mixed` | — | — | 0.93 (1777/1901) |
+| `stance_guardian` | `deep_caster` | — | — | 0.91 (1823/2001) |
+| `stance_guardian` | `opt_archers` | — | — | 0.88 (2013/2291) |
+| `stance_guardian` | `opt_gnoll` | — | — | 0.92 (2477/2683) |
 
 ## 게이트 G7 판정 (스펙 §4, 사전 고정)
 
@@ -226,48 +101,44 @@
 | 빌드 | 기준 | 충족 아레나 | 판정 |
 | --- | --- | --- | --- |
 | `stance_mixed` | 전 아레나 ≥ 0.85 | 5/6 (미달: `deep_caster`) | **미달** |
-| `stance_charger` | 4/6 아레나 ≥ 0.60 | 5/6 (`early_hob`, `early_pair`, `deep_mixed`, `opt_archers`, `opt_gnoll`) | 통과 |
+| `stance_charger` | 4/6 아레나 ≥ 0.60 | 6/6 (`early_hob`, `early_pair`, `deep_mixed`, `deep_caster`, `opt_archers`, `opt_gnoll`) | 통과 |
 | `stance_skirmisher` | 4/6 아레나 ≥ 0.60 | 6/6 (`early_hob`, `early_pair`, `deep_mixed`, `deep_caster`, `opt_archers`, `opt_gnoll`) | 통과 |
-| `stance_guardian` | 4/6 아레나 ≥ 0.60 | 3/6 (`early_hob`, `early_pair`, `opt_gnoll`) | **미달** |
+| `stance_guardian` | 4/6 아레나 ≥ 0.60 | 6/6 (`early_hob`, `early_pair`, `deep_mixed`, `deep_caster`, `opt_archers`, `opt_gnoll`) | 통과 |
 
 **G7 종합: 미달**
 
+## 설명 빈도 (`--explain`)
 
-## 솔로 기준 (`tests/solo_balance.gd`)
+각 칸은 그 태세가 효용 풀에서 고른 행동의 최상위 고려 사항을 빈도순으로 셋까지 적는다.
+모수 `n`은 `battle_stats.members[].explains`(멤버당 마지막 20라운드)를 시드 묶음 전체로 합산한 행동 수다.
+불길 회피·머뭇거림·후퇴선처럼 효용 풀이 아닌 단계가 답한 행동은 `explain`이 비어 있어 세지 않는다.
 
-- 기준: 완주 **≥ 3/8** (태세 설계 §4). 오토배틀 원장이 남긴 임시 기준 `wins >= 1`을 복구했다.
-- 1차·2차 모두 **3/8 완주 · 실패 0건 → 통과**(SUCCESS 시드 0·1·7, 4연속 원정 S/D/S/S). 3차(보류) 조건에서만 2/8로 떨어진다.
-- **봇이 영웅의 태세를 CHARGER로 정한다.** `play()` 시작에서 `s.set_stance(0,"CHARGER")`를 호출한다. 엔진은 바꾸지 않았다 — `make_actor`는 여전히 성격이 정한 기본 태세를 준다. 혼자인 영웅은 호위할 대상도 없고(엔진이 1인 GUARDIAN을 거부한다) 사거리 3 이상 파츠도 없으므로, 실제 솔로 플레이어라면 누구나 돌격형을 고른다. 이 한 줄이 **2/8 → 3/8**의 차이를 만든다(같은 커밋에서 그 줄만 주석 처리하면 2/8, 기준 미달).
+| 빌드 | 아레나 | 돌격형 | 거리형 | 호위형 |
+| --- | --- | --- | --- | --- |
+| `stance_mixed` | `early_hob` | `(무득점)` 87% · `any_foe_adjacent` 8% · `closes_distance` 5% (n=167) | `rule_ready` 48% · `in_band` 38% · `closes_distance` 6% (n=160) | `any_foe_adjacent` 73% · `rule_ready` 26% · `protectee_near` 1% (n=145) |
+| `stance_mixed` | `early_pair` | `any_foe_adjacent` 36% · `closes_distance` 34% · `rule_ready` 15% (n=291) | `in_band` 40% · `closes_distance` 19% · `(무득점)` 17% (n=266) | `protectee_near` 49% · `(무득점)` 16% · `any_foe_adjacent` 12% (n=273) |
+| `stance_mixed` | `deep_mixed` | `any_foe_adjacent` 41% · `closes_distance` 33% · `rule_ready` 19% (n=375) | `rule_ready` 29% · `in_band` 27% · `(무득점)` 17% (n=464) | `protectee_near` 31% · `any_foe_adjacent` 21% · `(무득점)` 13% (n=383) |
+| `stance_mixed` | `deep_caster` | `any_foe_adjacent` 35% · `closes_distance` 34% · `(무득점)` 17% (n=353) | `rule_ready` 30% · `in_band` 23% · `closes_distance` 16% (n=363) | `protectee_near` 29% · `any_foe_adjacent` 24% · `(무득점)` 17% (n=254) |
+| `stance_mixed` | `opt_archers` | `closes_distance` 47% · `any_foe_adjacent` 28% · `rule_ready` 12% (n=389) | `rule_ready` 26% · `in_band` 24% · `closes_distance` 22% (n=564) | `protectee_near` 55% · `closes_distance` 13% · `(무득점)` 11% (n=500) |
+| `stance_mixed` | `opt_gnoll` | `any_foe_adjacent` 47% · `rule_ready` 26% · `closes_distance` 22% (n=525) | `in_band` 38% · `rule_ready` 25% · `(무득점)` 15% (n=645) | `protectee_near` 31% · `any_foe_adjacent` 18% · `(무득점)` 18% (n=593) |
+| `stance_charger` | `early_hob` | `closes_distance` 32% · `(무득점)` 30% · `any_foe_adjacent` 28% (n=578) | — | — |
+| `stance_charger` | `early_pair` | `closes_distance` 52% · `any_foe_adjacent` 24% · `(무득점)` 14% (n=622) | — | — |
+| `stance_charger` | `deep_mixed` | `closes_distance` 44% · `any_foe_adjacent` 31% · `(무득점)` 12% (n=960) | — | — |
+| `stance_charger` | `deep_caster` | `closes_distance` 41% · `any_foe_adjacent` 29% · `(무득점)` 16% (n=856) | — | — |
+| `stance_charger` | `opt_archers` | `closes_distance` 58% · `any_foe_adjacent` 21% · `(무득점)` 11% (n=1034) | — | — |
+| `stance_charger` | `opt_gnoll` | `closes_distance` 37% · `any_foe_adjacent` 36% · `(무득점)` 13% (n=1290) | — | — |
+| `stance_skirmisher` | `early_hob` | — | `opens_distance` 33% · `rule_ready` 28% · `in_band` 20% (n=790) | — |
+| `stance_skirmisher` | `early_pair` | — | `rule_ready` 25% · `in_band` 24% · `opens_distance` 23% (n=966) | — |
+| `stance_skirmisher` | `deep_mixed` | — | `rule_ready` 24% · `in_band` 22% · `closes_distance` 19% (n=1664) | — |
+| `stance_skirmisher` | `deep_caster` | — | `rule_ready` 24% · `in_band` 22% · `opens_distance` 19% (n=1402) | — |
+| `stance_skirmisher` | `opt_archers` | — | `closes_distance` 25% · `rule_ready` 24% · `in_band` 19% (n=1413) | — |
+| `stance_skirmisher` | `opt_gnoll` | — | `opens_distance` 30% · `rule_ready` 21% · `in_band` 21% (n=1934) | — |
+| `stance_guardian` | `early_hob` | — | — | `protectee_near` 29% · `any_foe_adjacent` 26% · `(무득점)` 18% (n=615) |
+| `stance_guardian` | `early_pair` | — | — | `protectee_near` 27% · `(무득점)` 20% · `any_foe_adjacent` 19% (n=836) |
+| `stance_guardian` | `deep_mixed` | — | — | `la_ally_hit` 27% · `protectee_near` 25% · `any_foe_adjacent` 17% (n=1600) |
+| `stance_guardian` | `deep_caster` | — | — | `protectee_near` 28% · `la_ally_hit` 24% · `any_foe_adjacent` 16% (n=1186) |
+| `stance_guardian` | `opt_archers` | — | — | `protectee_near` 38% · `la_ally_hit` 21% · `closes_distance` 13% (n=1502) |
+| `stance_guardian` | `opt_gnoll` | — | — | `any_foe_adjacent` 22% · `la_ally_hit` 21% · `(무득점)` 20% (n=1952) |
 
-## 1차 측정의 조정 기록 (설계 §4 순서: 태세 점수 상수 → 노브 매핑, 파츠 수치 불변)
+솔로 기준(`tests/solo_balance.gd` ≥ 3/8)은 이 도구가 아니라 CI 스위트가 잰다 — 아래 "솔로 기준" 절에 결과를 손으로 적는다.
 
-첫 측정에서 G7이 미달이라 두 번 조정을 시도했고, **둘 다 게이트를 뒤집지 못해 되돌렸다**. 파츠 수치는 손대지 않았다. 아래 승률은 모두 같은 시드 묶음 `S4`(8000~8039, 40시드)에서 잰 값이다.
-
-### 조정 1 — 태세 점수 상수: 호위형 "가로막기(치명)" 130 → 95 (`expedition/stances.gd`)
-
-이유: `130`은 같은 블록의 "저지" ATTACK(100)을 이기므로, 위협을 때려 없앨 수 있는 호위형이 치명 위기에서 오히려 옆으로 비켜서며 한 라운드를 버린다고 읽었다(호위형 단일 파티의 평균 라운드 35~45, 인원당 피해 40~48).
-
-결과: **사실상 무변화.** 24칸 중 값이 달라진 칸은 `stance_guardian`/`deep_caster` 하나뿐이고 그마저 인원당 피해 43.7 → 43.6, 승률은 0.42로 동일. `lethal_threat >= hp`가 실제로 성립하는 라운드가 드물어 이 상수가 순위를 가르는 일이 거의 없었다. 되돌렸다.
-
-### 조정 2 — 노브 매핑: 돌격형의 예고 회피 문턱 `posture ≤ −60` → `posture ≤ 0` (`expedition/stances.gd`)
-
-이유: 중립 자세(`Knobs.DEFAULT`, `posture 0`)의 돌격형이 시전 예고 칸에 그대로 서 있다. `deep_caster`(오크 근접 + 고블린 시전)가 혼합·돌격 양쪽에서 0.55로 걸린 유일한 아레나이므로 여기가 원인이라고 읽었다.
-
-결과: 승률(조정 전 → 조정 후)
-
-| 빌드 | early_hob | early_pair | deep_mixed | deep_caster | opt_archers | opt_gnoll |
-| --- | --- | --- | --- | --- | --- | --- |
-| `stance_mixed` | 1.00 → 1.00 | 1.00 → 1.00 | 0.85 → 0.90 | **0.55 → 0.53** | 0.93 → 0.90 | 0.97 → 0.97 |
-| `stance_charger` | 1.00 → 1.00 | 1.00 → 1.00 | 0.88 → 0.90 | **0.55 → 0.88** | 1.00 → 1.00 | 1.00 → 1.00 |
-| `stance_skirmisher` | 1.00 → 1.00 | 1.00 → 1.00 | 0.95 → 0.95 | 0.78 → 0.78 | 0.82 → 0.82 | 1.00 → 1.00 |
-| `stance_guardian` | 1.00 → 1.00 | 1.00 → 1.00 | 0.23 → 0.23 | 0.42 → 0.40 | 0.07 → 0.07 | 0.78 → 0.78 |
-
-돌격형 단일 파티의 `deep_caster`는 0.55에서 0.88로 크게 올랐지만(가설은 맞았다), **혼합 파티는 0.55 → 0.53으로 그대로다** — 혼합 파티의 `deep_caster` 병목은 돌격형 자리가 아니라는 뜻이다. 호위형도 변화 없음. 두 미달 게이트 중 어느 것도 뒤집히지 않아 되돌렸다. 설계 §2.1이 명시한 `−60`을 유지한다.
-
-## 1차 측정 당시의 진단 (당시 기록 그대로)
-
-> 아래 두 항목은 1차 측정 직후에 적은 것이다. 첫 번째 항목이 2차의 설계 수정(§2.3 (d-1) 동반 전진)으로 이어졌고, 그 결과는 위 "2차 측정 요약"에 있다 — 교착은 풀렸지만 게이트는 아직 미달이다.
-
-
-- **호위형 단일 파티(3/6)**: 세 명이 서로를 호위 대상으로 잡으면 아무도 공통 표적으로 전진하지 않는다. 설계 §2.3 (d)는 "위협이 없으면 `P` 곁에서 대기(40)"이고, 전진 후보 자체가 목록에 없다. 적이 먼저 다가오는 `early_hob`·`early_pair`·`opt_gnoll`에서는 전투가 성립해 1.00·1.00·0.78이지만, 원거리 적이 다가올 이유가 없는 `opt_archers`에서는 0.07(평균 35.6라운드, 인원당 피해 47.5)까지 떨어진다. **이것은 점수 상수가 아니라 후보 목록의 문제이므로 조정 순서로는 닿지 않는다** — 설계 쪽에서 "보호 대상이 없을 때(§2.3 마지막 줄)뿐 아니라 위협이 없을 때도 공통 표적으로 전진하는 후보"를 정의하는 것이 다음 단계다.
-- **혼합 파티 `deep_caster`(0.53~0.55)**: 돌격형의 예고 회피로는 오르지 않는다. 같은 아레나에서 거리형 단일이 0.78로 가장 높으므로, 다음 실험은 혼합 파티 안의 어느 자리가 먼저 쓰러지는지(자리별 사망·피해)를 가르는 쪽이다.

@@ -254,10 +254,209 @@ A-B-A-B가 되지 않는지. `same_as_last` **10**(설계 §4 값)에서 바로 
 | `ranged_probe` 2인 | `deep_mixed` **0.97** · `opt_archers` 1.00 · `two_archers` 1.00 |
 | 임포트 | 오류 0 |
 
+
+## Task 4 — 설명 계측 · 게이트 · 튜닝 기록
+
+### 계측 (설계 §6)
+
+`auto_step`이 누른 모든 행동을 `battle_stats.members[id].explains`에 적는다:
+`{"round","kind","cell","explain"}`, 최대 `Session.EXPLAIN_KEEP = 20`이며 넘치면 **앞에서** 버린다.
+`explain`은 `choice.get("explain",[])`로 읽는다 — 불길 회피·머뭇거림·후퇴선처럼 효용 풀이 아닌
+단계가 답한 라운드는 설명이 없고, 그 사실 자체가 기록으로 남는다. `reason` 문자열은 건드리지 않았다
+(설계 §0.4): 이것은 통계이지 UI가 아니며, `expedition/main.gd`·`battle_hud.gd`는 한 줄도 바뀌지 않았다.
+
+`expedition/sim/encounter_runner.gd`가 전투 끝에 이 창을 태세별로 집계해
+`run_one().explain_top[stance][consideration_id]`로 싣고, `run_many`가 시드 묶음 전체로 합산한다.
+`tests/stance_gate.gd`·`tests/skill_value.gd`는 `-- --explain`으로 그 표를 찍고 보고서에 덧붙인다.
+
+`(무득점)`은 **기여가 양수인 항이 하나도 없는 선택**이다(최상위 항의 `contrib`가 0 이하).
+후보가 이겨서가 아니라 남은 것 중 덜 나빠서 뽑힌 라운드이고, 정직하게 그 자체를 한 칸으로 센다.
+
+### 게이트 (전/후)
+
+기준선은 두 가지다: **태세 작업 시점의 기록**(`docs/balance/stance-gates.md`의 이전 판)과
+**이 브랜치에서 가중치를 건드리기 전의 재측정**(Task 3 종료 상태, 커밋 `7f1bc21`).
+
+| 아레나 | 혼합: 태세 작업 시점 | 혼합: Task 3 종료 | 혼합: **Task 4 최종** |
+| --- | --- | --- | --- |
+| `early_hob` | 1.00 | 1.00 | 1.00 |
+| `early_pair` | 1.00 | 1.00 | 1.00 |
+| `deep_mixed` | 0.72 | 0.88 | **0.88** |
+| `deep_caster` | 0.55 | 0.78 | **0.78** (기준 0.85 **미달**) |
+| `opt_archers` | 0.93 | 0.88 | **0.93** |
+| `opt_gnoll` | 0.95 | 0.97 | **0.95** |
+
+| 단일 태세 빌드 | 태세 작업 시점 | **Task 4 최종** (아레나 6개, 기준 ≥ 0.60이 4개 이상) |
+| --- | --- | --- |
+| `stance_charger` | 통과 | **6/6** — 1.00 · 1.00 · 0.93 · 0.75 · 0.97 · 1.00 |
+| `stance_skirmisher` | 통과 | **6/6** — 1.00 · 1.00 · 0.65 · 0.75 · 0.65 · 0.68 |
+| `stance_guardian` | **3/6 미달** | **6/6** — 1.00 · 1.00 · 0.88 · 0.68 · 0.65 · 0.95 |
+
+| 그 밖의 게이트 | 기준 | 전 | 후 |
+| --- | --- | --- | --- |
+| `solo_balance` 완주 | ≥ 3/8 | 4/8 (Task 3) | **5/8** |
+| `ranged_probe` 2인 `deep_mixed` | ≥ 0.73 | 0.97 | **1.00** |
+| `ranged_probe` 2인 `opt_archers` | ≥ 0.90 | 1.00 | **1.00** |
+| `ranged_probe` 2인 `two_archers` | ≥ 1.00 | 1.00 | **1.00** |
+
+**남은 공백: 혼합 파티의 `deep_caster` 0.78 < 0.85.** 태세 작업 시점의 세 공백 중 둘
+(혼합 `deep_mixed` 0.72, 호위형 단일 3/6)은 효용 선택기가 닫았고, 이 하나가 남았다.
+
+### 가중치 조정 (2회, 프로필 가중치만)
+
+**1차 — 대담함은 무관심이지 자해가 아니다 (유지).**
+
+| 열 | 항목 | 전 | 후 |
+| --- | --- | --- | --- |
+| CHARGER/`ATTACK` | `la_self_hit` | 20 | **60** |
+| CHARGER/`MOVE:approach` | `cell_danger` | 20 | **120** |
+| CHARGER/`MOVE:approach` | `la_self_hit` | 20 | **80** |
+| GUARDIAN/`MOVE:approach` | `cell_danger` | 20 | **120** |
+| GUARDIAN/`MOVE:approach` | `la_self_hit` | 20 | **80** |
+
+이유: `cell_danger`·`la_self_hit`는 Task 3에서 **부호 있는 차이**가 됐고 입력은 HP로 정규화된다.
+10 피해 예고 칸에 55 HP 대원이 들어가는 입력은 −0.18이라 가중치 20에서는 기여가 **−3.6**이다.
+같은 후보의 `closes_distance`는 80 × 0.5 = **+40**이므로, 돌격형은 예고 칸을 사실상 공짜로 밟고 있었다.
+120/80이면 같은 장면이 −22/−15가 되어 한 칸 옆으로 돌아가는 후보와 겨룰 수 있다. 호위형은 호위 대상이
+없을 때 돌격형 프로그램을 돌리므로 같은 열을 같은 값으로 맞췄다.
+
+결과: 혼합 `opt_archers` 0.88 → **0.93**, `opt_gnoll` 0.97 → 0.95, 돌격형 단일 `deep_caster` 0.78 → 0.75,
+혼합 `deep_caster`는 **0.78 그대로**. 계약 스위트는 전부 검사 수 변화 없이 통과(아래 표).
+게이트를 뒤집지는 못했지만 근거가 옳고 한 아레나가 올라 **유지**한다.
+
+**2차 — `PART`의 `rule_ready` 200 (되돌림).**
+
+| 열 | 항목 | 전 | 시도 | 판정 |
+| --- | --- | --- | --- | --- |
+| CHARGER/`PART` | `rule_ready` | 150 | 200 | **되돌림** |
+| GUARDIAN/`PART` | `rule_ready` | 150 | 200 | **되돌림** |
+
+가설: `deep_caster`(오크 + 고블린 시전자)에서 예고 중인 시전자를 밀치기(`PUSH`→`CHARGING`)로 끊는 일이
+더 자주 일어나면 승률이 오른다. 결과는 **혼합 `deep_caster` 0.775로 변화 없음**(등급 차 자체가 규칙 순위
+2%뿐이라 `rule_ready`의 절대값은 형제 후보 순위를 거의 바꾸지 않는다), 대신 혼합 `opt_archers`가
+0.93 → 0.88로 떨어졌다. 순이익이 음수라 되돌렸다. 격리 측정: 같은 30시드 `deep_caster` 혼합에서
+`rule_ready` 150 → 승률 0.775 / 평균 19.55라운드, 200 → 0.775 / 19.50라운드.
+
+**여기서 멈춘다.** 브리프의 조정 한도 2회를 썼고, 검사를 고쳐 통과시키지 않는다.
+
+### `deep_caster`가 남은 이유 (다음 작업의 입력)
+
+- 이 아레나는 **모든 빌드에서** 낮다: 돌격형 0.75 · 거리형 0.75 · 호위형 0.68 · 혼합 0.78.
+  한 태세의 약점이 아니라 아레나(오크 근접 + 고블린 시전자)의 난이도다.
+- `la_lethal_saved`는 **이진값**이다. `GUARD`는 피해를 절반으로 줄일 뿐이라 치명 위기를 벗기지 못하면
+  0점이고, 시전자의 큰 예고 앞에서는 "덜 맞았다"가 점수를 받지 못한다. 아군 쪽 **피해 감소량**을
+  읽는 고려 사항(`la_ally_hit`의 엄호 버전)이 있으면 이 칸이 오를 여지가 크다.
+  이번 태스크는 고려 사항을 새로 만들지 않으므로 기록만 남긴다.
+- 부호 있는 안전 항의 가중치는 0에서 잘린다. 그래서 posture는 `cell_danger`·`la_self_hit`를 **끄는**
+  방향으로만 움직이고, 대담함은 `damage`·`any_foe_adjacent`의 크기로만 표현된다. 시전자를 향해
+  달려드는 성향을 가중치로 만들 수단이 지금은 좁다.
+
+### `--explain` 표 — 태세가 서로 다른 이유로 움직이는가
+
+출처: `godot --headless --path . --script res://tests/stance_gate.gd -- --explain`
+(30시드 × 6아레나 × 4빌드, 전문은 [stance-gates.md](stance-gates.md)의 같은 표).
+각 칸은 그 태세가 효용 풀에서 고른 행동의 **최상위 고려 사항**을 빈도순으로 셋까지, `n`은 행동 수다.
+
+혼합 파티(한 전투 안에서 세 태세가 동시에):
+
+| 빌드 | 아레나 | 돌격형 | 거리형 | 호위형 |
+| --- | --- | --- | --- | --- |
+| `stance_mixed` | `early_hob` | `(무득점)` 87% · `any_foe_adjacent` 8% · `closes_distance` 5% (n=167) | `rule_ready` 48% · `in_band` 38% · `closes_distance` 6% (n=160) | `any_foe_adjacent` 73% · `rule_ready` 26% · `protectee_near` 1% (n=145) |
+| `stance_mixed` | `early_pair` | `any_foe_adjacent` 36% · `closes_distance` 34% · `rule_ready` 15% (n=291) | `in_band` 40% · `closes_distance` 19% · `(무득점)` 17% (n=266) | `protectee_near` 49% · `(무득점)` 16% · `any_foe_adjacent` 12% (n=273) |
+| `stance_mixed` | `deep_mixed` | `any_foe_adjacent` 41% · `closes_distance` 33% · `rule_ready` 19% (n=375) | `rule_ready` 29% · `in_band` 27% · `(무득점)` 17% (n=464) | `protectee_near` 31% · `any_foe_adjacent` 21% · `(무득점)` 13% (n=383) |
+| `stance_mixed` | `deep_caster` | `any_foe_adjacent` 35% · `closes_distance` 34% · `(무득점)` 17% (n=353) | `rule_ready` 30% · `in_band` 23% · `closes_distance` 16% (n=363) | `protectee_near` 29% · `any_foe_adjacent` 24% · `(무득점)` 17% (n=254) |
+| `stance_mixed` | `opt_archers` | `closes_distance` 47% · `any_foe_adjacent` 28% · `rule_ready` 12% (n=389) | `rule_ready` 26% · `in_band` 24% · `closes_distance` 22% (n=564) | `protectee_near` 55% · `closes_distance` 13% · `(무득점)` 11% (n=500) |
+| `stance_mixed` | `opt_gnoll` | `any_foe_adjacent` 47% · `rule_ready` 26% · `closes_distance` 22% (n=525) | `in_band` 38% · `rule_ready` 25% · `(무득점)` 15% (n=645) | `protectee_near` 31% · `any_foe_adjacent` 18% · `(무득점)` 18% (n=593) |
+
+단일 태세 파티:
+
+| 빌드 | 아레나 | 돌격형 | 거리형 | 호위형 |
+| --- | --- | --- | --- | --- |
+| `stance_charger` | `early_hob` | `closes_distance` 32% · `(무득점)` 30% · `any_foe_adjacent` 28% (n=578) | — | — |
+| `stance_charger` | `early_pair` | `closes_distance` 52% · `any_foe_adjacent` 24% · `(무득점)` 14% (n=622) | — | — |
+| `stance_charger` | `deep_mixed` | `closes_distance` 44% · `any_foe_adjacent` 31% · `(무득점)` 12% (n=960) | — | — |
+| `stance_charger` | `deep_caster` | `closes_distance` 41% · `any_foe_adjacent` 29% · `(무득점)` 16% (n=856) | — | — |
+| `stance_charger` | `opt_archers` | `closes_distance` 58% · `any_foe_adjacent` 21% · `(무득점)` 11% (n=1034) | — | — |
+| `stance_charger` | `opt_gnoll` | `closes_distance` 37% · `any_foe_adjacent` 36% · `(무득점)` 13% (n=1290) | — | — |
+| `stance_skirmisher` | `early_hob` | — | `opens_distance` 33% · `rule_ready` 28% · `in_band` 20% (n=790) | — |
+| `stance_skirmisher` | `early_pair` | — | `rule_ready` 25% · `in_band` 24% · `opens_distance` 23% (n=966) | — |
+| `stance_skirmisher` | `deep_mixed` | — | `rule_ready` 24% · `in_band` 22% · `closes_distance` 19% (n=1664) | — |
+| `stance_skirmisher` | `deep_caster` | — | `rule_ready` 24% · `in_band` 22% · `opens_distance` 19% (n=1402) | — |
+| `stance_skirmisher` | `opt_archers` | — | `closes_distance` 25% · `rule_ready` 24% · `in_band` 19% (n=1413) | — |
+| `stance_skirmisher` | `opt_gnoll` | — | `opens_distance` 30% · `rule_ready` 21% · `in_band` 21% (n=1934) | — |
+| `stance_guardian` | `early_hob` | — | — | `protectee_near` 29% · `any_foe_adjacent` 26% · `(무득점)` 18% (n=615) |
+| `stance_guardian` | `early_pair` | — | — | `protectee_near` 27% · `(무득점)` 20% · `any_foe_adjacent` 19% (n=836) |
+| `stance_guardian` | `deep_mixed` | — | — | `la_ally_hit` 27% · `protectee_near` 25% · `any_foe_adjacent` 17% (n=1600) |
+| `stance_guardian` | `deep_caster` | — | — | `protectee_near` 28% · `la_ally_hit` 24% · `any_foe_adjacent` 16% (n=1186) |
+| `stance_guardian` | `opt_archers` | — | — | `protectee_near` 38% · `la_ally_hit` 21% · `closes_distance` 13% (n=1502) |
+| `stance_guardian` | `opt_gnoll` | — | — | `any_foe_adjacent` 22% · `la_ally_hit` 21% · `(무득점)` 20% (n=1952) |
+
+읽기:
+
+- **돌격형** = `closes_distance`(32~58%) + `any_foe_adjacent`(21~36%). 거리를 좁히고 붙어서 때린다.
+  설계가 예상한 `damage`·`target_adjacent`가 상위에 없는 이유는, 둘 다 붙은 뒤에야 켜지는 항이고
+  붙는 과정이 라운드 수를 지배하기 때문이다. `(무득점)` 11~30%는 이미 붙어 있어 더 좁힐 곳도,
+  안전해질 곳도 없는 라운드다(`early_hob` 혼합의 87%는 적이 하나뿐이라 돌격형이 할 일이 없는 칸이다).
+- **거리형** = `in_band`(19~40%) + `rule_ready`(21~48%) + `opens_distance`(19~33%). 띠 안에 서고,
+  띠 안이면 투석 규칙이 답한다. 설계가 적은 `in_band`/`cell_danger` 중 `cell_danger`가 상위에 없는 것은
+  Task 3에서 그것이 **차이**가 되어 안전한 칸에서는 0이기 때문이다 — 예고가 깔린 라운드에만 뜬다.
+- **호위형** = `protectee_near`(25~55%) + `la_ally_hit`(20~27%) + `any_foe_adjacent`. 곁을 지키고,
+  아군이 덜 맞는 쪽으로 선다. `deep_mixed`·`opt_archers`처럼 원거리 적이 있는 아레나에서
+  `la_ally_hit`가 2위로 올라오는 것이 룩어헤드가 실제로 일하고 있다는 증거다.
+
+세 태세의 상위 항이 서로 겹치지 않는다 — **태세는 정량적으로 구분된다.**
+
+### CI 스위트 하나가 빨갛던 것을 고쳤다 (`skill_archetypes`)
+
+Task 4의 전체 스위트 실행에서 `skill_archetypes`가 **1 failure**로 나왔다:
+`rule engine picks THROWING_KNIFE when its rule is first`. 이 브랜치의 가중치 조정 때문이 아니다 —
+가중치를 되돌려도, Task 3 종료 커밋 `7f1bc21`에서도 같이 실패하고 효용 작업 직전 커밋 `31a6133`에서는
+통과한다. 즉 **Task 1~3이 남긴 회귀**이고, 원인은 Task 3이 넣은 `contact_penalty`다:
+장면이 적을 **인접 칸**에 두고 사거리 4의 `THROWING_KNIFE`를 기대하는데, 접촉 중인 사거리 3+ 원거리
+파츠는 −1000으로 집어넣지 않는 것이 이제 설계다(효용 설계 §2, Task 3 판정 R3-a).
+
+고친 것은 **장면**이다: 폭탄과 같은 이유로(자기가 휘말린다) 칼도 자기 거리에서 잰다 —
+`f.foe.pos`를 인접(1)에서 3으로. 검사는 한 줄도 지우지 않았고 검사 수도 그대로다. 이 검사가 묻는 것은
+"규칙 목록이 결정하는가"이지 "접촉 중에도 칼을 던지는가"가 아니다.
+
+### 계약·게이트 스위트 결과 (Task 4)
+
+| 스위트 | 결과 |
+| --- | --- |
+| `utility` | **154** checks, 0 failures (`explanations()` 3 checks 추가) |
+| `stances` | 113 checks, 0 failures |
+| `autobattle` | 105 checks, 0 failures |
+| `protect` | 38 · `parts` 338 · `skill_rule_conditions` 962 | 모두 0 failures |
+| `companion_tactics` · `encounter_sim` | 0 failures |
+| `skill_archetypes` | 0 failures (장면 수정 뒤; 그 전 1 failure, 위 절) |
+| CI 스위트 36개 전부(`deploy-pages.yml`, 끝에 ` utility` 추가) | `SCRIPT ERROR:`/`ERROR:` 0 |
+| 임포트(`--editor --import --quit`) | 오류 0 |
+| `solo_balance` | 0 failures; **5/8** 완주 |
+| `stance_gate` | 혼합 5/6 (미달: `deep_caster`) · 단일 3빌드 전부 6/6 |
+| `ranged_probe` 2인 | `deep_mixed` 1.00 · `opt_archers` 1.00 · `two_archers` 1.00 |
+
 ## 눈으로 보는 체크리스트 (사용자 확인 항목)
 
-전투 시험 모드에서 세 태세 × 아레나 3개를 보고 채운다. Task 4 이후에 기록한다.
+수치가 아니라 눈으로 확인하는 항목이다. **전투 시험 모드**로 본다:
+마을 → `전투 시험` → 아레나 고르기(`early_hob`·`deep_mixed`·`deep_caster`·… 또는 `직접 구성`) → 멤버마다 태세 버튼(돌격형·거리형·호위형)과 파츠 고르기 → 시작.
+아레나 3개 × 태세 3개를 돌리며 아래 다섯 질문에 답한다. 한 칸이라도 "아니오"면 그 조합의
+아레나·태세·파츠를 적어 둔다 — 다음 튜닝의 입력이다.
 
-- [ ] 돌격형이 표적에 붙어서 계속 때리는가
-- [ ] 거리형이 접촉을 끊고 띠 안에 머무는가
-- [ ] 호위형이 보호 대상과 위협 사이에 서는가
+| # | 질문 | 무엇을 보는가 |
+| --- | --- | --- |
+| 1 | 돌격형이 표적에 **붙는가** | 첫 두세 라운드에 접촉하고, 붙은 뒤에는 떨어지지 않는가 |
+| 2 | 거리형이 **거리를 두는가** | 접촉을 끊고 투석 사거리 띠(2칸~사거리) 안에 머무는가 |
+| 3 | 호위형이 **곁을 지키는가** | 보호 대상 옆, 그리고 위협과 보호 대상 **사이**에 서는가 |
+| 4 | 예고 칸을 **태세대로** 다루는가 | 돌격형은 감수하되 공짜로 밟지는 않고, 거리형은 피하고, 호위형은 대상 대신 받는가 |
+| 5 | 파츠가 **제때** 나가는가 | 밀치기는 예고 중인 적에게, 엄호는 아군이 죽을 라운드에 — 접촉 중에 원거리 파츠를 꺼내지 않는가 |
+
+아레나 3개 × 태세 3개(같은 태세로 전원을 맞춰 한 번, 혼합으로 한 번 보면 더 빠르다):
+
+| 아레나 | 돌격형 | 거리형 | 호위형 |
+| --- | --- | --- | --- |
+| `early_hob` (근접 1) | [ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5 | [ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5 | [ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5 |
+| `deep_mixed` (근접 2 + 원거리 1) | [ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5 | [ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5 | [ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5 |
+| `deep_caster` (근접 1 + 시전자 1) | [ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5 | [ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5 | [ ] 1 [ ] 2 [ ] 3 [ ] 4 [ ] 5 |
+
+수치 증거는 위 `--explain` 표에 있다. 이 체크리스트는 그 표가 **화면에서도 같은 이야기를 하는지**를
+묻는 것이므로, 표와 눈이 어긋나면 어긋난 쪽을 그대로 적는다.

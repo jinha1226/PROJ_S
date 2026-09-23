@@ -74,8 +74,12 @@ func run() -> void:
 	check(s2.equip_part(0,0,"FIELD_DRESSING") and s2.party[0].rules.back().when == "HP" and s2.party[0].rules.back().subject == "SELF","equip_part uses the default rule")
 	# Tactics offers every equipped skill as a candidate when legal.
 	for id in ["HEAVY_STRIKE","THROWING_KNIFE","LUNGE","BOMB"]:
-		# A bomb beside the hero would catch the hero, so it is thrown from afar.
-		f = arena(id); s = f.s; f.foe.pos = f.c+Vector2i(3 if id == "BOMB" else 1,0); s.floor_state.observe(s)
+		# A bomb beside the hero would catch the hero, so it is thrown from afar —
+		# and a knife is not drawn in contact either: `contact_penalty` (효용 설계 §2)
+		# holsters a RANGED part of range 3+ while a foe is in melee reach. Both
+		# are tested at the range they are meant to be used at; what is under test
+		# here is that the rule list decides, not the distance.
+		f = arena(id); s = f.s; f.foe.pos = f.c+Vector2i(3 if id in ["BOMB","THROWING_KNIFE"] else 1,0); s.floor_state.observe(s)
 		f.hero.rules = [Rules.make_rule(id,"NEAREST","ALWAYS")]
 		check(Tactics.choose(s,f.hero).kind == id,"rule engine picks %s when its rule is first" % id)
 	f = arena("FIELD_DRESSING"); s = f.s; f.hero.hp = 10; f.hero.rules = [Abilities.default_rule("FIELD_DRESSING")]

@@ -31,6 +31,7 @@ func run() -> void:
 	oscillation()
 	signed_weights_never_reward()
 	retreat_needs_no_column()
+	explanations()
 	print("Utility: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func curves() -> void:
@@ -267,3 +268,20 @@ func retreat_needs_no_column() -> void:
 	hero.hp = 1; hero.knobs.retreat_hp = 60
 	var pick: Dictionary = s.Tactics.choose(s,hero)
 	check(pick.kind == "MOVE" and pick.reason == "후퇴" and not pick.has("tag") and pick.score == s.Tactics.RETREAT.score,"the retreat MOVE is untagged and keeps its own constant")
+
+## 설계 §6: `auto_step` files every choice's explanation in the member's battle
+## row, newest last, and the row never grows past EXPLAIN_KEEP.
+func explanations() -> void:
+	var f := field(["CHARGER","SKIRMISHER","GUARDIAN"]); var s = f.s
+	var hero: Dictionary = s.party[0]
+	s.auto_step()
+	var log: Array = s.member_stats(hero.id).get("explains",[])
+	var first: Dictionary = log[0] if not log.is_empty() else {}
+	check(not log.is_empty() and first.has("round") and first.has("kind") and first.has("cell") and first.explain is Array,"auto_step records round, kind, cell and explanation")
+	check(log.any(func(e): return not (e.explain as Array).is_empty() and (e.explain as Array)[0].has("id") and (e.explain as Array)[0].has("contrib")),"at least one recorded round carries the utility terms")
+	# The row is a window, not a transcript: the oldest entry is dropped.
+	var row: Dictionary = s.member_stats(hero.id)
+	row.explains = []
+	for i in range(s.EXPLAIN_KEEP+5): s.note_explain(hero,{"kind":str(i),"cell":hero.pos,"explain":[]})
+	var capped: Array = s.member_stats(hero.id).explains
+	check(capped.size() == s.EXPLAIN_KEEP and capped[0].kind == "5" and capped[capped.size()-1].kind == str(s.EXPLAIN_KEEP+4),"the window keeps the last %d, oldest dropped" % s.EXPLAIN_KEEP)

@@ -47,7 +47,7 @@ godot --path /mnt/d/SS/new
 상단은 작은 미니맵과 위치, 한 줄로 배치한 식량·횃불 수량 및 게이지로 구성합니다.
 게임 화면 아래에는 최근 로그 세 줄을 표시하며, 누르면 전체 화면에서 이번 실행의 전체 기록을 읽을 수 있습니다.
 초상화 위 스킬 두 칸과 아래 파티 공용 소모품 한 줄을 사용합니다.
-`이능` 탭의 `사용 방침`에서 스킬마다 대상과 조건을 정합니다. 기본 스킬 `엄호`는 인접한 아군 한 명을 골라 이번 라운드에
+`이능` 탭의 `사용 방침`에서 스킬마다 대상과 조건을 정합니다. 조건이 맞는 스킬은 태세가 고른 행동을 밀어내지 않고 같은 저울에서 겨룹니다(효용 선택기의 `rule_ready`). 기본 스킬 `엄호`는 인접한 아군 한 명을 골라 이번 라운드에
 그 아군이 받을 피해를 대신 받고 절반만 입습니다(조건은 `아군이 이번 라운드 공격받으면 죽을 때` 하나뿐이며, 인접 아군이 없으면 버튼이 꺼집니다).
 출정 준비 화면의 '시험 로드아웃'은 플레이테스트용으로 모든 이능을 습득 상태로 만든다(장착은 이능 탭).
 적이 보이지 않는 안전한 곳에서 성장 투자와 파츠 습득·교체가 가능합니다.
@@ -134,7 +134,8 @@ godot --headless --path . --script res://tests/protect.gd
 ```bash
 godot --headless --path . --script res://tests/action_economy.gd -- --quick   # 20시드 형식 확인
 godot --headless --path . --script res://tests/action_economy.gd            # 200시드 전체, docs/balance/action-economy.{md,json} 생성
-godot --headless --path . --script res://tests/skill_value.gd -- [--quick]  # 스킬 가치 행렬(기본 60시드), docs/balance/skill-value.{md,json} 생성
+godot --headless --path . --script res://tests/skill_value.gd -- [--quick] [--explain]  # 스킬 가치 행렬(기본 60시드), docs/balance/skill-value.{md,json} 생성
+godot --headless --path . --script res://tests/stance_gate.gd -- [--quick] [--explain]  # 태세 게이트 G7, docs/balance/stance-gates.{md,json} 생성 (--explain: 상위 고려 사항 빈도 표)
 godot --headless --path . --script res://tests/party_guard_probe.gd            # 3인 파티 엄호 규칙 유무 비교(시드 5000-5059)
 ```
 

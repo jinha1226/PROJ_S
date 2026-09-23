@@ -175,7 +175,7 @@ func reset_battle_stats() -> void:
 		actor.last_action_dir = Vector2i.ZERO
 		battle_stats.members[actor.id] = {"dealt":0,"taken":0,"guards":0,"covers":0,"redirected":0,
 			"parts":{},"healed":0,"downed":false,"conflict":bool(actor.get("conflicted",false)),
-			"mistakes":0,"role_rounds":{"in_role":0,"total":0}}
+			"mistakes":0,"role_rounds":{"in_role":0,"total":0},"explains":[]}
 
 ## The row of one member, empty for an id that is not in the party — which is
 ## what every tally below tests before it writes.
@@ -688,6 +688,7 @@ func auto_step() -> bool:
 			if choice.is_empty(): choice = Tactics.choose(self,actor)
 			if not noted and str(choice.get("mistake","")) != "":
 				note_mistake(actor,str(choice.mistake)); noted = true
+			note_explain(actor,choice)
 			# last_action reports what actually ran, not what was wanted.
 			var target: Dictionary = at(choice.get("cell",actor.pos))
 			intent_decision_serial += 1
@@ -716,6 +717,22 @@ func auto_step() -> bool:
 func open_battle_conflicts() -> void:
 	for actor in alive():
 		actor.conflicted = Knobs.conflicted(actor)
+
+## The last EXPLAIN_KEEP utility explanations of one member, oldest dropped
+## first: why the selector picked what it picked, for the balance tools and the
+## `--explain` frequency tables. Early returns (fire, hesitation, the retreat
+## line) carry no `explain`, so the row is read with `.get`. The reason string
+## is untouched by this (설계 §0.4) — this is statistics, not UI.
+const EXPLAIN_KEEP := 20
+
+func note_explain(actor: Dictionary, choice: Dictionary) -> void:
+	var row: Dictionary = member_stats(actor.id)
+	if row.is_empty(): return
+	var log: Array = row.get("explains",[])
+	log.append({"round":int(battle_stats.get("rounds",0)),"kind":str(choice.get("kind","")),
+		"cell":choice.get("cell",actor.pos),"explain":choice.get("explain",[])})
+	while log.size() > EXPLAIN_KEEP: log.remove_at(0)
+	row.explains = log
 
 ## What the log calls each kind of mistake.
 const MISTAKE_NAMES := {"HESITATE":"머뭇거림","RECKLESS":"무모함","REVERT":"자기 방식대로"}

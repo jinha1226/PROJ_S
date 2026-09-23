@@ -111,6 +111,10 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 	# `role_rounds` per stance, not per member: the mixed party's three seats
 	# each answer for their own stance in the gate table.
 	var role_rounds: Dictionary = {}
+	# 설계 §6: which consideration led each utility-chosen action, tallied per
+	# stance. `battle_stats.members[].explains` is a window of the last 20
+	# rounds per member, so this is a sample of the battle, not a transcript.
+	var explain_top: Dictionary = {}
 	for i in range(s.party.size()):
 		var actor: Dictionary = s.party[i]
 		var stance: String = str(actor.get("stance","CHARGER"))
@@ -118,6 +122,18 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 		var acc: Dictionary = role_rounds.get(stance,{"in_role":0,"total":0})
 		acc.in_role += int(rr.in_role); acc.total += int(rr.total)
 		role_rounds[stance] = acc
+		var top: Dictionary = explain_top.get(stance,{})
+		for entry in s.battle_stats.members.get(actor.id,{}).get("explains",[]):
+			var terms: Array = entry.get("explain",[])
+			# An early return (fire, hesitation, the retreat line) has no terms:
+			# it was not the utility pool that answered, so it is not counted.
+			if terms.is_empty(): continue
+			# The terms come sorted by contribution, so the head is the reason —
+			# unless nothing paid at all (a 0-contribution head only means the
+			# candidate won on being the least bad), which is its own bucket.
+			var cid: String = str(terms[0].id) if int(terms[0].contrib) > 0 else "(무득점)"
+			top[cid] = int(top.get(cid,0))+1
+		explain_top[stance] = top
 	for id in s.battle_stats.members:
 		var row: Dictionary = s.battle_stats.members[id]
 		guards += int(row.guards); redirects += int(row.covers)
@@ -127,7 +143,21 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 	return {"result":result,"rounds":s.round_number,"damage_taken":taken,"hp_end":s.party.map(func(a): return a.hp),
 		"deaths":s.party.filter(func(a): return a.hp <= 0).map(func(a): return a.id),"first_death_round":first_death,
 		"heals_used":heals,"guards_used":guards,"protect_redirects":redirects,"skill_uses":skill_uses,"player_actions":actions,"damage_before_first_action":int(counters.before_first),
-		"role_rounds":role_rounds,"enemy_count":s.enemies.size(),"enemy_damage_dealt":dealt,"enemy_skill_uses":s.battle_stats.enemy_parts.duplicate(),"interrupts":int(s.battle_stats.interrupts)}
+		"role_rounds":role_rounds,"explain_top":explain_top,"enemy_count":s.enemies.size(),"enemy_damage_dealt":dealt,"enemy_skill_uses":s.battle_stats.enemy_parts.duplicate(),"interrupts":int(s.battle_stats.interrupts)}
+
+## One `--explain` cell: the most frequent top considerations of one stance,
+## as "`id` %", biggest first, ties by id. "—" when that stance made no
+## utility-chosen action in this row.
+static func explain_cell(explain_top: Dictionary, stance: String, top_n: int = 3) -> String:
+	var row: Dictionary = explain_top.get(stance,{})
+	var total := 0
+	for cid in row: total += int(row[cid])
+	if total == 0: return "—"
+	var ids: Array = row.keys()
+	ids.sort_custom(func(a,b): return int(row[a]) > int(row[b]) if int(row[a]) != int(row[b]) else str(a) < str(b))
+	var parts: Array = []
+	for cid in ids.slice(0,top_n): parts.append("`%s` %d%%" % [cid,int(round(100.0*float(row[cid])/float(total)))])
+	return "%s (n=%d)" % [" · ".join(parts),total]
 
 static func wilson(wins: int, n: int) -> Array:
 	if n == 0: return [0.0,0.0]
@@ -189,12 +219,18 @@ static func run_many(config: Dictionary, seeds: Array) -> Dictionary:
 			var acc: Dictionary = role_rounds.get(stance,{"in_role":0,"total":0})
 			acc.in_role += int(r.role_rounds[stance].in_role); acc.total += int(r.role_rounds[stance].total)
 			role_rounds[stance] = acc
+	var explain_top: Dictionary = {}
+	for r in runs:
+		for stance in r.explain_top:
+			var acc: Dictionary = explain_top.get(stance,{})
+			for cid in r.explain_top[stance]: acc[cid] = int(acc.get(cid,0))+int(r.explain_top[stance][cid])
+			explain_top[stance] = acc
 	var interrupts_total := 0
 	for r in runs: interrupts_total += int(r.interrupts)
 	var interrupts_mean := float(interrupts_total)/runs.size()
 	return {"distinct_outcomes":distinct.size(),"samples":runs.size(),"results":results,"win_rate":float(wins)/runs.size(),"win_ci":wilson(wins,runs.size()),
 		"damage":summary(per_member),"damage_wins_per_member":summary(runs.filter(func(r): return r.result == "WIN").map(func(r): return r.damage_taken.reduce(func(a,b): return a+b,0)/size)),
-		"guards":summary(runs.map(func(r): return r.guards_used)),"redirects":summary(runs.map(func(r): return r.protect_redirects)),"skill_uses_mean":skill_uses_mean,"enemy_skill_uses_mean":enemy_skill_uses_mean,"interrupts_mean":interrupts_mean,"role_rounds":role_rounds,
+		"guards":summary(runs.map(func(r): return r.guards_used)),"redirects":summary(runs.map(func(r): return r.protect_redirects)),"skill_uses_mean":skill_uses_mean,"enemy_skill_uses_mean":enemy_skill_uses_mean,"interrupts_mean":interrupts_mean,"role_rounds":role_rounds,"explain_top":explain_top,
 		"rounds":summary(runs.map(func(r): return r.rounds)),
 		"first_death":summary(runs.filter(func(r): return r.first_death_round > 0).map(func(r): return r.first_death_round)),
 		"before_first":summary(runs.map(func(r): return r.damage_before_first_action)),

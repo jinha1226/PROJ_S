@@ -6,6 +6,7 @@ const Runner = preload("res://expedition/sim/encounter_runner.gd")
 const Arena = preload("res://expedition/sim/encounter_arena.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 const Floor = preload("res://expedition/continuous_floor.gd")
+const Stances = preload("res://expedition/stances.gd")
 const DOMINANT_PP := 0.20
 const DOMINANT_ARENAS := 4
 const USE_FLOOR := 0.2
@@ -20,6 +21,7 @@ func run() -> void:
 	var ex: Dictionary = experiments.experiments.skill_value
 	var seeds: Array = range(int(ex.seed_set.start),int(ex.seed_set.start)+int(ex.seed_set.count))
 	var quick: bool = "--quick" in OS.get_cmdline_user_args()
+	var explain: bool = "--explain" in OS.get_cmdline_user_args()
 	if quick: seeds = seeds.slice(0,10)
 	var rule_id: String = ex.rules.keys()[0]
 	var table: Array = []
@@ -53,7 +55,9 @@ func run() -> void:
 		diagnoses[build_id] = diagnose(ex,build_id,cells,seeds.slice(0,3))
 		print("diagnose %s: %s" % [build_id,diagnoses[build_id].line])
 	var absent: Array = absent_rows(ex,seeds)
-	write_report(table,verdicts,diagnoses,absent,ex,seeds,Time.get_ticks_msec()-started,quick)
+	if explain:
+		for line in explain_lines(table): print(line)
+	write_report(table,verdicts,diagnoses,absent,ex,seeds,Time.get_ticks_msec()-started,quick,explain)
 	quit(0)
 
 func matrix_config(ex: Dictionary, arena_id: String, size: int, build_id: String) -> Dictionary:
@@ -203,7 +207,23 @@ func spec_line(ex: Dictionary) -> String:
 	var spec: Dictionary = Arena.DEFAULT_SPEC
 	return "size %d · room %s · door %s · pillars %s · party_entry %s · light %d · supplies %s" % [spec.size,str(spec.room),str(spec.door),str(spec.pillars),str(spec.party_entry),spec.light,str(ex.supplies.map(func(v): return int(v)))]
 
-func write_report(table: Array, verdicts: Dictionary, diagnoses: Dictionary, absent: Array, ex: Dictionary, seeds: Array, elapsed: int, quick: bool) -> void:
+## `--explain` (설계 §6): 빌드 × 아레나에서 효용이 고른 행동의 최상위 고려
+## 사항 빈도. 판정에는 쓰이지 않는다.
+func explain_lines(table: Array) -> Array:
+	var lines: Array = []
+	lines.append("## 설명 빈도 (`--explain`)")
+	lines.append("")
+	lines.append("각 칸은 그 태세가 효용 풀에서 고른 행동의 최상위 고려 사항을 빈도순으로 셋까지 적는다(`n`은 행동 수).")
+	lines.append("")
+	lines.append("| 빌드 | 인원 | 아레나 | %s |" % " | ".join(Stances.IDS.map(func(id): return Stances.NAMES[id])))
+	lines.append("| --- | --- | --- |%s" % " --- |".repeat(Stances.IDS.size()))
+	for r in table:
+		var cells: Array = Stances.IDS.map(func(id): return Runner.explain_cell(r.stats.get("explain_top",{}),id))
+		lines.append("| `%s` | %d | `%s` | %s |" % [r.build,r.party,r.arena," | ".join(cells)])
+	lines.append("")
+	return lines
+
+func write_report(table: Array, verdicts: Dictionary, diagnoses: Dictionary, absent: Array, ex: Dictionary, seeds: Array, elapsed: int, quick: bool, explain: bool = false) -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://docs/balance"))
 	var today := Time.get_date_string_from_system()
 	var base: String = ex.baseline_build
@@ -342,6 +362,7 @@ func write_report(table: Array, verdicts: Dictionary, diagnoses: Dictionary, abs
 	if not diagnoses.is_empty():
 		lines.append("`합법 라운드 N/M`이 0이 아니면 스킬은 쓸 수 있었는데 규칙이 그 라운드를 고르지 않았다는 뜻이고(규칙 조건 쪽 문제), 0이면 `legal`이 한 번도 참이 되지 않았다는 뜻이다(사거리·대상·쿨다운 쪽 문제).")
 		lines.append("")
+	if explain: lines += explain_lines(table)
 	lines.append("## 추적 계획")
 	lines.append("")
 	lines.append("1. 사장 후보의 원인을 규칙 조건과 사거리로 분리해 재실험(진단 줄이 가리키는 쪽만 바꾼다)")

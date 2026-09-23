@@ -30,8 +30,8 @@
   },
   "profiles": {
     "CHARGER": {
-      "ATTACK":        {"any_foe_adjacent": 100, "damage": 40, "kill": 20, "la_enemy_hit": 20, "la_self_hit": 20, "same_as_last": 10},
-      "MOVE:approach": {"closes_distance": 80, "cell_danger": 20, "ally_delta": 0, "la_self_hit": 20, "same_as_last": 10},
+      "ATTACK":        {"any_foe_adjacent": 100, "damage": 40, "kill": 20, "la_enemy_hit": 20, "la_self_hit": 60, "same_as_last": 10},
+      "MOVE:approach": {"closes_distance": 80, "cell_danger": 120, "ally_delta": 0, "la_self_hit": 80, "same_as_last": 10},
       "MOVE:sidestep": {"cell_danger": 60, "ally_delta": 0},
       "PART":          {"rule_ready": 150, "damage": 40, "kill": 20, "la_enemy_hit": 30, "la_self_hit": 40, "la_lethal_saved": 200, "contact_penalty": -1000},
       "WAIT":          {}
@@ -51,7 +51,7 @@
       "MOVE:advance":     {"closes_distance": 50, "protectee_near": 30, "ally_delta": 0, "la_ally_hit": 20},
       "MOVE:rejoin":      {"protectee_near": 80, "ally_delta": 0, "la_ally_hit": 20},
       "WAIT:hold":        {"protectee_near": 40},
-      "MOVE:approach":    {"closes_distance": 80, "cell_danger": 20, "ally_delta": 0, "la_self_hit": 20, "same_as_last": 10},
+      "MOVE:approach":    {"closes_distance": 80, "cell_danger": 120, "ally_delta": 0, "la_self_hit": 80, "same_as_last": 10},
       "MOVE:sidestep":    {"cell_danger": 60, "ally_delta": 0},
       "PART":             {"rule_ready": 150, "la_lethal_saved": 300, "la_ally_hit": 60, "la_self_hit": 40, "damage": 20, "contact_penalty": -1000}
     }

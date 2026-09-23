@@ -19,6 +19,7 @@ func run() -> void:
 	var ex: Dictionary = experiments.experiments.stance_gate
 	var seeds: Array = range(int(ex.seed_set.start),int(ex.seed_set.start)+int(ex.seed_set.count))
 	var quick: bool = "--quick" in OS.get_cmdline_user_args()
+	var explain: bool = "--explain" in OS.get_cmdline_user_args()
 	if quick: seeds = seeds.slice(0,8)
 	var table: Array = []
 	for size in ex.party_sizes:
@@ -30,8 +31,10 @@ func run() -> void:
 				table.append({"party":size,"build":build_id,"arena":arena_id,"tier":config.arena.tier,"stats":stats})
 				print("p%d %s %s: win %.2f [%.2f,%.2f] dmg %.1f rounds %.1f role %s" % [size,build_id,arena_id,
 					stats.win_rate,stats.win_ci[0],stats.win_ci[1],stats.damage.mean,stats.rounds.mean,role_line(stats.role_rounds)])
+	if explain:
+		for line in explain_lines(table): print(line)
 	var verdicts := decide(table,ex)
-	write_report(table,verdicts,ex,seeds,Time.get_ticks_msec()-started,quick)
+	write_report(table,verdicts,ex,seeds,Time.get_ticks_msec()-started,quick,explain)
 	print("G7: %s (혼합 %d/%d 아레나 통과)" % ["통과" if verdicts.pass_all else "**미달**",verdicts.mixed_pass,ex.arenas.size()])
 	quit(0)
 
@@ -77,6 +80,26 @@ func decide(table: Array, ex: Dictionary) -> Dictionary:
 		if passed.size() < SINGLE_ARENAS: out.pass_all = false
 	return out
 
+
+## `--explain` (설계 §6): 아레나 × 태세별로 효용이 고른 행동의 **최상위 고려
+## 사항** 빈도. 판정에는 쓰이지 않는다 — 태세가 서로 다른 이유로 움직인다는
+## 정량 증거를 보기 위한 표다.
+func explain_lines(table: Array) -> Array:
+	var lines: Array = []
+	lines.append("## 설명 빈도 (`--explain`)")
+	lines.append("")
+	lines.append("각 칸은 그 태세가 효용 풀에서 고른 행동의 최상위 고려 사항을 빈도순으로 셋까지 적는다.")
+	lines.append("모수 `n`은 `battle_stats.members[].explains`(멤버당 마지막 20라운드)를 시드 묶음 전체로 합산한 행동 수다.")
+	lines.append("불길 회피·머뭇거림·후퇴선처럼 효용 풀이 아닌 단계가 답한 행동은 `explain`이 비어 있어 세지 않는다.")
+	lines.append("")
+	lines.append("| 빌드 | 아레나 | %s |" % " | ".join(Stances.IDS.map(func(id): return Stances.NAMES[id])))
+	lines.append("| --- | --- |%s" % " --- |".repeat(Stances.IDS.size()))
+	for r in table:
+		var cells: Array = Stances.IDS.map(func(id): return Runner.explain_cell(r.stats.get("explain_top",{}),id))
+		lines.append("| `%s` | `%s` | %s |" % [r.build,r.arena," | ".join(cells)])
+	lines.append("")
+	return lines
+
 func commit_hash() -> String:
 	var root: String = ProjectSettings.globalize_path("res://")
 	var output: Array = []
@@ -92,7 +115,7 @@ func spec_line(ex: Dictionary) -> String:
 	var spec: Dictionary = Arena.DEFAULT_SPEC
 	return "size %d · room %s · door %s · pillars %s · party_entry %s · light %d · supplies %s" % [spec.size,str(spec.room),str(spec.door),str(spec.pillars),str(spec.party_entry),spec.light,str(ex.supplies.map(func(v): return int(v)))]
 
-func write_report(table: Array, verdicts: Dictionary, ex: Dictionary, seeds: Array, elapsed: int, quick: bool) -> void:
+func write_report(table: Array, verdicts: Dictionary, ex: Dictionary, seeds: Array, elapsed: int, quick: bool, explain: bool = false) -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://docs/balance"))
 	var today := Time.get_date_string_from_system()
 	var lines: Array = []
@@ -168,6 +191,7 @@ func write_report(table: Array, verdicts: Dictionary, ex: Dictionary, seeds: Arr
 	lines.append("")
 	lines.append("**G7 종합: %s**" % ("통과" if verdicts.pass_all else "미달"))
 	lines.append("")
+	if explain: lines += explain_lines(table)
 	lines.append("솔로 기준(`tests/solo_balance.gd` ≥ 3/8)은 이 도구가 아니라 CI 스위트가 잰다 — 아래 \"솔로 기준\" 절에 결과를 손으로 적는다.")
 	lines.append("")
 	var md := FileAccess.open("res://docs/balance/stance-gates.md",FileAccess.WRITE)
