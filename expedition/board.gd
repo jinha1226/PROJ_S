@@ -5,7 +5,7 @@ var action_footer := false
 signal cell_pressed(cell: Vector2i)
 signal zoom_changed(side: int)
 signal gesture_started
-var view_side := 13
+var view_side := 17
 var camera_gesture = preload("res://expedition/legacy/base_map_camera.gd").new()
 var _pointer_down := false
 var _pointer_dragged := false

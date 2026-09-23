@@ -36,7 +36,7 @@ func run() -> void:
 	check(s.log_lines.is_empty(),"new session has no tutorial log")
 	s.depart()
 	scene.refresh(); await process_frame
-	check(scene.board.visible_side() == 13 and scene.board.camera_cell() == s.party[0].pos-Vector2i(6,6),"default camera centers hero in thirteen tiles even near map edge")
+	check(scene.board.visible_side() == 17 and scene.board.camera_cell() == s.party[0].pos-Vector2i(8,8),"default camera centers hero in seventeen tiles even near map edge")
 	check(scene.find_child("ObjectiveChip",true,false) == null,"objective button removed from HUD")
 	var drop: Dictionary = s.make_actor(999,"시험 대상",true)
 	drop.hp = 0; drop.part_id = "BOMB"

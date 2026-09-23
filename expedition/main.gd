@@ -12,7 +12,7 @@ var portrait_gesture = preload("res://expedition/legacy/portrait_gesture.gd").ne
 var navigation = preload("res://expedition/exploration_navigation.gd").new()
 const NAVIGATION_STEP_SECONDS := 0.06
 var navigation_clock := 0.0
-var view_side := 13
+var view_side := 17
 var log_popup: PopupPanel
 var auto_explore_button: Button
 var inventory_filter := "전체"
@@ -24,7 +24,7 @@ const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 const SKILLS = [["PUSH","GUARD"],["ATTACK","GUARD"],["WATER","ELECTRIC"]]
 const SKILL_NAMES = [["밀쳐내기","엄호"],["강타","엄호"],["물","방전"]]
 ## Members on a floor expedition; every fresh session in this scene uses it.
-const PARTY_SIZE := 2
+const PARTY_SIZE := 3
 var session = Session.new(randi(),true,false,true,PARTY_SIZE)
 var mode := ""
 var reservation_actor := -1
