@@ -5,6 +5,7 @@ const Session = preload("res://expedition/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
 const Knobs = preload("res://expedition/knobs.gd")
+const Stances = preload("res://expedition/stances.gd")
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const Runner = preload("res://expedition/sim/encounter_runner.gd")
 const Policy = preload("res://expedition/sim/bot_policy.gd")
@@ -75,7 +76,9 @@ func auto() -> void:
 
 func stops() -> void:
 	var d := skirmish(0); var s = d.s
-	check(s.auto.stops.BATTLE_START and s.auto.stops.BATTLE_END and s.auto.hp_low == 30,"defaults")
+	check(s.auto.stops == Session.AUTO_STOP_DEFAULTS and s.auto.hp_low == 30,"defaults")
+	check(s.auto.stops.BATTLE_START and s.auto.stops.DEATH and s.auto.stops.BATTLE_END,"the three battle events stop by default")
+	check(not s.auto.stops.ALLY_LETHAL and not s.auto.stops.HP_LOW,"the two rolling alerts are opt-in")
 	check(s.auto_stop_reason() == "","nothing to stop for while safe")
 	d.foes = [s.enemies[0]]; var foe: Dictionary = d.foes[0]
 	foe.hp = 30; foe.max_hp = 30; foe.role = "MELEE"; foe.alert = true; foe.part_id = ""; foe.pos = d.c+Vector2i(3,0)
@@ -85,6 +88,7 @@ func stops() -> void:
 	check(s.auto_stop_reason() != "BATTLE_START","battle start fires once")
 	# Lethal threat on an ally: the melee foe stands next to the weakened member,
 	# wherever the round left that member standing.
+	s.auto.stops.ALLY_LETHAL = true; s.auto.stops.HP_LOW = true   # opt-in alerts, switched on for these checks
 	s.party[2].hp = 5; foe.pos = Fixture.beside(s,s.party[2].pos)
 	check(foe.pos != Vector2i(-1,-1),"the foe found a cell beside the weakened member")
 	s.floor_state.observe(s)
@@ -93,7 +97,7 @@ func stops() -> void:
 	s.party[2].hp = 5
 	check(s.auto_stop_reason() != "ALLY_LETHAL","same reason is suppressed for three rounds")
 	# HP low fires when a member newly crosses the line.
-	d = skirmish(); s = d.s
+	d = skirmish(); s = d.s; s.auto.stops.HP_LOW = true
 	s.auto_step()
 	s.party[1].hp = int(s.party[1].max_hp*0.3)
 	check(s.auto_stop_reason() == "HP_LOW","member at 30% stops")
@@ -113,7 +117,7 @@ func stops() -> void:
 	check(s.party[1].hp <= 0 and s.auto_stop_reason() == "DEATH","a second death next round stops again")
 	check(s.auto.stops_log == ["DEATH","DEATH"],"stops accumulate in order for the battle report")
 	# A disabled hard event must not swallow the lower-priority alert of the same round.
-	d = skirmish(); s = d.s; s.auto.stops.DEATH = false
+	d = skirmish(); s = d.s; s.auto.stops.DEATH = false; s.auto.stops.HP_LOW = true
 	s.auto_step()
 	check(cut_off(s,2,d.foes[0],d.c+Vector2i(-3,4)),"the isolated member has a foe beside it")
 	s.auto_step()
@@ -191,16 +195,21 @@ func knobs() -> void:
 	var stress: int = hero.stress; var memories: int = hero.memory.records.size()
 	d.foes[0].pos = d.c+Vector2i(3,0); s.floor_state.observe(s)
 	check(s.auto_stop_reason() == "BATTLE_START","battle starts")
-	check(hero.stress > stress and hero.memory.records.size() == memories+1,"conflict costs stress and a COMMAND_CONFLICT memory at battle start")
-	check(hero.memory.records.back().kind == "COMMAND_CONFLICT","memory kind")
+	check(hero.stress == stress and hero.memory.records.size() == memories,"a conflict costs no stress and leaves no memory")
+	check(hero.conflicted,"battle start still notes who fights against their orders")
+	check(Knobs.effective(hero).posture == -100,"the forced knob is the one the member fights with")
+	# Anxiety no longer swaps the knobs out: it multiplies the mistake chance.
+	var calm: int = Stances.mistake_chance(hero)
 	hero.stress = 120; s.stress(hero,0)
-	check(hero.condition == "불안" and Knobs.effective(hero).posture == 80,"an anxious member falls back to personality")
+	check(hero.condition == "불안" and Knobs.effective(hero).posture == -100,"an anxious member keeps its orders")
+	check(Stances.mistake_chance(hero) == mini(40,calm*3/2),"anxious: half again as many mistakes")
 	hero.stress = 160; s.stress(hero,0)
-	check(Knobs.effective(hero).posture == 100,"a collapsed bold member goes all-in")
+	check(Stances.mistake_chance(hero) == mini(40,calm*2),"collapsed: twice as many")
 	hero.stress = 0; s.stress(hero,0); hero.knobs.posture = 60
 	check(not Knobs.conflicted(hero) and Knobs.effective(hero).posture == 60,"inside the band the knob is used as set")
 	# Tactics: fire underfoot is left, cohesion keeps contact, the retreat line wins.
 	d = skirmish(); s = d.s; hero = d.hero
+	s.mistake_override[hero.id] = false   # the knobs are what these checks are about
 	d.foes[0].pos = d.c+Vector2i(1,0); s.floor_state.observe(s)
 	s.tile(hero.pos).fire = 40
 	# Fire underfoot is left whatever the posture: every stance avoids it.

@@ -35,12 +35,17 @@ var presentation = null
 const AUTO_STOPS := ["BATTLE_START","BATTLE_END","DEATH","ALLY_LETHAL","HP_LOW"]
 ## Auto-battle state: whether the UI is advancing rounds, which events stop it,
 ## and what the previous round looked like so that "newly" can be judged.
-var auto := {"running":false,"stops":{"BATTLE_START":true,"ALLY_LETHAL":true,"HP_LOW":true,"DEATH":true,"BATTLE_END":true},
+## Which events stop an auto run out of the box: the three that end or change a
+## battle, never the two rolling alerts — those are opt-in.
+const AUTO_STOP_DEFAULTS := {"BATTLE_START":true,"ALLY_LETHAL":false,"HP_LOW":false,"DEATH":true,"BATTLE_END":true}
+var auto := {"running":false,"stops":AUTO_STOP_DEFAULTS.duplicate(),
 	"hp_low":30,"speed":1,"prev_threats":0,"prev_low":[],"prev_alive":0,"last_stop":{"reason":"","round":-99},"stops_log":[]}
 const CARDINALS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]
 const DIRECTIONS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN, Vector2i(-1,-1), Vector2i(1,-1), Vector2i(-1,1), Vector2i(1,1)]
 var rooms: Array = []
 var seed_value := 731
+## Test hook: {actor_id: bool} forces the mistake roll. Always empty in play.
+var mistake_override: Dictionary = {}
 var phase := "TOWN"
 var room := 0
 var party: Array = []
@@ -135,7 +140,6 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 	# in conflict with their own standing orders.
 	actor["knobs"] = Knobs.defaults(actor.profile)
 	actor["conflicted"] = false
-	actor["ignoring"] = false
 	Body.sync(actor)
 	return actor
 
@@ -160,7 +164,7 @@ func reset_battle_stats() -> void:
 	for actor in party:
 		battle_stats.members[actor.id] = {"dealt":0,"taken":0,"guards":0,"covers":0,"redirected":0,
 			"parts":{},"healed":0,"downed":false,"conflict":bool(actor.get("conflicted",false)),
-			"role_rounds":{"in_role":0,"total":0}}
+			"mistakes":0,"role_rounds":{"in_role":0,"total":0}}
 
 ## The row of one member, empty for an id that is not in the party — which is
 ## what every tally below tests before it writes.
@@ -615,9 +619,6 @@ func auto_step() -> bool:
 	remember_round()
 	for actor in party:
 		var guard := 0
-		if actor.hp > 0 and actor.ap > 0 and int(actor.stress) >= 100 and not bool(actor.get("ignoring",false)):
-			actor.ignoring = true
-			message(actor.name+" · 자기 방식대로 움직입니다")
 		while actor.hp > 0 and actor.ap > 0 and phase == "BATTLE" and guard < 4:
 			guard += 1
 			var choice: Dictionary = command_choice(actor)
@@ -635,21 +636,24 @@ func auto_step() -> bool:
 	if phase == "BATTLE": end_round()
 	return true
 
-## A member whose standing orders sit outside their comfort band pays for them
-## when the fighting starts: stress every battle, one memory per expedition.
+## Who is fighting against their standing orders, noted at every battle start.
+## It costs nothing now — the badge is only there to explain the mistakes the
+## member is about to make.
 func open_battle_conflicts() -> void:
 	for actor in alive():
-		actor.ignoring = false
 		actor.conflicted = Knobs.conflicted(actor)
-		if not actor.conflicted: continue
-		stress(actor,8)
-		serial += 1
-		remember_important(actor,"COMMAND_CONFLICT",actor.id+1,0,600)
-		var stance := str(actor.get("stance",Stances.default_stance(actor.profile)))
-		if not Stances.comfortable(actor.profile,stance):
-			message("%s · 태세와 갈등 (%s)" % [actor.name,Stances.NAMES[stance]])
-		else:
-			message(actor.name+" · 명령과 갈등")
+
+## What the log calls each kind of mistake.
+const MISTAKE_NAMES := {"HESITATE":"머뭇거림","RECKLESS":"무모함","REVERT":"자기 방식대로"}
+
+## One mistake by `actor` this round: tallied for the battle report, and
+## announced once per battle so the log says why the round went sideways.
+func note_mistake(actor: Dictionary) -> void:
+	var row: Dictionary = member_stats(actor.id)
+	if row.is_empty(): return
+	var first: bool = int(row.get("mistakes",0)) == 0
+	row.mistakes = int(row.get("mistakes",0))+1
+	if first: message("%s · %s" % [actor.name,MISTAKE_NAMES.get(Stances.mistake_kind(actor),"실수")])
 
 ## Snapshot of what auto_stop_reason compares against next round.
 func remember_round() -> void:

@@ -27,6 +27,8 @@ func arena(skill: String, distance: int, second: int = 0) -> Dictionary:
 	hero.equipped_abilities = [skill,"GUARD"]
 	hero.rules = [Abilities.default_rule(skill),Abilities.default_rule("GUARD")]
 	hero.cooldowns = {}; hero.ap = 2; hero.iron_guard = false
+	# The rules are what these checks are about: never a mistake round.
+	s.mistake_override[hero.id] = false
 	s.intents.clear()
 	var foe: Dictionary = s.enemies[0]
 	foe.hp = 30; foe.max_hp = 30; foe.role = "MELEE"; foe.alert = true; foe.charging = false
@@ -205,6 +207,7 @@ func party_arena(skill: String, size: int, foes: int) -> Dictionary:
 		actor.equipped_abilities = [skill,"GUARD"]
 		actor.rules = [Abilities.default_rule(skill),Abilities.default_rule("GUARD")]
 		actor.cooldowns = {}; actor.ap = 2; actor.iron_guard = false
+		s.mistake_override[actor.id] = false
 	s.intents.clear()
 	var revived: Array = []
 	for i in range(foes):

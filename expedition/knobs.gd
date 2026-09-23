@@ -1,7 +1,7 @@
 extends RefCounted
 ## Behaviour knobs and where personality puts them. A knob outside its comfort
-## band is a standing order the member dislikes: it costs stress at every
-## battle start, and an anxious member ignores it.
+## band is a standing order the member dislikes: it costs no stress, but it
+## makes the member likelier to get a round wrong.
 const DEFAULT := {"posture":0,"cohesion":0,"retreat_hp":25}
 const RANGE := {"posture":[-100,100],"cohesion":[-100,100],"retreat_hp":[0,60]}
 const Stances = preload("res://expedition/stances.gd")
@@ -29,11 +29,7 @@ static func conflicted(actor: Dictionary) -> bool:
 	if not Stances.comfortable(actor.profile,str(actor.get("stance",Stances.default_stance(actor.profile)))): return true
 	return false
 
-## The knobs the member actually fights with: as set while calm, personality
-## defaults when anxious, an extreme posture when collapsed.
+## The knobs the member actually fights with: the ones it was given. Stress no
+## longer swaps them out — it raises the mistake chance instead (§1).
 static func effective(actor: Dictionary) -> Dictionary:
-	var chosen: Dictionary = actor.get("knobs",DEFAULT).duplicate()
-	if int(actor.stress) < 100: return chosen
-	var own := defaults(actor.profile)
-	if int(actor.stress) >= 150: own.posture = -100 if actor.profile.value("E") >= 500 else 100
-	return own
+	return actor.get("knobs",DEFAULT).duplicate()

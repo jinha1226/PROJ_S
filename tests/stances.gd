@@ -23,6 +23,7 @@ func near(a: Vector2i, b: Vector2i) -> int:
 
 func run() -> void:
 	data()
+	mistakes()
 	charger()
 	skirmisher()
 	guardian()
@@ -69,15 +70,70 @@ func data() -> void:
 	check(Knobs.conflicted(hero),"stance outside the aptitude band conflicts")
 	check(Stances.effective(hero) == "GUARDIAN","calm: the chosen stance")
 	hero.stress = 120; s.stress(hero,0)
-	check(Stances.effective(hero) == "CHARGER","anxious: personality's own stance")
+	check(Stances.effective(hero) == "GUARDIAN","anxious: still the chosen stance — stress raises the mistake chance instead")
 	hero.stress = 0; hero.stance = "CHARGER"
 	check(not Knobs.conflicted(hero),"comfortable stance: no conflict")
-	# Battle start charges the conflict once, whether from knobs or stance.
-	hero.stance = "GUARDIAN"; s.auto.prev_threats = 0
-	var stress_before: int = hero.stress
-	# The 8 of a conflict runs through stress(), which scales it by emotionality:
-	# bold has E 100, so 8*(650+100)/1000 = 6.
-	check(s.auto_stop_reason() == "BATTLE_START" and hero.stress == stress_before+6 and hero.conflicted,"stance conflict costs stress at battle start")
+
+## §1: forcing a stance costs no stress — it raises a deterministic mistake
+## chance, and a mistake round is a revert, a hesitation or an overreach.
+func mistakes() -> void:
+	var s = Session.new(731,true,true,true,3)
+	var hero: Dictionary = s.party[0]
+	# Base chance from conscientiousness; forcing adds up to 20; stress multiplies; cap 40.
+	hero.profile = profile({"C":1000,"X":900,"E":100}); hero.stance = "CHARGER"; hero.stress = 0
+	check(Stances.mistake_chance(hero) == 4,"C 1000 charger at ease: 4%")
+	hero.profile = profile({"C":0,"X":900,"E":100})
+	check(Stances.mistake_chance(hero) == 20,"C 0: 20%")
+	hero.stance = "GUARDIAN"   # aptitude 800 vs 0 -> gap 800 -> +20
+	check(Stances.mistake_chance(hero) == 40 and Stances.mistake_kind(hero) == "REVERT","forced far outside: +20, reverts to its own stance")
+	hero.stance = "CHARGER"; hero.stress = 120
+	check(Stances.mistake_chance(hero) == 30,"anxious: x1.5")
+	hero.stress = 160
+	check(Stances.mistake_chance(hero) == 40,"collapsed: x2 capped at 40")
+	hero.stress = 0
+	check(Stances.mistake_kind(hero) == "RECKLESS","bold at ease: reckless mistakes")
+	hero.profile = profile({"C":500,"X":100,"E":900}); hero.stance = "SKIRMISHER"
+	check(Stances.mistake_kind(hero) == "HESITATE","timid at ease: hesitation")
+	# Deterministic per seed/round/member.
+	s.depart()
+	var a := Stances.mistaken(s,hero); var b := Stances.mistaken(s,hero)
+	check(a == b,"same round, same answer")
+	# Behaviour: a hesitating member WAITs on a mistake round; retreat line still wins.
+	var f := field(["SKIRMISHER","CHARGER","CHARGER"]); var t = f.s; var h: Dictionary = t.party[0]
+	h.profile = profile({"C":0,"X":100,"E":900}); h.knobs = Knobs.defaults(h.profile); h.knobs.retreat_hp = 0
+	t.mistake_override[h.id] = true   # test hook: force the roll
+	check(t.Tactics.choose(t,h).kind == "WAIT","hesitation is a WAIT")
+	h.hp = 5; h.knobs.retreat_hp = 50
+	check(t.Tactics.choose(t,h).kind == "MOVE","below the retreat line the mistake never overrides retreating")
+	h.hp = h.max_hp
+	# Bold but comfortable as a skirmisher (apt 300 against a best of 400, band 400):
+	# a plain skirmisher would step off the telegraph, this one charges into it.
+	h.profile = profile({"C":1000,"X":700,"E":300}); h.knobs = Knobs.defaults(h.profile); h.knobs.retreat_hp = 0
+	check(Stances.mistake_kind(h) == "RECKLESS","comfortable and bold: overreaches")
+	f.foes[0].pos = h.pos+Vector2i(1,0); t.intents = [{"id":f.foes[0].id,"cell":h.pos,"damage":9,"kind":""}]; f.foes[0].charging = true
+	t.floor_state.observe(t)
+	var pick: Dictionary = t.Tactics.choose(t,h)
+	check(pick.kind == "ATTACK" and str(pick.reason).begins_with("무모함"),"reckless: attacks from the telegraphed cell even as a skirmisher")
+	h.profile = profile({"C":0,"X":900,"E":100}); h.stance = "GUARDIAN"  # far outside -> REVERT to CHARGER
+	t.intents = []; f.foes[0].charging = false; t.floor_state.observe(t)
+	check(str(t.Tactics.choose(t,h).reason).begins_with("돌격"),"revert: acts on its own stance")
+	t.mistake_override[h.id] = false
+	# No conflict stress any more.
+	var d := skirmish_for_conflict()
+	check(d.hero.stress == d.before and d.hero.memory.records.size() == d.memories,"forcing a stance costs no stress and leaves no memory")
+	check(d.s.battle_stats.members[d.hero.id].has("mistakes"),"battle stats count mistakes")
+	check(d.s.auto.stops == {"BATTLE_START":true,"ALLY_LETHAL":false,"HP_LOW":false,"DEATH":true,"BATTLE_END":true},"fixed stop defaults")
+
+func skirmish_for_conflict() -> Dictionary:
+	var s = Session.new(731,true,true,true,3); s.depart()
+	var c := Fixture.arena(s,8); Fixture.equip_basics(s)
+	var hero: Dictionary = s.party[0]
+	hero.profile = profile({"X":900,"E":100,"C":1000}); hero.knobs = Knobs.defaults(hero.profile); hero.stance = "GUARDIAN"; hero.stress = 0
+	var foe: Dictionary = s.enemies[0]; foe.hp = 30; foe.max_hp = 30; foe.role = "MELEE"; foe.alert = true; foe.part_id = ""; foe.pos = c+Vector2i(3,0)
+	s.floor_state.observe(s); s.auto.prev_threats = 0
+	var before: int = hero.stress; var memories: int = hero.memory.records.size()
+	s.auto_stop_reason()
+	return {"s":s,"hero":hero,"before":before,"memories":memories}
 
 ## Three members with basics, foes revived on demand. Stances set explicitly.
 func field(stances: Array, foes: int = 1) -> Dictionary:
@@ -87,6 +143,9 @@ func field(stances: Array, foes: int = 1) -> Dictionary:
 	for i in range(3):
 		s.party[i].stance = stances[i]; s.party[i].knobs = Knobs.DEFAULT.duplicate(); s.party[i].stress = 0
 		s.party[i].pos = c+Vector2i(0,i)
+		# The stance programmes are what these checks are about: no mistake rounds
+		# unless a check asks for one.
+		s.mistake_override[s.party[i].id] = false
 	var revived: Array = []
 	for i in range(foes):
 		var foe: Dictionary = s.enemies[i]

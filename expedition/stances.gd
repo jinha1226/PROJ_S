@@ -1,11 +1,14 @@
 extends RefCounted
 ## Stances: how a member uses whatever it has — charge in, keep range, or
 ## guard someone. Personality sets an aptitude per stance; the player may pick
-## any stance, and an uncomfortable one conflicts like a knob does.
+## any stance, and an uncomfortable one costs mistakes rather than stress.
 const IDS := ["CHARGER","SKIRMISHER","GUARDIAN"]
 const NAMES := {"CHARGER":"돌격형","SKIRMISHER":"거리형","GUARDIAN":"호위형"}
 const SHORT := {"CHARGER":"돌","SKIRMISHER":"거","GUARDIAN":"호"}
 const Abilities = preload("res://expedition/abilities.gd")
+## Mistakes: the floor every member has, and the ceiling no forcing passes.
+const MISTAKE_BASE := 4
+const MISTAKE_CAP := 40
 
 static func aptitude(profile) -> Dictionary:
 	return {"CHARGER":profile.value("X")-profile.value("E"),
@@ -38,10 +41,37 @@ static func suggested(actor: Dictionary) -> String:
 	if actor.equipped_abilities.any(func(id): return Abilities.DEFINITIONS.get(id,{}).get("effect","") == "GUARD"): return "GUARDIAN"
 	return "CHARGER"
 
-## The stance the member actually fights in: chosen while calm, its own when anxious.
+## The stance the member actually fights in: always the one it was given.
+## Forcing an uncomfortable one no longer swaps it out — it shows up as
+## mistakes instead (§1).
 static func effective(actor: Dictionary) -> String:
-	if int(actor.stress) >= 100: return default_stance(actor.profile)
 	return str(actor.get("stance",default_stance(actor.profile)))
+
+## How often this member gets a round wrong: carelessness, how far the stance
+## it was given sits from its own, and how badly it is holding up.
+static func mistake_chance(actor: Dictionary) -> int:
+	var profile = actor.profile
+	var chance: int = MISTAKE_BASE+(1000-profile.value("C"))/60
+	var chosen: String = str(actor.get("stance",default_stance(profile)))
+	if not comfortable(profile,chosen):
+		var apt := aptitude(profile)
+		chance += mini(20,(int(apt[default_stance(profile)])-int(apt[chosen]))/40)
+	if int(actor.stress) >= 150: chance = chance*2
+	elif int(actor.stress) >= 100: chance = chance*3/2
+	return mini(MISTAKE_CAP,chance)
+
+## What a mistake looks like: a forced member falls back to its own stance;
+## otherwise the timid hesitate and the bold overreach.
+static func mistake_kind(actor: Dictionary) -> String:
+	var profile = actor.profile
+	if not comfortable(profile,str(actor.get("stance",default_stance(profile)))): return "REVERT"
+	return "HESITATE" if profile.value("E") >= profile.value("X") else "RECKLESS"
+
+## Deterministic roll: one answer per expedition, round and member.
+static func mistaken(s, actor: Dictionary) -> bool:
+	if s.mistake_override.has(actor.id): return bool(s.mistake_override[actor.id])
+	if not s.floor_mode: return false
+	return s.Hexaco.sample(s.seed_value,s.expedition_number*100000+s.round_number*100+actor.id,"mistake",100) < mistake_chance(actor)
 
 ## The party's shared target: the attack order, else whoever a charger is on,
 ## else the nearest visible foe.

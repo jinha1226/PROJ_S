@@ -29,12 +29,28 @@ static func threat(s, enemy: Dictionary, point: Vector2i, position: Vector2i) ->
 	return 6 if s.melee_reach(position,point) else 0
 
 ## Four stages, in this order: the party command (resolved by the caller), the
-## retreat line, the configured rules, and then the stance. Nothing else makes
-## a MOVE, an ATTACK or a WAIT — the stance owns the member's intent.
+## retreat line, the mistake roll, the configured rules, and then the stance.
+## Nothing else makes a MOVE, an ATTACK or a WAIT — the stance owns the
+## member's intent.
 static func choose(s, actor: Dictionary) -> Dictionary:
 	var knobs: Dictionary = Knobs.effective(actor)
 	var stance: String = Stances.effective(actor)
 	var low: bool = actor.hp*100/actor.max_hp <= int(knobs.retreat_hp)
+	# A mistake round: the member hesitates, overreaches, or falls back on the
+	# stance it would have picked itself. Staying alive still comes first.
+	if not low and Stances.mistaken(s,actor):
+		s.note_mistake(actor)
+		match Stances.mistake_kind(actor):
+			"HESITATE": return {"kind":"WAIT","cell":actor.pos,"reason":"머뭇거림"}
+			"RECKLESS":
+				var bold: Dictionary = knobs.duplicate(); bold.posture = 100
+				var reckless: Array = Stances.candidates(s,actor,"CHARGER",bold)
+				if not reckless.is_empty():
+					reckless.sort_custom(rank)
+					var pick: Dictionary = reckless[0]
+					pick.reason = "무모함 · "+str(pick.reason)
+					return pick
+			"REVERT": stance = Stances.default_stance(actor.profile)
 	var options: Array = []
 	rule_candidates(s,actor,knobs,low,options)
 	# Below the retreat line staying alive outranks everything below it.

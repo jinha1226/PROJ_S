@@ -17,6 +17,7 @@ func arena(skill: String) -> Dictionary:
 	var foe: Dictionary = s.enemies[0]; foe.hp = 30; foe.max_hp = 30; foe.role = "MELEE"; foe.alert = true
 	foe.pos = c+Vector2i(1,0); s.floor_state.observe(s)
 	hero.ap = 2 # two actions, so one skill use does not end the round
+	s.mistake_override[hero.id] = false   # the parts and their rules are what is under test
 	return {"s":s,"hero":hero,"foe":foe,"c":c}
 
 func run() -> void:
