@@ -13,19 +13,19 @@ static func snapshot(s) -> Dictionary:
 		for key in ["id","name","pos","hp","max_hp","enemy","charging","cast_id","role","ap","guarded","protected_by"]:
 			if a.has(key): item[key] = a[key]
 		actors.append(item)
-	return {"actors":actors,"focus":s.party[s.selected].pos,"intents":s.intents.duplicate(true),"visible":s.floor_state.visible.duplicate() if s.floor_mode else {},"explored":s.floor_state.explored.duplicate() if s.floor_mode else {}}
+	return {"actors":actors,"focus":s.party[s.selected].pos,"intents":s.intents.duplicate(true),"companion_intents":s.companion_intent_snapshot(),"visible":s.floor_state.visible.duplicate() if s.floor_mode else {},"explored":s.floor_state.explored.duplicate() if s.floor_mode else {}}
 
 func begin(s) -> void:
 	frames.clear()
 	previous = snapshot(s)
 	effect_cursor = s.effects.size()
 
-func capture(s, actor_id: int = -1) -> void:
+func capture(s, actor_id: int = -1, executed_intent: Dictionary = {}) -> void:
 	var after := snapshot(s)
 	var hits: Array = s.effects.slice(effect_cursor).duplicate(true)
 	effect_cursor = s.effects.size()
-	if previous != after or not hits.is_empty():
-		frames.append({"before":previous,"after":after,"effects":hits,"actor":actor_id})
+	if previous != after or not hits.is_empty() or not executed_intent.is_empty():
+		frames.append({"before":previous,"after":after,"effects":hits,"actor":actor_id,"executed_intent":executed_intent.duplicate(true)})
 	previous = after
 
 func finish(s) -> void:

@@ -34,10 +34,27 @@ var visual_state: Dictionary = {}
 var playback_focus := Vector2i.ZERO
 var actor_visuals: Dictionary = {}
 var foreground: Node2D
-var next_action: Dictionary = {}
+const IntentUI = preload("res://expedition/companion_intent_ui.gd")
+const IntentOverlay = preload("res://expedition/companion_intent_overlay.gd")
+var intent_ui = IntentUI.new()
+var intent_overlay: Node2D
+var companion_intents: Array = []
+var playback_decision_recorded := false
+var ui_elapsed := 0.0
+var skill_badges: Dictionary = {}
 
 func is_presenting() -> bool:
 	return not playback.is_empty()
+
+func reset_intent_ui() -> void:
+	intent_ui = IntentUI.new()
+	companion_intents.clear()
+	skill_badges.clear()
+	ui_elapsed = 0.0
+	if is_instance_valid(intent_overlay):
+		intent_overlay.intents = []
+		intent_overlay.queue_redraw()
+	queue_redraw()
 
 func play_frames(frames: Array) -> void:
 	if frames.is_empty(): return
@@ -45,6 +62,7 @@ func play_frames(frames: Array) -> void:
 	playback = frames.duplicate(true)
 	playback_clock = 0.0
 	visual_state = playback[0].before
+	playback_decision_recorded = false
 	effects = []; effect_time = 0.0; impact_time = 0.0
 	queue_redraw()
 
@@ -55,8 +73,21 @@ func display_at(point: Vector2i) -> Dictionary:
 	return {}
 
 func _advance_playback(delta: float) -> void:
+	ui_elapsed += delta
+	intent_ui.tick(delta,false)
 	playback_clock += delta*playback_speed
 	var frame: Dictionary = playback[0]
+	if not playback_decision_recorded:
+		playback_decision_recorded = true
+		var event: Dictionary = frame.get("executed_intent",{})
+		intent_ui.record_execution(event,true,ui_elapsed)
+		var skill_id := str(event.get("skill_id",""))
+		if not skill_id.is_empty():
+			skill_badges[int(event.actor_id)] = {"skill_id":skill_id,"remaining":maxf(0.3,0.6/maxf(0.01,playback_speed))}
+	for actor_id in skill_badges.keys():
+		var badge: Dictionary = skill_badges[actor_id]
+		badge.remaining = float(badge.remaining)-delta
+		if badge.remaining <= 0: skill_badges.erase(actor_id)
 	# Wind-up / target highlight, then impact and HP loss, then recovery.
 	if playback_clock >= 0.18:
 		visual_state = frame.after
@@ -69,7 +100,9 @@ func _advance_playback(delta: float) -> void:
 		if playback.is_empty():
 			visual_state = {}
 			playback_finished.emit()
-		else: visual_state = playback[0].before
+		else:
+			visual_state = playback[0].before
+			playback_decision_recorded = false
 	queue_redraw()
 
 var radial_light = preload("res://expedition/radial_light.gd").new()
@@ -91,9 +124,19 @@ func preview_rect(actor: Dictionary) -> Rect2:
 	return Rect2(Vector2(clampf(center.x-29,0,maxf(0,size.x-58)),maxf(origin.y,center.y-half_width-19)),Vector2(58,18))
 
 func _process(delta: float) -> void:
+	var had_labels := not skill_badges.is_empty() or not intent_ui.speech.is_empty()
+	if not is_presenting() and session != null and bool(session.auto.get("running",false)):
+		ui_elapsed += delta
+		intent_ui.tick(delta,false)
+		for actor_id in skill_badges.keys():
+			var badge: Dictionary = skill_badges[actor_id]
+			badge.remaining = float(badge.remaining)-delta
+			if badge.remaining <= 0: skill_badges.erase(actor_id)
 	if is_presenting():
 		_advance_playback(delta); return
-	if effects.is_empty(): return
+	if effects.is_empty():
+		if had_labels: queue_redraw()
+		return
 	var slow_delta := minf(delta,maxf(0,0.3-impact_time)) if not injury_focus().is_empty() else 0.0
 	impact_time += delta
 	effect_time += slow_delta*0.25+(delta-slow_delta)
@@ -239,6 +282,13 @@ func _draw() -> void:
 		foreground = Node2D.new(); foreground.z_index = 2
 		add_child(foreground)
 		foreground.draw.connect(func(): _draw_foreground(foreground))
+	if not is_instance_valid(intent_overlay):
+		intent_overlay = IntentOverlay.new()
+		intent_overlay.board = self
+		intent_overlay.z_index = 0
+		add_child(intent_overlay)
+	intent_overlay.intents = visual_state.get("companion_intents",[]) if is_presenting() else companion_intents
+	intent_overlay.queue_redraw()
 	foreground.queue_redraw()
 	geometry()
 	draw_rect(Rect2(Vector2.ZERO,size),Color("0b1117"))
@@ -366,8 +416,27 @@ func _draw_foreground(canvas: Node2D) -> void:
 		if playback_clock < 0.18:
 			for hit in frame.effects:
 				canvas.draw_line(cell_center(hit.from),cell_center(hit.cell),Color(1,0.85,0.5,0.7),2,true)
-	else:
-		paint_decision(canvas)
+	for actor_id in skill_badges:
+		var skill_id := str(skill_badges[actor_id].skill_id)
+		var actor := _actor_for_id(actors,int(actor_id))
+		if not _label_visible(actor): continue
+		var definition: Dictionary = session.Abilities.DEFINITIONS.get(skill_id,{})
+		var title := str(definition.get("name",skill_id))
+		if title.length() > 8: title = title.left(7)+"…"
+		var center := cell_center(actor.pos)-Vector2(0,half_width*2.6)
+		var box := Rect2(Vector2(clampf(center.x-43,2,maxf(2,size.x-88)),maxf(origin.y,center.y-15)),Vector2(86,17))
+		canvas.draw_rect(box,Color(0.04,0.07,0.09,0.82))
+		canvas.draw_rect(box,Color("e2bf70",0.7),false,1)
+		canvas.draw_string(ui_font,box.position+Vector2(3,12),title,HORIZONTAL_ALIGNMENT_CENTER,80,10,Color("fff0c8"))
+	for row in intent_ui.speech:
+		if skill_badges.has(int(row.actor_id)): continue
+		var actor := _actor_for_id(actors,int(row.actor_id))
+		if not _label_visible(actor): continue
+		var center := cell_center(actor.pos)-Vector2(0,half_width*2.6)
+		var box := Rect2(Vector2(clampf(center.x-35,2,maxf(2,size.x-72)),maxf(origin.y,center.y-18)),Vector2(70,18))
+		canvas.draw_rect(box,Color(0.03,0.05,0.07,0.85))
+		canvas.draw_rect(box,Color("e5dfcf",0.68),false,1)
+		canvas.draw_string(ui_font,box.position+Vector2(2,13),str(row.text),HORIZONTAL_ALIGNMENT_CENTER,66,11,Color("fff6e1"))
 	for effect in effects:
 		if effect.get("kind","") == "ENEMY_ATTACK":
 			draw_enemy_attack(effect,canvas); continue
@@ -461,21 +530,12 @@ func emit_cell(position: Vector2) -> void:
 	var point := cell_at(position)
 	if session != null and session.inside(point): cell_pressed.emit(point)
 
-func paint_decision(canvas: Node2D) -> void:
-	if next_action.is_empty() or session.phase != "BATTLE": return
-	var actor: Dictionary = session.party[session.selected]
-	if actor.hp <= 0: return
-	var start := cell_center(actor.pos)
-	var end := cell_center(next_action.cell)
-	var color := Color("bde2dc")
-	if start.distance_to(end) > 1:
-		var direction := (end-start).normalized()
-		var tip := end-direction*half_width*0.35
-		canvas.draw_line(start,tip,Color(0,0,0,0.8),4,true)
-		canvas.draw_line(start,tip,color,2,true)
-		var normal := Vector2(-direction.y,direction.x)
-		canvas.draw_colored_polygon(PackedVector2Array([tip,tip-direction*7+normal*4,tip-direction*7-normal*4]),color)
-	var caption: String = next_action.get("reason","대기")
-	var box := Rect2(Vector2(clampf(start.x-48,2,maxf(2,size.x-98)),clampf(start.y-half_width*2.6,2,maxf(2,size.y-22))),Vector2(96,20))
-	canvas.draw_style_box(_preview_background(color),box)
-	canvas.draw_string(ui_font,box.position+Vector2(3,14),caption,HORIZONTAL_ALIGNMENT_CENTER,90,11,color)
+func _actor_for_id(actors: Array, actor_id: int) -> Dictionary:
+	for actor in actors:
+		if not actor.enemy and int(actor.id) == actor_id: return actor
+	return {}
+
+func _label_visible(actor: Dictionary) -> bool:
+	if actor.is_empty() or int(actor.get("hp",0)) <= 0: return false
+	var visible: Dictionary = visual_state.get("visible",{}) if is_presenting() else session.floor_state.visible
+	return (not session.floor_mode or visible.has(actor.pos)) and Rect2(Vector2.ZERO,size).has_point(cell_center(actor.pos))

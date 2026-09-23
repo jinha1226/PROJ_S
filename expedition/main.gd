@@ -328,7 +328,7 @@ func refresh() -> void:
 	# Retain the renderer and minimap's incremental cache across action refreshes.
 	if is_instance_valid(board):
 		root_layout.remove_child(board); clear(board)
-		board.actor_visuals.clear(); board.foreground = null
+		board.actor_visuals.clear(); board.foreground = null; board.intent_overlay = null
 	if is_instance_valid(minimap): minimap.get_parent().remove_child(minimap)
 	clear(root_layout); item_buttons.clear(); skill_buttons.clear(); portrait_buttons.clear()
 	auto_explore_button = null; wait_button = null; advance_attack_button = null
@@ -376,12 +376,8 @@ func refresh() -> void:
 	board.impact_time = impact_elapsed
 	board.target_cell = pending_attack.get("cell",Vector2i(-1,-1))
 	board.companion_previews = session.companion_previews()
-	board.next_action = {}
-	if session.floor_mode and session.phase == "BATTLE" and not session.combat_enemies().is_empty():
-		var selected_actor: Dictionary = session.party[session.selected]
-		if selected_actor.hp > 0 and selected_actor.ap > 0:
-			board.next_action = session.command_choice(selected_actor).duplicate(true)
-			if board.next_action.is_empty(): board.next_action = session.Tactics.choose(session,selected_actor).duplicate(true)
+	board.companion_intents = session.companion_intent_snapshot() if session.phase == "BATTLE" else []
+	if session.phase != "BATTLE" or not session.in_combat(): board.reset_intent_ui()
 	attack_button = null
 	end_turn_button = null
 	if session.phase == "BATTLE":

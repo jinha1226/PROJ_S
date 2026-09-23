@@ -40,14 +40,15 @@ func run() -> void:
 	control.auto_step()
 	check(actor_state(s) == actor_state(control) and s.serial == control.serial,"recording does not alter rules, injuries or RNG")
 	check(recorder.frames.size() >= 2,"player and enemy resolve as separate frames")
+	check(recorder.frames.any(func(frame): return not frame.get("executed_intent",{}).is_empty()),"successful companion actions carry their chosen DTO into presentation frames")
 	check(recorder.frames[0].effects[0].from == s.party[0].pos,"player impact precedes enemy")
 	check(recorder.frames[0].before.actors[1].hp == 200,"snapshot preserves pre-hit HP")
 	var scene = load("res://expedition/main.tscn").instantiate()
 	scene.session = setup()
 	root.size = Vector2i(390,844); root.add_child(scene)
 	await process_frame
-	var expected: Dictionary = scene.session.companion_choice(scene.session.party[0])
-	check(scene.board.next_action == expected,"selected preview comes from actual decision selector")
+	var expected: Array = scene.session.companion_intent_snapshot()
+	check(scene.board.companion_intents == expected and expected.size() == scene.session.party.size(),"pause view exposes every actionable companion preview")
 	var before := Presentation.snapshot(scene.session)
 	scene.run_action(scene.session.auto_step)
 	check(scene.board.is_presenting(),"UI starts presentation")
@@ -63,7 +64,7 @@ func run() -> void:
 		scene.board._advance_playback(1.0); steps += 1
 	check(not scene.board.is_presenting(),"queue drains and returns control")
 	await process_frame
-	check(scene.board.next_action == scene.session.companion_choice(scene.session.party[scene.session.selected]),"preview recomputes after playback")
+	check(scene.board.companion_intents == scene.session.companion_intent_snapshot(),"all companion previews recompute after playback")
 	scene.queue_free(); await process_frame
 	print("Battle presentation: %d failures" % failures)
 	quit(1 if failures else 0)

@@ -18,6 +18,7 @@ const Knobs = preload("res://expedition/knobs.gd")
 const Stances = preload("res://expedition/stances.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
 const Abilities = preload("res://expedition/abilities.gd")
+const IntentUI = preload("res://expedition/companion_intent_ui.gd")
 const Growth = preload("res://expedition/growth.gd")
 const Passives = preload("res://expedition/passives.gd")
 var parts_bag: Dictionary = {}
@@ -31,6 +32,9 @@ var companions := false
 var resolving_companions := false
 # Optional UI recorder; headless simulations never allocate presentation snapshots.
 var presentation = null
+var active_intent_event: Dictionary = {}
+var intent_decision_serial := 0
+var intent_preview_ids: Dictionary = {}
 ## Evaluation priority: the hard events first, then the soft alerts.
 const AUTO_STOPS := ["BATTLE_START","BATTLE_END","DEATH","ALLY_LETHAL","HP_LOW"]
 ## Auto-battle state: whether the UI is advancing rounds, which events stop it,
@@ -474,22 +478,31 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 func act(kind: String, target: Vector2i) -> bool:
 	return act_as(party[selected],kind,target,true)
 
+func _presentation_action(actor: Dictionary, kind: String, target: Vector2i) -> Dictionary:
+	if not active_intent_event.is_empty() and int(active_intent_event.get("actor_id",-1)) == int(actor.id):
+		return active_intent_event.duplicate(true)
+	var target_actor: Dictionary = at(target)
+	var target_id := int(target_actor.get("id",-1)) if not target_actor.is_empty() else -1
+	var choice := {"kind":kind,"cell":target}
+	return IntentUI.adapt(actor,choice,target_id,_intent_id(actor,choice,target_id))
+
 ## One action by `actor`. `chain` runs the legacy follow-up (companions acting
 ## after the hero, round end on empty AP); auto_step passes false and drives
 ## the round itself.
 func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = true) -> bool:
 	if phase != "BATTLE" or not inside(target): return false
 	if floor_mode and not floor_state.visible.has(target): return false
+	var display_event := _presentation_action(actor,kind,target) if presentation != null else {}
 	if boss_trial and kind == "PYLON":
 		if not BossTrial.disable_pylon(self,target): return false
-		if presentation != null: presentation.capture(self,actor.id)
+		if presentation != null: presentation.capture(self,actor.id,display_event)
 		if chain: finish_player_action()
 		return true
 	if actor.hp <= 0 or actor.ap <= 0: return false
 	if Abilities.DEFINITIONS.has(kind):
 		if not Abilities.execute(self,actor,kind,target): return false
 		actor.ap -= 1; check_battle_end()
-		if presentation != null: presentation.capture(self,actor.id)
+		if presentation != null: presentation.capture(self,actor.id,display_event)
 		if chain: finish_player_action()
 		return true
 	var victim := at(target)
@@ -518,7 +531,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 		_: return false
 	actor.ap -= 1
 	check_battle_end()
-	if presentation != null: presentation.capture(self,actor.id)
+	if presentation != null: presentation.capture(self,actor.id,display_event)
 	if chain: finish_player_action()
 	return true
 
@@ -609,6 +622,34 @@ func companion_choice(actor: Dictionary) -> Dictionary:
 	if floor_mode and floor_state.safe(self): return floor_state.follow(self,actor)
 	return Tactics.choose(self,actor)
 
+## Read-only display preview for currently actionable party members. `choose`
+## is deterministic and does not commit a decision; exhausted members are
+## omitted instead of predicting their next round.
+func companion_intent_snapshot() -> Array:
+	var result: Array = []
+	if not in_combat(): return result
+	for actor in party:
+		if actor.hp <= 0 or actor.ap <= 0 or phase != "BATTLE": continue
+		var choice: Dictionary = command_choice(actor)
+		if choice.is_empty(): choice = Tactics.choose(self,actor)
+		var target_id := -1
+		if choice.get("kind", "") in ["ATTACK", "PUSH"] or Abilities.DEFINITIONS.has(str(choice.get("kind", ""))):
+			var target: Dictionary = at(choice.get("cell", actor.pos))
+			target_id = int(target.get("id", -1)) if not target.is_empty() else -1
+		var dto := IntentUI.adapt(actor,choice,target_id,_intent_id(actor,choice,target_id))
+		if not dto.is_empty(): result.append(dto)
+	return result
+
+func _intent_id(actor: Dictionary, choice: Dictionary, target_id: int) -> int:
+	var actor_id := int(actor.get("id",-1))
+	var signature := "%s|%s|%d|%s|%d" % [str(choice.get("kind","")),str(actor.get("pos",Vector2i.ZERO)),int(actor.get("ap",0)),str(choice.get("cell",Vector2i.ZERO)),target_id]
+	var cached: Dictionary = intent_preview_ids.get(actor_id,{})
+	if str(cached.get("signature","")) != signature:
+		intent_decision_serial += 1
+		cached = {"signature":signature,"decision_id":intent_decision_serial}
+		intent_preview_ids[actor_id] = cached
+	return int(cached.decision_id)
+
 ## One rules-driven round: every living member spends its AP through the
 ## command or the rules, then the round ends. Game UI and simulator both call this.
 func auto_step() -> bool:
@@ -628,9 +669,18 @@ func auto_step() -> bool:
 			if not noted and str(choice.get("mistake","")) != "":
 				note_mistake(actor,str(choice.mistake)); noted = true
 			# last_action reports what actually ran, not what was wanted.
-			if act_as(actor,choice.kind,choice.cell,false): actor.last_action = choice.reason
-			elif act_as(actor,"WAIT",actor.pos,false): actor.last_action = "대기"
-			else: break
+			var target: Dictionary = at(choice.get("cell",actor.pos))
+			intent_decision_serial += 1
+			active_intent_event = IntentUI.adapt(actor,choice,int(target.get("id",-1)),intent_decision_serial)
+			var acted := act_as(actor,str(choice.get("kind","WAIT")),choice.get("cell",actor.pos),false)
+			if acted:
+				actor.last_action = str(choice.get("reason","대기"))
+			else:
+				var wait_choice := {"kind":"WAIT","cell":actor.pos,"reason":"대기"}
+				active_intent_event = IntentUI.adapt(actor,wait_choice,-1,_intent_id(actor,wait_choice,-1))
+				if not act_as(actor,"WAIT",actor.pos,false): active_intent_event = {}; break
+				actor.last_action = "대기"
+			active_intent_event = {}
 		# Did the stance get what it wanted this round? One tally per member.
 		var row: Dictionary = member_stats(actor.id)
 		if not row.is_empty() and actor.hp > 0:
