@@ -16,7 +16,8 @@ static func build(id: String) -> Dictionary:
 
 static func apply_build(s, id: String) -> void:
 	var row := build(id)
-	for actor in s.party:
+	for i in range(s.party.size()):
+		var actor: Dictionary = s.party[i]
 		for axis in row.get("ranks",{}): actor.growth.ranks[axis] = int(row.ranks[axis])
 		for stat in row.get("stats",{}): actor.growth.stats[stat] = int(row.stats[stat])
 		actor.equipped_abilities = row.equipped.duplicate()
@@ -24,6 +25,12 @@ static func apply_build(s, id: String) -> void:
 		# A build measures the build: without knobs of its own it fights on the
 		# neutral defaults, not on whatever personality the seed rolled.
 		actor.knobs = row.knobs.duplicate() if row.has("knobs") else Knobs.DEFAULT.duplicate()
+		# Same for the stance: a build fights on the neutral charger unless it
+		# names one for everybody, or one per member.
+		if row.has("stances"): actor.stance = str(row.stances[mini(i,row.stances.size()-1)])
+		elif row.has("stance"): actor.stance = str(row.stance)
+		else: actor.stance = "CHARGER"
+		actor.protect_id = -1
 
 ## Drains `s.effects` into the running tallies. Called before every player
 ## action and once more after the loop, so ambush hits and the strikes of the

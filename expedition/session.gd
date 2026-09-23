@@ -15,6 +15,7 @@ const BossTrial = preload("res://expedition/boss_trial.gd")
 var boss_trial := false
 const Tactics = preload("res://expedition/tactical_action_selector.gd")
 const Knobs = preload("res://expedition/knobs.gd")
+const Stances = preload("res://expedition/stances.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 const Growth = preload("res://expedition/growth.gd")
@@ -126,6 +127,10 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"stress":0, "condition":"평온", "ap":2,
 		"body":Body.create(id, seed_value, enemy),
 		"profile":Hexaco.generated(seed_value, id + 1), "memory":Memory.new()}
+	# How the member fights with whatever it carries, and who it covers.
+	actor["stance"] = Stances.default_stance(actor.profile)
+	actor["protect_id"] = -1
+	actor["hit_and_run"] = false
 	# The knobs start where this personality is comfortable, so nobody is born
 	# in conflict with their own standing orders.
 	actor["knobs"] = Knobs.defaults(actor.profile)
@@ -171,6 +176,7 @@ func depart() -> bool:
 		actor.memory.records = actor.memory.records.filter(func(record): return int(record.salience) >= 700)
 		actor.important_memories = {}
 	expedition_number += 1
+	for actor in party: actor.hit_and_run = false
 	light = 90; loot = 0; hunger = 0
 	reset_battle_stats()
 	if floor_mode:
@@ -629,7 +635,11 @@ func open_battle_conflicts() -> void:
 		stress(actor,8)
 		serial += 1
 		remember_important(actor,"COMMAND_CONFLICT",actor.id+1,0,600)
-		message(actor.name+" · 명령과 갈등")
+		var stance := str(actor.get("stance",Stances.default_stance(actor.profile)))
+		if not Stances.comfortable(actor.profile,stance):
+			message("%s · 태세와 갈등 (%s)" % [actor.name,Stances.NAMES[stance]])
+		else:
+			message(actor.name+" · 명령과 갈등")
 
 ## Snapshot of what auto_stop_reason compares against next round.
 func remember_round() -> void:
@@ -692,6 +702,23 @@ func set_knob(index: int, key: String, value: int) -> bool:
 	var bounds: Array = Knobs.RANGE[key]
 	if value < int(bounds[0]) or value > int(bounds[1]): return false
 	party[index].knobs[key] = value
+	return true
+
+## The stance is a standing order like a knob: set on safe ground only. A lone
+## member has nobody to cover, so it cannot be a guardian.
+func set_stance(index: int, stance: String) -> bool:
+	if not safe_management() or in_combat(): return false
+	if index < 0 or index >= party.size() or party[index].hp <= 0 or stance not in Stances.IDS: return false
+	if stance == "GUARDIAN" and party.size() == 1: return false
+	party[index].stance = stance
+	return true
+
+## Who a guardian covers: another living member, or -1 to let it pick.
+func set_protect(index: int, target_index: int) -> bool:
+	if not safe_management() or in_combat(): return false
+	if index < 0 or index >= party.size() or party[index].hp <= 0: return false
+	if target_index != -1 and (target_index == index or target_index < 0 or target_index >= party.size() or party[target_index].hp <= 0): return false
+	party[index].protect_id = target_index
 	return true
 
 func set_tactic(index: int, skill: String, policy: String) -> bool:

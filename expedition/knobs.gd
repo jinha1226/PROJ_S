@@ -4,6 +4,7 @@ extends RefCounted
 ## battle start, and an anxious member ignores it.
 const DEFAULT := {"posture":0,"cohesion":0,"retreat_hp":25}
 const RANGE := {"posture":[-100,100],"cohesion":[-100,100],"retreat_hp":[0,60]}
+const Stances = preload("res://expedition/stances.gd")
 
 static func defaults(profile) -> Dictionary:
 	return {"posture":clampi((profile.value("X")-profile.value("E"))/10,-100,100),
@@ -24,6 +25,8 @@ static func conflicted(actor: Dictionary) -> bool:
 	for key in DEFAULT:
 		var value: int = int(actor.knobs.get(key,DEFAULT[key]))
 		if value < int(band[key][0]) or value > int(band[key][1]): return true
+	# A stance outside the personality's aptitude band is a standing order too.
+	if not Stances.comfortable(actor.profile,str(actor.get("stance",Stances.default_stance(actor.profile)))): return true
 	return false
 
 ## The knobs the member actually fights with: as set while calm, personality
