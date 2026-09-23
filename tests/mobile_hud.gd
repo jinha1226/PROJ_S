@@ -65,17 +65,18 @@ func run() -> void:
 			check(bar.mouse_filter == Control.MOUSE_FILTER_IGNORE,"gauge does not block item touches")
 		var header: Node = scene.find_child("TopHUD",true,false)
 		check(header.get_children().slice(1).map(func(c): return str(c.name)) == ["Location","FoodButton","TorchButton","Funds","ExpeditionMenu"],"header order")
-		# The floor battle is automatic: no per-member skill buttons, one auto
-		# toggle and the five party commands instead.
+		# The floor battle is automatic: no per-member skill buttons, and the
+		# whole of the input is the auto row.
 		check(scene.skill_buttons.is_empty(),"floor battle has no skill buttons")
-		var bar: Node = scene.find_child("CommandBar",true,false)
+		check(scene.find_child("CommandBar",true,false) == null,"no command bar after the diet")
 		var toggle: Button = scene.find_child("AutoToggle",true,false)
-		check(bar != null and bar.get_child_count() == 5 and toggle != null,"auto toggle and five party commands")
-		for control in bar.get_children()+[toggle]:
+		var retreat: Button = scene.find_child("RetreatToggle",true,false)
+		check(toggle != null and retreat != null,"auto toggle and retreat toggle")
+		for control in [toggle,retreat]:
 			check(control.size.y >= 44 and scene.get_global_rect().encloses(control.get_global_rect()),"auto control is touchable and on screen")
 		check(scene.portrait_buttons[0].find_children("*","TextureRect",true,false).is_empty(),"member card has no portrait image")
 		var nav: Node = scene.root_layout.get_child(-1)
-		check(nav.get_children().map(func(c): return c.text) == ["▶ 재개","1×","진형 교환","자동탐험","가방","⚙"],"floor footer order")
+		check(nav.get_children().map(func(c): return c.text) == ["▶ 재개","1×","후퇴","자동탐험","가방"],"floor footer order")
 		scene.show_objective(); await process_frame
 		check(scene.modal_content.get_children().map(func(c): return c.text) == ["원정 목표","입구까지 이동","원정포기"],"menu contains exactly three actions")
 		check(scene.details_popup.size.x <= viewport.x,"menu width fits")

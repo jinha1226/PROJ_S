@@ -124,7 +124,7 @@ func preview_rect(actor: Dictionary) -> Rect2:
 	return Rect2(Vector2(clampf(center.x-29,0,maxf(0,size.x-58)),maxf(origin.y,center.y-half_width-19)),Vector2(58,18))
 
 func _process(delta: float) -> void:
-	var had_labels := not skill_badges.is_empty() or not intent_ui.speech.is_empty()
+	var had_labels: bool = not skill_badges.is_empty() or not intent_ui.speech.is_empty()
 	if not is_presenting() and session != null and bool(session.auto.get("running",false)):
 		ui_elapsed += delta
 		intent_ui.tick(delta,false)

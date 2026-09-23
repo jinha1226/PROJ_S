@@ -64,10 +64,7 @@ func run() -> void:
 	scene.show_character(1,"파츠")
 	check(scene.modal_content.find_children("PartSlot*","PanelContainer",true,false).size() == 2,"one card per slot, not per rule")
 	for frame in range(3): await process_frame
-	var policies: Array = scene.modal_content.find_children("*","Button",true,false).filter(func(b): return b.text.begins_with("사용 방침"))
-	policies[0].pressed.emit(); await process_frame
-	check(scene.item_popup.visible,"policy opens child popup")
-	scene.item_popup.hide()
+	check(scene.modal_content.find_children("*","Button",true,false).all(func(b): return not b.text.begins_with("사용 방침") and not b.text.begins_with("자동 ")),"the slot card carries no rule policy and no auto toggle")
 	# Town equipping goes through the chooser the card opens.
 	scene.session.phase = "TOWN"
 	check(scene.session.unequip_part(1,0) and scene.session.parts_bag.BOMB == 1,"unequipping returns the part to the bag")

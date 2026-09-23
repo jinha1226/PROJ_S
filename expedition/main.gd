@@ -8,6 +8,7 @@ const Art = preload("res://expedition/mobile_art.gd")
 const InventorySlot = preload("res://expedition/inventory_slot.gd")
 const CharacterUI = preload("res://expedition/character_ui.gd")
 const BattleHud = preload("res://expedition/battle_hud.gd")
+const ArenaSetup = preload("res://expedition/arena_setup.gd")
 const Stances = preload("res://expedition/stances.gd")
 var portrait_gesture = preload("res://expedition/legacy/portrait_gesture.gd").new()
 var navigation = preload("res://expedition/exploration_navigation.gd").new()
@@ -27,6 +28,13 @@ const SKILL_NAMES = [["밀쳐내기","엄호"],["강타","엄호"],["물","방�
 ## Members on a floor expedition; every fresh session in this scene uses it.
 const PARTY_SIZE := 3
 var session = Session.new(randi(),true,false,true,PARTY_SIZE)
+## Battle test mode: the town session set aside while a throwaway arena session
+## fights, the setup screen's own state, and whether that screen is showing.
+var town_session = null
+var arena_config := {"arena":"early_hob","seed":0,"fixed_seed":false,"size":PARTY_SIZE,
+	"members":[{"stance":"CHARGER","parts":["",""]},{"stance":"CHARGER","parts":["",""]},{"stance":"CHARGER","parts":["",""]}],
+	"custom":[["",""],["",""],["",""]]}
+var mode_arena_setup := false
 var mode := ""
 var reservation_actor := -1
 var pending_item := -1
@@ -62,10 +70,9 @@ var portrait_buttons: Array = []
 var tactics_actor := 0
 var tactics_expanded := -1
 ## Auto battle (floor mode): the timer that drives the rounds, the sentence of
-## the last stop event and the first half of a formation swap.
+## the last stop event and whether this battle has been reported.
 var auto_clock := 0.0
 var stop_text := ""
-var formation_pick := -1
 var battle_reported := false
 
 func _ready() -> void:
@@ -190,29 +197,42 @@ func stop_message(reason: String) -> String:
 			return "%s 체력 %d%% 이하" % [low[0].name if not low.is_empty() else "아군",int(session.auto.hp_low)]
 	return ""
 
-func set_command(id: String) -> void:
-	if session.auto.running: return
-	stop_navigation()
-	command_targeting = id == "ATTACK_TARGET"
-	if command_targeting: notice = "공격 대상 선택"
-	else: session.party_command = id
+## 후퇴 is the one standing order the HUD still offers, and the only control
+## that works mid-run: calling the party off cannot wait for the next stop.
+func toggle_retreat() -> void:
+	session.party_command = "FOLLOW" if session.party_command == "RETREAT" else "RETREAT"
 	refresh()
-
-func show_formation() -> void:
-	stop_navigation(); BattleHud.formation(self)
-
-func pick_formation(index: int) -> void:
-	if formation_pick < 0: formation_pick = index; show_formation(); return
-	var first: int = formation_pick
-	formation_pick = -1; details_popup.hide()
-	if first == index: refresh(); return
-	run_action(func(): return session.swap_formation(first,index))
 
 func show_battle_report() -> void:
 	stop_navigation(); BattleHud.report(self)
 
-func show_auto_options() -> void:
-	stop_navigation(); BattleHud.options(self)
+## Battle test mode (§3): the setup screen, a throwaway arena session started
+## from it, and the way back to the town session it set aside.
+func show_arena_setup() -> void:
+	stop_navigation(); details_popup.hide()
+	session.auto.running = false
+	mode_arena_setup = true
+	refresh()
+
+func start_arena() -> void:
+	if town_session == null: town_session = session
+	mode_arena_setup = false
+	if not bool(arena_config.fixed_seed): arena_config.seed = randi() % 100000
+	var arena: Dictionary = Session.ARENA_PRESETS.get(str(arena_config.arena),{}).duplicate(true)
+	if str(arena_config.arena) == "custom":
+		arena.members = arena_config.custom.filter(func(row): return not str(row[0]).is_empty()).map(func(row): return [str(row[0]),str(row[1])])
+	details_popup.hide()
+	session = Session.arena_test(int(arena_config.seed),int(arena_config.size),arena,arena_config.members)
+	stop_text = ""; battle_reported = false; action_effects = []; reset_effects = true
+	check_stop()
+	refresh()
+
+func leave_arena() -> void:
+	mode_arena_setup = false
+	details_popup.hide()
+	if town_session != null: session = town_session; town_session = null
+	stop_text = ""; battle_reported = false; action_effects = []; reset_effects = true
+	refresh()
 
 func _process(delta: float) -> void:
 	if is_instance_valid(board) and board.is_presenting(): return
@@ -362,12 +382,14 @@ func refresh() -> void:
 		board.zoom_changed.connect(func(value): view_side = value)
 		board.gesture_started.connect(stop_navigation)
 		board.playback_finished.connect(finish_presentation)
+	# A test session never returns to town: its defeat card is the battle report.
+	var in_town: bool = mode_arena_setup or (session.phase in ["TOWN","DEFEAT"] and town_session == null)
 	board.session = session; board.view_side = view_side; board.queue_redraw()
 	# The floor HUD has no end-turn button, so the board keeps no footer strip.
 	board.action_footer = not session.boss_trial and not session.floor_mode or not pending_attack.is_empty()
 	root_layout.add_child(board)
 	# The result card takes the board's place until the player refits.
-	board.visible = session.phase not in ["TOWN","DEFEAT"]
+	board.visible = not in_town
 	board.show_attack_range = show_attack_range
 	board.input_actor = reservation_actor
 	board.targeting_skill = mode
@@ -394,10 +416,12 @@ func refresh() -> void:
 			attack_button.offset_left = 8; attack_button.offset_top = -56
 			attack_button.offset_right = 230; attack_button.offset_bottom = -8
 			attack_button.custom_minimum_size.y = 48
-	var in_town: bool = session.phase in ["TOWN","DEFEAT"]
 	for side in ["top","bottom"]: root_layout.get_parent().add_theme_constant_override("margin_"+side,0 if in_town else 8)
 	if in_town:
-		stop_navigation(); header.hide(); stop_text = ""; battle_reported = false
+		stop_navigation(); header.hide()
+		if mode_arena_setup:
+			root_layout.add_child(ArenaSetup.build(self)); return
+		stop_text = ""; battle_reported = false
 		if not session.result.is_empty():
 			build_result_card()
 		elif session.phase == "TOWN" and not session.alive().is_empty():
@@ -454,7 +478,7 @@ func refresh() -> void:
 		if i == session.selected:
 			var gold := portrait.get_theme_stylebox("normal").duplicate(); gold.border_color = Color("e9c575"); gold.set_border_width_all(2); portrait.add_theme_stylebox_override("normal",gold)
 		if actor.hp <= 0: portrait.modulate = Color("636369")
-	if session.floor_mode and session.phase == "BATTLE": build_auto_rows()
+	if session.floor_mode and session.phase == "BATTLE": build_stop_banner()
 	var shared := HBoxContainer.new(); shared.add_theme_constant_override("separation",4); root_layout.add_child(shared)
 	for slot in range(6):
 		var item := icon_button(shared,Art.item(slot),func(): choose_item(slot),Session.SUPPLY_NAMES[slot],str(session.supplies[slot]))
@@ -465,12 +489,10 @@ func refresh() -> void:
 		toggle.name = "AutoToggle"
 		var speed := button(nav,"%d×" % int(session.auto.speed),toggle_speed)
 		speed.name = "SpeedToggle"; speed.custom_minimum_size.x = 40; speed.size_flags_horizontal = SIZE_SHRINK_CENTER
-		var swap := button(nav,"진형 교환",show_formation,session.can_swap_formation() and not session.auto.running)
-		swap.name = "FormationButton"
+		var retreat := button(nav,"후퇴 해제" if session.party_command == "RETREAT" else "후퇴",toggle_retreat,session.phase == "BATTLE")
+		retreat.name = "RetreatToggle"; retreat.toggle_mode = true; retreat.button_pressed = session.party_command == "RETREAT"
 		auto_explore_button = button(nav,"중지" if navigation.active else "자동탐험",toggle_explore,session.phase == "BATTLE" and not session.auto.running)
 		button(nav,"가방",show_supplies,not session.auto.running)
-		var gear := button(nav,"⚙",show_auto_options)
-		gear.name = "AutoOptionsButton"; gear.custom_minimum_size.x = 40; gear.size_flags_horizontal = SIZE_SHRINK_CENTER
 		for node in nav.get_children():
 			node.custom_minimum_size.y = 46; node.clip_text = true
 			node.add_theme_font_size_override("font_size",11)
@@ -483,21 +505,12 @@ func refresh() -> void:
 	button(nav,"가방",show_supplies)
 	for node in nav.get_children(): node.custom_minimum_size.y = 49
 
-## Stop banner and the five party commands: the whole of floor-mode input
-## besides the board, the bag and the auto row.
-func build_auto_rows() -> void:
+## The stop banner. Floor-mode input is the board (a tap on a foe concentrates
+## the party), the bag and the auto row — there is no command bar any more.
+func build_stop_banner() -> void:
 	var banner := label(root_layout,stop_text,15)
 	banner.name = "StopBanner"; banner.visible = not stop_text.is_empty()
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; banner.clip_text = true
-	var bar := HBoxContainer.new(); bar.name = "CommandBar"; bar.add_theme_constant_override("separation",3)
-	root_layout.add_child(bar)
-	for entry in [["FOLLOW","따라와"],["HOLD_POSITION","자리 지켜"],["STOP_ATTACK","공격 중지"],["RETREAT","후퇴"],["ATTACK_TARGET","집중 공격"]]:
-		var id: String = entry[0]
-		var node := button(bar,entry[1],func(): set_command(id),not session.auto.running)
-		node.toggle_mode = true
-		node.button_pressed = session.party_command == id if id != "ATTACK_TARGET" else command_targeting or session.party_command == id
-		node.custom_minimum_size.y = 44; node.clip_text = true
-		node.add_theme_font_size_override("font_size",11)
 
 func depart() -> void:
 	if session.phase == "DEFEAT" or session.alive().is_empty(): session = Session.new(randi(),true,false,true,PARTY_SIZE)

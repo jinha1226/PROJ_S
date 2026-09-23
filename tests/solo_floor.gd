@@ -215,8 +215,10 @@ func run() -> void:
 		for node in scene.item_buttons+scene.skill_buttons+scene.portrait_buttons:
 			check(node.size.y >= 44 and scene.get_global_rect().encloses(node.get_global_rect()),"solo touch targets on screen")
 		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"solo layout fits portrait screen")
-		var nav_texts: Array = scene.root_layout.get_child(scene.root_layout.get_child_count()-1).get_children().map(func(b): return b.text)
-		check("⚙" in nav_texts and "원정" not in nav_texts,"footer contains the auto options; expedition menu lives in header")
+		var footer: Control = scene.root_layout.get_child(scene.root_layout.get_child_count()-1)
+		var nav_texts: Array = footer.get_children().map(func(b): return b.text)
+		check(footer.find_child("RetreatToggle",true,false) != null and "후퇴" in nav_texts,"the footer carries the retreat toggle")
+		check("⚙" not in nav_texts and "원정" not in nav_texts,"the auto options widget is gone; the expedition menu lives in the header")
 		scene.find_child("ExpeditionMenu",true,false).pressed.emit(); await process_frame
 		scene.modal_content.get_child(0).pressed.emit(); await process_frame
 		check(scene.details_popup.visible and scene.details_popup.size.x <= viewport.x,"objective popup fits")

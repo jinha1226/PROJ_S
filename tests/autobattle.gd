@@ -128,6 +128,18 @@ func stops() -> void:
 	d.foes[0].hp = 0; s.floor_state.observe(s)
 	check(s.auto_stop_reason() == "BATTLE_END","no foes left stops for battle end")
 	check(s.auto.stops_log.back() == "BATTLE_END","stops are logged for the battle report")
+	# A retreat belongs to the fight it was called in: the end of the battle
+	# clears the standing order, stop event or none.
+	d = skirmish(); s = d.s; s.auto_step()
+	s.party_command = "RETREAT"; s.command_target = d.foes[0].id
+	for dead in d.foes: dead.hp = 0
+	s.floor_state.observe(s)
+	check(s.auto_stop_reason() == "BATTLE_END" and s.party_command == "FOLLOW" and s.command_target == -1,"the end of the battle calls the retreat off")
+	d = skirmish(); s = d.s; s.auto.stops.BATTLE_END = false; s.auto_step()
+	s.party_command = "RETREAT"
+	for dead in d.foes: dead.hp = 0
+	s.floor_state.observe(s)
+	check(s.auto_stop_reason() == "" and s.party_command == "FOLLOW","a consumed battle end clears it too")
 
 ## Strands `s.party[index]` at `cell` with a healthy, alert `foe` beside it, so
 ## that no ally can 엄호 the killing blow away. The retreat line is switched off
@@ -283,9 +295,9 @@ func formation() -> void:
 	var step: Dictionary = s.floor_state.follow(s,s.party[0])
 	check(step.kind == "MOVE" and s.distance(step.cell,s.party[2].pos) < s.distance(s.party[0].pos,s.party[2].pos),"followers walk toward the leader, not toward selected")
 
-## The floor-mode battle HUD: member cards without skill buttons, the auto
-## toggle that runs one round per tick, the stop banner, the battle report,
-## the knob tab and the stop options.
+## The floor-mode battle HUD after the diet: member cards without skill
+## buttons, the auto toggle that runs one round per tick, the stop banner,
+## the retreat toggle and the battle report.
 func ui() -> void:
 	var scene = load("res://expedition/main.tscn").instantiate()
 	var s = Session.new(731,true,true,true,3)
@@ -303,13 +315,10 @@ func ui() -> void:
 	for frame in range(3): await process_frame
 	check(scene.skill_buttons.is_empty() and scene.end_turn_button == null,"floor battle has no skill buttons and no end-turn button")
 	var toggle: Button = scene.find_child("AutoToggle",true,false)
-	var bar = scene.find_child("CommandBar",true,false)
-	check(toggle != null and bar != null and bar.get_child_count() == 5,"auto toggle and five commands")
+	check(toggle != null,"auto toggle")
+	check(scene.find_child("CommandBar",true,false) == null and scene.find_child("FormationButton",true,false) == null and scene.find_child("AutoOptionsButton",true,false) == null,"the command bar, the formation swap and the options gear are gone")
 	check(scene.find_child("StopBanner",true,false).text.begins_with("전투 시작"),"banner names the stop")
-	check(not s.auto.running and bar.get_children().all(func(b): return not b.disabled),"stopped: commands enabled")
 	check(toggle.text == "▶ 재개" and not scene.item_buttons[0].disabled,"stopped: the toggle resumes and items are usable")
-	var swap: Button = scene.find_child("FormationButton",true,false)
-	check(swap != null and not swap.disabled,"the battle-start stop offers the formation swap")
 	# 개입은 명령만: the board marks the focus target and does nothing else.
 	var foe_hp: int = foe.hp
 	var stopped_round: int = s.round_number
@@ -318,11 +327,9 @@ func ui() -> void:
 	scene.on_cell(s.party[0].pos)
 	check(s.round_number == stopped_round and s.party[0].pos == c,"tapping own cell neither waits nor moves while fighting")
 	s.party_command = "FOLLOW"
-	bar = scene.find_child("CommandBar",true,false)
 	toggle.pressed.emit(); await process_frame
 	# Every action rebuilds the HUD, so each control is looked up again.
-	bar = scene.find_child("CommandBar",true,false)
-	check(s.auto.running and bar.get_children().all(func(b): return b.disabled),"running: commands disabled")
+	check(s.auto.running,"the toggle starts the run")
 	check(scene.find_child("AutoToggle",true,false).text == "⏸ 정지" and scene.item_buttons[0].disabled,"running: the toggle stops and items are locked")
 	# This stretch measures the timer, so the soft alerts are switched off.
 	s.auto.stops.ALLY_LETHAL = false; s.auto.stops.HP_LOW = false
@@ -338,7 +345,6 @@ func ui() -> void:
 	scene.auto_tick()  # one timer tick = one auto_step when running
 	await process_frame
 	check(s.round_number == round_before+1,"a tick advanced one round")
-	check(scene.find_child("FormationButton",true,false).disabled,"the swap closes once the battle is under way")
 	var card: Button = scene.find_child("MemberCard0",true,false)
 	check(card.find_children("*","Label",true,false).any(func(l): return l.text.contains(s.party[0].last_action)),"member card reports the last action")
 	toggle = scene.find_child("AutoToggle",true,false)
@@ -348,11 +354,11 @@ func ui() -> void:
 	var speed: Button = scene.find_child("SpeedToggle",true,false)
 	speed.pressed.emit(); await process_frame
 	check(s.auto.speed == 2 and scene.auto_interval() < 0.5,"2x halves the interval")
-	# A command reaches the session and does not resume the run.
-	bar = scene.find_child("CommandBar",true,false)
-	bar.get_child(3).pressed.emit(); await process_frame
-	check(s.party_command == "RETREAT" and not s.auto.running,"a command bar button sets the party command")
-	s.party_command = "FOLLOW"
+	# The one remaining order reaches the session and does not resume the run.
+	scene.find_child("RetreatToggle",true,false).pressed.emit(); await process_frame
+	check(s.party_command == "RETREAT" and not s.auto.running,"the retreat toggle sets the party command")
+	scene.find_child("RetreatToggle",true,false).pressed.emit(); await process_frame
+	check(s.party_command == "FOLLOW","the retreat toggle calls it off again")
 	# Battle end shows the report.
 	foe.hp = 0; s.floor_state.observe(s); s.auto.running = true; scene.auto_tick()
 	for frame in range(3): await process_frame
@@ -363,31 +369,15 @@ func ui() -> void:
 	check(labels.any(func(t): return t.begins_with(s.party[0].name)),"report gives every member a row")
 	check(report.find_children("*","Button",true,false).any(func(b): return b.text == "파츠·규칙 보기"),"report links to parts and rules")
 	scene.details_popup.hide()
-	# Personality tab has knob sliders with comfort bands.
+	# Personality tab carries no knobs any more; the engine still takes them.
 	scene.show_character(0,"성격")
 	for frame in range(3): await process_frame
-	var slider = scene.modal_content.find_child("Knob_posture",true,false)
-	check(slider != null and slider.min_value == -100 and slider.max_value == 100,"posture slider")
-	check(int(slider.value) == int(s.party[0].knobs.posture),"the slider shows the knob it edits")
-	check(scene.modal_content.find_child("Band_posture",true,false) != null,"the comfort band is drawn on the slider")
-	# Safe ground after the battle: the knob may be set, and the session takes it.
-	check(slider.editable == (s.safe_management() and not s.in_combat()),"the slider is editable exactly where knobs may change")
-	slider.value = 40
-	check(s.party[0].knobs.posture == 40,"moving the slider writes the knob through the session")
+	check(scene.modal_content.find_children("Knob_*","HSlider",true,false).is_empty() and scene.modal_content.find_children("Band_*","Control",true,false).is_empty(),"no knob sliders and no comfort bands on the personality tab")
+	check(s.set_knob(0,"posture",40) and s.party[0].knobs.posture == 40,"the session still takes a knob for the sim")
 	scene.details_popup.hide()
-	# Options popup lists the five stops and the HP threshold.
-	scene.show_auto_options()
-	for frame in range(3): await process_frame
-	var options = scene.find_child("AutoOptions",true,false)
-	check(options != null and options.find_children("*","CheckButton",true,false).size() == 5,"five stop toggles")
-	var death: CheckButton = options.find_child("Stop_DEATH",true,false)
-	death.button_pressed = false
-	check(not s.auto.stops.DEATH,"unchecking a stop writes the session")
-	var threshold: OptionButton = options.find_child("HpThreshold",true,false)
-	check(threshold != null and threshold.item_count == 4,"four HP thresholds")
-	threshold.item_selected.emit(2)
-	check(s.auto.hp_low == 40,"the HP threshold writes the session")
-	scene.details_popup.hide()
+	# The stop events are fixed, so there is no options popup to open.
+	check(s.auto.stops.BATTLE_START and s.auto.stops.DEATH and s.auto.stops.BATTLE_END,"the shipped stops are on")
+	check(not s.auto.stops.ALLY_LETHAL and not s.auto.stops.HP_LOW,"the fussy stops are off")
 	# The report is a summary, not a stop: switching BATTLE_END off still shows it.
 	s.auto.stops.BATTLE_END = false
 	var second: Dictionary = s.enemies[1]
