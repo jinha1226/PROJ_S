@@ -7,6 +7,7 @@ const BodyPresentation = preload("res://expedition/body_presentation.gd")
 const Emblem = preload("res://expedition/growth_emblem.gd")
 const Art = preload("res://expedition/mobile_art.gd")
 const Knobs = preload("res://expedition/knobs.gd")
+const Stances = preload("res://expedition/stances.gd")
 
 static func surface(color: Color, border: Color = Color("65522a")) -> StyleBoxFlat:
 	var skin := StyleBoxFlat.new(); skin.bg_color = color; skin.border_color = border
@@ -79,12 +80,12 @@ static func text(parent: Node, value: String, font_size: int = 14) -> Label:
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL; label.add_theme_font_size_override("font_size",font_size)
 	label.add_theme_color_override("font_color",Color("d0c8b4")); parent.add_child(label); return label
 
-static func gauge(parent: Node, value: float, maximum: float, color: Color) -> void:
+static func gauge(parent: Node, value: float, maximum: float, color: Color) -> ProgressBar:
 	var bar := ProgressBar.new(); bar.max_value = maxf(1,maximum); bar.value = value; bar.show_percentage = false
 	bar.custom_minimum_size.y = 8
 	var fill := StyleBoxFlat.new(); fill.bg_color = color; bar.add_theme_stylebox_override("fill",fill)
 	var bg := StyleBoxFlat.new(); bg.bg_color = Color("070b0c"); bar.add_theme_stylebox_override("background",bg)
-	parent.add_child(bar)
+	parent.add_child(bar); return bar
 
 static func grid(parent: Node, columns: int) -> GridContainer:
 	var result := GridContainer.new(); result.columns = columns
@@ -151,7 +152,50 @@ static func personality(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		var row := VBoxContainer.new(); row.custom_minimum_size.y = 44; box.add_child(row)
 		text(row,"%s                         %d" % [names[id],actor.profile.value(id)])
 		gauge(row,actor.profile.value(id),1000,Color("69cfc2"))
+	stances(ui,list,actor)
 	knobs(ui,list,actor)
+
+## How this member fights: one button per stance over the aptitude personality
+## gives it, what the equipped parts suggest, and — for a guardian — who it
+## covers. Editable wherever a knob is.
+static func stances(ui, list: VBoxContainer, actor: Dictionary) -> void:
+	var index: int = ui.tactics_actor
+	var editable: bool = ui.session.phase == "TOWN" or (ui.session.floor_mode and ui.session.safe_management() and not ui.session.in_combat())
+	var chosen: String = str(actor.get("stance",Stances.default_stance(actor.profile)))
+	var aptitude: Dictionary = Stances.aptitude(actor.profile)
+	var box := card(list,"태세"); box.name = "StanceCard"
+	var columns := grid(box,Stances.IDS.size())
+	columns.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for entry in Stances.IDS:
+		var id: String = entry
+		var column := VBoxContainer.new(); column.size_flags_horizontal = Control.SIZE_EXPAND_FILL; columns.add_child(column)
+		var solo: bool = id == "GUARDIAN" and ui.session.party.size() == 1
+		var pick = ui.button(column,Stances.NAMES[id],func(): choose(ui,index,id),editable and not solo)
+		pick.name = "Stance_"+id; pick.toggle_mode = true; pick.button_pressed = id == chosen
+		pick.custom_minimum_size.y = 44
+		# Aptitude runs -1000..1000; the bar shows it folded onto 0..1000.
+		gauge(column,(int(aptitude[id])+1000)/2.0,1000,Color("69cfc2")).name = "Aptitude_"+id
+	var badge := text(box,"빌드 추천: %s" % Stances.NAMES[Stances.suggested(actor)],13)
+	badge.name = "StanceSuggestion"
+	if not Stances.comfortable(actor.profile,chosen):
+		text(box,"⚠ 이 태세는 성격과 맞지 않습니다 — 전투마다 갈등",11).add_theme_color_override("font_color",Color("d1a05f"))
+	if chosen != "GUARDIAN": return
+	text(box,"지킬 대상",13)
+	var pick_target := OptionButton.new(); pick_target.name = "ProtectPick"
+	pick_target.custom_minimum_size.y = 44; pick_target.disabled = not editable
+	var choices: Array = [-1]; pick_target.add_item("자동")
+	for i in range(ui.session.party.size()):
+		if i == index or ui.session.party[i].hp <= 0: continue
+		pick_target.add_item(str(ui.session.party[i].name)); choices.append(i)
+	pick_target.select(maxi(0,choices.find(int(actor.get("protect_id",-1)))))
+	box.add_child(pick_target)
+	pick_target.item_selected.connect(func(slot): ui.session.set_protect(index,int(choices[slot])))
+
+## Taking a stance rebuilds the tab: the guardian's 지킬 대상 picker and the
+## comfort warning both depend on it.
+static func choose(ui, index: int, id: String) -> void:
+	if not ui.session.set_stance(index,id): return
+	ui.refresh(); ui.show_character(index,"성격")
 
 ## The three standing orders, with the band this personality is comfortable in
 ## drawn behind the slider. Editable in town and on safe ground only.

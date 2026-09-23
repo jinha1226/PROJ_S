@@ -28,6 +28,7 @@ func run() -> void:
 	guardian()
 	defence()
 	target()
+	await ui()
 	print("Stances: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func data() -> void:
@@ -229,3 +230,61 @@ func defence() -> void:
 	u.floor_state.observe(u)
 	check(Stances.steps_toward(u,hh,[h.c+Vector2i(1,0)]) == [h.c+Vector2i(1,0)],"the burning corridor cell is still a route")
 	check(u.Tactics.choose(u,hh).kind == "MOVE","a blocked fire-free route does not leave the charger standing")
+
+## The character window's stance card, the member-card letter and the role
+## line on the battle report.
+func ui() -> void:
+	var scene = load("res://expedition/main.tscn").instantiate()
+	var s = Session.new(731,true,true,true,3)
+	scene.session = s; root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
+	await process_frame
+	for frame in range(3): await process_frame
+	scene.show_character(0,"성격")
+	for frame in range(3): await process_frame
+	var buttons: Array = scene.modal_content.find_children("Stance_*","Button",true,false)
+	check(buttons.size() == 3 and buttons.any(func(b): return b.button_pressed),"three stance buttons, current one pressed")
+	var bars: Array = scene.modal_content.find_children("Aptitude_*","Control",true,false)
+	check(bars.size() == 3,"aptitude bars")
+	var badge = scene.modal_content.find_child("StanceSuggestion",true,false)
+	check(badge != null and badge.text.begins_with("빌드 추천"),"build suggestion badge")
+	var guardian: Button = scene.modal_content.find_child("Stance_GUARDIAN",true,false)
+	guardian.pressed.emit(); await process_frame
+	check(s.party[0].stance == "GUARDIAN","button sets the stance")
+	scene.show_character(0,"성격")
+	for frame in range(3): await process_frame
+	var protect = scene.modal_content.find_child("ProtectPick",true,false)
+	check(protect != null and protect.item_count == 3,"guardian shows the protect picker: auto + two members")
+	# The knob sliders carry warning labels of their own, so the stance warning
+	# is looked for inside the stance card alone. 아린 is comfortable as a
+	# charger and a guardian but not as a skirmisher, so both branches run.
+	var warned: Array = []
+	for id in Stances.IDS:
+		check(s.set_stance(0,id),"stance %s can be taken in town" % id)
+		scene.show_character(0,"성격")
+		for frame in range(3): await process_frame
+		var stance_card = scene.modal_content.find_child("StanceCard",true,false)
+		var warn: Array = stance_card.find_children("*","Label",true,false).filter(func(l): return l.text.begins_with("⚠"))
+		check(warn.is_empty() == Stances.comfortable(s.party[0].profile,id),"warning iff the stance is outside the aptitude band: "+id)
+		warned.append(not warn.is_empty())
+	check(true in warned and false in warned,"both branches of the comfort warning were seen")
+	check(s.party[0].stance == "GUARDIAN","the stance card ends on the guardian")
+	scene.details_popup.hide()
+	var solo = Session.new(731,true,false,true,1)
+	scene.session = solo; scene.refresh()
+	scene.show_character(0,"성격")
+	for frame in range(3): await process_frame
+	check(scene.modal_content.find_child("Stance_GUARDIAN",true,false).disabled,"solo: guardian disabled")
+	scene.details_popup.hide()
+	# Member card shows the stance letter; report shows role rounds.
+	scene.session = s; s.depart(); Fixture.arena(s,8); Fixture.equip_basics(s)
+	var foe: Dictionary = s.enemies[0]; foe.hp = 30; foe.max_hp = 30; foe.role = "MELEE"; foe.alert = true; foe.part_id = ""; foe.pos = s.party[0].pos+Vector2i(1,0)
+	s.floor_state.observe(s); scene.refresh()
+	for frame in range(3): await process_frame
+	var cards: Array = scene.find_children("MemberCard*","Button",true,false)
+	check(cards.size() == 3 and cards[0].get_child(0).text.contains("[호]"),"member card carries the stance letter")
+	s.reset_battle_stats(); s.auto_step(); foe.hp = 0; s.floor_state.observe(s)
+	scene.show_battle_report()
+	for frame in range(3): await process_frame
+	var labels: Array = scene.modal_content.find_children("*","Label",true,false).map(func(l): return l.text)
+	check(labels.any(func(t): return t.contains("역할")),"report shows role performance")
+	scene.queue_free(); await process_frame

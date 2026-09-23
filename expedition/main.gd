@@ -8,6 +8,7 @@ const Art = preload("res://expedition/mobile_art.gd")
 const InventorySlot = preload("res://expedition/inventory_slot.gd")
 const CharacterUI = preload("res://expedition/character_ui.gd")
 const BattleHud = preload("res://expedition/battle_hud.gd")
+const Stances = preload("res://expedition/stances.gd")
 var portrait_gesture = preload("res://expedition/legacy/portrait_gesture.gd").new()
 var navigation = preload("res://expedition/exploration_navigation.gd").new()
 const NAVIGATION_STEP_SECONDS := 0.06
@@ -447,7 +448,7 @@ func refresh() -> void:
 		portrait.tooltip_text = "짧게: 행동 예약 · 길게: 상태" if session.companions and not session.floor_mode else "길게 누르기: 상태"; portrait.custom_minimum_size.y = 48; portrait_buttons.append(portrait)
 		var caption := "%s\nHP %d/%d   MP %s   스트레스 %d" % [actor.name,actor.hp,actor.max_hp,str(actor.mp)+"/"+str(actor.max_mp) if actor.has("mp") else "—",actor.stress]
 		if session.floor_mode:
-			caption = "%s · HP %d/%d\n스트레스 %d · %s\n%s" % [actor.name,actor.hp,actor.max_hp,actor.stress,actor.condition,actor.last_action]
+			caption = "%s [%s] · HP %d/%d\n스트레스 %d · %s\n%s" % [actor.name,Stances.SHORT[Stances.effective(actor)],actor.hp,actor.max_hp,actor.stress,actor.condition,actor.last_action]
 			if bool(actor.get("conflicted",false)): caption += " ⚠ 갈등"
 			portrait.custom_minimum_size.y = 62
 		var stats := label(portrait,caption,12 if session.party.size() == 1 and not session.floor_mode else 10)

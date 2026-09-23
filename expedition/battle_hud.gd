@@ -3,6 +3,7 @@ extends RefCounted
 ## options and the battle-start formation swap. Kept out of main.gd, which owns
 ## the board, the rows and the timer.
 const CharacterUI = preload("res://expedition/character_ui.gd")
+const Stances = preload("res://expedition/stances.gd")
 const STOP_NAMES := {"BATTLE_START":"전투 시작","BATTLE_END":"전투 종료","DEATH":"아군 사망","ALLY_LETHAL":"치명 위기","HP_LOW":"체력 낮음"}
 const HP_THRESHOLDS := [20,30,40,50]
 
@@ -22,6 +23,7 @@ static func report(ui) -> void:
 		var row: Dictionary = s.member_stats(actor.id)
 		if row.is_empty(): continue
 		var text := "%s · 입힘 %d · 받음 %d · 엄호 %d회/%d · 파츠 %s" % [actor.name,int(row.dealt),int(row.taken),int(row.guards),int(row.redirected),used(ui,row.parts)]
+		text += role(actor,row)
 		if bool(row.conflict): text += " · 갈등"
 		var entry := line(ui,list,text,13)
 		if bool(row.downed) or actor.hp <= 0: entry.add_theme_color_override("font_color",Color("d1685f"))
@@ -32,6 +34,15 @@ static func report(ui) -> void:
 	ui.button(list,"파츠·규칙 보기",func(): ui.show_character(0,"파츠"))
 	ui.button(list,"닫기",func(): ui.details_popup.hide())
 	ui.details_popup.popup_centered()
+
+## How much of the battle the member spent where its stance wanted it, and the
+## one build mistake the stance cannot work around.
+static func role(actor: Dictionary, row: Dictionary) -> String:
+	var rounds: Dictionary = row.get("role_rounds",{"in_role":0,"total":0})
+	var stance: String = Stances.effective(actor)
+	var line := " · 역할 %s %d/%d" % [Stances.NAMES[stance],int(rounds.in_role),int(rounds.total)]
+	if stance == "SKIRMISHER" and Stances.ranged_part(actor).is_empty(): line += " · 원거리 파츠 없음"
+	return line
 
 static func line(ui, parent: Node, text: String, font_size: int) -> Label:
 	var node: Label = ui.label(parent,text,font_size)
