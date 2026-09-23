@@ -131,6 +131,14 @@ static func fill(rng: RandomNumberGenerator, depth: int, budget: int, ood: bool,
 		if valid(solo,budget,max_members).is_empty(): return solo
 	return [member(rows[0] if not rows.is_empty() else species("kobold"),"MELEE")]
 
+## One pack for a theme at this depth, seeded on its own. Members match
+## `layout.encounters[].members` in shape: species_id, display_name, max_health, role.
+static func pack(theme: Dictionary, budget: int, depth: int, pack_seed: int) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = pack_seed
+	var max_members: int = int(theme.get("monsters",{}).get("max_members",MAX_MEMBERS))
+	return fill(rng,maxi(1,depth),budget,false,max_members)
+
 static func chebyshev(a: Vector2i, b: Vector2i) -> int:
 	return maxi(absi(a.x-b.x),absi(a.y-b.y))
 

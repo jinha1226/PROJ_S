@@ -7,6 +7,7 @@ const TurnCore = preload("res://sim/turn_engine.gd")
 const ElementRules = preload("res://sim/environment_rules.gd")
 const Injury = preload("res://sim/body_injury_system.gd")
 const Dungeon = preload("res://expedition/dungeon_map.gd")
+const NpcRoster = preload("res://expedition/npc_roster.gd")
 var BOARD_SIDE := Dungeon.ROOM_SIDE
 const Floor = preload("res://expedition/continuous_floor.gd")
 var floor_mode := false
@@ -54,6 +55,9 @@ var phase := "TOWN"
 var room := 0
 var party: Array = []
 var enemies: Array = []
+## Dungeon NPCs: the run roster and the ones standing on this floor.
+var roster: Array = []
+var npcs: Array = []
 var tiles: Array = []
 var visited: Array = []
 var log_lines: Array[String] = []
@@ -201,7 +205,10 @@ func depart() -> bool:
 		auto.prev_threats = 0; auto.prev_low = []; auto.prev_alive = alive().size()
 		auto.stops_log = []; auto.last_stop = {"reason":"","round":-99}
 		snapshot = take_snapshot()
-		floor_state.build(self); message("1층 진입"); return true
+		floor_state.build(self)
+		if roster.is_empty(): NpcRoster.generate(self)
+		NpcRoster.place(self)
+		message("1층 진입"); return true
 	food = 27; torches = 5
 	supplies = [2,2,1,1,1,3]
 	exploration_tools = {"KEY":2,"SHOVEL":2}
@@ -365,7 +372,7 @@ func inside(point: Vector2i) -> bool:
 	return point.x >= 0 and point.y >= 0 and point.x < BOARD_SIDE and point.y < BOARD_SIDE
 
 func at(point: Vector2i) -> Dictionary:
-	for actor in party + enemies:
+	for actor in party + enemies + npcs:
 		if actor.hp > 0 and actor.pos == point: return actor
 	return {}
 

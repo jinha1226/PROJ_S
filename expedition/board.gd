@@ -398,7 +398,7 @@ func _draw_foreground(canvas: Node2D) -> void:
 	if session == null or session.tiles.is_empty(): return
 	var camera := impact_transform()
 	canvas.draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
-	var actors: Array = visual_state.actors if is_presenting() else session.party+session.enemies
+	var actors: Array = visual_state.actors if is_presenting() else session.party+session.enemies+session.npcs
 	for actor in actors:
 		if actor.hp <= 0: continue
 		if session.floor_mode and not (visual_state.visible if is_presenting() else session.floor_state.visible).has(actor.pos): continue
