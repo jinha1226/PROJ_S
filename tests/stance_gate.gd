@@ -166,7 +166,7 @@ func write_report(table: Array, verdicts: Dictionary, ex: Dictionary, seeds: Arr
 			pb.pass_arenas.size(),ex.arenas.size(),", ".join(pb.pass_arenas.map(func(a): return "`%s`" % a)) if not pb.pass_arenas.is_empty() else "—",
 			"통과" if pb.ok else "**미달**"])
 	lines.append("")
-	lines.append("**G7 종합: %s**" % ("통과" if verdicts.pass_all else "**미달**"))
+	lines.append("**G7 종합: %s**" % ("통과" if verdicts.pass_all else "미달"))
 	lines.append("")
 	lines.append("솔로 기준(`tests/solo_balance.gd` ≥ 3/8)은 이 도구가 아니라 CI 스위트가 잰다 — 아래 \"솔로 기준\" 절에 결과를 손으로 적는다.")
 	lines.append("")
