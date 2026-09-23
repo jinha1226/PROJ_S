@@ -11,8 +11,8 @@
 1. **마을·귀환 없음.** Run은 1층에서 혼자 시작해 주인공이 죽을 때까지 내려가는 한 번의 하강이다. 상점·보급·유물 회수·입구 귀환·정착지·자금은 없다.
 2. **자원은 식량 하나.** 용도는 던전 안 **야영**뿐이며, 식량이 파티 인원 이상일 때만 야영할 수 있다. 행동 20회당 소비·굶주림 게이지는 없앤다.
 3. **횃불·빛 없음.** 횃불 아이템, 빛 0~100 게이지, 어둠 피해·전리품·드롭 보정, 어둠 스트레스 전부 삭제. 시야는 고정.
-4. **상태는 HP와 스트레스만.** 부상·약초·붕대·목재·물약·두루마리·도구(열쇠·삽) 없음.
-5. **층은 지금의 절차 생성 층**(연속 층)을 이어서 내려간다. 3×3 방 지도·방 모드·보스 시련은 삭제. 3인 파티 기준으로 층을 넓힌다.
+4. **상태는 HP와 스트레스만.** 부상·약초·붕대·목재·도구(열쇠·삽) 없음. **물약·두루마리는 던전에서 줍는 소모품 아이템으로 유지**(구매 없음, §2.3).
+5. **층은 지금의 절차 생성 층**(연속 층)을 이어서 내려간다. 3×3 방 지도·방 모드·보스 시련 *모드*는 삭제하되 **보스 세 종은 보스 층으로 남긴다**(§4.4). 3인 파티 기준으로 층을 넓힌다.
 6. **NPC는 던전 안에서 스스로 활동한다.** 혼자 시작해 던전에서 영입한다. 활동은 NPC 자신의 감각(시야·소음)으로 깨어났을 때만(§5.3). 층당 3~5명, Run 전체 명부에서 배치. **2인 조** 포함.
 7. **영입은 성격이 정한다.** 외향형은 먼저 다가와 제안하고, 내향형은 플레이어가 탭해 말을 건다(§5.5). 파티 최대 3인.
 8. **전투 AI는 그대로.** 태세·효용·룩어헤드·실수는 손대지 않는다. NPC도 같은 선택기로 움직인다.
@@ -48,8 +48,8 @@
 | --- | --- | --- |
 | 버려진 보급 상자 | 식량 +2~3 | 1~2 |
 | 버섯 군락 | 식량 +1~2, 30%로 채집자 HP −4("독성") | 1~2 |
-| 죽은 모험가 | 식량 +1, 30%로 파츠 아이템 1(`roll_part`) | 0~1 |
-| 부서진 궤짝 | 파츠 아이템 1 | 1 |
+| 죽은 모험가 | 식량 +1, 30%로 파츠 아이템 1(`roll_part`), 30%로 소모품 1 | 0~1 |
+| 부서진 궤짝 | 파츠 아이템 1 또는(50%) 소모품 1 | 1 |
 
 - 몬스터 드롭: 짐승 종족(쥐·도마뱀 계열, `species_catalog`의 `beast` 태그)은 처치 시 25%로 식량 +1. 기존 파츠 드롭(`DROP_PERCENT`)은 그대로.
 - 조사는 지금처럼 인접 탭 → 선택 팝업(조사 / 지나간다). 자동 획득 없음.
@@ -58,7 +58,13 @@
 
 - `hp/max_hp`, `stress`(0~200, 불안 ≥ 100·붕괴 ≥ 150 — 기존 실수 배수 그대로).
 - 스트레스 원천: 기존 전투 원천(피해·아군 쓰러짐)과 §5의 NPC 사건. 굶주림·어둠 원천은 삭제.
-- 삭제: `hunger`, `supplies`, `SUPPLY_NAMES`, `exploration_tools`, `torches`, `light`, `bank`, `loot`(자금). 처치·조사 점수는 결과 화면용 `s.score`로 대체.
+- 삭제: `hunger`, `exploration_tools`, `torches`, `light`, `bank`, `loot`(자금), `free_provisions`/`purchases`. 처치·조사 점수는 결과 화면용 `s.score`로 대체.
+
+### 2.3 소모품
+
+- `supplies` 배열은 남기되 **5종**: 치유 물약(HP +20), 정신 안정제(스트레스 −25), 활력 물약(스트레스 −10·HP +5 — 굶주림이 없어졌으니), 화염 두루마리, 물 두루마리. 붕대(6번째)는 삭제. 시작 보유 0.
+- 획득: 부서진 궤짝은 50%로 파츠 대신 소모품 1(무작위); 죽은 모험가는 30%로 소모품 1; 보급 상자는 20%로 소모품 1. 몬스터 드롭 없음.
+- 사용은 지금처럼 가방(`use_supply`)에서. 야영에서도 쓸 수 있다.
 
 ## 3. 야영
 
@@ -94,6 +100,12 @@
 ### 4.3 자동 이동
 
 층이 커진 만큼 탭 이동을 경로 이동으로 바꾼다: 시야 안(또는 기억한) 칸을 탭하면 A* 경로로 한 라운드에 한 걸음씩 자동 진행, 적이 시야에 들어오거나(`BATTLE_START`) 조사물·계단·NPC에 인접하면 멈춘다. 기존 "인접 칸 탭 = 한 걸음"은 그대로 포함된다.
+
+### 4.4 보스 층
+
+- `depth % 3 == 0`인 층은 `descent` 대신 필수 템플릿 **`boss_lair`**(14×12, 계단 `>`, 전력탑 `Y`, 물웅덩이 `~` 2칸, 문 2)를 쓴다. 보스는 기존 보스 시련의 세 패턴을 `(depth/3 − 1) % 3` 순서로: 수렁 포식자(물에서 회복, 반경 2 폭발 예고) → 폭탄 암살자(대상 중심 3×3 예고 후 모서리 순간이동) → 과부하 거인(HP 절반에서 보호막, 전력탑 인접 탭으로 해제). HP 64 + 8·(depth/3 − 1). 처치 시 파츠 드롭 100%.
+- 보스 패턴 코드는 `expedition/boss_ai.gd`로 옮긴다: 방 모드의 `rooms[room]` 상태(`pattern/shield/pylon/overloaded`) 대신 보스 액터 자신의 필드에 들고, 예고는 층의 `s.intents`에 다른 몬스터와 같은 형식(`{id, cell, damage, kind:"BOSS"}`)으로 넣어 룩어헤드·태세가 그대로 읽는다. `MonsterAI.turn`은 `enemy.get("boss",false)`면 `BossAI.turn`으로 넘긴다.
+- 계단은 보스가 살아 있는 동안 "봉인됨". 보스 층에는 NPC 배치 없음(§5.2).
 
 ## 5. NPC
 
@@ -172,9 +184,9 @@
 
 ## 7. 삭제 목록
 
-코드: `dungeon_map.gd`, 방 모드(`floor_mode == false` 분기 전부 — `floor_mode` 변수 자체 제거), `boss_trial.gd`, 지형 레이아웃 4종, `expedition_objective.gd`, `settlement`/마을 함수(`depart`, `return_home`, `finish_expedition`, `rest_town`, 상점·보급·`MIN_KIT`·`provision_*`·`bank`), 횃불·빛(`torches`, `light`, `light_tier/loot_percent/drop_percent/enemy_bonus/sight_side/sight_radius/darkness_strength`, `ambush`의 어둠 조건), `hunger`·행동 20회 식량, `supplies`·`exploration_tools`·큐리오 도구, `expedition_number`.
+코드: `dungeon_map.gd`, 방 모드(`floor_mode == false` 분기 전부 — `floor_mode` 변수 자체 제거), `boss_trial.gd`(패턴은 `boss_ai.gd`로 이식 후 삭제), 지형 레이아웃 4종, `expedition_objective.gd`, `settlement_hub.gd`/마을 함수(`return_home`, `finish_expedition`, `rest_town`, `refit`, 상점·보급·`MIN_KIT`·`provision_*`·`buy/refund/price/stock`·`bank`), 횃불·빛(`torches`, `light`, `light_tier/loot_percent/drop_percent/enemy_bonus/sight_side/sight_radius/darkness_strength`, `ambush`의 어둠 조건), `hunger`·행동 20회 식량, `exploration_tools`·큐리오 도구, 붕대, `expedition_number`. `Session.new(seed, _, _, _, party_size)`와 `depart()`는 시그니처를 유지한다(30여 스위트의 픽스처가 쓴다): `depart()`가 곧 "Run 시작 = 1층 생성"이다.
 데이터: `balance_experiments.json` 아레나의 `light` 필드(시뮬 러너는 고정 시야로), `exploration_curios.json` → 새 4종.
-테스트(삭제): `boss_trial`, `terrain_layouts`, `torch_vision`, `torch_tradeoff`, `solo_provisioning`, `expedition_settlement`, `solo_recovery`(마을 요양 검사). `curios`·`mobile_exploration`·`playthrough`·`integration`은 새 흐름으로 재작성. CI 목록 갱신.
+테스트(삭제): `boss_trial`(→ `boss_floor`로 대체), `terrain_layouts`, `torch_vision`, `torch_tradeoff`, `solo_provisioning`, `expedition_settlement`, `solo_recovery`(마을 요양 검사). `curios`·`mobile_exploration`·`playthrough`·`integration`은 새 흐름으로 재작성. CI 목록 갱신.
 
 ## 8. 검증
 
@@ -183,7 +195,9 @@
 - `run_start`: 시작 화면 → 새 Run → 1층 혼자·식량 2·슬롯 빈칸·가방에 요령 2; TOWN 단계 부재; 전투 시험 진입 유지.
 - `camping`: 조건(적 시야·식량 부족·전투 중) 각각 거부; 효과 수치; 야영에서만 장착; 야영 뒤 EXPLORE.
 - `floor_descent`: 계단 상호작용 → depth+1, 테마 교대, 예산 배율, 파티·식량·가방·기억 유지, 새 층 검증 통과(시드 0~19).
-- `floor_generator`(갱신): 새 크기·복도 폭 2·`npc_rooms` 3~5, 시드 0~99.
+- `floor_generator`(갱신): 새 크기·복도 폭 2·`npc_rooms` 3~5, 시드 0~99; `boss_lair`가 depth 3의 필수 템플릿.
+- `boss_floor`: 3층 생성에 보스 1·계단 봉인, 세 패턴의 예고가 `s.intents`에 실림(룩어헤드가 읽음), 거인 보호막·전력탑, 처치 후 계단 개방·파츠 드롭.
+- `items`(기존 스위트 갱신): 소모품 5종 사용, 붕대 없음, 야영 중 사용 가능, 조사물에서 획득.
 - `npc_sense`: 시야로 깨어남, 소음으로 깨어남, 5라운드 뒤 잠듦, 잠든 NPC는 행동 없음, 깨어 있는 NPC가 시야 밖에서 다가옴.
 - `npc_behaviour`: 전투 중 태세대로 행동(`friends` 포함 — 엄호·공유 목표), 몬스터가 NPC를 노림; 활동 모드 효용(외향 → APPROACH, 내향 → HOLD, 부상 → REST, 개방 높고 파티 안 보이면 EXPLORE; 유지 10라운드·80점 전환; 결정론; 활동 문구), 2인 조 인접 우선, NPC 사망 → 명부 DEAD.
 - `recruit`: 식량 나눔(food −1, AID_RECEIVED, 정원 차도 가능, 확률 없는 수락, 층 넘어 유지); 외향 선제안·내향 탭; 수락 확률 공식과 결정론; 거절 기억과 20라운드 쿨다운; 최대 3인; 2인 조 close(둘 다/자리 부족 거절)·strained(남는 쪽 기억·스트레스); 기억 KINDS 4종.
