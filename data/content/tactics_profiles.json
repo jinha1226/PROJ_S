@@ -13,7 +13,7 @@
     "protectee_near":   {"curve": "step",    "doc": "도착 칸이 보호 대상 곁"},
     "protectee_gap":    {"curve": "step",    "doc": "도착 칸이 보호 대상과 위협 사이"},
     "protectee_lethal": {"curve": "step",    "doc": "보호 대상이 치명 위기"},
-    "rule_ready":       {"curve": "step",    "doc": "이 파츠의 규칙 조건이 지금 참"},
+    "rule_ready":       {"curve": "linear",  "doc": "이 파츠의 규칙 조건이 지금 참 — 규칙 순위·대상 선호를 담은 등급"},
     "contact_penalty":  {"curve": "step",    "doc": "근접 접촉 중인데 사거리 3 이상 파츠"},
     "same_as_last":     {"curve": "step",    "doc": "직전 라운드와 같은 종류·방향"},
     "la_self_hit":      {"curve": "linear",  "doc": "룩어헤드: 내가 받을 피해, 뒤집음"},
@@ -33,7 +33,7 @@
       "ATTACK":        {"any_foe_adjacent": 100, "damage": 40, "kill": 20, "la_enemy_hit": 20, "la_self_hit": 20, "same_as_last": 10},
       "MOVE:approach": {"closes_distance": 80, "cell_danger": 20, "ally_delta": 0, "la_self_hit": 20, "same_as_last": 10},
       "MOVE:sidestep": {"cell_danger": 60, "ally_delta": 0},
-      "PART":          {"rule_ready": 120, "damage": 40, "kill": 20, "la_enemy_hit": 30, "la_lethal_saved": 200, "contact_penalty": -1000},
+      "PART":          {"rule_ready": 200, "damage": 40, "kill": 20, "la_enemy_hit": 30, "la_lethal_saved": 200, "contact_penalty": -1000},
       "WAIT":          {}
     },
     "SKIRMISHER": {
@@ -42,7 +42,7 @@
       "MOVE:approach":  {"closes_distance": 80, "cell_danger": 40, "ally_delta": 0, "la_self_hit": 40},
       "ATTACK":         {"any_foe_adjacent": 60, "damage": 30, "kill": 20, "la_self_hit": 20},
       "WAIT:hold":      {"in_band": 50, "cell_danger": 20},
-      "PART":           {"rule_ready": 140, "in_band": 40, "damage": 40, "kill": 20, "la_enemy_hit": 30, "la_lethal_saved": 200, "contact_penalty": -1000}
+      "PART":           {"rule_ready": 320, "in_band": 40, "damage": 40, "kill": 20, "la_enemy_hit": 30, "la_lethal_saved": 200, "contact_penalty": -1000}
     },
     "GUARDIAN": {
       "ATTACK:intercept": {"any_foe_adjacent": 100, "damage": 30, "la_ally_hit": 40},
@@ -53,7 +53,7 @@
       "WAIT:hold":        {"protectee_near": 40},
       "MOVE:approach":    {"closes_distance": 80, "cell_danger": 20, "ally_delta": 0, "la_self_hit": 20, "same_as_last": 10},
       "MOVE:sidestep":    {"cell_danger": 60, "ally_delta": 0},
-      "PART":             {"rule_ready": 150, "la_lethal_saved": 300, "la_ally_hit": 60, "damage": 20, "contact_penalty": -1000}
+      "PART":             {"rule_ready": 200, "la_lethal_saved": 300, "la_ally_hit": 60, "damage": 20, "contact_penalty": -1000}
     }
   }
 }

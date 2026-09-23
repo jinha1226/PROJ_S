@@ -32,7 +32,9 @@ static func tag(action: Dictionary) -> String:
 ## Per-actor facts every candidate shares. Everything that depends on the
 ## protectee alone — whether it is about to die, and the cell that bodies the
 ## gap — is settled here rather than once per candidate.
-static func context(s, actor: Dictionary) -> Dictionary:
+## `pool` is the round's whole candidate list: `rule_ready` needs the siblings
+## of a part candidate to say which of them a rule's target preference wants.
+static func context(s, actor: Dictionary, pool: Array = []) -> Dictionary:
 	var protectee := Stances.protectee(s,actor)
 	var threats: Array = []
 	var lethal := false
@@ -43,7 +45,7 @@ static func context(s, actor: Dictionary) -> Dictionary:
 		if not threats.is_empty():
 			var t: Dictionary = threats[0]
 			gap = protectee.pos+Vector2i(signi(t.pos.x-protectee.pos.x),signi(t.pos.y-protectee.pos.y))
-	return {"target":Stances.party_target(s),"protectee":protectee,"threats":threats,
+	return {"pool":pool,"target":Stances.party_target(s),"protectee":protectee,"threats":threats,
 		"protectee_lethal":lethal,"gap":gap,"ranged":Stances.ranged_part(actor),
 		"last_kind":str(actor.get("last_action_kind","")),"last_dir":actor.get("last_action_dir",Vector2i.ZERO)}
 
@@ -83,10 +85,39 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary) ->
 		result.protectee_gap = 1.0 if dest == ctx.gap else 0.0
 	if Abilities.DEFINITIONS.has(kind):
 		var def: Dictionary = Abilities.DEFINITIONS[kind]
-		for rule in actor.rules:
-			if rule.skill == kind and Rules.matches(s,actor,action,rule): result.rule_ready = 1.0
+		result.rule_ready = rule_grade(s,actor,action,ctx)
 		if int(def.range) >= 3 and s.combat_enemies().any(func(e): return s.melee_reach(actor.pos,e.pos)): result.contact_penalty = 1.0
 	return result
+
+## 설계 §2 `rule_ready`, Task 2 판정: 등급형이다. The rule list used to be a
+## priority sort with a target preference inside it (`rule_choice`); both have
+## to survive as a number now that the parts merely compete. The first enabled
+## rule that matches this candidate gives 1.0 − 0.1·min(index,4), and a
+## candidate its rule would not have targeted keeps four fifths of that.
+static func rule_grade(s, actor: Dictionary, action: Dictionary, ctx: Dictionary) -> float:
+	for index in range(actor.rules.size()):
+		var rule: Dictionary = actor.rules[index]
+		if not bool(rule.get("enabled",true)) or not Rules.matches(s,actor,action,rule): continue
+		var base: float = 1.0-0.1*float(mini(index,4))
+		return base if preferred(s,actor,action,rule,ctx) else base*0.8
+	return 0.0
+
+## Whether `action` is the cell this rule would have picked among the sibling
+## candidates of the same part: the lowest health for LOWEST_HP/ALLY, the
+## nearest otherwise, ties by cell name — `rule_choice`'s old sort.
+static func preferred(s, actor: Dictionary, action: Dictionary, rule: Dictionary, ctx: Dictionary) -> bool:
+	var want: Vector2i = action.cell
+	var mark: int = preference(s,actor,action.cell,rule)
+	for other in ctx.get("pool",[]):
+		if str(other.kind) != str(action.kind) or other.cell == want: continue
+		if not Rules.matches(s,actor,other,rule): continue
+		var value: int = preference(s,actor,other.cell,rule)
+		if value < mark or (value == mark and str(other.cell) < str(want)): want = other.cell; mark = value
+	return want == action.cell
+
+static func preference(s, actor: Dictionary, cell: Vector2i, rule: Dictionary) -> int:
+	if str(rule.get("target","")) in ["LOWEST_HP","ALLY"]: return int(s.at(cell).get("hp",0))
+	return int(s.distance(actor.pos,cell))
 
 ## Σ weight × curve(input) for the stance's column, rounded to an integer, with
 ## the three terms that carried it.

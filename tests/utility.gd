@@ -5,6 +5,7 @@ const Utility = preload("res://expedition/utility.gd")
 const Stances = preload("res://expedition/stances.gd")
 const Knobs = preload("res://expedition/knobs.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
+const Parts = preload("res://expedition/parts_candidates.gd")
 ## Every (stance, tag) pair the candidate generators in stances.gd can emit.
 ## 호위형 runs the charger programme whenever it has no living protectee, so it
 ## needs the charger's columns as well as its own.
@@ -24,6 +25,7 @@ func run() -> void:
 	profiles()
 	inputs_and_score()
 	commitment()
+	parts()
 	retreat_needs_no_column()
 	print("Utility: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
@@ -140,6 +142,36 @@ func commitment() -> void:
 	check(straight-turned == 10,"a MOVE only commits when the direction matches too")
 	s.reset_battle_stats()
 	check(hero.last_action_kind == "" and hero.last_action_dir == Vector2i.ZERO,"a new battle starts uncommitted")
+
+## 파츠는 같은 풀에서 경쟁한다: 밀치기·엄호도 후보이고, 규칙 조건(`rule_ready`)이
+## 참일 때 그 파츠가 최고 점수를 받는다.
+func parts() -> void:
+	var f := field(["CHARGER","CHARGER","CHARGER"]); var s = f.s; var hero: Dictionary = s.party[0]
+	f.foes[0].pos = hero.pos+Vector2i(1,0); s.floor_state.observe(s)
+	var pool: Array = Parts.candidates(s,hero)
+	check(pool.any(func(o): return o.kind == "PUSH" and o.tag == "PART") and pool.any(func(o): return o.kind == "GUARD" and o.cell == s.party[1].pos),"push and guard are part candidates")
+	# Rule condition drives the part: a charging foe makes PUSH outscore the basic attack.
+	s.intents = [{"id":f.foes[0].id,"cell":hero.pos,"damage":9,"kind":""}]; f.foes[0].charging = true
+	check(s.Tactics.choose(s,hero).kind == "PUSH","charging foe: push (rule_ready) wins")
+	s.intents = []; f.foes[0].charging = false
+	check(s.Tactics.choose(s,hero).kind == "ATTACK","no telegraph: basic attack wins over an idle push")
+	# Guard when an ally would die. The foe is not winding up: a charge would
+	# also satisfy 밀치기's own rule, which is listed first, and the rule list's
+	# order is a promise `rule_ready` keeps (등급형, 설계 §2).
+	s.party[1].hp = 3; f.foes[0].pos = s.party[1].pos+Vector2i(1,0); s.floor_state.observe(s)
+	s.intents = [{"id":f.foes[0].id,"cell":s.party[1].pos,"damage":9,"kind":""}]
+	var pick: Dictionary = s.Tactics.choose(s,hero)
+	check(pick.kind == "GUARD" and pick.cell == s.party[1].pos,"ally lethal: guard wins")
+	s.intents = []; s.party[1].hp = s.party[1].max_hp
+	# A skirmisher in contact never fires a ranged part.
+	var g := field(["SKIRMISHER","CHARGER","CHARGER"]); var t = g.s; var h: Dictionary = t.party[0]
+	h.equipped_abilities = ["KOBOLD_SLING","GUARD"]; h.rules = [t.Abilities.default_rule("KOBOLD_SLING"),t.Abilities.default_rule("GUARD")]; h.cooldowns = {}
+	g.foes[0].pos = h.pos+Vector2i(1,1); t.floor_state.observe(t)
+	check(t.Tactics.choose(t,h).kind != "KOBOLD_SLING","contact: the sling is penalised out")
+	g.foes[0].pos = h.pos+Vector2i(3,0); t.floor_state.observe(t)
+	check(t.Tactics.choose(t,h).kind == "KOBOLD_SLING","at range: fires")
+	# The part choice carries an explanation naming rule_ready.
+	check(t.Tactics.choose(t,h).explain.any(func(e): return e.id == "rule_ready"),"explanation names the rule")
 
 ## The retreat line is the stage above the utility pool: its MOVE carries no tag
 ## and is ranked by the hand constant, so no profile column applies to it.
