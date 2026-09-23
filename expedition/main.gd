@@ -24,8 +24,6 @@ var item_detail: VBoxContainer
 const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 const SKILLS = [["PUSH","GUARD"],["ATTACK","GUARD"],["WATER","ELECTRIC"]]
 const SKILL_NAMES = [["밀쳐내기","엄호"],["강타","엄호"],["물","방전"]]
-## Members on a floor expedition; every fresh session in this scene uses it.
-const PARTY_SIZE := 1
 var session = null
 ## Battle test mode: the town session set aside while a throwaway arena session
 ## fights, the setup screen's own state, and whether that screen is showing.
@@ -68,7 +66,6 @@ var notice := "":
 			toast_remaining = 2.5
 var toast: Label
 var toast_remaining := 0.0
-var command_targeting := false
 var item_buttons: Array = []
 var skill_buttons: Array = []
 var portrait_buttons: Array = []
@@ -509,17 +506,6 @@ func confirm_attack() -> void:
 	var point: Vector2i = pending_attack.cell
 	run_action(func(): return session.act("ATTACK",point))
 
-func choose_skill(actor: int, slot: int) -> void:
-	if actor < 0 or actor >= session.party.size() or slot not in [0,1] or session.party[actor].hp <= 0: return
-	select_actor(actor); mode = session.party[actor].equipped_abilities[slot]
-	var self_target: bool = Session.Abilities.DEFINITIONS.get(mode,{}).get("target","") == "SELF"
-	if reservation_actor >= 0:
-		if self_target: queue_action(mode,session.party[actor].pos); return
-		notice = session.party[actor].name+" · 스킬 예약 대상 선택"; refresh(); return
-	if self_target: run_action(func(): return session.act(mode,session.party[actor].pos)); return
-	# 엄호 picks an adjacent ally, not the caster's own cell.
-	notice = "%s · %s" % [Session.Rules.skill(mode).get("name",mode),"인접 아군 선택" if Session.Abilities.DEFINITIONS.get(mode,{}).get("target","") == "ALLY" else "대상 칸 선택"]
-	refresh()
 
 func choose_item(slot: int) -> void:
 	stop_navigation()
@@ -539,9 +525,6 @@ func queue_action(kind: String, point: Vector2i) -> void:
 func on_cell(point: Vector2i) -> void:
 	if session == null or not session.on_floor(): return
 	stop_navigation()
-	if command_targeting:
-		focus_enemy(point)
-		refresh(); return
 	var feature: Dictionary = session.floor_state.features.get(point,{})
 	if feature.get("kind","") == "pylon" and session.floor_state.visible.has(point):
 		run_action(func(): return session.act("PYLON",point)); return
@@ -578,9 +561,7 @@ func focus_enemy(point: Vector2i) -> void:
 	var target: Dictionary = session.at(point)
 	if target in session.combat_enemies() and session.floor_state.visible.has(point):
 		session.command_target = target.id; session.party_command = "ATTACK_TARGET"
-		command_targeting = false; notice = "집중 공격"
-	elif command_targeting:
-		command_targeting = false; notice = ""
+		notice = "집중 공격"
 
 ## One line of who this npc is: the nouns of its two social facets.
 func npc_personality(npc: Dictionary) -> String:
@@ -671,31 +652,6 @@ func show_curio(point: Vector2i) -> void:
 
 
 
-func show_party_tactics() -> void:
-	stop_navigation(); clear(modal_content)
-	modal_content.custom_minimum_size.y = 0
-	var available: bool = session.companions and session.on_floor()
-	for entry in [["ATTACK_TARGET","공격 대상 지정"],["RETREAT","후퇴"],["HOLD_POSITION","자리 지키기"],["STOP_ATTACK","공격 중지"],["FOLLOW","따라오기"]]:
-		var command: String = entry[0]
-		button(modal_content,entry[1],func():
-			details_popup.hide()
-			if command == "ATTACK_TARGET": command_targeting = true; notice = "공격 대상 선택"
-			else: session.party_command = command; notice = entry[1]
-			refresh(),available)
-	button(modal_content,"닫기",func(): details_popup.hide())
-	details_popup.popup_centered()
-
-
-
-
-
-
-
-
-
-
-
-
 
 func build_result_card() -> void:
 	var card := VBoxContainer.new(); card.name = "ResultCard"; card.size_flags_vertical = SIZE_EXPAND_FILL; root_layout.add_child(card)
@@ -717,28 +673,12 @@ func companion_history(list: VBoxContainer) -> void:
 	for row in rows:
 		label(list,"%s · %d층 합류 · %s" % [row.name,int(row.joined_floor),"생존" if row.alive else "전사"],13)
 
-func show_orders() -> void:
-	stop_navigation()
-	clear(modal_content); label(modal_content,"동료 행동 예약",18)
-	for i in range(session.party.size()):
-		if i == session.selected: continue
-		label(modal_content,session.party[i].name)
-		button(modal_content,"다음 행동 예약",func(): details_popup.hide(); select_actor(i),session.on_floor() and session.party[i].hp > 0)
-		button(modal_content,"예약 취소 · 자동 행동",func(): session.cancel_reservation(i); refresh(); show_orders())
-		button(modal_content,"상태 · 숙련 확인",func(): show_character(i,"상태"))
-	button(modal_content,"주인공 상태",func(): show_character(session.selected,"상태"))
-	button(modal_content,"원정 · 귀환",func(): open_management(3))
-	button(modal_content,"닫기",func(): details_popup.hide()); details_popup.popup_centered()
-
-
 
 func modal(title: String, body: String) -> void:
 	clear(modal_content); label(modal_content,title,18)
 	var text := RichTextLabel.new(); text.text = body; text.custom_minimum_size = Vector2(popup_width(),210); text.size_flags_vertical = SIZE_EXPAND_FILL; modal_content.add_child(text)
 	button(modal_content,"닫기",func(): details_popup.hide()); details_popup.popup_centered()
 
-func open_management(index: int) -> void:
-	show_character(index)
 
 func show_character(index: int, tab: String = "상태") -> void:
 	stop_navigation()
