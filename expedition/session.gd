@@ -8,6 +8,7 @@ const ElementRules = preload("res://sim/environment_rules.gd")
 const Injury = preload("res://sim/body_injury_system.gd")
 const Dungeon = preload("res://expedition/dungeon_map.gd")
 const NpcRoster = preload("res://expedition/npc_roster.gd")
+const NpcAI = preload("res://expedition/npc_ai.gd")
 var BOARD_SIDE := Dungeon.ROOM_SIDE
 const Floor = preload("res://expedition/continuous_floor.gd")
 var floor_mode := false
@@ -58,6 +59,8 @@ var enemies: Array = []
 ## Dungeon NPCs: the run roster and the ones standing on this floor.
 var roster: Array = []
 var npcs: Array = []
+## Combat noise this round: the cells where blows landed. NPCs hear these.
+var noise: Array = []
 var tiles: Array = []
 var visited: Array = []
 var log_lines: Array[String] = []
@@ -509,7 +512,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 	# A follower can round a corner outside the selected leader's sight.
 	# Only automatic movement bypasses the UI visibility gate; movement_cells
 	# still checks adjacency, terrain and occupancy. Attacks keep their gate.
-	var following: bool = resolving_companions and kind == "MOVE"
+	var following: bool = (resolving_companions and kind == "MOVE") or bool(actor.get("npc",false))
 	if floor_mode and not floor_state.visible.has(target) and not following: return false
 	var display_event := _presentation_action(actor,kind,target) if presentation != null else {}
 	if boss_trial and kind == "PYLON":
@@ -531,7 +534,11 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 		"WAIT":
 			if target != actor.pos: return false
 		"MOVE":
-			if target not in movement_cells(party.find(actor)): return false
+			# movement_cells indexes the party; an npc is not in it, so it checks its own step.
+			if bool(actor.get("npc",false)):
+				if not can_step(actor.pos,target) or not is_free(target) or distance(actor.pos,target) > 1: return false
+			else:
+				if target not in movement_cells(party.find(actor)): return false
 			actor.pos = target
 			actor.hit_and_run = false
 		"ATTACK":
@@ -1101,6 +1108,7 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 		taken_row.taken += lost
 		if covered: taken_row.redirected += lost
 	target.hp -= lost; Body.sync(target)
+	if phase == "BATTLE" and lost > 0: noise.append(target.pos)
 	if floor_mode and target.enemy and lost > 0: Floor.MonsterAI.on_hit(self,target)
 	if not target.enemy:
 		var entered_crisis: bool = (target.hp+lost)*4 > target.max_hp and target.hp*4 <= target.max_hp
@@ -1178,6 +1186,9 @@ func _enemy_attack_turn(enemy: Dictionary) -> void:
 func end_round() -> bool:
 	if phase != "BATTLE": return false
 	world_time += 100
+	# The floor's NPCs take their round before the monsters do.
+	for npc in npcs:
+		if npc.hp > 0 and NpcAI.sense(self,npc): NpcAI.turn(self,npc)
 	for enemy in enemies:
 		enemy_attack_turn(enemy)
 		if alive().is_empty(): break
@@ -1216,6 +1227,7 @@ func end_round() -> bool:
 				for actor in alive(): stress(actor,(3 if food == 0 else 0)+(2 if light < 35 else 0))
 		floor_state.observe(self); floor_state.ambush(self)
 	if companions and party[selected].hp <= 0: selected = party.find(alive()[0])
+	noise.clear()
 	plan_enemies()
 	return true
 
