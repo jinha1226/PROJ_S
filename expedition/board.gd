@@ -410,12 +410,17 @@ func _draw_foreground(canvas: Node2D) -> void:
 		canvas.draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24*float(actor.hp)/actor.max_hp,3)),Color("ce7770") if actor.enemy else Color("9ec987"))
 	if is_presenting():
 		var frame: Dictionary = playback[0]
-		for actor in frame.before.actors:
+		for actor in actors:
 			if actor.id == frame.actor:
-				canvas.draw_arc(cell_center(actor.pos),half_width*0.85,0,TAU,32,Color("fff0b0"),2,true)
+				var lift: float = half_width*(1.4 if actor.enemy else 2.7)
+				if skill_badges.has(int(actor.id)) or intent_ui.speech.any(func(row): return int(row.actor_id) == int(actor.id)):
+					lift += 24.0
+				var tip := cell_center(actor.pos)-Vector2(0,lift)
+				tip.y = maxf(origin.y+10,tip.y)
+				canvas.draw_colored_polygon(PackedVector2Array([tip+Vector2(-5,-8),tip+Vector2(5,-8),tip]),Color("fff0b0"))
 		if playback_clock < 0.18:
 			for hit in frame.effects:
-				canvas.draw_line(cell_center(hit.from),cell_center(hit.cell),Color(1,0.85,0.5,0.7),2,true)
+				canvas.draw_line(cell_center(hit.from),cell_center(hit.cell),Color(1,0.85,0.5,1),0.75,true)
 	for actor_id in skill_badges:
 		var skill_id := str(skill_badges[actor_id].skill_id)
 		var actor := _actor_for_id(actors,int(actor_id))
