@@ -187,6 +187,9 @@ static func charger(s, actor: Dictionary, target: Dictionary, knobs: Dictionary,
 	if target.is_empty(): return
 	# A telegraph is no reason to stop hitting — unless the posture is very
 	# cautious, and then stepping off it is all this member does.
+	# 문턱을 0으로 올리는 안은 측정 후 보류했다: 돌격형 단일 파티의 `deep_caster`는
+	# 0.55 → 0.90으로 오르지만 솔로 완주가 3/8 → 2/8로 떨어져 설계 §4의 솔로 기준을
+	# 깬다. 수치는 docs/balance/stance-gates.md "3차 측정"에 있다.
 	if int(knobs.posture) <= -60 and s.intents.any(func(i): return i.cell == actor.pos):
 		for d in s.DIRECTIONS:
 			var c: Vector2i = actor.pos+d
@@ -263,9 +266,29 @@ static func guardian(s, actor: Dictionary, p: Dictionary, target: Dictionary, kn
 	if steps_between(actor.pos,p.pos) <= keep:
 		var foe := adjacent_foe(s,actor,target)
 		if not foe.is_empty(): options.append({"kind":"ATTACK","cell":foe.pos,"score":60,"reason":"호위 · 공격"})
+		else: advance(s,actor,p,target,keep,options)
 		options.append({"kind":"WAIT","cell":actor.pos,"score":40,"reason":"호위 · 대기"})
 	else:
 		approach(s,actor,adjacent_free(s,p.pos),80,"호위 · 합류",options,false,near_free(s,p.pos,keep+1))
+
+## 호위형 §2.3 (d): nothing threatens the charge and nothing is in reach, so the
+## pair walks toward the shared target together rather than standing still.
+## Every destination stays inside `keep+1` of the charge, so "advance" never
+## becomes "abandon"; mutual guardians leapfrog forward a step at a time.
+## Score 50 — under the 60 of a foe in reach, over the 40 of holding.
+static func advance(s, actor: Dictionary, p: Dictionary, target: Dictionary, keep: int, options: Array) -> void:
+	if target.is_empty(): return
+	var band: int = keep+1
+	var beside: Array = adjacent_free(s,target.pos)
+	var goals: Array = beside.filter(func(c): return steps_between(c,p.pos) <= band)
+	if not goals.is_empty():
+		approach(s,actor,goals,50,"호위 · 동반 전진",options); return
+	# Nothing beside the target is inside the band yet: take whichever first
+	# step of the route to the target still is.
+	var steps := steps_toward(s,actor,beside)
+	for i in range(steps.size()):
+		if steps_between(steps[i],p.pos) <= band:
+			options.append({"kind":"MOVE","cell":steps[i],"score":50+(1 if i == 0 else 0),"reason":"호위 · 동반 전진"})
 
 ## Is the member where its stance wants it? What role_rounds tallies.
 static func in_role(s, actor: Dictionary) -> bool:

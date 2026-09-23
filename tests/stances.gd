@@ -162,8 +162,13 @@ func guardian() -> void:
 	hero.pos = p.pos+Vector2i(0,-3); s.floor_state.observe(s)
 	var pick: Dictionary = s.Tactics.choose(s,hero)
 	check(pick.kind == "MOVE" and near(pick.cell,p.pos) < near(hero.pos,p.pos),"far from the protectee: moves to them")
-	hero.pos = p.pos+Vector2i(-1,0); f.foes[0].pos = p.pos+Vector2i(6,0); s.floor_state.observe(s)
-	check(s.Tactics.choose(s,hero).kind == "WAIT","beside the protectee with no threat: holds")
+	# 설계 §2.3 (d): no threat and nothing in reach — the pair advances on the
+	# shared target instead of holding, and the step stays inside keep+1 of P.
+	hero.pos = p.pos+Vector2i(-1,0); f.foes[0].pos = p.pos+Vector2i(4,0); s.floor_state.observe(s)
+	check(Stances.threats_to(s,p).is_empty() and not Stances.party_target(s).is_empty(),"the charge is safe and the target is visible")
+	pick = s.Tactics.choose(s,hero)
+	check(pick.kind == "MOVE" and near(pick.cell,f.foes[0].pos) < near(hero.pos,f.foes[0].pos),"beside the protectee with no threat: advances with the charge")
+	check(near(pick.cell,p.pos) <= 2,"the advancing guardian stays inside keep+1 of the protectee")
 	# Threat approaching: step between.
 	hero.pos = p.pos+Vector2i(0,-1); f.foes[0].pos = p.pos+Vector2i(2,0); s.floor_state.observe(s)
 	pick = s.Tactics.choose(s,hero)
@@ -177,6 +182,25 @@ func guardian() -> void:
 	s.intents = []; f.foes[0].charging = false; f.foes[0].pos = p.pos+Vector2i(2,0); hero.pos = p.pos+Vector2i(0,-1); s.floor_state.observe(s)
 	pick = s.Tactics.choose(s,hero)
 	check(pick.kind == "MOVE" and pick.cell == p.pos+Vector2i(1,0),"no guard part: still bodies the gap")
+	mutual_guardians()
+
+## Two guardians covering each other used to stand still forever: neither was
+## threatened, so neither had a candidate but WAIT. With §2.3 (d)'s advance they
+## walk the field together.
+func mutual_guardians() -> void:
+	var f := field(["GUARDIAN","GUARDIAN","GUARDIAN"]); var s = f.s
+	s.party[0].protect_id = 1; s.party[1].protect_id = 0; s.party[2].protect_id = 0
+	for a in s.party: a.rules = []
+	var foe: Dictionary = f.foes[0]
+	foe.pos = s.party[0].pos+Vector2i(5,0); s.floor_state.observe(s)
+	var mark: Vector2i = foe.pos
+	var before: Array = [s.party[0].pos,s.party[1].pos]
+	for _r in range(3):
+		for a in s.party: a.ap = 1
+		s.auto_step()
+	check(near(s.party[0].pos,mark) < near(before[0],mark),"mutual guardians: the first closes on the foe")
+	check(near(s.party[1].pos,mark) < near(before[1],mark),"mutual guardians: the second closes too")
+	check(near(s.party[0].pos,s.party[1].pos) <= 2,"mutual guardians advance together, never more than two apart")
 
 func target() -> void:
 	var f := field(["CHARGER","SKIRMISHER","GUARDIAN"],2); var s = f.s
@@ -217,7 +241,11 @@ func defence() -> void:
 	# Eight-way adjacency: diagonally beside the charge is beside it.
 	hero.knobs.cohesion = 0; hero.pos = p.pos+Vector2i(-1,-1); g.foes[0].pos = g.c+Vector2i(8,0)
 	t.floor_state.observe(t)
-	check(t.Tactics.choose(t,hero).kind == "WAIT","diagonally beside the charge: holds instead of shuffling")
+	# Beside is beside: the guardian does not shuffle onto a straight-adjacent
+	# cell of the charge. With §2.3 (d) it spends the round advancing instead.
+	pick = t.Tactics.choose(t,hero)
+	check(pick.kind == "MOVE" and near(pick.cell,g.foes[1].pos) < near(hero.pos,g.foes[1].pos),"diagonally beside the charge: advances instead of shuffling")
+	check(near(pick.cell,p.pos) >= near(hero.pos,p.pos),"the advance is not a step back toward the charge")
 	# The only way through burns: a charger walks it rather than standing still.
 	var h := field(["CHARGER","CHARGER","CHARGER"],1); var u = h.s
 	var hh: Dictionary = u.party[0]
