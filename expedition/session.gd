@@ -59,6 +59,8 @@ var enemies: Array = []
 ## Dungeon NPCs: the run roster and the ones standing on this floor.
 var roster: Array = []
 var npcs: Array = []
+## The npc whose offer to join is waiting on the player, or -1. (Task 5 answers it.)
+var pending_offer := -1
 ## Combat noise this round: the cells where blows landed. NPCs hear these.
 var noise: Array = []
 var tiles: Array = []
@@ -198,6 +200,14 @@ func alive() -> Array:
 ## battle's end are the party's own business.
 func friends() -> Array:
 	return alive()+npcs.filter(func(n): return n.hp > 0 and n.awake)
+
+## An npc beside the party asks to come along. The offer stands alone and the
+## npc will not ask again for twenty rounds. Task 5 puts the answer here.
+func offer(npc: Dictionary) -> bool:
+	if pending_offer >= 0 or round_number < int(npc.get("offered_until",-99)): return false
+	pending_offer = npc.id
+	npc.offered_until = round_number+20
+	return true
 
 func depart() -> bool:
 	if phase != "TOWN" or alive().is_empty(): return false

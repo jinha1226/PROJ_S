@@ -2,6 +2,7 @@ extends SceneTree
 const Session = preload("res://expedition/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const NpcAI = preload("res://expedition/npc_ai.gd")
+const Modes = preload("res://expedition/npc_modes.gd")
 var failures := 0
 var checks := 0
 func check(ok: bool, reason: String) -> void:
@@ -26,6 +27,7 @@ func foe_at(s, p: Vector2i, hp: int = 30) -> Dictionary:
 
 func run() -> void:
 	friends(); fights(); targeted(); dies()
+	modes_approach(); modes_hold(); modes_rest(); modes_explore(); commitment(); duo(); labels()
 	print("NPC behaviour: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func friends() -> void:
@@ -92,3 +94,72 @@ func dies() -> void:
 	check(not s.party.any(func(a): return int(a.memory.salience_for_subject(npc.id+1,["ALLY_LOST"])) > 0),"no ALLY_LOST for a stranger")
 	check(s.floor_state.visible.has(npc.pos),"the party watched it happen")
 	check(s.party.all(func(a): return int(a.stress) > stress[s.party.find(a)]),"everyone watching is shaken")
+
+
+func bold(npc: Dictionary, facet: String, value: int) -> void:
+	var v: Dictionary = npc.profile.values.duplicate(); v[facet] = value
+	npc.profile = load("res://sim/dungeon_population/hexaco_profile.gd").new(v)
+
+func modes_approach() -> void:
+	var f := field(Vector2i(6,0)); var s = f.s; var npc: Dictionary = f.npc
+	bold(npc,"X",900); bold(npc,"O",100)
+	var pick: Dictionary = Modes.choose(s,npc)
+	check(pick.mode == "APPROACH" and pick.explain[0].id == "X","extravert approaches, X on top")
+	var d: int = s.distance(npc.pos,s.party[0].pos)
+	NpcAI.turn(s,npc)
+	check(s.distance(npc.pos,s.party[0].pos) < d and npc.activity == "다가오는 중","steps toward the party")
+	for i in range(8): NpcAI.turn(s,npc)
+	check(s.party.any(func(a): return s.melee_reach(npc.pos,a.pos)),"arrives adjacent")
+	check(s.pending_offer == npc.id,"adjacent extravert offers to join (Task 5 wires the answer)")
+
+func modes_hold() -> void:
+	var f := field(Vector2i(4,0)); var s = f.s; var npc: Dictionary = f.npc
+	bold(npc,"X",100); bold(npc,"C",800); bold(npc,"O",100)
+	check(Modes.choose(s,npc).mode == "HOLD","introvert holds")
+	for i in range(6): NpcAI.turn(s,npc)
+	var d: int = s.distance(npc.pos,s.party[0].pos)
+	check(d >= 3 and d <= 5 and npc.activity == "거리를 두고 지켜보는 중","keeps three to five tiles")
+
+func modes_rest() -> void:
+	var f := field(Vector2i(5,0)); var s = f.s; var npc: Dictionary = f.npc
+	npc.hp = npc.max_hp/4; bold(npc,"X",900)
+	check(Modes.choose(s,npc).mode == "REST","wounded rests even when extravert")
+	var pos: Vector2i = npc.pos; NpcAI.turn(s,npc)
+	check(npc.pos == pos and npc.activity == "부상으로 대기 중","stays put")
+
+func modes_explore() -> void:
+	var f := field(Vector2i(9,0)); var s = f.s; var npc: Dictionary = f.npc
+	bold(npc,"O",950); bold(npc,"X",300); npc.awake = true
+	check(not s.floor_state.visible.has(npc.pos),"out of the party's sight")
+	check(Modes.choose(s,npc).mode == "EXPLORE","open-minded npc explores when the party is not in view")
+	var pos: Vector2i = npc.pos; NpcAI.turn(s,npc)
+	check(npc.pos != pos and npc.activity == "주변을 탐색 중","walks toward a room centre")
+
+func commitment() -> void:
+	var f := field(Vector2i(6,0)); var s = f.s; var npc: Dictionary = f.npc
+	bold(npc,"X",600); bold(npc,"C",600)
+	var first: String = Modes.choose(s,npc).mode
+	npc.mode = first; npc.mode_until = s.round_number+Modes.COMMIT_ROUNDS
+	bold(npc,"X",520) # a small change must not flip the mode inside the commitment window
+	check(Modes.choose(s,npc).mode == first,"committed mode holds against a small score change")
+	npc.hp = npc.max_hp/5
+	check(Modes.choose(s,npc).mode == "REST","an 80+ point swing switches at once")
+	check(Modes.choose(s,npc) == Modes.choose(s,npc),"deterministic")
+
+func duo() -> void:
+	var f := field(Vector2i(5,0)); var s = f.s; var a: Dictionary = f.npc
+	var b: Dictionary = s.roster.filter(func(n): return n.id != a.id)[0]
+	a.partner = b.id; b.partner = a.id; a.bond = "close"; b.bond = "close"
+	b.pos = f.c+Vector2i(5,3); b.awake = true; b.hp = b.max_hp; b.noise_seen = s.round_number; s.npcs.append(b)
+	bold(a,"X",900); bold(b,"X",900)
+	s.floor_state.observe(s)
+	NpcAI.turn(s,a); NpcAI.turn(s,b)
+	check(s.distance(a.pos,b.pos) <= 1,"the one behind steps to its partner first")
+
+func labels() -> void:
+	var f := field(Vector2i(2,0)); var s = f.s; var npc: Dictionary = f.npc
+	foe_at(s,npc.pos+Vector2i(1,0)); NpcAI.turn(s,npc)
+	check(npc.activity == "교전 중" and npc.explains.size() == 1 and npc.explains[0].has("explain"),"combat label and an explain row")
+	for i in range(25): npc.explains.append({"round":i,"kind":"WAIT","cell":npc.pos,"explain":[]})
+	NpcAI.turn(s,npc)
+	check(npc.explains.size() == 20,"explains capped at twenty")
