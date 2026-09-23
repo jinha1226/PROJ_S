@@ -393,7 +393,8 @@ func ui() -> void:
 	s.floor_state.observe(s); scene.refresh()
 	for frame in range(3): await process_frame
 	var cards: Array = scene.find_children("MemberCard*","Button",true,false)
-	check(cards.size() == 3 and cards[0].text.contains(s.party[0].name) and cards[0].text.contains("HP"),"member card shows concise status")
+	var card_text: String = scene.find_child("MemberCaption0",true,false).text
+	check(cards.size() == 3 and card_text.contains(s.party[0].name) and card_text.contains("HP"),"member card shows concise status")
 	# Battle HUD: no command bar, formation or options; retreat toggle present.
 	check(scene.find_child("CommandBar",true,false) == null and scene.find_child("FormationButton",true,false) == null and scene.find_child("AutoOptionsButton",true,false) == null,"command bar, formation and options are gone")
 	var retreat: Button = scene.find_child("RetreatToggle",true,false)

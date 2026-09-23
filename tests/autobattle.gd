@@ -362,7 +362,8 @@ func ui() -> void:
 	await process_frame
 	check(s.round_number == round_before+1,"a tick advanced one round")
 	var card: Button = scene.find_child("MemberCard0",true,false)
-	check(card.text.contains(s.party[0].name) and card.text.contains("HP"),"member card keeps concise status")
+	var card_text: String = scene.find_child("MemberCaption0",true,false).text
+	check(card != null and card_text.contains(s.party[0].name) and card_text.contains("HP"),"member card keeps concise status")
 	toggle = scene.find_child("AutoToggle",true,false)
 	toggle.pressed.emit(); await process_frame
 	check(not s.auto.running,"toggle stops")

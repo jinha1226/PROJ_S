@@ -342,10 +342,21 @@ func resource_gauge(parent: Button, id: String, value: int, color: Color, hint: 
 func refresh() -> void:
 	if is_instance_valid(board) and board.is_presenting(): return
 	update_offer_popup()
-	if is_instance_valid(board): root_layout.remove_child(board); board.queue_free(); board = null
-	if is_instance_valid(minimap):
-		if minimap.get_parent() != null: minimap.get_parent().remove_child(minimap)
-		minimap.queue_free(); minimap = null
+	var elapsed := 0.0
+	var impact_elapsed := 0.0
+	# Opening a popup or selecting a member must not erase an attack that just
+	# resolved: the flash and the shake carry their own clocks across a refresh.
+	if not reset_effects and action_effects.is_empty() and is_instance_valid(board):
+		action_effects = board.effects.duplicate(true); elapsed = board.effect_time
+		impact_elapsed = board.impact_time
+	reset_effects = false
+	# The renderer and the minimap keep their incremental caches: a rebuilt
+	# 80x80 minimap would redraw every known tile on every action.
+	if is_instance_valid(board):
+		if board.get_parent() != null: board.get_parent().remove_child(board)
+		clear(board)
+		board.actor_visuals.clear(); board.foreground = null; board.intent_overlay = null
+	if is_instance_valid(minimap) and minimap.get_parent() != null: minimap.get_parent().remove_child(minimap)
 	clear(root_layout); item_buttons.clear(); skill_buttons.clear(); portrait_buttons.clear()
 	auto_explore_button = null; wait_button = null; advance_attack_button = null
 	if mode_arena_setup:
@@ -365,13 +376,15 @@ func refresh() -> void:
 	var food_label := label(header,"식량 %d" % session.food,14); food_label.name = "FoodLabel"
 	food_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var menu := button(header,"메뉴",show_menu); menu.name = "ExpeditionMenu"; menu.size_flags_horizontal = SIZE_SHRINK_END
-	board = Board.new(); board.ui_font = FONT; board.cell_pressed.connect(on_cell)
-	board.zoom_changed.connect(func(value): view_side = value)
-	board.gesture_started.connect(stop_navigation); board.playback_finished.connect(finish_presentation)
+	if not is_instance_valid(board):
+		board = Board.new(); board.ui_font = FONT; board.cell_pressed.connect(on_cell)
+		board.zoom_changed.connect(func(value): view_side = value)
+		board.gesture_started.connect(stop_navigation); board.playback_finished.connect(finish_presentation)
 	board.session = session; board.view_side = view_side; board.action_footer = not pending_attack.is_empty()
-	board.size_flags_vertical = SIZE_EXPAND_FILL; root_layout.add_child(board)
+	board.size_flags_vertical = SIZE_EXPAND_FILL; root_layout.add_child(board); board.queue_redraw()
 	board.show_attack_range = show_attack_range; board.targeting_skill = mode
 	board.effects = action_effects; action_effects = []; board.target_cell = pending_attack.get("cell",Vector2i(-1,-1))
+	board.effect_time = elapsed; board.impact_time = impact_elapsed
 	board.companion_previews = session.companion_previews(); board.companion_intents = session.companion_intent_snapshot()
 	if not session.in_combat(): board.reset_intent_ui()
 	if not pending_attack.is_empty():
@@ -380,11 +393,28 @@ func refresh() -> void:
 		attack_button.offset_left = 8; attack_button.offset_top = -56; attack_button.offset_right = 210; attack_button.offset_bottom = -8
 	var log_button := button(root_layout,session.log_lines[-1] if not session.log_lines.is_empty() else "",show_logs)
 	log_button.name = "RecentLog"; log_button.custom_minimum_size.y = 36
-	var party_row := HBoxContainer.new(); root_layout.add_child(party_row)
+	var party_row := HBoxContainer.new(); party_row.name = "PartyRow"
+	party_row.add_theme_constant_override("separation",5); root_layout.add_child(party_row)
 	for i in range(session.party.size()):
 		var actor: Dictionary = session.party[i]
-		var card := button(party_row,"%s  HP %d/%d  MP %s  스트레스 %d" % [actor.name,actor.hp,actor.max_hp,str(actor.get("mp","—")),actor.stress],func(): select_actor(i))
-		card.name = "MemberCard%d" % i; portrait_buttons.append(card)
+		var column := VBoxContainer.new(); column.size_flags_horizontal = SIZE_EXPAND_FILL
+		column.add_theme_constant_override("separation",2); party_row.add_child(column)
+		# The run is auto-battle: the card reports what the member is doing, it
+		# does not hand out skills.
+		var portrait := button(column,"",func(): select_actor(i)); portrait.name = "MemberCard%d" % i
+		portrait.tooltip_text = "길게 누르기: 상태"; portrait.custom_minimum_size.y = 62
+		portrait_buttons.append(portrait)
+		var caption := "%s [%s] · HP %d/%d\n스트레스 %d · %s\n%s" % [actor.name,Stances.SHORT[Stances.effective(actor)],actor.hp,actor.max_hp,actor.stress,actor.condition,actor.last_action]
+		if bool(actor.get("conflicted",false)): caption += " ⚠ 갈등"
+		var stats := label(portrait,caption,12 if session.party.size() == 1 else 10)
+		stats.name = "MemberCaption%d" % i
+		stats.set_anchors_and_offsets_preset(PRESET_FULL_RECT); stats.offset_left = 4; stats.offset_right = -4
+		stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; stats.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		if i == session.selected:
+			var gold := portrait.get_theme_stylebox("normal").duplicate(); gold.border_color = Color("e9c575")
+			gold.set_border_width_all(2); portrait.add_theme_stylebox_override("normal",gold)
+		if actor.hp <= 0: portrait.modulate = Color("636369")
 	var shared := HBoxContainer.new(); root_layout.add_child(shared)
 	for slot in range(5):
 		var item := icon_button(shared,Art.item(slot),func(): choose_item(slot),Session.SUPPLY_NAMES[slot],str(session.supplies[slot]))
