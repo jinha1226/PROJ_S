@@ -27,3 +27,8 @@ static func equip_basics(s) -> void:
 	for actor in s.party:
 		actor.equipped_abilities = ["PUSH","GUARD"]
 		actor.rules = [abilities.default_rule("PUSH"),abilities.default_rule("GUARD")]
+
+## One rules-driven round, the same call the game's auto button makes. The
+## expedition bots fight through this instead of pressing auto_attack.
+static func fight_round(s) -> bool:
+	return s.auto_step()

@@ -7,6 +7,7 @@ const MapView = preload("res://expedition/map_view.gd")
 const Art = preload("res://expedition/mobile_art.gd")
 const InventorySlot = preload("res://expedition/inventory_slot.gd")
 const CharacterUI = preload("res://expedition/character_ui.gd")
+const BattleHud = preload("res://expedition/battle_hud.gd")
 var portrait_gesture = preload("res://expedition/legacy/portrait_gesture.gd").new()
 var navigation = preload("res://expedition/exploration_navigation.gd").new()
 const NAVIGATION_STEP_SECONDS := 0.06
@@ -22,7 +23,9 @@ var item_detail: VBoxContainer
 const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 const SKILLS = [["PUSH","GUARD"],["ATTACK","GUARD"],["WATER","ELECTRIC"]]
 const SKILL_NAMES = [["밀쳐내기","엄호"],["강타","엄호"],["물","방전"]]
-var session = Session.new(randi(),true,false,true)
+## Members on a floor expedition; every fresh session in this scene uses it.
+const PARTY_SIZE := 2
+var session = Session.new(randi(),true,false,true,PARTY_SIZE)
 var mode := ""
 var reservation_actor := -1
 var pending_item := -1
@@ -57,6 +60,12 @@ var skill_buttons: Array = []
 var portrait_buttons: Array = []
 var tactics_actor := 0
 var tactics_expanded := -1
+## Auto battle (floor mode): the timer that drives the rounds, the sentence of
+## the last stop event and the first half of a formation swap.
+var auto_clock := 0.0
+var stop_text := ""
+var formation_pick := -1
+var battle_reported := false
 
 func _ready() -> void:
 	var skin := Theme.new(); skin.default_font = FONT; skin.default_font_size = 12
@@ -97,11 +106,122 @@ func stop_navigation() -> void:
 	navigation.stop(); navigation_clock = 0
 	if is_instance_valid(auto_explore_button): auto_explore_button.text = "자동탐험"
 
+func popup_open() -> bool:
+	return details_popup.visible or map_popup.visible or log_popup.visible or item_popup.visible
+
+## One timer step of the auto battle: 0.7s at 1×, half that at 2×.
+func auto_interval() -> float:
+	return 0.7/float(maxi(1,int(session.auto.speed)))
+
+## A stop event outranks the round: it halts the run, names itself in the
+## banner and, at the end of a battle, opens the report.
+func auto_tick() -> void:
+	if is_instance_valid(board) and board.is_presenting(): return
+	if not session.floor_mode: return
+	var reason: String = session.auto_stop_reason()
+	if not reason.is_empty():
+		session.auto.running = false
+		note_stop(reason)
+		if reason == "BATTLE_END": report_battle()
+		refresh(); return
+	# Nothing to fight: the run would spin on a refused auto_step.
+	if not session.in_combat():
+		session.auto.running = false; refresh(); return
+	battle_reported = false
+	run_action(session.auto_step)
+	if is_instance_valid(board) and board.is_presenting(): return
+	# The report is a summary, not a stop: it follows every battle, including
+	# one whose BATTLE_END stop the player switched off.
+	if not session.in_combat(): report_battle()
+
+## The report of the battle that just ended, once.
+func report_battle() -> void:
+	if battle_reported: return
+	battle_reported = true
+	show_battle_report()
+
+func toggle_auto() -> void:
+	stop_navigation()
+	session.auto.running = not session.auto.running
+	var toggle = find_child("AutoToggle",true,false)
+	if toggle != null: toggle.text = "⏸ 정지" if session.auto.running else "▶ 재개"
+	if session.auto.running: stop_text = ""
+	auto_clock = 0.0
+	refresh()
+
+func toggle_speed() -> void:
+	session.auto.speed = 1 if int(session.auto.speed) > 1 else 2
+	if is_instance_valid(board): board.playback_speed = float(session.auto.speed)
+	var speed = find_child("SpeedToggle",true,false)
+	if speed != null: speed.text = "%d×" % int(session.auto.speed)
+	auto_clock = 0.0
+	refresh()
+
+## `auto_stop_reason` has side effects, so the HUD asks it in exactly two
+## places: every auto tick, and once at the end of every player action — a
+## battle can begin or end by hand while the run is stopped.
+func check_stop() -> void:
+	if not session.floor_mode or session.auto.running: return
+	var reason: String = session.auto_stop_reason()
+	if reason.is_empty(): return
+	note_stop(reason)
+	if reason == "BATTLE_END": report_battle()
+
+func note_stop(reason: String) -> void:
+	stop_text = stop_message(reason)
+	# A fresh battle owes the player a fresh report.
+	if reason == "BATTLE_START": battle_reported = false
+	auto_clock = 0.0
+
+## The Korean sentence of a stop event, with whoever caused it.
+func stop_message(reason: String) -> String:
+	match reason:
+		"BATTLE_START": return "전투 시작 · 적 %d" % session.combat_enemies().size()
+		"BATTLE_END": return "전투 종료"
+		"DEATH":
+			var fallen: Array = session.party.filter(func(a): return a.hp <= 0)
+			return "%s 쓰러짐" % (fallen[-1].name if not fallen.is_empty() else "아군")
+		"ALLY_LETHAL":
+			var risked: Array = session.alive().filter(func(a): return Session.Rules.lethal_threat(session,a) >= a.hp)
+			return "%s 치명 위기" % (risked[0].name if not risked.is_empty() else "아군")
+		"HP_LOW":
+			var low: Array = session.alive().filter(func(a): return a.hp*100/a.max_hp <= int(session.auto.hp_low))
+			return "%s 체력 %d%% 이하" % [low[0].name if not low.is_empty() else "아군",int(session.auto.hp_low)]
+	return ""
+
+func set_command(id: String) -> void:
+	if session.auto.running: return
+	stop_navigation()
+	command_targeting = id == "ATTACK_TARGET"
+	if command_targeting: notice = "공격 대상 선택"
+	else: session.party_command = id
+	refresh()
+
+func show_formation() -> void:
+	stop_navigation(); BattleHud.formation(self)
+
+func pick_formation(index: int) -> void:
+	if formation_pick < 0: formation_pick = index; show_formation(); return
+	var first: int = formation_pick
+	formation_pick = -1; details_popup.hide()
+	if first == index: refresh(); return
+	run_action(func(): return session.swap_formation(first,index))
+
+func show_battle_report() -> void:
+	stop_navigation(); BattleHud.report(self)
+
+func show_auto_options() -> void:
+	stop_navigation(); BattleHud.options(self)
+
 func _process(delta: float) -> void:
 	if is_instance_valid(board) and board.is_presenting(): return
 	toast_remaining = maxf(0,toast_remaining-delta)
 	if is_instance_valid(toast): toast.visible = toast_remaining > 0 and not notice.is_empty()
 	portrait_gesture.tick(self)
+	if session.floor_mode and session.auto.running and not popup_open():
+		auto_clock += delta
+		if auto_clock >= auto_interval():
+			auto_clock = 0.0; auto_tick()
 	if not navigation.active: return
 	if details_popup.visible or map_popup.visible or log_popup.visible or not get_window().has_focus(): stop_navigation(); return
 	navigation_clock += delta
@@ -221,9 +341,9 @@ func refresh() -> void:
 	var place := label(header,("1층" if session.floor_mode else session.rooms[session.room].name) if session.phase in ["BATTLE","EXPLORE"] else "거점",18)
 	place.name = "Location"; place.clip_text = true; place.size_flags_horizontal = SIZE_EXPAND_FILL
 	place.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	var food_button := button(header,"식량\n%d" % session.food,func(): run_action(session.use_food),session.phase == "BATTLE" and session.food > 0)
+	var food_button := button(header,"식량\n%d" % session.food,func(): run_action(session.use_food),session.phase == "BATTLE" and session.food > 0 and not session.auto.running)
 	food_button.name = "FoodButton"; food_button.custom_minimum_size.x = 44
-	var torch_button := button(header,"횃불\n%d" % session.torches,func(): run_action(session.use_torch),session.phase == "BATTLE" and session.torches > 0)
+	var torch_button := button(header,"횃불\n%d" % session.torches,func(): run_action(session.use_torch),session.phase == "BATTLE" and session.torches > 0 and not session.auto.running)
 	torch_button.name = "TorchButton"; torch_button.custom_minimum_size.x = 44
 	var funds := label(header,"자금\n%d" % session.bank,12); funds.name = "Funds"
 	funds.custom_minimum_size.x = 45; funds.clip_text = true
@@ -240,9 +360,10 @@ func refresh() -> void:
 		board = Board.new(); board.ui_font = FONT; board.cell_pressed.connect(on_cell)
 		board.zoom_changed.connect(func(value): view_side = value)
 		board.gesture_started.connect(stop_navigation)
-		board.playback_finished.connect(func(): action_effects = []; reset_effects = true; refresh())
+		board.playback_finished.connect(finish_presentation)
 	board.session = session; board.view_side = view_side; board.queue_redraw()
-	board.action_footer = not session.boss_trial or not pending_attack.is_empty()
+	# The floor HUD has no end-turn button, so the board keeps no footer strip.
+	board.action_footer = not session.boss_trial and not session.floor_mode or not pending_attack.is_empty()
 	root_layout.add_child(board)
 	# The result card takes the board's place until the player refits.
 	board.visible = session.phase not in ["TOWN","DEFEAT"]
@@ -258,11 +379,13 @@ func refresh() -> void:
 	if session.floor_mode and session.phase == "BATTLE" and not session.combat_enemies().is_empty():
 		var selected_actor: Dictionary = session.party[session.selected]
 		if selected_actor.hp > 0 and selected_actor.ap > 0:
-			board.next_action = session.companion_choice(selected_actor).duplicate(true)
+			board.next_action = session.command_choice(selected_actor).duplicate(true)
+			if board.next_action.is_empty(): board.next_action = session.Tactics.choose(session,selected_actor).duplicate(true)
 	attack_button = null
 	end_turn_button = null
 	if session.phase == "BATTLE":
-		if not session.boss_trial:
+		# Floor mode ends its rounds through auto_step.
+		if not session.boss_trial and not session.floor_mode:
 			var advance := button(board,"턴 종료",func(): run_action(session.end_round)); end_turn_button = advance
 			advance.custom_minimum_size = Vector2(96,48)
 			advance.set_anchors_and_offsets_preset(PRESET_BOTTOM_RIGHT)
@@ -277,7 +400,7 @@ func refresh() -> void:
 	var in_town: bool = session.phase in ["TOWN","DEFEAT"]
 	for side in ["top","bottom"]: root_layout.get_parent().add_theme_constant_override("margin_"+side,0 if in_town else 8)
 	if in_town:
-		stop_navigation(); header.hide()
+		stop_navigation(); header.hide(); stop_text = ""; battle_reported = false
 		if not session.result.is_empty():
 			build_result_card()
 		elif session.phase == "TOWN" and not session.alive().is_empty():
@@ -303,9 +426,11 @@ func refresh() -> void:
 		var actor: Dictionary = session.party[i]
 		var column: BoxContainer = VBoxContainer.new()
 		column.size_flags_horizontal = SIZE_EXPAND_FILL; column.add_theme_constant_override("separation",3); party_row.add_child(column)
-		var skills := HBoxContainer.new(); skills.add_theme_constant_override("separation",3); column.add_child(skills)
+		# Floor mode is auto-battle: the rules pick the skills, so the card is
+		# a report, not a control panel.
 		var part_slots: bool = session.boss_trial or session.floor_mode
-		for slot in range(2):
+		var skills := HBoxContainer.new(); skills.add_theme_constant_override("separation",3); column.add_child(skills)
+		for slot in range(0 if session.floor_mode else 2):
 			var skill_id: String = actor.equipped_abilities[slot] if part_slots else SKILLS[i][slot]
 			var skill_name: String = Session.Rules.skill(skill_id).get("name","빈 슬롯" if skill_id.is_empty() else skill_id)
 			var skill := icon_button(skills,Art.skill(slot if part_slots else i*2+slot),func(): choose_skill(i,slot),skill_name)
@@ -319,40 +444,89 @@ func refresh() -> void:
 			if Session.Abilities.DEFINITIONS.get(skill_id,{}).get("target","") == "ALLY" and not session.party.any(func(m): return m.id != actor.id and m.hp > 0 and session.melee_reach(actor.pos,m.pos)): skill.disabled = true
 		var portrait_box := VBoxContainer.new(); portrait_box.size_flags_horizontal = SIZE_EXPAND_FILL; portrait_box.add_theme_constant_override("separation",2); column.add_child(portrait_box)
 		var portrait := button(portrait_box,"",func(): select_actor(i)); portrait.name = "MemberCard%d" % i
-		portrait.tooltip_text = "짧게: 행동 예약 · 길게: 상태" if session.companions else "길게 누르기: 상태"; portrait.custom_minimum_size.y = 48; portrait_buttons.append(portrait)
-		var stats := label(portrait,"%s\nHP %d/%d   MP %s   스트레스 %d" % [actor.name,actor.hp,actor.max_hp,str(actor.mp)+"/"+str(actor.max_mp) if actor.has("mp") else "—",actor.stress],12 if session.party.size() == 1 else 10)
+		portrait.tooltip_text = "짧게: 행동 예약 · 길게: 상태" if session.companions and not session.floor_mode else "길게 누르기: 상태"; portrait.custom_minimum_size.y = 48; portrait_buttons.append(portrait)
+		var caption := "%s\nHP %d/%d   MP %s   스트레스 %d" % [actor.name,actor.hp,actor.max_hp,str(actor.mp)+"/"+str(actor.max_mp) if actor.has("mp") else "—",actor.stress]
+		if session.floor_mode:
+			caption = "%s · HP %d/%d\n스트레스 %d · %s\n%s" % [actor.name,actor.hp,actor.max_hp,actor.stress,actor.condition,actor.last_action]
+			if bool(actor.get("conflicted",false)): caption += " ⚠ 갈등"
+			portrait.custom_minimum_size.y = 62
+		var stats := label(portrait,caption,12 if session.party.size() == 1 and not session.floor_mode else 10)
 		stats.set_anchors_and_offsets_preset(PRESET_FULL_RECT); stats.offset_left = 4; stats.offset_right = -4
 		stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; stats.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		if i == session.selected:
 			var gold := portrait.get_theme_stylebox("normal").duplicate(); gold.border_color = Color("e9c575"); gold.set_border_width_all(2); portrait.add_theme_stylebox_override("normal",gold)
 		if actor.hp <= 0: portrait.modulate = Color("636369")
+	if session.floor_mode and session.phase == "BATTLE": build_auto_rows()
 	var shared := HBoxContainer.new(); shared.add_theme_constant_override("separation",4); root_layout.add_child(shared)
 	for slot in range(6):
 		var item := icon_button(shared,Art.item(slot),func(): choose_item(slot),Session.SUPPLY_NAMES[slot],str(session.supplies[slot]))
-		item.disabled = session.phase not in ["BATTLE","EXPLORE"] or session.supplies[slot] == 0; item_buttons.append(item)
+		item.disabled = session.phase not in ["BATTLE","EXPLORE"] or session.supplies[slot] == 0 or session.auto.running; item_buttons.append(item)
 	var nav := HBoxContainer.new(); nav.add_theme_constant_override("separation",4); root_layout.add_child(nav)
+	if session.floor_mode:
+		var toggle := button(nav,"⏸ 정지" if session.auto.running else "▶ 재개",toggle_auto,session.phase == "BATTLE" and session.in_combat())
+		toggle.name = "AutoToggle"
+		var speed := button(nav,"%d×" % int(session.auto.speed),toggle_speed)
+		speed.name = "SpeedToggle"; speed.custom_minimum_size.x = 40; speed.size_flags_horizontal = SIZE_SHRINK_CENTER
+		var swap := button(nav,"진형 교환",show_formation,session.can_swap_formation() and not session.auto.running)
+		swap.name = "FormationButton"
+		auto_explore_button = button(nav,"중지" if navigation.active else "자동탐험",toggle_explore,session.phase == "BATTLE" and not session.auto.running)
+		button(nav,"가방",show_supplies,not session.auto.running)
+		var gear := button(nav,"⚙",show_auto_options)
+		gear.name = "AutoOptionsButton"; gear.custom_minimum_size.x = 40; gear.size_flags_horizontal = SIZE_SHRINK_CENTER
+		for node in nav.get_children():
+			node.custom_minimum_size.y = 46; node.clip_text = true
+			node.add_theme_font_size_override("font_size",11)
+		return
 	advance_attack_button = button(nav,"공격",func(): run_action(session.auto_attack),session.phase == "BATTLE")
 	wait_button = button(nav,"대기",func(): run_action(func(): return session.act("WAIT",session.party[session.selected].pos)),session.phase == "BATTLE")
-	auto_explore_button = button(nav,"중지" if navigation.active else "자동탐험",toggle_explore,session.floor_mode and session.phase == "BATTLE")
+	# Room and boss modes have no continuous floor to explore.
+	auto_explore_button = button(nav,"중지" if navigation.active else "자동탐험",toggle_explore,false)
 	button(nav,"전술",show_party_tactics)
 	button(nav,"가방",show_supplies)
 	for node in nav.get_children(): node.custom_minimum_size.y = 49
 
+## Stop banner and the five party commands: the whole of floor-mode input
+## besides the board, the bag and the auto row.
+func build_auto_rows() -> void:
+	var banner := label(root_layout,stop_text,15)
+	banner.name = "StopBanner"; banner.visible = not stop_text.is_empty()
+	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; banner.clip_text = true
+	var bar := HBoxContainer.new(); bar.name = "CommandBar"; bar.add_theme_constant_override("separation",3)
+	root_layout.add_child(bar)
+	for entry in [["FOLLOW","따라와"],["HOLD_POSITION","자리 지켜"],["STOP_ATTACK","공격 중지"],["RETREAT","후퇴"],["ATTACK_TARGET","집중 공격"]]:
+		var id: String = entry[0]
+		var node := button(bar,entry[1],func(): set_command(id),not session.auto.running)
+		node.toggle_mode = true
+		node.button_pressed = session.party_command == id if id != "ATTACK_TARGET" else command_targeting or session.party_command == id
+		node.custom_minimum_size.y = 44; node.clip_text = true
+		node.add_theme_font_size_override("font_size",11)
+
 func depart() -> void:
-	if session.phase == "DEFEAT" or session.alive().is_empty(): session = Session.new(randi(),true,false,true)
+	if session.phase == "DEFEAT" or session.alive().is_empty(): session = Session.new(randi(),true,false,true,PARTY_SIZE)
 	run_action(session.depart)
 
 func select_actor(index: int) -> void:
 	stop_navigation()
 	if session.party[index].hp <= 0: return
 	pending_attack = {}; show_attack_range = false
-	if session.companions:
+	if session.companions and not session.floor_mode:
 		reservation_actor = index if index != session.selected and session.phase == "BATTLE" else -1
 		mode = ""; pending_item = -1
 		notice = session.party[index].name+" · 행동 예약" if reservation_actor >= 0 else "직접 조작"
 		refresh(); return
 	session.selected = index; mode = ""; pending_item = -1; notice = session.party[index].name; refresh()
+
+func finish_presentation() -> void:
+	action_effects = []; reset_effects = true; auto_clock = 0.0
+	var reason: String = session.auto_stop_reason() if session.floor_mode else ""
+	if not reason.is_empty():
+		session.auto.running = false
+		note_stop(reason)
+	if session.floor_mode and not session.in_combat():
+		session.auto.running = false
+		report_battle()
+	refresh()
 
 func run_action(callback: Callable, navigating: bool = false) -> void:
 	if is_instance_valid(board) and board.is_presenting(): return
@@ -367,15 +541,18 @@ func run_action(callback: Callable, navigating: bool = false) -> void:
 	notice = "" if accepted else "사용 불가"
 	if accepted:
 		mode = ""; pending_item = -1; reservation_actor = -1
-		if not session.boss_trial and session.phase == "BATTLE" and session.alive().all(func(a): return a.ap <= 0): session.end_round()
+		# In floor mode auto_step ends the round itself.
+		if not session.boss_trial and not session.floor_mode and session.phase == "BATTLE" and session.alive().all(func(a): return a.ap <= 0): session.end_round()
 	if show_battle: recorder.finish(session)
 	session.presentation = null
 	if accepted and show_battle and not recorder.frames.is_empty() and is_instance_valid(board):
 		session.effects.clear(); action_effects = []
+		board.playback_speed = float(session.auto.speed)
 		board.play_frames(recorder.frames)
 		return
 	action_effects = session.effects.duplicate(true); session.effects.clear()
 	reset_effects = accepted
+	check_stop()
 	refresh()
 
 func preview_attack(point: Vector2i) -> void:
@@ -422,10 +599,12 @@ func queue_action(kind: String, point: Vector2i) -> void:
 func on_cell(point: Vector2i) -> void:
 	stop_navigation()
 	if command_targeting:
-		var target: Dictionary = session.at(point)
-		if target in session.combat_enemies():
-			session.command_target = target.id; session.party_command = "ATTACK_TARGET"; command_targeting = false; notice = "집중 공격"
-		else: notice = "시야 안의 적 선택"
+		focus_enemy(point)
+		refresh(); return
+	# 개입은 명령만: while the fighting is on, a tap marks the focus target and
+	# nothing else — no move, no attack, no wait, no curio.
+	if session.floor_mode and session.in_combat():
+		focus_enemy(point)
 		refresh(); return
 	if session.floor_mode and session.phase == "BATTLE" and reservation_actor < 0 and mode.is_empty() and pending_item < 0:
 		var feature: Dictionary = session.floor_state.features.get(point,{})
@@ -457,6 +636,16 @@ func on_cell(point: Vector2i) -> void:
 				if navigation.start(session,point): navigation_tick()
 				else: notice = "이동 불가"; refresh()
 			else: run_action(func(): return session.act("MOVE",point))
+
+## A tap on a visible foe concentrates the party on it; any other cell clears
+## the targeting prompt instead of acting.
+func focus_enemy(point: Vector2i) -> void:
+	var target: Dictionary = session.at(point)
+	if target in session.combat_enemies():
+		session.command_target = target.id; session.party_command = "ATTACK_TARGET"
+		command_targeting = false; notice = "집중 공격"
+	elif command_targeting:
+		command_targeting = false; notice = ""
 
 func show_map() -> void:
 	stop_navigation()
@@ -532,9 +721,6 @@ func show_party_tactics() -> void:
 			if command == "ATTACK_TARGET": command_targeting = true; notice = "공격 대상 선택"
 			else: session.party_command = command; notice = entry[1]
 			refresh(),available)
-	for entry in [["NONE","자유"],["COLUMN","종대"],["LINE","횡대"],["WEDGE","쐐기"]]:
-		var formation: String = entry[0]
-		button(modal_content,"대형 · "+entry[1],func(): session.formation = formation; details_popup.hide(); refresh(),available)
 	button(modal_content,"닫기",func(): details_popup.hide())
 	details_popup.popup_centered()
 
@@ -654,7 +840,7 @@ func show_character(index: int, tab: String = "상태") -> void:
 		"상태": CharacterUI.status(self,list,actor)
 		"숙련": CharacterUI.mastery(self,list,actor)
 		"파츠": CharacterUI.parts(self,list,actor)
-		"성격": CharacterUI.personality(list,actor)
+		"성격": CharacterUI.personality(self,list,actor)
 		"기억": CharacterUI.memories(self,list,actor)
 	details_popup.popup_centered(Vector2i(size))
 

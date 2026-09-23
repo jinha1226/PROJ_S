@@ -8,7 +8,7 @@ func check(ok: bool, reason: String) -> void:
 	if not ok: failures += 1; push_error(reason)
 
 func setup():
-	var s = Session.new(731,true,false,true)
+	var s = Session.new(731,true,false,true,1)
 	s.depart()
 	var center := Fixture.arena(s)
 	s.enemies[0].pos = center+Vector2i.RIGHT
@@ -35,9 +35,9 @@ func run() -> void:
 	var control = setup()
 	var recorder = Presentation.new()
 	recorder.begin(s); s.presentation = recorder
-	check(s.act("ATTACK",s.enemies[0].pos),"recorded action accepted")
+	check(s.auto_step(),"recorded action accepted")
 	recorder.finish(s); s.presentation = null
-	control.act("ATTACK",control.enemies[0].pos)
+	control.auto_step()
 	check(actor_state(s) == actor_state(control) and s.serial == control.serial,"recording does not alter rules, injuries or RNG")
 	check(recorder.frames.size() >= 2,"player and enemy resolve as separate frames")
 	check(recorder.frames[0].effects[0].from == s.party[0].pos,"player impact precedes enemy")
@@ -49,7 +49,7 @@ func run() -> void:
 	var expected: Dictionary = scene.session.companion_choice(scene.session.party[0])
 	check(scene.board.next_action == expected,"selected preview comes from actual decision selector")
 	var before := Presentation.snapshot(scene.session)
-	scene.run_action(func(): return scene.session.act("ATTACK",scene.session.enemies[0].pos))
+	scene.run_action(scene.session.auto_step)
 	check(scene.board.is_presenting(),"UI starts presentation")
 	check(scene.board.visual_state == before,"wind-up retains pre-action positions and HP")
 	var called := [false]

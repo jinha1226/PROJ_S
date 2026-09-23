@@ -65,10 +65,17 @@ func run() -> void:
 			check(bar.mouse_filter == Control.MOUSE_FILTER_IGNORE,"gauge does not block item touches")
 		var header: Node = scene.find_child("TopHUD",true,false)
 		check(header.get_children().slice(1).map(func(c): return str(c.name)) == ["Location","FoodButton","TorchButton","Funds","ExpeditionMenu"],"header order")
-		check(scene.skill_buttons[0].get_global_rect().end.y <= scene.portrait_buttons[0].get_global_rect().position.y,"skills above member card")
+		# The floor battle is automatic: no per-member skill buttons, one auto
+		# toggle and the five party commands instead.
+		check(scene.skill_buttons.is_empty(),"floor battle has no skill buttons")
+		var bar: Node = scene.find_child("CommandBar",true,false)
+		var toggle: Button = scene.find_child("AutoToggle",true,false)
+		check(bar != null and bar.get_child_count() == 5 and toggle != null,"auto toggle and five party commands")
+		for control in bar.get_children()+[toggle]:
+			check(control.size.y >= 44 and scene.get_global_rect().encloses(control.get_global_rect()),"auto control is touchable and on screen")
 		check(scene.portrait_buttons[0].find_children("*","TextureRect",true,false).is_empty(),"member card has no portrait image")
 		var nav: Node = scene.root_layout.get_child(-1)
-		check(nav.get_children().map(func(c): return c.text) == ["공격","대기","자동탐험","전술","가방"],"safe footer order")
+		check(nav.get_children().map(func(c): return c.text) == ["▶ 재개","1×","진형 교환","자동탐험","가방","⚙"],"floor footer order")
 		scene.show_objective(); await process_frame
 		check(scene.modal_content.get_children().map(func(c): return c.text) == ["원정 목표","입구까지 이동","원정포기"],"menu contains exactly three actions")
 		check(scene.details_popup.size.x <= viewport.x,"menu width fits")
@@ -84,18 +91,20 @@ func run() -> void:
 	s.party[0].stress = 30; food = s.food
 	var before_wait: int = s.round_number
 	var before_hp: int = s.party[0].hp
-	for step in range(3): scene.wait_button.pressed.emit()
+	# Floor mode has no wait button and the board only commands while fighting,
+	# so the waiting itself is checked on the session.
+	for step in range(3): scene.run_action(func(): return s.act("WAIT",s.party[0].pos))
 	check(s.round_number == before_wait+3 and s.food == food,"waiting without visible enemies advances turns without spending food")
 	check(s.party[0].hp == before_hp and s.party[0].stress == 30,"waiting does not perform recovery")
 	var saved_food: int = s.food; s.food = 0; scene.refresh()
-	scene.wait_button.pressed.emit()
+	scene.run_action(func(): return s.act("WAIT",s.party[0].pos))
 	check(s.round_number == before_wait+4 and s.food == 0,"waiting remains available without food")
 	s.food = saved_food
 	enemy.hp = 20; enemy.pos = s.party[0].pos+Vector2i.RIGHT; s.floor_state.observe(s); scene.refresh()
-	check(scene.wait_button.text == "대기","same wait action with visible enemy")
+	check(scene.find_child("AutoToggle",true,false).text == "▶ 재개","a visible enemy leaves the run stopped")
 	before_wait = s.round_number; food = s.food
-	scene.wait_button.pressed.emit()
-	check(s.round_number == before_wait+1 and s.food == food,"combat wait also advances without food cost")
+	Fixture.fight_round(s); scene.refresh()
+	check(s.round_number == before_wait+1 and s.food == food,"an auto round also advances without food cost")
 	scene.notice = "이동 불가"; check(scene.toast.visible,"toast shown immediately")
 	scene._process(3); check(not scene.toast.visible,"toast expires")
 	scene.show_party_tactics()
@@ -105,7 +114,7 @@ func run() -> void:
 	for foe in duo.enemies: foe.hp = 0
 	duo.party_command = "HOLD_POSITION"
 	check(duo.companion_choice(duo.party[1]).kind == "WAIT","hold command prevents companion movement")
-	duo.party_command = "FOLLOW"; duo.formation = "COLUMN"
+	duo.party_command = "FOLLOW"; duo.formation = [0,1,2]
 	Fixture.arena(duo,8)
 	check(duo.floor_state.follow(duo,duo.party[1]).kind == "WAIT","column formation holds assigned position")
 	var corner = Session.new(818,true,false,true); corner.depart()

@@ -169,17 +169,19 @@ func interact(s, p: Vector2i) -> bool:
 func enemy_turn(s, enemy: Dictionary) -> void:
 	MonsterAI.turn(s,enemy)
 
+## Everyone trails the leader in a single column, one cell per rank in the
+## marching order. The leader itself waits; a blocked slot falls back to any
+## free cell adjacent to the leader.
 func follow(s, actor: Dictionary) -> Dictionary:
-	var leader: Dictionary = s.party[s.selected]
-	if actor.id == leader.id: leader = s.alive()[0]
-	if s.formation != "NONE":
-		var rank: int = s.alive().filter(func(a): return a.id != s.selected).find(actor)+1
-		var offset := Vector2i(0,rank) if s.formation == "COLUMN" else Vector2i(rank if rank % 2 == 1 else -rank/2,0) if s.formation == "LINE" else Vector2i(1 if rank % 2 == 1 else -1,1)
-		var destination: Vector2i = leader.pos+offset
-		if actor.pos == destination: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}
-		if s.is_free(destination):
-			var route: Dictionary = s.TurnCore.path(size,size,actor.pos,[destination],func(a,b): return s.can_step(a,b),func(_p): return 100)
-			if route.found and route.path.size() > 1: return {"kind":"MOVE","cell":route.path[1],"reason":"대형 이동"}
+	var leader: Dictionary = s.leader()
+	if actor.id == leader.id: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}
+	var order: Array = s.formation.filter(func(i): return i != leader.id)
+	var rank: int = order.find(actor.id)+1
+	var destination: Vector2i = leader.pos+Vector2i(0,rank)
+	if actor.pos == destination: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}
+	if s.is_free(destination):
+		var route: Dictionary = s.TurnCore.path(size,size,actor.pos,[destination],func(a,b): return s.can_step(a,b),func(_p): return 100)
+		if route.found and route.path.size() > 1: return {"kind":"MOVE","cell":route.path[1],"reason":"대형 이동"}
 	if maxi(absi(actor.pos.x-leader.pos.x),absi(actor.pos.y-leader.pos.y)) <= 1: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}
 	var goals: Array = []
 	for d in s.DIRECTIONS:

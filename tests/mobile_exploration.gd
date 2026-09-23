@@ -62,7 +62,8 @@ func run() -> void:
 	press.pressed = false; scene._input(press)
 	check(scene.details_popup.visible and scene.tactics_actor == 1 and scene.reservation_actor == -1,"long hold opens correct status without reservation")
 	scene.details_popup.hide(); press.pressed = true; scene._input(press); press.pressed = false; scene._input(press)
-	check(scene.reservation_actor == 1,"short portrait tap still reserves action")
+	# Floor mode has no action reservations: a short tap only takes the camera there.
+	check(scene.reservation_actor == -1 and s.selected == 1,"short portrait tap selects the member instead of reserving")
 	for i in range(60): s.message("기록 %d" % i)
 	scene.refresh(); await process_frame
 	var lines: Array = scene.find_child("RecentLog",true,false).find_children("*","Label",true,false)

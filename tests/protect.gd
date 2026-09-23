@@ -76,7 +76,7 @@ func redirect() -> void:
 	f.s.damage(f.ally,10,f.foes[0].id,"IMPACT")
 	check(f.ally.hp == ally_hp,"the covered ally is untouched")
 	check(f.hero.hp == hero_hp-5,"the protector takes the hit at half")
-	check(f.s.stats_redirects == 1,"the redirect is counted")
+	check(f.s.member_stats(f.s.party[0].id).covers == 1,"the redirect is counted")
 	check(f.s.log_lines.any(func(line): return line.contains("대신 맞습니다")),"the redirect is logged")
 
 func caster_intent() -> void:
@@ -115,7 +115,7 @@ func mutual_guard() -> void:
 	var hero_hp: int = f.hero.hp
 	f.s.damage(f.ally,10,999,"IMPACT")
 	check(f.ally.hp == ally_hp-5 and f.hero.hp == hero_hp,"a mutual guard leaves the hit with its target, halved")
-	check(f.s.stats_redirects == 0,"a hit that never moved is not counted as a redirect")
+	check(f.s.member_stats(f.s.party[0].id).covers == 0,"a hit that never moved is not counted as a redirect")
 	check(not f.s.log_lines.any(func(line): return line.contains("대신 맞습니다")),"a hit that never moved is not logged as a redirect")
 
 ## ALLY_LETHAL must read the wind-up at the damage it will actually land for:
@@ -139,7 +139,7 @@ func dead_protector() -> void:
 	var ally_hp: int = f.ally.hp
 	f.s.damage(f.ally,10,999,"IMPACT")
 	check(f.ally.hp == ally_hp-10,"a fallen protector redirects nothing")
-	check(f.s.stats_redirects == 0,"no redirect is counted for a fallen protector")
+	check(f.s.member_stats(f.s.party[0].id).covers == 0,"no redirect is counted for a fallen protector")
 
 ## Room mode: clearing the room returns from end_round() before the per-round
 ## reset, so the release of the round's guards has to happen ahead of it.
@@ -169,7 +169,6 @@ func user_interface() -> void:
 	for frame in range(3): await process_frame
 	var hero: Dictionary = scene.session.party[0]
 	var ally: Dictionary = scene.session.party[1]
-	check(not scene.skill_buttons[1].disabled,"the 방어 slot is live beside an ally")
 	scene.choose_skill(0,1)
 	check(scene.mode == "GUARD" and scene.notice == "엄호 · 인접 아군 선택","the slot asks for an ally, not a cell")
 	scene.on_cell(ally.pos)
@@ -184,6 +183,6 @@ func user_interface() -> void:
 	Fixture.equip_basics(solo.session)
 	solo.refresh()
 	for frame in range(3): await process_frame
-	check(solo.skill_buttons[1].disabled,"a lone hero cannot press 방어")
+	check(not solo.session.act("GUARD",solo.session.party[0].pos),"a lone hero cannot 엄호")
 	solo.queue_free()
 	await process_frame

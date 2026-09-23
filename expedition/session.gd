@@ -14,6 +14,7 @@ var floor_state
 const BossTrial = preload("res://expedition/boss_trial.gd")
 var boss_trial := false
 const Tactics = preload("res://expedition/tactical_action_selector.gd")
+const Knobs = preload("res://expedition/knobs.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 const Growth = preload("res://expedition/growth.gd")
@@ -21,12 +22,20 @@ const Passives = preload("res://expedition/passives.gd")
 var parts_bag: Dictionary = {}
 const STARTING_PARTS := {"PUSH":1,"GUARD":1}
 var party_command := "FOLLOW"
-var formation := "NONE"
+## Marching order: party indices in the order they follow the leader. The
+## leader is the first living index in the order.
+var formation: Array = [0,1,2]
 var command_target := -1
 var companions := false
 var resolving_companions := false
 # Optional UI recorder; headless simulations never allocate presentation snapshots.
 var presentation = null
+## Evaluation priority: the hard events first, then the soft alerts.
+const AUTO_STOPS := ["BATTLE_START","BATTLE_END","DEATH","ALLY_LETHAL","HP_LOW"]
+## Auto-battle state: whether the UI is advancing rounds, which events stop it,
+## and what the previous round looked like so that "newly" can be judged.
+var auto := {"running":false,"stops":{"BATTLE_START":true,"ALLY_LETHAL":true,"HP_LOW":true,"DEATH":true,"BATTLE_END":true},
+	"hp_low":30,"speed":1,"prev_threats":0,"prev_low":[],"prev_alive":0,"last_stop":{"reason":"","round":-99},"stops_log":[]}
 const CARDINALS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]
 const DIRECTIONS = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN, Vector2i(-1,-1), Vector2i(1,-1), Vector2i(-1,1), Vector2i(1,1)]
 var rooms: Array = []
@@ -44,9 +53,10 @@ var light := 90
 var loot := 0
 var bank := 0
 var serial := 0
-var stats_redirects := 0
-var stats_enemy_skill: Dictionary = {}
-var stats_interrupts := 0
+## Everything the battle report reads, gathered while the battle runs.
+## Reset when a battle starts; outside floor mode nothing resets it, so the
+## rows simply accumulate for whoever asks.
+var battle_stats: Dictionary = {}
 var world_time := 0
 var round_number := 0
 var expedition_number := 0
@@ -96,6 +106,8 @@ func _init(p_seed: int = 731, p_boss_trial: bool = false, p_companions: bool = f
 	var count: int = clampi(p_party_size,1,3) if p_party_size > 0 else (2 if companions else 1 if boss_trial else 3)
 	for i in range(count):
 		party.append(make_actor(i, ["아린", "브란", "세라"][i], false))
+	formation = range(count)
+	reset_battle_stats()
 	# Room and boss modes have no town to buy the basics in: start with them equipped.
 	if not floor_mode:
 		for actor in party:
@@ -114,6 +126,11 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"stress":0, "condition":"평온", "ap":2,
 		"body":Body.create(id, seed_value, enemy),
 		"profile":Hexaco.generated(seed_value, id + 1), "memory":Memory.new()}
+	# The knobs start where this personality is comfortable, so nobody is born
+	# in conflict with their own standing orders.
+	actor["knobs"] = Knobs.defaults(actor.profile)
+	actor["conflicted"] = false
+	actor["ignoring"] = false
 	Body.sync(actor)
 	return actor
 
@@ -130,6 +147,21 @@ func remember_important(actor: Dictionary, kind: String, subject: int, instigato
 	if actor.memory.remember(kind,serial,world_time,subject,instigator,salience):
 		recorded[key] = true; actor.important_memories = recorded
 
+## Clears the report and opens one row per member. The simulator calls this
+## itself at the arena, where no BATTLE_START stop event runs.
+func reset_battle_stats() -> void:
+	battle_stats = {"rounds":0,"enemies":combat_enemies().size() if phase == "BATTLE" else 0,"kills":0,"members":{},
+		"interrupts":0,"enemy_parts":{},"drops":{},"stops":[]}
+	for actor in party:
+		battle_stats.members[actor.id] = {"dealt":0,"taken":0,"guards":0,"covers":0,"redirected":0,
+			"parts":{},"healed":0,"downed":false,"conflict":bool(actor.get("conflicted",false))}
+
+## The row of one member, empty for an id that is not in the party — which is
+## what every tally below tests before it writes.
+func member_stats(id: int) -> Dictionary:
+	if not battle_stats.has("members"): reset_battle_stats()
+	return battle_stats.members.get(id,{})
+
 func alive() -> Array:
 	return party.filter(func(a): return a.hp > 0)
 
@@ -140,9 +172,12 @@ func depart() -> bool:
 		actor.important_memories = {}
 	expedition_number += 1
 	light = 90; loot = 0; hunger = 0
+	reset_battle_stats()
 	if floor_mode:
 		purchases = {}
 		result = {}; objective = {}
+		auto.prev_threats = 0; auto.prev_low = []; auto.prev_alive = alive().size()
+		auto.stops_log = []; auto.last_stop = {"reason":"","round":-99}
 		snapshot = take_snapshot()
 		floor_state.build(self); message("1층 진입"); return true
 	food = 27; torches = 5
@@ -335,6 +370,35 @@ func can_step(a: Vector2i, b: Vector2i) -> bool:
 func combat_enemies() -> Array:
 	return floor_state.threats(self) if floor_mode else enemies.filter(func(e): return e.hp > 0)
 
+func in_combat() -> bool:
+	return floor_mode and phase == "BATTLE" and not floor_state.safe(self)
+
+## The first living member in the marching order.
+func leader() -> Dictionary:
+	for index in formation:
+		if index < party.size() and party[index].hp > 0: return party[index]
+	return party[0]
+
+func rally_point() -> Vector2i:
+	return leader().pos
+
+## Two members trade cells and places in the marching order. Only while the
+## run is stopped for a battle start, once per battle.
+func can_swap_formation() -> bool:
+	return in_combat() and auto.last_stop.reason == "BATTLE_START" and int(auto.last_stop.round) == round_number \
+		and int(auto.get("swapped_round",-1)) != round_number and alive().size() >= 2
+
+func swap_formation(a: int, b: int) -> bool:
+	if not can_swap_formation(): return false
+	if a == b or a < 0 or b < 0 or a >= party.size() or b >= party.size() or party[a].hp <= 0 or party[b].hp <= 0: return false
+	var pa: Vector2i = party[a].pos; party[a].pos = party[b].pos; party[b].pos = pa
+	var ia: int = formation.find(a); var ib: int = formation.find(b)
+	formation[ia] = b; formation[ib] = a
+	auto.swapped_round = round_number
+	floor_state.observe(self)
+	message("%s ↔ %s 자리 교환" % [party[a].name,party[b].name])
+	return true
+
 func safe_management() -> bool:
 	return phase in ["TOWN","EXPLORE"] or floor_mode and phase == "BATTLE" and floor_state.safe(self)
 
@@ -397,22 +461,32 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 	return {"actor":actor.id,"target":victim.id,"cell":target,"name":victim.name,"chance":100,"damage":amount}
 
 func act(kind: String, target: Vector2i) -> bool:
+	return act_as(party[selected],kind,target,true)
+
+## One action by `actor`. `chain` runs the legacy follow-up (companions acting
+## after the hero, round end on empty AP); auto_step passes false and drives
+## the round itself.
+func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = true) -> bool:
 	if phase != "BATTLE" or not inside(target): return false
 	if floor_mode and not floor_state.visible.has(target): return false
 	if boss_trial and kind == "PYLON":
 		if not BossTrial.disable_pylon(self,target): return false
-		finish_player_action(); return true
-	var actor: Dictionary = party[selected]
+		if presentation != null: presentation.capture(self,actor.id)
+		if chain: finish_player_action()
+		return true
 	if actor.hp <= 0 or actor.ap <= 0: return false
 	if Abilities.DEFINITIONS.has(kind):
 		if not Abilities.execute(self,actor,kind,target): return false
-		actor.ap -= 1; check_battle_end(); finish_player_action(); return true
+		actor.ap -= 1; check_battle_end()
+		if presentation != null: presentation.capture(self,actor.id)
+		if chain: finish_player_action()
+		return true
 	var victim := at(target)
 	match kind:
 		"WAIT":
 			if target != actor.pos: return false
 		"MOVE":
-			if target not in movement_cells(): return false
+			if target not in movement_cells(party.find(actor)): return false
 			actor.pos = target
 		"ATTACK":
 			if victim.is_empty() or not victim.enemy or not melee_reach(actor.pos,target): return false
@@ -430,11 +504,11 @@ func act(kind: String, target: Vector2i) -> bool:
 		_: return false
 	actor.ap -= 1
 	check_battle_end()
-	finish_player_action()
+	if presentation != null: presentation.capture(self,actor.id)
+	if chain: finish_player_action()
 	return true
 
 func finish_player_action() -> void:
-	if presentation != null: presentation.capture(self,selected)
 	if not boss_trial or phase != "BATTLE" or resolving_companions: return
 	if floor_mode: floor_state.observe(self); floor_state.ambush(self)
 	if phase != "BATTLE": return
@@ -475,6 +549,7 @@ func reservation_choice(actor: Dictionary) -> Dictionary:
 	return {"kind":order.kind,"cell":cell,"reason":"직접 예약","reserved":true}
 
 func reserve_action(index: int, kind: String, cell: Vector2i) -> bool:
+	if floor_mode: return false
 	if not companions or phase != "BATTLE" or index < 0 or index >= party.size() or index == selected: return false
 	var actor: Dictionary = party[index]
 	var previous: Dictionary = actor.reservation
@@ -485,33 +560,118 @@ func reserve_action(index: int, kind: String, cell: Vector2i) -> bool:
 func cancel_reservation(index: int) -> void:
 	if index >= 0 and index < party.size(): party[index].reservation = {}
 
+## The party command's answer for `actor`, or {} when the rules decide.
+func command_choice(actor: Dictionary) -> Dictionary:
+	if party_command == "HOLD_POSITION":
+		if combat_enemies().any(func(e): return melee_reach(actor.pos,e.pos)): return {}
+		return {"kind":"WAIT","cell":actor.pos,"reason":"자리 지키기"}
+	if party_command == "STOP_ATTACK":
+		if not floor_mode: return {"kind":"WAIT","cell":actor.pos,"reason":"공격 중지"}
+		var destination: Vector2i = rally_point()
+		if actor.pos == destination or maxi(absi(actor.pos.x-destination.x),absi(actor.pos.y-destination.y)) <= 1:
+			return {"kind":"WAIT","cell":actor.pos,"reason":"공격 중지"}
+		var route: Dictionary = TurnCore.path(BOARD_SIDE,BOARD_SIDE,actor.pos,[destination],func(a,b): return can_step(a,b),func(_p): return 100)
+		return {"kind":"MOVE","cell":route.path[1],"reason":"공격 중지"} if route.found and route.path.size() > 1 else {"kind":"WAIT","cell":actor.pos,"reason":"공격 중지"}
+	if party_command == "RETREAT":
+		var best: Vector2i = Tactics.retreat_cell(self,actor)
+		return {"kind":"WAIT" if best == actor.pos else "MOVE","cell":best,"reason":"후퇴"}
+	if party_command == "ATTACK_TARGET":
+		for enemy in combat_enemies():
+			if enemy.id != command_target: continue
+			if melee_reach(actor.pos,enemy.pos): return {"kind":"ATTACK","cell":enemy.pos,"reason":"집중 공격"}
+			var goals: Array = []
+			for direction in DIRECTIONS:
+				if is_free(enemy.pos+direction) and melee_reach(enemy.pos+direction,enemy.pos): goals.append(enemy.pos+direction)
+			var route: Dictionary = TurnCore.path(BOARD_SIDE,BOARD_SIDE,actor.pos,goals,func(a,b): return can_step(a,b) and Tactics.danger(self,b) == 0,func(_p): return 100)
+			return {"kind":"MOVE","cell":route.path[1],"reason":"집중 공격 접근"} if route.found and route.path.size() > 1 else {"kind":"WAIT","cell":actor.pos,"reason":"대상 경로 없음"}
+	return {}
+
 func companion_choice(actor: Dictionary) -> Dictionary:
 	var reserved := reservation_choice(actor)
-	if reserved.is_empty() and companions:
-		if party_command == "HOLD_POSITION": return {"kind":"WAIT","cell":actor.pos,"reason":"자리 지키기"}
-		if party_command == "STOP_ATTACK": return floor_state.follow(self,actor) if floor_mode else {"kind":"WAIT","cell":actor.pos,"reason":"공격 중지"}
-		if party_command == "RETREAT":
-			var threats: Array = combat_enemies()
-			var best: Vector2i = actor.pos
-			var score := -1
-			for direction in DIRECTIONS:
-				var cell: Vector2i = actor.pos+direction
-				if not can_step(actor.pos,cell) or not is_free(cell): continue
-				var nearest := 999
-				for enemy in threats: nearest = mini(nearest,distance(cell,enemy.pos))
-				if nearest > score: score = nearest; best = cell
-			return {"kind":"WAIT" if best == actor.pos else "MOVE","cell":best,"reason":"후퇴"}
-		if party_command == "ATTACK_TARGET":
-			for enemy in combat_enemies():
-				if enemy.id != command_target: continue
-				if melee_reach(actor.pos,enemy.pos): return {"kind":"ATTACK","cell":enemy.pos,"reason":"집중 공격"}
-				var goals: Array = []
-				for direction in DIRECTIONS:
-					if is_free(enemy.pos+direction) and melee_reach(enemy.pos+direction,enemy.pos): goals.append(enemy.pos+direction)
-				var route: Dictionary = TurnCore.path(BOARD_SIDE,BOARD_SIDE,actor.pos,goals,func(a,b): return can_step(a,b) and Tactics.danger(self,b) == 0,func(_p): return 100)
-				return {"kind":"MOVE","cell":route.path[1],"reason":"집중 공격 접근"} if route.found and route.path.size() > 1 else {"kind":"WAIT","cell":actor.pos,"reason":"대상 경로 없음"}
-	if reserved.is_empty() and floor_mode and floor_state.safe(self): return floor_state.follow(self,actor)
-	return Tactics.choose(self,actor) if reserved.is_empty() else reserved
+	if not reserved.is_empty(): return reserved
+	if companions:
+		var ordered := command_choice(actor)
+		if not ordered.is_empty(): return ordered
+	if floor_mode and floor_state.safe(self): return floor_state.follow(self,actor)
+	return Tactics.choose(self,actor)
+
+## One rules-driven round: every living member spends its AP through the
+## command or the rules, then the round ends. Game UI and simulator both call this.
+func auto_step() -> bool:
+	if not in_combat() or alive().is_empty(): return false
+	battle_stats.rounds = int(battle_stats.get("rounds",0))+1
+	# Snapshot before anyone acts: the stop events ask what changed *during* the
+	# round, so a death or a cleared field inside this step must still be a delta.
+	remember_round()
+	for actor in party:
+		var guard := 0
+		if actor.hp > 0 and actor.ap > 0 and int(actor.stress) >= 100 and not bool(actor.get("ignoring",false)):
+			actor.ignoring = true
+			message(actor.name+" · 자기 방식대로 움직입니다")
+		while actor.hp > 0 and actor.ap > 0 and phase == "BATTLE" and guard < 4:
+			guard += 1
+			var choice: Dictionary = command_choice(actor)
+			if choice.is_empty(): choice = Tactics.choose(self,actor)
+			# last_action reports what actually ran, not what was wanted.
+			if act_as(actor,choice.kind,choice.cell,false): actor.last_action = choice.reason
+			elif act_as(actor,"WAIT",actor.pos,false): actor.last_action = "대기"
+			else: break
+	if phase == "BATTLE": end_round()
+	return true
+
+## A member whose standing orders sit outside their comfort band pays for them
+## when the fighting starts: stress every battle, one memory per expedition.
+func open_battle_conflicts() -> void:
+	for actor in alive():
+		actor.ignoring = false
+		actor.conflicted = Knobs.conflicted(actor)
+		if not actor.conflicted: continue
+		stress(actor,8)
+		serial += 1
+		remember_important(actor,"COMMAND_CONFLICT",actor.id+1,0,600)
+		message(actor.name+" · 명령과 갈등")
+
+## Snapshot of what auto_stop_reason compares against next round.
+func remember_round() -> void:
+	auto.prev_threats = combat_enemies().size()
+	auto.prev_low = alive().filter(func(a): return a.hp*100/a.max_hp <= int(auto.hp_low)).map(func(a): return a.id)
+	auto.prev_alive = alive().size()
+
+## The first stop event that applies at the start of this round, or "".
+## Every applicable event is considered in AUTO_STOPS priority order, so a
+## disabled or suppressed one never swallows a lower-priority event.
+func auto_stop_reason() -> String:
+	if not floor_mode or phase != "BATTLE": return ""
+	var threats: int = combat_enemies().size()
+	var living: Array = alive()
+	var applies := {
+		"BATTLE_START": threats > 0 and int(auto.prev_threats) == 0,
+		"BATTLE_END": threats == 0 and int(auto.prev_threats) > 0,
+		"DEATH": living.size() < int(auto.prev_alive),
+		"ALLY_LETHAL": living.any(func(a): return Rules.lethal_threat(self,a) >= a.hp),
+		"HP_LOW": living.any(func(a): return a.hp*100/a.max_hp <= int(auto.hp_low) and a.id not in auto.prev_low)}
+	var hard := false
+	for reason in AUTO_STOPS:
+		if not applies[reason]: continue
+		if reason in ["BATTLE_START","BATTLE_END","DEATH"]: hard = true
+		if not bool(auto.stops.get(reason,false)): continue
+		# Repeated alerts are suppressed for three rounds; the hard events never are.
+		if reason in ["ALLY_LETHAL","HP_LOW"] and auto.last_stop.reason == reason and round_number-int(auto.last_stop.round) < 3:
+			continue
+		auto.last_stop = {"reason":reason,"round":round_number}
+		auto.stops_log.append(reason)
+		# The report belongs to one battle: the conflicts are opened first so
+		# that the fresh rows already carry who fights against their orders.
+		if reason == "BATTLE_START": open_battle_conflicts(); reset_battle_stats()
+		battle_stats.stops.append(reason)
+		remember_round()
+		return reason
+	# Nothing was raised, but a hard event happened: consume it so it cannot re-fire.
+	if hard:
+		if applies.BATTLE_START: open_battle_conflicts(); reset_battle_stats()
+		remember_round()
+	for a in alive(): a.conflicted = Knobs.conflicted(a)
+	return ""
 
 func companion_previews() -> Array:
 	var previews: Array = []
@@ -522,6 +682,17 @@ func companion_previews() -> Array:
 		choice.actor = actor.id
 		previews.append(choice)
 	return previews
+
+## Town and safe ground only: a standing order is not rewritten mid-fight.
+## Whether it conflicts with the personality is judged when it matters, not stored.
+func set_knob(index: int, key: String, value: int) -> bool:
+	if not safe_management() or in_combat(): return false
+	if index < 0 or index >= party.size() or party[index].hp <= 0: return false
+	if not Knobs.RANGE.has(key): return false
+	var bounds: Array = Knobs.RANGE[key]
+	if value < int(bounds[0]) or value > int(bounds[1]): return false
+	party[index].knobs[key] = value
+	return true
 
 func set_tactic(index: int, skill: String, policy: String) -> bool:
 	if index < 0 or index >= party.size(): return false
@@ -588,6 +759,7 @@ func roll_part(enemy: Dictionary) -> void:
 	var chance: int = Floor.drop_percent(light) if floor_mode else Abilities.DROP_PERCENT
 	if Hexaco.sample(seed_value,expedition_number*10000+room*100+enemy.id,"essence",100) >= chance: return
 	parts_bag[id] = int(parts_bag.get(id,0))+1
+	battle_stats.drops[id] = int(battle_stats.drops.get(id,0))+1
 	message(Abilities.DEFINITIONS[id].item+" 획득")
 
 func spend_growth(index: int, id: String, stat: bool = false) -> bool:
@@ -678,8 +850,10 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	# 엄호: the protector steps in front. Counted and logged once, and only when
 	# the hit really lands on somebody else.
 	var recipient: Dictionary = protection_recipient(target)
-	if recipient.id != target.id:
-		stats_redirects += 1
+	var covered: bool = recipient.id != target.id
+	if covered:
+		var cover_row: Dictionary = member_stats(recipient.id)
+		if not cover_row.is_empty(): cover_row.covers += 1
 		message("%s %s 대신 맞습니다." % [subject_name(recipient.name),target.name])
 		target = recipient
 	if boss_trial and target.enemy and rooms[room].shield:
@@ -707,6 +881,12 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	if injury.get("accepted",false) and plan.get("condition_before","") != plan.get("condition_after","") and plan.get("condition_after","") in ["DISABLED","SEVERED"]:
 		effect["body_injury"] = true
 		effect["part"] = Body.PART_NAMES.get(plan.get("part_id",""),"신체")
+	var dealt_row: Dictionary = member_stats(source) if not attacker.is_empty() and not attacker.enemy else {}
+	if not dealt_row.is_empty(): dealt_row.dealt += lost
+	var taken_row: Dictionary = member_stats(target.id) if not target.enemy else {}
+	if not taken_row.is_empty():
+		taken_row.taken += lost
+		if covered: taken_row.redirected += lost
 	target.hp -= lost; Body.sync(target)
 	if floor_mode and target.enemy and lost > 0: Floor.MonsterAI.on_hit(self,target)
 	if not target.enemy:
@@ -715,12 +895,15 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 			remember_important(target,"SELF_HARM",target.id+1,source+1,800 if target.hp <= 0 else 750)
 		stress(target, 5 + lost / 2)
 		if target.hp <= 0:
+			if not taken_row.is_empty(): taken_row.downed = true
 			for ally in alive():
 				remember_important(ally,"ALLY_LOST",target.id+1,source+1,900)
 				stress(ally, 22)
 	message("%s %s에게 %d의 피해를 주었습니다.%s" % [subject_name(source_name),target.name,lost," "+subject_name(target.name)+" 쓰러졌습니다." if target.hp <= 0 else ""])
 	if passive_hit: Passives.after_hit(self,target,attacker,form)
-	if target.enemy and target.hp <= 0: roll_part(target)
+	if target.enemy and target.hp <= 0:
+		battle_stats.kills = int(battle_stats.get("kills",0))+1
+		roll_part(target)
 
 func plan_enemies() -> void:
 	if floor_mode: Floor.MonsterAI.plan(self); return

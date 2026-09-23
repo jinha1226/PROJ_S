@@ -11,6 +11,13 @@ const ROLES := {
 	"CASTER":{"label":"술사","range":4,"damage":4},
 }
 const SPELL_DAMAGE := 14
+## Outside the floor (room mode, boss trial) monsters keep the old fixed reach.
+const LEGACY_SIGHT := 9
+
+## What a monster can see is what the party can see: the floor's light sets
+## one radius for both sides, so nothing shoots from beyond the torchlight.
+static func sight(s) -> int:
+	return ceili(s.Floor.sight_radius(s.light)) if s.floor_mode else LEGACY_SIGHT
 
 static func configure(enemy: Dictionary, role: String) -> void:
 	enemy.role = role if ROLES.has(role) else "MELEE"
@@ -38,7 +45,7 @@ static func interrupt(s, enemy: Dictionary) -> void:
 	if id.is_empty(): enemy.cast_cooldown = 3
 	else:
 		enemy.cooldowns[id] = int(Abilities.DEFINITIONS[id].cooldown)
-		s.stats_interrupts += 1
+		s.battle_stats.interrupts = int(s.battle_stats.get("interrupts",0))+1
 	enemy.cast_id = ""; enemy.cast_left = 0
 	s.intents = s.intents.filter(func(i): return i.id != enemy.id)
 	s.message(enemy.name+"의 시전이 끊겼습니다.")
@@ -62,7 +69,8 @@ static func plan(s) -> void:
 static func turn(s, enemy: Dictionary) -> void:
 	var targets: Array = s.alive()
 	if enemy.hp <= 0 or targets.is_empty(): return
-	if targets.any(func(a): return line(s,enemy.pos,a.pos,9)): enemy.alert = true
+	var seen: int = sight(s)
+	if targets.any(func(a): return line(s,enemy.pos,a.pos,seen)): enemy.alert = true
 	if not enemy.get("alert",false): return
 	if targets.all(func(a): return distance(enemy.pos,a.pos) > 15):
 		enemy.alert = false; enemy.charging = false; enemy.cast_id = ""; enemy.cast_left = 0; plan(s); return
@@ -82,7 +90,7 @@ static func turn(s, enemy: Dictionary) -> void:
 	if Abilities.DEFINITIONS.has(part) and int(enemy.cooldowns.get(part,0)) <= 0:
 		targets.sort_custom(func(a,b): return distance(enemy.pos,a.pos) < distance(enemy.pos,b.pos))
 		for target in targets:
-			if not Abilities.legal(s,enemy,part,target.pos): continue
+			if not line(s,enemy.pos,target.pos,seen) or not Abilities.legal(s,enemy,part,target.pos): continue
 			var prep: int = int(Abilities.DEFINITIONS[part].enemy.prep)
 			if prep <= 0: Abilities.execute(s,enemy,part,target.pos); return
 			enemy.charging = true; enemy.cast_id = part; enemy.cast_cell = target.pos; enemy.cast_left = prep
@@ -107,19 +115,30 @@ static func role_turn(s, enemy: Dictionary, targets: Array) -> void:
 		elif choice.kind == "ATTACK": strike(s,enemy,s.at(choice.cell),7)
 		return
 	targets.sort_custom(func(a,b): return distance(enemy.pos,a.pos) < distance(enemy.pos,b.pos))
-	var reach: int = ROLES[role].range
+	var reach: int = mini(int(ROLES[role].range),sight(s))
 	var ready: bool = enemy.get("cast_cooldown",2) <= 0
 	enemy.cast_cooldown = maxi(0,int(enemy.get("cast_cooldown",2))-1)
+	# An archer reloads for a round after every shot: half the volleys, and the
+	# round in which closing the distance is not punished.
+	var reloading: bool = role == "RANGED" and int(enemy.get("reload",0)) > 0
+	if reloading: enemy.reload = int(enemy.reload)-1
 	for target in targets:
 		if s.melee_reach(enemy.pos,target.pos):
 			strike(s,enemy,target,4); return # No endless retreat loop.
 	for target in targets:
+		if reloading: break
 		if not line(s,enemy.pos,target.pos,reach): continue
 		if role == "CASTER" and ready:
 			enemy.charging = true; enemy.cast_id = ""; enemy.cast_cell = target.pos; enemy.cast_left = 1; plan(s)
 			s.message(enemy.name+" · 시전")
-		else: strike(s,enemy,target,ROLES[role].damage)
+		else:
+			strike(s,enemy,target,ROLES[role].damage)
+			if role == "RANGED": enemy.reload = 1
 		return
+	if reloading:
+		s.message(enemy.name+" · 재장전")
+		# Already in a firing spot: stand and reload rather than shuffle.
+		if targets.any(func(a): return line(s,enemy.pos,a.pos,reach)): return
 	# Search a bounded set of firing positions, then use the shared pathfinder.
 	var goals: Array = []
 	var target: Dictionary = targets[0]

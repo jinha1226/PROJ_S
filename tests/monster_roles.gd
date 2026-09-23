@@ -26,8 +26,28 @@ func _initialize() -> void:
 	f = fixture("RANGED"); s = f.s; c = f.c; e = s.enemies[0]; hp = s.party[0].hp
 	AI.turn(s,e)
 	check(e.pos == c+Vector2i(4,0) and s.party[0].hp < hp,"shooter attacks from range")
-	e.pos = c+Vector2i(1,0); hp = s.party[0].hp; AI.turn(s,e)
+	e.pos = c+Vector2i(1,0); hp = s.party[0].hp; e.reload = 0; AI.turn(s,e)
 	check(e.pos == c+Vector2i(1,0) and s.party[0].hp < hp,"adjacent shooter fights instead of endlessly retreating")
+	# Reload: a volley, a round of reloading, a volley.
+	f = fixture("RANGED"); s = f.s; c = f.c; e = s.enemies[0]; hp = s.party[0].hp
+	AI.turn(s,e)
+	check(s.party[0].hp < hp and int(e.reload) == 1,"a shot starts the reload")
+	hp = s.party[0].hp; AI.turn(s,e)
+	check(s.party[0].hp == hp and e.pos == c+Vector2i(4,0) and s.log_lines[-1].ends_with("재장전"),"reloading archer neither shoots nor shuffles")
+	hp = s.party[0].hp; AI.turn(s,e)
+	check(s.party[0].hp < hp,"shoots again after reloading")
+	# Sight is symmetric: what the party cannot see cannot see the party.
+	f = fixture("RANGED"); s = f.s; c = f.c; e = s.enemies[0]
+	e.alert = false; e.pos = c+Vector2i(8,0); s.light = 90; hp = s.party[0].hp
+	AI.turn(s,e)
+	check(not e.alert and s.party[0].hp == hp,"eight cells away in torchlight (sight 6): unseen and silent")
+	e.pos = c+Vector2i(5,0); s.light = 0; AI.turn(s,e)
+	check(not e.alert and s.party[0].hp == hp,"five cells away in the dark (sight 4): still unseen")
+	e.pos = c+Vector2i(4,0); AI.turn(s,e)
+	check(e.alert and s.party[0].hp < hp,"four cells away in the dark: seen, and the arrow flies")
+	f = fixture("RANGED"); s = f.s; c = f.c; e = s.enemies[0]; hp = s.party[0].hp
+	e.pos = c+Vector2i(5,0); s.light = 0; e.alert = true; AI.turn(s,e)
+	check(s.party[0].hp == hp,"an alert archer still cannot shoot beyond the shared sight radius")
 	f = fixture("RANGED"); s = f.s; c = f.c; e = s.enemies[0]; hp = s.party[0].hp
 	s.tile(c+Vector2i(2,0)).terrain = "wall"; AI.turn(s,e)
 	check(s.party[0].hp == hp and e.pos != c+Vector2i(4,0),"blocked shooter repositions without shooting through wall")
