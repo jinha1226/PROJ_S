@@ -27,7 +27,9 @@
      └──[전투 시험]──▶ ArenaSetup(기존)
 ```
 
-- `Session` 단계: `EXPLORE` · `BATTLE` · `CAMP` · `DEFEAT`. `TOWN`·`EVENT`는 삭제한다.
+- `Session` 단계: `EXPLORE` · `BATTLE` · `CAMP` · `DEFEAT`, 그리고 시작 전의 `IDLE`. `TOWN`·`EVENT`는 삭제한다.
+- `IDLE` = **시작 화면의 단계**: 세션 객체는 만들어졌지만 아직 층이 없다(`depart()` 이전의 유일한 단계이며, `depart()`는 `IDLE`에서만 받는다). `on_floor()`는 `EXPLORE`·`BATTLE`만 참이므로 `IDLE`에서는 층 조작·야영·하강이 전부 거부된다. `Session.new_run(seed)`는 생성 직후 `depart()`까지 하므로 화면에서 `IDLE`이 보이는 일은 없고, 테스트와 픽스처만 이 단계를 관찰한다.
+- `s.simulation_arena: bool` = **이 세션이 Run이 아니라 전투 시험장**이라는 표시(§3의 아레나 화면, `sim/encounter_runner`의 배치 실험). `Session.arena_test`와 `encounter_runner`만 참으로 둔다. 참이면 `Floor.apply`가 곧바로 `BATTLE`로 들어가고 `Floor.observe`가 단계를 `EXPLORE`↔`BATTLE`로 다시 판정하지 않는다 — 아레나는 처음부터 끝까지 전투이고, 적을 다 보지 못했다고 탐험으로 돌아가서는 안 되기 때문이다. 실제 Run에서는 항상 거짓이다.
 - Run 시작: `Session.new_run(seed)`. 주인공 1명(HP 55, 스트레스 0, 성격 `Hexaco.generated(seed, 1)`), 가방에 밀치기·엄호 요령(`STARTING_PARTS`), 슬롯 빈칸, 식량 2. 1층을 생성하고 입구에 선다.
 - 층 번호 `s.depth`(1부터). `expedition_number`는 삭제하고 기억 기록·실수 시드에는 `depth`를 쓴다(`Hexaco.sample(seed, depth*100000 + round*100 + id, …)`).
 - Run 종료: 주인공(`party[0]`) 사망 즉시 `DEFEAT`. 동료만 죽으면 계속. 최종 목표(보스·유물)는 이번 범위 밖(§9).
@@ -81,6 +83,7 @@
 - 필수 템플릿 `relic_vault`를 **`descent`**(내려가는 길)로 교체: 방 안에 특징 `{"kind":"stairs"}` 1칸. `entry_camp`·`sealed_treasury`는 유지(`sealed_treasury`의 보상은 파츠 궤짝).
 - 계단 인접 탭 → 팝업 "n+1층으로 내려간다 / 아직" → 내려가면 `s.descend()`: `depth += 1`, 새 층 생성(시드 `seed + depth*7919`), 파티는 새 입구에, 적·조사물·NPC 배치는 새로, HP·스트레스·식량·가방·기억은 유지. 되돌아올 수 없다(입구 특징은 장식).
 - 테마: `depth 1` = `F1_RUINS`, `depth 2` = `F2_MINES`, `depth ≥ 3` = 두 테마 번갈아(홀수 RUINS, 짝수 MINES) + 몬스터 예산 ×(1 + 0.25·(depth − 2)) 반올림. `Objective`(유물) 코드는 삭제.
+- `depth ≥ 3`에서는 한 무리의 최대 인원도 함께 오른다: `theme.monsters.max_members = min(4, 2 + depth/3)`(정수 나눗셈). 예산만 키우면 깊은 층이 **같은 수의 더 센 몬스터**가 되어 태세·엄호의 의미가 줄기 때문에, 깊이가 늘리는 것은 개체의 강함이 아니라 **무리의 크기**다. 3·4·5층은 3인 무리, 6층부터 4인 무리가 상한이다. 튜닝은 `floor_themes.json`의 예산 값으로 하고 이 식은 고정한다.
 
 ### 4.2 파티 기준 층 크기
 
