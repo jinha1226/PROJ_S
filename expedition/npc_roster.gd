@@ -25,6 +25,11 @@ static func generate(s) -> Array:
 		var pick: int = Hexaco.sample(s.seed_value,id,"npc_name",pool.size())
 		var actor: Dictionary = s.make_actor(id,pool.pop_at(pick),false)
 		actor.profile = Hexaco.generated(s.seed_value,id)
+		var weapon := "sword"
+		if actor.profile.value("X") >= 600: weapon = "axe" if i % 2 == 0 else "mace"
+		elif actor.profile.value("C") >= 600: weapon = "spear" if i % 2 == 0 else "bow"
+		actor.gear.weapon = {"type":weapon,"enchant":0}
+		actor.gear.armour = {"type":"robe","enchant":0}
 		actor.stance = Stances.default_stance(actor.profile)
 		actor.knobs = s.Knobs.defaults(actor.profile)
 		actor.stress = Hexaco.sample(s.seed_value,id,"npc_stress",41)

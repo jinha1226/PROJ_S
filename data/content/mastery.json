@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "milestones": {
+    "sword": {
+      "3": {"effect_id": "deep_cut", "name": "깊은 상처"},
+      "5": {"effect_id": "riposte", "name": "반격"},
+      "7": {"effect_id": "combo", "name": "연계"},
+      "10": {"effect_id": "swordmaster", "name": "검의 달인"}
+    },
+    "fire": {
+      "3": {"effect_id": "ember", "name": "잔불"},
+      "5": {"effect_id": "flare", "name": "섬광"},
+      "7": {"effect_id": "heat", "name": "열 관통"},
+      "10": {"effect_id": "inferno", "name": "지옥불"}
+    }
+  },
+  "fusions": {
+    "sword_fire": {"main": "sword", "sub": "fire", "main_rank": 5, "sub_rank": 3},
+    "fire_sword": {"main": "fire", "sub": "sword", "main_rank": 5, "sub_rank": 3}
+  }
+}

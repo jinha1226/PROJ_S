@@ -1,0 +1,329 @@
+{
+  "version": 1,
+  "weapons": {
+    "sword": {
+      "name": "장검",
+      "damage": 10,
+      "delay": 120,
+      "axis": "melee",
+      "range": 1,
+      "trait": "balanced"
+    },
+    "axe": {
+      "name": "도끼",
+      "damage": 11,
+      "delay": 140,
+      "axis": "melee",
+      "range": 1,
+      "trait": "cleave"
+    },
+    "mace": {
+      "name": "철퇴",
+      "damage": 12,
+      "delay": 145,
+      "axis": "melee",
+      "range": 1,
+      "trait": "pierce"
+    },
+    "spear": {
+      "name": "창",
+      "damage": 8,
+      "delay": 115,
+      "axis": "melee",
+      "range": 2,
+      "trait": "reach"
+    },
+    "bow": {
+      "name": "활",
+      "damage": 9,
+      "delay": 125,
+      "axis": "ranged",
+      "range": 6,
+      "trait": "ranged"
+    },
+    "dagger": {
+      "name": "단검",
+      "damage": 6,
+      "delay": 75,
+      "axis": "melee",
+      "range": 1,
+      "trait": "stab"
+    },
+    "staff": {
+      "name": "지팡이",
+      "damage": 7,
+      "delay": 110,
+      "axis": "melee",
+      "range": 1,
+      "trait": "focus"
+    }
+  },
+  "armours": {
+    "robe": {
+      "name": "로브",
+      "ac": 1,
+      "ev_penalty": 0,
+      "enc": 0
+    },
+    "leather": {
+      "name": "가죽옷",
+      "ac": 3,
+      "ev_penalty": 1,
+      "enc": 2
+    },
+    "mail": {
+      "name": "사슬갑옷",
+      "ac": 6,
+      "ev_penalty": 3,
+      "enc": 7
+    },
+    "plate": {
+      "name": "판금",
+      "ac": 10,
+      "ev_penalty": 6,
+      "enc": 13
+    }
+  },
+  "rings": {
+    "fire": {
+      "name": "화염 저항 반지",
+      "stat": "fire",
+      "value": 60
+    },
+    "ice": {
+      "name": "냉기 저항 반지",
+      "stat": "ice",
+      "value": 60
+    },
+    "poison": {
+      "name": "독 저항 반지",
+      "stat": "poison",
+      "value": 100
+    },
+    "air": {
+      "name": "전기 저항 반지",
+      "stat": "air",
+      "value": 60
+    },
+    "power": {
+      "name": "마력 반지",
+      "stat": "power",
+      "value": 5
+    },
+    "ev": {
+      "name": "회피 반지",
+      "stat": "ev",
+      "value": 4
+    }
+  },
+  "spells": {
+    "bolt": {
+      "name": "화염탄",
+      "school": "fire",
+      "level": 1,
+      "mp": 3,
+      "range": 6,
+      "power": 16,
+      "effect": "bolt",
+      "note": "적 1체에 화염 피해"
+    },
+    "blast": {
+      "name": "화염 폭발",
+      "school": "fire",
+      "level": 3,
+      "mp": 6,
+      "range": 5,
+      "power": 18,
+      "effect": "blast",
+      "note": "반경 1 · 아군 피해 · 화염 지대"
+    },
+    "cone": {
+      "name": "서리 부채",
+      "school": "ice",
+      "level": 2,
+      "mp": 4,
+      "range": 4,
+      "power": 13,
+      "effect": "cone",
+      "note": "전방 부채꼴 피해와 둔화 · 물을 얼림"
+    },
+    "cloud": {
+      "name": "독 안개",
+      "school": "hex",
+      "level": 2,
+      "mp": 4,
+      "range": 5,
+      "power": 3,
+      "effect": "cloud",
+      "note": "반경 1 독 지대 · 아군도 중독"
+    },
+    "confuse": {
+      "name": "혼란",
+      "school": "hex",
+      "level": 2,
+      "mp": 4,
+      "range": 5,
+      "power": 0,
+      "effect": "confuse",
+      "note": "의지 판정 후 3턴 무작위 행동"
+    },
+    "blink": {
+      "name": "순간이동",
+      "school": "air",
+      "level": 2,
+      "mp": 4,
+      "range": 4,
+      "power": 0,
+      "effect": "blink",
+      "note": "시야 내 안전한 무작위 빈칸 · 선택 착지 불가"
+    },
+    "passwall": {
+      "name": "벽 통과",
+      "school": "air",
+      "level": 3,
+      "mp": 5,
+      "range": 3,
+      "power": 0,
+      "effect": "passwall",
+      "note": "얇은 벽 너머 선택한 칸 · 2턴 비용"
+    },
+    "ward": {
+      "name": "서리 갑옷",
+      "school": "ice",
+      "level": 2,
+      "mp": 4,
+      "range": 0,
+      "power": 6,
+      "effect": "ward",
+      "note": "4턴 AC +6 · 화염에 일찍 해제"
+    },
+    "hound": {
+      "name": "추적령",
+      "school": "summon",
+      "level": 2,
+      "mp": 5,
+      "range": 4,
+      "power": 7,
+      "effect": "hound",
+      "note": "6턴 이동·근접 소환수"
+    },
+    "turret": {
+      "name": "고정 포탑",
+      "school": "summon",
+      "level": 3,
+      "mp": 6,
+      "range": 4,
+      "power": 9,
+      "effect": "turret",
+      "note": "6턴 고정 원거리 소환수 · 길목 점유"
+    },
+    "ignite": {
+      "name": "독 점화",
+      "school": "fire",
+      "level": 3,
+      "mp": 5,
+      "range": 6,
+      "power": 16,
+      "effect": "ignite",
+      "note": "독 상태/안개를 화염으로 전환 · 아군 위험"
+    },
+    "mend": {
+      "name": "생명 전환",
+      "school": "hex",
+      "level": 2,
+      "mp": 6,
+      "range": 0,
+      "power": 12,
+      "effect": "mend",
+      "note": "HP 회복 · 3턴 느려짐"
+    }
+  },
+  "species": {
+    "human": {
+      "name": "인간",
+      "hp": 55,
+      "mp": 18,
+      "str": 12,
+      "int": 12,
+      "dex": 12,
+      "apt": {},
+      "note": "균형 · 모든 훈련에 적응"
+    },
+    "dwarf": {
+      "name": "드워프",
+      "hp": 86,
+      "mp": 12,
+      "str": 17,
+      "int": 8,
+      "dex": 9,
+      "apt": {
+        "melee": 130,
+        "defense": 140,
+        "fire": 70,
+        "air": 70,
+        "summon": 70
+      },
+      "note": "중갑 적응 · 방어 훈련 우수, 마법 훈련 느림"
+    },
+    "elf": {
+      "name": "엘프",
+      "hp": 56,
+      "mp": 26,
+      "str": 8,
+      "int": 17,
+      "dex": 14,
+      "apt": {
+        "melee": 75,
+        "defense": 70,
+        "fire": 140,
+        "ice": 140,
+        "air": 140,
+        "hex": 130,
+        "summon": 130
+      },
+      "note": "마법 적응 · 낮은 HP, 판금 장착 불가"
+    }
+  },
+  "move_cost": {
+    "stone": 100,
+    "rubble": 120,
+    "water": 140,
+    "wood": 100,
+    "metal": 100
+  },
+  "loot": {
+    "gear_by_depth": {
+      "1": [
+        "dagger",
+        "robe"
+      ],
+      "2": [
+        "sword",
+        "spear",
+        "leather"
+      ],
+      "3": [
+        "axe",
+        "mace",
+        "bow",
+        "leather",
+        "ring:poison"
+      ],
+      "5": [
+        "mail",
+        "ring:fire",
+        "ring:ice",
+        "staff"
+      ],
+      "7": [
+        "plate",
+        "ring:power",
+        "ring:ev"
+      ]
+    }
+  },
+  "kill_xp": {
+    "base": 18,
+    "per_depth": 8
+  }
+}

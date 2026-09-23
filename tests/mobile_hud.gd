@@ -29,11 +29,11 @@ func run() -> void:
 		for frame in range(3): await process_frame
 		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"layout fits %s" % viewport)
 		check(scene.minimap != null and scene.minimap.is_visible_in_tree(),"minimap visible at %s" % viewport)
-		for id in ["Location","FoodLabel","ExpeditionMenu","CampButton","AutoToggle","SpeedToggle"]:
+		for id in ["Location","FoodLabel","ExpeditionMenu","CampButton","Spell0","Spell1","Spell2"]:
 			var control: Control = scene.find_child(id,true,false)
 			check(control != null and scene.get_global_rect().encloses(control.get_global_rect()),"%s fits %s" % [id,viewport])
 		check(scene.portrait_buttons.size() == 1 and scene.portrait_buttons[0].find_children("*","TextureRect",true,false).is_empty(),"solo card has no portrait")
-		check(scene.skill_buttons.is_empty(),"auto battle has no manual skill row")
+		check(scene.skill_buttons.is_empty(),"prepared spells have their own row")
 	var header: Node = scene.find_child("TopHUD",true,false)
 	check(header.get_children().slice(1).map(func(c): return str(c.name)) == ["Location","FoodLabel","ExpeditionMenu"],"floor header order")
 	scene.show_menu(); await process_frame
@@ -81,7 +81,7 @@ func run() -> void:
 func touch_targets(scene) -> void:
 	root.size = Vector2i(390,844); scene.refresh()
 	for frame in range(3): await process_frame
-	for id in ["ExpeditionMenu","CampButton","AutoToggle","SpeedToggle","RetreatToggle","Attack","Wait","RecentLog"]:
+	for id in ["ExpeditionMenu","CampButton","Spell0","Spell1","Spell2","Attack","Wait","RecentLog"]:
 		var control: Control = scene.find_child(id,true,false)
 		check(control != null and control.size.y >= 36,"%s is a touchable height" % id)
 		check(control != null and scene.get_global_rect().encloses(control.get_global_rect()),"%s stays on screen" % id)
@@ -156,10 +156,10 @@ func waiting_and_auto(scene, s) -> void:
 	var foe: Dictionary = s.enemies[0]
 	foe.hp = 20; foe.max_hp = 20; foe.pos = hero.pos+Vector2i.RIGHT; s.floor_state.observe(s)
 	scene.refresh(); await process_frame
-	check(scene.find_child("AutoToggle",true,false).text == "▶ 전투","a seen foe leaves the run stopped")
+	check(scene.find_child("AutoToggle",true,false) == null and scene.find_child("SpellBar",true,false) != null,"a seen foe remains under manual control")
 	before_round = s.round_number; food = s.food
-	Fixture.fight_round(s); scene.refresh(); await process_frame
-	check(s.round_number >= before_round and s.food == food,"an auto round costs no food")
+	s.submit("WAIT",hero.pos); scene.refresh(); await process_frame
+	check(s.round_number >= before_round and s.food == food,"a manual turn costs no food")
 	foe.hp = 0; s.floor_state.observe(s); scene.refresh(); await process_frame
 
 ## The toast says its piece and goes.

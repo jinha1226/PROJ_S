@@ -1,7 +1,9 @@
 # Model B 전투 이식 설계 — DCSS식 주인공 + 자율 동료
 
-작성일: 2026-09-25 · 상태: 사용자 검토 대기 · 기준 코드: `new` main `1c17779`(Plan A·B 병합) · 원본: 부모 저장소 `47d46b8`의 `game/crawl/{world,usage_world,progression_data}.gd`, `data/content/crawl.json`
+작성일: 2026-09-25 · 상태: 첫 이식 구현 · 기준 코드: `new` main `1c17779`(Plan A·B 병합) · 원본: 부모 저장소 `47d46b8`의 `game/crawl/{world,usage_world,progression_data}.gd`, `data/content/crawl.json`
 대체: `docs/superpowers/plans/2026-09-23-model-b-combat-mastery-ui.md`(Codex 초안)의 원칙은 계승하되, "새로 구축"이 아니라 **원본 함수를 옮겨 붙이는 이식표**로 다시 쓴다.
+
+**구현 단계 조정:** 새 Run과 아레나의 게임플레이 경로는 수동 조작과 tick 전투를 사용한다. 기존 자동전투·4축 투자 코드는 과거 계약 테스트와 시뮬레이터의 호환 경로에만 남긴다. 완전 삭제와 해당 테스트의 `submit` 이주는 다음 정리 단계다. 소모품과 조사물 입력은 현재 `Session.use_supply`·`ContinuousFloor.interact`가 처리하며, 전투 중 시간 경과는 내부에서 `Scheduler.advance`를 호출한다. 이 단계의 수치 게이트는 합격선이 아닌 기준선이다.
 
 ## 0. 결정 사항
 
@@ -48,13 +50,14 @@
 
 - 느림/빠름 상태: MOVE 외 비용 ×3/2, ×2/3(원본).
 - **동료·NPC·몬스터**의 행동 비용도 같은 표를 쓴다. 동료는 `Tactics.choose`가 고른 `{kind, cell}`을 `Scheduler.act`가 `submit` 없이 실행하고 그 비용만큼 `ready_at`을 민다. 몬스터는 `MonsterAI.turn` 안의 이동/공격/시전에 비용을 붙인다(현행은 라운드당 1행동 = 100 tick 고정; 종별 `speed`가 이동 비용).
-- **위험 경고**: 주인공 행동의 비용 안에 어떤 적이 두 번 행동할 수 있으면(`enemy.ready_at + enemy_cost·2 ≤ time + cost`) 미리보기에 "느린 행동: OO이 두 번 움직입니다"를 띄운다(확정 전 표시, 자동 취소 없음).
+- **위험 경고**: 주인공 행동 구간 `[time,time+cost)` 안에 적의 첫 행동과 두 번째 행동이 모두 들어오면(`enemy.ready_at + enemy_cost < time + cost`) 미리보기에 "느린 행동: OO이 두 번 움직입니다"를 띄운다(확정 전 표시, 자동 취소 없음). 새 적의 첫 `ready_at`은 `time+speed`; 잠에서 깬 NPC는 과거의 `ready_at`을 현재 시각으로 올린다.
 - `phase`: EXPLORE/BATTLE/CAMP/DEFEAT/IDLE 유지. BATTLE은 파티 시야에 적이 있을 때(현행 `observe`가 정함). 자동 이동(탭 경로·자동 탐험)은 EXPLORE에서만 이어지고, 시야에 적·NPC·조사물·계단이 들어온 **정확한 행동 뒤** 멈춘다. 중단 뒤 추가 자동 행동 0.
 
 ## 3. 스케줄러와 AI의 접합
 
 ```
 Session.submit(kind, target, value):
+  입력 검증; 현재 tick에 이미 준비된 환경·NPC·적 행동을 먼저 해소(환경 → actor id)
   cost ← §2 표
   실행(현행 act_as 경로; ATTACK은 CombatRules.attack)
   Scheduler.advance(self, cost)
@@ -75,7 +78,7 @@ Scheduler.act(s, actor):
 
 - **주인공의 한 행동 = 하나의 "구간"**. `s.turn_serial`(주인공 행동 번호)이 옛 `round_number`를 대체한다. 그 구간에서 처음 준비되는 동료는 한 번만 판단한다(무기가 빠르면 두 번 준비될 수 있고, 그때는 두 번 판단한다 — DCSS와 같다).
 - `NpcAI.sense`는 구간마다 한 번(`advance` 끝). 소음 `s.noise`는 구간 시작에 비우고 구간 동안 쌓인다(현행 "sense 전부 → clear → turn"을 "advance 끝: sense 전부 → clear"로).
-- `Kernel.advance`의 동시각 우선순위(환경 > 액터 id 오름차순, 주인공은 자기 행동 끝에서 마지막)를 유지하고 시드 재현 검사에 넣는다.
+- `Kernel.advance`의 동시각 우선순위(환경 > 액터 id 오름차순, 주인공은 준비된 행동을 모두 처리한 뒤 행동)를 유지한다. 구간 `[time,end)`의 끝 시각에 준비된 행동은 다음 유효 입력 직전에 `flush_ready`로 해소한다. 무효 입력은 시간·행동을 진행하지 않는다.
 
 ## 4. 라운드 → tick 재정의
 
@@ -97,7 +100,7 @@ Scheduler.act(s, actor):
 
 ### 5.1 축과 화면
 
-무기 `sword spear mace axe bow` · 마법 `fire ice air hex summon`. 캐릭터별 `skill_xp[axis]`, `rank 0~10`, `unlocked[key]`. 화면은 Codex 초안 §4의 5×2 그리드 계약을 그대로 쓴다(`MasteryGrid`, 아이콘 68px, 탭 → Lv1~10 상세, `[획득]/[다음]/[잠김]`, 효과 없는 보상은 표시 안 함, `+투자` 버튼 없음).
+무기 `sword spear mace axe bow` · 마법 `fire ice air hex summon`. 캐릭터별 `skill_xp[axis]`, `rank 0~10`, `unlocked[key]`. 화면은 Codex 초안 §4의 5×2 그리드 계약을 그대로 쓴다(`MasteryGrid`, 아이콘 68px, 탭 → Lv1~10 상세, `[획득]/[다음]/[잠김]`, `+투자` 버튼 없음). 모든 레벨에 기본 수치 보정을 표시하고, 효과 ID가 없는 고유 보상 행만 숨긴다. 따라서 첫 구현에서 고유 효과가 없는 여덟 축도 빈 상세 화면이 되지 않는다.
 
 ### 5.2 XP
 

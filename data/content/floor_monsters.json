@@ -15,7 +15,11 @@
         "MELEE"
       ],
       "band": null,
-      "beast": true
+      "beast": true,
+      "speed": 110,
+      "ac": 0,
+      "ev": 3,
+      "res": {}
     },
     {
       "species_id": "dcss_frilled_lizard",
@@ -30,7 +34,11 @@
         "MELEE"
       ],
       "band": null,
-      "beast": true
+      "beast": true,
+      "speed": 110,
+      "ac": 0,
+      "ev": 3,
+      "res": {}
     },
     {
       "species_id": "kobold",
@@ -45,7 +53,11 @@
         "MELEE",
         "RANGED"
       ],
-      "band": null
+      "band": null,
+      "speed": 105,
+      "ac": 0,
+      "ev": 5,
+      "res": {}
     },
     {
       "species_id": "goblin",
@@ -61,7 +73,11 @@
         "RANGED",
         "CASTER"
       ],
-      "band": null
+      "band": null,
+      "speed": 100,
+      "ac": 1,
+      "ev": 4,
+      "res": {}
     },
     {
       "species_id": "dcss_hobgoblin",
@@ -75,7 +91,11 @@
       "roles": [
         "MELEE"
       ],
-      "band": null
+      "band": null,
+      "speed": 100,
+      "ac": 2,
+      "ev": 3,
+      "res": {}
     },
     {
       "species_id": "dcss_orc",
@@ -91,7 +111,11 @@
         "RANGED",
         "CASTER"
       ],
-      "band": null
+      "band": null,
+      "speed": 120,
+      "ac": 4,
+      "ev": 2,
+      "res": {}
     },
     {
       "species_id": "dcss_gnoll",
@@ -114,7 +138,11 @@
           2,
           2
         ]
-      }
+      },
+      "speed": 110,
+      "ac": 2,
+      "ev": 3,
+      "res": {}
     },
     {
       "species_id": "dcss_river_rat",
@@ -129,7 +157,11 @@
         "MELEE"
       ],
       "band": null,
-      "beast": true
+      "beast": true,
+      "speed": 100,
+      "ac": 0,
+      "ev": 3,
+      "res": {}
     }
   ]
 }

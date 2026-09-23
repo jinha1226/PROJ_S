@@ -40,7 +40,7 @@ static func chance(s, npc: Dictionary) -> int:
 
 static func dialogue(s, npc: Dictionary) -> Dictionary:
 	var full: bool = s.alive().size() >= MAX_PARTY
-	var waiting: bool = s.round_number < int(npc.get("declined_until",-99))
+	var waiting: bool = s.npc_clock() < int(npc.get("declined_until",-99))
 	var line: String = "자리가 없군" if full else ("고맙다. 같이 가지." if aided(s,npc) else "지금은 아니야" if waiting else "무슨 일이지?")
 	return {"line":line,"can_propose":not full and not waiting,"can_aid":can_aid(s,npc).is_empty(),"aided":aided(s,npc)}
 
@@ -51,12 +51,12 @@ static func propose(s, npc: Dictionary) -> Dictionary:
 	var d := dialogue(s,npc)
 	if not d.can_propose: return {"accepted":false,"line":d.line}
 	if not aided(s,npc):
-		var roll: int = s.Hexaco.sample(s.seed_value,s.NpcRoster.depth(s)*100000+s.round_number*100+npc.id,"recruit",100)
+		var roll: int = s.Hexaco.sample(s.seed_value,s.NpcRoster.depth(s)*100000+(s.turn_serial if s.manual_mode else s.round_number)*100+npc.id,"recruit",100)
 		if roll >= chance(s,npc):
 			s.serial += 1
 			s.remember_plain(npc,"DECLINED_PLAYER",hero(s),hero(s),300)
 			s.remember_plain(s.party[0],"DECLINED_PLAYER",npc.id+1,npc.id+1,300)
-			npc.declined_until = s.round_number+COOLDOWN
+			npc.declined_until = s.npc_clock()+s.npc_cooldown()
 			return {"accepted":false,"line":"됐어."}
 	return recruit(s,npc)
 

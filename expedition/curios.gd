@@ -42,7 +42,21 @@ static func resolve(s, point: Vector2i, option: String) -> bool:
 	if outcome.get("item",false):
 		if bonus < 50 and not part_ids.is_empty(): s.grant_part(part_ids[s.Hexaco.sample(s.seed_value,key,"curio_part",part_ids.size())])
 		else: s.grant_supply(s.Hexaco.sample(s.seed_value,key,"curio_supply",s.supplies.size()))
+	if int(outcome.get("spellbook_chance",0)) > 0 and s.Hexaco.sample(s.seed_value,key,"spellbook",100) < int(outcome.spellbook_chance):
+		var books: Array = s.Spells.IMPLEMENTED
+		s.learn_spell(0,str(books[s.Hexaco.sample(s.seed_value,key,"spellbook_id",books.size())]))
+	if int(outcome.get("gear_chance",0)) > 0 and s.Hexaco.sample(s.seed_value,key,"gear",100) < int(outcome.gear_chance):
+		var by_depth: Dictionary = s.CombatStats.content.loot.gear_by_depth
+		var tier := 1
+		for level in by_depth:
+			if int(level) <= s.depth: tier = maxi(tier,int(level))
+		var options: Array = by_depth[str(tier)]
+		var id: String = str(options[s.Hexaco.sample(s.seed_value,key,"gear_id",options.size())])
+		s.grant_gear({"type":id.trim_prefix("ring:")})
 	if got_food > 0: s.message("식량 %d 획득" % got_food)
 	s.score += 5
-	actor.ap -= 1; s.check_battle_end(); s.finish_player_action()
+	actor.ap -= 1; s.check_battle_end()
+	if s.manual_mode:
+		actor.ap = 1; s.Scheduler.advance(s,100)
+	else: s.finish_player_action()
 	return true

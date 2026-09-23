@@ -64,10 +64,16 @@ func scene() -> void:
 	scene.find_child("ArenaStart",true,false).pressed.emit()
 	for frame in range(4): await process_frame
 	check(scene.session != null and scene.session.in_combat(),"start swaps in an arena session")
-	check(scene.find_child("AutoToggle",true,false) != null and scene.find_child("StopBanner",true,false).text.begins_with("전투 시작"),"battle HUD with the start banner")
-	scene.session.auto.running = true
+	check(scene.find_child("AutoToggle",true,false) == null and scene.find_child("SpellBar",true,false) != null,"manual arena HUD with prepared spells")
 	var guard := 0
-	while scene.session.in_combat() and guard < 80: scene.auto_tick(); guard += 1
+	while scene.session.in_combat() and guard < 80:
+		var hero: Dictionary = scene.session.party[0]
+		hero.ap = 1
+		var choice: Dictionary = scene.session.Tactics.choose(scene.session,hero)
+		if not scene.session.submit(str(choice.get("kind","WAIT")),choice.get("cell",hero.pos)):
+			scene.session.submit("WAIT",hero.pos)
+		guard += 1
+	scene.report_battle()
 	for frame in range(4): await process_frame
 	var report = scene.find_child("BattleReport",true,false)
 	check(report != null and report.visible,"report at the end")

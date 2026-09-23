@@ -70,7 +70,7 @@ static func mistake_kind(actor: Dictionary) -> String:
 ## Deterministic roll: one answer per expedition, round and member.
 static func mistaken(s, actor: Dictionary) -> bool:
 	if s.mistake_override.has(actor.id): return bool(s.mistake_override[actor.id])
-	return s.Hexaco.sample(s.seed_value,s.depth*100000+s.round_number*100+actor.id,"mistake",100) < mistake_chance(actor)
+	return s.Hexaco.sample(s.seed_value,s.depth*100000+(s.turn_serial if s.manual_mode else s.round_number)*100+actor.id,"mistake",100) < mistake_chance(actor)
 
 ## The party's shared target: the attack order, else whoever a charger is on,
 ## else the nearest visible foe.

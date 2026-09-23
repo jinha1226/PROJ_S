@@ -79,7 +79,7 @@ static func threat_after(s, member: Dictionary, pos_override: Dictionary, hp_ove
 	var worst := 0
 	var bonus := 0
 	for intent in intents:
-		if intent.cell == pos: worst = maxi(worst,int(intent.damage)+bonus)
+		if intent.cell == pos and (not s.manual_mode or int(intent.get("resolve_at",s.time)) <= s.time+100): worst = maxi(worst,int(intent.damage)+bonus)
 	var roles: Dictionary = s.Floor.MonsterAI.ROLES
 	for e in s.combat_enemies():
 		if int(hp_override.get(e.id,e.hp)) <= 0 or int(e.get("cast_recovery",0)) > 0: continue

@@ -66,7 +66,7 @@ static func plan(s) -> void:
 		# An area part announces every cell it will hit, so threat assessment and
 		# the board see the whole ring, not just its centre.
 		var cells: Array = Abilities.cells(s,enemy,id,enemy.cast_cell) if Abilities.DEFINITIONS.has(id) else [enemy.cast_cell]
-		for cell in cells: s.intents.append({"id":enemy.id,"cell":cell,"damage":amount,"kind":id})
+		for cell in cells: s.intents.append({"id":enemy.id,"cell":cell,"damage":amount,"kind":id,"resolve_at":int(enemy.get("resolve_at",s.time+int(enemy.cast_left)*100))})
 
 static func turn(s, enemy: Dictionary) -> void:
 	var targets: Array = s.friends()
@@ -82,7 +82,10 @@ static func turn(s, enemy: Dictionary) -> void:
 	var part: String = str(enemy.get("part_id",""))
 	if Abilities.DEFINITIONS.has(part): enemy.cooldowns[part] = maxi(0,int(enemy.cooldowns.get(part,0))-1)
 	if enemy.get("charging",false):
-		enemy.cast_left = int(enemy.get("cast_left",1))-1
+		if s.manual_mode:
+			if s.time < int(enemy.get("resolve_at",s.time)): return
+			enemy.cast_left = 0
+		else: enemy.cast_left = int(enemy.get("cast_left",1))-1
 		if enemy.cast_left > 0: plan(s); return
 		var id: String = str(enemy.get("cast_id",""))
 		var cell: Vector2i = enemy.cast_cell
@@ -97,6 +100,7 @@ static func turn(s, enemy: Dictionary) -> void:
 			var prep: int = int(Abilities.DEFINITIONS[part].enemy.prep)
 			if prep <= 0: Abilities.execute(s,enemy,part,target.pos); return
 			enemy.charging = true; enemy.cast_id = part; enemy.cast_cell = target.pos; enemy.cast_left = prep
+			enemy.resolve_at = s.time+prep*100
 			plan(s); s.message("%s · %s 준비" % [enemy.name,Abilities.DEFINITIONS[part].name])
 			return
 	role_turn(s,enemy,targets)
@@ -132,7 +136,7 @@ static func role_turn(s, enemy: Dictionary, targets: Array) -> void:
 		if reloading: break
 		if not line(s,enemy.pos,target.pos,reach): continue
 		if role == "CASTER" and ready:
-			enemy.charging = true; enemy.cast_id = ""; enemy.cast_cell = target.pos; enemy.cast_left = 1; plan(s)
+			enemy.charging = true; enemy.cast_id = ""; enemy.cast_cell = target.pos; enemy.cast_left = 1; enemy.resolve_at = s.time+100; plan(s)
 			s.message(enemy.name+" · 시전")
 		else:
 			strike(s,enemy,target,ROLES[role].damage)
@@ -156,4 +160,7 @@ static func role_turn(s, enemy: Dictionary, targets: Array) -> void:
 static func strike(s, enemy: Dictionary, target: Dictionary, amount: int) -> void:
 	if target.is_empty() or target.enemy: return
 	s.enemy_attack_effect(enemy,[target.pos])
-	s.damage(target,amount,enemy.id,"ELECTRIC" if enemy.get("role","") == "CASTER" else "IMPACT")
+	if s.manual_mode:
+		enemy.power = amount
+		s.CombatRules.attack(s,enemy,target)
+	else: s.damage(target,amount,enemy.id,"ELECTRIC" if enemy.get("role","") == "CASTER" else "IMPACT")

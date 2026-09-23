@@ -89,6 +89,7 @@ func floor_actions() -> void:
 	check(not s.act("ATTACK",foe.pos) and hero.ap == ap,"an out-of-reach attack is refused")
 	check(s.act("MOVE",center+Vector2i(1,0)) and hero.pos == center+Vector2i(1,0),"a legal step lands")
 	hero.ap = 2; hero.pos = center; foe.pos = center+Vector2i(1,0)
+	foe.ready_at = s.time+1000
 	s.floor_state.observe(s); s.plan_enemies()
 	check(s.act("PUSH",foe.pos) and foe.pos == center+Vector2i(2,0),"push shoves the foe one cell away")
 	check(s.intents.all(func(row): return row.id != foe.id),"push cancels whatever the foe had planned")

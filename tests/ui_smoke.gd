@@ -29,7 +29,7 @@ func run() -> void:
 	for node in scene.item_buttons:
 		check(node.size.x > 0 and node.size.y >= 44,"item touch target")
 	check(scene.item_buttons.size() == 5,"five supplies")
-	check(scene.find_child("AutoToggle",true,false) != null,"auto combat control")
+	check(scene.find_child("AutoToggle",true,false) == null and scene.find_child("SpellBar",true,false) != null,"manual combat and prepared spells")
 	var old_depth: int = scene.session.depth
 	var stairs: Vector2i = scene.session.floor_state.layout.stairs
 	for foe in scene.session.enemies: foe.hp = 0

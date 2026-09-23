@@ -1,7 +1,5 @@
 # Model B 전투 이식 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** 오토배틀러를 버리고 DCSS식 주인공 수동 조작 + tick 시간 + Model B 전투 수학·사용 기반 숙련을 하강 Run에 이식한다. 동료·NPC는 기존 AI로 자기 차례에 스스로 움직인다.
 
 **Architecture:** 원본(`/mnt/d/SS` 커밋 `47d46b8`, `game/crawl/*.gd`, `data/content/crawl.json`)의 함수를 파일 단위로 옮겨 `Session` 계약에 붙인다. 새로 쓰는 것은 스케줄러 글루(`Kernel.advance` 재사용), `Session.submit`, 파티 전원 적용, 숙련 5×2 화면뿐이다. 원본을 읽는 명령: `git -C /mnt/d/SS show 47d46b8:game/crawl/world.gd` (읽기 전용; `/mnt/d/SS`와 `/mnt/d/SS/new` 작업 트리는 수정하지 않는다).
@@ -9,6 +7,12 @@
 **Tech Stack:** Godot 4.6 GDScript, 헤드리스 테스트(`godot --headless --path . --script res://tests/<name>.gd`), 임포트 검사(`godot --headless --path . --editor --import --quit`), CI 목록 `.github/workflows/deploy-pages.yml`.
 
 **Spec:** `docs/superpowers/specs/2026-09-25-model-b-combat-port-design.md` (규범). 충돌 시 스펙이 이긴다.
+
+## 구현 중 개정 (2026-09-24)
+
+새 Run(`Session.new_run`)과 아레나는 수동 입력·tick 스케줄러·Model B 전투 수치로 전환한다. 동료와 NPC는 각자의 `ready_at`에 기존 판단기를 호출한다. 기존 자동전투·투자형 성장 코드는 계약 회귀와 과거 시뮬레이터가 아직 참조하므로 이번 이식에서는 호환 경로로 남긴다. 화면에서는 자동전투 버튼을 숨기고 새 Run에서 해당 경로를 호출하지 않는다. 삭제는 회귀 스위트와 시뮬레이터가 `submit`으로 모두 옮겨진 뒤 별도 정리 작업으로 한다.
+
+수치 밸런스는 통과 판정 대신 첫 기준선을 기록한다. 이식 단계의 검증은 새 전투·스케줄러·숙련·주문·화면 입력 테스트와 기존 CI 회귀로 한다. 심부 솔로 조우의 승률은 `docs/balance/model-b-gates.md`에 별도 기록한다.
 
 ## Global Constraints
 
@@ -307,6 +311,7 @@ static func move_time(s, actor: Dictionary, cell: Vector2i) -> int:
 
 **Interfaces:**
 - Produces: `s.time: int`(tick), `s.turn_serial: int`(주인공 행동 번호), 액터 `ready_at`, `Session.submit(kind: String, target: Vector2i, value: String = "") -> bool`, `Session.action_cost(actor, kind, target, value) -> int`, `Scheduler.advance(s, cost)`, `Scheduler.act(s, actor)`, `Scheduler.double_movers(s, cost) -> Array`(경고용), `intents[].resolve_at`, `Fixture.hero_turn(s, kind, target)`.
+- `submit`은 입력 유효성을 먼저 확인한 뒤 `Scheduler.flush_ready(s)`로 현재 tick에 이미 준비된 환경·액터를 순서대로 해소한다. 끝 시각에 준비된 행동을 다음 주인공 행동보다 늦게 처리하면 한 번의 무료 선공이 생기므로, `flush_ready`는 유효한 입력 직전에만 실행한다. `tests/scheduler.gd`는 `WAIT 100 → 다음 입력`에서 tick 100 적이 먼저 행동하는 경우도 검사한다.
 - Removes: `auto`, `auto_step`, `auto_stop_reason`, `remember_round`, `command_choice`, `party_command`, `command_target`, `end_battle_orders`, `reservation_*`, `round_number`(→ `turn_serial`), `ap`(→ `ready_at`), `action_budget`, `end_round`(→ `Scheduler.environment_tick`), HUD의 `AutoToggle/SpeedToggle/RetreatToggle/StopBanner`.
 
 - [ ] **Step 1: 실패하는 테스트 — `tests/scheduler.gd`**
@@ -330,7 +335,7 @@ func field(seed: int, party: int = 1) -> Dictionary:
 
 func foe_at(s, p: Vector2i, speed: int = 100) -> Dictionary:
 	var foe: Dictionary = s.enemies.filter(func(e): return e.hp <= 0)[0]
-	foe.hp = 30; foe.max_hp = 30; foe.pos = p; foe.alert = true; foe.role = "MELEE"; foe.speed = speed; foe.ready_at = s.time; foe.charging = false; foe.cast_recovery = 0; foe.part_id = ""
+	foe.hp = 30; foe.max_hp = 30; foe.pos = p; foe.alert = true; foe.role = "MELEE"; foe.speed = speed; foe.ready_at = s.time+speed; foe.charging = false; foe.cast_recovery = 0; foe.part_id = ""
 	s.floor_state.observe(s); return foe
 
 func run() -> void:
@@ -359,8 +364,10 @@ func fast_slow() -> void:
 func two_enemies() -> void:
 	var f := field(4); var s = f.s; var h: Dictionary = f.h
 	var a := foe_at(s,h.pos+Vector2i(1,0),100); var b := foe_at(s,h.pos+Vector2i(-1,0),50)
-	var hp: int = h.hp; s.submit("WAIT",h.pos)
-	check(h.hp <= hp-7-7*2 or s.log_lines.filter(func(l): return l.contains(b.name)).size() >= 2,"a speed-50 foe acts twice in one hero turn")
+	b.ready_at = s.time # 이미 준비된 적은 [현재 시각, 행동 종료) 안에서 두 번 행동한다.
+	h.gear.weapon = {"type":"mace"}
+	var hp: int = h.hp; s.submit("ATTACK",a.pos)
+	check(h.hp < hp and b.ready_at >= 200,"an already-ready foe acts at ticks 0 and 100 during a 145-tick attack")
 
 func telegraph() -> void:
 	var f := field(5); var s = f.s; var h: Dictionary = f.h; var foe := foe_at(s,h.pos+Vector2i(2,0))
@@ -461,11 +468,12 @@ static func double_movers(s, cost: int) -> Array:
 	var out: Array = []
 	for e in s.party_enemies():
 		var c: int = s.action_cost(e,"ATTACK",e.pos,"")
-		if int(e.get("ready_at",0))+c*2 <= s.time+cost: out.append(e)
+		if int(e.get("ready_at",0))+c < s.time+cost: out.append(e)
 	return out
 ```
 
-- [ ] **Step 5: `session.gd`.** `var time := 0`, `var boundary := 100`, `var turn_serial := 0`; `make_actor`에 `"ready_at":0`, `ap` 삭제. `submit(kind, target, value)`: 검증·실행은 `act_as`(chain 없음), 비용은 `action_cost`(스펙 §2 표; ATTACK은 `Stats.stats().delay`, MOVE는 `CombatRules.move_time`, 파츠는 `def.get("delay",100)`, 느림/빠름 배율), 마지막에 `Scheduler.advance(self,cost)`. INTERACT(조사물·계단·NPC 대화)는 100, 하강·야영은 시간 정지. `auto_step/auto_stop_reason/remember_round/command_choice/companion_choice/reservation_*/end_battle_orders/action_budget/end_round/party_command/command_target/auto` 삭제; `end_round`의 불·물 tick과 쿨다운 감소는 `Scheduler.environment_tick`으로; `plan_enemies`는 그대로. `perform(actor, choice)`는 `act_as(actor,kind,cell,false)` 실패 시 WAIT. 경로 이동: `start_route(goal)/route_step()/route_active()`(기존 `exploration_navigation`을 세션 API로 감싸고, 한 `route_step`은 `submit("MOVE")` 한 번 = 정확히 한 행동; 시야에 적·NPC·조사물·계단이 들어오면 `route_step`이 false).
+- [ ] **Step 5: `session.gd`.** `var time := 0`, `var boundary := 100`, `var turn_serial := 0`; `make_actor`에 `"ready_at":0`, `ap` 삭제. 새 적의 첫 `ready_at`은 `time + speed`, 기상한 NPC는 `ready_at = maxi(ready_at,time)`으로 보정한다. 스케줄 대상은 `[time,time+cost)`이며 끝 시각의 행동은 다음 구간으로 넘긴다. `double_movers`는 `ready_at + action_cost < time + cost`일 때 경고한다. `submit(kind, target, value)`: 검증·실행은 `act_as`(chain 없음), 비용은 `action_cost`(스펙 §2 표; ATTACK은 `Stats.stats().delay`, MOVE는 `CombatRules.move_time`, 파츠는 `def.get("delay",100)`, 느림/빠름 배율), 마지막에 `Scheduler.advance(self,cost)`. INTERACT(조사물·계단·NPC 대화)는 100, 하강·야영은 시간 정지. `auto_step/auto_stop_reason/remember_round/command_choice/companion_choice/reservation_*/end_battle_orders/action_budget/end_round/party_command/command_target/auto` 삭제; `end_round`의 불·물 tick과 쿨다운 감소는 `Scheduler.environment_tick`으로; `plan_enemies`는 그대로. `perform(actor, choice)`는 `act_as(actor,kind,cell,false)` 실패 시 WAIT. 경로 이동: `start_route(goal)/route_step()/route_active()`(기존 `exploration_navigation`을 세션 API로 감싸고, 한 `route_step`은 `submit("MOVE")` 한 번 = 정확히 한 행동; 시야에 적·NPC·조사물·계단이 들어오면 `route_step`이 false).
+- `advance`는 `[time,end)`만 처리한다. `submit`이 유효한 입력으로 판정한 후, 실제 주인공 행동 전에 `flush_ready`가 `time`에 도달한 환경·액터를 처리한다. 환경 경계가 액터보다 우선이고 같은 시각 액터는 id 순서다. 무효 입력은 `flush_ready`도 호출하지 않는다.
 - `monster_ai.turn`이 **비용을 반환**: 이동 `move_time`, 공격 100(역할 `delay`가 있으면 그것), 시전 100, 대기 100. `cast_left`는 tick(`cast_left·100`)으로: `plan()`이 `resolve_at = time + cast_left_ticks`를 intents에 넣고, `turn()`은 `time ≥ resolve_at`일 때 해소. `boss_ai`도 같은 방식(`fuse`).
 - `tactic_rules.lethal_threat`·`lookahead.threat_after`: 예고는 `resolve_at <= s.time + 100`인 것만 이번 구간 위협.
 - §4 lane·tick 치환: `stances.mistaken` lane `depth*100000 + turn_serial*100 + id`; `npc_recruit` lane 같음; `npc_modes` `COMMIT_ROUNDS` → `COMMIT_TICKS := 1000`(비교는 `s.time`); `npc_ai.SLEEP_AFTER` → 500 tick; `Recruit.COOLDOWN` → 2000 tick; `abilities` 쿨다운은 tick(`cooldown*100`, 환경 tick에서 −100); `battle_stats.rounds` = `turn_serial` 차이.
@@ -522,11 +530,11 @@ static func double_movers(s, cost: int) -> Array:
 - Modify: `expedition/main.gd`, `expedition/character_ui.gd`, `expedition/battle_hud.gd`, `expedition/board.gd`(적 탭 미리보기 표시)
 
 **Interfaces:**
-- 노드: `ActionPreview`(명중%·피해 범위·시간·경고 줄, `ConfirmAttack`), `SpellBar`(`Spell%d` ×3), `MasteryGrid`(`MasteryIcon_<axis>` ×10, rank 숫자·진행 바), `MasteryDetail`(`MasteryLevel%d` ×10, `[획득]/[다음]/[잠김]`, `MasteryBack`), `GearScreen`(야영: 슬롯 4, `GearOption%d`, 현재 대비 Δ피해·Δ시간·ΔAC·ΔEV·Δ저항 표시, `GearEquip`), `PrepareScreen`(주문 준비 토글).
+- 노드: `ActionPreview`(명중%·피해 범위·시간·경고 줄, `ConfirmAttack`), `SpellBar`(`Spell%d` ×3), `MasteryGrid`(`MasteryIcon_<axis>` ×10, rank 숫자·진행 바), `MasteryDetail`(`MasteryLevel%d` ×10, `[획득]/[다음]/[잠김]`, `MasteryBack`), `GearScreen`(야영: 슬롯 4, `GearOption%d`, 현재 대비 Δ피해·Δ시간·ΔAC·ΔEV·Δ저항 표시, `GearEquip`), `PrepareScreen`(주문 준비 토글). 상세의 Lv1~10은 모든 축에서 현재·다음 rank의 공통 수치 보정(무기 피해/지연 또는 주문 위력/실패율)을 보여준다. 고유 효과 ID가 없는 레벨은 빈 보상 행만 숨긴다.
 
-- [ ] **Step 1: 실패하는 테스트 — `tests/mastery_ui.gd`**: 씬 인스턴스 → 새 Run → 적 탭 시 `ActionPreview`에 명중·피해·시간 문구, 느린 무기면 경고 문구; `SpellBar`에 준비 주문 3개만; 캐릭터 → 숙련 탭에 아이콘 10개, 탭 → 상세 Lv1~10, 효과 없는 행 비표시, 뒤로 → 같은 캐릭터 그리드; 야영 화면에 `GearScreen`, 후보 장비의 Δ표시, 장착 반영; 320·390px 폭에서 잘림 없음(각 아이콘 ≥ 44px 터치); 같은 입력에 창 두 번 열리지 않음.
+- [ ] **Step 1: 실패하는 테스트 — `tests/mastery_ui.gd`**: 씬 인스턴스 → 새 Run → 적 탭 시 `ActionPreview`에 명중·피해·시간 문구, 느린 무기면 경고 문구; `SpellBar`에 준비 주문 3개만; 캐릭터 → 숙련 탭에 아이콘 10개, 탭 → 모든 축의 상세 Lv1~10에 수치 보정·상태 표시, 효과 ID가 없는 고유 보상 행 비표시, 뒤로 → 같은 캐릭터 그리드; 야영 화면에 `GearScreen`, 후보 장비의 Δ표시, 장착 반영; 320·390px 폭에서 잘림 없음(각 아이콘 ≥ 44px 터치); 같은 입력에 창 두 번 열리지 않음.
 
-- [ ] **Step 2: 구현.** Codex 초안 §4의 그리드 계약 그대로(아이콘 68px, 간격 6). 미리보기는 `attack_preview`와 `Scheduler.double_movers`만 읽는다(별도 계산 없음). `character_ui.mastery()`의 4축 투자 카드를 교체.
+- [ ] **Step 2: 구현.** 숙련은 5×2 그리드, 버튼 최소 논리 폭 52px·높이 64px·간격 6px로 둔다. Godot의 `canvas_items` 축소 뒤에도 320px 물리 화면에서 버튼 폭 44px 이상이어야 한다. 미리보기는 `attack_preview`와 `Scheduler.double_movers`만 읽는다(별도 계산 없음). `character_ui.mastery()`의 4축 투자 카드를 새 Run 경로에서 교체.
 
 - [ ] **Step 3: 실행·커밋** `feat(ui): action preview with timing warning, spell bar, mastery grid and detail, camp gear screen`
 

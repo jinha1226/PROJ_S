@@ -185,7 +185,7 @@ func hud_fit() -> void:
 		check(scene.minimap != null and scene.minimap.is_visible_in_tree(),"the minimap is on screen at %s" % viewport)
 		var footer: Node = scene.find_child("BottomActions",true,false)
 		var texts: Array = footer.get_children().map(func(c): return str(c.text))
-		check(footer.find_child("RetreatToggle",true,false) != null and "후퇴" in texts,"the footer carries the retreat toggle at %s" % viewport)
+		check(footer.find_child("RetreatToggle",true,false) == null and footer.find_child("AutoToggle",true,false) == null,"the manual footer has no autobattle controls at %s" % viewport)
 		check("야영" in texts and "가방" in texts,"and the camp and bag actions at %s" % viewport)
 		check("원정" not in texts and "귀환" not in texts,"and nothing that returns home at %s" % viewport)
 		for node in footer.get_children()+scene.item_buttons+scene.portrait_buttons:

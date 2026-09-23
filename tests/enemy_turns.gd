@@ -41,6 +41,7 @@ func run() -> void:
 	s.enemy_attack_turn(enemy)
 	check(enemy.charging and s.intents.any(func(i): return i.id == enemy.id),"caster telegraphs the target cell")
 	hp = s.party[0].hp; s.party[0].pos = f.center+Vector2i(0,1); s.floor_state.observe(s)
+	s.time = int(enemy.resolve_at)
 	s.enemy_attack_turn(enemy)
 	check(s.party[0].hp == hp and s.intents.is_empty(),"moving off the marked cell dodges the spell")
 	f = setup("MELEE",Vector2i(1,0)); s = f.s; enemy = f.enemy

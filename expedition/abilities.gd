@@ -78,6 +78,9 @@ static func cells(s, actor: Dictionary, id: String, target: Vector2i) -> Array:
 ## Party members grow; monsters hit for the listed damage plus the floor's darkness bonus.
 static func power(s, actor: Dictionary, def: Dictionary) -> int:
 	if actor.enemy: return int(def.damage)
+	if s.manual_mode:
+		var axis: String = "bow" if def.axis == "RANGED" else "hex" if def.axis == "MAGIC" else s.Mastery.weapon_axis(str(actor.get("gear",{}).get("weapon",{}).get("type","sword")))
+		return int(def.damage)+s.Mastery.rank(actor,axis)
 	return s.Growth.power(actor,def.axis,int(def.damage))
 
 ## Whether `actor` holds the part: a slot for party members, the species signature for monsters.
@@ -106,6 +109,15 @@ static func legal(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 
 static func execute(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 	if not legal(s,actor,id,target): return false
+	# Ranged and magical parts train only when they affect a hostile target.
+	# Record before resolving damage so a killing blow receives its XP share.
+	if s.manual_mode and not actor.enemy:
+		var axis: String = "bow" if DEFINITIONS[id].axis == "RANGED" else "hex" if DEFINITIONS[id].axis == "MAGIC" else ""
+		if not axis.is_empty():
+			var affected: Array = cells(s,actor,id,target)
+			for foe in s.enemies:
+				if foe.hp > 0 and foe.pos in affected:
+					s.Mastery.record(actor,int(foe.id),axis)
 	resolve(s,actor,id,target)
 	return true
 

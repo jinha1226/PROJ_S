@@ -16,11 +16,11 @@ static func sense(s, npc: Dictionary) -> bool:
 	var sees_party: bool = s.alive().any(func(a): return MonsterAI.line(s,npc.pos,a.pos,seen))
 	var hears: bool = s.noise.any(func(p): return s.distance(p,npc.pos) <= NOISE_RADIUS)
 	if sees_party or hears:
-		npc.awake = true; npc.noise_seen = s.round_number
+		npc.awake = true; npc.noise_seen = s.npc_clock()
 		return true
-	if npc.awake and not s.floor_state.visible.has(npc.pos) and s.round_number-int(npc.noise_seen) >= SLEEP_AFTER:
+	if npc.awake and not s.floor_state.visible.has(npc.pos) and s.npc_clock()-int(npc.noise_seen) >= (500 if s.manual_mode else SLEEP_AFTER):
 		npc.awake = false; npc.mode = ""; npc.activity = ""
-	if npc.awake and s.floor_state.visible.has(npc.pos): npc.noise_seen = s.round_number
+	if npc.awake and s.floor_state.visible.has(npc.pos): npc.noise_seen = s.npc_clock()
 	return npc.awake
 
 ## One round of an awake npc: it fights whatever its own eyes find, and
@@ -36,7 +36,7 @@ static func turn(s, npc: Dictionary) -> void:
 		perform(s,npc,choice)
 		return
 	var pick: Dictionary = Modes.choose(s,npc)
-	if pick.mode != str(npc.get("mode","")): npc.mode = pick.mode; npc.mode_until = s.round_number+Modes.COMMIT_ROUNDS
+	if pick.mode != str(npc.get("mode","")): npc.mode = pick.mode; npc.mode_until = s.npc_clock()+(Modes.COMMIT_ROUNDS*100 if s.manual_mode else Modes.COMMIT_ROUNDS)
 	npc.activity = LABELS[pick.mode]
 	npc.explains.append({"round":s.round_number,"kind":pick.mode,"cell":npc.pos,"explain":pick.explain})
 	while npc.explains.size() > 20: npc.explains.pop_front()
@@ -51,7 +51,7 @@ static func turn(s, npc: Dictionary) -> void:
 		"APPROACH":
 			var near: Dictionary = nearest_member(s,npc)
 			if s.melee_reach(npc.pos,near.pos):
-				if s.round_number >= int(npc.get("offered_until",-99)) and s.pending_offer < 0: s.offer(npc)
+				if s.npc_clock() >= int(npc.get("offered_until",-99)) and s.pending_offer < 0: s.offer(npc)
 				return
 			close_on(s,npc,Stances.adjacent_free(s,near.pos),near.pos)
 		"HOLD":

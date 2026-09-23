@@ -1,6 +1,9 @@
 extends RefCounted
 ## Adapted from ../playtest status folio and mastery cards, using expedition data.
 const Growth = preload("res://expedition/growth.gd")
+const Mastery = preload("res://expedition/mastery.gd")
+const CombatStats = preload("res://expedition/combat_stats.gd")
+static var mastery_data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/mastery.json"))
 const Emblem = preload("res://expedition/growth_emblem.gd")
 const Art = preload("res://expedition/mobile_art.gd")
 const Stances = preload("res://expedition/stances.gd")
@@ -17,6 +20,7 @@ static func place(node: Control, parent: Node, rect: Rect2) -> void:
 
 static func shell(ui, tab: String) -> VBoxContainer:
 	# Design coordinates match the approved 390 x 844 portrait folio.
+	var screen: Vector2 = ui.get_viewport_rect().size
 	var skin: Theme = ui.theme.duplicate()
 	for state in ["normal","hover","pressed","focus","disabled"]:
 		skin.set_stylebox(state,"Button",surface(Color("15191d"),Color("74cfca") if state in ["pressed","focus"] else Color("65522a")))
@@ -26,13 +30,13 @@ static func shell(ui, tab: String) -> VBoxContainer:
 	opaque.shadow_size = 0; opaque.set_border_width_all(0)
 	skin.set_stylebox("panel","PopupPanel",opaque)
 	ui.details_popup.theme = skin
-	ui.modal_content.custom_minimum_size = ui.size
-	var canvas := Control.new(); canvas.custom_minimum_size = ui.size; ui.modal_content.add_child(canvas)
+	ui.modal_content.custom_minimum_size = screen
+	var canvas := Control.new(); canvas.custom_minimum_size = screen; ui.modal_content.add_child(canvas)
 	var background := ColorRect.new(); background.color = Color("101416"); background.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	place(background,canvas,Rect2(Vector2.ZERO,ui.size))
+	place(background,canvas,Rect2(Vector2.ZERO,screen))
 	var design := Control.new(); design.name = "CharacterFolio"
-	var factor: float = minf(ui.size.x/390.0,ui.size.y/844.0)
-	place(design,canvas,Rect2((ui.size-Vector2(390,844)*factor)/2,Vector2(390,844))); design.scale = Vector2.ONE*factor
+	var factor: float = minf(screen.x/390.0,screen.y/844.0)
+	place(design,canvas,Rect2((screen-Vector2(390,844)*factor)/2,Vector2(390,844))); design.scale = Vector2.ONE*factor
 	var header := HBoxContainer.new(); header.name = "CharacterHeader"; header.add_theme_constant_override("separation",14)
 	place(header,design,Rect2(8,8,374,94))
 	var portrait := TextureRect.new(); portrait.texture = Art.portrait(ui.tactics_actor)
@@ -90,6 +94,14 @@ static func grid(parent: Node, columns: int) -> GridContainer:
 	parent.add_child(result); return result
 
 static func status(ui, list: VBoxContainer, actor: Dictionary) -> void:
+	if ui.session.manual_mode:
+		var vitals := card(list,"Lv.%d · %s" % [int(actor.get("level",1)),actor.name])
+		text(vitals,"체력 %d / %d" % [actor.hp,actor.max_hp]); gauge(vitals,actor.hp,actor.max_hp,Color("9f4544"))
+		text(vitals,"마력 %d / %d" % [actor.mp,actor.max_mp]); gauge(vitals,actor.mp,actor.max_mp,Color("4d6c9f"))
+		text(vitals,"스트레스 %d" % actor.stress); gauge(vitals,actor.stress,200,Color("c6a34c"))
+		var values: Dictionary = CombatStats.stats(ui.session,actor)
+		text(card(list,"전투"),"피해 %d · 공격 시간 %d · 방어 %d · 회피 %d" % [values.damage,values.delay,values.ac,values.ev])
+		return
 	var vitals := card(list,"Lv.%d · %s" % [actor.growth.level,actor.name])
 	vitals.get_parent().custom_minimum_size.y = 130
 	text(vitals,"체력 %d / %d" % [actor.hp,actor.max_hp]); gauge(vitals,actor.hp,actor.max_hp,Color("9f4544"))
@@ -107,6 +119,18 @@ static func can_invest(ui, actor: Dictionary) -> bool:
 	return ui.session.safe_management() and actor.hp > 0
 
 static func mastery(ui, list: VBoxContainer, actor: Dictionary) -> void:
+	if ui.session.manual_mode:
+		var summary := card(list,"Lv.%d · 사용으로 성장" % int(actor.get("level",1)))
+		text(summary,"전투에서 사용한 무기와 주문이 숙련됩니다.")
+		var cards := grid(list,5); cards.name = "MasteryGrid"
+		var short_names := {"sword":"검", "spear":"창", "mace":"둔", "axe":"도", "bow":"궁", "fire":"화", "ice":"냉", "air":"기", "hex":"변", "summon":"소"}
+		for axis in Mastery.AXES:
+			var level := Mastery.rank(actor,axis)
+			var tile = ui.button(cards,"%s\n%d/10" % [short_names[axis],level],func(): ui.show_mastery_detail(ui.tactics_actor,axis))
+			tile.name = "MasteryIcon_"+axis
+			tile.custom_minimum_size = Vector2(52,64)
+			tile.tooltip_text = "%s · %s" % [Mastery.NAMES[axis],Mastery.bonus(axis,level)]
+		return
 	var summary := card(list,"Lv.%d · 숙련 포인트 %d" % [actor.growth.level,actor.growth.points])
 	summary.get_parent().custom_minimum_size.y = 86
 	var floor_xp := Growth.threshold(actor.growth.level)
@@ -122,6 +146,20 @@ static func mastery(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		text(box,"피해 감소 %d%%" % (actor.growth.ranks[axis]*4) if axis == "DEFENSE" else "위력 +%d%%" % (actor.growth.ranks[axis]*8))
 		ui.button(box,"+ 1점 투자",func(): preview(ui,axis),can_invest(ui,actor) and actor.growth.points > 0 and actor.growth.ranks[axis] < Growth.MAX_RANK)
 	text(list,"전투 밖에서 투자 · 레벨업마다 1점 · 재분배 불가")
+
+static func mastery_detail(ui, list: VBoxContainer, actor: Dictionary, axis: String) -> void:
+	var current := Mastery.rank(actor,axis)
+	var header := card(list,"%s · %d/10" % [Mastery.NAMES[axis],current])
+	text(header,"현재: %s" % Mastery.bonus(axis,current))
+	if current < 10: text(header,"다음 숙련까지 %d XP" % maxi(0,Mastery.required_xp(actor,axis,current+1)-int(actor.get("skill_xp",{}).get(axis,0))))
+	var rewards: Dictionary = mastery_data.milestones.get(axis,{})
+	for level in range(1,11):
+		var state := "획득" if level <= current else "다음" if level == current+1 else "잠김"
+		var row := card(list,"Lv%d · %s" % [level,state]); row.get_parent().name = "MasteryLevel%d" % level
+		text(row,Mastery.bonus(axis,level))
+		var reward: Dictionary = rewards.get(str(level),{})
+		if not str(reward.get("effect_id","")).is_empty(): text(row,str(reward.name))
+	var back = ui.button(list,"‹ 숙련 목록",func(): ui.show_character(ui.tactics_actor,"숙련")); back.name = "MasteryBack"
 
 static func detail(ui, title: String, message: String) -> void:
 	ui.clear(ui.item_detail); text(ui.item_detail,title,20); text(ui.item_detail,message)

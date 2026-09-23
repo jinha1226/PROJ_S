@@ -19,6 +19,11 @@ const Rules = preload("res://expedition/tactic_rules.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 const IntentUI = preload("res://expedition/companion_intent_ui.gd")
 const Growth = preload("res://expedition/growth.gd")
+const Mastery = preload("res://expedition/mastery.gd")
+const CombatStats = preload("res://expedition/combat_stats.gd")
+const CombatRules = preload("res://expedition/combat_rules.gd")
+const Scheduler = preload("res://expedition/scheduler.gd")
+const Spells = preload("res://expedition/spells.gd")
 const Passives = preload("res://expedition/passives.gd")
 var parts_bag: Dictionary = {}
 const STARTING_PARTS := {"PUSH":1,"GUARD":1}
@@ -72,6 +77,12 @@ var serial := 0
 var battle_stats: Dictionary = {}
 var world_time := 0
 var round_number := 0
+var time := 0
+var boundary := 100
+var turn_serial := 0
+var roll_serial := 0
+var gear_bag: Array = []
+var manual_mode := false
 var selected := 0
 var intents: Array = []
 var effects: Array = []
@@ -90,6 +101,7 @@ var rules_config: Dictionary = DEFAULT_RULES.duplicate()
 static func new_run(seed: int):
 	var run = new(seed,false,false,true,1)
 	run.depart()
+	run.manual_mode = true
 	return run
 
 func _init(p_seed: int = 731, _p_boss_trial: bool = false, p_companions: bool = false, _p_floor: bool = true, p_party_size: int = 0) -> void:
@@ -110,10 +122,19 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"reservation":{},
 		"equipped_abilities":["",""],"cooldowns":{},"iron_guard":false,
 		"growth":Growth.create(),"protected_by":-1,
+		"gear":{"weapon":{},"armour":{},"shield":{},"ring":{}},
+		"mp":18,"max_mp":18,"skill_xp":{},"usage":{},"statuses":{},"spells":[],"prepared":[],
+		"level":1,"level_xp":0,"ready_at":0,
 		"pos":Vector2i.ZERO, "hp":28 if enemy else 55, "max_hp":28 if enemy else 55,
 		"stress":0, "condition":"평온", "ap":2,
 		"body":Body.create(id, seed_value, enemy),
 		"profile":Hexaco.generated(seed_value, id + 1), "memory":Memory.new()}
+	actor["species_id"] = "" if enemy else "human"
+	if enemy:
+		actor["power"] = 7; actor["speed"] = 100; actor["ac"] = 0; actor["ev"] = 3; actor["res"] = {}
+	else:
+		actor.gear.weapon = {"type":"sword","enchant":0}
+		actor.gear.armour = {"type":"robe","enchant":0}
 	# How the member fights with whatever it carries, and who it covers.
 	actor["stance"] = Stances.default_stance(actor.profile)
 	actor["protect_id"] = -1
@@ -180,6 +201,12 @@ func alive() -> Array:
 func on_floor() -> bool:
 	return phase in ["EXPLORE","BATTLE"]
 
+func npc_clock() -> int:
+	return time if manual_mode else round_number
+
+func npc_cooldown() -> int:
+	return 2000 if manual_mode else Recruit.COOLDOWN
+
 ## Whom the party's tactics fight beside: its own survivors and every awake,
 ## living dungeon NPC. `alive()` stays the party alone — defeat, stress and the
 ## battle's end are the party's own business.
@@ -206,7 +233,7 @@ func recruit(npc: Dictionary) -> bool:
 ## the npc will not ask again for twenty rounds after an answer.
 ## An NPC only speaks up while the party is exploring: never into a battle.
 func offer(npc: Dictionary) -> bool:
-	if phase != "EXPLORE" or pending_offer >= 0 or npc.state != "MET" or round_number < int(npc.get("offered_until",-99)): return false
+	if phase != "EXPLORE" or pending_offer >= 0 or npc.state != "MET" or npc_clock() < int(npc.get("offered_until",-99)): return false
 	pending_offer = npc.id
 	return true
 
@@ -218,9 +245,9 @@ func answer_offer(accept: bool) -> bool:
 	pending_offer = -1
 	if found.is_empty(): return false
 	var npc: Dictionary = found[0]
-	npc.offered_until = round_number+Recruit.COOLDOWN
+	npc.offered_until = npc_clock()+npc_cooldown()
 	if not accept:
-		npc.declined_until = round_number+Recruit.COOLDOWN
+		npc.declined_until = npc_clock()+npc_cooldown()
 		serial += 1
 		remember_plain(npc,"DECLINED_BY_PLAYER",Recruit.hero(self),Recruit.hero(self),400)
 		return true
@@ -229,6 +256,9 @@ func answer_offer(accept: bool) -> bool:
 func depart() -> bool:
 	if phase != "IDLE" or alive().is_empty(): return false
 	depth = 1; score = 0; run_stats = {"mistakes":0,"kills":0}
+	time = 0; boundary = 100; turn_serial = 0; roll_serial = 0
+	party[0].gear.weapon = {"type":"sword","enchant":0}
+	party[0].gear.armour = {"type":"robe","enchant":0}
 	for actor in party:
 		# A debt owed or refused outlives the run it was made in.
 		actor.memory.records = actor.memory.records.filter(func(record): return int(record.salience) >= 700 or str(record.kind) in Memory.SOCIAL_KINDS)
@@ -417,7 +447,7 @@ func movement_cells(actor_index: int = -1) -> Array:
 	if actor.is_empty() or not on_floor() or actor.hp <= 0 or actor.ap <= 0: return result
 	var frontier: Array = [actor.pos]
 	var seen: Array = [actor.pos]
-	for step in range(2 if actor.move_factor == 100 else 1):
+	for step in range(1 if manual_mode else 2 if actor.move_factor == 100 else 1):
 		var next: Array = []
 		for point in frontier:
 			for direction in DIRECTIONS:
@@ -432,26 +462,151 @@ func attack_cells(actor_index: int = -1) -> Array:
 	# As in movement_cells: a party slot, or an npc asking by its own id.
 	var actor: Dictionary = party[selected] if actor_index < 0 else (party[actor_index] if actor_index < party.size() else actor_by_id(actor_index))
 	if actor.is_empty() or not on_floor() or actor.hp <= 0 or actor.ap <= 0: return result
+	if manual_mode:
+		var reach: int = int(CombatStats.stats(self,actor).range)
+		for y in range(maxi(0,actor.pos.y-reach),mini(BOARD_SIDE,actor.pos.y+reach+1)):
+			for x in range(maxi(0,actor.pos.x-reach),mini(BOARD_SIDE,actor.pos.x+reach+1)):
+				var cell := Vector2i(x,y)
+				if floor_state.visible.has(cell) and attack_reach(actor,cell,reach): result.append(cell)
+		return result
 	for direction in DIRECTIONS:
 		var cell: Vector2i = actor.pos + direction
 		if melee_reach(actor.pos,cell): result.append(cell)
 	return result
 
 func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
-	if target not in attack_cells(actor_index): return {}
+	if not manual_mode:
+		if target not in attack_cells(actor_index): return {}
+		var old_victim := at(target)
+		if old_victim.is_empty() or not old_victim.enemy: return {}
+		var old_actor: Dictionary = party[selected] if actor_index < 0 else (party[actor_index] if actor_index < party.size() else actor_by_id(actor_index))
+		if old_actor.is_empty(): return {}
+		var old_hit := TurnCore.physical(Growth.power(old_actor,"MELEE",18) * old_actor.attack_factor / 100, 1000, 0, 2)
+		var old_amount := int(old_hit.damage)
+		if old_victim.get("guarded",false): old_amount = maxi(1,old_amount/2)
+		if old_victim.get("shield",false): old_amount = 0
+		return {"actor":old_actor.id,"target":old_victim.id,"cell":target,"name":old_victim.name,"chance":100,"damage":old_amount,"damage_min":old_amount,"damage_max":old_amount,"time":100}
 	var victim := at(target)
 	if victim.is_empty() or not victim.enemy: return {}
 	var actor: Dictionary = party[selected] if actor_index < 0 else (party[actor_index] if actor_index < party.size() else actor_by_id(actor_index))
 	if actor.is_empty(): return {}
-	var hit := TurnCore.physical(Growth.power(actor,"MELEE",18) * actor.attack_factor / 100, 1000, 0, 2)
-	var amount := int(hit.damage)
-	if victim.get("guarded",false): amount = maxi(1,amount / 2)
-	if victim.get("shield",false): amount = 0
-	# Basic attacks currently have no miss roll; do not advertise a fictitious chance.
-	return {"actor":actor.id,"target":victim.id,"cell":target,"name":victim.name,"chance":100,"damage":amount}
+	var offense: Dictionary = CombatStats.stats(self,actor)
+	var defense: Dictionary = CombatStats.stats(self,victim)
+	if not attack_reach(actor,target,int(offense.range)): return {}
+	var ac: int = int(defense.ac)/2 if offense.trait == "pierce" else int(defense.ac)
+	var dodge: int = clampi(int(defense.ev)*2,5,45)
+	var block: int = int(defense.sh)
+	return {"actor":actor.id,"target":victim.id,"cell":target,"name":victim.name,
+		"chance":maxi(0,(100-dodge)*(100-block)/100),"block":block,"damage":maxi(1,int(offense.damage)-ac),
+		"damage_min":maxi(1,int(offense.damage)-ac),"damage_max":int(offense.damage),"time":action_cost(actor,"ATTACK",target)}
+
+func attack_reach(actor: Dictionary, target: Vector2i, attack_range: int) -> bool:
+	if attack_range <= 1: return melee_reach(actor.pos,target)
+	return distance(actor.pos,target) <= attack_range and Floor.MonsterAI.line(self,actor.pos,target,attack_range)
 
 func act(kind: String, target: Vector2i) -> bool:
+	if manual_mode: return submit(kind,target)
 	return act_as(party[selected],kind,target,true)
+
+func action_cost(actor: Dictionary, kind: String, target: Vector2i, _value: String = "") -> int:
+	var cost := 100
+	match kind:
+		"MOVE":
+			if inside(target): cost = CombatRules.move_time(self,actor,target)
+		"ATTACK":
+			cost = int(CombatStats.stats(self,actor).delay)
+			if manual_mode and actor.get("last_action_kind","") == "ATTACK" and str(actor.get("gear",{}).get("weapon",{}).get("type","")) in ["sword","dagger"] and Mastery.rank(actor,"sword") >= 7: cost = maxi(60,cost-20)
+		_:
+			if Abilities.DEFINITIONS.has(kind): cost = int(Abilities.DEFINITIONS[kind].get("delay",100))
+	var statuses: Dictionary = actor.get("statuses",{})
+	if kind != "MOVE":
+		if statuses.has("slow"): cost = cost*3/2
+		if statuses.has("haste"): cost = cost*2/3
+	return maxi(40,cost)
+
+func submit(kind: String, target: Vector2i, value: String = "") -> bool:
+	if not on_floor() or party.is_empty() or party[0].hp <= 0: return false
+	manual_mode = true
+	var actor: Dictionary = party[0]
+	actor.ap = 1
+	if not can_submit(actor,kind,target,value): return false
+	if not Scheduler.flush_ready(self) or actor.hp <= 0: return false
+	var cost := action_cost(actor,kind,target,value)
+	if kind == "CAST":
+		if not Spells.cast(self,actor,value,target): return false
+		return Scheduler.advance(self,cost)
+	if not act_as(actor,kind,target,false): return false
+	actor.ap = 1
+	return Scheduler.advance(self,cost)
+
+func can_submit(actor: Dictionary, kind: String, target: Vector2i, value: String = "") -> bool:
+	if kind == "CAST": return Spells.can_cast(self,actor,value,target)
+	if not inside(target): return false
+	if Abilities.DEFINITIONS.has(kind): return Abilities.legal(self,actor,kind,target)
+	match kind:
+		"WAIT": return target == actor.pos
+		"MOVE": return target in movement_cells(0)
+		"ATTACK": return not attack_preview(target,0).is_empty()
+		"PYLON": return true
+		"FIRE", "WATER", "ELECTRIC": return distance(actor.pos,target) <= 4 and tile(target).terrain != "wall"
+	return false
+
+func cast(id: String, target: Vector2i) -> bool:
+	return submit("CAST",target,id)
+
+func prepare_spell(index: int, id: String, on: bool) -> bool:
+	if phase != "CAMP" or index < 0 or index >= party.size(): return false
+	var actor: Dictionary = party[index]
+	if id not in actor.spells or Spells.definition(id).is_empty(): return false
+	if on:
+		if id in actor.prepared: return true
+		if actor.prepared.size() >= 3: return false
+		actor.prepared.append(id)
+	else:
+		actor.prepared.erase(id)
+	return true
+
+func learn_spell(index: int, id: String) -> bool:
+	if index < 0 or index >= party.size() or Spells.definition(id).is_empty(): return false
+	var actor: Dictionary = party[index]
+	if id in actor.spells: return false
+	actor.spells.append(id)
+	message(str(CombatStats.content.spells[id].name)+" 획득")
+	return true
+
+func gear_slot(item: Dictionary) -> String:
+	var id: String = str(item.get("type",""))
+	if id == "shield": return "shield"
+	if CombatStats.content.weapons.has(id): return "weapon"
+	if CombatStats.content.armours.has(id): return "armour"
+	if CombatStats.content.rings.has(id): return "ring"
+	return ""
+
+func equip_gear(index: int, item: Dictionary) -> bool:
+	if phase != "CAMP" or index < 0 or index >= party.size() or item not in gear_bag: return false
+	var slot := gear_slot(item)
+	if slot.is_empty(): return false
+	var actor: Dictionary = party[index]
+	if slot == "shield" and str(actor.gear.weapon.get("type","")) in ["bow","staff"]: return false
+	if slot == "weapon" and str(item.type) in ["bow","staff"] and not actor.gear.shield.is_empty(): return false
+	if slot == "armour" and actor.species_id == "elf" and str(item.type) == "plate": return false
+	var previous: Dictionary = actor.gear[slot]
+	if slot == "weapon" and not previous.is_empty():
+		var old_axis := Mastery.weapon_axis(str(previous.type))
+		var new_axis := Mastery.weapon_axis(str(item.type))
+		if old_axis != new_axis and Mastery.rank(actor,old_axis) > 0: Mastery.catchup(actor,new_axis)
+	gear_bag.erase(item)
+	if not previous.is_empty(): gear_bag.append(previous)
+	actor.gear[slot] = item.duplicate(true)
+	return true
+
+func unequip_gear(index: int, slot: String) -> bool:
+	if phase != "CAMP" or index < 0 or index >= party.size() or slot not in ["weapon","armour","shield","ring"]: return false
+	var actor: Dictionary = party[index]
+	if actor.gear[slot].is_empty(): return false
+	gear_bag.append(actor.gear[slot])
+	actor.gear[slot] = {}
+	return true
 
 func _presentation_action(actor: Dictionary, kind: String, target: Vector2i) -> Dictionary:
 	if not active_intent_event.is_empty() and int(active_intent_event.get("actor_id",-1)) == int(actor.id):
@@ -502,9 +657,11 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 			actor.pos = target
 			actor.hit_and_run = false
 		"ATTACK":
-			if victim.is_empty() or not victim.enemy or not melee_reach(actor.pos,target): return false
-			var hit := TurnCore.physical(Growth.power(actor,"MELEE",18) * actor.attack_factor / 100, 1000, 0, 2)
-			damage(victim, int(hit.damage), actor.id, "SLASH")
+			if victim.is_empty() or not victim.enemy or not attack_reach(actor,target,int(CombatStats.stats(self,actor).range)): return false
+			if manual_mode: CombatRules.attack(self,actor,victim)
+			else:
+				var hit := TurnCore.physical(Growth.power(actor,"MELEE",18) * actor.attack_factor / 100, 1000, 0, 2)
+				damage(victim,int(hit.damage),actor.id,"SLASH")
 			# A skirmisher with nothing to shoot strikes once, then breaks away.
 			if Stances.effective(actor) == "SKIRMISHER" and Stances.ranged_part(actor).is_empty(): actor.hit_and_run = true
 		"FIRE", "WATER", "ELECTRIC":
@@ -870,7 +1027,9 @@ func roll_part(enemy: Dictionary) -> void:
 	if not enemy.enemy or enemy.hp > 0 or enemy.get("part_rolled",false): return
 	enemy.part_rolled = true
 	for actor in alive():
-		if Growth.gain(actor,25) > 0: message(actor.name+" · 레벨 %d" % actor.growth.level)
+		if manual_mode:
+			if gain_level_xp(actor,18+depth*8) > 0: message(actor.name+" · 레벨 %d" % actor.level)
+		elif Growth.gain(actor,25) > 0: message(actor.name+" · 레벨 %d" % actor.growth.level)
 	var id: String = str(enemy.get("part_id",""))
 	if not Abilities.DEFINITIONS.has(id): return
 	var chance: int = Abilities.DROP_PERCENT
@@ -878,6 +1037,20 @@ func roll_part(enemy: Dictionary) -> void:
 	parts_bag[id] = int(parts_bag.get(id,0))+1
 	battle_stats.drops[id] = int(battle_stats.drops.get(id,0))+1
 	message(Abilities.DEFINITIONS[id].item+" 획득")
+
+func gain_level_xp(actor: Dictionary, amount: int) -> int:
+	var before := int(actor.get("level",1))
+	actor.level_xp = int(actor.get("level_xp",0))+maxi(0,amount)
+	while actor.level < 12 and actor.level_xp >= actor.level*actor.level*65:
+		actor.level += 1
+		actor.max_hp += 4; actor.hp = mini(actor.max_hp,actor.hp+4)
+		actor.max_mp += 2; actor.mp = mini(actor.max_mp,actor.mp+2)
+	return actor.level-before
+
+func grant_gear(item: Dictionary) -> void:
+	if item.is_empty(): return
+	gear_bag.append(item.duplicate(true))
+	message(str(item.get("type","장비"))+" 획득")
 
 func spend_growth(index: int, id: String, stat: bool = false) -> bool:
 	if not safe_management() or index < 0 or index >= party.size() or party[index].hp <= 0: return false
@@ -1020,8 +1193,11 @@ func actor_by_id(id: int) -> Dictionary:
 		if actor.id == id: return actor
 	return {}
 
-func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
-	if target.hp <= 0: return
+func damage(target: Dictionary, amount: int, source: int, form: String) -> int:
+	return CombatRules.damage(self,actor_by_id(source),target,amount,form)
+
+func after_damage(target: Dictionary, amount: int, source: int, form: String) -> int:
+	if target.hp <= 0: return 0
 	var attacker: Dictionary = actor_by_id(source)
 	# Retaliation is plain damage: it never triggers passives again.
 	var passive_hit: bool = form != "RETALIATE"
@@ -1036,10 +1212,10 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 		message("%s %s 대신 맞습니다." % [subject_name(recipient.name),target.name])
 		target = recipient
 	if target.get("shield",false):
-		message("보호막 · 피해 무효"); return
+		message("보호막 · 피해 무효"); return 0
 	if target.get("iron_guard",false): amount = maxi(1,amount / 4)
 	elif target.get("guarded",false): amount = maxi(1,amount / 2)
-	if not target.enemy: amount = Growth.incoming(target,amount)
+	if not manual_mode and not target.enemy: amount = Growth.incoming(target,amount)
 	if passive_hit: amount = Passives.incoming(self,target,amount)
 	# A solo floor always grants one action; collapse instead exposes the hero
 	# to one extra point of damage. Calming supplies can prevent this penalty.
@@ -1086,14 +1262,19 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 	message("%s %s에게 %d의 피해를 주었습니다.%s" % [subject_name(source_name),target.name,lost," "+subject_name(target.name)+" 쓰러졌습니다." if target.hp <= 0 else ""])
 	if passive_hit: Passives.after_hit(self,target,attacker,form)
 	if target.enemy and target.hp <= 0:
+		Mastery.award(party+npcs,int(target.id),18+depth*8)
 		battle_stats.kills = int(battle_stats.get("kills",0))+1
 		run_stats.kills = int(run_stats.kills)+1
 		score += 10
 		if bool(Encounters.species(str(target.get("species_id",""))).get("beast",false)) and Hexaco.sample(seed_value,depth*1000+target.id,"beast_food",100) < 25:
 			food += 1; message("고기 획득 · 식량 +1")
-		if target.get("boss",false): grant_part(str(target.part_id)); score += 100
+		if target.get("boss",false):
+			grant_part(str(target.part_id)); score += 100
+			var books: Array = Spells.IMPLEMENTED.filter(func(id): return id not in party[0].spells)
+			if not books.is_empty(): learn_spell(0,str(books[Hexaco.sample(seed_value,depth*1000+target.id,"boss_book",books.size())]))
 		else: roll_part(target)
 	if not target.enemy and target.id == 0 and target.hp <= 0: check_battle_end()
+	return lost
 
 func plan_enemies() -> void:
 	Floor.MonsterAI.plan(self)
@@ -1179,5 +1360,8 @@ func use_supply(slot: int, target: Vector2i = Vector2i(-1,-1), recipient: int = 
 		supplies[slot] -= 1
 		if on_floor(): user.ap -= 1
 	message("%s · %s 사용" % [actor.name,SUPPLY_NAMES[slot]])
-	if slot not in [3,4] and on_floor(): finish_player_action()
+	if slot not in [3,4] and on_floor():
+		if manual_mode:
+			user.ap = 1; Scheduler.advance(self,100)
+		else: finish_player_action()
 	return true

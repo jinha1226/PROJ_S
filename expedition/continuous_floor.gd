@@ -102,7 +102,13 @@ static func mint_enemy(s, member: Dictionary, group: String, tier: String, manda
 	enemy.max_hp = enemy.hp
 	enemy.group = group; enemy.home = enemy.pos; enemy.alert = false
 	enemy.species_id = member.species_id; enemy.tier = tier; enemy.mandatory = mandatory
+	var species: Dictionary = s.Encounters.species(str(member.species_id))
+	enemy.speed = int(species.get("speed",100))
+	enemy.ac = int(species.get("ac",0)); enemy.ev = int(species.get("ev",3))
+	enemy.res = species.get("res",{}).duplicate(true)
+	enemy.ready_at = int(s.time)+int(enemy.speed)
 	MonsterAI.configure(enemy,member.role)
+	enemy.power = int(MonsterAI.ROLES[str(member.role)].damage)
 	enemy.part_id = Abilities.species_part(member.species_id)
 	s.enemies.append(enemy)
 	return enemy

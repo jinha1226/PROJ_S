@@ -32,3 +32,10 @@ static func equip_basics(s) -> void:
 ## expedition bots fight through this instead of pressing auto_attack.
 static func fight_round(s) -> bool:
 	return s.auto_step()
+
+## The manual rules' one player action, chosen by the same companion utility.
+static func hero_turn(s) -> bool:
+	var hero: Dictionary = s.party[0]
+	hero.ap = 1
+	var choice: Dictionary = s.Tactics.choose(s,hero)
+	return s.submit(str(choice.get("kind","WAIT")),choice.get("cell",hero.pos))

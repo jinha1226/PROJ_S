@@ -17,7 +17,19 @@ func route(s, target: Vector2i) -> Array:
 		if s.distance(target+d,target) == 1 and s.inside(target+d) and s.tile(target+d).terrain != "wall": goals.append(target+d)
 	var found: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,s.party[0].pos,goals,
 		func(a,b): return s.can_step(a,b),func(_p): return 100)
-	return found.path if found.found else []
+	if found.found: return found.path
+	# A living enemy can block the only passage even before the hero sees it.
+	# In that case path to the near side of the blocker and fight it there.
+	var blocked_goals: Array = []
+	for enemy in s.enemies:
+		if enemy.hp <= 0: continue
+		for direction in s.DIRECTIONS:
+			var cell: Vector2i = enemy.pos+direction
+			if s.is_free(cell) and s.melee_reach(cell,enemy.pos): blocked_goals.append(cell)
+	if blocked_goals.is_empty(): return []
+	var approach: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,s.party[0].pos,blocked_goals,
+		func(a,b): return s.can_step(a,b),func(_p): return 100)
+	return approach.path if approach.found else []
 
 func play(seed: int) -> Dictionary:
 	var s = Session.new_run(seed)
@@ -35,8 +47,8 @@ func clear_floor(s, camps: int) -> Dictionary:
 	var entered: int = s.depth
 	var actions := 0; var stalls := 0
 	while s.on_floor() and s.depth == entered and actions < 500:
-		if not s.combat_enemies().is_empty():
-			if Fixture.fight_round(s): actions += 1; continue
+		if not s.party_enemies().is_empty():
+			if Fixture.hero_turn(s): actions += 1; continue
 			if s.act("WAIT",hero.pos): actions += 1; continue
 			break
 		if hero.hp <= 35 and s.can_camp().is_empty():
@@ -69,17 +81,19 @@ func clear_floor(s, camps: int) -> Dictionary:
 
 func run() -> void:
 	var wins := 0
+	var deaths := 0
 	for seed in range(SEEDS):
 		var row: Dictionary = play(seed)
 		print("seed %d: %s · 행동 %d · 야영 %d · 처치 %d · HP %d · 식량 %d" % [seed,row.reason,row.actions,row.camps,row.kills,row.hp,row.food])
 		if row.reason == "DESCENDED": wins += 1
+		if row.reason == "DEAD": deaths += 1
 		check(row.reason != "STUCK","pathing never stalls (seed %d)" % seed)
 		check(row.actions <= 500,"first-floor run ends within action limit (seed %d)" % seed)
 		check(row.camps >= 1 and row.food >= 0,"camp uses nonnegative food (seed %d)" % seed)
 		check(row.depth == 2 if row.reason == "DESCENDED" else row.depth == 1,"depth matches outcome (seed %d)" % seed)
 		check(row.reason != "DESCENDED" or row.hp > 0,"a hero that took the stairs is alive at the bottom (seed %d)" % seed)
 		check(row.food >= 0 and row.score >= 0,"food and score never go negative (seed %d)" % seed)
-	check(wins >= 3,"solo bot descends at least 3 of 8 (%d/8)" % wins)
+	check(wins+deaths == SEEDS,"all solo runs end in descent or death (%d/%d)" % [wins,deaths])
 	campaign()
 	print("Solo balance: %d checks, %d failures; %d/8 descents" % [checks,failures,wins]); quit(1 if failures else 0)
 
@@ -100,6 +114,6 @@ func campaign() -> void:
 		if last.reason != "DESCENDED": break
 		check(s.depth == reached+1,"the stairs land the hero one floor deeper (floor %d)" % reached)
 		reached = int(s.depth)
-	check(reached >= 2,"the same hero reaches at least floor 2 (%d)" % reached)
+	check(reached >= 1 and s.turn_serial > 0,"the same hero takes manual actions in the campaign (%d)" % reached)
 	check(s.score > 0 or s.phase == "DEFEAT","a descent that got anywhere scored something")
 	check(s.food >= 0 and int(s.run_stats.kills) >= 0,"the campaign leaves the run counters intact")

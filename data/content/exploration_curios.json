@@ -53,7 +53,8 @@
               1
             ],
             "part_chance": 30,
-            "supply_chance": 30
+            "supply_chance": 30,
+            "spellbook_chance": 20
           }
         }
       }
@@ -66,7 +67,8 @@
           "label": "살펴본다",
           "chance": 100,
           "success": {
-            "item": true
+            "item": true,
+            "gear_chance": 50
           }
         }
       }
