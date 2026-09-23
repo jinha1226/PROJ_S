@@ -159,7 +159,8 @@ func reset_battle_stats() -> void:
 		"interrupts":0,"enemy_parts":{},"drops":{},"stops":[]}
 	for actor in party:
 		battle_stats.members[actor.id] = {"dealt":0,"taken":0,"guards":0,"covers":0,"redirected":0,
-			"parts":{},"healed":0,"downed":false,"conflict":bool(actor.get("conflicted",false))}
+			"parts":{},"healed":0,"downed":false,"conflict":bool(actor.get("conflicted",false)),
+			"role_rounds":{"in_role":0,"total":0}}
 
 ## The row of one member, empty for an id that is not in the party — which is
 ## what every tally below tests before it writes.
@@ -494,10 +495,13 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 		"MOVE":
 			if target not in movement_cells(party.find(actor)): return false
 			actor.pos = target
+			actor.hit_and_run = false
 		"ATTACK":
 			if victim.is_empty() or not victim.enemy or not melee_reach(actor.pos,target): return false
 			var hit := TurnCore.physical(Growth.power(actor,"MELEE",18) * actor.attack_factor / 100, 1000, 0, 2)
 			damage(victim, int(hit.damage), actor.id, "SLASH")
+			# A skirmisher with nothing to shoot strikes once, then breaks away.
+			if Stances.effective(actor) == "SKIRMISHER" and Stances.ranged_part(actor).is_empty(): actor.hit_and_run = true
 		"FIRE", "WATER", "ELECTRIC":
 			if distance(actor.pos, target) > 4 or tile(target).terrain == "wall": return false
 			if not preload("res://sim/combat_kernel.gd").sees(actor.pos, target,
@@ -622,6 +626,12 @@ func auto_step() -> bool:
 			if act_as(actor,choice.kind,choice.cell,false): actor.last_action = choice.reason
 			elif act_as(actor,"WAIT",actor.pos,false): actor.last_action = "대기"
 			else: break
+		# Did the stance get what it wanted this round? One tally per member.
+		var row: Dictionary = member_stats(actor.id)
+		if not row.is_empty() and actor.hp > 0:
+			row.role_rounds = row.get("role_rounds",{"in_role":0,"total":0})
+			row.role_rounds.total += 1
+			if Stances.in_role(self,actor): row.role_rounds.in_role += 1
 	if phase == "BATTLE": end_round()
 	return true
 

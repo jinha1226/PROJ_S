@@ -16,6 +16,10 @@ func route(s, target: Vector2i) -> Array:
 	for d in s.DIRECTIONS:
 		if s.is_free(target+d) and s.melee_reach(target+d,target): goals.append(target+d)
 	var r: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,s.party[0].pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100)
+	if r.found: return r.path
+	# Every clear route is blocked by a body: walk the terrain route instead and
+	# meet whatever is standing in the corridor, rather than waiting it out.
+	r = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,s.party[0].pos,goals,func(a,b): return s.walk_reach(a,b),func(_p): return 100)
 	return r.path if r.found else []
 
 ## Shopping list in priority order; buys while funds last, then departs.

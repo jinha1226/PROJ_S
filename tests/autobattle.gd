@@ -129,8 +129,12 @@ func stops() -> void:
 ## that no ally can 엄호 the killing blow away. The retreat line is switched off
 ## for that member, or it would simply walk away from the blow. False when the
 ## arena offers no free cell for the foe.
+## An isolated member at 1 hp with a foe beside it. The stance is set to
+## 돌격형 so that the member stands and fights where it was cut off instead of
+## walking back to the party, which is what the stop events here are about.
 func cut_off(s, index: int, foe: Dictionary, cell: Vector2i) -> bool:
 	s.party[index].hp = 1; s.party[index].pos = cell; s.party[index].knobs.retreat_hp = 0
+	s.party[index].stance = "CHARGER"
 	var beside: Vector2i = Fixture.beside(s,cell)
 	if beside == Vector2i(-1,-1): return false
 	foe.hp = foe.max_hp; foe.alert = true; foe.pos = beside
@@ -195,13 +199,12 @@ func knobs() -> void:
 	check(Knobs.effective(hero).posture == 100,"a collapsed bold member goes all-in")
 	hero.stress = 0; s.stress(hero,0); hero.knobs.posture = 60
 	check(not Knobs.conflicted(hero) and Knobs.effective(hero).posture == 60,"inside the band the knob is used as set")
-	# Tactics: posture +100 ignores fire-only danger, -100 flees it.
+	# Tactics: fire underfoot is left, cohesion keeps contact, the retreat line wins.
 	d = skirmish(); s = d.s; hero = d.hero
 	d.foes[0].pos = d.c+Vector2i(1,0); s.floor_state.observe(s)
 	s.tile(hero.pos).fire = 40
-	hero.knobs = {"posture":100,"cohesion":0,"retreat_hp":0}
-	check(s.Tactics.choose(s,hero).kind == "ATTACK","aggressive: fire underfoot does not stop the attack")
-	hero.knobs.posture = -100
+	# Fire underfoot is left whatever the posture: every stance avoids it.
+	hero.knobs = {"posture":-100,"cohesion":0,"retreat_hp":0}
 	check(s.Tactics.choose(s,hero).kind == "MOVE","cautious: leaves the fire")
 	s.tile(hero.pos).fire = 0
 	# Cohesion +100 avoids moving away from allies; retreat line prefers distance.

@@ -11,6 +11,9 @@ func arena():
 	s.party[0].pos = Vector2i(1,1); s.party[1].pos = Vector2i(3,4)
 	s.enemies[0].pos = Vector2i(4,4); s.enemies[0].cooldown = 20
 	s.selected = 1
+	# The companion under test fights as a 거리형: it strikes what is beside it
+	# and steps off a telegraphed cell, which is what these rule checks assume.
+	s.party[1].stance = "SKIRMISHER"
 	return s
 func exercise() -> void:
 	eight_way_checks()
@@ -54,7 +57,9 @@ func exercise() -> void:
 	check(s.Tactics.choose(s,ally).kind != "GUARD","a healthy leader needs no cover")
 	s.set_tactic(1,"GUARD","MANUAL"); s.set_tactic(1,"PUSH","OFFENSE")
 	s.intents = [{"id":boss.id,"cell":ally.pos,"damage":16}]
-	check(s.Tactics.choose(s,ally).kind == "MOVE","escape takes precedence over skill policy")
+	check(s.Tactics.choose(s,ally).kind == "PUSH","a matched skill policy outranks the stance")
+	s.set_tactic(1,"PUSH","MANUAL")
+	check(s.Tactics.choose(s,ally).kind == "MOVE","with no rule matched the 거리형 leaves the telegraphed cell")
 	s = arena(); ally = s.party[1]
 	turn = s.round_number
 	check(not s.update_rule(1,1,"target","NEAREST"),"ally skill rejects enemy target")
@@ -82,6 +87,9 @@ func exercise() -> void:
 	var other: Dictionary = s.enemies[0].duplicate(true)
 	other.id = 99; other.pos = Vector2i(3,3); other.hp = 3
 	s.enemies.append(other)
+	# The leader steps back out of contact: while a 돌격형 stands on a foe that
+	# foe is the party's target, and the tie-break below is what is under test.
+	s.party[0].pos = Vector2i(1,1); s.party[0].hp = 55
 	check(s.set_basic_target(1,"LOWEST_HP"),"basic target setting accepted")
 	check(s.Tactics.choose(s,ally).cell == other.pos,"basic attack selects lowest HP in reach")
 	other.pos = Vector2i(6,6)
@@ -121,6 +129,7 @@ func exercise() -> void:
 	check(not s.companion_previews()[0].get("reserved",false),"dead target invalidates reservation")
 	var scene = load("res://expedition/main.tscn").instantiate()
 	scene.session = Session.new(731,true,true)
+	scene.session.party[1].stance = "CHARGER"   # a guardian would hold its ground; this marker needs a move
 	root.size = Vector2i(390,844); root.add_child(scene); scene.depart()
 	for frame in range(5): await process_frame
 	check(scene.session.party.size() == 2,"leader and one companion")
