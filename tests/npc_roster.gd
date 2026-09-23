@@ -39,7 +39,8 @@ func placement() -> void:
 	for n in s.npcs:
 		check(s.inside(n.pos) and s.tile(n.pos).terrain != "wall" and s.at(n.pos) == n,"npc stands on a floor cell and at() finds it")
 		check(Roster.situation(n) in ["FIGHTING","WOUNDED","RESTING"],"situation set")
-		if Roster.situation(n) == "WOUNDED": check(n.hp*100/n.max_hp >= 30 and n.hp*100/n.max_hp <= 50 and n.stress >= 20,"wounded hp 30-50%% and shaken (%s)" % n.name)
+		# A +30 shock scales with E: 30*(650+E)/1000 is 19-49 points for an NPC.
+		if Roster.situation(n) == "WOUNDED": check(n.hp*100/n.max_hp >= 30 and n.hp*100/n.max_hp <= 50 and n.stress >= 19,"wounded hp 30-50%% and shaken (%s)" % n.name)
 		if Roster.situation(n) == "FIGHTING":
 			check(n.hp*100/n.max_hp >= 60 and n.hp*100/n.max_hp <= 80,"fighting hp 60-80%%")
 			check(s.enemies.any(func(e): return e.hp > 0 and e.get("npc_pack",-1) == n.id and s.distance(e.pos,n.pos) <= 2),"a pack placed beside the fighting npc")
@@ -66,25 +67,17 @@ func placement() -> void:
 			if Roster.situation(n) != "RESTING": eligible += 1; hungry += 1 if n.hungry else 0
 	check(hungry > 0 and hungry < eligible,"some, not all, are hungry (%d/%d)" % [hungry,eligible])
 
-## Every hp the situation band and the 10-30%% wear can produce for this NPC.
-func worn(n: Dictionary) -> Array:
-	var lo: int = {"WOUNDED":30,"FIGHTING":60,"RESTING":100}[Roster.situation(n)]
-	var out: Array = []
-	for band in range(lo,mini(lo+20,100)+1):
-		var full: int = ceili(n.max_hp*band/100.0)
-		for wear in range(10,31):
-			var hp: int = maxi(1,ceili(full*(100-wear)/100.0))
-			if hp not in out: out.append(hp)
-	return out
-
 func reappearance() -> void:
 	var s = Session.new(43,false,false,true,1); s.depart()
 	var placed: Array = s.npcs.map(func(n): return n.id)
 	# Five more have been met and walked away hurt; one of those is dead and one
 	# has joined the party, so the next floor must draw on the returners.
 	var rest: Array = s.roster.filter(func(n): return n.id not in placed)
-	for i in range(5): rest[i].state = "MET"; rest[i].hp = 50
+	for i in range(5): rest[i].state = "MET"
 	var met: Array = s.roster.filter(func(n): return n.state == "MET").map(func(n): return n.id)
+	# Everyone already met walks into the next floor on 50 health.
+	for n in s.roster:
+		if n.id in met: n.hp = 50
 	check(met.size() == 8,"eight met, two still unknown")
 	var dead: Dictionary = rest[0]; dead.state = "DEAD"
 	var joined: Dictionary = rest[1]; joined.state = "PARTY"
@@ -100,7 +93,7 @@ func reappearance() -> void:
 	var returners: Array = s.npcs.filter(func(n): return n.id in met)
 	check(returners.size() >= 2,"met NPCs come back to fill the floor (%d)" % returners.size())
 	for n in returners:
-		check(n.hp in worn(n),"returner worn 10-30%% below its band (%s %s hp %d)" % [n.name,Roster.situation(n),n.hp])
+		check(n.hp >= ceili(50*0.70) and n.hp <= ceili(50*0.90),"returner keeps its wounds, 10-30%% worse (%s %s hp %d)" % [n.name,Roster.situation(n),n.hp])
 		check(n.state == "MET" and n.floor_seen == Roster.depth(s) and n.hp > 0,"returner is met again on this floor")
 	for n in s.npcs:
 		check(s.at(n.pos) == n,"every placed NPC owns its cell")

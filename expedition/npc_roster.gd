@@ -106,15 +106,16 @@ static func place(s) -> void:
 		n.pos = cells[Hexaco.sample(s.seed_value,lane,"npc_cell",cells.size())]
 		var situ: String = SITUATIONS[Hexaco.sample(s.seed_value,lane,"npc_situation",3)] if not partner_here else situation(chosen.filter(func(m): return m.id == n.partner)[0])
 		n.situation = situ
-		# The situation sets the band; only then does a previous meeting wear it down.
-		match situ:
-			"WOUNDED":
-				n.hp = ceili(n.max_hp*(30+Hexaco.sample(s.seed_value,lane,"npc_hp",21))/100.0)
-				s.stress(n,30)
-			"FIGHTING":
-				n.hp = ceili(n.max_hp*(60+Hexaco.sample(s.seed_value,lane,"npc_hp",21))/100.0)
-			"RESTING": n.hp = n.max_hp
-		if n.state == "MET": n.hp = maxi(1,ceili(n.hp*(90-Hexaco.sample(s.seed_value,lane,"npc_wear",21))/100.0))
+		# A stranger arrives at the band its situation asks for; someone met before
+		# carries last floor's wounds and loses another 10-30% of them (spec 5.2).
+		if n.state == "MET":
+			n.hp = maxi(1,ceili(n.hp*(90-Hexaco.sample(s.seed_value,lane,"npc_wear",21))/100.0))
+		else:
+			match situ:
+				"WOUNDED": n.hp = ceili(n.max_hp*(30+Hexaco.sample(s.seed_value,lane,"npc_hp",21))/100.0)
+				"FIGHTING": n.hp = ceili(n.max_hp*(60+Hexaco.sample(s.seed_value,lane,"npc_hp",21))/100.0)
+				"RESTING": n.hp = n.max_hp
+		if situ == "WOUNDED": s.stress(n,30)
 		if situ == "FIGHTING": spawn_pack(s,n,room)
 		n.hungry = situ != "RESTING" and Hexaco.sample(s.seed_value,lane,"npc_hungry",2) == 0
 		# One action in hand, like a floor monster waking up.
