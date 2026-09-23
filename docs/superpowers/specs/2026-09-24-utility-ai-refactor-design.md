@@ -1,5 +1,7 @@
 # 동료 AI Utility 정식화 리팩터링 설계 (Codex 작업 지시서)
 
+> **폐기됨(2026-09-24)**: 이 v1 문서는 "행동 보존" 전제의 결함으로 `2026-09-24-utility-lookahead-design.md`(v2)로 대체되었다.
+
 작성일: 2026-09-24 · 상태: 설계 확정 · 담당: Codex · 검수: Claude
 근거: [태세 설계](2026-09-23-stances-design.md) · [전술 단순화](2026-09-24-simple-tactics-arena-design.md) · Dave Mark, *Infinite Axis Utility System* (GDC 2010/2013)
 
