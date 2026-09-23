@@ -54,6 +54,11 @@ var map_view
 var map_popup: PopupPanel
 var details_popup: PopupPanel
 var modal_content: VBoxContainer
+## An npc's own offer has its own popup: it outranks whatever else is open and
+## the run waits on it.
+var offer_popup: PopupPanel
+var offer_content: VBoxContainer
+var proposal_line := ""
 var notice := "":
 	set(value):
 		notice = value
@@ -98,6 +103,8 @@ func _ready() -> void:
 	item_popup = PopupPanel.new(); details_popup.add_child(item_popup)
 	item_popup.transient = true; item_popup.exclusive = true
 	item_detail = VBoxContainer.new(); item_detail.custom_minimum_size = Vector2(300,200); item_popup.add_child(item_detail)
+	offer_popup = PopupPanel.new(); offer_popup.name = "OfferPopup"; add_child(offer_popup)
+	offer_content = VBoxContainer.new(); offer_content.custom_minimum_size = Vector2(popup_width(),160); offer_popup.add_child(offer_content)
 	log_popup = PopupPanel.new(); add_child(log_popup)
 	toast = Label.new(); toast.name = "NoticeToast"; toast.mouse_filter = MOUSE_FILTER_IGNORE
 	add_child(toast); toast.set_anchors_and_offsets_preset(PRESET_TOP_WIDE)
@@ -115,7 +122,7 @@ func stop_navigation() -> void:
 	if is_instance_valid(auto_explore_button): auto_explore_button.text = "자동탐험"
 
 func popup_open() -> bool:
-	return details_popup.visible or map_popup.visible or log_popup.visible or item_popup.visible
+	return details_popup.visible or map_popup.visible or log_popup.visible or item_popup.visible or is_instance_valid(offer_popup) and offer_popup.visible
 
 ## One timer step of the auto battle: 0.7s at 1×, half that at 2×.
 func auto_interval() -> float:
@@ -338,6 +345,7 @@ func resource_gauge(parent: Button, id: String, value: int, color: Color, hint: 
 
 func refresh() -> void:
 	if is_instance_valid(board) and board.is_presenting(): return
+	update_offer_popup()
 	var elapsed := 0.0
 	var impact_elapsed := 0.0
 	# Opening an order/selection must not erase an attack that just resolved.
@@ -621,6 +629,12 @@ func on_cell(point: Vector2i) -> void:
 		if feature.get("kind","") == "curio" and session.floor_state.visible.has(point): show_curio(point); return
 		if feature.get("kind","") == "relic" and session.floor_state.visible.has(point): show_relic(); return
 		if feature.get("kind","") == "entry" and session.floor_state.visible.has(point) and point != session.party[session.selected].pos and maxi(absi(point.x-session.party[session.selected].pos.x),absi(point.y-session.party[session.selected].pos.y)) <= 1: show_return(); return
+		# A tap only reaches an npc the party can see, and only an adjacent one talks.
+		var wanderer: Dictionary = session.at(point)
+		if session.wanderer(wanderer) and session.floor_state.visible.has(point):
+			if session.melee_reach(session.party[session.selected].pos,point): show_npc(wanderer)
+			else: notice = "%s · %s" % [wanderer.name,wanderer.get("activity","")] if not str(wanderer.get("activity","")).is_empty() else str(wanderer.name); refresh()
+			return
 	if session.floor_mode and session.phase == "BATTLE" and reservation_actor < 0 and mode.is_empty() and pending_item < 0 and session.floor_state.features.has(point) and not session.floor_state.features[point].used and point != session.party[session.selected].pos and session.distance(session.party[session.selected].pos,point) <= 1:
 		run_action(func(): return session.floor_state.interact(session,point)); return
 	if reservation_actor >= 0:
@@ -633,6 +647,7 @@ func on_cell(point: Vector2i) -> void:
 	if mode == "ATTACK": run_action(func(): return session.act("ATTACK",point)); return
 	if not mode.is_empty(): run_action(func(): return session.act(mode,point)); return
 	var actor: Dictionary = session.at(point)
+	if session.wanderer(actor): return
 	if not actor.is_empty() and not actor.enemy:
 		if session.phase == "BATTLE" and actor.id == session.selected: run_action(func(): return session.act("WAIT",point))
 		else: select_actor(actor.id)
@@ -651,11 +666,69 @@ func on_cell(point: Vector2i) -> void:
 ## the targeting prompt instead of acting.
 func focus_enemy(point: Vector2i) -> void:
 	var target: Dictionary = session.at(point)
-	if target in session.combat_enemies():
+	if target in session.combat_enemies() and (not session.floor_mode or session.floor_state.visible.has(point)):
 		session.command_target = target.id; session.party_command = "ATTACK_TARGET"
 		command_targeting = false; notice = "집중 공격"
 	elif command_targeting:
 		command_targeting = false; notice = ""
+
+## One line of who this npc is: the nouns of its two social facets.
+func npc_personality(npc: Dictionary) -> String:
+	var words: Array = []
+	for facet in ["X","A"]:
+		var terms: Dictionary = Session.Hexaco.STYLE_AXES[facet]
+		words.append(str(terms.high_noun if npc.profile.value(facet) >= 500 else terms.low_noun))
+	return " · ".join(words)
+
+## The npc popup: who it is, what it is doing, and the two things the party has
+## to offer — a share of the food and a place in the line.
+func show_npc(npc: Dictionary) -> void:
+	stop_navigation(); clear(modal_content)
+	modal_content.custom_minimum_size.y = 0
+	var page := VBoxContainer.new(); page.name = "NpcPopup"; modal_content.add_child(page)
+	var talk: Dictionary = Session.Recruit.dialogue(session,npc)
+	label(page,str(npc.name),20)
+	label(page,npc_personality(npc),14)
+	var doing: String = str(npc.get("activity",""))
+	if not doing.is_empty(): label(page,doing,14)
+	label(page,"HP %d/%d" % [npc.hp,npc.max_hp],14)
+	label(page,str(talk.line),15)
+	var ask := button(page,"동행 제안",func(): propose_npc(npc),bool(talk.can_propose))
+	ask.name = "ProposeButton"
+	var share := button(page,"식량 1 나누기 · 보유 %d" % session.food,func(): details_popup.hide(); run_action(func(): return session.aid(npc)),bool(talk.can_aid))
+	share.name = "AidButton"
+	var close := button(page,"닫기",func(): details_popup.hide())
+	close.name = "CloseNpc"
+	details_popup.popup_centered()
+
+## The ask itself always goes through: what comes back is the npc's answer, and
+## the sentence it answers with is the notice.
+func propose_npc(npc: Dictionary) -> void:
+	details_popup.hide()
+	# A lambda captures its locals by value, so the answer comes back on the node.
+	proposal_line = ""
+	run_action(func(): proposal_line = str(session.propose(npc).line); return true)
+	notice = proposal_line
+
+## An npc that asks to come along stops the run and waits for an answer; the
+## popup lives exactly as long as the offer does.
+func update_offer_popup() -> void:
+	if not is_instance_valid(offer_popup): return
+	var standing: Array = session.npcs.filter(func(n): return n.id == session.pending_offer) if session.pending_offer >= 0 else []
+	if standing.is_empty():
+		offer_popup.hide(); return
+	var npc: Dictionary = standing[0]
+	session.auto.running = false
+	stop_navigation()
+	stop_text = "%s이(가) 말을 겁니다" % npc.name
+	clear(offer_content)
+	label(offer_content,str(npc.name),20)
+	label(offer_content,str(Session.Recruit.dialogue(session,npc).line),15)
+	var accept := button(offer_content,"동행",func(): offer_popup.hide(); run_action(func(): return session.answer_offer(true)),session.alive().size() < PARTY_SIZE)
+	accept.name = "OfferAccept"
+	var refuse := button(offer_content,"거절",func(): offer_popup.hide(); run_action(func(): return session.answer_offer(false)))
+	refuse.name = "OfferDecline"
+	offer_popup.popup_centered()
 
 func show_map() -> void:
 	stop_navigation()
@@ -803,7 +876,17 @@ func build_result_card() -> void:
 		label(list,"숙련: 레벨 +%d · 새 부위 손상 %d · 새 기억 %d" % [r.levels,r.injuries,r.memories],13)
 	else:
 		label(list,"자금 %d" % r.bank,13)
+	companion_history(list)
 	button(list,"정비하기",func(): run_action(session.refit))
+
+## Who walked with the party this run, where they joined and whether they came
+## back out (스펙 §1.2).
+func companion_history(list: VBoxContainer) -> void:
+	var rows: Array = session.roster.filter(func(r): return r.state in ["PARTY","DEAD"] and int(r.floor_seen) > 0)
+	if rows.is_empty(): return
+	label(list,"동료 이력",15)
+	for row in rows:
+		label(list,"%s · %d층 합류 · %s" % [row.name,int(row.floor_seen),"생존" if row.state == "PARTY" and row.hp > 0 else "전사"],13)
 
 func show_orders() -> void:
 	stop_navigation()

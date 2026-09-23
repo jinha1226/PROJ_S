@@ -1,6 +1,6 @@
 # 하강 Run · 야영 · 던전 NPC 설계
 
-작성일: 2026-09-25 · 상태: 사용자 검토 대기 · 구현 계획: (스펙 승인 뒤 작성)
+작성일: 2026-09-25 · 상태: Plan B 구현됨 (Plan A 대기: shim 2개) · 구현 계획: `.superpowers/sdd/2026-09-25-dungeon-npc/`
 선행 작업(이전 코드베이스 `/mnt/d/SS`, 코드는 재사용하지 않고 설계만 계승): `docs/EXPEDITION_AID_RECRUITMENT.ko.md`(도움 → 동행 수락, 커밋 b6f38c1) · `docs/INDEPENDENT_EXPLORER_UTILITY.ko.md`(독립 탐험 NPC의 모드 효용, 유지·전환 문턱, 활동 문구)
 근거: [층 생성기](2026-09-22-floor-generator-design.md) · [태세](2026-09-23-stances-design.md) · [전술 단순화·전투 시험](2026-09-24-simple-tactics-arena-design.md) · [효용 선택기](2026-09-24-utility-lookahead-design.md)
 

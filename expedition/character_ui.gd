@@ -7,6 +7,7 @@ const BodyPresentation = preload("res://expedition/body_presentation.gd")
 const Emblem = preload("res://expedition/growth_emblem.gd")
 const Art = preload("res://expedition/mobile_art.gd")
 const Stances = preload("res://expedition/stances.gd")
+const Memory = preload("res://sim/party_memory_state.gd")
 
 static func surface(color: Color, border: Color = Color("65522a")) -> StyleBoxFlat:
 	var skin := StyleBoxFlat.new(); skin.bg_color = color; skin.border_color = border
@@ -208,8 +209,9 @@ static func choose(ui, index: int, id: String) -> void:
 	ui.refresh(); ui.show_character(index,"성격")
 
 static func memories(ui, list: VBoxContainer, actor: Dictionary) -> void:
-	var names := {"SELF_HARM":["죽음의 문턱","큰 부상을 입거나 빈사 상태에 빠졌다."],"ALLY_DOWNED":["동료가 쓰러짐","동료가 쓰러지는 모습을 보았다."],"ALLY_LOST":["동료를 잃음","함께하던 동료를 잃었다."],"AID_RECEIVED":["동료의 도움","동료에게 도움을 받았다."],"COMMAND_CONFLICT":["명령과 갈등","명령을 따르는 데 갈등을 겪었다."]}
-	var important: Array = actor.memory.records.filter(func(record): return int(record.salience) >= 700)
+	var names := {"SELF_HARM":["죽음의 문턱","큰 부상을 입거나 빈사 상태에 빠졌다."],"ALLY_DOWNED":["동료가 쓰러짐","동료가 쓰러지는 모습을 보았다."],"ALLY_LOST":["동료를 잃음","함께하던 동료를 잃었다."],"AID_RECEIVED":["동료의 도움","동료에게 도움을 받았다."],"COMMAND_CONFLICT":["명령과 갈등","명령을 따르는 데 갈등을 겪었다."],"RECRUITED":["동행 시작","함께 가기로 했다."],"DECLINED_BY_PLAYER":["동행 거절당함","동행 제안을 거절당했다."],"DECLINED_PLAYER":["동행 거절","동행 제안을 거절했다."],"LEFT_BY_PARTNER":["동료의 이별","동료가 나를 두고 떠났다."]}
+	# The same exemption the pruning rules make: a social record is cheap and stays.
+	var important: Array = actor.memory.records.filter(func(record): return int(record.salience) >= 700 or str(record.kind) in Memory.SOCIAL_KINDS)
 	if important.is_empty(): text(card(list,"기억"),"남아 있는 중요 기억 없음")
 	for record in important:
 		var copy: Dictionary = record.duplicate(true)

@@ -25,6 +25,7 @@ func set_facets(npc: Dictionary, x: int, a: int) -> void:
 func run() -> void:
 	aid(); aid_death(); memory_survives(); chance(); ask(); offer(); full_party(); duo_close(); duo_strained(); partner_dead()
 	marching_order(); comrade_dies(); stale_offer(); kinds()
+	await scene()
 	print("Recruit: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func aid() -> void:
@@ -210,3 +211,31 @@ func stale_offer() -> void:
 func kinds() -> void:
 	var Memory = load("res://sim/party_memory_state.gd")
 	for k in ["RECRUITED","DECLINED_BY_PLAYER","DECLINED_PLAYER","LEFT_BY_PARTNER"]: check(k in Memory.KINDS,"memory kind "+k)
+
+## The HUD side: a tap on an adjacent npc opens its popup, the aid button
+## shares the food, and an offer on the table waits in its own popup.
+func scene() -> void:
+	var main = load("res://expedition/main.tscn").instantiate()
+	var s = Session.new(71,false,false,true,1)
+	main.session = s; root.size = Vector2i(390,844); root.add_child(main); main.set_process(false)
+	await process_frame
+	s.depart(); var c := Fixture.arena(s,12)
+	var npc: Dictionary = s.npcs[0]; s.npcs = [npc]; npc.pos = c+Vector2i(1,0); npc.awake = true; npc.hungry = true; npc.hp = npc.max_hp; s.food = 2
+	s.floor_state.observe(s); main.refresh(); await process_frame
+	main.on_cell(npc.pos); await process_frame
+	var names := func(node: Node) -> Array:
+		var out: Array = []; var stack: Array = [node]
+		while not stack.is_empty():
+			var n: Node = stack.pop_back(); out.append(n.name)
+			for ch in n.get_children(): stack.append(ch)
+		return out
+	var found: Array = names.call(main)
+	check("NpcPopup" in found and "ProposeButton" in found and "AidButton" in found,"tapping an adjacent npc opens its popup with propose and aid")
+	main.find_child("AidButton",true,false).pressed.emit(); await process_frame
+	check(s.food == 1 and not npc.hungry,"aid button shares food")
+	s.offer(npc); main.refresh(); await process_frame
+	found = names.call(main)
+	check("OfferPopup" in found and "OfferAccept" in found and "OfferDecline" in found,"a pending offer shows the offer popup")
+	main.find_child("OfferAccept",true,false).pressed.emit(); await process_frame
+	check(npc.state == "PARTY" and s.party.size() == 2,"accepting recruits")
+	main.queue_free(); await process_frame

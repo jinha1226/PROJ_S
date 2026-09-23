@@ -435,6 +435,42 @@ Task 4의 전체 스위트 실행에서 `skill_archetypes`가 **1 failure**로 �
 | `stance_gate` | 혼합 5/6 (미달: `deep_caster`) · 단일 3빌드 전부 6/6 |
 | `ranged_probe` 2인 | `deep_mixed` 1.00 · `opt_archers` 1.00 · `two_archers` 1.00 |
 
+## NPC 활동 모드 (던전 NPC Task 4)
+
+깨어 있는 NPC가 **아무도 자기를 공격하지 않을 때** 무엇을 하는가를 고르는 네 모드짜리 효용 표다.
+파츠·태세와 같은 선형 가중합을 쓰되 표는 `data/content/tactics_profiles.json`의 `npc_modes`에 있고,
+선택기는 `expedition/npc_modes.gd`(`table/inputs/score_of/choose`)다. 교전 중이면 표를 묻지 않는다 —
+`FIGHT`는 상황이 정하는 것이지 취향이 아니다.
+
+| 고려 항목 | 의미 | APPROACH | HOLD | REST | EXPLORE |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `base` | 기본값 | 40 | 60 | 0 | 30 |
+| `X` | 외향 /1000 | +120 | −60 | | |
+| `A` | 온화 /1000 | +60 | | | |
+| `C` | 신중 /1000 | | +80 | | |
+| `O` | 개방 /1000 | | | | +120 |
+| `wounded` | HP < 40% | +80 | | +200 | |
+| `hp_ratio` | HP/최대 | | | | +60 |
+| `party_room` | 파티 인원/3 | −90 | | | |
+| `declined` | 거절 기억 | −150 | +120 | | |
+| `stress` | 스트레스/200 | | | +80 | |
+| `party_seen` | 파티가 시야에 | | | | −120 |
+
+**유지와 전환.** 고른 모드는 `COMMIT_ROUNDS = 10` 라운드 동안 유지된다(`npc.mode_until`).
+그 안에 바꾸려면 새 모드가 현재 모드를 `SWITCH_MARGIN = 80`점 넘겨 앞서야 한다 — 문턱이 없으면
+성격이 비슷한 두 모드 사이에서 매 라운드 흔들린다. 유지 기간이 끝나면 점수만으로 다시 고른다.
+2인 조는 짝이 고른 모드를 따라간다(`partner_of`), 활동 문구는 `NpcAI.LABELS`
+(`교전 중`·`다가오는 중`·`거리를 두고 지켜보는 중`·`부상으로 대기 중`·`주변을 탐색 중`)이고
+보드의 이름표 아래에 그대로 나온다.
+
+**검사 시드.** `tests/npc_behaviour.gd`는 `Session.new(61,…)` + `Fixture.arena(s,12)` 한 장을 쓰고
+(`npc_sense`는 51, `npc_roster`는 41~43·100+n, `recruit`은 71~82와 200+n), 각 모드는 해당
+고려 항목을 끝값으로 밀어 그 모드가 뽑히는지, 문턱이 흔들림을 막는지를 본다.
+
+| 스위트 | 결과 |
+| --- | --- |
+| `npc_roster` · `npc_sense` · `npc_behaviour` · `recruit` | 0 failures (CI 목록에 추가) |
+
 ## 눈으로 보는 체크리스트 (사용자 확인 항목)
 
 수치가 아니라 눈으로 확인하는 항목이다. **전투 시험 모드**로 본다:
