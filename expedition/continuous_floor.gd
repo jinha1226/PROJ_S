@@ -155,15 +155,19 @@ func observation(s) -> Dictionary:
 ## has in its own sight — an npc's battle is a battle on this floor.
 func threats(s) -> Array:
 	var seen: int = MonsterAI.sight(s)
-	return s.enemies.filter(func(e): return e.hp > 0 and (visible.has(e.pos) or s.npcs.any(func(n): return n.awake and n.hp > 0 and MonsterAI.line(s,n.pos,e.pos,seen))))
+	# Hoisted: the watchers are the same for every enemy this call weighs.
+	var watchers: Array = s.npcs.filter(func(n): return n.awake and n.hp > 0)
+	return s.enemies.filter(func(e): return e.hp > 0 and (visible.has(e.pos) or watchers.any(func(n): return MonsterAI.line(s,n.pos,e.pos,seen))))
 
 ## Only what the party itself sees: the auto-run's stop events are about the
 ## party's eyes, not an npc's.
 func party_threats(s) -> Array:
 	return s.enemies.filter(func(e): return e.hp > 0 and visible.has(e.pos))
 
+## Whether the party may treat this cell as quiet: its own eyes decide, not a
+## fight an npc picked out of its sight.
 func safe(s) -> bool:
-	return threats(s).is_empty()
+	return party_threats(s).is_empty()
 
 func interact(s, p: Vector2i) -> bool:
 	if s.phase != "BATTLE" or s.party[s.selected].hp <= 0 or s.party[s.selected].ap <= 0: return false

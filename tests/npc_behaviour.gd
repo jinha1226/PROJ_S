@@ -49,6 +49,19 @@ func fights() -> void:
 	t.intents = [{"id":foe2.id,"cell":t.party[0].pos,"damage":9,"kind":""}]
 	NpcAI.turn(t,n2)
 	check(t.party[0].get("protected_by",-1) == n2.id,"guardian npc guards the lethal hero")
+	# An npc walks the party's own two-step frontier: a candidate two cells out
+	# (a skirmisher's escape line) is executed instead of falling back to WAIT.
+	var m := field(Vector2i(-2,0)); var u = m.s; var n3: Dictionary = m.npc
+	var away := foe_at(u,n3.pos+Vector2i(-3,0))
+	u.boss_trial = false   # the fixture's session is a trial one, where everybody moves a single cell
+	n3.ap = 1
+	var out: Vector2i = n3.pos+Vector2i(0,2)
+	check(int(n3.move_factor) == 100 and out in u.movement_cells(n3.id),"the npc's frontier is the party's two-step one")
+	check(u.act_as(n3,"MOVE",out,false) and n3.pos == out,"an npc crosses two cells in one action")
+	n3.pos = m.c+Vector2i(-2,0)
+	var gap: int = maxi(absi(n3.pos.x-away.pos.x),absi(n3.pos.y-away.pos.y))
+	NpcAI.turn(u,n3)
+	check(maxi(absi(n3.pos.x-away.pos.x),absi(n3.pos.y-away.pos.y)) < gap,"a charger npc closes on the foe its own eyes found")
 
 func targeted() -> void:
 	var f := field(Vector2i(4,0)); var s = f.s; var npc: Dictionary = f.npc
@@ -58,10 +71,24 @@ func targeted() -> void:
 	var hp: int = npc.hp
 	s.floor_state.enemy_turn(s,foe)
 	check(npc.hp < hp,"monsters target an awake npc")
+	# An npc's own fight is the ai's business, not the party's state: the party
+	# keys everything it does on what it can see itself.
+	var g := field(Vector2i(11,0)); var t = g.s
+	var far := foe_at(t,g.npc.pos+Vector2i(1,0))
+	check(not t.floor_state.visible.has(far.pos),"the npc's foe stands out of the party's sight")
+	check(not t.combat_enemies().is_empty() and t.party_enemies().is_empty(),"a target for the ai, no foe for the party")
+	check(t.floor_state.safe(t) and not t.in_combat(),"the party is not in combat over an npc's fight")
 
 func dies() -> void:
 	var f := field(Vector2i(2,0)); var s = f.s; var npc: Dictionary = f.npc
 	npc.hp = 3; var foe := foe_at(s,npc.pos+Vector2i(1,0))
+	var stress: Array = s.party.map(func(a): return int(a.stress))
 	s.floor_state.enemy_turn(s,foe)
-	check(npc.hp <= 0 and npc.state == "DEAD" and s.roster.any(func(r): return r.id == npc.id and r.state == "DEAD"),"a killed npc is DEAD on the roster")
+	check(npc.hp <= 0 and npc.state == "DEAD","a killed npc is DEAD")
+	check(s.roster.filter(func(r): return r.id == npc.id)[0].state == "DEAD","the roster row is DEAD")
 	check(s.phase == "BATTLE","npc death does not end the party's battle")
+	# A stranger's death is not a comrade's: those who watched are shaken by
+	# five, and nobody remembers an ally lost.
+	check(not s.party.any(func(a): return int(a.memory.salience_for_subject(npc.id+1,["ALLY_LOST"])) > 0),"no ALLY_LOST for a stranger")
+	check(s.floor_state.visible.has(npc.pos),"the party watched it happen")
+	check(s.party.all(func(a): return int(a.stress) > stress[s.party.find(a)]),"everyone watching is shaken")

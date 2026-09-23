@@ -13,7 +13,7 @@ static func error(s, point: Vector2i, option: String) -> String:
 	if feature.used: return "조사 완료"
 	var actor: Dictionary = s.party[s.selected]
 	if actor.hp <= 0 or actor.ap <= 0: return "행동 불가"
-	if not s.combat_enemies().is_empty(): return "주변에 적 있음"
+	if not s.party_enemies().is_empty(): return "주변에 적 있음"
 	if actor.pos != point and not s.melee_reach(actor.pos,point): return "거리 초과"
 	if not def.options.has(option): return "선택 불가"
 	var choice: Dictionary = def.options[option]

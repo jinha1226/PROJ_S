@@ -59,7 +59,7 @@ static func error(s) -> String:
 	if not s.floor_state.visible.has(p) or not s.floor_state.features.has(p): return "시야 밖"
 	var actor: Dictionary = s.party[s.selected]
 	if actor.hp <= 0 or actor.ap <= 0: return "행동 불가"
-	if not s.combat_enemies().is_empty(): return "주변에 적 있음"
+	if not s.party_enemies().is_empty(): return "주변에 적 있음"
 	if actor.pos != p and not s.melee_reach(actor.pos,p): return "거리 초과"
 	return ""
 

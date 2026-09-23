@@ -28,14 +28,14 @@ func route(s, target: Vector2i) -> Array:
 
 func start(s, target: Vector2i) -> bool:
 	stop(); plan_builds = 0
-	if not s.floor_mode or s.phase != "BATTLE" or not s.combat_enemies().is_empty(): return false
+	if not s.floor_mode or s.phase != "BATTLE" or not s.party_enemies().is_empty(): return false
 	planned_path = route(s,target)
 	if planned_path.size() < 2: return false
 	destination = target; active = true; return true
 
 func explore(s) -> bool:
 	stop(); plan_builds = 0
-	if not s.floor_mode or s.phase != "BATTLE" or not s.combat_enemies().is_empty(): return false
+	if not s.floor_mode or s.phase != "BATTLE" or not s.party_enemies().is_empty(): return false
 	automatic = true; active = true; return true
 
 func frontier_path(s) -> Array:
@@ -51,7 +51,7 @@ func frontier_path(s) -> Array:
 
 func next_step(s) -> Vector2i:
 	if not active: return Vector2i(-1,-1)
-	if s.phase != "BATTLE" or not s.combat_enemies().is_empty(): stop(); return Vector2i(-1,-1)
+	if s.phase != "BATTLE" or not s.party_enemies().is_empty(): stop(); return Vector2i(-1,-1)
 	var current: Vector2i = s.party[s.selected].pos
 	exhausted["%d:%d" % [current.x,current.y]] = true
 	if planned_path.size() > 1 and planned_path[1] == current: planned_path.pop_front()

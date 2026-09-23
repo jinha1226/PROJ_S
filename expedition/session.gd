@@ -551,7 +551,8 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 		"MOVE":
 			# movement_cells indexes the party; an npc is not in it, so it checks its own step.
 			if bool(actor.get("npc",false)):
-				if not can_step(actor.pos,target) or not is_free(target) or distance(actor.pos,target) > 1: return false
+				# The same two-step frontier the party walks, keyed by the npc's id.
+				if target not in movement_cells(actor.id): return false
 			else:
 				if target not in movement_cells(party.find(actor)): return false
 			actor.pos = target
@@ -1132,8 +1133,14 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 		stress(target, 5 + lost / 2)
 		if target.hp <= 0 and target.get("npc",false):
 			target.state = "DEAD"; target.awake = false; target.activity = ""
-			message(target.name+"이(가) 쓰러졌습니다.")
-		if target.hp <= 0:
+			# A stranger's death is not a comrade's: whoever watched it happen is
+			# shaken, and someone the npc owed a debt to feels it twice.
+			var watched: bool = floor_state.visible.has(target.pos)
+			for ally in alive():
+				if not watched: continue
+				stress(ally,5)
+				if int(target.memory.salience_for_subject(ally.id+1,["AID_RECEIVED"])) > 0: stress(ally,10)
+		elif target.hp <= 0:
 			if not taken_row.is_empty(): taken_row.downed = true
 			for ally in alive():
 				remember_important(ally,"ALLY_LOST",target.id+1,source+1,900)
@@ -1205,11 +1212,14 @@ func end_round() -> bool:
 	if phase != "BATTLE": return false
 	world_time += 100
 	# The floor's NPCs take their round before the monsters do.
+	# Everyone listens to this round's noise first; only then is it cleared, so
+	# that what the npcs themselves do is heard next round and nothing else is
+	# lost down an early return below.
+	var awake: Array = []
 	for npc in npcs:
-		if npc.hp > 0 and NpcAI.sense(self,npc): NpcAI.turn(self,npc)
-	# The round's noise has been heard by everyone who listens: clear it here so
-	# that every early return below still leaves the next round silent.
+		if npc.hp > 0 and NpcAI.sense(self,npc): awake.append(npc)
 	noise.clear()
+	for npc in awake: NpcAI.turn(self,npc)
 	for enemy in enemies:
 		enemy_attack_turn(enemy)
 		if alive().is_empty(): break

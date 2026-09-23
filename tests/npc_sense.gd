@@ -43,6 +43,25 @@ func noise() -> void:
 	check(not NpcAI.sense(far.s,far.npc),"noise beyond ten tiles is not heard")
 	s.end_round()
 	check(s.noise.is_empty(),"noise clears at the end of the round")
+	# What an npc does is heard next round: two npcs eight tiles apart, both out
+	# of the party's sight, and the first one's fight is what wakes the second.
+	var g := field(Vector2i(9,-4)); var t = g.s
+	var first: Dictionary = g.npc
+	var second: Dictionary = t.roster.filter(func(r): return r.id != first.id)[0]
+	t.npcs = [first,second]
+	first.awake = true; first.noise_seen = t.round_number; first.stance = "CHARGER"
+	first.equipped_abilities = ["",""]; first.rules = []; t.mistake_override[first.id] = false
+	second.pos = g.c+Vector2i(9,4); second.hp = second.max_hp; second.awake = false; second.noise_seen = -99
+	var near: Dictionary = t.enemies.filter(func(e): return e.hp <= 0)[0]
+	near.hp = 40; near.max_hp = 40; near.pos = first.pos+Vector2i(1,0); near.alert = true; near.role = "MELEE"
+	near.part_id = ""; near.charging = false; near.cast_recovery = 0
+	t.floor_state.observe(t)
+	check(not t.floor_state.visible.has(first.pos) and not t.floor_state.visible.has(second.pos),"neither npc is in the party's sight")
+	t.end_round()
+	check(first.activity == "교전 중" and not second.awake,"the first fights; the second has not heard it yet")
+	check(not t.noise.is_empty(),"the fight's noise survives the round it was made in")
+	t.end_round()
+	check(second.awake,"an npc's own fight is heard by the next npc next round")
 
 func sleep() -> void:
 	var f := field(Vector2i(4,0)); var s = f.s; var npc: Dictionary = f.npc

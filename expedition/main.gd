@@ -184,7 +184,7 @@ func note_stop(reason: String) -> void:
 ## The Korean sentence of a stop event, with whoever caused it.
 func stop_message(reason: String) -> String:
 	match reason:
-		"BATTLE_START": return "전투 시작 · 적 %d" % session.combat_enemies().size()
+		"BATTLE_START": return "전투 시작 · 적 %d" % session.party_enemies().size()
 		"BATTLE_END": return "전투 종료"
 		"DEATH":
 			var fallen: Array = session.party.filter(func(a): return a.hp <= 0)
@@ -254,7 +254,7 @@ func navigation_tick() -> void:
 	if step.x < 0: stop_navigation(); return
 	var health: Array = session.party.map(func(a): return a.hp)
 	run_action(func(): return session.act("MOVE",step),true)
-	if session.party.map(func(a): return a.hp) != health or not session.combat_enemies().is_empty() or session.party[session.selected].pos != step:
+	if session.party.map(func(a): return a.hp) != health or not session.party_enemies().is_empty() or session.party[session.selected].pos != step:
 		stop_navigation()
 	elif not navigation.automatic and step == navigation.destination: stop_navigation()
 
@@ -543,7 +543,7 @@ func run_action(callback: Callable, navigating: bool = false) -> void:
 	if not navigating: stop_navigation()
 	session.effects.clear()
 	var recorder = Presentation.new()
-	var show_battle: bool = is_processing() and session.floor_mode and session.phase == "BATTLE" and not session.combat_enemies().is_empty()
+	var show_battle: bool = is_processing() and session.floor_mode and session.phase == "BATTLE" and not session.party_enemies().is_empty()
 	if show_battle:
 		recorder.begin(session); session.presentation = recorder
 	var accepted: bool = callback.call()
@@ -715,7 +715,7 @@ func show_objective() -> void:
 	stop_navigation(); clear(modal_content)
 	modal_content.custom_minimum_size.y = 0
 	button(modal_content,"원정 목표",show_goal)
-	button(modal_content,"입구까지 이동",start_return_walk,session.phase == "BATTLE" and session.combat_enemies().is_empty())
+	button(modal_content,"입구까지 이동",start_return_walk,session.phase == "BATTLE" and session.party_enemies().is_empty())
 	button(modal_content,"원정포기",confirm_abandon,session.phase == "BATTLE")
 	details_popup.popup_centered()
 
