@@ -12,7 +12,7 @@ const Abilities = preload("res://expedition/abilities.gd")
 ## `Utility.context` computes it once and hands it back here.
 static func baseline(s) -> Dictionary:
 	var rows: Dictionary = {}
-	for member in s.alive(): rows[member.id] = Rules.lethal_threat(s,member) >= int(member.hp)
+	for member in s.friends(): rows[member.id] = Rules.lethal_threat(s,member) >= int(member.hp)
 	return rows
 
 static func predict(s, actor: Dictionary, action: Dictionary, before: Dictionary = {}) -> Dictionary:
@@ -63,7 +63,7 @@ static func predict(s, actor: Dictionary, action: Dictionary, before: Dictionary
 	var after_lethal := 0
 	var self_hit := 0
 	var ally_hit := 0
-	for member in s.alive():
+	for member in s.friends():
 		if bool(rows.get(member.id,false)): before_lethal += 1
 		var now: int = threat_after(s,member,pos_override,hp_override,protected,intents)
 		if now >= int(member.hp): after_lethal += 1

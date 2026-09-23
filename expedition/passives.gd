@@ -19,7 +19,7 @@ static func of(actor: Dictionary) -> Array:
 
 static func adjacent_allies(s, actor: Dictionary) -> int:
 	var count := 0
-	for other in s.party+s.enemies:
+	for other in s.party+s.npcs+s.enemies:
 		if other.id != actor.id and other.hp > 0 and other.enemy == actor.enemy and s.melee_reach(actor.pos,other.pos): count += 1
 	return count
 

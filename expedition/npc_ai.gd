@@ -21,7 +21,23 @@ static func sense(s, npc: Dictionary) -> bool:
 	if npc.awake and s.floor_state.visible.has(npc.pos): npc.noise_seen = s.round_number
 	return npc.awake
 
-## Task 3·4 fill this in: for now an awake npc only watches the party.
+## One round of an awake npc: it fights whatever its own eyes find, and
+## otherwise holds (Task 4 puts the activity modes here).
 static func turn(s, npc: Dictionary) -> void:
 	npc.ap = 1
-	npc.activity = LABELS.HOLD
+	var seen: int = MonsterAI.sight(s)
+	var foes: Array = s.enemies.filter(func(e): return e.hp > 0 and MonsterAI.line(s,npc.pos,e.pos,seen))
+	if not foes.is_empty():
+		npc.activity = LABELS.FIGHT; npc.mode = ""
+		var choice: Dictionary = Tactics.choose(s,npc)
+		perform(s,npc,choice)
+		return
+	npc.activity = LABELS.HOLD  # Task 4 replaces this with the mode selector.
+
+## The chosen action, with a wait as the fallback when it will not run.
+static func perform(s, npc: Dictionary, choice: Dictionary) -> void:
+	var kind: String = str(choice.get("kind","WAIT"))
+	var cell: Vector2i = choice.get("cell",npc.pos)
+	if not s.act_as(npc,kind,cell,false): s.act_as(npc,"WAIT",npc.pos,false)
+	npc.explains.append({"round":s.round_number,"kind":kind,"cell":cell,"explain":choice.get("explain",[])})
+	if npc.explains.size() > 20: npc.explains.pop_front()

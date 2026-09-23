@@ -67,7 +67,7 @@ static func plan(s) -> void:
 		for cell in cells: s.intents.append({"id":enemy.id,"cell":cell,"damage":amount,"kind":id})
 
 static func turn(s, enemy: Dictionary) -> void:
-	var targets: Array = s.alive()
+	var targets: Array = s.friends()
 	if enemy.hp <= 0 or targets.is_empty(): return
 	var seen: int = sight(s)
 	if targets.any(func(a): return line(s,enemy.pos,a.pos,seen)): enemy.alert = true

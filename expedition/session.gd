@@ -193,6 +193,12 @@ func member_stats(id: int) -> Dictionary:
 func alive() -> Array:
 	return party.filter(func(a): return a.hp > 0)
 
+## Whom the party's tactics fight beside: its own survivors and every awake,
+## living dungeon NPC. `alive()` stays the party alone — defeat, stress and the
+## battle's end are the party's own business.
+func friends() -> Array:
+	return alive()+npcs.filter(func(n): return n.hp > 0 and n.awake)
+
 func depart() -> bool:
 	if phase != "TOWN" or alive().is_empty(): return false
 	for actor in party:
@@ -403,6 +409,12 @@ func can_step(a: Vector2i, b: Vector2i) -> bool:
 func combat_enemies() -> Array:
 	return floor_state.threats(self) if floor_mode else enemies.filter(func(e): return e.hp > 0)
 
+## The foes the party itself can see. `combat_enemies()` also counts the ones an
+## awake NPC is fighting out of the party's sight; the auto-run's stop events
+## must stay on the party's own eyes, so they ask for this instead.
+func party_enemies() -> Array:
+	return floor_state.party_threats(self) if floor_mode else enemies.filter(func(e): return e.hp > 0)
+
 func in_combat() -> bool:
 	return floor_mode and phase == "BATTLE" and not floor_state.safe(self)
 
@@ -458,8 +470,9 @@ func auto_attack() -> bool:
 
 func movement_cells(actor_index: int = -1) -> Array:
 	var result: Array = []
-	var actor: Dictionary = party[selected if actor_index < 0 else actor_index]
-	if phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0: return result
+	# The index is a party slot; an npc asks by its own (1000+) id instead.
+	var actor: Dictionary = party[selected] if actor_index < 0 else (party[actor_index] if actor_index < party.size() else actor_by_id(actor_index))
+	if actor.is_empty() or phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0: return result
 	var frontier: Array = [actor.pos]
 	var seen: Array = [actor.pos]
 	for step in range(2 if not boss_trial and actor.move_factor == 100 else 1):
@@ -474,8 +487,9 @@ func movement_cells(actor_index: int = -1) -> Array:
 
 func attack_cells(actor_index: int = -1) -> Array:
 	var result: Array = []
-	var actor: Dictionary = party[selected if actor_index < 0 else actor_index]
-	if phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0: return result
+	# As in movement_cells: a party slot, or an npc asking by its own id.
+	var actor: Dictionary = party[selected] if actor_index < 0 else (party[actor_index] if actor_index < party.size() else actor_by_id(actor_index))
+	if actor.is_empty() or phase != "BATTLE" or actor.hp <= 0 or actor.ap <= 0: return result
 	for direction in DIRECTIONS:
 		var cell: Vector2i = actor.pos + direction
 		if melee_reach(actor.pos,cell): result.append(cell)
@@ -485,7 +499,8 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 	if target not in attack_cells(actor_index): return {}
 	var victim := at(target)
 	if victim.is_empty() or not victim.enemy: return {}
-	var actor: Dictionary = party[selected if actor_index < 0 else actor_index]
+	var actor: Dictionary = party[selected] if actor_index < 0 else (party[actor_index] if actor_index < party.size() else actor_by_id(actor_index))
+	if actor.is_empty(): return {}
 	var hit := TurnCore.physical(Growth.power(actor,"MELEE",18) * actor.attack_factor / 100, 1000, 0, 2)
 	var amount := int(hit.damage)
 	if victim.get("guarded",false): amount = maxi(1,amount / 2)
@@ -770,7 +785,7 @@ func end_battle_orders() -> void:
 
 ## Snapshot of what auto_stop_reason compares against next round.
 func remember_round() -> void:
-	auto.prev_threats = combat_enemies().size()
+	auto.prev_threats = party_enemies().size()
 	auto.prev_low = alive().filter(func(a): return a.hp*100/a.max_hp <= int(auto.hp_low)).map(func(a): return a.id)
 	auto.prev_alive = alive().size()
 
@@ -779,7 +794,7 @@ func remember_round() -> void:
 ## disabled or suppressed one never swallows a lower-priority event.
 func auto_stop_reason() -> String:
 	if not floor_mode or phase != "BATTLE": return ""
-	var threats: int = combat_enemies().size()
+	var threats: int = party_enemies().size()
 	var living: Array = alive()
 	var applies := {
 		"BATTLE_START": threats > 0 and int(auto.prev_threats) == 0,
@@ -1048,7 +1063,7 @@ func protection_recipient(target: Dictionary) -> Dictionary:
 		var guardian: int = int(current.get("protected_by",-1))
 		if guardian < 0: return current
 		var next: Dictionary = {}
-		for mate in party:
+		for mate in party+npcs:
 			if mate.id == guardian and mate.hp > 0 and melee_reach(mate.pos,current.pos): next = mate; break
 		if next.is_empty(): return current
 		if seen.has(next.id): return next
@@ -1057,7 +1072,7 @@ func protection_recipient(target: Dictionary) -> Dictionary:
 	return current
 
 func actor_by_id(id: int) -> Dictionary:
-	for actor in party+enemies:
+	for actor in party+npcs+enemies:
 		if actor.id == id: return actor
 	return {}
 
@@ -1115,6 +1130,9 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 		if effect.get("body_injury",false) or entered_crisis:
 			remember_important(target,"SELF_HARM",target.id+1,source+1,800 if target.hp <= 0 else 750)
 		stress(target, 5 + lost / 2)
+		if target.hp <= 0 and target.get("npc",false):
+			target.state = "DEAD"; target.awake = false; target.activity = ""
+			message(target.name+"이(가) 쓰러졌습니다.")
 		if target.hp <= 0:
 			if not taken_row.is_empty(): taken_row.downed = true
 			for ally in alive():
@@ -1189,6 +1207,9 @@ func end_round() -> bool:
 	# The floor's NPCs take their round before the monsters do.
 	for npc in npcs:
 		if npc.hp > 0 and NpcAI.sense(self,npc): NpcAI.turn(self,npc)
+	# The round's noise has been heard by everyone who listens: clear it here so
+	# that every early return below still leaves the next round silent.
+	noise.clear()
 	for enemy in enemies:
 		enemy_attack_turn(enemy)
 		if alive().is_empty(): break
@@ -1206,7 +1227,7 @@ func end_round() -> bool:
 			if not victim.is_empty() and result.known_damage > 0: damage(victim, result.known_damage, 999, "FIRE")
 	# The round's guards end with the round, win or lose: a cleared room must not
 	# carry 엄호 into EXPLORE.
-	for actor in party: actor["guarded"] = false; actor["protected_by"] = -1
+	for actor in party+npcs: actor["guarded"] = false; actor["protected_by"] = -1
 	check_battle_end()
 	if phase != "BATTLE": return true
 	# Round-start passives run for the fighters only: the whole 64×64 roster is
@@ -1227,7 +1248,6 @@ func end_round() -> bool:
 				for actor in alive(): stress(actor,(3 if food == 0 else 0)+(2 if light < 35 else 0))
 		floor_state.observe(self); floor_state.ambush(self)
 	if companions and party[selected].hp <= 0: selected = party.find(alive()[0])
-	noise.clear()
 	plan_enemies()
 	return true
 

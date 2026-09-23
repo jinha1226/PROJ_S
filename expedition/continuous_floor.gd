@@ -151,7 +151,15 @@ func observation(s) -> Dictionary:
 		if actor.hp > 0 and visible.has(actor.pos): markers.append({"position":[actor.pos.x,actor.pos.y],"marker":"ENEMY" if actor.enemy else "HERO"})
 	return {"width":size,"height":size,"epoch":epoch,"cells":discoveries,"discovery_rows":discoveries,"static_count":discoveries.size(),"visible":visible.keys().map(func(p): return [p.x,p.y]),"markers":markers}
 
+## The fight the party is in: the foes it can see, plus the ones an awake npc
+## has in its own sight — an npc's battle is a battle on this floor.
 func threats(s) -> Array:
+	var seen: int = MonsterAI.sight(s)
+	return s.enemies.filter(func(e): return e.hp > 0 and (visible.has(e.pos) or s.npcs.any(func(n): return n.awake and n.hp > 0 and MonsterAI.line(s,n.pos,e.pos,seen))))
+
+## Only what the party itself sees: the auto-run's stop events are about the
+## party's eyes, not an npc's.
+func party_threats(s) -> Array:
 	return s.enemies.filter(func(e): return e.hp > 0 and visible.has(e.pos))
 
 func safe(s) -> bool:
