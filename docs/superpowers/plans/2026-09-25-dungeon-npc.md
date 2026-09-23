@@ -986,6 +986,14 @@ func scene() -> void:
 
 - [ ] **Step 4: 리베이스.** `git fetch origin main`. Plan A가 메인에 있으면(`expedition/npc_roster.gd`의 두 shim이 참조하는 `s.depth`·`layout.npc_rooms`가 존재하면) 리베이스 후 `NpcRoster.depth`는 `return int(s.depth)`, `npc_rooms`는 `return layout.npc_rooms`로 줄이고, `descend()`에 `NpcRoster.place(self)`를 넣고, 보스 층(`theme.boss`)이면 `place`가 빈 배열로 끝나는지 확인한다. Plan A가 아직 없으면 shim을 남기고 보고서에 적는다.
 
+  **Plan A 인수인계 목록(Task 6 실행 시점에 확인됨, `origin/main` = `a381c5b`로 Plan A 미착륙 → shim 유지).**
+  Plan A가 들어오면 위의 두 shim 축소 외에 다음도 함께 본다:
+  1. `descend()`가 `NpcRoster.place(self)`를 부르게 한다 — 층마다 새 배치. 보스 층(`theme.boss`)은 `npc_rooms`가 비어 아무도 두지 않는지 확인.
+  2. **중복 제거 키의 lane**: `remember_plain`/`remember_important`와 `Stances.mistaken`의 레인이 `expedition_number`를 쓴다 — 층마다 진행하는 Run에서는 `depth`여야 같은 층 안에서만 중복이 접힌다.
+  3. `restore_snapshot()`은 Plan A가 삭제한다 — 지금은 이것이 파티 액터를 통째로 갈아끼우므로, 남겨 둘 경우 명부 행(`roster`)과 파티 멤버가 서로 다른 Dictionary가 되어 어긋난다(`state`·`joined_floor`가 갱신되지 않는다).
+  4. 결과 화면의 동료 이력(`main.gd companion_history` → `Session.companion_rows()`)을 Plan A의 결과 카드로 옮긴다.
+
+
 - [ ] **Step 5: 전체 CI 목록 + 임포트 검사.** `docs/balance/utility-tuning.md`에 "NPC 활동 모드" 절(표·유지·전환·검사 시드). 스펙 상태 줄을 "Plan B 구현됨"으로. 커밋 `feat(npc): npc tokens, dialogue and offer popups; companion history on the result`.
 
 ---

@@ -223,9 +223,11 @@ func movement_previews() -> Array:
 	if session == null or session.phase != "BATTLE": return result
 	for preview in companion_previews:
 		if preview.kind != "MOVE": continue
-		var actor: Dictionary = session.party[preview.actor]
+		var member: Array = session.party.filter(func(a): return a.id == preview.actor)
+		if member.is_empty(): continue
+		var actor: Dictionary = member[0]
 		if actor.hp <= 0 or preview.cell == actor.pos or not session.inside(preview.cell): continue
-		result.append({"actor":actor.id,"from":actor.pos,"cell":preview.cell,"reserved":preview.get("reserved",false)})
+		result.append({"actor":actor.id,"sprite":actor_sprite(actor),"from":actor.pos,"cell":preview.cell,"reserved":preview.get("reserved",false)})
 	return result
 
 func draw_movement_previews() -> void:
@@ -238,7 +240,7 @@ func draw_movement_previews() -> void:
 		draw_colored_polygon(polygon,Color(color,0.13))
 		outline(polygon,Color(color,0.8),2)
 		var side := half_width*1.65
-		Art.paint_actor(self,preview.actor,Rect2(destination-Vector2.ONE*side/2,Vector2.ONE*side),Color(color,0.35))
+		Art.paint_actor(self,int(preview.sprite),Rect2(destination-Vector2.ONE*side/2,Vector2.ONE*side),Color(color,0.35))
 		var direction := (destination-start).normalized()
 		var tip := destination-direction*half_width*0.4
 		var tail := start+direction*half_width*0.6
@@ -353,7 +355,7 @@ func _draw() -> void:
 				Icons.paint(self,room.kind,center-Vector2(0,5),half_width*0.45,Color("68716a") if room.used else Color("b5d4a6") if room.kind == "camp" else Color("e0b96e"))
 			var actor: Dictionary = display_at(point)
 			if not actor.is_empty():
-				if not actor.enemy and actor.id == session.selected: outline(polygon,Color("e8c276"),2)
+				if not actor.enemy and session.party.find(actor) == session.selected: outline(polygon,Color("e8c276"),2)
 				draw_set_transform(center*camera.zoom+camera.offset,0,Vector2(1,0.45)*camera.zoom)
 				draw_circle(Vector2.ZERO,half_width*0.6,Color(0,0,0,0.5))
 				draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
@@ -410,7 +412,7 @@ func draw_distant_npcs() -> void:
 		draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
 
 func paint_actor_base(center: Vector2, actor: Dictionary) -> void:
-	var color := NPC_COLOR if actor.get("npc",false) else Color("eea38c") if actor.enemy else Color("b9dcd6")
+	var color := NPC_COLOR if session.wanderer(actor) else Color("eea38c") if actor.enemy else Color("b9dcd6")
 	var base := center+Vector2(0,half_width*0.65)
 	if actor.enemy:
 		outline(PackedVector2Array([base+Vector2(-half_width*0.65,0),base+Vector2(0,-half_width*0.23),base+Vector2(half_width*0.65,0),base+Vector2(0,half_width*0.23)]),color,1.5)
@@ -426,7 +428,9 @@ func _draw_foreground(canvas: Node2D) -> void:
 	var actors: Array = visual_state.actors if is_presenting() else session.party+session.enemies+session.npcs
 	for actor in actors:
 		if actor.hp <= 0: continue
-		var npc: bool = actor.get("npc",false)
+		# A recruit is a companion now: the third colour and the name tag belong
+		# to those still out on their own.
+		var npc: bool = session.wanderer(actor)
 		var seen: bool = not session.floor_mode or (visual_state.visible if is_presenting() else session.floor_state.visible).has(actor.pos)
 		# An awake npc keeps its tag out of sight; anyone else is only drawn in the light.
 		if not seen and not (npc and actor.get("awake",false)): continue

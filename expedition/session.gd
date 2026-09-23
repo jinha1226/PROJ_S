@@ -186,7 +186,8 @@ func remember_plain(actor: Dictionary, kind: String, subject: int, instigator: i
 ## Clears the report and opens one row per member. The simulator calls this
 ## itself at the arena, where no BATTLE_START stop event runs.
 func reset_battle_stats() -> void:
-	battle_stats = {"rounds":0,"enemies":combat_enemies().size() if phase == "BATTLE" else 0,"kills":0,"members":{},
+	# The report is the party's own sight (T3-b), not every foe an npc dragged in.
+	battle_stats = {"rounds":0,"enemies":party_enemies().size() if phase == "BATTLE" else 0,"kills":0,"members":{},
 		"interrupts":0,"enemy_parts":{},"drops":{},"stops":[]}
 	for actor in party:
 		# A new battle starts with nothing to commit to: the utility selector's
@@ -891,8 +892,10 @@ func auto_stop_reason() -> String:
 func companion_previews() -> Array:
 	var previews: Array = []
 	if not companions or phase != "BATTLE": return previews
-	for actor in party:
-		if actor.id == selected or actor.hp <= 0 or actor.ap <= 0: continue
+	# `selected` is an index into the party, not an actor id.
+	for index in range(party.size()):
+		var actor: Dictionary = party[index]
+		if index == selected or actor.hp <= 0 or actor.ap <= 0: continue
 		var choice: Dictionary = companion_choice(actor).duplicate(true)
 		choice.actor = actor.id
 		previews.append(choice)
@@ -1305,10 +1308,13 @@ func end_round() -> bool:
 	if phase != "BATTLE": return true
 	# Round-start passives run for the fighters only: the whole 64×64 roster is
 	# not in this battle, so a distant monster must not regenerate off-screen.
-	for actor in alive()+combat_enemies(): Passives.round_start(self,actor)
-	for actor in alive():
+	for actor in friends()+party_enemies(): Passives.round_start(self,actor)
+	# Cooldowns and 철벽 belong to everyone fighting beside the party; stress, the
+	# hunger clock and the action budget stay the party's own bookkeeping.
+	for actor in friends():
 		actor.iron_guard = false
 		for id in actor.cooldowns: actor.cooldowns[id] = maxi(0,int(actor.cooldowns[id])-1)
+	for actor in alive():
 		if not floor_mode or not floor_state.safe(self): stress(actor, 2 if light >= 35 else 5)
 		actor.ap = action_budget(actor)
 	round_number += 1

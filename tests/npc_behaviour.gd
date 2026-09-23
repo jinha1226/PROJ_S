@@ -27,7 +27,7 @@ func foe_at(s, p: Vector2i, hp: int = 30) -> Dictionary:
 
 func run() -> void:
 	friends(); fights(); targeted(); dies()
-	modes_approach(); modes_hold(); modes_rest(); modes_explore(); commitment(); shape(); duo(); labels()
+	modes_approach(); modes_hold(); modes_rest(); modes_explore(); commitment(); shape(); duo(); labels(); cooldowns()
 	print("NPC behaviour: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func friends() -> void:
@@ -180,3 +180,13 @@ func labels() -> void:
 	for i in range(25): npc.explains.append({"round":i,"kind":"WAIT","cell":npc.pos,"explain":[]})
 	NpcAI.turn(s,npc)
 	check(npc.explains.size() == 20,"explains capped at twenty")
+
+## An awake npc fights with the party's rules, so it keeps the party's clocks:
+## its cooldowns tick down with the round like anyone else's.
+func cooldowns() -> void:
+	var f := field(Vector2i(6,0)); var s = f.s; var npc: Dictionary = f.npc
+	npc.cooldowns["PUSH"] = 2; npc.iron_guard = true
+	s.end_round()
+	check(int(npc.cooldowns.PUSH) == 1 and not npc.iron_guard,"one round, one tick")
+	s.end_round()
+	check(int(npc.cooldowns.PUSH) == 0,"and the part comes back")

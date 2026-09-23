@@ -649,8 +649,11 @@ func on_cell(point: Vector2i) -> void:
 	var actor: Dictionary = session.at(point)
 	if session.wanderer(actor): return
 	if not actor.is_empty() and not actor.enemy:
-		if session.phase == "BATTLE" and actor.id == session.selected: run_action(func(): return session.act("WAIT",point))
-		else: select_actor(actor.id)
+		# `selected` is a party index, and a recruit's id is its roster id: the
+		# two only look alike for the three the run started with.
+		var index: int = session.party.find(actor)
+		if session.phase == "BATTLE" and index == session.selected: run_action(func(): return session.act("WAIT",point))
+		elif index >= 0: select_actor(index)
 		return
 	if session.phase == "EXPLORE": run_action(func(): return session.interact_room(point))
 	elif session.phase == "BATTLE":
