@@ -3,7 +3,9 @@ const Session = preload("res://expedition/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const MonsterAI = preload("res://expedition/monster_ai.gd")
 var failures := 0
+var checks := 0
 func check(ok: bool, reason: String) -> void:
+	checks += 1
 	if not ok: failures += 1; push_error(reason)
 func _initialize() -> void: call_deferred("run")
 
@@ -45,5 +47,42 @@ func run() -> void:
 	enemy.hp = 0; hp = s.party[0].hp
 	s.enemy_attack_turn(enemy)
 	check(s.party[0].hp == hp,"dead enemies never act")
-	print("Enemy turns: %d failures" % failures)
+	walls()
+	unseen()
+	dead_caster()
+	print("Enemy turns: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
+
+## A wall between the two is a wall: the chase stops at it and lands nothing.
+func walls() -> void:
+	var f: Dictionary = setup("MELEE",Vector2i(3,0))
+	var s = f.s; var enemy: Dictionary = f.enemy
+	var wall_x: int = f.center.x+2
+	for y in range(s.BOARD_SIDE): s.tile(Vector2i(wall_x,y)).terrain = "wall"
+	s.floor_state.observe(s)
+	var hp: int = s.party[0].hp
+	s.enemy_attack_turn(enemy)
+	check(s.party[0].hp == hp,"a wall between them blocks the attack")
+	check(enemy.pos.x > wall_x,"the chase never crosses the wall")
+
+## An enemy that has not been roused stays where it was put.
+func unseen() -> void:
+	var f: Dictionary = setup("MELEE",Vector2i(6,0))
+	var s = f.s; var enemy: Dictionary = f.enemy
+	enemy.alert = false; enemy.pos = f.center+Vector2i(20,0); enemy.home = enemy.pos
+	s.floor_state.observe(s)
+	var was: Vector2i = enemy.pos; var hp: int = s.party[0].hp
+	s.enemy_attack_turn(enemy)
+	check(s.party[0].hp == hp,"an enemy that cannot see the party lands nothing")
+	check(MonsterAI.distance(enemy.pos,was) <= 1,"it holds its ground instead of charging across the floor")
+
+## A telegraphed spell dies with its caster: the marked cell goes with it.
+func dead_caster() -> void:
+	var f: Dictionary = setup("CASTER",Vector2i(4,0))
+	var s = f.s; var enemy: Dictionary = f.enemy
+	for i in range(3): s.enemy_attack_turn(enemy)
+	check(enemy.charging and not s.intents.is_empty(),"the caster is charging")
+	enemy.hp = 0
+	var hp: int = s.party[0].hp
+	s.enemy_attack_turn(enemy)
+	check(s.party[0].hp == hp,"a dead caster cannot resolve its telegraph")

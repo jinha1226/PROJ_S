@@ -3,7 +3,9 @@ const Session = preload("res://expedition/session.gd")
 const Floor = preload("res://expedition/continuous_floor.gd")
 const Generator = preload("res://expedition/floor_generator.gd")
 var failures := 0
+var checks := 0
 func check(ok: bool, reason: String) -> void:
+	checks += 1
 	if not ok: failures += 1; push_error(reason)
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
@@ -24,4 +26,4 @@ func run() -> void:
 	s.food = 4; s.party[1].hp = 12; s.party[2].stress = 60
 	check(s.descend() and s.depth == 2 and s.floor_state.layout.theme_id == "F2_MINES","descent builds next theme")
 	check(s.food == 4 and s.party[1].hp == 12 and s.party[2].stress == 60,"state persists")
-	print("Floor descent: %d failures" % failures); quit(1 if failures else 0)
+	print("Floor descent: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)

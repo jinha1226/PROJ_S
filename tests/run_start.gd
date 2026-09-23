@@ -1,7 +1,9 @@
 extends SceneTree
 const Session = preload("res://expedition/session.gd")
 var failures := 0
+var checks := 0
 func check(ok: bool, message: String) -> void:
+	checks += 1
 	if not ok: failures += 1; push_error(message)
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
@@ -35,5 +37,5 @@ func run() -> void:
 	main.session.party[0].hp = 0; main.session.check_battle_end(); main.refresh(); await process_frame
 	check(main.find_child("ResultCard",true,false) != null,"result card")
 	main.queue_free(); await process_frame
-	print("Run start: %d failures" % failures)
+	print("Run start: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)

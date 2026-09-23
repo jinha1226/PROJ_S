@@ -3,7 +3,9 @@ extends SceneTree
 const Session = preload("res://expedition/session.gd")
 const Curios = preload("res://expedition/curios.gd")
 var failures := 0
+var checks := 0
 func check(ok: bool, reason: String) -> void:
+	checks += 1
 	if not ok: failures += 1; push_error(reason)
 func _initialize() -> void: call_deferred("run")
 
@@ -33,5 +35,5 @@ func run() -> void:
 	s.damage(s.party[0],1000,100,"IMPACT")
 	s.check_battle_end()
 	check(s.phase == "DEFEAT" and not s.descend(),"hero death ends the run")
-	print("Descent playthrough: %d failures" % failures)
+	print("Descent playthrough: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)

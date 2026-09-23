@@ -2,7 +2,9 @@ extends SceneTree
 const Session = preload("res://expedition/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 var failures := 0
+var checks := 0
 func check(ok: bool, reason: String) -> void:
+	checks += 1
 	if not ok: failures += 1; push_error(reason)
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
@@ -23,4 +25,4 @@ func run() -> void:
 	check(s.party.all(func(a): return a.hp == 10+ceili(a.max_hp*0.5) and a.stress == 50 and a.cooldowns.PUSH == 0),"camp heals and clears cooldown")
 	check(s.equip_part(0,0,"PUSH") and s.unequip_part(0,0),"part changes at camp")
 	check(s.end_camp() and s.phase == "EXPLORE" and not s.equip_part(0,0,"PUSH"),"parts locked after camp")
-	print("Camping: %d failures" % failures); quit(1 if failures else 0)
+	print("Camping: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)

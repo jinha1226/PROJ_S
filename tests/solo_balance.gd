@@ -5,7 +5,9 @@ const Curios = preload("res://expedition/curios.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const SEEDS := 8
 var failures := 0
+var checks := 0
 func check(ok: bool, reason: String) -> void:
+	checks += 1
 	if not ok: failures += 1; push_error(reason)
 func _initialize() -> void: call_deferred("run")
 
@@ -19,12 +21,20 @@ func route(s, target: Vector2i) -> Array:
 
 func play(seed: int) -> Dictionary:
 	var s = Session.new_run(seed)
-	var hero: Dictionary = s.party[0]
 	# A real player can use the first ration to prepare the two starting parts.
 	if s.camp():
 		s.equip_part(0,0,"PUSH"); s.equip_part(0,1,"GUARD"); s.end_camp()
-	var actions := 0; var camps := 1; var stalls := 0
-	while s.on_floor() and s.depth == 1 and actions < 500:
+	var row: Dictionary = clear_floor(s,1)
+	row.session = s
+	return row
+
+## One floor, from where the hero stands to the stairs down: fight what is in
+## the way, search what is in reach, camp when hurt, then descend.
+func clear_floor(s, camps: int) -> Dictionary:
+	var hero: Dictionary = s.party[0]
+	var entered: int = s.depth
+	var actions := 0; var stalls := 0
+	while s.on_floor() and s.depth == entered and actions < 500:
 		if not s.combat_enemies().is_empty():
 			if Fixture.fight_round(s): actions += 1; continue
 			if s.act("WAIT",hero.pos): actions += 1; continue
@@ -53,8 +63,9 @@ func play(seed: int) -> Dictionary:
 		else:
 			stalls += 1
 			if stalls >= 3: break
-	return {"reason":"DESCENDED" if s.depth >= 2 else "DEAD" if s.phase == "DEFEAT" else "STUCK",
-		"actions":actions,"camps":camps,"kills":int(s.run_stats.kills),"hp":hero.hp,"food":s.food,"depth":s.depth}
+	return {"reason":"DESCENDED" if s.depth > entered else "DEAD" if s.phase == "DEFEAT" else "STUCK",
+		"actions":actions,"camps":camps,"kills":int(s.run_stats.kills),"hp":hero.hp,"food":s.food,
+		"depth":s.depth,"score":int(s.score),"stalled":stalls >= 3}
 
 func run() -> void:
 	var wins := 0
@@ -66,5 +77,29 @@ func run() -> void:
 		check(row.actions <= 500,"first-floor run ends within action limit (seed %d)" % seed)
 		check(row.camps >= 1 and row.food >= 0,"camp uses nonnegative food (seed %d)" % seed)
 		check(row.depth == 2 if row.reason == "DESCENDED" else row.depth == 1,"depth matches outcome (seed %d)" % seed)
+		check(row.reason != "DESCENDED" or row.hp > 0,"a hero that took the stairs is alive at the bottom (seed %d)" % seed)
+		check(row.food >= 0 and row.score >= 0,"food and score never go negative (seed %d)" % seed)
 	check(wins >= 3,"solo bot descends at least 3 of 8 (%d/8)" % wins)
-	print("Solo balance: %d failures; %d/8 descents" % [failures,wins]); quit(1 if failures else 0)
+	campaign()
+	print("Solo balance: %d checks, %d failures; %d/8 descents" % [checks,failures,wins]); quit(1 if failures else 0)
+
+## The run is one descent, not one floor: the same hero keeps going down until
+## it dies or runs out of road. Guards the lifecycle the old town round trip
+## used to guard — no return, no refit, just the next floor.
+func campaign() -> void:
+	var s = Session.new_run(6)
+	if s.camp():
+		s.equip_part(0,0,"PUSH"); s.equip_part(0,1,"GUARD"); s.end_camp()
+	var reached := 1; var camps := 1; var last: Dictionary = {}
+	for attempt in range(2):
+		if not s.on_floor(): break
+		last = clear_floor(s,camps)
+		camps = int(last.camps)
+		print("campaign floor %d: %s · 행동 %d · 점수 %d · 식량 %d · HP %d" % [reached,last.reason,last.actions,last.score,last.food,last.hp])
+		check(not bool(last.stalled),"the campaign's pathing never stalls on floor %d" % reached)
+		if last.reason != "DESCENDED": break
+		check(s.depth == reached+1,"the stairs land the hero one floor deeper (floor %d)" % reached)
+		reached = int(s.depth)
+	check(reached >= 2,"the same hero reaches at least floor 2 (%d)" % reached)
+	check(s.score > 0 or s.phase == "DEFEAT","a descent that got anywhere scored something")
+	check(s.food >= 0 and int(s.run_stats.kills) >= 0,"the campaign leaves the run counters intact")

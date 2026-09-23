@@ -3,7 +3,9 @@ const Session = preload("res://expedition/session.gd")
 const Floor = preload("res://expedition/continuous_floor.gd")
 const Generator = preload("res://expedition/floor_generator.gd")
 var failures := 0
+var checks := 0
 func check(ok: bool, reason: String) -> void:
+	checks += 1
 	if not ok: failures += 1; push_error(reason)
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
@@ -27,7 +29,7 @@ func run() -> void:
 		boss.hp = 0
 		check(not s.stairs_sealed(),"stairs unsealed")
 	patterns()
-	print("Boss floor: %d failures" % failures); quit(1 if failures else 0)
+	print("Boss floor: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func patterns() -> void:
 	var s = Session.new(3,false,false,true,1); s.depth = 3; s.floor_state.build(s)

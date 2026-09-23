@@ -4,7 +4,9 @@ const Utility = preload("res://expedition/utility.gd")
 const PartsCandidates = preload("res://expedition/parts_candidates.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 var failures := 0
+var checks := 0
 func check(value: bool, reason: String) -> void:
+	checks += 1
 	if not value: failures += 1; push_error(reason)
 func _initialize() -> void:
 	call_deferred("exercise")
@@ -198,9 +200,68 @@ func exercise() -> void:
 		for id in ["FoodLabel","CampButton","RetreatToggle","AutoToggle"]:
 			var control: Control = scene.find_child(id,true,false)
 			check(control != null and scene.get_global_rect().encloses(control.get_global_rect()),"%s fits %s" % [id,viewport])
+	await portrait_hold(scene,ui_s)
+	await rule_editor(scene,ui_s)
+	await preview_markers(scene,ui_s)
 	scene.queue_free(); await process_frame
-	print("Companion tactics: %d failures" % failures)
+	print("Companion tactics: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
+
+## The portrait is a two-gesture control: a tap selects, a hold opens the sheet.
+func portrait_hold(scene, ui_s) -> void:
+	root.size = Vector2i(390,844); scene.refresh()
+	for frame in range(3): await process_frame
+	scene.details_popup.hide()
+	var hold := InputEventScreenTouch.new(); hold.index = 0; hold.pressed = true
+	hold.position = scene.portrait_buttons[0].get_global_rect().get_center()
+	scene._input(hold); scene.portrait_gesture.started -= 601; scene.portrait_gesture.tick(scene)
+	hold.pressed = false; scene._input(hold)
+	await process_frame
+	check(scene.details_popup.visible,"holding a portrait opens the character window")
+	check(scene.character_tab == "상태","on the status tab")
+	check(ui_s.round_number >= 1 and ui_s.phase != "CAMP","and it costs no time")
+	scene.details_popup.hide(); await process_frame
+	check(not scene.details_popup.visible,"and closes again")
+
+## The rule editor the character sheet embeds: it still edits the live actor.
+func rule_editor(scene, ui_s) -> void:
+	scene.show_character(0,"파츠")
+	await process_frame
+	check(scene.details_popup.visible and scene.character_tab == "파츠","the rule editor lives in the parts tab")
+	check(scene.details_popup.size.y <= root.size.y,"and fits the viewport")
+	scene.change_basic_target("LOWEST_HP")
+	await process_frame
+	check(ui_s.party[0].basic_target == "LOWEST_HP","the sheet changes the basic target")
+	scene.tactics_expanded = 0; scene.show_tactics()
+	scene.change_tactic_rule(0,"when","HP")
+	await process_frame
+	check(ui_s.party[0].rules[0].when == "HP","and the rule condition")
+	check(scene.details_popup.size.y <= root.size.y,"the expanded editor still fits")
+	scene.change_tactic_rule(0,"when","STATUS")
+	await process_frame
+	check(ui_s.party[0].rules[0].when == "STATUS","and changes it back")
+	scene.show_character(1,"숙련")
+	await process_frame
+	check(scene.tactics_actor == 1 and scene.character_tab == "숙련","the companion has its own mastery tab")
+	check(scene.details_popup.size.y <= root.size.y,"which fits the viewport too")
+	scene.details_popup.hide(); await process_frame
+
+## What the board draws ahead of a companion: one marker, on the cell the
+## prediction names, and inside the screen.
+func preview_markers(scene, ui_s) -> void:
+	ui_s.selected = 0
+	scene.refresh()
+	for frame in range(3): await process_frame
+	var previews: Array = scene.board.companion_previews
+	var moves: Array = scene.board.movement_previews()
+	check(moves.size() <= previews.size(),"a marker never outnumbers the predictions")
+	for row in moves:
+		check(previews.any(func(p): return p.actor == row.actor and p.cell == row.cell),"each marker sits on its own prediction")
+		check(ui_s.inside(row.cell) and row.cell != row.from,"and names a real cell to move to")
+		check(row.has("sprite"),"and carries the pawn to draw there")
+	var rect: Rect2 = scene.board.preview_rect(ui_s.party[1])
+	check(scene.board.get_rect().size.x >= rect.end.x,"the companion badge stays inside the board")
+	check(rect.position.x >= 0 and rect.position.y >= 0,"and does not run off its top left")
 
 func eight_way_checks() -> void:
 	var s = Session.new(731,true); s.depart()
