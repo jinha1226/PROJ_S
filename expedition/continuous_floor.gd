@@ -65,15 +65,7 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 	for e in range(layout.encounters.size()):
 		var encounter: Dictionary = layout.encounters[e]
 		for member in encounter.members:
-			var enemy: Dictionary = s.make_actor(100+s.enemies.size(),member.display_name,true)
-			enemy.pos = member.pos; enemy.hp = int(member.max_health)
-			if s.party.size() == 1: enemy.hp = clampi(enemy.hp*SOLO_HP_PERCENT/100,SOLO_HP_MIN,SOLO_HP_MAX)
-			enemy.max_hp = enemy.hp
-			enemy.group = "F%d_E%02d" % [int(theme.depth),e+1]; enemy.home = enemy.pos; enemy.alert = false
-			enemy.species_id = member.species_id; enemy.tier = encounter.tier; enemy.mandatory = encounter.mandatory
-			MonsterAI.configure(enemy,member.role)
-			enemy.part_id = Abilities.species_part(member.species_id)
-			s.enemies.append(enemy)
+			mint_enemy(s,member,"F%d_E%02d" % [int(theme.depth),e+1],encounter.tier,encounter.mandatory)
 	for p in layout.features: state.features[p] = layout.features[p].duplicate(true)
 	for i in range(s.party.size()):
 		s.party[i].pos = layout.entry+Vector2i(0,i); s.party[i].ap = 1
@@ -83,6 +75,20 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 	s.rooms = [{"id":0,"name":"1층 · "+str(theme.label),"kind":"floor","links":[],"tiles":s.tiles,"enemies":s.enemies,"started":true,"cleared":false,"shield":false,"pattern":-1,"used":false,"feature":Vector2i(-1,-1)}]
 	s.room = 0; s.phase = "BATTLE"; s.round_number = 1
 	state.observe(s); state.ambush(s)
+
+## One floor monster from an encounter member: the roster health (scaled down for
+## a lone hero), its group, home and role. Appended to `s.enemies` and returned.
+static func mint_enemy(s, member: Dictionary, group: String, tier: String, mandatory: bool) -> Dictionary:
+	var enemy: Dictionary = s.make_actor(100+s.enemies.size(),member.display_name,true)
+	enemy.pos = member.pos; enemy.hp = int(member.max_health)
+	if s.party.size() == 1: enemy.hp = clampi(enemy.hp*SOLO_HP_PERCENT/100,SOLO_HP_MIN,SOLO_HP_MAX)
+	enemy.max_hp = enemy.hp
+	enemy.group = group; enemy.home = enemy.pos; enemy.alert = false
+	enemy.species_id = member.species_id; enemy.tier = tier; enemy.mandatory = mandatory
+	MonsterAI.configure(enemy,member.role)
+	enemy.part_id = Abilities.species_part(member.species_id)
+	s.enemies.append(enemy)
+	return enemy
 
 static func sight_side(light: int) -> int:
 	return ceili(sight_radius(light))*2+1

@@ -32,7 +32,7 @@ static func generate(s) -> Array:
 	var rows: Array = []
 	var pool: Array = names.duplicate()
 	for i in range(COUNT):
-		var id: int = 100+i
+		var id: int = 1000+i
 		var pick: int = Hexaco.sample(s.seed_value,id,"npc_name",pool.size())
 		var actor: Dictionary = s.make_actor(id,pool.pop_at(pick),false)
 		actor.profile = Hexaco.generated(s.seed_value,id)
@@ -62,15 +62,20 @@ static func situation(npc: Dictionary) -> String:
 ## floor's npc rooms.
 static func place(s) -> void:
 	s.npcs = []
+	# Re-placing on a live floor: the packs this function minted last time go with it.
+	s.enemies = s.enemies.filter(func(e): return not e.has("npc_pack"))
 	var d: int = depth(s)
 	var first_floor: bool = d <= 1 and s.roster.all(func(n): return n.state == "UNMET")
 	var want: int = 3 if first_floor else 4+Hexaco.sample(s.seed_value,d,"npc_count",2)
 	var rooms: Array = npc_rooms(s.floor_state.layout)
 	if rooms.is_empty(): return
 	var free: Array = s.roster.filter(func(n): return n.state in ["UNMET","MET"])
+	# The order key is hashed once per NPC: a comparator must not do work per comparison.
+	var order: Dictionary = {}
+	for n in free: order[n.id] = Hexaco.sample(s.seed_value,n.id,"npc_order",1000)
 	free.sort_custom(func(a,b):
 		if (a.state == "UNMET") != (b.state == "UNMET"): return a.state == "UNMET"
-		return Hexaco.sample(s.seed_value,a.id,"npc_order",1000) < Hexaco.sample(s.seed_value,b.id,"npc_order",1000))
+		return order[a.id] < order[b.id])
 	var chosen: Array = []
 	for n in free:
 		if chosen.size() >= want: break
@@ -97,34 +102,35 @@ static func place(s) -> void:
 			var mate_pos: Vector2i = chosen.filter(func(m): return m.id == n.partner)[0].pos
 			cells = cells.filter(func(p): return s.distance(p,mate_pos) <= 2)
 		if cells.is_empty(): continue
-		n.pos = cells[Hexaco.sample(s.seed_value,d*1000+n.id,"npc_cell",cells.size())]
-		var situ: String = SITUATIONS[Hexaco.sample(s.seed_value,d*1000+n.id,"npc_situation",3)] if not partner_here else situation(chosen.filter(func(m): return m.id == n.partner)[0])
+		var lane: int = d*100000+n.id
+		n.pos = cells[Hexaco.sample(s.seed_value,lane,"npc_cell",cells.size())]
+		var situ: String = SITUATIONS[Hexaco.sample(s.seed_value,lane,"npc_situation",3)] if not partner_here else situation(chosen.filter(func(m): return m.id == n.partner)[0])
 		n.situation = situ
-		if n.state == "MET": n.hp = maxi(1,n.hp-n.max_hp*(10+Hexaco.sample(s.seed_value,d*1000+n.id,"npc_wear",21))/100)
+		# The situation sets the band; only then does a previous meeting wear it down.
 		match situ:
 			"WOUNDED":
-				n.hp = ceili(n.max_hp*(30+Hexaco.sample(s.seed_value,d*1000+n.id,"npc_hp",21))/100.0)
-				s.stress(n,30); n.stress = maxi(int(n.stress),30)
+				n.hp = ceili(n.max_hp*(30+Hexaco.sample(s.seed_value,lane,"npc_hp",21))/100.0)
+				s.stress(n,30)
 			"FIGHTING":
-				n.hp = ceili(n.max_hp*(60+Hexaco.sample(s.seed_value,d*1000+n.id,"npc_hp",21))/100.0)
-				spawn_pack(s,n,room)
-			"RESTING": pass
-		n.hungry = situ != "RESTING" and Hexaco.sample(s.seed_value,d*1000+n.id,"npc_hungry",2) == 0
+				n.hp = ceili(n.max_hp*(60+Hexaco.sample(s.seed_value,lane,"npc_hp",21))/100.0)
+			"RESTING": n.hp = n.max_hp
+		if n.state == "MET": n.hp = maxi(1,ceili(n.hp*(90-Hexaco.sample(s.seed_value,lane,"npc_wear",21))/100.0))
+		if situ == "FIGHTING": spawn_pack(s,n,room)
+		n.hungry = situ != "RESTING" and Hexaco.sample(s.seed_value,lane,"npc_hungry",2) == 0
+		# One action in hand, like a floor monster waking up.
 		n.state = "MET"; n.floor_seen = d; n.awake = false; n.mode = ""; n.ap = 1
 		used[n.id] = true
 		s.npcs.append(n)
 
 ## One small monster pack next to a fighting NPC, tagged with the NPC's id.
 static func spawn_pack(s, npc: Dictionary, room: Dictionary) -> void:
+	var d: int = depth(s)
 	var theme: Dictionary = Generator.theme(str(s.floor_state.layout.get("theme_id","F1_RUINS")))
-	var members: Array = Encounters.pack(theme,3,depth(s),s.seed_value+npc.id)
+	var members: Array = Encounters.pack(theme,3,d,s.seed_value+d*100000+npc.id)
 	var cells: Array = Generator.floor_cells(s.floor_state.layout.terrain,s.floor_state.layout.size,room.rect).filter(func(p): return s.at(p).is_empty() and s.distance(p,npc.pos) <= 2 and p != npc.pos)
 	for i in range(mini(members.size(),cells.size())):
-		var m: Dictionary = members[i]
-		var enemy: Dictionary = s.make_actor(100+s.enemies.size(),m.display_name,true)
-		enemy.pos = cells[i]; enemy.hp = int(m.max_health); enemy.max_hp = enemy.hp
-		enemy.group = "NPC_%d" % npc.id; enemy.home = enemy.pos; enemy.alert = true
-		enemy.species_id = m.species_id; enemy.tier = "early"; enemy.mandatory = false; enemy.npc_pack = npc.id
-		s.Floor.MonsterAI.configure(enemy,m.role)
-		enemy.part_id = Abilities.species_part(m.species_id)
-		s.enemies.append(enemy)
+		var m: Dictionary = members[i].duplicate(true)
+		m.pos = cells[i]
+		# Same minting as a generated encounter, solo health scaling included.
+		var enemy: Dictionary = s.Floor.mint_enemy(s,m,"NPC_%d" % npc.id,"early",false)
+		enemy.npc_pack = npc.id; enemy.alert = true

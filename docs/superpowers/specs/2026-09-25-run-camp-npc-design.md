@@ -111,7 +111,7 @@
 
 ### 5.1 명부
 
-- Run 시작 시 NPC **10명** 생성(`s.roster: Array`), 각각 `{id: 100+i, name, profile: Hexaco.generated(seed, 100+i), stance: Stances.default_stance(profile), hp, max_hp 55, stress: 0~40, equipped_abilities: [파츠 0~1], rules, memory: Memory.new(), partner: id | -1, bond: "close"|"strained"|"", state: "UNMET"|"MET"|"PARTY"|"DEAD", floor_seen: int}`.
+- Run 시작 시 NPC **10명** 생성(`s.roster: Array`), 각각 `{id: 1000+i, name, profile: Hexaco.generated(seed, 1000+i), stance: Stances.default_stance(profile), hp, max_hp 55, stress: 0~40, equipped_abilities: [파츠 0~1], rules, memory: Memory.new(), partner: id | -1, bond: "close"|"strained"|"", state: "UNMET"|"MET"|"PARTY"|"DEAD", floor_seen: int}`.
 - 이름은 `data/content/npc_names.json`(20개)에서 시드로 중복 없이.
 - 파츠: 40%로 카탈로그에서 무작위 1개 장착(`default_rule` 포함).
 - **2인 조**: 10명 중 2쌍(4명). `partner` 상호 지정, `bond`는 60% `close` / 40% `strained`.
@@ -124,7 +124,7 @@
 
 | 상황 | 위치 | 상태 |
 | --- | --- | --- |
-| 교전 중 | 조우 방 옆 NPC 방에 몬스터 무리 1개(예산 3) 추가 배치, NPC는 무리와 인접 | HP 60~80%, 50% 굶주림 |
+| 교전 중 | 조우 방 옆 NPC 방에 몬스터 무리 1개(예산 3) 추가 배치, NPC는 무리와 거리 2 이내 | HP 60~80%, 50% 굶주림 |
 | 부상 | NPC 방, 혼자 | HP 30~50%, 스트레스 +30, 50% 굶주림 |
 | 휴식 | NPC 방 | HP 그대로 |
 

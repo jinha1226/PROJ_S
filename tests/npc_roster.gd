@@ -19,7 +19,7 @@ func roster() -> void:
 	check(rows.size() == 10 and s.roster == rows,"ten NPCs on the run roster")
 	var names: Array = rows.map(func(n): return n.name)
 	check(names.size() == names.reduce(func(acc,n): return acc if n in acc else acc+[n],[]).size(),"names are unique")
-	check(rows.all(func(n): return n.npc and not n.enemy and n.id >= 100 and n.hp == 55 and n.max_hp == 55 and n.state == "UNMET" and not n.awake),"npc fields")
+	check(rows.all(func(n): return n.npc and not n.enemy and n.id >= 1000 and n.hp == 55 and n.max_hp == 55 and n.state == "UNMET" and not n.awake),"npc fields")
 	check(rows.all(func(n): return n.stress >= 0 and n.stress <= 40),"stress 0-40")
 	check(rows.all(func(n): return n.stance in ["CHARGER","SKIRMISHER","GUARDIAN"] and n.stance == s.Stances.default_stance(n.profile)),"stance is the personality's default")
 	var with_part: int = rows.filter(func(n): return n.equipped_abilities[0] != "").size()
@@ -39,11 +39,12 @@ func placement() -> void:
 	for n in s.npcs:
 		check(s.inside(n.pos) and s.tile(n.pos).terrain != "wall" and s.at(n.pos) == n,"npc stands on a floor cell and at() finds it")
 		check(Roster.situation(n) in ["FIGHTING","WOUNDED","RESTING"],"situation set")
-		if Roster.situation(n) == "WOUNDED": check(n.hp*100/n.max_hp >= 30 and n.hp*100/n.max_hp <= 50 and n.stress >= 30,"wounded hp 30-50%% (%s)" % n.name)
+		if Roster.situation(n) == "WOUNDED": check(n.hp*100/n.max_hp >= 30 and n.hp*100/n.max_hp <= 50 and n.stress >= 20,"wounded hp 30-50%% and shaken (%s)" % n.name)
 		if Roster.situation(n) == "FIGHTING":
 			check(n.hp*100/n.max_hp >= 60 and n.hp*100/n.max_hp <= 80,"fighting hp 60-80%%")
 			check(s.enemies.any(func(e): return e.hp > 0 and e.get("npc_pack",-1) == n.id and s.distance(e.pos,n.pos) <= 2),"a pack placed beside the fighting npc")
 		if Roster.situation(n) == "RESTING": check(n.hp == n.max_hp,"resting at full")
+	check(s.enemies.all(func(e): return not s.roster.any(func(n): return n.id == e.id)),"npc ids never collide with floor enemy ids")
 	var rooms: Array = Roster.npc_rooms(s.floor_state.layout)
 	check(rooms.size() >= 3 and rooms.size() <= 5,"three to five npc rooms")
 	check(s.npcs.all(func(n): return rooms.any(func(r): return s.floor_state.layout.rooms[r].rect.has_point(n.pos))),"npcs stand in npc rooms")
@@ -65,18 +66,41 @@ func placement() -> void:
 			if Roster.situation(n) != "RESTING": eligible += 1; hungry += 1 if n.hungry else 0
 	check(hungry > 0 and hungry < eligible,"some, not all, are hungry (%d/%d)" % [hungry,eligible])
 
+## Every hp the situation band and the 10-30%% wear can produce for this NPC.
+func worn(n: Dictionary) -> Array:
+	var lo: int = {"WOUNDED":30,"FIGHTING":60,"RESTING":100}[Roster.situation(n)]
+	var out: Array = []
+	for band in range(lo,mini(lo+20,100)+1):
+		var full: int = ceili(n.max_hp*band/100.0)
+		for wear in range(10,31):
+			var hp: int = maxi(1,ceili(full*(100-wear)/100.0))
+			if hp not in out: out.append(hp)
+	return out
+
 func reappearance() -> void:
 	var s = Session.new(43,false,false,true,1); s.depart()
-	var first: Array = s.npcs.map(func(n): return n.id)
-	var met: Dictionary = s.npcs[0]; met.hp = 50
+	var placed: Array = s.npcs.map(func(n): return n.id)
+	# Five more have been met and walked away hurt; one of those is dead and one
+	# has joined the party, so the next floor must draw on the returners.
+	var rest: Array = s.roster.filter(func(n): return n.id not in placed)
+	for i in range(5): rest[i].state = "MET"; rest[i].hp = 50
+	var met: Array = s.roster.filter(func(n): return n.state == "MET").map(func(n): return n.id)
+	check(met.size() == 8,"eight met, two still unknown")
+	var dead: Dictionary = rest[0]; dead.state = "DEAD"
+	var joined: Dictionary = rest[1]; joined.state = "PARTY"
+	var unknown: Array = s.roster.filter(func(n): return n.state == "UNMET").map(func(n): return n.id)
+	var old_packs: Array = s.enemies.filter(func(e): return e.has("npc_pack"))
 	Roster.place(s) # second floor placement on the same layout for the test
 	check(s.npcs.size() >= 4 and s.npcs.size() <= 5,"later floors place four or five")
-	var unmet_first: bool = s.npcs.filter(func(n): return n.id not in first).size() >= s.npcs.size()-first.size()
-	check(unmet_first,"unmet NPCs are preferred")
-	if s.npcs.any(func(n): return n.id == met.id):
-		var back: Dictionary = s.npcs.filter(func(n): return n.id == met.id)[0]
-		check(back.hp >= 35 and back.hp <= 45,"a met NPC returns 10-30%% worse off")
-	met.state = "DEAD"; Roster.place(s)
-	check(not s.npcs.any(func(n): return n.id == met.id),"the dead never return")
-	s.roster[3].state = "PARTY"; Roster.place(s)
-	check(not s.npcs.any(func(n): return n.id == s.roster[3].id),"party members are not placed")
+	check(old_packs.all(func(e): return e not in s.enemies),"the previous placement's packs are cleared")
+	check(s.enemies.all(func(e): return not e.has("npc_pack") or s.npcs.any(func(n): return n.id == e.npc_pack)),"every pack belongs to an NPC standing here")
+	check(unknown.size() == 2 and unknown.all(func(id): return s.npcs.any(func(n): return n.id == id)),"unmet NPCs are preferred")
+	check(not s.npcs.any(func(n): return n.id == dead.id),"the dead never return")
+	check(not s.npcs.any(func(n): return n.id == joined.id),"party members are not placed")
+	var returners: Array = s.npcs.filter(func(n): return n.id in met)
+	check(returners.size() >= 2,"met NPCs come back to fill the floor (%d)" % returners.size())
+	for n in returners:
+		check(n.hp in worn(n),"returner worn 10-30%% below its band (%s %s hp %d)" % [n.name,Roster.situation(n),n.hp])
+		check(n.state == "MET" and n.floor_seen == Roster.depth(s) and n.hp > 0,"returner is met again on this floor")
+	for n in s.npcs:
+		check(s.at(n.pos) == n,"every placed NPC owns its cell")

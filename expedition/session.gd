@@ -266,7 +266,8 @@ func stress(actor: Dictionary, amount: int) -> void:
 	var trauma := int(actor.memory.strongest(["SELF_HARM", "ALLY_LOST"]).get("salience", 0)) / 200
 	var change := amount
 	if amount > 0: change = maxi(1, amount * (650 + actor.profile.value("E")) / 1000 + trauma)
-	if amount > 0 and floor_mode and party.size() == 1: change = ceili(change*0.5)
+	# The solo run halves the hero's own stress; a dungeon NPC feels it whole.
+	if amount > 0 and floor_mode and party.size() == 1 and not actor.get("npc",false): change = ceili(change*0.5)
 	actor.stress = clampi(actor.stress + change, 0, 200)
 	actor.condition = "붕괴" if actor.stress >= 150 else "불안" if actor.stress >= 100 else "평온"
 
