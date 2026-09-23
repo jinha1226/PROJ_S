@@ -180,7 +180,8 @@ func hud_fit() -> void:
 		for frame in range(3): await process_frame
 		check(scene.root_layout.get_child(0).size.y < 70,"the header stays compact at %s" % viewport)
 		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"the HUD fits %s" % viewport)
-		check(scene.portrait_buttons.size() == 1 and scene.item_buttons.size() == 5,"one card and five supply slots at %s" % viewport)
+		check(scene.portrait_buttons.is_empty() and scene.item_buttons.is_empty(),"manual HUD has no party card or supply strip at %s" % viewport)
+		check(scene.find_child("HeroStatus",true,false) != null,"hero status appears at %s" % viewport)
 		check(scene.skill_buttons.is_empty(),"no manual skill row at %s" % viewport)
 		check(scene.minimap != null and scene.minimap.is_visible_in_tree(),"the minimap is on screen at %s" % viewport)
 		var footer: Node = scene.find_child("BottomActions",true,false)
@@ -188,7 +189,7 @@ func hud_fit() -> void:
 		check(footer.find_child("RetreatToggle",true,false) == null and footer.find_child("AutoToggle",true,false) == null,"the manual footer has no autobattle controls at %s" % viewport)
 		check("야영" in texts and "가방" in texts,"and the camp and bag actions at %s" % viewport)
 		check("원정" not in texts and "귀환" not in texts,"and nothing that returns home at %s" % viewport)
-		for node in footer.get_children()+scene.item_buttons+scene.portrait_buttons:
+		for node in footer.get_children():
 			check(node.size.y >= 44,"every solo control is a 44px target at %s" % viewport)
 			check(scene.get_global_rect().encloses(node.get_global_rect()),"and stays on screen at %s" % viewport)
 		scene.show_menu()

@@ -29,15 +29,15 @@ func run() -> void:
 		for frame in range(3): await process_frame
 		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"layout fits %s" % viewport)
 		check(scene.minimap != null and scene.minimap.is_visible_in_tree(),"minimap visible at %s" % viewport)
-		for id in ["Location","FoodLabel","ExpeditionMenu","CampButton","Spell0","Spell1","Spell2"]:
+		for id in ["Location","FoodLabel","ExpeditionMenu","HeroStatus","CampButton","Wait"]:
 			var control: Control = scene.find_child(id,true,false)
 			check(control != null and scene.get_global_rect().encloses(control.get_global_rect()),"%s fits %s" % [id,viewport])
-		check(scene.portrait_buttons.size() == 1 and scene.portrait_buttons[0].find_children("*","TextureRect",true,false).is_empty(),"solo card has no portrait")
-		check(scene.skill_buttons.is_empty(),"prepared spells have their own row")
+		check(scene.portrait_buttons.is_empty() and scene.item_buttons.is_empty(),"manual HUD has no party card or supply strip")
+		check(scene.find_child("SpellBar",true,false) == null,"unprepared spells take no HUD space")
 	var header: Node = scene.find_child("TopHUD",true,false)
 	check(header.get_children().slice(1).map(func(c): return str(c.name)) == ["Location","FoodLabel","ExpeditionMenu"],"floor header order")
 	scene.show_menu(); await process_frame
-	check(scene.modal_content.get_children().map(func(c): return c.text) == ["기록","가방","닫기"],"menu keeps only direct actions")
+	check(scene.modal_content.get_children().map(func(c): return c.text) == ["기록","가방","인물","닫기"],"menu keeps only direct actions")
 	scene.details_popup.hide()
 	Fixture.arena(s,12); s.floor_state.observe(s); scene.refresh(); await process_frame
 	var camp_button: Button = scene.find_child("CampButton",true,false)
@@ -81,23 +81,16 @@ func run() -> void:
 func touch_targets(scene) -> void:
 	root.size = Vector2i(390,844); scene.refresh()
 	for frame in range(3): await process_frame
-	for id in ["ExpeditionMenu","CampButton","Spell0","Spell1","Spell2","Attack","Wait","RecentLog"]:
+	for id in ["ExpeditionMenu","HeroStatus","CampButton","Wait","RecentLog"]:
 		var control: Control = scene.find_child(id,true,false)
 		check(control != null and control.size.y >= 36,"%s is a touchable height" % id)
 		check(control != null and scene.get_global_rect().encloses(control.get_global_rect()),"%s stays on screen" % id)
-	check(scene.item_buttons.size() == 5,"five supply slots")
-	for item in scene.item_buttons:
-		check(item.size.y >= 44,"supply slot is at least 44px tall")
-		check(scene.get_global_rect().encloses(item.get_global_rect()),"supply slot stays on screen")
+	check(scene.item_buttons.is_empty(),"supplies live in the bag")
 	var nav: Node = scene.find_child("BottomActions",true,false)
 	check(nav.get_children().map(func(c): return str(c.name)).has("CampButton"),"camp sits in the footer")
-	check(scene.find_child("PartyRow",true,false) != null,"the party row is on the floor HUD")
-	var card: Button = scene.find_child("MemberCard0",true,false)
-	var caption: Label = scene.find_child("MemberCaption0",true,false)
-	check(card != null and card.size.y >= 44,"the member card is a touch target")
-	check(caption != null and caption.text.contains("HP") and caption.text.contains(scene.session.party[0].name),"the card reports name and HP")
-	check(caption.text.contains(scene.session.party[0].last_action),"the card reports the last action")
-	check(caption.text.contains(scene.session.party[0].condition),"the card reports the condition")
+	check(scene.find_child("PartyRow",true,false) == null,"manual play has no auto-battle party row")
+	var status: Button = scene.find_child("HeroStatus",true,false)
+	check(status != null and status.text.contains("HP") and status.text.contains("MP") and status.text.contains("AC"),"hero status reports combat values")
 
 ## The board frames seventeen tiles with the hero in the middle.
 func framing(scene, s) -> void:
@@ -156,7 +149,7 @@ func waiting_and_auto(scene, s) -> void:
 	var foe: Dictionary = s.enemies[0]
 	foe.hp = 20; foe.max_hp = 20; foe.pos = hero.pos+Vector2i.RIGHT; s.floor_state.observe(s)
 	scene.refresh(); await process_frame
-	check(scene.find_child("AutoToggle",true,false) == null and scene.find_child("SpellBar",true,false) != null,"a seen foe remains under manual control")
+	check(scene.find_child("AutoToggle",true,false) == null and scene.find_child("HeroStatus",true,false) != null,"a seen foe remains under manual control")
 	before_round = s.round_number; food = s.food
 	s.submit("WAIT",hero.pos); scene.refresh(); await process_frame
 	check(s.round_number >= before_round and s.food == food,"a manual turn costs no food")

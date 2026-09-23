@@ -1,7 +1,7 @@
 extends RefCounted
 ## The battle-test setup screen: an arena, a seed, a party size, and for every
 ## member a stance and two freely chosen parts. It only reads and writes
-## `ui.arena_config` — the session is built when 시작 is pressed.
+## `ui.arena_config` — the session is built when 시작 is pressed. The hero is manual.
 const Session = preload("res://expedition/session.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 const Stances = preload("res://expedition/stances.gd")
@@ -106,18 +106,19 @@ static func resize(ui, count: int) -> void:
 	while ui.arena_config.members.size() < count: ui.arena_config.members.append({"stance":"CHARGER","parts":["",""]})
 	ui.show_arena_setup()
 
-## One member: who the seed rolled, the three stances and the two part slots.
+## One member: the hero chooses parts; companions also choose a stance.
 static func member_card(ui, list: VBoxContainer, index: int, probe: Dictionary) -> void:
 	var setup: Dictionary = ui.arena_config.members[index]
 	var solo: bool = int(ui.arena_config.size) == 1
 	if solo and str(setup.stance) == "GUARDIAN": setup.stance = "CHARGER"
 	var box := CharacterUI.card(list,str(probe.get("name",MEMBER_NAMES[index])))
 	box.name = "ArenaMember%d" % index
-	var stances := HBoxContainer.new(); stances.add_theme_constant_override("separation",4); box.add_child(stances)
-	for id in Stances.IDS:
-		var pick = ui.button(stances,Stances.NAMES[id],func(): choose_stance(ui,index,id),not (solo and id == "GUARDIAN"))
-		pick.name = "ArenaStance_%d_%s" % [index,id]
-		pick.toggle_mode = true; pick.button_pressed = id == str(setup.stance)
+	if index > 0:
+		var stances := HBoxContainer.new(); stances.add_theme_constant_override("separation",4); box.add_child(stances)
+		for id in Stances.IDS:
+			var pick = ui.button(stances,Stances.NAMES[id],func(): choose_stance(ui,index,id),true)
+			pick.name = "ArenaStance_%d_%s" % [index,id]
+			pick.toggle_mode = true; pick.button_pressed = id == str(setup.stance)
 	var slots := HBoxContainer.new(); slots.add_theme_constant_override("separation",4); box.add_child(slots)
 	var ids: Array = Abilities.DEFINITIONS.keys()
 	for slot in range(2):

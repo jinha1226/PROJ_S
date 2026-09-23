@@ -3,6 +3,7 @@ var input_actor := -1
 var targeting_skill := ""
 var action_footer := false
 signal cell_pressed(cell: Vector2i)
+signal cell_inspected(cell: Vector2i)
 signal zoom_changed(side: int)
 signal gesture_started
 var view_side := 17
@@ -27,6 +28,7 @@ var effects: Array = []
 var effect_time := 0.0
 var impact_time := 0.0
 var companion_previews: Array = []
+var touch_pressed_at := 0
 signal playback_finished
 const ActorVisual = preload("res://expedition/battle_actor_visual.gd")
 var playback: Array = []
@@ -533,12 +535,15 @@ func _gui_input(event: InputEvent) -> void:
 			gesture_started.emit()
 			if camera_gesture.contacts.is_empty():
 				touch_start = event.position; _pointer_down = true; _pointer_dragged = false
+				touch_pressed_at = Time.get_ticks_msec()
 				camera_gesture.zoom = 10.0/view_side
 		if camera_gesture.handle(self,event): accept_event(); return
 		if not event.pressed:
 			var tap: bool = _pointer_down and not _pointer_dragged and not event.canceled
 			_pointer_down = false
-			if tap: emit_cell(event.position)
+			if tap:
+				if Time.get_ticks_msec()-touch_pressed_at >= 450: emit_inspection(event.position)
+				else: emit_cell(event.position)
 		accept_event(); return
 	if event is InputEventScreenDrag:
 		suppress_mouse_until = Time.get_ticks_msec()+500
@@ -551,12 +556,19 @@ func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.device == InputEvent.DEVICE_ID_EMULATION or Time.get_ticks_msec() < suppress_mouse_until: return
 		gesture_started.emit(); emit_cell(event.position); accept_event()
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		emit_inspection(event.position); accept_event()
 
 func emit_cell(position: Vector2) -> void:
 	if is_presenting(): return
 	if position.y < origin.y or position.y >= origin.y+size.x: return
 	var point := cell_at(position)
 	if session != null and session.inside(point): cell_pressed.emit(point)
+
+func emit_inspection(position: Vector2) -> void:
+	if is_presenting() or position.y < origin.y or position.y >= origin.y+size.x: return
+	var point := cell_at(position)
+	if session != null and session.inside(point): cell_inspected.emit(point)
 
 func _actor_for_id(actors: Array, actor_id: int) -> Dictionary:
 	for actor in actors:

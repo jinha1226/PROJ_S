@@ -56,14 +56,13 @@ func run() -> void:
 				check(board.cell_at(board.cell_center(p)) == p,"zoom-aware cell hit test")
 	scene.refresh(); await process_frame
 	check(scene.board.view_side == 24,"zoom survives HUD refresh")
-	var portrait = scene.portrait_buttons[0]
-	var press := InputEventScreenTouch.new(); press.index = 0; press.pressed = true; press.position = portrait.get_global_rect().get_center()
-	scene._input(press); scene.portrait_gesture.started -= 601; scene.portrait_gesture.tick(scene)
-	press.pressed = false; scene._input(press)
-	check(scene.details_popup.visible and scene.tactics_actor == 0 and scene.reservation_actor == -1,"long hold opens correct status without reservation")
-	scene.details_popup.hide(); press.pressed = true; scene._input(press); press.pressed = false; scene._input(press)
-	# Floor mode has no action reservations: a short tap only takes the camera there.
-	check(scene.reservation_actor == -1 and s.selected == 0,"short portrait tap selects the member instead of reserving")
+	var hero_status: Button = scene.find_child("HeroStatus",true,false)
+	check(hero_status != null,"manual HUD exposes hero status")
+	if hero_status != null:
+		hero_status.pressed.emit(); await process_frame
+		check(scene.details_popup.visible and scene.tactics_actor == 0 and scene.reservation_actor == -1,"hero status opens character without reservation")
+		scene.details_popup.hide()
+	check(scene.reservation_actor == -1 and s.selected == 0,"manual hero remains selected")
 	for i in range(60): s.message("기록 %d" % i)
 	scene.refresh(); await process_frame
 	var recent: Button = scene.find_child("RecentLog",true,false)

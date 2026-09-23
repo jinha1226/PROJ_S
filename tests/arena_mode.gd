@@ -49,7 +49,10 @@ func scene() -> void:
 	var setup = scene.find_child("ArenaSetup",true,false)
 	check(setup != null,"setup screen")
 	check(scene.find_child("ArenaPick",true,false).item_count == 7 and scene.find_child("ArenaSize",true,false) != null,"arena picker and party size")
-	check(scene.find_children("ArenaMember*","Control",true,false).size() == 3,"three member cards")
+	check(scene.find_children("ArenaMember*","Control",true,false).size() == 1,"arena starts with one hero")
+	scene.find_child("ArenaSize",true,false).item_selected.emit(2)
+	for frame in range(3): await process_frame
+	check(scene.find_children("ArenaMember*","Control",true,false).size() == 3,"three member test is selectable")
 	var part0 = scene.find_child("ArenaPart_0_0",true,false)
 	check(part0 != null and part0.item_count == Abilities.DEFINITIONS.size()+1,"part picker lists every catalog part plus empty")
 	# One part, one slot: the pair of pickers cannot both land on the same part.
@@ -59,12 +62,13 @@ func scene() -> void:
 	check(scene.arena_config.members[0].parts[0] == "HOB_CLUB","the part choice is recorded")
 	check(scene.find_child("ArenaPart_0_1",true,false).is_item_disabled(club),"the other slot greys the part out")
 	check(not scene.find_child("ArenaPart_1_1",true,false).is_item_disabled(club),"another member may still take it")
-	scene.find_child("ArenaStance_0_SKIRMISHER",true,false).pressed.emit(); await process_frame
-	check(scene.arena_config.members[0].stance == "SKIRMISHER","stance choice recorded")
+	check(scene.find_child("ArenaStance_0_SKIRMISHER",true,false) == null,"the manually controlled hero has no stance picker")
+	scene.find_child("ArenaStance_1_SKIRMISHER",true,false).pressed.emit(); await process_frame
+	check(scene.arena_config.members[1].stance == "SKIRMISHER","companion stance choice recorded")
 	scene.find_child("ArenaStart",true,false).pressed.emit()
 	for frame in range(4): await process_frame
 	check(scene.session != null and scene.session.in_combat(),"start swaps in an arena session")
-	check(scene.find_child("AutoToggle",true,false) == null and scene.find_child("SpellBar",true,false) != null,"manual arena HUD with prepared spells")
+	check(scene.find_child("AutoToggle",true,false) == null and scene.find_child("HeroStatus",true,false) != null,"manual arena HUD")
 	var guard := 0
 	while scene.session.in_combat() and guard < 80:
 		var hero: Dictionary = scene.session.party[0]
@@ -95,7 +99,7 @@ func custom() -> void:
 	scene.find_child("ArenaSize",true,false).item_selected.emit(0)
 	for frame in range(3): await process_frame
 	check(scene.find_children("ArenaMember*","Control",true,false).size() == 1,"one card at a party size of one")
-	check(scene.find_child("ArenaStance_0_GUARDIAN",true,false).disabled,"solo cannot be set to guardian")
+	check(scene.find_child("ArenaStance_0_GUARDIAN",true,false) == null,"solo hero has no auto-battle stance picker")
 	scene.find_child("ArenaPick",true,false).item_selected.emit(Session.ARENA_PRESETS.keys().find("custom"))
 	for frame in range(3): await process_frame
 	var foes: Array = scene.find_children("ArenaFoe*","Control",true,false)

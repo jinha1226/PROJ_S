@@ -28,7 +28,7 @@ var session = null
 ## Battle test mode: the town session set aside while a throwaway arena session
 ## fights, the setup screen's own state, and whether that screen is showing.
 
-var arena_config := {"arena":"early_hob","seed":0,"fixed_seed":false,"size":3,
+var arena_config := {"arena":"early_hob","seed":0,"fixed_seed":false,"size":1,
 	"members":[{"stance":"CHARGER","parts":["",""]},{"stance":"CHARGER","parts":["",""]},{"stance":"CHARGER","parts":["",""]}],
 	"custom":[["",""],["",""],["",""]]}
 var mode_arena_setup := false
@@ -232,6 +232,7 @@ func start_arena() -> void:
 	session = Session.arena_test(int(arena_config.seed),int(arena_config.size),arena,arena_config.members)
 	session.manual_mode = true
 	mode_arena_active = true
+	mode = ""; pending_attack = {}; show_attack_range = false
 	stop_text = ""; battle_reported = false; action_effects = []; reset_effects = true
 	check_stop()
 	refresh()
@@ -269,6 +270,31 @@ func navigation_tick() -> void:
 
 func _input(event: InputEvent) -> void:
 	if session != null: portrait_gesture.handle(self,event)
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if session == null or not session.manual_mode or not session.on_floor() or popup_open(): return
+	if not event.pressed or event.is_echo(): return
+	var key: Key = event.physical_keycode if event.physical_keycode != 0 else event.keycode
+	var direction := Vector2i.ZERO
+	match key:
+		KEY_UP, KEY_W, KEY_K: direction = Vector2i.UP
+		KEY_DOWN, KEY_S, KEY_J: direction = Vector2i.DOWN
+		KEY_LEFT, KEY_A, KEY_H: direction = Vector2i.LEFT
+		KEY_RIGHT, KEY_D, KEY_L: direction = Vector2i.RIGHT
+		KEY_Q: direction = Vector2i(-1,-1)
+		KEY_E: direction = Vector2i(1,-1)
+		KEY_Z: direction = Vector2i(-1,1)
+		KEY_C: direction = Vector2i(1,1)
+	if direction != Vector2i.ZERO:
+		var point: Vector2i = session.party[0].pos+direction
+		if session.inside(point):
+			var occupant: Dictionary = session.at(point)
+			if not occupant.is_empty() and occupant.enemy: run_action(func(): return session.act("ATTACK",point))
+			else: run_action(func(): return session.act("MOVE",point))
+		get_viewport().set_input_as_handled()
+	elif key in [KEY_PERIOD,KEY_SPACE]:
+		run_action(func(): return session.act("WAIT",session.party[0].pos))
+		get_viewport().set_input_as_handled()
 
 func toggle_explore() -> void:
 	if navigation.active: stop_navigation(); return
@@ -386,11 +412,18 @@ func refresh() -> void:
 	var food_label := label(header,"식량 %d" % session.food,14); food_label.name = "FoodLabel"
 	food_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var menu := button(header,"메뉴",show_menu); menu.name = "ExpeditionMenu"; menu.size_flags_horizontal = SIZE_SHRINK_END
+	if session.manual_mode:
+		var hero: Dictionary = session.party[0]
+		var values: Dictionary = Session.CombatStats.stats(session,hero)
+		var status := button(root_layout,"%s · Lv%d     HP %d/%d     MP %d/%d\nAC %d   EV %d   SH %d%%   스트레스 %d" % [hero.name,int(hero.level),int(hero.hp),int(hero.max_hp),int(hero.mp),int(hero.max_mp),int(values.ac),int(values.ev),int(values.sh),int(hero.stress)],func(): show_character(0,"상태"))
+		status.name = "HeroStatus"; status.custom_minimum_size.y = 64
+		status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if not is_instance_valid(board):
 		board = Board.new(); board.ui_font = FONT; board.cell_pressed.connect(on_cell)
+		board.cell_inspected.connect(inspect_cell)
 		board.zoom_changed.connect(func(value): view_side = value)
 		board.gesture_started.connect(stop_navigation); board.playback_finished.connect(finish_presentation)
-	board.session = session; board.view_side = view_side; board.action_footer = not pending_attack.is_empty()
+	board.session = session; board.view_side = view_side; board.action_footer = not session.manual_mode and not pending_attack.is_empty()
 	if board.get_parent() != null: board.get_parent().remove_child(board)
 	board.visible = true
 	board.size_flags_vertical = SIZE_EXPAND_FILL; root_layout.add_child(board); board.queue_redraw()
@@ -399,7 +432,7 @@ func refresh() -> void:
 	board.effect_time = elapsed; board.impact_time = impact_elapsed
 	board.companion_previews = session.companion_previews(); board.companion_intents = session.companion_intent_snapshot()
 	if not session.in_combat(): board.reset_intent_ui()
-	if not pending_attack.is_empty():
+	if not session.manual_mode and not pending_attack.is_empty():
 		var warning := Session.Scheduler.double_movers(session,int(pending_attack.time))
 		var preview := label(board,"명중 %d%% · 피해 %d–%d · %d tick%s" % [pending_attack.chance,pending_attack.damage_min,pending_attack.damage_max,pending_attack.time," · 느린 행동" if not warning.is_empty() else ""],12)
 		preview.name = "ActionPreview"
@@ -411,6 +444,9 @@ func refresh() -> void:
 		attack_button.offset_left = 8; attack_button.offset_top = -56; attack_button.offset_right = 210; attack_button.offset_bottom = -8
 	var log_button := button(root_layout,session.log_lines[-1] if not session.log_lines.is_empty() else "",show_logs)
 	log_button.name = "RecentLog"; log_button.custom_minimum_size.y = 36
+	if session.manual_mode:
+		build_manual_controls()
+		return
 	var party_row := HBoxContainer.new(); party_row.name = "PartyRow"
 	party_row.add_theme_constant_override("separation",5); root_layout.add_child(party_row)
 	for i in range(session.party.size()):
@@ -462,10 +498,28 @@ func refresh() -> void:
 	button(nav,"가방",show_supplies)
 	if not session.manual_mode: build_stop_banner()
 
+func build_manual_controls() -> void:
+	var hero: Dictionary = session.party[0]
+	if not hero.prepared.is_empty():
+		var spells := GridContainer.new(); spells.name = "SpellBar"; spells.columns = 3; root_layout.add_child(spells)
+		for slot in range(hero.prepared.size()):
+			var id: String = str(hero.prepared[slot])
+			var definition: Dictionary = Session.CombatStats.content.spells.get(id,{})
+			var spell := button(spells,"%s · %dMP" % [str(definition.get("name",id)),int(definition.get("mp",0))],choose_spell.bind(id),hero.mp >= int(definition.get("mp",0)))
+			spell.name = "Spell%d" % slot
+	var nav := GridContainer.new(); nav.name = "BottomActions"; nav.columns = 4; root_layout.add_child(nav)
+	var wait := button(nav,"대기",func(): run_action(func(): return session.act("WAIT",hero.pos))); wait.name = "Wait"; wait_button = wait
+	auto_explore_button = button(nav,"중지" if navigation.active else "탐색",toggle_explore,not session.in_combat())
+	var camp := button(nav,"야영",func(): run_action(session.camp),session.can_camp().is_empty()); camp.name = "CampButton"
+	button(nav,"가방",show_supplies)
+	button(nav,"인물",func(): show_character(0,"상태"))
+	if session.in_combat() and hero.equipped_abilities.any(func(id): return not str(id).is_empty()):
+		var parts_button := button(nav,"파츠",show_part_actions); parts_button.name = "PartActions"
+
 func build_start_screen() -> void:
 	var box := VBoxContainer.new(); box.name = "StartScreen"; box.size_flags_vertical = SIZE_EXPAND_FILL; root_layout.add_child(box)
 	label(box,"하강",26)
-	var start := button(box,"새 Run",new_run); start.name = "NewRun"
+	var start := button(box,"새 탐험",new_run); start.name = "NewRun"
 	var arena := button(box,"전투 시험",show_arena_setup); arena.name = "ArenaButton"
 
 func build_camp_screen() -> void:
@@ -474,9 +528,10 @@ func build_camp_screen() -> void:
 	for i in range(session.party.size()):
 		var actor: Dictionary = session.party[i]
 		var card := VBoxContainer.new(); card.name = "CampMember%d" % i; box.add_child(card)
-		label(card,"%s  HP %d/%d  스트레스 %d" % [actor.name,actor.hp,actor.max_hp,actor.stress],15)
-		button(card,"태세 · %s" % actor.stance,func(): show_character(i,"태세"))
-		button(card,"파츠",func(): show_character(i,"파츠"))
+		label(card,"%s  HP %d/%d  MP %d/%d" % [actor.name,actor.hp,actor.max_hp,actor.mp,actor.max_mp],15)
+		if not session.manual_mode:
+			button(card,"태세 · %s" % actor.stance,func(): show_character(i,"태세"))
+			button(card,"파츠",func(): show_character(i,"파츠"))
 		if session.manual_mode:
 			button(card,"장비",func(): show_gear(i))
 			button(card,"주문 준비",func(): show_prepare(i))
@@ -487,6 +542,7 @@ func show_menu() -> void:
 	clear(modal_content)
 	button(modal_content,"기록",show_logs)
 	button(modal_content,"가방",show_supplies)
+	if session != null and session.manual_mode: button(modal_content,"인물",func(): show_character(0,"상태"))
 	button(modal_content,"닫기",func(): details_popup.hide())
 	details_popup.popup_centered()
 
@@ -574,7 +630,7 @@ func build_stop_banner() -> void:
 func new_run() -> void:
 	session = Session.new_run(randi())
 	stop_text = ""; battle_reported = false
-	mode_arena_setup = false; mode_arena_active = false; pending_attack = {}; action_effects = []; reset_effects = true
+	mode_arena_setup = false; mode_arena_active = false; mode = ""; pending_item = -1; pending_attack = {}; show_attack_range = false; action_effects = []; reset_effects = true
 	check_stop(); refresh()
 
 func depart() -> void:
@@ -607,7 +663,7 @@ func run_action(callback: Callable, navigating: bool = false) -> void:
 	if not navigating: stop_navigation()
 	session.effects.clear()
 	var recorder = Presentation.new()
-	var show_battle: bool = is_processing() and session.phase == "BATTLE" and not session.party_enemies().is_empty()
+	var show_battle: bool = not session.manual_mode and is_processing() and session.phase == "BATTLE" and not session.party_enemies().is_empty()
 	if show_battle:
 		recorder.begin(session); session.presentation = recorder
 	var accepted: bool = callback.call()
@@ -691,7 +747,9 @@ func on_cell(point: Vector2i) -> void:
 	if session.wanderer(actor): return
 	if not actor.is_empty():
 		if actor.enemy:
-			if session.manual_mode: preview_attack(point)
+			if session.manual_mode:
+				if session.attack_preview(point).is_empty(): show_enemy_info(actor)
+				else: run_action(func(): return session.act("ATTACK",point))
 			else: run_action(func(): return session.act("ATTACK",point))
 		else:
 			# `selected` is a party index, and a recruit's id is its roster id: the
@@ -703,6 +761,25 @@ func on_cell(point: Vector2i) -> void:
 		if navigation.start(session,point): navigation_tick()
 		else: notice = "이동 불가"; refresh()
 	else: run_action(func(): return session.act("MOVE",point))
+
+func inspect_cell(point: Vector2i) -> void:
+	if session == null or not session.manual_mode or not session.floor_state.visible.has(point): return
+	var actor: Dictionary = session.at(point)
+	if not actor.is_empty() and actor.enemy: show_enemy_info(actor)
+
+func show_enemy_info(enemy: Dictionary) -> void:
+	if enemy.is_empty() or enemy.hp <= 0: return
+	clear(modal_content)
+	var values: Dictionary = Session.CombatStats.stats(session,enemy)
+	var title := label(modal_content,str(enemy.name),20); title.name = "EnemyInfo"
+	label(modal_content,"HP %d/%d   AC %d   EV %d   속도 %d" % [int(enemy.hp),int(enemy.max_hp),int(values.ac),int(values.ev),int(values.delay)],14)
+	var preview: Dictionary = session.attack_preview(enemy.pos)
+	if not preview.is_empty():
+		label(modal_content,"명중 %d%%   피해 %d–%d   %d tick" % [int(preview.chance),int(preview.damage_min),int(preview.damage_max),int(preview.time)],14)
+		var attack := button(modal_content,"공격",func(): details_popup.hide(); run_action(func(): return session.act("ATTACK",enemy.pos)))
+		attack.name = "InspectAttack"
+	button(modal_content,"닫기",func(): details_popup.hide())
+	details_popup.popup_centered()
 
 func focus_enemy(point: Vector2i) -> void:
 	var target: Dictionary = session.at(point)
