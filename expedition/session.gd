@@ -217,6 +217,12 @@ func alive() -> Array:
 func friends() -> Array:
 	return alive()+npcs.filter(func(n): return n.hp > 0 and n.awake)
 
+## Who walked with the party this run: only those who actually joined, in
+## roster order, each with the floor it joined on and whether it is still up.
+func companion_rows() -> Array:
+	return roster.filter(func(r): return int(r.get("joined_floor",0)) > 0).map(
+		func(r): return {"name":str(r.name),"joined_floor":int(r.joined_floor),"alive":r.hp > 0 and r.state != "DEAD"})
+
 ## Sharing food, asking, and the answer to an npc's own offer.
 func aid(npc: Dictionary) -> bool:
 	return Recruit.aid(self,npc)

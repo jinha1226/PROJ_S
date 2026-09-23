@@ -24,7 +24,7 @@ func set_facets(npc: Dictionary, x: int, a: int) -> void:
 
 func run() -> void:
 	aid(); aid_death(); memory_survives(); chance(); ask(); offer(); full_party(); duo_close(); duo_strained(); partner_dead()
-	marching_order(); comrade_dies(); stale_offer(); kinds()
+	marching_order(); comrade_dies(); stale_offer(); kinds(); history()
 	await scene()
 	print("Recruit: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
@@ -211,6 +211,26 @@ func stale_offer() -> void:
 func kinds() -> void:
 	var Memory = load("res://sim/party_memory_state.gd")
 	for k in ["RECRUITED","DECLINED_BY_PLAYER","DECLINED_PLAYER","LEFT_BY_PARTNER"]: check(k in Memory.KINDS,"memory kind "+k)
+
+## The result screen's companion list: only those who actually joined. A
+## stranger that dies where the party can see it is "DEAD" too, and must not
+## show up as a comrade.
+func history() -> void:
+	var f := solo(); var s = f.s; var a: Dictionary = f.npc
+	var b: Dictionary = s.roster.filter(func(n): return n.id != a.id)[0]
+	b.pos = f.c+Vector2i(0,-1); b.awake = true; b.hp = b.max_hp; b.state = "MET"; b.partner = -1; b.bond = ""
+	s.npcs.append(b); s.floor_state.observe(s)
+	a.partner = -1; a.hungry = true
+	check(s.companion_rows().is_empty(),"nobody has joined yet")
+	check(s.aid(a) and s.propose(a).accepted,"one joins")
+	s.damage(b,999,999,"IMPACT")
+	check(b.hp <= 0 and b.state == "DEAD","the other dies a stranger")
+	var rows: Array = s.companion_rows()
+	check(rows.size() == 1 and rows[0].name == a.name and rows[0].alive,"only the recruit is a companion")
+	check(int(rows[0].joined_floor) == s.NpcRoster.depth(s),"with the floor it joined on")
+	s.damage(a,999,999,"IMPACT")
+	rows = s.companion_rows()
+	check(rows.size() == 1 and not rows[0].alive and int(rows[0].joined_floor) == s.NpcRoster.depth(s),"a fallen comrade keeps its join floor")
 
 ## The HUD side: a tap on an adjacent npc opens its popup, the aid button
 ## shares the food, and an offer on the table waits in its own popup.

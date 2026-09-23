@@ -74,6 +74,9 @@ static func recruit(s, npc: Dictionary) -> Dictionary:
 static func join(s, npc: Dictionary) -> void:
 	s.npcs.erase(npc)
 	if s.pending_offer == int(npc.id): s.pending_offer = -1
+	# The floor it actually joined on: `floor_seen` is only where it was met,
+	# and a stranger that dies nearby is "DEAD" without ever having joined.
+	npc.joined_floor = s.NpcRoster.depth(s)
 	npc.state = "PARTY"; npc.awake = false; npc.mode = ""; npc.activity = ""
 	npc.ap = 0; npc.reservation = {}; npc.hit_and_run = false
 	var subject: int = hero(s)

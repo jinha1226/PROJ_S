@@ -882,11 +882,11 @@ func build_result_card() -> void:
 ## Who walked with the party this run, where they joined and whether they came
 ## back out (스펙 §1.2).
 func companion_history(list: VBoxContainer) -> void:
-	var rows: Array = session.roster.filter(func(r): return r.state in ["PARTY","DEAD"] and int(r.floor_seen) > 0)
+	var rows: Array = session.companion_rows()
 	if rows.is_empty(): return
 	label(list,"동료 이력",15)
 	for row in rows:
-		label(list,"%s · %d층 합류 · %s" % [row.name,int(row.floor_seen),"생존" if row.state == "PARTY" and row.hp > 0 else "전사"],13)
+		label(list,"%s · %d층 합류 · %s" % [row.name,int(row.joined_floor),"생존" if row.alive else "전사"],13)
 
 func show_orders() -> void:
 	stop_navigation()

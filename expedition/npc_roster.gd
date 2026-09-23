@@ -45,7 +45,7 @@ static func generate(s) -> Array:
 			var part: String = parts[Hexaco.sample(s.seed_value,id,"npc_part_id",parts.size())]
 			actor.equipped_abilities[0] = part; actor.rules = [Abilities.default_rule(part)]
 		actor.merge({"npc":true,"awake":false,"mode":"","mode_until":0,"hungry":false,"partner":-1,"bond":"",
-			"state":"UNMET","floor_seen":0,"activity":"","explains":[],"noise_seen":-99,"declined_until":-99,"offered_until":-99})
+			"state":"UNMET","floor_seen":0,"joined_floor":0,"activity":"","explains":[],"noise_seen":-99,"declined_until":-99,"offered_until":-99})
 		rows.append(actor)
 	for d in range(DUOS):
 		var a: Dictionary = rows[d*2]; var b: Dictionary = rows[d*2+1]
