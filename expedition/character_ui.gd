@@ -6,7 +6,6 @@ const Silhouette = preload("res://expedition/body_status_silhouette.gd")
 const BodyPresentation = preload("res://expedition/body_presentation.gd")
 const Emblem = preload("res://expedition/growth_emblem.gd")
 const Art = preload("res://expedition/mobile_art.gd")
-const Knobs = preload("res://expedition/knobs.gd")
 const Stances = preload("res://expedition/stances.gd")
 
 static func surface(color: Color, border: Color = Color("65522a")) -> StyleBoxFlat:
@@ -153,16 +152,14 @@ static func personality(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		text(row,"%s                         %d" % [names[id],actor.profile.value(id)])
 		gauge(row,actor.profile.value(id),1000,Color("69cfc2"))
 	stances(ui,list,actor)
-	knobs(ui,list,actor)
 
-## How this member fights: one button per stance over the aptitude personality
-## gives it, what the equipped parts suggest, and — for a guardian — who it
-## covers. Editable wherever a knob is.
+## How this member fights: one button per stance, the build the parts suggest,
+## and the one number the tab is for — how often this member will get it wrong.
+## The aptitudes themselves are not drawn; ⚠ and the tooltip carry them.
 static func stances(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	var index: int = ui.tactics_actor
 	var editable: bool = ui.session.phase == "TOWN" or (ui.session.floor_mode and ui.session.safe_management() and not ui.session.in_combat())
 	var chosen: String = str(actor.get("stance",Stances.default_stance(actor.profile)))
-	var aptitude: Dictionary = Stances.aptitude(actor.profile)
 	var box := card(list,"태세"); box.name = "StanceCard"
 	var columns := grid(box,Stances.IDS.size())
 	columns.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -170,69 +167,33 @@ static func stances(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		var id: String = entry
 		var column := VBoxContainer.new(); column.size_flags_horizontal = Control.SIZE_EXPAND_FILL; columns.add_child(column)
 		var solo: bool = id == "GUARDIAN" and ui.session.party.size() == 1
-		var pick = ui.button(column,Stances.NAMES[id],func(): choose(ui,index,id),editable and not solo)
+		var comfortable: bool = Stances.comfortable(actor.profile,id)
+		var pick = ui.button(column,Stances.NAMES[id] if comfortable else Stances.NAMES[id]+" ⚠",func(): choose(ui,index,id),editable and not solo)
 		pick.name = "Stance_"+id; pick.toggle_mode = true; pick.button_pressed = id == chosen
 		pick.custom_minimum_size.y = 44
-		# Aptitude runs -1000..1000; the bar shows it folded onto 0..1000.
-		gauge(column,(int(aptitude[id])+1000)/2.0,1000,Color("69cfc2")).name = "Aptitude_"+id
+		# What this stance would cost in mistakes, asked of a copy of the member.
+		var probe: Dictionary = actor.duplicate(); probe["stance"] = id
+		pick.tooltip_text = "실수 확률 %d%%" % Stances.mistake_chance(probe)
 	var badge := text(box,"빌드 추천: %s" % Stances.NAMES[Stances.suggested(actor)],13)
 	badge.name = "StanceSuggestion"
-	if not Stances.comfortable(actor.profile,chosen):
-		text(box,"⚠ 이 태세는 성격과 맞지 않습니다 — 전투마다 갈등",11).add_theme_color_override("font_color",Color("d1a05f"))
-	if chosen != "GUARDIAN": return
-	text(box,"지킬 대상",13)
-	var pick_target := OptionButton.new(); pick_target.name = "ProtectPick"
-	pick_target.custom_minimum_size.y = 44; pick_target.disabled = not editable
-	var choices: Array = [-1]; pick_target.add_item("자동")
-	for i in range(ui.session.party.size()):
-		if i == index or ui.session.party[i].hp <= 0: continue
-		pick_target.add_item(str(ui.session.party[i].name)); choices.append(i)
-	pick_target.select(maxi(0,choices.find(int(actor.get("protect_id",-1)))))
-	box.add_child(pick_target)
-	pick_target.item_selected.connect(func(slot): ui.session.set_protect(index,int(choices[slot])))
+	var line := text(box,mistake_line(actor),13); line.name = "MistakeLine"
+	if not Stances.comfortable(actor.profile,chosen): line.add_theme_color_override("font_color",Color("d1a05f"))
 
-## Taking a stance rebuilds the tab: the guardian's 지킬 대상 picker and the
-## comfort warning both depend on it.
+## "실수 확률 12% · 성실 낮음": the chance, then the largest reason behind it.
+static func mistake_line(actor: Dictionary) -> String:
+	var profile = actor.profile
+	var chosen: String = str(actor.get("stance",Stances.default_stance(profile)))
+	var cause := "안정"
+	if profile.value("C") < 500: cause = "성실 낮음"
+	elif not Stances.comfortable(profile,chosen): cause = "태세 강제"
+	elif int(actor.stress) >= 100: cause = "불안"
+	return "실수 확률 %d%% · %s" % [Stances.mistake_chance(actor),cause]
+
+## Taking a stance rebuilds the tab: the ⚠ badges and the mistake line both
+## depend on it.
 static func choose(ui, index: int, id: String) -> void:
 	if not ui.session.set_stance(index,id): return
 	ui.refresh(); ui.show_character(index,"성격")
-
-## The three standing orders, with the band this personality is comfortable in
-## drawn behind the slider. Editable in town and on safe ground only.
-static func knobs(ui, list: VBoxContainer, actor: Dictionary) -> void:
-	var index: int = ui.tactics_actor
-	var editable: bool = ui.session.phase == "TOWN" or (ui.session.floor_mode and ui.session.safe_management() and not ui.session.in_combat())
-	var band: Dictionary = Knobs.comfort(actor.profile)
-	var box := card(list,"행동 성향")
-	text(box,"편안한 범위 밖으로 밀면 전투마다 갈등이 쌓입니다." if editable else "마을이나 안전한 곳에서만 바꿀 수 있습니다.",12)
-	for entry in [["posture","태세 신중 ↔ 공격적"],["cohesion","협동 독자 ↔ 밀집"],["retreat_hp","후퇴선 %d%%"]]:
-		var key: String = entry[0]
-		var bounds: Array = Knobs.RANGE[key]
-		var value: int = int(actor.knobs.get(key,Knobs.DEFAULT[key]))
-		var caption := text(box,entry[1] % value if key == "retreat_hp" else entry[1],14)
-		var track := Control.new(); track.custom_minimum_size = Vector2(0,44)
-		track.size_flags_horizontal = Control.SIZE_EXPAND_FILL; box.add_child(track)
-		var span: float = maxf(1.0,float(bounds[1]-bounds[0]))
-		var rest := ColorRect.new(); rest.color = Color(0.29,0.31,0.33,0.35); rest.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		track.add_child(rest); rest.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		rest.offset_top = 16; rest.offset_bottom = -16
-		var comfort := ColorRect.new(); comfort.name = "Band_"+key
-		comfort.color = Color(0.41,0.81,0.76,0.30); comfort.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		track.add_child(comfort); comfort.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		comfort.anchor_left = clampf((float(band[key][0])-bounds[0])/span,0,1)
-		comfort.anchor_right = clampf((float(band[key][1])-bounds[0])/span,0,1)
-		comfort.offset_left = 0; comfort.offset_right = 0; comfort.offset_top = 14; comfort.offset_bottom = -14
-		var slider := HSlider.new(); slider.name = "Knob_"+key
-		slider.min_value = bounds[0]; slider.max_value = bounds[1]; slider.step = 1; slider.value = value
-		slider.editable = editable; track.add_child(slider)
-		slider.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		var warning := text(box,"⚠ 이 설정은 성격과 맞지 않습니다 — 전투마다 스트레스",11)
-		warning.add_theme_color_override("font_color",Color("d1a05f"))
-		warning.visible = value < int(band[key][0]) or value > int(band[key][1])
-		slider.value_changed.connect(func(moved):
-			if not ui.session.set_knob(index,key,int(moved)): return
-			if key == "retreat_hp": caption.text = entry[1] % int(moved)
-			warning.visible = int(moved) < int(band[key][0]) or int(moved) > int(band[key][1]))
 
 static func memories(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	var names := {"SELF_HARM":["죽음의 문턱","큰 부상을 입거나 빈사 상태에 빠졌다."],"ALLY_DOWNED":["동료가 쓰러짐","동료가 쓰러지는 모습을 보았다."],"ALLY_LOST":["동료를 잃음","함께하던 동료를 잃었다."],"AID_RECEIVED":["동료의 도움","동료에게 도움을 받았다."],"COMMAND_CONFLICT":["명령과 갈등","명령을 따르는 데 갈등을 겪었다."]}
@@ -245,7 +206,8 @@ static func memories(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		text(box,entry[1])
 		ui.button(box,"강도 %d    ›" % record.salience,func(): detail(ui,entry[0],entry[1]+"\n강도 %d\n발생 시각 %d · 사건 %d" % [copy.salience,copy.observed_time,copy.source_event_id]))
 
-## Two part slots: what is equipped, how it is used, and how to swap it.
+## Two part slots: what is equipped and how to swap it. How the part is used
+## is the rules' business, and the rules are no longer the player's.
 static func parts(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	var town: bool = ui.session.phase == "TOWN" and actor.hp > 0
 	for slot in range(2):
@@ -265,16 +227,6 @@ static func parts(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		text(info,str(def.description),13)
 		ui.button(actions,"교체",func(): replace(ui,slot),town)
 		ui.button(actions,"해제",func(): ui.session.unequip_part(ui.tactics_actor,slot); ui.refresh(); ui.show_character(ui.tactics_actor,"파츠"),town)
-		var index: int = -1
-		for i in range(actor.rules.size()):
-			if actor.rules[i].skill == id: index = i
-		if index < 0: continue
-		var rule: Dictionary = actor.rules[index]
-		var auto = ui.button(actions,"자동 ON" if rule.enabled else "자동 OFF",func(): ui.session.update_rule(ui.tactics_actor,index,"enabled",not rule.enabled); ui.refresh(); ui.show_tactics())
-		auto.toggle_mode = true; auto.button_pressed = rule.enabled
-		var policy = ui.button(box,"사용 방침 · "+ui.Session.Rules.summary(rule)+"  ›",func(): ui.open_rule(index))
-		policy.add_theme_font_size_override("font_size",11)
-		policy.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 
 ## The bag, minus what this member already carries, as one tap per part.
 static func replace(ui, slot: int) -> void:

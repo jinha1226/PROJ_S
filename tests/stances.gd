@@ -335,8 +335,8 @@ func defence() -> void:
 	check(Stances.steps_toward(u,hh,[h.c+Vector2i(1,0)]) == [h.c+Vector2i(1,0)],"the burning corridor cell is still a route")
 	check(u.Tactics.choose(u,hh).kind == "MOVE","a blocked fire-free route does not leave the charger standing")
 
-## The character window's stance card, the member-card letter and the role
-## line on the battle report.
+## The character window's stance card after the diet, the member-card letter,
+## the retreat toggle and the role line on the battle report.
 func ui() -> void:
 	var scene = load("res://expedition/main.tscn").instantiate()
 	var s = Session.new(731,true,true,true,3)
@@ -345,32 +345,30 @@ func ui() -> void:
 	for frame in range(3): await process_frame
 	scene.show_character(0,"성격")
 	for frame in range(3): await process_frame
+	# Diet: no knob sliders, no protect picker, no aptitude bars; three stance buttons and the mistake line remain.
+	check(scene.modal_content.find_children("Knob_*","HSlider",true,false).is_empty() and scene.modal_content.find_child("ProtectPick",true,false) == null and scene.modal_content.find_children("Aptitude_*","Control",true,false).is_empty(),"knob sliders, protect picker and aptitude bars are gone")
 	var buttons: Array = scene.modal_content.find_children("Stance_*","Button",true,false)
 	check(buttons.size() == 3 and buttons.any(func(b): return b.button_pressed),"three stance buttons, current one pressed")
-	var bars: Array = scene.modal_content.find_children("Aptitude_*","Control",true,false)
-	check(bars.size() == 3,"aptitude bars")
+	check(buttons.all(func(b): return b.tooltip_text.begins_with("실수 확률")),"every stance button quotes the mistake chance it would bring")
+	var mistake: Array = scene.modal_content.find_children("*","Label",true,false).filter(func(l): return l.text.begins_with("실수 확률"))
+	check(mistake.size() == 1,"mistake chance line")
+	check(mistake[0].text == "실수 확률 %d%% · %s" % [Stances.mistake_chance(s.party[0]),cause(s.party[0])],"the line quotes the chance and the largest reason for it")
 	var badge = scene.modal_content.find_child("StanceSuggestion",true,false)
 	check(badge != null and badge.text.begins_with("빌드 추천"),"build suggestion badge")
 	var guardian: Button = scene.modal_content.find_child("Stance_GUARDIAN",true,false)
 	guardian.pressed.emit(); await process_frame
 	check(s.party[0].stance == "GUARDIAN","button sets the stance")
-	scene.show_character(0,"성격")
-	for frame in range(3): await process_frame
-	var protect = scene.modal_content.find_child("ProtectPick",true,false)
-	check(protect != null and protect.item_count == 3,"guardian shows the protect picker: auto + two members")
-	# The knob sliders carry warning labels of their own, so the stance warning
-	# is looked for inside the stance card alone. 아린 is comfortable as a
-	# charger and a guardian but not as a skirmisher, so both branches run.
+	# 아린 is comfortable as a charger and a guardian but not as a skirmisher,
+	# so both branches of the ⚠ badge run.
 	var warned: Array = []
 	for id in Stances.IDS:
 		check(s.set_stance(0,id),"stance %s can be taken in town" % id)
 		scene.show_character(0,"성격")
 		for frame in range(3): await process_frame
-		var stance_card = scene.modal_content.find_child("StanceCard",true,false)
-		var warn: Array = stance_card.find_children("*","Label",true,false).filter(func(l): return l.text.begins_with("⚠"))
-		check(warn.is_empty() == Stances.comfortable(s.party[0].profile,id),"warning iff the stance is outside the aptitude band: "+id)
-		warned.append(not warn.is_empty())
-	check(true in warned and false in warned,"both branches of the comfort warning were seen")
+		var pick: Button = scene.modal_content.find_child("Stance_"+id,true,false)
+		check(pick.text.contains("⚠") != Stances.comfortable(s.party[0].profile,id),"⚠ iff the stance is outside the aptitude band: "+id)
+		warned.append(pick.text.contains("⚠"))
+	check(true in warned and false in warned,"both branches of the comfort badge were seen")
 	check(s.party[0].stance == "GUARDIAN","the stance card ends on the guardian")
 	scene.details_popup.hide()
 	var solo = Session.new(731,true,false,true,1)
@@ -386,9 +384,39 @@ func ui() -> void:
 	for frame in range(3): await process_frame
 	var cards: Array = scene.find_children("MemberCard*","Button",true,false)
 	check(cards.size() == 3 and cards[0].get_child(0).text.contains("[호]"),"member card carries the stance letter")
+	# Battle HUD: no command bar, formation or options; retreat toggle present.
+	check(scene.find_child("CommandBar",true,false) == null and scene.find_child("FormationButton",true,false) == null and scene.find_child("AutoOptionsButton",true,false) == null,"command bar, formation and options are gone")
+	var retreat: Button = scene.find_child("RetreatToggle",true,false)
+	check(retreat != null and retreat.text == "후퇴","retreat toggle")
+	retreat.pressed.emit(); await process_frame
+	check(s.party_command == "RETREAT","retreat toggle sets the command")
+	retreat = scene.find_child("RetreatToggle",true,false)
+	check(retreat.text == "후퇴 해제","the pressed toggle offers to call the retreat off")
+	retreat.pressed.emit(); await process_frame
+	check(s.party_command == "FOLLOW","pressing again returns to follow")
+	# 후퇴 is the one order that may be given while the run is going.
+	s.auto.running = true; scene.refresh()
+	for frame in range(3): await process_frame
+	retreat = scene.find_child("RetreatToggle",true,false)
+	check(not retreat.disabled,"the retreat toggle stays live while the run is going")
+	retreat.pressed.emit(); await process_frame
+	check(s.party_command == "RETREAT" and s.auto.running,"retreating does not stop the run")
+	s.party_command = "FOLLOW"; s.auto.running = false; scene.refresh()
+	for frame in range(3): await process_frame
 	s.reset_battle_stats(); s.auto_step(); foe.hp = 0; s.floor_state.observe(s)
 	scene.show_battle_report()
 	for frame in range(3): await process_frame
 	var labels: Array = scene.modal_content.find_children("*","Label",true,false).map(func(l): return l.text)
 	check(labels.any(func(t): return t.contains("역할")),"report shows role performance")
+	check(labels.any(func(t): return t.contains("실수 %d" % int(s.member_stats(s.party[0].id).mistakes))),"report counts the mistakes")
+	check(not labels.any(func(t): return t.contains("갈등")),"the report no longer names a conflict")
 	scene.queue_free(); await process_frame
+
+## The spec's largest reason for a member's mistake chance, restated here so
+## the label is checked against the rule and not against itself.
+func cause(actor: Dictionary) -> String:
+	var chosen: String = str(actor.get("stance",Stances.default_stance(actor.profile)))
+	if actor.profile.value("C") < 500: return "성실 낮음"
+	if not Stances.comfortable(actor.profile,chosen): return "태세 강제"
+	if int(actor.stress) >= 100: return "불안"
+	return "안정"

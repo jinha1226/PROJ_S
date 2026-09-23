@@ -65,7 +65,6 @@ var tactics_expanded := -1
 ## the last stop event and the first half of a formation swap.
 var auto_clock := 0.0
 var stop_text := ""
-var formation_pick := -1
 var battle_reported := false
 
 func _ready() -> void:
@@ -190,29 +189,14 @@ func stop_message(reason: String) -> String:
 			return "%s 체력 %d%% 이하" % [low[0].name if not low.is_empty() else "아군",int(session.auto.hp_low)]
 	return ""
 
-func set_command(id: String) -> void:
-	if session.auto.running: return
-	stop_navigation()
-	command_targeting = id == "ATTACK_TARGET"
-	if command_targeting: notice = "공격 대상 선택"
-	else: session.party_command = id
+## 후퇴 is the one standing order the HUD still offers, and the only control
+## that works mid-run: calling the party off cannot wait for the next stop.
+func toggle_retreat() -> void:
+	session.party_command = "FOLLOW" if session.party_command == "RETREAT" else "RETREAT"
 	refresh()
-
-func show_formation() -> void:
-	stop_navigation(); BattleHud.formation(self)
-
-func pick_formation(index: int) -> void:
-	if formation_pick < 0: formation_pick = index; show_formation(); return
-	var first: int = formation_pick
-	formation_pick = -1; details_popup.hide()
-	if first == index: refresh(); return
-	run_action(func(): return session.swap_formation(first,index))
 
 func show_battle_report() -> void:
 	stop_navigation(); BattleHud.report(self)
-
-func show_auto_options() -> void:
-	stop_navigation(); BattleHud.options(self)
 
 func _process(delta: float) -> void:
 	if is_instance_valid(board) and board.is_presenting(): return
@@ -469,12 +453,10 @@ func refresh() -> void:
 		toggle.name = "AutoToggle"
 		var speed := button(nav,"%d×" % int(session.auto.speed),toggle_speed)
 		speed.name = "SpeedToggle"; speed.custom_minimum_size.x = 40; speed.size_flags_horizontal = SIZE_SHRINK_CENTER
-		var swap := button(nav,"진형 교환",show_formation,session.can_swap_formation() and not session.auto.running)
-		swap.name = "FormationButton"
+		var retreat := button(nav,"후퇴 해제" if session.party_command == "RETREAT" else "후퇴",toggle_retreat,session.phase == "BATTLE")
+		retreat.name = "RetreatToggle"; retreat.toggle_mode = true; retreat.button_pressed = session.party_command == "RETREAT"
 		auto_explore_button = button(nav,"중지" if navigation.active else "자동탐험",toggle_explore,session.phase == "BATTLE" and not session.auto.running)
 		button(nav,"가방",show_supplies,not session.auto.running)
-		var gear := button(nav,"⚙",show_auto_options)
-		gear.name = "AutoOptionsButton"; gear.custom_minimum_size.x = 40; gear.size_flags_horizontal = SIZE_SHRINK_CENTER
 		for node in nav.get_children():
 			node.custom_minimum_size.y = 46; node.clip_text = true
 			node.add_theme_font_size_override("font_size",11)
@@ -487,21 +469,12 @@ func refresh() -> void:
 	button(nav,"가방",show_supplies)
 	for node in nav.get_children(): node.custom_minimum_size.y = 49
 
-## Stop banner and the five party commands: the whole of floor-mode input
-## besides the board, the bag and the auto row.
+## The stop banner. Floor-mode input is the board (a tap on a foe concentrates
+## the party), the bag and the auto row — there is no command bar any more.
 func build_auto_rows() -> void:
 	var banner := label(root_layout,stop_text,15)
 	banner.name = "StopBanner"; banner.visible = not stop_text.is_empty()
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; banner.clip_text = true
-	var bar := HBoxContainer.new(); bar.name = "CommandBar"; bar.add_theme_constant_override("separation",3)
-	root_layout.add_child(bar)
-	for entry in [["FOLLOW","따라와"],["HOLD_POSITION","자리 지켜"],["STOP_ATTACK","공격 중지"],["RETREAT","후퇴"],["ATTACK_TARGET","집중 공격"]]:
-		var id: String = entry[0]
-		var node := button(bar,entry[1],func(): set_command(id),not session.auto.running)
-		node.toggle_mode = true
-		node.button_pressed = session.party_command == id if id != "ATTACK_TARGET" else command_targeting or session.party_command == id
-		node.custom_minimum_size.y = 44; node.clip_text = true
-		node.add_theme_font_size_override("font_size",11)
 
 func depart() -> void:
 	if session.phase == "DEFEAT" or session.alive().is_empty(): session = Session.new(randi(),true,false,true,PARTY_SIZE)
