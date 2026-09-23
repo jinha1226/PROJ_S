@@ -166,6 +166,10 @@ func reset_battle_stats() -> void:
 	battle_stats = {"rounds":0,"enemies":combat_enemies().size() if phase == "BATTLE" else 0,"kills":0,"members":{},
 		"interrupts":0,"enemy_parts":{},"drops":{},"stops":[]}
 	for actor in party:
+		# A new battle starts with nothing to commit to: the utility selector's
+		# `same_as_last` must not read the last battle's closing move.
+		actor.last_action_kind = ""
+		actor.last_action_dir = Vector2i.ZERO
 		battle_stats.members[actor.id] = {"dealt":0,"taken":0,"guards":0,"covers":0,"redirected":0,
 			"parts":{},"healed":0,"downed":false,"conflict":bool(actor.get("conflicted",false)),
 			"mistakes":0,"role_rounds":{"in_role":0,"total":0}}

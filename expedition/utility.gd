@@ -9,7 +9,9 @@ static var _profiles: Dictionary = {}
 
 static func profiles() -> Dictionary:
 	if _profiles.is_empty():
-		_profiles = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/tactics_profiles.json"))
+		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/tactics_profiles.json"))
+		if parsed is Dictionary: _profiles = parsed
+		else: push_error("tactics_profiles.json is not a JSON object; every candidate will score 0")
 	return _profiles
 
 static func curve(name: String, x: float) -> float:
@@ -27,13 +29,23 @@ static func tag(action: Dictionary) -> String:
 	if action.has("tag"): return str(action.tag)
 	return "PART" if Abilities.DEFINITIONS.has(str(action.kind)) else str(action.kind)
 
-## Per-actor facts every candidate shares.
+## Per-actor facts every candidate shares. Everything that depends on the
+## protectee alone — whether it is about to die, and the cell that bodies the
+## gap — is settled here rather than once per candidate.
 static func context(s, actor: Dictionary) -> Dictionary:
-	var target := Stances.party_target(s)
 	var protectee := Stances.protectee(s,actor)
-	return {"target":target,"protectee":protectee,"threats":(Stances.threats_to(s,protectee) if not protectee.is_empty() else []),
-		"hp_ratio":float(actor.hp)/float(actor.max_hp),"ranged":Stances.ranged_part(actor),
-		"here_danger":float(s.Tactics.danger(s,actor.pos)),"last_kind":str(actor.get("last_action_kind","")),"last_dir":actor.get("last_action_dir",Vector2i.ZERO)}
+	var threats: Array = []
+	var lethal := false
+	var gap := Vector2i(-1,-1)
+	if not protectee.is_empty():
+		threats = Stances.threats_to(s,protectee)
+		lethal = Rules.lethal_threat(s,protectee) >= int(protectee.hp)
+		if not threats.is_empty():
+			var t: Dictionary = threats[0]
+			gap = protectee.pos+Vector2i(signi(t.pos.x-protectee.pos.x),signi(t.pos.y-protectee.pos.y))
+	return {"target":Stances.party_target(s),"protectee":protectee,"threats":threats,
+		"protectee_lethal":lethal,"gap":gap,"ranged":Stances.ranged_part(actor),
+		"last_kind":str(actor.get("last_action_kind","")),"last_dir":actor.get("last_action_dir",Vector2i.ZERO)}
 
 ## Every consideration's value for one candidate, all normalised to 0..1.
 static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary) -> Dictionary:
@@ -58,16 +70,17 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary) ->
 		"same_as_last": 1.0 if kind == ctx.last_kind and (kind != "MOVE" or action.get("dir",Vector2i.ZERO) == ctx.last_dir) else 0.0,
 		"la_self_hit": 1.0, "la_ally_hit": 1.0, "la_enemy_hit": damage/40.0, "la_lethal_saved": 0.0}
 	if not str(ctx.ranged).is_empty() and not target.is_empty():
+		# The band is measured the way the skirmisher's own generator builds it:
+		# `s.distance`, not the eight-way step count, and the part's raw range —
+		# shrinking it at a bold posture is that generator's own preference.
 		var reach: int = int(Abilities.DEFINITIONS[ctx.ranged].range)
-		result.in_band = 1.0 if d_then >= 2 and d_then <= reach else 0.0
+		var band: int = s.distance(dest,target.pos)
+		result.in_band = 1.0 if band >= 2 and band <= reach else 0.0
 	var p: Dictionary = ctx.protectee
 	if not p.is_empty():
 		result.protectee_near = 1.0 if Stances.steps_between(dest,p.pos) <= 1 else 0.0
-		result.protectee_lethal = 1.0 if Rules.lethal_threat(s,p) >= p.hp else 0.0
-		if not ctx.threats.is_empty():
-			var t: Dictionary = ctx.threats[0]
-			var gap: Vector2i = p.pos+Vector2i(signi(t.pos.x-p.pos.x),signi(t.pos.y-p.pos.y))
-			result.protectee_gap = 1.0 if dest == gap else 0.0
+		result.protectee_lethal = 1.0 if bool(ctx.protectee_lethal) else 0.0
+		result.protectee_gap = 1.0 if dest == ctx.gap else 0.0
 	if Abilities.DEFINITIONS.has(kind):
 		var def: Dictionary = Abilities.DEFINITIONS[kind]
 		for rule in actor.rules:

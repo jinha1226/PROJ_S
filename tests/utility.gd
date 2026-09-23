@@ -5,6 +5,13 @@ const Utility = preload("res://expedition/utility.gd")
 const Stances = preload("res://expedition/stances.gd")
 const Knobs = preload("res://expedition/knobs.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
+## Every (stance, tag) pair the candidate generators in stances.gd can emit.
+## 호위형 runs the charger programme whenever it has no living protectee, so it
+## needs the charger's columns as well as its own.
+const EMITTED := {
+	"CHARGER": ["ATTACK","MOVE:approach","MOVE:sidestep"],
+	"SKIRMISHER": ["ATTACK","MOVE:approach","MOVE:escape","MOVE:disengage","WAIT:hold"],
+	"GUARDIAN": ["ATTACK","ATTACK:intercept","MOVE:advance","MOVE:block","MOVE:rejoin","WAIT:hold","MOVE:approach","MOVE:sidestep"]}
 var failures := 0
 var checks := 0
 func check(ok: bool, reason: String) -> void:
@@ -16,6 +23,8 @@ func run() -> void:
 	curves()
 	profiles()
 	inputs_and_score()
+	commitment()
+	retreat_needs_no_column()
 	print("Utility: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func curves() -> void:
@@ -34,6 +43,15 @@ func profiles() -> void:
 			for cid in p.profiles[stance][tag]:
 				check(p.considerations.has(cid),"%s/%s uses a known consideration %s" % [stance,tag,cid])
 	for cid in p.personality: check(p.considerations.has(cid) and p.personality[cid].knob in Knobs.RANGE,"personality entry valid: "+cid)
+	# Coverage: a candidate whose tag has no column scores 0 and is picked by
+	# name alone, which is the bug this check exists to catch.
+	for stance in EMITTED:
+		for tag in EMITTED[stance]:
+			check(p.profiles[stance].has(tag),"%s can emit %s, so it needs that column" % [stance,tag])
+	# Cohesion has to reach every movement candidate, not only some of them.
+	for stance in p.profiles:
+		for tag in p.profiles[stance]:
+			if str(tag).begins_with("MOVE"): check(p.profiles[stance][tag].has("ally_delta"),"%s/%s carries the cohesion term" % [stance,tag])
 	check(Utility.tag({"kind":"MOVE","tag":"MOVE:approach"}) == "MOVE:approach" and Utility.tag({"kind":"HOB_CLUB"}) == "PART" and Utility.tag({"kind":"ATTACK"}) == "ATTACK","tags: explicit, part, default kind")
 
 ## Three members with basics, one foe two cells right of the hero.
@@ -65,7 +83,7 @@ func knob_shift(data: Dictionary, weights: Dictionary, knob: String, inp: Dictio
 func inputs_and_score() -> void:
 	var f := field(["CHARGER","SKIRMISHER","GUARDIAN"]); var s = f.s; var hero: Dictionary = s.party[0]
 	var ctx: Dictionary = Utility.context(s,hero)
-	check(ctx.target.id == f.foes[0].id and ctx.has("hp_ratio") and ctx.has("threats"),"context carries the shared target")
+	check(ctx.target.id == f.foes[0].id and ctx.has("protectee") and ctx.has("threats") and ctx.has("gap"),"context carries the shared target and the protectee's own facts")
 	var step := {"kind":"MOVE","cell":hero.pos+Vector2i(1,0),"tag":"MOVE:approach","dir":Vector2i(1,0)}
 	var inp: Dictionary = Utility.inputs(s,hero,step,ctx)
 	check(inp.closes_distance == 0.5 and inp.target_adjacent == 1.0 and inp.cell_danger == 1.0,"approach step: closes half a band, lands adjacent, safe cell")
@@ -90,7 +108,43 @@ func inputs_and_score() -> void:
 	# Stance profiles differ: the same disengage step scores higher for a skirmisher than a charger.
 	var away := {"kind":"MOVE","cell":hero.pos+Vector2i(-1,0),"tag":"MOVE:disengage","dir":Vector2i(-1,0)}
 	check(Utility.score(s,hero,away,ctx,"SKIRMISHER",Knobs.DEFAULT).score > Utility.score(s,hero,away,ctx,"CHARGER",Knobs.DEFAULT).score,"profiles differ per stance")
+	# The band is Manhattan, the metric the skirmisher's generator builds it with:
+	# three cells out diagonally is six steps, outside a range-4 sling, while the
+	# eight-way step count would call both of these cells in band.
+	hero.equipped_abilities = ["KOBOLD_SLING","GUARD"]
+	var ranged: Dictionary = Utility.context(s,hero)
+	var corner := {"kind":"MOVE","cell":f.foes[0].pos+Vector2i(3,3),"tag":"MOVE:approach","dir":Vector2i(1,1)}
+	var inside := {"kind":"MOVE","cell":f.foes[0].pos+Vector2i(2,2),"tag":"MOVE:approach","dir":Vector2i(1,1)}
+	check(Utility.inputs(s,hero,corner,ranged).in_band == 0.0 and Utility.inputs(s,hero,inside,ranged).in_band == 1.0,"in_band is measured with s.distance, not the step count")
+	hero.equipped_abilities = ["PUSH","GUARD"]
 	# Candidates now carry tags and no scores; choose still picks the contract behaviour.
 	var options: Array = Stances.candidates(s,hero,"CHARGER",Knobs.DEFAULT)
 	check(not options.is_empty() and options.all(func(o): return o.has("tag") and not o.has("score")),"candidates are tagged and unscored")
 	check(s.Tactics.choose(s,hero).kind == "ATTACK","adjacent foe: charger attacks")
+
+## Commitment: the same kind as last round, and for a MOVE the same direction,
+## is worth the profile's `same_as_last`. A new battle starts uncommitted.
+func commitment() -> void:
+	var f := field(["CHARGER","SKIRMISHER","GUARDIAN"]); var s = f.s; var hero: Dictionary = s.party[0]
+	f.foes[0].pos = hero.pos+Vector2i(1,0); s.floor_state.observe(s)
+	var atk := {"kind":"ATTACK","cell":f.foes[0].pos,"tag":"ATTACK","damage":18}
+	var fresh: int = Utility.score(s,hero,atk,Utility.context(s,hero),"CHARGER",Knobs.DEFAULT).score
+	hero.last_action_kind = "ATTACK"; hero.last_action_dir = Vector2i.ZERO
+	var again: int = Utility.score(s,hero,atk,Utility.context(s,hero),"CHARGER",Knobs.DEFAULT).score
+	check(again-fresh == 10,"striking the same way again is worth the profile's 10")
+	var step := {"kind":"MOVE","cell":hero.pos+Vector2i(0,-1),"tag":"MOVE:approach","dir":Vector2i(0,-1)}
+	hero.last_action_kind = "MOVE"; hero.last_action_dir = Vector2i(0,1)
+	var turned: int = Utility.score(s,hero,step,Utility.context(s,hero),"CHARGER",Knobs.DEFAULT).score
+	hero.last_action_dir = Vector2i(0,-1)
+	var straight: int = Utility.score(s,hero,step,Utility.context(s,hero),"CHARGER",Knobs.DEFAULT).score
+	check(straight-turned == 10,"a MOVE only commits when the direction matches too")
+	s.reset_battle_stats()
+	check(hero.last_action_kind == "" and hero.last_action_dir == Vector2i.ZERO,"a new battle starts uncommitted")
+
+## The retreat line is the stage above the utility pool: its MOVE carries no tag
+## and is ranked by the hand constant, so no profile column applies to it.
+func retreat_needs_no_column() -> void:
+	var f := field(["CHARGER","SKIRMISHER","GUARDIAN"]); var s = f.s; var hero: Dictionary = s.party[0]
+	hero.hp = 1; hero.knobs.retreat_hp = 60
+	var pick: Dictionary = s.Tactics.choose(s,hero)
+	check(pick.kind == "MOVE" and pick.reason == "후퇴" and not pick.has("tag") and pick.score == s.Tactics.RETREAT.score,"the retreat MOVE is untagged and keeps its own constant")

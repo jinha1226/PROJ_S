@@ -38,7 +38,7 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 	# Standing in fire is the one thing every stance answers the same way.
 	if int(s.tile(actor.pos).fire) > 0:
 		var out: Vector2i = Stances.off_the_fire(s,actor,Stances.party_target(s))
-		if out != actor.pos: return {"kind":"MOVE","cell":out,"reason":"불길 회피"}
+		if out != actor.pos: return {"kind":"MOVE","cell":out,"reason":"불길 회피","score":0,"explain":[]}
 	var low: bool = actor.hp*100/actor.max_hp <= int(knobs.retreat_hp)
 	# A mistake round: the member hesitates, overreaches, or falls back on the
 	# stance it would have picked itself. Staying alive still comes first.
@@ -48,7 +48,7 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 	if not low and Stances.mistaken(s,actor):
 		var kind: String = Stances.mistake_kind(actor)
 		match kind:
-			"HESITATE": return {"kind":"WAIT","cell":actor.pos,"reason":"머뭇거림","mistake":kind}
+			"HESITATE": return {"kind":"WAIT","cell":actor.pos,"reason":"머뭇거림","mistake":kind,"score":0,"explain":[]}
 			"RECKLESS":
 				var bold: Dictionary = knobs.duplicate(); bold.posture = 100
 				var reckless: Array = Stances.candidates(s,actor,"CHARGER",bold)

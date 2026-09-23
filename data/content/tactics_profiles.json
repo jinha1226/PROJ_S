@@ -32,13 +32,13 @@
     "CHARGER": {
       "ATTACK":        {"any_foe_adjacent": 100, "damage": 40, "kill": 20, "la_enemy_hit": 20, "la_self_hit": 20, "same_as_last": 10},
       "MOVE:approach": {"closes_distance": 80, "cell_danger": 20, "ally_delta": 0, "la_self_hit": 20, "same_as_last": 10},
-      "MOVE:sidestep": {"cell_danger": 60},
+      "MOVE:sidestep": {"cell_danger": 60, "ally_delta": 0},
       "PART":          {"rule_ready": 120, "damage": 40, "kill": 20, "la_enemy_hit": 30, "la_lethal_saved": 200, "contact_penalty": -1000},
       "WAIT":          {}
     },
     "SKIRMISHER": {
-      "MOVE:escape":    {"cell_danger": 200, "la_self_hit": 60},
-      "MOVE:disengage": {"opens_distance": 120, "la_self_hit": 40},
+      "MOVE:escape":    {"cell_danger": 200, "ally_delta": 0, "la_self_hit": 60},
+      "MOVE:disengage": {"opens_distance": 120, "ally_delta": 0, "la_self_hit": 40},
       "MOVE:approach":  {"closes_distance": 80, "cell_danger": 40, "ally_delta": 0, "la_self_hit": 40},
       "ATTACK":         {"any_foe_adjacent": 60, "damage": 30, "kill": 20, "la_self_hit": 20},
       "WAIT:hold":      {"in_band": 50, "cell_danger": 20},
@@ -46,11 +46,13 @@
     },
     "GUARDIAN": {
       "ATTACK:intercept": {"any_foe_adjacent": 100, "damage": 30, "la_ally_hit": 40},
-      "MOVE:block":       {"protectee_gap": 90, "protectee_lethal": 40, "la_ally_hit": 60, "la_lethal_saved": 100},
+      "MOVE:block":       {"protectee_gap": 90, "protectee_lethal": 40, "ally_delta": 0, "la_ally_hit": 60, "la_lethal_saved": 100},
       "ATTACK":           {"any_foe_adjacent": 60, "damage": 20},
       "MOVE:advance":     {"closes_distance": 50, "protectee_near": 30, "ally_delta": 0, "la_ally_hit": 20},
       "MOVE:rejoin":      {"protectee_near": 80, "ally_delta": 0, "la_ally_hit": 20},
       "WAIT:hold":        {"protectee_near": 40},
+      "MOVE:approach":    {"closes_distance": 80, "cell_danger": 20, "ally_delta": 0, "la_self_hit": 20, "same_as_last": 10},
+      "MOVE:sidestep":    {"cell_danger": 60, "ally_delta": 0},
       "PART":             {"rule_ready": 150, "la_lethal_saved": 300, "la_ally_hit": 60, "damage": 20, "contact_penalty": -1000}
     }
   }
