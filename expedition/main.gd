@@ -62,7 +62,7 @@ var portrait_buttons: Array = []
 var tactics_actor := 0
 var tactics_expanded := -1
 ## Auto battle (floor mode): the timer that drives the rounds, the sentence of
-## the last stop event and the first half of a formation swap.
+## the last stop event and whether this battle has been reported.
 var auto_clock := 0.0
 var stop_text := ""
 var battle_reported := false
@@ -442,7 +442,7 @@ func refresh() -> void:
 		if i == session.selected:
 			var gold := portrait.get_theme_stylebox("normal").duplicate(); gold.border_color = Color("e9c575"); gold.set_border_width_all(2); portrait.add_theme_stylebox_override("normal",gold)
 		if actor.hp <= 0: portrait.modulate = Color("636369")
-	if session.floor_mode and session.phase == "BATTLE": build_auto_rows()
+	if session.floor_mode and session.phase == "BATTLE": build_stop_banner()
 	var shared := HBoxContainer.new(); shared.add_theme_constant_override("separation",4); root_layout.add_child(shared)
 	for slot in range(6):
 		var item := icon_button(shared,Art.item(slot),func(): choose_item(slot),Session.SUPPLY_NAMES[slot],str(session.supplies[slot]))
@@ -471,7 +471,7 @@ func refresh() -> void:
 
 ## The stop banner. Floor-mode input is the board (a tap on a foe concentrates
 ## the party), the bag and the auto row — there is no command bar any more.
-func build_auto_rows() -> void:
+func build_stop_banner() -> void:
 	var banner := label(root_layout,stop_text,15)
 	banner.name = "StopBanner"; banner.visible = not stop_text.is_empty()
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; banner.clip_text = true
