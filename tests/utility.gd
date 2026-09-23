@@ -29,6 +29,7 @@ func run() -> void:
 	parts()
 	lookahead()
 	oscillation()
+	signed_weights_never_reward()
 	retreat_needs_no_column()
 	print("Utility: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
@@ -76,14 +77,20 @@ func field(stances: Array, foes: int = 1) -> Dictionary:
 	for a in s.party: a.ap = 1
 	return {"s":s,"c":c,"foes":revived}
 
-## The whole personality shift the profile asks of one knob for one tag: the
-## sum of 100 × scale × curve(input) over the scaled considerations it uses.
+## The whole personality shift the profile asks of one knob at +100 for one tag:
+## the sum of (shifted weight − base weight) × curve(input) over the scaled
+## considerations it uses. A signed consideration's weight is clamped at 0 by
+## the selector, so the knob's real reach there is the clamped difference.
 func knob_shift(data: Dictionary, weights: Dictionary, knob: String, inp: Dictionary) -> float:
 	var total := 0.0
 	for cid in weights:
 		var personal: Dictionary = data.personality.get(cid,{})
 		if personal.is_empty() or str(personal.knob) != knob: continue
-		total += 100.0*float(personal.scale)*Utility.curve(str(data.considerations[cid].curve),float(inp.get(cid,0.0)))
+		var shape: String = str(data.considerations[cid].curve)
+		var base: float = float(weights[cid])
+		var shifted: float = base+100.0*float(personal.scale)
+		if shape == "signed": base = maxf(0.0,base); shifted = maxf(0.0,shifted)
+		total += (shifted-base)*Utility.curve(shape,float(inp.get(cid,0.0)))
 	return total
 
 func inputs_and_score() -> void:
@@ -118,7 +125,7 @@ func inputs_and_score() -> void:
 	var boldly: int = Utility.score(s,hero,atk,ctx,"CHARGER",bold).score
 	var data: Dictionary = Utility.profiles()
 	var expected: float = knob_shift(data,data.profiles.CHARGER.ATTACK,"posture",atk_inputs)
-	check(expected != 0.0 and boldly-calm == int(round(expected)),"posture shifts the profile's posture-scaled weights")
+	check(int(round(expected)) != 0 and boldly-calm == int(round(expected)),"posture shifts the profile's posture-scaled weights")
 	# Stance profiles differ: the same disengage step scores higher for a skirmisher than a charger.
 	f.foes[0].hp = 30; s.floor_state.observe(s); ctx = Utility.context(s,hero)
 	var away := {"kind":"MOVE","cell":hero.pos+Vector2i(-1,0),"tag":"MOVE:disengage","dir":Vector2i(-1,0)}
@@ -208,6 +215,13 @@ func lookahead() -> void:
 	f.foes[0].hp = 5
 	var kill := Lookahead.predict(s,hero,{"kind":"ATTACK","cell":f.foes[0].pos,"damage":18})
 	check(kill.enemies >= 5 and kill.self == 0,"a kill removes the foe's threat")
+	# A killed caster's telegraph dies with it, not only a shoved one's.
+	s.intents = [{"id":f.foes[0].id,"cell":hero.pos,"damage":10,"kind":""}]; f.foes[0].charging = true
+	var was_hp: int = hero.hp
+	hero.hp = 9
+	var silenced := Lookahead.predict(s,hero,{"kind":"ATTACK","cell":f.foes[0].pos,"damage":18})
+	check(silenced.self == 0 and silenced.lethal_saved == 1,"killing the caster drops its telegraph too")
+	hero.hp = was_hp; s.intents = []; f.foes[0].charging = false
 	# Inputs are wired: la_self_hit lower for the telegraphed step.
 	f.foes[0].hp = 30; s.intents = [{"id":f.foes[0].id,"cell":cell,"damage":10,"kind":""}]; f.foes[0].charging = true
 	var ctx: Dictionary = Utility.context(s,hero)
@@ -229,6 +243,22 @@ func oscillation() -> void:
 		kinds.append(pick.kind+str(pick.get("dir",Vector2i.ZERO)))
 		s.act_as(h,pick.kind,pick.cell,false)
 	check(not (kinds[0] == kinds[2] and kinds[1] == kinds[3] and kinds[0] != kinds[1]),"no A-B-A-B: %s" % [kinds])
+
+## A knob may not turn a signed penalty into a reward: at the boldest posture
+## the danger terms fall to zero, never below it.
+func signed_weights_never_reward() -> void:
+	var f := field(["CHARGER","CHARGER","CHARGER"]); var s = f.s; var hero: Dictionary = s.party[0]
+	var bold: Dictionary = Knobs.DEFAULT.duplicate(); bold.posture = 100
+	var step := {"kind":"MOVE","cell":hero.pos+Vector2i(1,0),"tag":"MOVE:approach","dir":Vector2i(1,0)}
+	s.intents = [{"id":f.foes[0].id,"cell":step.cell,"damage":10,"kind":""}]; f.foes[0].charging = true
+	var ctx: Dictionary = Utility.context(s,hero)
+	var inp: Dictionary = Utility.inputs(s,hero,step,ctx)
+	check(inp.cell_danger < 0.0 and inp.la_self_hit < 0.0,"the telegraphed step is negative on both signed terms")
+	var risky: Dictionary = Utility.score(s,hero,step,ctx,"CHARGER",bold)
+	check(risky.explain.all(func(e): return e.id not in ["cell_danger","la_self_hit"] or e.contrib <= 0),"no signed danger term pays a bold member")
+	s.intents = []; f.foes[0].charging = false
+	var safe: Dictionary = Utility.score(s,hero,step,Utility.context(s,hero),"CHARGER",bold)
+	check(risky.score <= safe.score,"stepping onto a telegraph never scores better than stepping onto a clear cell")
 
 ## The retreat line is the stage above the utility pool: its MOVE carries no tag
 ## and is ranked by the hand constant, so no profile column applies to it.

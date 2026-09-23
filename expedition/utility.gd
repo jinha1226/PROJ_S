@@ -6,6 +6,9 @@ const Stances = preload("res://expedition/stances.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 const Lookahead = preload("res://expedition/lookahead.gd")
+## The considerations that cost a prediction. A profile column with none of them
+## skips `Lookahead.predict` entirely and reads the disabled-lookahead values.
+const LOOKAHEAD_IDS := ["la_self_hit","la_ally_hit","la_enemy_hit","la_lethal_saved"]
 static var _profiles: Dictionary = {}
 
 static func profiles() -> Dictionary:
@@ -53,17 +56,25 @@ static func context(s, actor: Dictionary, pool: Array = []) -> Dictionary:
 	# The baseline every safety consideration is measured against: what this
 	# round costs if the member simply stands where it is. Predicted once.
 	var stand: Dictionary = {"self":0,"allies":0,"enemies":0,"lethal_saved":0}
-	if bool(s.lookahead_enabled): stand = Lookahead.predict(s,actor,{"kind":"WAIT","cell":actor.pos})
+	# Who is already in lethal danger does not depend on the candidate either:
+	# one `lethal_threat` pass per member, reused by every prediction this round.
+	var before: Dictionary = {}
+	if bool(s.lookahead_enabled):
+		before = Lookahead.baseline(s)
+		stand = Lookahead.predict(s,actor,{"kind":"WAIT","cell":actor.pos},before)
 	var ally_hp := 0
 	for mate in s.alive():
 		if mate.id != actor.id: ally_hp += int(mate.hp)
 	return {"pool":pool,"target":Stances.party_target(s),"protectee":protectee,"threats":threats,
 		"protectee_lethal":lethal,"gap":gap,"ranged":Stances.ranged_part(actor),
-		"stand":stand,"ally_hp":ally_hp,"danger_now":int(s.Tactics.danger(s,actor.pos)),
+		"stand":stand,"before_lethal":before,"ally_hp":ally_hp,"danger_now":int(s.Tactics.danger(s,actor.pos)),
 		"last_kind":str(actor.get("last_action_kind","")),"last_dir":actor.get("last_action_dir",Vector2i.ZERO)}
 
-## Every consideration's value for one candidate, all normalised to 0..1.
-static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary) -> Dictionary:
+## Every consideration's value for one candidate. `weights` is the profile
+## column this candidate will be weighed against, when the caller has it: a
+## column that asks for none of the `la_*` considerations never pays for a
+## prediction. An empty `weights` (a direct caller, a test) computes them all.
+static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, weights: Dictionary = {}) -> Dictionary:
 	var kind: String = str(action.kind)
 	var dest: Vector2i = action.cell if kind == "MOVE" else actor.pos
 	var target: Dictionary = ctx.target
@@ -78,9 +89,10 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary) ->
 	var la_ally := 0.0
 	var la_enemy: float = damage/40.0
 	var la_saved := 0.0
-	if bool(s.lookahead_enabled):
+	var wanted: bool = weights.is_empty() or LOOKAHEAD_IDS.any(func(id): return weights.has(id))
+	if bool(s.lookahead_enabled) and wanted:
 		var stand: Dictionary = ctx.get("stand",{"self":0,"allies":0,"enemies":0})
-		var after: Dictionary = Lookahead.predict(s,actor,action)
+		var after: Dictionary = Lookahead.predict(s,actor,action,ctx.get("before_lethal",{}))
 		la_self = float(int(stand.self)-int(after.self))/own_hp
 		la_ally = float(int(stand.allies)-int(after.allies))/maxf(1.0,float(ctx.get("ally_hp",0)))
 		la_enemy = minf(1.0,float(after.enemies)/40.0)
@@ -161,7 +173,7 @@ static func preference(s, actor: Dictionary, cell: Vector2i, rule: Dictionary) -
 static func score(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, stance: String, knobs: Dictionary) -> Dictionary:
 	var data := profiles()
 	var weights: Dictionary = data.profiles.get(stance,{}).get(tag(action),{})
-	var inp := inputs(s,actor,action,ctx)
+	var inp := inputs(s,actor,action,ctx,weights)
 	var total := 0.0
 	var terms: Array = []
 	var ids: Array = weights.keys(); ids.sort()
@@ -169,7 +181,12 @@ static func score(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, sta
 		var weight: float = float(weights[cid])
 		var personal: Dictionary = data.personality.get(cid,{})
 		if not personal.is_empty(): weight += float(knobs.get(personal.knob,0))*float(personal.scale)
-		var value: float = curve(str(data.considerations[cid].curve),float(inp.get(cid,0.0)))
+		var shape: String = str(data.considerations[cid].curve)
+		# A signed consideration is a delta, so a knob that drives its weight
+		# below zero would turn a penalty into a reward — a bold member would be
+		# paid to step onto a telegraph. Bold means indifferent, never rewarded.
+		if shape == "signed": weight = maxf(0.0,weight)
+		var value: float = curve(shape,float(inp.get(cid,0.0)))
 		var contrib: float = weight*value
 		total += contrib
 		terms.append({"id":cid,"input":inp.get(cid,0.0),"weight":weight,"contrib":int(round(contrib))})

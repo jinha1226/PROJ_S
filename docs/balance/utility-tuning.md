@@ -157,7 +157,7 @@ Task 3은 셋을 **부호 있는 차이**로 바꾸고 새 곡선 `signed`(−1.
 | `considerations.cell_danger` | 곡선 | `linear` | **`signed`** | 위 |
 | `considerations.la_self_hit` | 곡선 | `linear` | **`signed`** | 위 |
 | `considerations.la_ally_hit` | 곡선 | `linear` | **`signed`** | 위 |
-| CHARGER/`PART` | `rule_ready` | 200 | **150** | 설계 §4는 120. 부호 있는 안전 항이 들어오자 태세 후보의 상수 보너스가 사라져 120까지 내릴 수 있었지만, 120은 `skill_rule_conditions`의 "PUSH follows the wound" / "PUSH fires on a wounded foe"를 깬다. 그 장면의 점수 차: 12 HP 적을 마무리하는 `ATTACK` **146점**(any_foe_adjacent 100 + damage 20 + kill 20 + la_enemy_hit 6) 대 `PUSH` **120점** → **−26**. 필요한 최솟값은 147이고 145는 실패, 150은 통과하므로 150으로 올림했다. |
+| CHARGER/`PART` | `rule_ready` | 200 | **150** | 설계 §4는 120. 부호 있는 안전 항이 들어오자 태세 후보의 상수 보너스가 사라져 120까지 내릴 수 있었지만, 120은 `skill_rule_conditions`의 "PUSH follows the wound" / "PUSH fires on a wounded foe"를 깬다. 그 장면의 점수 차: 12 HP 적을 마무리하는 `ATTACK` **146점**(any_foe_adjacent 100 + damage 20 + kill 20 + la_enemy_hit 6) 대 `PUSH` **120점** → **−26**. 필요한 최솟값은 147이고 145는 실패, 150은 통과한다. **147이 아니라 150으로 잡은 이유**: 147은 한 장면의 점수에 딱 맞춘 값이라 여유가 0이고, 다른 파츠·성장 수치가 조금만 움직여도 다시 깨진다. 10 단위의 둥근 수에 3점의 여유를 남긴 150이 프로필 표에서도 읽기 쉽다. |
 | SKIRMISHER/`PART` | `rule_ready` | 320 | **140** | 설계 §4 값으로 복귀. `MOVE:escape`의 `cell_danger` 200이 더 이상 상수 보너스가 아니라 320이 필요 없다. |
 | GUARDIAN/`PART` | `rule_ready` | 200 | **150** | 설계 §4 값으로 복귀. 같은 이유. |
 | CHARGER/`PART` | `la_self_hit` | 없음 | **40** | 파츠도 자기 안전을 읽어야 한다(밀치기로 예고를 끊는 선택이 그 자체로 점수를 받는다). |
@@ -227,6 +227,31 @@ A-B-A-B가 되지 않는지. `same_as_last` **10**(설계 §4 값)에서 바로 
 | `encounter_sim` | 0 failures |
 | `solo_balance` | 0 failures; **4/8 완주** (기준 ≥ 3/8, 기준선 4/8 유지) |
 | `ranged_probe` 2인 | `deep_mixed` 0.93 · `opt_archers` 1.00 · `two_archers` 1.00 (이전 0.73 / 0.90 / 1.00) |
+| 임포트 | 오류 0 |
+
+### 검토 1차 수정 (Fix round 1)
+
+가중치는 한 칸도 움직이지 않았다. 바뀐 것은 예측기의 정확도·비용과 성격 노브의 바닥이다.
+
+| 항목 | 전 | 후 | 왜 |
+| --- | --- | --- | --- |
+| `Lookahead.predict` 죽은 적의 예고 | `PUSH`만 대상의 intent를 지웠다 | match 블록 뒤에서 `hp_override`로 HP ≤ 0이 된 **모든** 적의 intent를 지운다 | 예고 중인 시전자를 **죽여도** 예고가 남아 있어, 밀치면 `lethal_saved` 1인데 죽이면 0이었다. `la_lethal_saved`는 200~300짜리 항이라 파츠 선택이 통째로 뒤집혔다. |
+| 성격 노브와 `signed` 가중치 | `weight += knob × scale`, 바닥 없음 | 곡선이 `signed`인 고려 사항은 `weight = max(0, weight)` | posture ≥ 67이면 가중치 20짜리 `cell_danger`·`la_self_hit`가 음수가 되어, 대담한 대원이 예고 칸으로 **걸어 들어가면 보상**을 받았다. 대담함은 무관심이지 자해가 아니다. `tests/utility.gd`의 `knob_shift`도 같은 클램프로 기대값을 낸다(원시 scale이 아니라 클램프된 차이). |
+| `before_lethal` 계산 | 후보마다 파티원 수만큼 `Rules.lethal_threat` | `Lookahead.baseline(s)`를 `Utility.context`에서 한 번 → `ctx.before_lethal`로 재사용 | 후보와 무관한 값이었다. |
+| 예측 호출 | 모든 후보 | 프로필 열이 `la_*` 넷 중 하나도 쓰지 않으면 건너뛴다(값은 룩어헤드 꺼짐과 동일) | `WAIT`·`MOVE:sidestep`처럼 룩어헤드를 읽지 않는 열은 예측 비용을 내지 않는다. |
+| `s.intents.duplicate(true)` | 깊은 복사 | `duplicate()` | intent를 고치지 않고 목록만 거른다. |
+
+새 검사: `lookahead()`에 "killing the caster drops its telegraph too"(HP 9 대원, 예고 10, 5 HP 시전자를
+18로 처치 → `self == 0`, `lethal_saved == 1`), 그리고 `signed_weights_never_reward()`(posture 100
+돌격형이 예고 칸으로 가는 후보에서 `cell_danger`·`la_self_hit` 기여가 ≤ 0이고, 예고 칸 점수가 빈 칸
+점수를 넘지 못한다).
+
+| 스위트 | 결과 (Fix round 1) |
+| --- | --- |
+| `utility` | **151** checks, 0 failures |
+| `stances` 98 · `autobattle` 109 · `protect` 38 · `skill_rule_conditions` 962 · `parts` 338 · `companion_tactics` · `encounter_sim` | 모두 0 failures |
+| `solo_balance` | 0 failures; 4/8 완주 |
+| `ranged_probe` 2인 | `deep_mixed` **0.97** · `opt_archers` 1.00 · `two_archers` 1.00 |
 | 임포트 | 오류 0 |
 
 ## 눈으로 보는 체크리스트 (사용자 확인 항목)

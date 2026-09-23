@@ -6,13 +6,22 @@ extends RefCounted
 const Rules = preload("res://expedition/tactic_rules.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 
-static func predict(s, actor: Dictionary, action: Dictionary) -> Dictionary:
+## `baseline` is the candidate-independent half of the answer: {member id ->
+## whether that member is already in lethal danger}. It costs one
+## `Rules.lethal_threat` per member and never changes with the action, so
+## `Utility.context` computes it once and hands it back here.
+static func baseline(s) -> Dictionary:
+	var rows: Dictionary = {}
+	for member in s.alive(): rows[member.id] = Rules.lethal_threat(s,member) >= int(member.hp)
+	return rows
+
+static func predict(s, actor: Dictionary, action: Dictionary, before: Dictionary = {}) -> Dictionary:
 	var kind: String = str(action.kind)
 	var damage: int = int(action.get("damage",0))
 	var pos_override: Dictionary = {}      # actor id -> Vector2i
 	var hp_override: Dictionary = {}       # actor id -> int
 	var protected: Dictionary = {}         # ally id -> guardian id
-	var intents: Array = s.intents.duplicate(true)
+	var intents: Array = s.intents.duplicate()
 	var enemies_hit := 0
 	var victim: Dictionary = s.at(action.cell) if kind != "MOVE" and kind != "WAIT" else {}
 	match kind:
@@ -35,19 +44,27 @@ static func predict(s, actor: Dictionary, action: Dictionary) -> Dictionary:
 					intents = intents.filter(func(i): return i.id != victim.id)
 				elif def.effect == "GUARD" and not victim.is_empty(): protected[victim.id] = actor.id
 				elif def.effect in ["DAMAGE","LUNGE"]:
+					# Only foes are touched here: `parts_candidates.gd` never emits
+					# a DAMAGE candidate whose cells catch a living ally, or the
+					# actor itself when the part has `self_hit`, so there is no
+					# friendly splash left for the prediction to account for.
 					var cells: Array = Abilities.cells(s,actor,kind,action.cell) if def.effect == "DAMAGE" else [action.cell]
 					for other in s.enemies:
 						if other.hp > 0 and other.pos in cells:
 							hp_override[other.id] = int(other.hp)-damage
 							enemies_hit += mini(damage,int(other.hp))
 					if def.effect == "LUNGE": pos_override[actor.id] = Abilities.lunge_cell(s,actor,kind,action.cell)
+	# A foe that is dropped to 0 stops winding up: its telegraph goes with it,
+	# whoever killed it. The PUSH branch drops its victim's intent on top of
+	# this because a shoved caster is interrupted even when it survives.
+	if not hp_override.is_empty(): intents = intents.filter(func(i): return int(hp_override.get(i.id,1)) > 0)
+	var rows: Dictionary = before if not before.is_empty() else baseline(s)
 	var before_lethal := 0
 	var after_lethal := 0
 	var self_hit := 0
 	var ally_hit := 0
 	for member in s.alive():
-		var was: int = Rules.lethal_threat(s,member)
-		if was >= int(member.hp): before_lethal += 1
+		if bool(rows.get(member.id,false)): before_lethal += 1
 		var now: int = threat_after(s,member,pos_override,hp_override,protected,intents)
 		if now >= int(member.hp): after_lethal += 1
 		if member.id == actor.id: self_hit = now
