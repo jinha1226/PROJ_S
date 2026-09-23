@@ -161,14 +161,23 @@ static func route_steps(s, actor: Dictionary, goals: Array, avoid_contact: bool,
 		if steps_between(c,goal) == steps_between(first,goal): steps.append(c)
 	return steps
 
-## One MOVE candidate per equally fast first step; the route's own step keeps
-## the extra point, so it still wins when no knob says otherwise. `fallback`
-## is where the member heads when nothing on `goals` can be reached at all.
-static func approach(s, actor: Dictionary, goals: Array, score: int, reason: String, options: Array, avoid_contact: bool = false, fallback: Array = []) -> void:
+## One MOVE candidate per equally fast first step, all carrying the same tag:
+## the utility score is what separates them. `fallback` is where the member
+## heads when nothing on `goals` can be reached at all.
+static func approach(s, actor: Dictionary, goals: Array, tag: String, reason: String, options: Array, avoid_contact: bool = false, fallback: Array = []) -> void:
 	var steps := steps_toward(s,actor,goals,avoid_contact)
 	if steps.is_empty() and not fallback.is_empty(): steps = steps_toward(s,actor,fallback)
-	for i in range(steps.size()):
-		options.append({"kind":"MOVE","cell":steps[i],"score":score+(1 if i == 0 else 0),"reason":reason})
+	for step in steps: options.append(move(actor,step,tag,reason))
+
+## A MOVE candidate: where to, which column of the profile weighs it, and the
+## sign of the step, which is what `same_as_last` compares against.
+static func move(actor: Dictionary, cell: Vector2i, tag: String, reason: String) -> Dictionary:
+	var delta: Vector2i = cell-actor.pos
+	return {"kind":"MOVE","cell":cell,"tag":tag,"dir":Vector2i(signi(delta.x),signi(delta.y)),"reason":reason}
+
+## An ATTACK candidate, carrying the damage the preview promises.
+static func strike(s, actor: Dictionary, foe: Dictionary, tag: String, reason: String) -> Dictionary:
+	return {"kind":"ATTACK","cell":foe.pos,"tag":tag,"damage":int(s.attack_preview(foe.pos,actor.id).get("damage",0)),"target_id":foe.id,"reason":reason}
 
 ## Cells beside the nearest foe: where a member goes when the shared target is
 ## out of reach entirely.
@@ -210,10 +219,6 @@ static func candidates(s, actor: Dictionary, stance: String, knobs: Dictionary) 
 
 ## 돌격형: close on the shared target and stay on it.
 static func charger(s, actor: Dictionary, target: Dictionary, knobs: Dictionary, options: Array) -> void:
-	# Fire underfoot is left before anything else is considered.
-	var out := off_the_fire(s,actor,target)
-	if out != actor.pos:
-		options.append({"kind":"MOVE","cell":out,"score":150,"reason":"불길 회피"}); return
 	if target.is_empty(): return
 	# A telegraph is no reason to stop hitting — unless the posture is very
 	# cautious, and then stepping off it is all this member does.
@@ -224,14 +229,11 @@ static func charger(s, actor: Dictionary, target: Dictionary, knobs: Dictionary,
 		for d in s.DIRECTIONS:
 			var c: Vector2i = actor.pos+d
 			if s.can_step(actor.pos,c) and s.Tactics.danger(s,c) == 0:
-				options.append({"kind":"MOVE","cell":c,"score":60,"reason":"예고 회피"}); return
+				options.append(move(actor,c,"MOVE:sidestep","예고 회피")); return
 	# Whatever is already swinging at this member is answered, target or not.
 	var foe := adjacent_foe(s,actor,target)
-	if not foe.is_empty():
-		var preview: Dictionary = s.attack_preview(foe.pos,actor.id)
-		options.append({"kind":"ATTACK","cell":foe.pos,"score":100+int(preview.get("damage",0))+int(knobs.posture)*15/100,"reason":"돌격 · 공격"})
-	else:
-		approach(s,actor,adjacent_free(s,target.pos),80,"돌격 · 접근",options,false,fallback_goals(s,actor,target))
+	if not foe.is_empty(): options.append(strike(s,actor,foe,"ATTACK","돌격 · 공격"))
+	else: approach(s,actor,adjacent_free(s,target.pos),"MOVE:approach","돌격 · 접근",options,false,fallback_goals(s,actor,target))
 
 ## The neighbouring cell a burning member steps onto: never another fire, and
 ## as close to the target as the ring allows. `actor.pos` when it is not on fire
@@ -251,7 +253,7 @@ static func off_the_fire(s, actor: Dictionary, target: Dictionary) -> Vector2i:
 static func skirmisher(s, actor: Dictionary, target: Dictionary, knobs: Dictionary, options: Array) -> void:
 	if target.is_empty(): return
 	for cell in s.movement_cells(actor.id):   # telegraphs are always avoided
-		if s.Tactics.danger(s,cell) < s.Tactics.danger(s,actor.pos): options.append({"kind":"MOVE","cell":cell,"score":200,"reason":"위험 회피"})
+		if s.Tactics.danger(s,cell) < s.Tactics.danger(s,actor.pos): options.append(move(actor,cell,"MOVE:escape","위험 회피"))
 	var part := ranged_part(actor)
 	var d: int = s.distance(actor.pos,target.pos)
 	# Contact is eight-way (movement's own definition, matching the rule filter
@@ -262,28 +264,26 @@ static func skirmisher(s, actor: Dictionary, target: Dictionary, knobs: Dictiona
 		var reach: int = int(Abilities.DEFINITIONS[part].range)-(1 if int(knobs.posture) > 50 else 0)
 		if in_contact:
 			var away: Vector2i = s.Tactics.retreat_cell(s,actor)
-			if away != actor.pos: options.append({"kind":"MOVE","cell":away,"score":120,"reason":"거리 · 이탈"})
+			if away != actor.pos: options.append(move(actor,away,"MOVE:disengage","거리 · 이탈"))
 		elif d <= reach:
 			var adjacent: Array = s.combat_enemies().filter(func(e): return s.melee_reach(actor.pos,e.pos))
-			if not adjacent.is_empty(): options.append({"kind":"ATTACK","cell":adjacent[0].pos,"score":60,"reason":"거리 · 반격"})
-			options.append({"kind":"WAIT","cell":actor.pos,"score":50,"reason":"거리 · 유지"})
+			if not adjacent.is_empty(): options.append(strike(s,actor,adjacent[0],"ATTACK","거리 · 반격"))
+			options.append({"kind":"WAIT","cell":actor.pos,"tag":"WAIT:hold","reason":"거리 · 유지"})
 		else:
 			var goals: Array = []
 			for y in range(target.pos.y-reach,target.pos.y+reach+1):
 				for x in range(target.pos.x-reach,target.pos.x+reach+1):
 					var g := Vector2i(x,y)
 					if s.inside(g) and s.distance(g,target.pos) <= reach and s.distance(g,target.pos) >= 2: goals.append(g)
-			approach(s,actor,goals,80,"거리 · 접근",options,true,fallback_goals(s,actor,target))
+			approach(s,actor,goals,"MOVE:approach","거리 · 접근",options,true,fallback_goals(s,actor,target))
 		return
 	# No ranged part: approach, strike, break away.
 	if bool(actor.get("hit_and_run",false)):
 		var away: Vector2i = s.Tactics.retreat_cell(s,actor)
-		if away != actor.pos: options.append({"kind":"MOVE","cell":away,"score":120,"reason":"치고 빠지기 · 이탈"})
+		if away != actor.pos: options.append(move(actor,away,"MOVE:disengage","치고 빠지기 · 이탈"))
 		return
-	if s.melee_reach(actor.pos,target.pos):
-		options.append({"kind":"ATTACK","cell":target.pos,"score":100,"reason":"치고 빠지기 · 타격"})
-	else:
-		approach(s,actor,adjacent_free(s,target.pos),80,"치고 빠지기 · 접근",options,false,fallback_goals(s,actor,target))
+	if s.melee_reach(actor.pos,target.pos): options.append(strike(s,actor,target,"ATTACK","치고 빠지기 · 타격"))
+	else: approach(s,actor,adjacent_free(s,target.pos),"MOVE:approach","치고 빠지기 · 접근",options,false,fallback_goals(s,actor,target))
 
 ## 호위형: stay on the protectee and put itself between them and what comes.
 static func guardian(s, actor: Dictionary, p: Dictionary, target: Dictionary, knobs: Dictionary, options: Array) -> void:
@@ -292,37 +292,35 @@ static func guardian(s, actor: Dictionary, p: Dictionary, target: Dictionary, kn
 	if not threats.is_empty():
 		var t: Dictionary = threats[0]
 		if s.melee_reach(actor.pos,t.pos):
-			options.append({"kind":"ATTACK","cell":t.pos,"score":100+int(knobs.posture)*15/100,"reason":"호위 · 저지"})
+			options.append(strike(s,actor,t,"ATTACK:intercept","호위 · 저지"))
 		var gap: Vector2i = p.pos+Vector2i(signi(t.pos.x-p.pos.x),signi(t.pos.y-p.pos.y))
 		if gap != actor.pos and s.is_free(gap):
-			approach(s,actor,[gap],130 if s.Rules.lethal_threat(s,p) >= p.hp else 90,"호위 · 가로막기",options)
+			approach(s,actor,[gap],"MOVE:block","호위 · 가로막기",options)
 		return
 	if steps_between(actor.pos,p.pos) <= keep:
 		var foe := adjacent_foe(s,actor,target)
-		if not foe.is_empty(): options.append({"kind":"ATTACK","cell":foe.pos,"score":60,"reason":"호위 · 공격"})
+		if not foe.is_empty(): options.append(strike(s,actor,foe,"ATTACK","호위 · 공격"))
 		else: advance(s,actor,p,target,keep,options)
-		options.append({"kind":"WAIT","cell":actor.pos,"score":40,"reason":"호위 · 대기"})
+		options.append({"kind":"WAIT","cell":actor.pos,"tag":"WAIT:hold","reason":"호위 · 대기"})
 	else:
-		approach(s,actor,adjacent_free(s,p.pos),80,"호위 · 합류",options,false,near_free(s,p.pos,keep+1))
+		approach(s,actor,adjacent_free(s,p.pos),"MOVE:rejoin","호위 · 합류",options,false,near_free(s,p.pos,keep+1))
 
 ## 호위형 §2.3 (d): nothing threatens the charge and nothing is in reach, so the
 ## pair walks toward the shared target together rather than standing still.
 ## Every destination stays inside `keep+1` of the charge, so "advance" never
 ## becomes "abandon"; mutual guardians leapfrog forward a step at a time.
-## Score 50 — under the 60 of a foe in reach, over the 40 of holding.
 static func advance(s, actor: Dictionary, p: Dictionary, target: Dictionary, keep: int, options: Array) -> void:
 	if target.is_empty(): return
 	var band: int = keep+1
 	var beside: Array = adjacent_free(s,target.pos)
 	var goals: Array = beside.filter(func(c): return steps_between(c,p.pos) <= band)
 	if not goals.is_empty():
-		approach(s,actor,goals,50,"호위 · 동반 전진",options); return
+		approach(s,actor,goals,"MOVE:advance","호위 · 동반 전진",options); return
 	# Nothing beside the target is inside the band yet: take whichever first
 	# step of the route to the target still is.
 	var steps := steps_toward(s,actor,beside)
-	for i in range(steps.size()):
-		if steps_between(steps[i],p.pos) <= band:
-			options.append({"kind":"MOVE","cell":steps[i],"score":50+(1 if i == 0 else 0),"reason":"호위 · 동반 전진"})
+	for step in steps:
+		if steps_between(step,p.pos) <= band: options.append(move(actor,step,"MOVE:advance","호위 · 동반 전진"))
 
 ## Is the member where its stance wants it? What role_rounds tallies.
 static func in_role(s, actor: Dictionary) -> bool:

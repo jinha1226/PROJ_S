@@ -503,8 +503,10 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 		if chain: finish_player_action()
 		return true
 	if actor.hp <= 0 or actor.ap <= 0: return false
+	var was: Vector2i = actor.pos
 	if Abilities.DEFINITIONS.has(kind):
 		if not Abilities.execute(self,actor,kind,target): return false
+		record_action(actor,kind,target,was)
 		actor.ap -= 1; check_battle_end()
 		if presentation != null: presentation.capture(self,actor.id,display_event)
 		if chain: finish_player_action()
@@ -533,11 +535,18 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 			elif kind == "WATER": tile(target).wet = mini(100, tile(target).wet + 70)
 			else: discharge(target, actor.id)
 		_: return false
+	record_action(actor,kind,target,was)
 	actor.ap -= 1
 	check_battle_end()
 	if presentation != null: presentation.capture(self,actor.id,display_event)
 	if chain: finish_player_action()
 	return true
+
+## What this member just did, for the utility selector's commitment term: a
+## member that kept walking the same way is nudged to keep going.
+func record_action(actor: Dictionary, kind: String, target: Vector2i, was: Vector2i) -> void:
+	actor.last_action_kind = kind
+	actor.last_action_dir = Vector2i(signi(target.x-was.x),signi(target.y-was.y)) if kind == "MOVE" else Vector2i.ZERO
 
 func finish_player_action() -> void:
 	if not boss_trial or phase != "BATTLE" or resolving_companions: return
