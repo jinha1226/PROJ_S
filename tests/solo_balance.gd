@@ -29,6 +29,11 @@ func provision(s) -> void:
 		if s.bank >= s.price(id): s.buy(id)
 
 func play(s) -> Dictionary:
+	# A solo player picks the stance, and alone there is nobody to cover and no
+	# reaching part to keep a band with: the lone hero charges. Set in the bot,
+	# not in the engine — `make_actor` still hands the hero its personality's
+	# own default stance, which the party game is free to keep.
+	s.set_stance(0,"CHARGER")
 	provision(s)
 	s.depart()
 	var hero: Dictionary = s.party[0]
@@ -71,17 +76,11 @@ func run() -> void:
 		# defeat is shorter by definition, so only completions carry it.
 		check(row.reason != "SUCCESS" or row.actions >= 80,"round trip within the target action band (seed %d: %d)" % [seed_value,row.actions])
 		check(row.food > 0 and row.light > 0,"supplies last a round trip (seed %d)" % seed_value)
-	# Smoke guard, not the design target. The 6/8 completion goal moves to the
-	# upcoming SRD-based combat/balance spec; until the combat math is replaced
-	# this only pins the measured floor so a regression below it is caught.
-	# Healing earlier (24/16 instead of 14/10) was measured and rejected: the
-	# bot stops wasting supplies but finishes one seed fewer, 2/8 against 3/8.
-	# The bot now fights through auto_step, i.e. the same rules and knobs the
-	# game plays on: the cautious default hero avoids danger and retreats far
-	# more than the old auto_attack loop did, and the floor fell from 5/8 to
-	# 1/8. The number is the measurement, not a target; the combat/balance
-	# spec is what will raise it again.
-	check(wins >= 1,"scripted solo run completes on the measured floor (%d/%d)" % [wins,SEEDS])
+	# 게이트 (태세 설계 §4): the lone charger completes at least 3 of 8. This
+	# replaces the autobattle ledger's temporary floor of 1 — the stance
+	# programmes give the hero a target and keep it on it, so the retreat-happy
+	# wandering that pushed the measurement down to 1/8 is gone.
+	check(wins >= 3,"scripted solo run completes at least 3 of 8 (%d/%d)" % [wins,SEEDS])
 	var campaign = Session.new(0,true,false,true)
 	for expedition in range(4):
 		if expedition > 0:

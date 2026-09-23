@@ -20,7 +20,11 @@ static func apply_build(s, id: String) -> void:
 		var actor: Dictionary = s.party[i]
 		for axis in row.get("ranks",{}): actor.growth.ranks[axis] = int(row.ranks[axis])
 		for stat in row.get("stats",{}): actor.growth.stats[stat] = int(row.stats[stat])
-		actor.equipped_abilities = row.equipped.duplicate()
+		# `equipped_by_member` lets one build hand each seat its own parts — a
+		# mixed party needs the skirmisher's sling without splitting the build.
+		var per_member: Array = row.get("equipped_by_member",[])
+		if not per_member.is_empty(): actor.equipped_abilities = (per_member[mini(i,per_member.size()-1)] as Array).duplicate()
+		else: actor.equipped_abilities = row.equipped.duplicate()
 		if row.has("rules"): actor.rules = row.rules.map(func(r): return Rules.make_rule(r[0],r[1],r[2]))
 		# A build measures the build: without knobs of its own it fights on the
 		# neutral defaults, not on whatever personality the seed rolled.
@@ -104,6 +108,16 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 	# Every member's presses, whichever policy pressed them.
 	var skill_uses: Dictionary = {}
 	var guards := 0; var redirects := 0
+	# `role_rounds` per stance, not per member: the mixed party's three seats
+	# each answer for their own stance in the gate table.
+	var role_rounds: Dictionary = {}
+	for i in range(s.party.size()):
+		var actor: Dictionary = s.party[i]
+		var stance: String = str(actor.get("stance","CHARGER"))
+		var rr: Dictionary = s.battle_stats.members.get(actor.id,{}).get("role_rounds",{"in_role":0,"total":0})
+		var acc: Dictionary = role_rounds.get(stance,{"in_role":0,"total":0})
+		acc.in_role += int(rr.in_role); acc.total += int(rr.total)
+		role_rounds[stance] = acc
 	for id in s.battle_stats.members:
 		var row: Dictionary = s.battle_stats.members[id]
 		guards += int(row.guards); redirects += int(row.covers)
@@ -113,7 +127,7 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 	return {"result":result,"rounds":s.round_number,"damage_taken":taken,"hp_end":s.party.map(func(a): return a.hp),
 		"deaths":s.party.filter(func(a): return a.hp <= 0).map(func(a): return a.id),"first_death_round":first_death,
 		"heals_used":heals,"guards_used":guards,"protect_redirects":redirects,"skill_uses":skill_uses,"player_actions":actions,"damage_before_first_action":int(counters.before_first),
-		"enemy_count":s.enemies.size(),"enemy_damage_dealt":dealt,"enemy_skill_uses":s.battle_stats.enemy_parts.duplicate(),"interrupts":int(s.battle_stats.interrupts)}
+		"role_rounds":role_rounds,"enemy_count":s.enemies.size(),"enemy_damage_dealt":dealt,"enemy_skill_uses":s.battle_stats.enemy_parts.duplicate(),"interrupts":int(s.battle_stats.interrupts)}
 
 static func wilson(wins: int, n: int) -> Array:
 	if n == 0: return [0.0,0.0]
@@ -168,12 +182,19 @@ static func run_many(config: Dictionary, seeds: Array) -> Dictionary:
 		var total := 0
 		for r in runs: total += int(r.enemy_skill_uses.get(key,0))
 		enemy_skill_uses_mean[key] = float(total)/runs.size()
+	# Summed over the seed set, then read as one ratio per stance.
+	var role_rounds: Dictionary = {}
+	for r in runs:
+		for stance in r.role_rounds:
+			var acc: Dictionary = role_rounds.get(stance,{"in_role":0,"total":0})
+			acc.in_role += int(r.role_rounds[stance].in_role); acc.total += int(r.role_rounds[stance].total)
+			role_rounds[stance] = acc
 	var interrupts_total := 0
 	for r in runs: interrupts_total += int(r.interrupts)
 	var interrupts_mean := float(interrupts_total)/runs.size()
 	return {"distinct_outcomes":distinct.size(),"samples":runs.size(),"results":results,"win_rate":float(wins)/runs.size(),"win_ci":wilson(wins,runs.size()),
 		"damage":summary(per_member),"damage_wins_per_member":summary(runs.filter(func(r): return r.result == "WIN").map(func(r): return r.damage_taken.reduce(func(a,b): return a+b,0)/size)),
-		"guards":summary(runs.map(func(r): return r.guards_used)),"redirects":summary(runs.map(func(r): return r.protect_redirects)),"skill_uses_mean":skill_uses_mean,"enemy_skill_uses_mean":enemy_skill_uses_mean,"interrupts_mean":interrupts_mean,
+		"guards":summary(runs.map(func(r): return r.guards_used)),"redirects":summary(runs.map(func(r): return r.protect_redirects)),"skill_uses_mean":skill_uses_mean,"enemy_skill_uses_mean":enemy_skill_uses_mean,"interrupts_mean":interrupts_mean,"role_rounds":role_rounds,
 		"rounds":summary(runs.map(func(r): return r.rounds)),
 		"first_death":summary(runs.filter(func(r): return r.first_death_round > 0).map(func(r): return r.first_death_round)),
 		"before_first":summary(runs.map(func(r): return r.damage_before_first_action)),

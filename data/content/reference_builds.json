@@ -24,5 +24,15 @@
  {"id": "p_hob", "label": "홉고블린 곤봉형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["HOB_CLUB","GUARD"], "rules": [["HOB_CLUB","NEAREST","ALWAYS"],["GUARD","ALLY","ALLY_LETHAL"]]},
  {"id": "p_orc", "label": "오크 도끼형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["ORC_CLEAVER","GUARD"], "rules": [["ORC_CLEAVER","NEAREST","ALWAYS"],["GUARD","ALLY","ALLY_LETHAL"]]},
  {"id": "p_gnoll", "label": "놀 창형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["GNOLL_SPEAR","GUARD"], "rules": [["GNOLL_SPEAR","NEAREST","ALWAYS"],["GUARD","ALLY","ALLY_LETHAL"]]},
- {"id": "p_river", "label": "강쥐 가죽형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["RIVER_RAT_SPLASH","GUARD"], "rules": [["RIVER_RAT_SPLASH","NEAREST","ALWAYS"],["GUARD","ALLY","ALLY_LETHAL"]]}
+ {"id": "p_river", "label": "강쥐 가죽형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["RIVER_RAT_SPLASH","GUARD"], "rules": [["RIVER_RAT_SPLASH","NEAREST","ALWAYS"],["GUARD","ALLY","ALLY_LETHAL"]]},
+ {"id": "stance_charger", "label": "돌격 태세형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["PUSH","GUARD"],
+  "rules": [["PUSH","NEAREST","CHARGING"],["GUARD","ALLY","ALLY_LETHAL"]], "stance": "CHARGER"},
+ {"id": "stance_skirmisher", "label": "거리 태세형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["KOBOLD_SLING","GUARD"],
+  "rules": [["KOBOLD_SLING","NEAREST","ALWAYS"],["GUARD","ALLY","ALLY_LETHAL"]], "stance": "SKIRMISHER"},
+ {"id": "stance_guardian", "label": "호위 태세형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["PUSH","GUARD"],
+  "rules": [["PUSH","NEAREST","CHARGING"],["GUARD","ALLY","ALLY_LETHAL"]], "stance": "GUARDIAN"},
+ {"id": "stance_mixed", "label": "혼합 태세형", "ranks": {"MELEE": 1}, "stats": {}, "equipped": ["PUSH","GUARD"],
+  "equipped_by_member": [["PUSH","GUARD"],["KOBOLD_SLING","GUARD"],["PUSH","GUARD"]],
+  "rules": [["PUSH","NEAREST","CHARGING"],["KOBOLD_SLING","NEAREST","ALWAYS"],["GUARD","ALLY","ALLY_LETHAL"]],
+  "stances": ["CHARGER","SKIRMISHER","GUARDIAN"]}
 ]}
