@@ -7,6 +7,7 @@ const Knobs = preload("res://expedition/knobs.gd")
 const Modes = preload("res://expedition/npc_modes.gd")
 const NOISE_RADIUS := 10
 const SLEEP_AFTER := 5
+const MATE_LABEL := "동료에게 이동 중"
 const LABELS := {"FIGHT":"교전 중","APPROACH":"다가오는 중","HOLD":"거리를 두고 지켜보는 중","REST":"부상으로 대기 중","EXPLORE":"주변을 탐색 중","":""}
 
 ## Wakes on its own sight of the party or on nearby combat; sleeps after five quiet rounds unseen.
@@ -39,10 +40,13 @@ static func turn(s, npc: Dictionary) -> void:
 	npc.activity = LABELS[pick.mode]
 	npc.explains.append({"round":s.round_number,"kind":pick.mode,"cell":npc.pos,"explain":pick.explain})
 	while npc.explains.size() > 20: npc.explains.pop_front()
-	# A duo keeps together before anything else.
+	# A duo keeps together before anything else: the one lagging behind walks to
+	# the other, so a pair never spends the round swapping places.
 	var mate: Dictionary = partner_of(s,npc)
-	if not mate.is_empty() and s.distance(npc.pos,mate.pos) > 1 and mate.awake:
-		if close_on(s,npc,Stances.adjacent_free(s,mate.pos),mate.pos): return
+	if not mate.is_empty() and mate.awake and s.distance(npc.pos,mate.pos) > 1 and lagging(s,npc,mate):
+		if close_on(s,npc,Stances.adjacent_free(s,mate.pos),mate.pos):
+			npc.activity = MATE_LABEL
+			return
 	match pick.mode:
 		"APPROACH":
 			var near: Dictionary = nearest_member(s,npc)
@@ -60,7 +64,10 @@ static func turn(s, npc: Dictionary) -> void:
 		"REST": pass
 		"EXPLORE":
 			var goal: Vector2i = explore_goal(s,npc)
-			var steps: Array = Stances.steps_toward(s,npc,[goal])
+			# A room centre can be a wall or an occupied cell: aim for the free
+			# ground around it rather than idling on an unreachable goal.
+			var goals: Array = [goal] if s.is_free(goal) else Stances.near_free(s,goal,2)
+			var steps: Array = Stances.steps_toward(s,npc,goals)
 			if not steps.is_empty(): s.act_as(npc,"MOVE",steps[0],false)
 
 ## One step along the route to `goals`. The route ties on a diagonal as often
@@ -81,6 +88,13 @@ static func close_on(s, npc: Dictionary, goals: Array, target: Vector2i) -> bool
 		return a.x < b.x if a.x != b.x else a.y < b.y)
 	return s.act_as(npc,"MOVE",steps[0],false)
 
+## Which of a pair closes the gap: the one standing farther from the party, the
+## higher id breaking a tie. The other holds its own mode.
+static func lagging(s, npc: Dictionary, mate: Dictionary) -> bool:
+	var mine: int = s.distance(npc.pos,nearest_member(s,npc).pos)
+	var theirs: int = s.distance(mate.pos,nearest_member(s,mate).pos)
+	return mine > theirs or (mine == theirs and int(npc.id) > int(mate.id))
+
 ## The partner of a duo, while it lives.
 static func partner_of(s, npc: Dictionary) -> Dictionary:
 	if int(npc.get("partner",-1)) < 0: return {}
@@ -95,7 +109,8 @@ static func nearest_member(s, npc: Dictionary) -> Dictionary:
 		if s.distance(npc.pos,a.pos) < s.distance(npc.pos,best.pos): best = a
 	return best
 
-## Room centres farthest from the entry first, cycling with the round so the walk never stalls on a reached goal.
+## Room centres farthest from the entry first, cycling by npc id so two npcs do
+## not walk the same room and a reached goal never stalls the walk.
 static func explore_goal(s, npc: Dictionary) -> Vector2i:
 	var layout: Dictionary = s.floor_state.layout
 	var centres: Array = layout.rooms.map(func(r): return Vector2i(r.rect.get_center()))

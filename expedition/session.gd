@@ -9,6 +9,7 @@ const Injury = preload("res://sim/body_injury_system.gd")
 const Dungeon = preload("res://expedition/dungeon_map.gd")
 const NpcRoster = preload("res://expedition/npc_roster.gd")
 const NpcAI = preload("res://expedition/npc_ai.gd")
+const Recruit = preload("res://expedition/npc_recruit.gd")
 var BOARD_SIDE := Dungeon.ROOM_SIDE
 const Floor = preload("res://expedition/continuous_floor.gd")
 var floor_mode := false
@@ -172,6 +173,16 @@ func remember_important(actor: Dictionary, kind: String, subject: int, instigato
 	if actor.memory.remember(kind,serial,world_time,subject,instigator,salience):
 		recorded[key] = true; actor.important_memories = recorded
 
+## A record that is not a landmark: written as it stands, and the older ones
+## left where they are. Recruitment memories are worth less than 700 and would
+## not survive `remember_important`'s pruning of its own first line.
+func remember_plain(actor: Dictionary, kind: String, subject: int, instigator: int, salience: int) -> void:
+	var key := "%d/%s/%d" % [expedition_number,kind,subject]
+	var recorded: Dictionary = actor.get("important_memories",{})
+	if recorded.has(key): return
+	if actor.memory.remember(kind,serial,world_time,subject,instigator,salience):
+		recorded[key] = true; actor.important_memories = recorded
+
 ## Clears the report and opens one row per member. The simulator calls this
 ## itself at the arena, where no BATTLE_START stop event runs.
 func reset_battle_stats() -> void:
@@ -201,13 +212,37 @@ func alive() -> Array:
 func friends() -> Array:
 	return alive()+npcs.filter(func(n): return n.hp > 0 and n.awake)
 
-## An npc beside the party asks to come along. The offer stands alone and the
-## npc will not ask again for twenty rounds. Task 5 puts the answer here.
+## Sharing food, asking, and the answer to an npc's own offer.
+func aid(npc: Dictionary) -> bool:
+	return Recruit.aid(self,npc)
+
+func propose(npc: Dictionary) -> Dictionary:
+	return Recruit.propose(self,npc)
+
+func recruit(npc: Dictionary) -> bool:
+	return Recruit.recruit(self,npc).accepted
+
+## An npc beside the party asks to come along. One offer stands at a time and
+## the npc will not ask again for twenty rounds after an answer.
 func offer(npc: Dictionary) -> bool:
-	if pending_offer >= 0 or round_number < int(npc.get("offered_until",-99)): return false
+	if pending_offer >= 0 or npc.state != "MET" or round_number < int(npc.get("offered_until",-99)): return false
 	pending_offer = npc.id
-	npc.offered_until = round_number+20
 	return true
+
+## The player's answer to the standing offer. A refusal is remembered and
+## starts the cooldown; the npc keeps standing where it is.
+func answer_offer(accept: bool) -> bool:
+	if pending_offer < 0: return false
+	var found: Array = npcs.filter(func(n): return n.id == pending_offer)
+	pending_offer = -1
+	if found.is_empty(): return false
+	var npc: Dictionary = found[0]
+	npc.offered_until = round_number+Recruit.COOLDOWN
+	if not accept:
+		serial += 1
+		remember_plain(npc,"DECLINED_BY_PLAYER",Recruit.hero(self),Recruit.hero(self),400)
+		return true
+	return Recruit.recruit(self,npc).accepted
 
 func depart() -> bool:
 	if phase != "TOWN" or alive().is_empty(): return false

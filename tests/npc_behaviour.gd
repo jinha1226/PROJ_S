@@ -27,7 +27,7 @@ func foe_at(s, p: Vector2i, hp: int = 30) -> Dictionary:
 
 func run() -> void:
 	friends(); fights(); targeted(); dies()
-	modes_approach(); modes_hold(); modes_rest(); modes_explore(); commitment(); duo(); labels()
+	modes_approach(); modes_hold(); modes_rest(); modes_explore(); commitment(); shape(); duo(); labels()
 	print("NPC behaviour: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func friends() -> void:
@@ -137,10 +137,13 @@ func modes_explore() -> void:
 
 func commitment() -> void:
 	var f := field(Vector2i(6,0)); var s = f.s; var npc: Dictionary = f.npc
-	bold(npc,"X",600); bold(npc,"C",600)
+	bold(npc,"X",600); bold(npc,"C",600); bold(npc,"A",750); bold(npc,"O",100)
 	var first: String = Modes.choose(s,npc).mode
 	npc.mode = first; npc.mode_until = s.round_number+Modes.COMMIT_ROUNDS
-	bold(npc,"X",520) # a small change must not flip the mode inside the commitment window
+	bold(npc,"X",680) # a small change must not flip the mode inside the commitment window
+	npc.mode = ""      # uncommitted, this very change does flip the argmax
+	check(Modes.choose(s,npc).mode != first,"the small change would flip an uncommitted npc")
+	npc.mode = first
 	check(Modes.choose(s,npc).mode == first,"committed mode holds against a small score change")
 	npc.hp = npc.max_hp/5
 	check(Modes.choose(s,npc).mode == "REST","an 80+ point swing switches at once")
@@ -153,8 +156,22 @@ func duo() -> void:
 	b.pos = f.c+Vector2i(5,3); b.awake = true; b.hp = b.max_hp; b.noise_seen = s.round_number; s.npcs.append(b)
 	bold(a,"X",900); bold(b,"X",900)
 	s.floor_state.observe(s)
+	var behind: Vector2i = b.pos
 	NpcAI.turn(s,a); NpcAI.turn(s,b)
-	check(s.distance(a.pos,b.pos) <= 1,"the one behind steps to its partner first")
+	check(b.pos != behind and b.activity == "동료에게 이동 중","the one behind walks to its partner")
+	check(a.activity == "다가오는 중","the one nearer the party keeps its own mode")
+	for i in range(4): NpcAI.turn(s,a); NpcAI.turn(s,b)
+	check(s.distance(a.pos,b.pos) <= 1,"the pair closes up")
+
+## Every weight in the table is an input the modes actually compute.
+func shape() -> void:
+	var f := field(Vector2i(6,0))
+	var inp: Dictionary = Modes.inputs(f.s,f.npc)
+	for mode in Modes.MODES:
+		check(mode in Modes.table(),"table has "+mode)
+		for id in Modes.table()[mode].keys():
+			if id == "base": continue
+			check(inp.has(id),"%s weight %s is an input" % [mode,id])
 
 func labels() -> void:
 	var f := field(Vector2i(2,0)); var s = f.s; var npc: Dictionary = f.npc

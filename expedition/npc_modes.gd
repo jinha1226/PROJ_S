@@ -1,6 +1,5 @@
 extends RefCounted
 ## What an awake NPC does when nothing is attacking it: a four-mode utility table.
-const Utility = preload("res://expedition/utility.gd")
 const MODES := ["APPROACH","HOLD","REST","EXPLORE"]
 const COMMIT_ROUNDS := 10
 const SWITCH_MARGIN := 80
@@ -17,11 +16,11 @@ static func inputs(s, npc: Dictionary) -> Dictionary:
 	var seen: int = s.Floor.MonsterAI.sight(s)
 	return {"X":npc.profile.value("X")/1000.0,"A":npc.profile.value("A")/1000.0,"C":npc.profile.value("C")/1000.0,"O":npc.profile.value("O")/1000.0,
 		"wounded":1.0 if npc.hp*100 < npc.max_hp*40 else 0.0,"hp_ratio":float(npc.hp)/maxf(1.0,npc.max_hp),
-		"party_room":float(s.alive().size())/3.0,"declined":1.0 if s.round_number < int(npc.get("declined_until",-99)) or npc.memory.salience_for_subject(1,["DECLINED_BY_PLAYER"]) > 0 else 0.0,
+		"party_room":float(s.alive().size())/3.0,"declined":1.0 if s.round_number < int(npc.get("declined_until",-99)) or npc.memory.salience_for_subject(s.party[0].id+1,["DECLINED_BY_PLAYER"]) > 0 else 0.0,
 		"stress":clampf(npc.stress/200.0,0.0,1.0),"party_seen":1.0 if s.alive().any(func(a): return s.Floor.MonsterAI.line(s,npc.pos,a.pos,seen)) else 0.0}
 
 static func score_of(mode: String, inp: Dictionary) -> Dictionary:
-	var row: Dictionary = table()[mode]
+	var row: Dictionary = table().get(mode,{})
 	var total: float = float(row.get("base",0))
 	var parts: Array = []
 	var ids: Array = row.keys(); ids.sort()
