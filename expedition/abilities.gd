@@ -77,7 +77,7 @@ static func cells(s, actor: Dictionary, id: String, target: Vector2i) -> Array:
 
 ## Party members grow; monsters hit for the listed damage plus the floor's darkness bonus.
 static func power(s, actor: Dictionary, def: Dictionary) -> int:
-	if actor.enemy: return int(def.damage)+(s.floor_state.enemy_bonus(s.light) if s.floor_mode else 0)
+	if actor.enemy: return int(def.damage)
 	return s.Growth.power(actor,def.axis,int(def.damage))
 
 ## Whether `actor` holds the part: a slot for party members, the species signature for monsters.
@@ -139,9 +139,9 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 				if s.can_step(target,destination): victim.pos = destination
 				else: s.damage(victim,power(s,actor,def),actor.id,"IMPACT")
 				s.intents = s.intents.filter(func(intent): return intent.id != victim.id)
-				if s.floor_mode: s.Floor.MonsterAI.interrupt(s,victim)
-				elif s.boss_trial and victim.get("charging",false):
+				if victim.get("boss",false) and victim.get("charging",false):
 					victim.charging = false; victim.fuse = 0; victim.cooldown = 6; victim.recovery = 1
+				else: s.Floor.MonsterAI.interrupt(s,victim)
 				s.message("밀쳐내기 · 적의 예고 공격을 취소했습니다.")
 		"LUNGE":
 			var cell := lunge_cell(s,actor,id,target)

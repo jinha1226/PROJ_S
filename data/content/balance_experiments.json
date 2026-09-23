@@ -6,7 +6,7 @@
   "rules": {"current": {"solo_actions": 1, "solo_max_members": 0},
             "A":       {"solo_actions": 2, "solo_max_members": 0},
             "B":       {"solo_actions": 1, "solo_max_members": 2}},
-  "supplies": [1, 0, 0, 0, 0, 1],
+  "supplies": [1, 0, 0, 0, 0],
   "arenas": {
     "early_hob":   {"tier": "early", "members": [["dcss_hobgoblin","MELEE"]]},
     "early_pair":  {"tier": "early", "members": [["kobold","MELEE"],["dcss_rat","MELEE"]]},
@@ -21,7 +21,7 @@
   "builds": ["melee_1", "b_strike", "b_knife", "b_dressing", "b_lunge", "b_bomb", "b_shockwave", "b_iron", "p_rat", "p_lizard", "p_kobold", "p_goblin", "p_hob", "p_orc", "p_gnoll", "p_river"],
   "policies": ["rules"],
   "rules": {"current": {"solo_actions": 1, "solo_max_members": 0}},
-  "supplies": [0, 0, 0, 0, 0, 0],
+  "supplies": [0, 0, 0, 0, 0],
   "baseline_build": "melee_1",
   "arenas": {
     "early_hob":   {"tier": "early", "members": [["dcss_hobgoblin","MELEE"]]},
@@ -37,7 +37,7 @@
   "builds": ["stance_mixed", "stance_charger", "stance_skirmisher", "stance_guardian"],
   "policies": ["rules"],
   "rules": {"current": {"solo_actions": 1, "solo_max_members": 0}},
-  "supplies": [0, 0, 0, 0, 0, 0],
+  "supplies": [0, 0, 0, 0, 0],
   "mixed_build": "stance_mixed",
   "arenas": {
     "early_hob":   {"tier": "early", "members": [["dcss_hobgoblin","MELEE"]]},

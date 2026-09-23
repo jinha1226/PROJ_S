@@ -1,5 +1,5 @@
 extends SceneTree
-## Playtest test loadout: session grant rules, idempotence, town gating, and the settlement button.
+## Playtest loadout helper and camp-only part editing.
 const Session = preload("res://expedition/session.gd")
 var failures := 0
 func check(value: bool, message: String) -> void:
@@ -18,7 +18,7 @@ func session_layer() -> void:
 	var equipped_before: Array = hero.equipped_abilities.duplicate()
 	var rules_before: int = hero.rules.size()
 	var bag_before: Dictionary = s.parts_bag.duplicate(true)
-	check(s.grant_test_loadout(),"test loadout succeeds in town")
+	check(s.grant_test_loadout(),"test loadout succeeds for an idle test session")
 	var newly: Array = []
 	for id in Session.Abilities.DEFINITIONS:
 		check(s.parts_bag.get(id,0) >= 1,"every catalog part is in the bag: "+id)
@@ -33,26 +33,26 @@ func session_layer() -> void:
 	check(s.log_lines[-1] == "시험 로드아웃 · 이미 전부 보유","idempotent call reports nothing new")
 
 	s.depart()
-	check(not s.grant_test_loadout(),"test loadout refused outside town")
+	check(s.grant_test_loadout() and s.parts_bag == bag,"test loadout stays idempotent during a run")
 
 	var room_mode = Session.new(731,false,false,false)
-	check(not room_mode.grant_test_loadout(),"test loadout refused outside floor mode")
+	check(room_mode.grant_test_loadout(),"legacy constructor flag does not change the run helper")
 
 func scene_layer() -> void:
 	var scene = load("res://expedition/main.tscn").instantiate()
-	var s = Session.new(731,false,false,true)
+	var s = Session.new_run(731)
 	scene.session = s; root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
 	await process_frame
 	for frame in range(4): await process_frame
-	var hub = scene.find_child("SettlementHub",true,false)
 	var loadout: Button = scene.find_child("TownTestLoadout",true,false)
-	check(loadout != null and loadout.text == "시험 로드아웃","town shows the test loadout button")
-	check(hub.get_global_rect().encloses(loadout.get_global_rect()),"test loadout button fits the settlement")
-	check(scene.get_global_rect().encloses(loadout.get_global_rect()),"test loadout button fits the viewport")
-	loadout.pressed.emit()
+	check(loadout == null,"run HUD has no test loadout button")
+	check(scene.find_child("CampButton",true,false) != null,"run HUD offers camp")
+	check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"run HUD fits viewport")
+	check(s.grant_test_loadout(),"test fixture grants parts through session API")
 	for frame in range(4): await process_frame
 	for id in Session.Abilities.DEFINITIONS:
-		check(s.parts_bag.get(id,0) >= 1,"button press grants "+id)
+		check(s.parts_bag.get(id,0) >= 1,"fixture grants "+id)
+	s.phase = "CAMP"; scene.refresh()
 	check(s.equip_part(0,0,"PUSH") and s.equip_part(0,1,"GUARD"),"granted parts can be equipped")
 	scene.show_character(0,"파츠")
 	for frame in range(4): await process_frame
@@ -66,8 +66,8 @@ func scene_layer() -> void:
 		check(Session.Rules.skill(id).name+" ×1" in offered,"the granted bag is offered for the slot: "+id)
 	scene.item_popup.hide()
 	scene.details_popup.hide()
-	s.depart()
+	s.phase = "BATTLE"
 	scene.refresh()
 	for frame in range(2): await process_frame
-	check(scene.find_child("TownTestLoadout",true,false) == null,"test loadout button hidden on the floor")
+	check(scene.find_child("TownTestLoadout",true,false) == null and not s.equip_part(0,0,"BOMB"),"floor has no test button and forbids part edits")
 	scene.queue_free(); await process_frame

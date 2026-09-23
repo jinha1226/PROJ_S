@@ -69,14 +69,14 @@ func commit_hash() -> String:
 
 func spec_line(ex: Dictionary) -> String:
 	var spec: Dictionary = Arena.DEFAULT_SPEC
-	return "size %d · room %s · door %s · pillars %s · party_entry %s · light %d · supplies %s" % [spec.size,str(spec.room),str(spec.door),str(spec.pillars),str(spec.party_entry),spec.light,str(ex.supplies.map(func(v): return int(v)))]
+	return "size %d · room %s · door %s · pillars %s · party_entry %s · sight 5 · supplies %s" % [spec.size,str(spec.room),str(spec.door),str(spec.pillars),str(spec.party_entry),str(ex.supplies.map(func(v): return int(v)))]
 
 ## The hold reasons are read off the numbers, not written by hand: which rule
 ## failed which §6 clause, with the values that decided it.
 func holds(table: Array, verdicts: Dictionary, ex: Dictionary, deep: Array) -> Array:
 	var out: Array = ["## 보류 사유"]
 	if verdicts["candidate"] != "": out.append("후보가 나와도 걸린 규칙과 그 지점은 남긴다.")
-	var supply_cap: int = int(ex.supplies[0])+int(ex.supplies[5])
+	var supply_cap: int = int(ex.supplies[0])
 	for rule_id in ex.rules:
 		var v: Dictionary = verdicts[rule_id]
 		if v["pass"]: continue
@@ -118,7 +118,7 @@ func holds(table: Array, verdicts: Dictionary, ex: Dictionary, deep: Array) -> A
 			heal_bits.append("%s/`%s` 평균 %.2f개" % [rule_id,id,st.heals.mean])
 			before_bits.append("%s/`%s` %.1f" % [rule_id,id,st.before_first.mean])
 	out.append("회복품 사용은 상한 %d개에 대해 심부 솔로에서 %s에 그친다 — 물자가 모자라서 지는 것이 아니라 쓸 라운드가 오기 전에 HP가 사라진다." % [supply_cap,", ".join(heal_bits)])
-	out.append("첫 행동 이전에 들어오는 피해도 이제 측정한다(심부 솔로 평균 %s): 밝은 아레나에서는 0이므로 초반 집중 피해는 기습이 아니라 선공 후 적 라운드의 합에서 온다." % ", ".join(before_bits))
+	out.append("첫 행동 이전에 들어오는 피해도 이제 측정한다(심부 솔로 평균 %s): 고정 시야 아레나에서는 0이므로 초반 집중 피해는 선공 후 적 라운드의 합에서 온다." % ", ".join(before_bits))
 	return out
 
 func write_report(table: Array, verdicts: Dictionary, ex: Dictionary, seeds: Array, elapsed: int, quick: bool) -> void:

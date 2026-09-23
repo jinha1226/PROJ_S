@@ -55,6 +55,7 @@ static func harvest(s, taken: Array, dealt: Dictionary, counters: Dictionary) ->
 static func run_one(config: Dictionary, seed: int) -> Dictionary:
 	var size: int = config.party_size
 	var s = Session.new(seed,true,size > 1,true,size)
+	s.simulation_arena = true
 	s.rules_config = config.rules.duplicate()
 	apply_build(s,config.build)
 	# Manual probes only: replace the build's rule list with [[skill,target,when],...]
@@ -62,9 +63,8 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 	if config.has("rules_override"):
 		for actor in s.party: actor.rules = config.rules_override.map(func(r): return Rules.make_rule(r[0],r[1],r[2]))
 	var theme: Dictionary = Generator.theme("F1_RUINS")
-	# Light before apply(): apply() ends with observe(); ambush(), and in the
-	# dark the ambush must fire with the arena's own light level.
-	s.light = int(config.arena.get("light",90)); s.supplies = config.supplies.duplicate()
+	# Keep only the five run supplies; the arena shares the fixed sight rules.
+	s.supplies = config.supplies.slice(0,5).duplicate()
 	var cap: int = int(config.rules.get("solo_max_members",0)) if size == 1 else 0
 	Floor.apply(s,theme,Arena.layout(config.arena,theme,seed,cap))
 	# No stop events run here, so the arena opens the battle report itself.
@@ -80,9 +80,9 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 	var probe: Callable = config.get("probe",Callable())
 	var probing: bool = probe.is_valid()
 	var result := "TIMEOUT"
-	# Whatever apply()'s ambush already did happened before the hero acted.
+	# Harvest any setup effects before the first hero action.
 	harvest(s,taken,dealt,counters)
-	while s.phase == "BATTLE" and s.round_number <= int(config.max_rounds):
+	while s.on_floor() and s.round_number <= int(config.max_rounds):
 		steps += 1
 		if steps > int(config.max_rounds)*4: break
 		harvest(s,taken,dealt,counters)
@@ -104,7 +104,7 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 		if s.enemies.all(func(e): return e.hp <= 0):
 			result = "WIN"; break
 	harvest(s,taken,dealt,counters)
-	if s.phase != "BATTLE" and result != "WIN": result = "DEFEAT"
+	if s.phase == "DEFEAT" and result != "WIN": result = "DEFEAT"
 	# Every member's presses, whichever policy pressed them.
 	var skill_uses: Dictionary = {}
 	var guards := 0; var redirects := 0

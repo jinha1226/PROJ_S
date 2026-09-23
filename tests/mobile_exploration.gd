@@ -15,7 +15,7 @@ func run() -> void:
 	for frame in range(4): await process_frame
 	check(scene.root_layout.get_child(0).size.y < 70,"compact HUD height")
 	check(scene.find_child("Location",true,false).get_theme_font_size("font_size") >= 18,"location text enlarged")
-	check(scene.find_child("Funds",true,false).text == "자금\n%d" % scene.session.bank,"compact funds label shows actual bank")
+	check(scene.find_child("FoodLabel",true,false).text == "식량 %d" % scene.session.food,"compact food label shows actual supply")
 	var s = scene.session
 	var start: Vector2i = s.party[0].pos
 	var target := start+Vector2i(4,0)
@@ -56,21 +56,21 @@ func run() -> void:
 				check(board.cell_at(board.cell_center(p)) == p,"zoom-aware cell hit test")
 	scene.refresh(); await process_frame
 	check(scene.board.view_side == 24,"zoom survives HUD refresh")
-	var portrait = scene.portrait_buttons[1]
+	var portrait = scene.portrait_buttons[0]
 	var press := InputEventScreenTouch.new(); press.index = 0; press.pressed = true; press.position = portrait.get_global_rect().get_center()
 	scene._input(press); scene.portrait_gesture.started -= 601; scene.portrait_gesture.tick(scene)
 	press.pressed = false; scene._input(press)
-	check(scene.details_popup.visible and scene.tactics_actor == 1 and scene.reservation_actor == -1,"long hold opens correct status without reservation")
+	check(scene.details_popup.visible and scene.tactics_actor == 0 and scene.reservation_actor == -1,"long hold opens correct status without reservation")
 	scene.details_popup.hide(); press.pressed = true; scene._input(press); press.pressed = false; scene._input(press)
 	# Floor mode has no action reservations: a short tap only takes the camera there.
-	check(scene.reservation_actor == -1 and s.selected == 1,"short portrait tap selects the member instead of reserving")
+	check(scene.reservation_actor == -1 and s.selected == 0,"short portrait tap selects the member instead of reserving")
 	for i in range(60): s.message("기록 %d" % i)
 	scene.refresh(); await process_frame
-	var lines: Array = scene.find_child("RecentLog",true,false).find_children("*","Label",true,false)
-	check(lines.size() == 3 and lines[0].text == "기록 57" and lines[2].text == "기록 59","exactly three recent lines")
+	var recent: Button = scene.find_child("RecentLog",true,false)
+	check(recent != null and recent.text == "기록 59","latest event remains a concise log button")
 	var log_rect: Rect2 = scene.find_child("RecentLog",true,false).get_global_rect()
 	var field_rect: Rect2 = scene.board.get_global_rect()
-	check(log_rect.position.y < field_rect.end.y and field_rect.end.y-log_rect.position.y <= 20,"log overlaps bottom of game field slightly")
+	check(log_rect.position.y >= field_rect.end.y and log_rect.size.y >= 36,"log button sits below the field")
 	scene.show_logs(); await process_frame
 	var history: RichTextLabel = scene.log_popup.find_child("FullHistory",true,false)
 	check(history.text.contains("기록 0") and history.text.contains("기록 59"),"full log retains more than forty entries")

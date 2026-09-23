@@ -31,7 +31,7 @@ static func report(ui) -> void:
 	ui.button(list,"파츠·규칙 보기",func(): ui.show_character(0,"파츠"))
 	# A battle test ends where it began: back to the setup screen, or straight
 	# into the same fight again.
-	if ui.town_session != null:
+	if ui.mode_arena_active:
 		var again := HBoxContainer.new(); again.add_theme_constant_override("separation",4); list.add_child(again)
 		ui.button(again,"설정으로",ui.show_arena_setup)
 		ui.button(again,"다시",ui.start_arena)

@@ -24,7 +24,7 @@ func run() -> void:
 
 func config(members: Array, size: int, policy: String, rules: Dictionary) -> Dictionary:
 	var spec: Dictionary = Arena.DEFAULT_SPEC.duplicate(true); spec.members = members
-	return {"arena":spec,"party_size":size,"build":"melee_1","policy":policy,"rules":rules,"supplies":[1,0,0,0,0,1],"max_rounds":60}
+	return {"arena":spec,"party_size":size,"build":"melee_1","policy":policy,"rules":rules,"supplies":[1,0,0,0,0],"max_rounds":60}
 
 func runner() -> void:
 	check(Runner.wilson(0,10)[0] == 0.0 and absf(Runner.wilson(5,10)[0]-0.237) < 0.01 and absf(Runner.wilson(5,10)[1]-0.763) < 0.01,"wilson interval")
@@ -41,16 +41,15 @@ func runner() -> void:
 	check(capped.enemy_count == 2,"solo_max_members trims the arena roster")
 	var doubled: Dictionary = Runner.run_one(config(mixed,1,"tactical",{"solo_actions":2,"solo_max_members":0}),3)
 	check(doubled.enemy_count == 3 and doubled.player_actions >= doubled.rounds,"solo_actions 2 grants at least one action per round")
-	# Dark arena: apply()'s ambush gives the monster a free turn before the hero acts,
-	# which it now spends announcing its signature part.
-	var dark: Dictionary = Arena.DEFAULT_SPEC.duplicate(true)
-	dark.light = 20; dark.members = [{"species_id":"dcss_hobgoblin","role":"MELEE","pos":[9,6]}]
-	var ambush_seen := {"acted":false}
-	var ambushed: Dictionary = Runner.run_one({"arena":dark,"party_size":1,"build":"melee_1","policy":"tactical",
-		"rules":Session.DEFAULT_RULES,"supplies":[1,0,0,0,0,1],"max_rounds":60,
-		"probe":func(s,round_number): if round_number == 1 and not s.intents.is_empty(): ambush_seen.acted = true},7)
-	check(ambushed.damage_before_first_action > 0 or ambush_seen.acted,"the ambusher strikes or announces before the first action")
-	check(ambushed.enemy_skill_uses is Dictionary and ambushed.interrupts is int,"run_one reports enemy part uses and interrupts")
+	# Entering an arena reveals nearby monsters without a free ambush action.
+	var nearby: Dictionary = Arena.DEFAULT_SPEC.duplicate(true)
+	nearby.members = [{"species_id":"dcss_hobgoblin","role":"MELEE","pos":[9,6]}]
+	var seen := {"enemy":false}
+	var started: Dictionary = Runner.run_one({"arena":nearby,"party_size":1,"build":"melee_1","policy":"tactical",
+		"rules":Session.DEFAULT_RULES,"supplies":[1,0,0,0,0],"max_rounds":60,
+		"probe":func(s,round_number): if round_number == 1 and not s.combat_enemies().is_empty(): seen.enemy = true},7)
+	check(started.damage_before_first_action == 0 and seen.enemy,"nearby enemy is seen before first action, without ambush")
+	check(started.enemy_skill_uses is Dictionary and started.interrupts is int,"run_one reports enemy part uses and interrupts")
 	var many: Dictionary = Runner.run_many(config(hob,1,"tactical",Session.DEFAULT_RULES),range(100,120))
 	check(many.samples == 20 and many.results.has("WIN") and many.win_rate >= 0.0 and many.win_ci.size() == 2,"run_many aggregates")
 	check(many.has("damage_wins_per_member") and many.has("guards") and many.has("before_first"),"run_many reports per-member win damage, guards and before_first")
@@ -73,7 +72,7 @@ func rules_and_party() -> void:
 	solo.rules_config = {"solo_actions":2,"solo_max_members":0}
 	check(solo.action_budget(solo.party[0]) == 2,"solo_actions 2 doubles the budget")
 	var duo = Session.new(731,true,true,true,2); duo.rules_config = {"solo_actions":2,"solo_max_members":0}; duo.depart()
-	check(duo.action_budget(duo.party[0]) == 1,"solo_actions never applies to a party")
+	check(duo.action_budget(duo.party[0]) == 2,"solo_actions never changes a party member's normal budget")
 	# Two actions before the round advances.
 	var c := Fixture.arena(solo,6)
 	solo.party[0].ap = solo.action_budget(solo.party[0])
@@ -93,7 +92,7 @@ func arena_layout() -> void:
 	var spec: Dictionary = Arena.DEFAULT_SPEC.duplicate(true)
 	spec.members = [{"species_id":"dcss_hobgoblin","role":"MELEE"},{"species_id":"goblin","role":"RANGED"}]
 	var layout: Dictionary = Arena.layout(spec,theme)
-	for key in ["size","seed","theme_id","depth","terrain","rooms","edges","entry","relic","features","encounters","stats"]:
+	for key in ["size","seed","theme_id","depth","terrain","rooms","edges","entry","stairs","features","encounters","stats"]:
 		check(layout.has(key),"arena layout carries %s" % key)
 	check(layout.size == 20 and layout.terrain.size() == 400,"arena is 20x20")
 	check(layout.terrain[4*20+9] == "stone" and layout.terrain[5*20+9] == "stone","door and entry are floor")
@@ -103,13 +102,15 @@ func arena_layout() -> void:
 	for m in layout.encounters[0].members:
 		check(m.has("pos") and m.has("max_health") and m.has("display_name") and Rect2i(5,5,9,9).has_point(m.pos),"member placed inside the room")
 		check(maxi(absi(m.pos.x-9),absi(m.pos.y-4)) >= 3,"member three cells from the door")
-	check(layout.relic == Vector2i(-1,-1) and layout.entry == Vector2i(9,5) and layout.features.is_empty(),"no relic or features")
+	check(layout.stairs == Vector2i(-1,-1) and layout.entry == Vector2i(9,5) and layout.features.is_empty(),"arena has no stairs or features")
 	var s = Session.new(5,true,false,true,1)
 	Floor.apply(s,theme,layout)
-	check(s.BOARD_SIDE == 20 and s.tiles.size() == 400 and s.phase == "BATTLE","apply consumes the arena")
+	check(s.BOARD_SIDE == 20 and s.tiles.size() == 400 and s.on_floor(),"apply consumes the arena")
 	check(s.enemies.size() == 2 and s.enemies[0].role == "MELEE" and s.enemies[1].role == "RANGED","enemies configured with their roles")
-	check(s.party[0].pos == Vector2i(9,5) and s.objective.is_empty(),"party at entry, no objective")
+	check(s.party[0].pos == Vector2i(9,5) and s.floor_state.layout.stairs == Vector2i(-1,-1),"party at entry, no stairs")
 	check(s.floor_state.visible.has(s.party[0].pos),"observation ran")
+	Session.arena_contact(s)
+	check(s.phase == "BATTLE","battle trial starts when the arena party reaches contact")
 	var same = Session.new(5,true,false,true,1); Floor.apply(same,theme,Arena.layout(spec,theme,1))
 	check(same.enemies.map(func(e): return e.pos) == s.enemies.map(func(e): return e.pos),"arena placement deterministic for one seed")
 	# Different seeds must move the roster: the seed is what the confidence interval samples over.
@@ -126,17 +127,17 @@ func arena_layout() -> void:
 	check(spotted,"approach step brings the enemy into view")
 	# The normal floor still builds through apply.
 	var normal = Session.new(731,true,false,true,1); normal.depart()
-	check(normal.BOARD_SIDE == 64 and not normal.objective.is_empty(),"build() still generates the real floor")
+	check(normal.BOARD_SIDE == 80 and normal.floor_state.layout.stairs != Vector2i(-1,-1),"build() generates an 80x80 floor with stairs")
 
 func rules_policy() -> void:
 	var hob := [{"species_id":"dcss_hobgoblin","role":"MELEE"}]
-	var cfg: Dictionary = config(hob,1,"rules",Session.DEFAULT_RULES); cfg.build = "b_strike"; cfg.supplies = [0,0,0,0,0,0]
+	var cfg: Dictionary = config(hob,1,"rules",Session.DEFAULT_RULES); cfg.build = "b_strike"; cfg.supplies = [0,0,0,0,0]
 	var one: Dictionary = Runner.run_one(cfg,11)
 	check(one.result == "WIN" and one.skill_uses.get("HEAVY_STRIKE",0) >= 1,"rules policy uses the equipped strike (%s)" % [one.skill_uses])
 	check(one == Runner.run_one(cfg,11),"rules policy deterministic")
 	# cfg stays on b_strike: cfg2 below carries the dressing build, and run_many(cfg) averages strikes.
 	var mixed := [{"species_id":"dcss_hobgoblin","role":"MELEE"},{"species_id":"goblin","role":"RANGED"},{"species_id":"kobold","role":"MELEE"}]
-	var cfg2: Dictionary = config(mixed,1,"rules",Session.DEFAULT_RULES); cfg2.build = "b_dressing"; cfg2.supplies = [0,0,0,0,0,0]
+	var cfg2: Dictionary = config(mixed,1,"rules",Session.DEFAULT_RULES); cfg2.build = "b_dressing"; cfg2.supplies = [0,0,0,0,0]
 	var two: Dictionary = Runner.run_one(cfg2,11)
 	check(two.skill_uses.get("FIELD_DRESSING",0) >= 1,"dressing build heals at least once in a long fight (%s)" % [two.skill_uses])
 	var many: Dictionary = Runner.run_many(cfg,range(1,11))
@@ -147,6 +148,6 @@ func rules_policy() -> void:
 	# The `early_hob` arena of the balance matrix, three members, rules policy:
 	# the hobgoblin must actually land its signature part over the seed set, or
 	# every enemy-usage gate downstream is measuring an idle monster.
-	var trio: Dictionary = config(hob,3,"rules",Session.DEFAULT_RULES); trio.supplies = [0,0,0,0,0,0]
+	var trio: Dictionary = config(hob,3,"rules",Session.DEFAULT_RULES); trio.supplies = [0,0,0,0,0]
 	var trio_many: Dictionary = Runner.run_many(trio,range(200,220))
 	check(float(trio_many.enemy_skill_uses_mean.get("HOB_CLUB",0.0)) > 0.0,"the hobgoblin uses HOB_CLUB against a trio (%s)" % [trio_many.enemy_skill_uses_mean])

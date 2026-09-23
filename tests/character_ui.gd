@@ -8,6 +8,7 @@ func run() -> void:
 	# Default play is solo; this test covers the companion character sheets.
 	scene.session = scene.Session.new(731,true,true,true); root.add_child(scene)
 	await process_frame
+	scene.session.phase = "CAMP"
 	var actor: Dictionary = scene.session.party[0]
 	var presentation = preload("res://expedition/body_presentation.gd")
 	var snapshot: Dictionary = actor.body.to_dict().duplicate(true)
@@ -65,15 +66,15 @@ func run() -> void:
 	check(scene.modal_content.find_children("PartSlot*","PanelContainer",true,false).size() == 2,"one card per slot, not per rule")
 	for frame in range(3): await process_frame
 	check(scene.modal_content.find_children("*","Button",true,false).all(func(b): return not b.text.begins_with("사용 방침") and not b.text.begins_with("자동 ")),"the slot card carries no rule policy and no auto toggle")
-	# Town equipping goes through the chooser the card opens.
-	scene.session.phase = "TOWN"
+	# Camp equipping goes through the chooser the card opens.
+	scene.session.phase = "CAMP"
 	check(scene.session.unequip_part(1,0) and scene.session.parts_bag.BOMB == 1,"unequipping returns the part to the bag")
 	scene.show_character(1,"파츠")
 	for frame in range(3): await process_frame
 	scene.CharacterUI.replace(scene,0)
 	for frame in range(3): await process_frame
 	var picks: Array = scene.item_detail.find_children("*","Button",true,false).filter(func(b): return b.text == "폭탄 투척 ×1")
-	check(picks.size() == 1 and not picks[0].disabled,"the chooser offers the bagged part in town")
+	check(picks.size() == 1 and not picks[0].disabled,"the chooser offers the bagged part in camp")
 	picks[0].pressed.emit()
 	for frame in range(3): await process_frame
 	check(scene.session.party[1].equipped_abilities[0] == "BOMB","the chooser equips into the chosen slot")

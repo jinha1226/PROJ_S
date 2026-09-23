@@ -10,7 +10,7 @@ func rng(seed_value: int) -> RandomNumberGenerator:
 func run() -> void:
 	var theme: Dictionary = Generator.theme("F1_RUINS")
 	check(theme.monsters.max_members == 2,"first floor explicitly caps encounter actions at two enemies")
-	check(theme.size == 64 and theme.depth == 1,"theme loads")
+	check(theme.size == 80 and theme.depth == 1,"theme loads")
 	check(Generator.theme("nope").is_empty(),"unknown theme is empty")
 	await rooms_and_graph(theme)
 	await corridors_and_paint(theme)
@@ -35,13 +35,13 @@ func rooms_and_graph(theme: Dictionary) -> void:
 			for j in range(i+1,rooms.size()):
 				check(not a.grow(1).intersects(Generator.outer(rooms[j].rect)),"rooms keep two wall cells apart (seed %d)" % seed_value)
 			if rooms[i].kind == "fight":
-				check(rooms[i].rect.size.x >= 9 and rooms[i].rect.size.y >= 9 and rooms[i].rect.size.x <= 12 and rooms[i].rect.size.y <= 10,"fight room size")
+				check(rooms[i].rect.size.x >= 10 and rooms[i].rect.size.y >= 10 and rooms[i].rect.size.x <= 13 and rooms[i].rect.size.y <= 11,"fight room size")
 			elif rooms[i].kind == "plain":
-				check(rooms[i].rect.size.x >= 5 and rooms[i].rect.size.y >= 5 and rooms[i].rect.size.x <= 8 and rooms[i].rect.size.y <= 7,"plain room size")
+				check(rooms[i].rect.size.x >= 6 and rooms[i].rect.size.y >= 6 and rooms[i].rect.size.x <= 9 and rooms[i].rect.size.y <= 8,"plain room size")
 			else:
 				check(rooms[i].rows.size() == rooms[i].rect.size.y+2,"template rect matches rotated rows")
 		var entry: Rect2i = rooms[Generator.room_index(rooms,"entry_camp")].rect
-		var relic: Rect2i = rooms[Generator.room_index(rooms,"relic_vault")].rect
+		var relic: Rect2i = rooms[Generator.room_index(rooms,"descent")].rect
 		check(entry.position.x < theme.size/3 and relic.position.x > theme.size*2/3-relic.size.x,"entry west, relic east")
 		var edges: Array = Generator.build_graph(rooms,theme,rng(seed_value))
 		check(edges.size() >= rooms.size()-1+theme.corridor.extra_links[0] and edges.size() <= rooms.size()-1+theme.corridor.extra_links[1],"spanning tree plus extra links (seed %d: %d edges for %d rooms)" % [seed_value,edges.size(),rooms.size()])
@@ -141,7 +141,7 @@ func full_layouts(theme: Dictionary) -> void:
 		var optional: Array = layout.encounters.filter(func(e): return not e.mandatory)
 		check(mandatory.size() >= 2 and mandatory.size() <= 3,"two or three mandatory encounters (seed %d: %d)" % [seed_value,mandatory.size()])
 		check(optional.size() >= 1 and optional.size() <= 2,"one or two optional encounters (seed %d: %d)" % [seed_value,optional.size()])
-		var relic_room: int = Generator.room_index(layout.rooms,"relic_vault")
+		var relic_room: int = Generator.room_index(layout.rooms,"descent")
 		check(mandatory.any(func(e): return e.room == relic_room and e.tier == "deep"),"relic vault holds a deep mandatory encounter")
 		# Blocking every mandatory room cuts entry from relic: no route skips them all.
 		var blocked: Dictionary = {}
@@ -174,17 +174,21 @@ func full_layouts(theme: Dictionary) -> void:
 			kinds[key] = int(kinds.get(key,0))+1
 			var in_room: bool = layout.rooms.any(func(r): return r.rect.has_point(p))
 			check(in_room,"feature %s inside a room, never a corridor (seed %d)" % [key,seed_value])
-		check(kinds.get("entry",0) == 1 and kinds.get("relic",0) == 1 and kinds.get("altar",0) == 1,"one entry, relic and altar")
-		check(kinds.get("curio/LOCKED_CHEST",0) >= theme.curios.locked_chest[0] and kinds.get("curio/LOCKED_CHEST",0) <= theme.curios.locked_chest[1],"chest count in theme range (%d)" % kinds.get("curio/LOCKED_CHEST",0))
-		check(kinds.get("curio/DIRT_PILE",0) >= theme.curios.dirt_pile[0] and kinds.get("curio/DIRT_PILE",0) <= theme.curios.dirt_pile[1],"dirt count in theme range (%d)" % kinds.get("curio/DIRT_PILE",0))
-		check(kinds.get("camp",0) >= 1 and kinds.get("camp",0) <= 2,"one or two camps")
+		check(kinds.get("entry",0) == 1 and kinds.get("stairs",0) == 1 and kinds.get("altar",0) == 1,"one entry, stairs and altar")
+		check(kinds.get("curio/BROKEN_CHEST",0) >= theme.curios.broken_chest[0] and kinds.get("curio/BROKEN_CHEST",0) <= theme.curios.broken_chest[1],"chest count in theme range (%d)" % kinds.get("curio/BROKEN_CHEST",0))
+		check(kinds.get("curio/MUSHROOMS",0) >= theme.curios.mushrooms[0] and kinds.get("curio/MUSHROOMS",0) <= theme.curios.mushrooms[1],"dirt count in theme range (%d)" % kinds.get("curio/MUSHROOMS",0))
+		check(kinds.get("camp",0) == 1,"entry camp marker only")
+		for id in ["supply_cache","dead_adventurer"]:
+			var n: int = int(kinds.get("curio/"+id.to_upper(),0))
+			check(n >= theme.curios[id][0] and n <= theme.curios[id][1],"%s count in theme range" % id)
+		check(layout.npc_rooms.size() >= 3 and layout.npc_rooms.size() <= 5,"NPC rooms reserved")
 		for p in layout.features:
 			var f: Dictionary = layout.features[p]
 			if f.kind in ["curio","altar"]:
 				var owner: Dictionary = layout.rooms.filter(func(r): return r.rect.has_point(p))[0]
 				check(not owner.spine or owner.kind == "template","procedurally placed rewards stay off the spine (seed %d)" % seed_value)
 				check(layout.encounters.all(func(e): return e.room != owner.id) or owner.template_id == "collapsed_store","chests and dirt avoid fight rooms unless the template carries them")
-		check(layout.stats.relic_distance >= layout.stats.max_distance*60/100,"relic far from entry (seed %d: %d of %d)" % [seed_value,layout.stats.relic_distance,layout.stats.max_distance])
+		check(layout.stats.stairs_distance >= layout.stats.max_distance*60/100,"stairs far from entry (seed %d: %d of %d)" % [seed_value,layout.stats.stairs_distance,layout.stats.max_distance])
 		var reach: Dictionary = Generator.reachable_from(layout.terrain,size,layout.entry)
 		for p in layout.features:
 			var adjacent := reach.has(p)
@@ -195,16 +199,16 @@ func full_layouts(theme: Dictionary) -> void:
 		check(again.terrain == layout.terrain,"same seed regenerates the same terrain (seed %d)" % seed_value)
 		check(again.features == layout.features,"same seed regenerates the same features (seed %d)" % seed_value)
 		check(again.encounters == layout.encounters,"same seed regenerates the same encounters (seed %d)" % seed_value)
-		check(again.entry == layout.entry and again.relic == layout.relic,"same seed regenerates the same entry and relic (seed %d)" % seed_value)
+		check(again.entry == layout.entry and again.stairs == layout.stairs,"same seed regenerates the same entry and stairs (seed %d)" % seed_value)
 		check(again.edges == layout.edges,"same seed regenerates the same edges (seed %d)" % seed_value)
 	print("regenerations over 100 seeds: %d" % total_regenerations)
 	check(total_regenerations <= 150,"regeneration is rare enough")
 	print("generate() over 100 seeds: min %.1f ms, avg %.1f ms, max %.1f ms" % [min_usec/1000.0,sum_usec/100000.0,max_usec/1000.0])
 	var blank: Dictionary = Generator.empty_layout(theme,0,1)
-	for key in ["size","seed","theme_id","depth","terrain","rooms","edges","entry","relic","features","encounters","stats"]:
+	for key in ["size","seed","theme_id","depth","terrain","rooms","edges","entry","stairs","features","encounters","stats"]:
 		check(blank.has(key),"empty_layout carries the %s key" % key)
 	check(blank.terrain.size() == size*size and blank.terrain.all(func(c): return c == "wall"),"empty_layout is all wall")
 	check(blank.rooms.is_empty() and blank.edges.is_empty() and blank.encounters.is_empty() and blank.features.is_empty(),"empty_layout places nothing")
-	check(blank.entry == Vector2i(-1,-1) and blank.relic == Vector2i(-1,-1),"empty_layout has no entry or relic")
+	check(blank.entry == Vector2i(-1,-1) and blank.stairs == Vector2i(-1,-1),"empty_layout has no entry or stairs")
 	check(int(blank.stats.regenerations) == Generator.MAX_REGENERATIONS,"empty_layout reports a spent regeneration budget")
 	check(not Generator.validate(blank,theme).is_empty(),"empty_layout never validates")

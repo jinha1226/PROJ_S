@@ -4,7 +4,6 @@ extends SceneTree
 ## the round reset and the two UI paths (party and solo).
 const Session = preload("res://expedition/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
-const MapFixture = preload("res://tests/map_fixture.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
 const Tactics = preload("res://expedition/tactical_action_selector.gd")
 const MonsterAI = preload("res://expedition/monster_ai.gd")
@@ -22,6 +21,7 @@ func _initialize() -> void: call_deferred("run")
 func arena(size: int = 3, foes: int = 0) -> Dictionary:
 	var s = Session.new(731,true,size > 1,true,size); s.depart()
 	var c := Fixture.arena(s,8)
+	s.simulation_arena = true; s.phase = "BATTLE"
 	Fixture.equip_basics(s)
 	s.selected = 0
 	s.intents.clear()
@@ -47,7 +47,7 @@ func run() -> void:
 	expiry()
 	dead_protector()
 	mutual_guard()
-	darkness_bonus()
+	fixed_intent()
 	victory_clears()
 	await user_interface()
 	print("Protect: %d checks, %d failures" % [checks,failures])
@@ -118,19 +118,17 @@ func mutual_guard() -> void:
 	check(f.s.member_stats(f.s.party[0].id).covers == 0,"a hit that never moved is not counted as a redirect")
 	check(not f.s.log_lines.any(func(line): return line.contains("대신 맞습니다")),"a hit that never moved is not logged as a redirect")
 
-## ALLY_LETHAL must read the wind-up at the damage it will actually land for:
-## on the floor MonsterAI adds the darkness bonus when the spell resolves.
-func darkness_bonus() -> void:
+## ALLY_LETHAL reads the announced damage with the fixed-sight combat rules.
+func fixed_intent() -> void:
 	var f := arena(3,1)
-	f.s.light = 10
-	check(f.s.floor_state.enemy_bonus(f.s.light) == 2,"the arena is dark enough to matter")
-	f.ally.hp = 15
+	check(f.s.floor_state.sight_radius() == 5.0,"the arena uses fixed sight")
+	f.ally.hp = 14
 	f.s.intents = [{"id":f.foes[0].id,"cell":f.ally.pos,"damage":14}]
 	f.foes[0].hp = 0
-	check(Rules.lethal_threat(f.s,f.ally) == 16,"the announced 14 lands as 16 in the dark")
+	check(Rules.lethal_threat(f.s,f.ally) == 14,"the announced 14 remains 14")
 	for actor in f.s.party: actor.rules = [Rules.make_rule("GUARD","ALLY","ALLY_LETHAL")]
 	var choice: Dictionary = Tactics.choose(f.s,f.hero)
-	check(choice.kind == "GUARD" and choice.cell == f.ally.pos,"엄호 fires on a wind-up only the darkness makes lethal")
+	check(choice.kind == "GUARD" and choice.cell == f.ally.pos,"엄호 fires on a lethal wind-up")
 
 func dead_protector() -> void:
 	var f := arena(3,0)
@@ -141,26 +139,29 @@ func dead_protector() -> void:
 	check(f.ally.hp == ally_hp-10,"a fallen protector redirects nothing")
 	check(f.s.member_stats(f.s.party[0].id).covers == 0,"no redirect is counted for a fallen protector")
 
-## Room mode: clearing the room returns from end_round() before the per-round
-## reset, so the release of the round's guards has to happen ahead of it.
+## Clearing nearby foes on the continuous floor releases round guards.
 func victory_clears() -> void:
-	var s = Session.new(731,false,false,false,3); s.depart()
-	MapFixture.reach(s,MapFixture.kind_id(s,"battle"))
+	var s = Session.new(731,false,true,true,3); s.depart()
+	Fixture.arena(s,8); Fixture.equip_basics(s)
 	s.selected = 0
 	var hero: Dictionary = s.party[0]
 	var ally: Dictionary = s.party[1]
 	ally.pos = hero.pos+Vector2i(1,0)
+	var foe: Dictionary = s.enemies[0]
+	foe.hp = 10; foe.pos = hero.pos+Vector2i(2,0); s.floor_state.observe(s)
 	check(s.act("GUARD",ally.pos),"엄호 before the last foe falls")
 	for enemy in s.enemies: enemy.hp = 0
-	check(s.end_round() and s.phase == "EXPLORE","the room is cleared by the round's end")
+	s.floor_state.observe(s)
+	check(s.end_round() and s.phase == "EXPLORE" and s.floor_state.safe(s),"the nearby fight clears by the round's end")
 	check(ally.protected_by == -1 and not hero.guarded,"a cleared room does not carry 엄호 out of battle")
 
 func user_interface() -> void:
 	var scene = load("res://expedition/main.tscn").instantiate()
 	scene.session = Session.new(731,true,true,true,3)
+	scene.session.depart()
 	root.size = Vector2i(390,844); root.add_child(scene)
-	scene.depart()
 	var c := Fixture.arena(scene.session,8)
+	scene.session.simulation_arena = true; scene.session.phase = "BATTLE"
 	Fixture.equip_basics(scene.session)
 	scene.session.selected = 0
 	for actor in scene.session.party: actor.ap = 0
@@ -169,16 +170,15 @@ func user_interface() -> void:
 	for frame in range(3): await process_frame
 	var hero: Dictionary = scene.session.party[0]
 	var ally: Dictionary = scene.session.party[1]
-	scene.choose_skill(0,1)
-	check(scene.mode == "GUARD" and scene.notice == "엄호 · 인접 아군 선택","the slot asks for an ally, not a cell")
-	scene.on_cell(ally.pos)
-	check(ally.protected_by == hero.id and hero.guarded,"the UI path performs 엄호")
+	check(scene.skill_buttons.is_empty(),"auto-battle HUD has no manual skill row")
+	scene.run_action(func(): return scene.session.act("GUARD",ally.pos))
+	check(ally.protected_by == hero.id and hero.guarded,"the session guard action works through the UI update path")
 	scene.queue_free()
 	await process_frame
 	var solo = load("res://expedition/main.tscn").instantiate()
 	solo.session = Session.new(731,true,false,true,1)
+	solo.session.depart()
 	root.add_child(solo)
-	solo.depart()
 	Fixture.arena(solo.session,8)
 	Fixture.equip_basics(solo.session)
 	solo.refresh()

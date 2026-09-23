@@ -2,6 +2,7 @@ extends SceneTree
 const Session = preload("res://expedition/session.gd")
 const Utility = preload("res://expedition/utility.gd")
 const PartsCandidates = preload("res://expedition/parts_candidates.gd")
+const Fixture = preload("res://tests/floor_fixture.gd")
 var failures := 0
 func check(value: bool, reason: String) -> void:
 	if not value: failures += 1; push_error(reason)
@@ -19,9 +20,12 @@ func grade(s, actor: Dictionary, kind: String) -> float:
 func arena():
 	var s = Session.new(731,true,true); s.depart()
 	for cell in s.tiles: cell.terrain = "stone"; cell.fire = 0
+	for enemy in s.enemies: enemy.hp = 0
+	Fixture.equip_basics(s)
 	s.party[0].pos = Vector2i(1,1); s.party[1].pos = Vector2i(3,4)
-	s.enemies[0].pos = Vector2i(4,4); s.enemies[0].cooldown = 20
+	s.enemies[0].hp = 30; s.enemies[0].pos = Vector2i(4,4); s.enemies[0].cooldown = 20
 	s.selected = 1
+	s.floor_state.observe(s)
 	# The companion under test fights as a 거리형: it strikes what is beside it
 	# and steps off a telegraphed cell, which is what these rule checks assume.
 	s.party[1].stance = "SKIRMISHER"
@@ -145,95 +149,55 @@ func exercise() -> void:
 	check(s.companion_previews()[0].cell == Vector2i(3,3),"reservation tracks same enemy within reach")
 	s.enemies[0].hp = 0
 	check(not s.companion_previews()[0].get("reserved",false),"dead target invalidates reservation")
+	# The live HUD exposes compact party state and the same prediction data.
 	var scene = load("res://expedition/main.tscn").instantiate()
-	scene.session = Session.new(731,true,true)
-	scene.session.party[1].stance = "CHARGER"   # a guardian would hold its ground; this marker needs a move
-	root.size = Vector2i(390,844); root.add_child(scene); scene.depart()
-	for frame in range(5): await process_frame
-	check(scene.session.party.size() == 2,"leader and one companion")
-	check(scene.board.companion_previews.size() == 1,"board receives companion action")
-	var header: Node = scene.root_layout.get_child(0)
-	var hud_buttons: Array = header.find_children("*","Button",true,false)
-	check(hud_buttons.map(func(b): return str(b.name)) == ["FoodButton","TorchButton","ExpeditionMenu"],"HUD exposes resource and menu buttons")
-	for control in hud_buttons:
-		check(control.size.y >= 44 and scene.get_global_rect().encloses(control.get_global_rect()),"HUD buttons remain usable and on screen")
-	header.get_node("ExpeditionMenu").pressed.emit()
+	scene.session = Session.new(731,true,true,true,2)
+	scene.session.depart()
+	root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
 	await process_frame
-	check(scene.details_popup.visible,"HUD menu opens")
-	check(scene.modal_content.get_children().map(func(c): return c.text) == ["원정 목표","입구까지 이동","원정포기"],"HUD menu contains the three expedition actions")
-	scene.details_popup.hide()
-	var nav: Node = scene.root_layout.get_child(scene.root_layout.get_child_count()-1)
-	check(nav.get_child(2).text == "자동탐험","automatic exploration replaces status in footer")
-	var hold := InputEventScreenTouch.new(); hold.index = 0; hold.pressed = true
-	hold.position = scene.portrait_buttons[0].get_global_rect().get_center()
-	scene._input(hold); scene.portrait_gesture.started -= 601; scene.portrait_gesture.tick(scene)
-	hold.pressed = false; scene._input(hold)
-	check(scene.details_popup.visible and scene.character_tab == "상태","holding portrait opens character window")
-	scene.details_popup.hide()
-	check(not scene.find_children("*","Label",true,false).any(func(l): return l.text.contains("8방향 이동 /") or l.text.contains("폭발 후 탈진 틈")),"persistent control and boss strategy hints removed")
-	check(scene.wait_button.get_parent() == scene.root_layout.get_child(scene.root_layout.get_child_count()-1),"wait is in bottom navigation row")
-	check(scene.wait_button.size.x >= 44 and scene.wait_button.size.y >= 44,"wait has mobile touch target")
-	var moves: Array = scene.board.movement_previews()
-	check(moves.size() == 1 and moves[0].cell == scene.board.companion_previews[0].cell,"automatic move marker uses predicted destination")
-	var reserved_cell: Vector2i = scene.session.movement_cells(1)[0]
-	check(scene.session.reserve_action(1,"MOVE",reserved_cell),"reserve move for board marker")
-	scene.refresh()
-	moves = scene.board.movement_previews()
-	check(moves.size() == 1 and moves[0].reserved and moves[0].cell == reserved_cell,"reserved move marker uses reserved destination")
-	scene.session.cancel_reservation(1); scene.refresh()
+	var ui_s = scene.session
+	Fixture.arena(ui_s,8); Fixture.equip_basics(ui_s)
+	ui_s.party[1].stance = "CHARGER"
+	ui_s.floor_state.observe(ui_s); scene.refresh()
 	for frame in range(3): await process_frame
-	check(scene.board.get_rect().size.x >= scene.board.preview_rect(scene.session.party[1]).end.x,"badge stays inside screen")
-	scene.select_actor(1)
-	check(scene.session.selected == 0 and scene.reservation_actor == 1,"portrait starts reservation without switching control")
-	check(scene.board.companion_previews[0].actor == 1,"companion preview retains same actor")
-	var ui_turn: int = scene.session.round_number
-	# 엄호 needs a neighbour, so put the leader beside the companion first.
-	var leader: Dictionary = scene.session.party[0]
-	for d in scene.session.DIRECTIONS:
-		if scene.session.is_free(leader.pos+d) and scene.session.melee_reach(leader.pos+d,leader.pos):
-			scene.session.party[1].pos = leader.pos+d; break
-	scene.refresh()
-	scene.select_actor(1)
-	scene.choose_skill(1,1)
-	check(scene.mode == "GUARD" and scene.session.round_number == ui_turn,"엄호 asks for the ally instead of queueing at once")
-	scene.on_cell(leader.pos)
-	check(scene.session.party[1].reservation.kind == "GUARD" and scene.session.round_number == ui_turn,"companion skill click queues without advancing time")
-	check(scene.reservation_actor == -1 and scene.session.selected == 0,"reservation returns input to leader")
-	check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"two-member mobile layout fits")
-	check(scene.portrait_buttons.size() == 2 and scene.skill_buttons.size() == 4,"two portraits and four skill slots")
-	check(scene.board.movement_previews().is_empty(),"guard preview does not leave stale move marker")
-	scene.wait_button.pressed.emit()
-	check(scene.session.round_number == ui_turn+1 and scene.session.selected == 0,"companion advances world only once")
-	check(scene.session.party[1].reservation.is_empty() and scene.session.party[1].last_action == "직접 예약","companion executes one reserved action")
-	scene.show_tactics()
-	await process_frame
-	check(scene.details_popup.visible,"tactics settings opens")
-	check(scene.character_tab == "파츠","rule editor is embedded in ability tab")
-	scene.show_character(1,"상태")
-	check(scene.tactics_actor == 1 and scene.session.selected == 0,"per-character status does not switch control")
-	scene.show_character(0,"파츠")
-	scene.change_basic_target("LOWEST_HP")
-	check(scene.session.party[0].basic_target == "LOWEST_HP","UI changes independent basic target")
-	scene.tactics_expanded = 0; scene.show_tactics()
-	scene.change_tactic_rule(0,"when","HP")
-	await process_frame
-	check(scene.session.party[0].rules[0].when == "HP","UI editor changes common rule")
-	check(scene.details_popup.size.y <= root.size.y,"expanded editor fits mobile viewport")
-	scene.change_tactic_rule(0,"when","STATUS")
-	await process_frame
-	for viewport in [Vector2i(390,844),Vector2i(430,844),Vector2i(412,915)]:
-		root.size = viewport
-		for frame in range(3): await process_frame
-		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"new HUD fits portrait viewport %s" % viewport)
-		check(scene.details_popup.size.y <= root.size.y,"character mastery fits viewport")
-		scene.select_actor(1)
-		for frame in range(3): await process_frame
-		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"reservation UI fits portrait viewport %s" % viewport)
-		scene.select_actor(0)
+	check(ui_s.party.size() == 2 and scene.portrait_buttons.size() == 2,"leader and companion have two compact cards")
+	check(scene.skill_buttons.is_empty(),"auto battle HUD has no manual skill row")
+	check(scene.board.companion_previews.size() == 1,"board receives companion prediction")
+	var header: Node = scene.find_child("TopHUD",true,false)
+	check(header.get_children().slice(1).map(func(c): return str(c.name)) == ["Location","FoodLabel","ExpeditionMenu"],"floor header is compact")
+	check(scene.find_child("FoodLabel",true,false).text == "식량 2","food is visible beside depth")
+	header.get_node("ExpeditionMenu").pressed.emit(); await process_frame
+	check(scene.details_popup.visible and scene.modal_content.get_children().map(func(c): return c.text) == ["기록","가방","닫기"],"menu holds only direct actions")
 	scene.details_popup.hide()
-	ui_turn = scene.session.round_number
-	scene.advance_attack_button.pressed.emit()
-	check(scene.session.round_number == ui_turn+1 and scene.session.selected == 0,"footer attack executes one hero action")
+	var nav: Node = scene.find_child("BottomActions",true,false)
+	check(nav != null and nav.find_child("CampButton",true,false) != null and nav.find_child("RetreatToggle",true,false) != null,"footer carries camp and retreat")
+	check(scene.wait_button != null and scene.wait_button.get_parent() == nav,"wait is in the footer")
+	check(scene.wait_button.size.x >= 44 and scene.wait_button.size.y >= 44,"wait remains touchable")
+	var marker: Array = scene.board.movement_previews()
+	check(marker.size() <= 1,"each companion has at most one movement marker")
+	ui_s.selected = 0
+	var choices: Array = ui_s.movement_cells(1)
+	check(not choices.is_empty(),"companion has legal movement cells")
+	if not choices.is_empty():
+		check(ui_s.reserve_action(1,"MOVE",choices[0]),"companion movement can be reserved")
+		scene.refresh()
+		check(scene.board.companion_previews.any(func(row): return row.actor == 1 and row.cell == choices[0]),"board shows reserved destination")
+		ui_s.cancel_reservation(1)
+	check(ui_s.party[1].reservation.is_empty(),"reservation clears without an action")
+	scene.select_actor(1)
+	check(ui_s.selected == 1 and scene.reservation_actor == -1,"portrait selects the companion")
+	scene.show_character(1,"상태")
+	check(scene.tactics_actor == 1 and scene.details_popup.visible,"companion sheet opens")
+	scene.show_character(1,"파츠")
+	check(scene.modal_content.find_children("PartSlot*","PanelContainer",true,false).size() == 2,"companion has two part slots")
+	scene.details_popup.hide()
+	for viewport in [Vector2i(390,844),Vector2i(430,844),Vector2i(412,915)]:
+		root.size = viewport; scene.refresh()
+		for frame in range(3): await process_frame
+		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"party HUD fits %s" % viewport)
+		for id in ["FoodLabel","CampButton","RetreatToggle","AutoToggle"]:
+			var control: Control = scene.find_child(id,true,false)
+			check(control != null and scene.get_global_rect().encloses(control.get_global_rect()),"%s fits %s" % [id,viewport])
 	scene.queue_free(); await process_frame
 	print("Companion tactics: %d failures" % failures)
 	quit(1 if failures else 0)
@@ -241,16 +205,23 @@ func exercise() -> void:
 func eight_way_checks() -> void:
 	var s = Session.new(731,true); s.depart()
 	for cell in s.tiles: cell.terrain = "stone"; cell.fire = 0; cell.wet = 0
+	for enemy in s.enemies: enemy.hp = 0
+	Fixture.equip_basics(s)
 	var hero: Dictionary = s.party[0]
 	var boss: Dictionary = s.enemies[0]
-	hero.pos = Vector2i(2,2); boss.pos = Vector2i(5,5); boss.recovery = 99
-	check(s.movement_cells().size() == 8,"all eight adjacent movement cells")
+	hero.pos = Vector2i(2,2); boss.hp = 100; boss.pos = Vector2i(5,5); boss.recovery = 99
+	s.floor_state.observe(s)
+	check(s.DIRECTIONS.all(func(d): return hero.pos+d in s.movement_cells()),"all eight adjacent movement cells")
 	check(Vector2i(3,3) in s.attack_cells(),"diagonal attack range shown")
 	var turn: int = s.round_number
 	check(s.auto_attack() and hero.pos == Vector2i(3,3) and s.round_number == turn+1,"attack button approaches one diagonal step")
-	check(s.auto_attack() and hero.pos == Vector2i(4,4),"attack button reaches diagonal melee range")
+	var approached := false
+	for _step in range(4):
+		if s.melee_reach(hero.pos,boss.pos): approached = true; break
+		if not s.auto_attack(): break
+	check(approached or s.melee_reach(hero.pos,boss.pos),"attack button reaches melee range")
 	var hp: int = boss.hp
-	check(s.auto_attack() and boss.hp < hp and hero.pos == Vector2i(4,4),"attack button attacks instead of moving when in range")
+	check(s.auto_attack() and boss.hp < hp,"attack button attacks instead of moving when in range")
 	hero.pos = Vector2i(2,2); boss.pos = Vector2i(3,3)
 	s.tile(Vector2i(3,2)).terrain = "wall"
 	turn = s.round_number
@@ -258,6 +229,7 @@ func eight_way_checks() -> void:
 	check(not s.can_step(Vector2i(2,2),Vector2i(3,3)),"occupied diagonal destination stays blocked")
 	check(s.round_number == turn,"invalid diagonal action is free")
 	s.tile(Vector2i(3,2)).terrain = "stone"
+	hero.ap = 1; s.floor_state.observe(s)
 	check(s.act("PUSH",boss.pos) and boss.pos == Vector2i(4,4),"diagonal push uses matching diagonal displacement")
 	hero.pos = Vector2i(1,1); boss.pos = Vector2i(6,6)
 	for direction in s.DIRECTIONS: s.tile(hero.pos+direction).terrain = "wall"

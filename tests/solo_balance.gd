@@ -1,9 +1,7 @@
 extends SceneTree
-## Scripted solo run: shortest path to the relic and back, fighting whatever is
-## seen, healing between fights. Guards the first-playtest tuning; a real
-## player has guard/push/terrain and should do better than this bot.
+## Scripted first-floor descent using only public actions and paid camps.
 const Session = preload("res://expedition/session.gd")
-const Objective = preload("res://expedition/expedition_objective.gd")
+const Curios = preload("res://expedition/curios.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const SEEDS := 8
 var failures := 0
@@ -14,90 +12,59 @@ func _initialize() -> void: call_deferred("run")
 func route(s, target: Vector2i) -> Array:
 	var goals: Array = [target]
 	for d in s.DIRECTIONS:
-		if s.is_free(target+d) and s.melee_reach(target+d,target): goals.append(target+d)
-	var r: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,s.party[0].pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100)
-	if r.found: return r.path
-	# Every clear route is blocked by a body: walk the terrain route instead and
-	# meet whatever is standing in the corridor, rather than waiting it out.
-	r = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,s.party[0].pos,goals,func(a,b): return s.walk_reach(a,b),func(_p): return 100)
-	return r.path if r.found else []
+		if s.distance(target+d,target) == 1 and s.inside(target+d) and s.tile(target+d).terrain != "wall": goals.append(target+d)
+	var found: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,s.party[0].pos,goals,
+		func(a,b): return s.can_step(a,b),func(_p): return 100)
+	return found.path if found.found else []
 
-## Shopping list in priority order; buys while funds last, then departs.
-const SHOPPING := ["supply:0","supply:5","supply:5","supply:1","supply:1","food","food","food","food","food","food","food","food","torch","supply:0","supply:5","torch"]
-func provision(s) -> void:
-	for id in SHOPPING:
-		if s.bank >= s.price(id): s.buy(id)
-
-func play(s) -> Dictionary:
-	# A solo player picks the stance, and alone there is nobody to cover and no
-	# reaching part to keep a band with: the lone hero charges. Set in the bot,
-	# not in the engine — `make_actor` still hands the hero its personality's
-	# own default stance, which the party game is free to keep.
-	s.set_stance(0,"CHARGER")
-	provision(s)
-	s.depart()
+func play(seed: int) -> Dictionary:
+	var s = Session.new_run(seed)
 	var hero: Dictionary = s.party[0]
-	var actions := 0; var heals := 0; var stuck := 0
-	var calming_before: int = s.supplies[1]
-	var goal := "relic"
-	while s.phase == "BATTLE" and actions < 1500:
-		var target: Vector2i = s.objective.pos if goal == "relic" else s.entry_position()
+	# A real player can use the first ration to prepare the two starting parts.
+	if s.camp():
+		s.equip_part(0,0,"PUSH"); s.equip_part(0,1,"GUARD"); s.end_camp()
+	var actions := 0; var camps := 1; var stalls := 0
+	while s.on_floor() and s.depth == 1 and actions < 500:
 		if not s.combat_enemies().is_empty():
-			if hero.hp < 14 and s.supplies[0] > 0 and s.use_supply(0): heals += 1; actions += 1; continue
-			if hero.hp < 10 and s.supplies[5] > 0 and s.use_supply(5): heals += 1; actions += 1; continue
 			if Fixture.fight_round(s): actions += 1; continue
-			s.act("WAIT",hero.pos); actions += 1; continue
-		if hero.stress >= 125 and s.supplies[1] > 0 and s.use_supply(1): actions += 1; continue
-		if s.light < 35 and s.torches > 0 and s.use_torch(): continue
-		if hero.hp <= hero.max_hp-20 and s.supplies[0] > 0 and s.use_supply(0): heals += 1; actions += 1; continue
-		if hero.hp <= hero.max_hp-10 and s.supplies[5] > 0 and s.use_supply(5): heals += 1; actions += 1; continue
-		if goal == "relic" and Objective.error(s).is_empty():
-			s.pickup_relic(); actions += 1; goal = "home"; continue
-		if goal == "home" and s.return_error().is_empty():
-			s.return_home(); break
-		var path := route(s,target)
+			if s.act("WAIT",hero.pos): actions += 1; continue
+			break
+		if hero.hp <= 35 and s.can_camp().is_empty():
+			if s.camp(): camps += 1; s.end_camp(); continue
+		var searched := false
+		for p in s.floor_state.features:
+			var feature: Dictionary = s.floor_state.features[p]
+			if feature.get("kind","") != "curio" or feature.get("used",false): continue
+			if s.distance(hero.pos,p) > 1 or not s.floor_state.visible.has(p): continue
+			if Curios.resolve(s,p,"SEARCH"):
+				actions += 1; searched = true; break
+		if searched: continue
+		var stairs: Vector2i = s.floor_state.layout.stairs
+		if s.distance(hero.pos,stairs) <= 1:
+			if s.descend(): break
+		var path: Array = route(s,stairs)
 		if path.size() < 2:
-			stuck += 1
-			if stuck > 5: break
-			s.act("WAIT",hero.pos); actions += 1; continue
-		if not s.act("MOVE",path[1]): s.act("WAIT",hero.pos)
-		actions += 1
-	return {"reason":s.result.get("reason","STUCK"),"actions":actions,"heals":heals,"hp":hero.hp,"food":s.result.get("remaining_food",s.food),"light":s.result.get("remaining_light",s.light),"bank":s.bank,"stress":hero.stress,"calming":calming_before-int(s.result.get("remaining_stock",{}).get("supply:1",s.supplies[1]))}
+			stalls += 1
+			if stalls >= 3: break
+			if s.act("WAIT",hero.pos): actions += 1
+			continue
+		stalls = 0
+		if s.act("MOVE",path[1]): actions += 1
+		else:
+			stalls += 1
+			if stalls >= 3: break
+	return {"reason":"DESCENDED" if s.depth >= 2 else "DEAD" if s.phase == "DEFEAT" else "STUCK",
+		"actions":actions,"camps":camps,"kills":int(s.run_stats.kills),"hp":hero.hp,"food":s.food,"depth":s.depth}
 
 func run() -> void:
 	var wins := 0
-	for seed_value in range(SEEDS):
-		var row := play(Session.new(seed_value,true,false,true))
-		print("seed %d: %s · 행동 %d · 회복 %d · 체력 %d · 식량 %d · 밝기 %d · 자금 %d · 스트레스 %d" % [seed_value,row.reason,row.actions,row.heals,row.hp,row.food,row.light,row.bank,row.stress])
-		if row.reason == "SUCCESS": wins += 1
-		check(row.reason != "STUCK","bot never gets stuck (seed %d)" % seed_value)
-		check(row.actions <= 300,"run ends without wandering (seed %d: %d)" % [seed_value,row.actions])
-		# The 80-300 band describes a finished round trip; a run cut short by
-		# defeat is shorter by definition, so only completions carry it.
-		check(row.reason != "SUCCESS" or row.actions >= 80,"round trip within the target action band (seed %d: %d)" % [seed_value,row.actions])
-		check(row.food > 0 and row.light > 0,"supplies last a round trip (seed %d)" % seed_value)
-	# 게이트 (태세 설계 §4): the lone charger completes at least 3 of 8. This
-	# replaces the autobattle ledger's temporary floor of 1 — the stance
-	# programmes give the hero a target and keep it on it, so the retreat-happy
-	# wandering that pushed the measurement down to 1/8 is gone.
-	check(wins >= 3,"scripted solo run completes at least 3 of 8 (%d/%d)" % [wins,SEEDS])
-	var campaign = Session.new(0,true,false,true)
-	for expedition in range(4):
-		if expedition > 0:
-			campaign.refit()
-			# Paid recovery is only assertable while the chain still has funds;
-			# a defeated expedition banks nothing.
-			if expedition >= 2 and campaign.bank >= 20:
-				var funds: int = campaign.bank
-				check(campaign.rest_town() and campaign.bank == funds-20,"earned funds pay for repeat-run recovery")
-		var row := play(campaign)
-		print("repeat %d: %s" % [expedition+1,row])
-		if expedition == 0:
-			check(row.reason == "SUCCESS","same hero completes the first expedition")
-			check(row.hp >= 10,"first expedition keeps a health margin")
-		else:
-			# Later expeditions ride the same unfixed combat math as the seed
-			# sweep above, so they only guard the lifecycle until the SRD spec.
-			check(row.reason != "STUCK","repeat expedition %d reaches an ending" % (expedition+1))
-		check(row.actions <= 300 and row.food > 0 and row.light > 0,"repeat expedition stays within supply and action budgets")
-	print("Solo balance: %d failures; %d/%d wins" % [failures,wins,SEEDS]); quit(1 if failures else 0)
+	for seed in range(SEEDS):
+		var row: Dictionary = play(seed)
+		print("seed %d: %s · 행동 %d · 야영 %d · 처치 %d · HP %d · 식량 %d" % [seed,row.reason,row.actions,row.camps,row.kills,row.hp,row.food])
+		if row.reason == "DESCENDED": wins += 1
+		check(row.reason != "STUCK","pathing never stalls (seed %d)" % seed)
+		check(row.actions <= 500,"first-floor run ends within action limit (seed %d)" % seed)
+		check(row.camps >= 1 and row.food >= 0,"camp uses nonnegative food (seed %d)" % seed)
+		check(row.depth == 2 if row.reason == "DESCENDED" else row.depth == 1,"depth matches outcome (seed %d)" % seed)
+	check(wins >= 3,"solo bot descends at least 3 of 8 (%d/8)" % wins)
+	print("Solo balance: %d failures; %d/8 descents" % [failures,wins]); quit(1 if failures else 0)

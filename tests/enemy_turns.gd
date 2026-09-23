@@ -1,55 +1,49 @@
 extends SceneTree
 const Session = preload("res://expedition/session.gd")
-const Fixture = preload("res://tests/map_fixture.gd")
+const Fixture = preload("res://tests/floor_fixture.gd")
+const MonsterAI = preload("res://expedition/monster_ai.gd")
 var failures := 0
+func check(ok: bool, reason: String) -> void:
+	if not ok: failures += 1; push_error(reason)
+func _initialize() -> void: call_deferred("run")
 
-func check(value: bool, reason: String) -> void:
-	if not value: failures += 1; push_error(reason)
+func setup(role: String, offset: Vector2i) -> Dictionary:
+	var s = Session.new_run(41)
+	var center: Vector2i = Fixture.arena(s,12)
+	var enemy: Dictionary = s.make_actor(900,"시험 적",true)
+	MonsterAI.configure(enemy,role)
+	enemy.hp = 100; enemy.max_hp = 100; enemy.pos = center+offset
+	enemy.home = enemy.pos; enemy.alert = true; enemy.part_id = ""
+	s.enemies = [enemy]; s.floor_state.observe(s)
+	return {"s":s,"enemy":enemy,"center":center}
 
-func setup():
-	var s = Session.new(); s.depart(); Fixture.reach(s,8)
-	for cell in s.tiles: cell.terrain = "stone"; cell.fire = 0; cell.wet = 0
-	for i in range(1,3): s.party[i].hp = 0
-	for i in range(2): s.enemies[i].hp = 0
-	s.party[0].pos = Vector2i(2,2)
-	s.enemies[2].pos = Vector2i(5,2)
-	return s
-
-func _initialize() -> void:
-	var s = setup()
-	var enemy: Dictionary = s.enemies[2]
+func run() -> void:
+	var f: Dictionary = setup("MELEE",Vector2i(3,0))
+	var s = f.s; var enemy: Dictionary = f.enemy
 	s.plan_enemies()
-	check(s.intents.is_empty(),"ordinary attacks have no cell warning")
-	s.party[0].pos = Vector2i(3,2)
+	check(s.intents.is_empty(),"ordinary melee movement has no marked strike")
+	var before: int = MonsterAI.distance(enemy.pos,f.center)
+	s.enemy_attack_turn(enemy)
+	check(MonsterAI.distance(enemy.pos,f.center) < before,"melee enemy closes the gap")
+	f = setup("RANGED",Vector2i(4,0)); s = f.s; enemy = f.enemy
 	var hp: int = s.party[0].hp
 	s.enemy_attack_turn(enemy)
-	check(s.party[0].hp == hp-10 and s.melee_reach(enemy.pos,s.party[0].pos),"chase current position then attack")
-	s = setup(); enemy = s.enemies[2]
-	enemy.pos = Vector2i(7,7); hp = s.party[0].hp
-	s.enemy_attack_turn(enemy)
-	check(s.party[0].hp == hp and maxi(absi(7-enemy.pos.x),absi(7-enemy.pos.y)) == 2,"distant enemy moves two eight-way steps without ranged damage")
-	s = setup(); enemy = s.enemies[2]
-	for y in range(preload("res://expedition/dungeon_map.gd").ROOM_SIDE): s.tile(Vector2i(4,y)).terrain = "wall"
+	check(s.party[0].hp < hp and enemy.pos == f.center+Vector2i(4,0),"archer attacks from range")
 	hp = s.party[0].hp; s.enemy_attack_turn(enemy)
-	check(s.party[0].hp == hp and enemy.pos == Vector2i(5,2),"walls block pursuit")
-	s = setup(); enemy = s.enemies[2]
-	s.round_number = 3; s.plan_enemies()
-	check(s.intents.size() == 1 and enemy.charging,"heavy skill telegraphed every third round")
-	s.party[0].pos = Vector2i(2,3); hp = s.party[0].hp
+	check(s.party[0].hp == hp,"archer reloads before the next shot")
+	f = setup("CASTER",Vector2i(4,0)); s = f.s; enemy = f.enemy
 	s.enemy_attack_turn(enemy)
-	check(s.party[0].hp == hp and enemy.pos == Vector2i(5,2),"heavy attack can be dodged without fallback melee")
-	s = setup(); enemy = s.enemies[2]
-	s.round_number = 3; s.plan_enemies(); hp = s.party[0].hp
+	check(s.intents.is_empty(),"caster first lowers its cooldown")
 	s.enemy_attack_turn(enemy)
-	check(s.party[0].hp == hp-16,"heavy attack hits marked cell")
-	s = setup(); enemy = s.enemies[2]
-	enemy.pos = Vector2i(3,2); s.round_number = 3; s.plan_enemies()
-	check(s.act("PUSH",enemy.pos),"player interrupts charge with push")
-	hp = s.party[0].hp; s.enemy_attack_turn(enemy)
-	check(s.intents.is_empty() and s.party[0].hp == hp,"interrupted charge loses its attack")
-	s = setup(); enemy = s.enemies[2]
-	s.round_number = 3; s.plan_enemies(); enemy.hp = 0
-	hp = s.party[0].hp; s.enemy_attack_turn(enemy)
-	check(s.party[0].hp == hp,"dead enemy cannot resolve a telegraph")
+	check(s.intents.is_empty(),"caster second action is still cooling down")
+	s.enemy_attack_turn(enemy)
+	check(enemy.charging and s.intents.any(func(i): return i.id == enemy.id),"caster telegraphs the target cell")
+	hp = s.party[0].hp; s.party[0].pos = f.center+Vector2i(0,1); s.floor_state.observe(s)
+	s.enemy_attack_turn(enemy)
+	check(s.party[0].hp == hp and s.intents.is_empty(),"moving off the marked cell dodges the spell")
+	f = setup("MELEE",Vector2i(1,0)); s = f.s; enemy = f.enemy
+	enemy.hp = 0; hp = s.party[0].hp
+	s.enemy_attack_turn(enemy)
+	check(s.party[0].hp == hp,"dead enemies never act")
 	print("Enemy turns: %d failures" % failures)
 	quit(1 if failures else 0)

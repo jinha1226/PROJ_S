@@ -9,14 +9,14 @@ func _draw() -> void:
 	if board == null or not is_instance_valid(board) or intents.is_empty(): return
 	var camera: Dictionary = board.impact_transform()
 	draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
-	var visible: Dictionary = board.visual_state.get("visible",{}) if board.is_presenting() else (board.session.floor_state.visible if board.session.floor_mode else {})
+	var visible: Dictionary = board.visual_state.get("visible",{}) if board.is_presenting() else (board.session.floor_state.visible)
 	for row in intents:
 		if not row is Dictionary: continue
 		var actor_id := int(row.get("actor_id",-1))
 		if actor_id < 0 or str(row.get("intent","")) == "HOLD": continue
 		var from: Vector2i = row.get("from",Vector2i.ZERO)
 		var cell: Vector2i = row.get("cell",from)
-		if board.session.floor_mode and (not visible.has(from) or not visible.has(cell)): continue
+		if (not visible.has(from) or not visible.has(cell)): continue
 		var viewport := Rect2(Vector2.ZERO,board.size)
 		if not viewport.has_point(board.cell_center(from)) or not viewport.has_point(board.cell_center(cell)): continue
 		var displayed_actors: Array = board.visual_state.get("actors",[]) if board.is_presenting() else board.session.party
@@ -44,7 +44,7 @@ func _draw() -> void:
 			for i in range(points.size()-1):
 				var p0: Variant = points[i]; var p1: Variant = points[i+1]
 				if not p0 is Vector2i or not p1 is Vector2i: continue
-				if board.session.floor_mode and (not visible.has(p0) or not visible.has(p1)): continue
+				if (not visible.has(p0) or not visible.has(p1)): continue
 				segments.append([board.cell_center(p0),board.cell_center(p1)])
 			if segments.is_empty(): continue
 			for segment in segments: _dashed(segment[0],segment[1],color,1.0)

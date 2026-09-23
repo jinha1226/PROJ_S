@@ -1,21 +1,74 @@
 {
-  "tools": {
-    "KEY": {"name":"열쇠","description":"상자 개방 · 1개 소모"},
-    "SHOVEL": {"name":"삽","description":"흙더미 발굴 · 1개 소모"}
-  },
   "curios": {
-    "LOCKED_CHEST": {
-      "name":"잠긴 상자","icon":"loot","description":"녹슨 자물쇠 아래로 가느다란 철사가 보입니다.",
+    "SUPPLY_CACHE": {
+      "name": "버려진 보급 상자",
+      "icon": "loot",
       "options": {
-        "TOOL":{"label":"열쇠로 열기","tool":"KEY","cost":1,"chance":100,"success":{"loot":30,"text":"자물쇠를 풀고 전리품을 회수했습니다."}},
-        "BARE":{"label":"강제로 열기","warning":"성공 50% · 실패: 피해 8 / 스트레스 +8","chance":50,"success":{"loot":20,"text":"자물쇠를 부수고 전리품을 회수했습니다."},"failure":{"damage":8,"stress":8,"text":"숨겨진 바늘에 찔렸습니다. 안의 물건도 망가졌습니다."}}
+        "SEARCH": {
+          "label": "뒤진다",
+          "chance": 100,
+          "success": {
+            "food": [
+              2,
+              3
+            ],
+            "supply_chance": 20
+          }
+        }
       }
     },
-    "DIRT_PILE": {
-      "name":"흙더미","icon":"dirt","description":"무너진 흙 사이에 천으로 감싼 무언가가 묻혀 있습니다.",
+    "MUSHROOMS": {
+      "name": "버섯 군락",
+      "icon": "dirt",
       "options": {
-        "TOOL":{"label":"삽으로 파내기","tool":"SHOVEL","cost":1,"chance":100,"success":{"loot":20,"food":2,"text":"묻혀 있던 보급품과 전리품을 꺼냈습니다."}},
-        "BARE":{"label":"맨손으로 파내기","warning":"전리품 10 · 스트레스 +6","chance":100,"success":{"loot":10,"stress":6,"text":"손으로 흙을 걷어냈습니다. 지쳤지만 작은 전리품을 찾았습니다."}}
+        "SEARCH": {
+          "label": "채집한다",
+          "chance": 70,
+          "success": {
+            "food": [
+              1,
+              2
+            ]
+          },
+          "failure": {
+            "food": [
+              1,
+              2
+            ],
+            "damage": 4
+          }
+        }
+      }
+    },
+    "DEAD_ADVENTURER": {
+      "name": "죽은 모험가",
+      "icon": "loot",
+      "options": {
+        "SEARCH": {
+          "label": "수색한다",
+          "chance": 100,
+          "success": {
+            "food": [
+              1,
+              1
+            ],
+            "part_chance": 30,
+            "supply_chance": 30
+          }
+        }
+      }
+    },
+    "BROKEN_CHEST": {
+      "name": "부서진 궤짝",
+      "icon": "loot",
+      "options": {
+        "SEARCH": {
+          "label": "살펴본다",
+          "chance": 100,
+          "success": {
+            "item": true
+          }
+        }
       }
     }
   }

@@ -5,6 +5,7 @@ extends RefCounted
 ## caster role's own spell uses the same charging state with an empty cast_id.
 const Melee = preload("res://expedition/floor_tactics_adapter.gd")
 const Abilities = preload("res://expedition/abilities.gd")
+const BossAI = preload("res://expedition/boss_ai.gd")
 const ROLES := {
 	"MELEE":{"label":"추격병","range":1,"damage":7},
 	"RANGED":{"label":"궁수","range":5,"damage":6},
@@ -12,12 +13,11 @@ const ROLES := {
 }
 const SPELL_DAMAGE := 14
 ## Outside the floor (room mode, boss trial) monsters keep the old fixed reach.
-const LEGACY_SIGHT := 9
 
 ## What a monster can see is what the party can see: the floor's light sets
 ## one radius for both sides, so nothing shoots from beyond the torchlight.
 static func sight(s) -> int:
-	return ceili(s.Floor.sight_radius(s.light)) if s.floor_mode else LEGACY_SIGHT
+	return ceili(s.Floor.SIGHT_RADIUS)
 
 static func configure(enemy: Dictionary, role: String) -> void:
 	enemy.role = role if ROLES.has(role) else "MELEE"
@@ -53,11 +53,13 @@ static func interrupt(s, enemy: Dictionary) -> void:
 ## A hit breaks the caster role's own spell (it needs concentration) but not a
 ## signature part: a telegraphed part is answered by dodging, guarding or pushing.
 static func on_hit(s, enemy: Dictionary) -> void:
+	if enemy.get("boss",false): return
 	if str(enemy.get("cast_id","")).is_empty(): interrupt(s,enemy)
 
 static func plan(s) -> void:
 	s.intents.clear()
 	for enemy in s.enemies:
+		if enemy.hp > 0 and enemy.get("boss",false): BossAI.plan(s,enemy); continue
 		if enemy.hp <= 0 or not enemy.get("charging",false): continue
 		var id: String = str(enemy.get("cast_id",""))
 		var amount: int = int(Abilities.DEFINITIONS[id].damage) if Abilities.DEFINITIONS.has(id) else SPELL_DAMAGE
@@ -72,6 +74,7 @@ static func turn(s, enemy: Dictionary) -> void:
 	var seen: int = sight(s)
 	if targets.any(func(a): return line(s,enemy.pos,a.pos,seen)): enemy.alert = true
 	if not enemy.get("alert",false): return
+	if enemy.get("boss",false): BossAI.turn(s,enemy); return
 	if targets.all(func(a): return distance(enemy.pos,a.pos) > 15):
 		enemy.alert = false; enemy.charging = false; enemy.cast_id = ""; enemy.cast_left = 0; plan(s); return
 	if enemy.get("cast_recovery",0) > 0:
@@ -104,7 +107,7 @@ static func resolve_spell(s, enemy: Dictionary, cell: Vector2i) -> void:
 	if not line(s,enemy.pos,cell,4): return
 	s.enemy_attack_effect(enemy,[cell],true)
 	var victim: Dictionary = s.at(cell)
-	if not victim.is_empty() and not victim.enemy: s.damage(victim,SPELL_DAMAGE+s.floor_state.enemy_bonus(s.light),enemy.id,"ELECTRIC")
+	if not victim.is_empty() and not victim.enemy: s.damage(victim,SPELL_DAMAGE,enemy.id,"ELECTRIC")
 	s.message(enemy.name+"의 마법이 예고한 지점에 떨어졌습니다.")
 
 static func role_turn(s, enemy: Dictionary, targets: Array) -> void:
@@ -153,4 +156,4 @@ static func role_turn(s, enemy: Dictionary, targets: Array) -> void:
 static func strike(s, enemy: Dictionary, target: Dictionary, amount: int) -> void:
 	if target.is_empty() or target.enemy: return
 	s.enemy_attack_effect(enemy,[target.pos])
-	s.damage(target,amount+s.floor_state.enemy_bonus(s.light),enemy.id,"ELECTRIC" if enemy.get("role","") == "CASTER" else "IMPACT")
+	s.damage(target,amount,enemy.id,"ELECTRIC" if enemy.get("role","") == "CASTER" else "IMPACT")

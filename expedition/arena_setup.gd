@@ -27,7 +27,7 @@ static func build(ui) -> Control:
 	var probe = Session.new(int(ui.arena_config.seed),true,int(ui.arena_config.size) > 1,true,int(ui.arena_config.size))
 	for i in range(int(ui.arena_config.size)): member_card(ui,list,i,probe.party[i])
 	var buttons := HBoxContainer.new(); buttons.add_theme_constant_override("separation",4); root.add_child(buttons)
-	var back = ui.button(buttons,"마을로",ui.leave_arena); back.name = "ArenaBack"
+	var back = ui.button(buttons,"시작 화면",ui.leave_arena); back.name = "ArenaBack"
 	# A hand-made arena with nobody in it is not a fight; the presets always are.
 	var empty: bool = str(ui.arena_config.arena) == "custom" and ui.arena_config.custom.all(func(row): return str(row[0]).is_empty())
 	var start = ui.button(buttons,"시작",ui.start_arena,not empty); start.name = "ArenaStart"

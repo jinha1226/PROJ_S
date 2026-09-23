@@ -1,6 +1,6 @@
 extends SceneTree
 ## Monster signature parts: catalog shape, basic parts (PUSH/GUARD) as catalog
-## entries, passives, enemy telegraphs, town-only equipping, drops and snapshots.
+## entries, passives, enemy telegraphs, camp-only equipping and drops.
 const Session = preload("res://expedition/session.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
@@ -31,10 +31,11 @@ func run() -> void:
 func ui() -> void:
 	var scene = load("res://expedition/main.tscn").instantiate()
 	# Solo floor run, the shipped configuration: one member, two part slots.
-	var s = Session.new(731,false,false,true,1)
+	var s = Session.new_run(731)
 	scene.session = s; root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
 	await process_frame
 	for frame in range(4): await process_frame
+	s.phase = "CAMP"
 	scene.show_character(0,"파츠")
 	for frame in range(4): await process_frame
 	var heading: Array = scene.modal_content.find_children("*","Label",true,false).filter(func(l): return l.text.begins_with("파츠 슬롯"))
@@ -58,16 +59,16 @@ func ui() -> void:
 	scene.details_popup.hide()
 	# The floor battle is automatic, so an empty slot no longer shows as a
 	# battle button: the parts tab above is where it reads 빈 슬롯.
-	s.depart(); scene.refresh()
+	s.phase = "BATTLE"; scene.refresh()
 	for frame in range(3): await process_frame
 	check(scene.skill_buttons.is_empty() and s.phase == "BATTLE","the floor HUD offers no per-slot skill buttons")
-	# Bag: the parts category exists and the detail offers per-member slot buttons only in town.
+	# Bag: the parts category exists and equipping is limited to camp.
 	scene.inventory_filter = "파츠"; scene.show_supplies()
 	for frame in range(3): await process_frame
 	check(scene.inventory_slots.all(func(slot): return slot.row.is_empty() or slot.row.category == "파츠"),"parts filter")
 	scene.show_item_detail("GUARD"); await process_frame
 	var detail: Array = scene.item_detail.find_children("*","Button",true,false)
-	check(detail.any(func(b): return b.text.ends_with("1번 장착") and b.disabled),"equip buttons are disabled outside town")
+	check(detail.any(func(b): return b.text.ends_with("1번 장착") and b.disabled),"equip buttons are disabled outside camp")
 	scene.item_popup.hide(); scene.details_popup.hide()
 	scene.queue_free(); await process_frame
 
@@ -115,17 +116,20 @@ func basic_parts() -> void:
 	check(s.act("GUARD",ally.pos) and hero.guarded and ally.protected_by == hero.id,"guard covers the adjacent ally")
 	check(not s.act("GUARD",foe.pos) and not s.act("GUARD",hero.pos),"guard rejects foes and self")
 	var legacy = Session.new(731,true,true)
-	check(legacy.party[0].equipped_abilities == ["PUSH","GUARD"] and legacy.party[0].rules.size() == 2,"non-floor modes start with the basics equipped")
+	check(legacy.party[0].equipped_abilities == ["",""] and legacy.parts_bag.has("PUSH"),"legacy constructor still starts with empty slots and bagged basics")
 
-## Parts are items: town-only slots, one bag for the party, snapshot rules.
+## Parts are items: camp-only slots, one bag for the party, persistent through descent.
 func bag() -> void:
-	var s = Session.new(731,true,true,true,3)
+	var s = Session.new(731,true,true,true,3); s.depart()
 	check(s.parts_bag == {"PUSH":1,"GUARD":1},"floor session starts with the two basics in the bag")
-	check(s.stock("part:PUSH") == 1 and s.price("part:GUARD") == 10,"basics are shop goods")
-	var bank: int = s.bank
-	check(s.buy("part:GUARD") and s.parts_bag.GUARD == 2 and s.bank == bank-10,"buying a basic adds to the bag")
-	check(s.refund("part:GUARD") and s.parts_bag.GUARD == 1 and s.bank == bank,"refund returns it")
-	check(not s.provision_stock().has("part:PUSH") and s.provision_sale_value() == 0,"parts are never liquidated")
+	check(not s.has_method("buy") and not s.has_method("price"),"parts have no shop API")
+	s.grant_part("BOMB")
+	check(s.parts_bag.BOMB == 1,"parts can be gained in the dungeon")
+	s.grant_part("BOMB")
+	check(s.parts_bag.BOMB == 2,"new parts stack in the bag")
+	s.parts_bag.erase("BOMB")
+	check(s.parts_bag.get("BOMB",0) == 0,"unowned parts stay absent")
+	s.phase = "CAMP"
 	check(not s.equip_part(0,2,"PUSH") and not s.equip_part(0,0,"BOMB") and not s.equip_part(0,0,"NOPE"),"bad slot, empty bag and unknown id refused")
 	check(s.equip_part(0,0,"PUSH") and s.party[0].equipped_abilities[0] == "PUSH" and s.parts_bag.PUSH == 0,"equip takes the part from the bag")
 	check(s.party[0].rules.size() == 1 and s.party[0].rules[0].skill == "PUSH","equip adds the default rule")
@@ -138,9 +142,9 @@ func bag() -> void:
 	check(s.unequip_part(0,0) and s.party[0].equipped_abilities[0] == "" and s.parts_bag.GUARD == 1 and s.party[0].rules.is_empty(),"unequip empties the slot and the rule")
 	check(not s.unequip_part(0,0),"empty slot cannot be unequipped")
 	check(s.equip_part(0,0,"PUSH") and s.equip_part(0,1,"GUARD"),"both slots")
-	s.depart()
-	check(not s.equip_part(0,0,"PUSH") and not s.unequip_part(0,1),"slots are locked outside town")
-	# Drops and the snapshot rule.
+	s.phase = "BATTLE"
+	check(not s.equip_part(0,0,"PUSH") and not s.unequip_part(0,1),"slots are locked outside camp")
+	# Drops stay with the run across floors and after defeat.
 	Fixture.arena(s,8)
 	var foe: Dictionary = s.enemies[0]
 	check(foe.part_id == Abilities.species_part(foe.species_id),"floor monsters carry their species part")
@@ -150,23 +154,22 @@ func bag() -> void:
 		if s.parts_bag.get(enemy.part_id,0) > 0: got = true
 	check(got,"some monster in the roster drops its part (%d tried)" % tries)
 	var carried: Dictionary = s.parts_bag.duplicate(true)
-	s.loot = 10; s.objective.state = "CARRIED"
 	for enemy in s.enemies: enemy.hp = 0
 	s.floor_state.observe(s)
-	check(s.abandon() and s.parts_bag == carried,"abandon keeps found parts")
-	check(s.result.has("parts") and not s.result.has("essences"),"result reports parts")
-	s.refit(); s.depart(); Fixture.arena(s,8)
-	var kept: Dictionary = s.parts_bag.duplicate(true)
+	s.party[0].pos = s.floor_state.layout.stairs
+	check(s.descend() and s.parts_bag == carried,"descent keeps found parts")
+	check(s.depth == 2 and s.floor_state.layout.theme_id == "F2_MINES","descent makes next floor")
 	s.parts_bag["HOB_CLUB"] = int(s.parts_bag.get("HOB_CLUB",0))+3
-	s.damage(s.party[0],999,999,"IMPACT"); s.damage(s.party[1],999,999,"IMPACT"); s.damage(s.party[2],999,999,"IMPACT"); s.check_battle_end()
-	check(s.result.reason == "DEFEAT" and s.parts_bag == kept,"defeat restores the bag snapshot")
+	var fallen_bag: Dictionary = s.parts_bag.duplicate(true)
+	s.damage(s.party[0],999,999,"IMPACT"); s.check_battle_end()
+	check(s.phase == "DEFEAT" and s.parts_bag == fallen_bag,"defeat ends the run without rolling back the bag")
 	# Test loadout.
 	var t = Session.new(731,false,false,true)
 	check(t.grant_test_loadout() and t.log_lines[-1].begins_with("시험 로드아웃 · 파츠"),"test loadout grants parts")
 	for id in Abilities.DEFINITIONS: check(t.parts_bag.get(id,0) >= 1,"loadout has "+id)
 	var snapshot: Dictionary = t.parts_bag.duplicate(true)
 	check(t.grant_test_loadout() and t.parts_bag == snapshot,"loadout is idempotent")
-	t.depart(); check(not t.grant_test_loadout(),"loadout refused outside town")
+	t.depart(); check(t.grant_test_loadout() and t.parts_bag == snapshot,"loadout stays idempotent during the run")
 
 ## One part per species on the roster, every passive kind known.
 func species() -> void:
@@ -191,7 +194,7 @@ func duel() -> Dictionary:
 	foe.hp = 30; foe.max_hp = 30; foe.role = "MELEE"; foe.alert = true; foe.charging = false; foe.cast_recovery = 0
 	foe.pos = c+Vector2i(1,0); foe.part_id = ""
 	s.party[1].pos = c+Vector2i(0,1); s.party[2].pos = c+Vector2i(-3,-3)
-	s.light = 90; s.floor_state.observe(s); s.selected = 0
+	s.floor_state.observe(s); s.selected = 0
 	for actor in s.party: actor.ap = 0
 	s.party[0].ap = 3
 	return {"s":s,"c":c,"hero":s.party[0],"ally":s.party[1],"far":s.party[2],"foe":foe}
@@ -281,8 +284,8 @@ func passives() -> void:
 	check(distant.hp == 20,"a monster outside the fight does not regenerate")
 	# A passive belongs to the species: a boss trial boss carries a part for its
 	# drop only, so it grants no passive.
-	var trial = Session.new(731,true,true); trial.depart()
-	var boss: Dictionary = trial.enemies[0]
+	var trial = Session.new(731,true,true); trial.depth = 3; trial.floor_state.build(trial)
+	var boss: Dictionary = trial.enemies.filter(func(e): return e.get("boss",false))[0]
 	check(not str(boss.get("part_id","")).is_empty(),"the boss carries a droppable part")
 	check(Passives.of(boss).is_empty(),"a part that is not the species part grants no passive")
 
@@ -297,7 +300,7 @@ func telegraph() -> void:
 	var hp: int = d.hero.hp
 	MonsterAI.turn(s,d.foe)
 	check(not d.foe.charging and s.intents.is_empty(),"resolved on the next turn")
-	check(d.hero.hp == hp-s.Growth.incoming(d.hero,14+s.floor_state.enemy_bonus(s.light)),"club lands for its damage plus the darkness bonus")
+	check(d.hero.hp == hp-s.Growth.incoming(d.hero,14),"club lands for its announced damage")
 	check(int(d.foe.cooldowns.HOB_CLUB) == 4,"cooldown set (3 + 1)")
 	check(int(s.battle_stats.enemy_parts.get("HOB_CLUB",0)) == 1,"enemy skill use counted")
 	MonsterAI.turn(s,d.foe)

@@ -2,12 +2,15 @@ extends RefCounted
 ## ASCII room templates (DCSS vault style). Pure: JSON in, terrain/feature maps out.
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/floor_templates.json"))
 const GLYPH_TERRAIN := {"#":"wall","+":"wall",".":"stone",",":"rubble","~":"water","=":"wood","%":"metal",
-	"@":"stone","*":"stone","$":"stone","^":"stone","A":"stone","C":"stone","M":"stone","P":"stone"}
+	"@":"stone",">":"stone","Y":"stone","&":"stone","!":"stone","$":"stone","^":"stone","A":"stone","C":"stone","M":"stone","P":"stone"}
 const GLYPH_FEATURE := {
-	"@":{"kind":"entry","label":"귀환 관문"},
-	"*":{"kind":"relic","label":"봉인된 유물"},
-	"$":{"kind":"curio","curio_id":"LOCKED_CHEST"},
-	"^":{"kind":"curio","curio_id":"DIRT_PILE"},
+	"@":{"kind":"entry","label":"입구"},
+	">":{"kind":"stairs","label":"내려가는 길"},
+	"Y":{"kind":"pylon","label":"전력탑"},
+	"&":{"kind":"curio","curio_id":"SUPPLY_CACHE"},
+	"!":{"kind":"curio","curio_id":"DEAD_ADVENTURER"},
+	"$":{"kind":"curio","curio_id":"BROKEN_CHEST"},
+	"^":{"kind":"curio","curio_id":"MUSHROOMS"},
 	"A":{"kind":"altar","label":"갈림길 중계석"},
 	"C":{"kind":"camp","label":"도움이 필요한 모험가"}}
 

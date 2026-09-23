@@ -5,7 +5,7 @@ func check(ok: bool, reason: String) -> void:
 	if not ok: failures += 1; push_error(reason)
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
-	var ids := ["entry_camp","relic_vault","flooded_cistern","collapsed_store","sealed_treasury","timber_gallery"]
+	var ids := ["entry_camp","descent","flooded_cistern","collapsed_store","sealed_treasury","timber_gallery","boss_lair"]
 	for id in ids:
 		var def: Dictionary = Templates.definition(id)
 		check(not def.is_empty() and def.rows.size() >= 3,"template %s exists" % id)
@@ -25,13 +25,17 @@ func run() -> void:
 		check(parsed.doors.size() >= 1,"%s has a door candidate" % id)
 		check(parsed.terrain.size() == width*def.rows.size(),"%s every cell has terrain" % id)
 	check(Templates.definition("nope").is_empty(),"unknown template is empty")
-	var relic: Dictionary = Templates.parse(Templates.definition("relic_vault").rows)
-	check(relic.features.values().filter(func(f): return f.kind == "relic").size() == 1,"relic vault has one relic")
-	check(relic.anchor != Vector2i(-1,-1) and relic.backline.size() == 2,"relic vault anchor and two backline cells")
-	check(relic.terrain[relic.anchor] == "stone","anchor glyph is floor")
+	var descent: Dictionary = Templates.parse(Templates.definition("descent").rows)
+	check(descent.features.values().filter(func(f): return f.kind == "stairs").size() == 1,"descent has one stair")
+	check(descent.anchor == Vector2i(-1,-1),"descent has no monster anchor")
+	check(descent.terrain.values().any(func(v): return v == "metal"),"descent accents survive parsing")
+	var lair: Dictionary = Templates.parse(Templates.definition("boss_lair").rows)
+	check(lair.anchor != Vector2i(-1,-1) and lair.doors.size() == 2,"boss lair has anchor and two doors")
+	check(lair.features.values().filter(func(f): return f.kind == "pylon").size() == 1,"boss lair has a pylon")
+	check(lair.features.values().filter(func(f): return f.kind == "stairs").size() == 1,"boss lair has stairs")
 	var treasury: Dictionary = Templates.parse(Templates.definition("sealed_treasury").rows)
 	check(treasury.doors.size() == 1,"treasury has exactly one door")
-	check(treasury.features.values().filter(func(f): return f.kind == "curio" and f.curio_id == "LOCKED_CHEST").size() == 2,"treasury has two chests")
+	check(treasury.features.values().filter(func(f): return f.kind == "curio" and f.curio_id == "BROKEN_CHEST").size() == 1,"treasury has one broken chest")
 	check(treasury.features.values().filter(func(f): return f.kind == "altar").size() == 1,"treasury has an altar")
 	var entry: Dictionary = Templates.parse(Templates.definition("entry_camp").rows)
 	var entry_cell: Vector2i = entry.features.keys().filter(func(p): return entry.features[p].kind == "entry")[0]

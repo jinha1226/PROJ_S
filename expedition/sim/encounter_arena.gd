@@ -1,7 +1,7 @@
 extends RefCounted
 ## Fixed fight room as a §7 layout so the real floor/session code runs unchanged.
 const Builder = preload("res://expedition/encounter_builder.gd")
-const DEFAULT_SPEC := {"size":20,"room":[5,5,9,9],"door":[9,4],"pillars":[[8,8],[10,10]],"party_entry":[9,5],"light":90,"members":[]}
+const DEFAULT_SPEC := {"size":20,"room":[5,5,9,9],"door":[9,4],"pillars":[[8,8],[10,10]],"party_entry":[9,5],"members":[]}
 
 ## `max_members > 0` keeps only the first N of the given roster — the
 ## experiment-only reading of `solo_max_members` (see the design spec §2.2).
@@ -39,6 +39,6 @@ static func layout(spec: Dictionary, theme: Dictionary, seed: int = 1, max_membe
 			return {}
 	var room := {"id":0,"rect":rect,"kind":"fight","template_id":"","rows":[],"parsed":{},"doors":[door],"tier":spec.get("tier","deep"),"spine":true}
 	return {"size":size,"seed":0,"theme_id":theme.get("id",""),"depth":int(theme.depth),"terrain":terrain,"rooms":[room],"edges":[],
-		"entry":entry,"relic":Vector2i(-1,-1),"features":{},
+		"entry":entry,"stairs":Vector2i(-1,-1),"features":{},
 		"encounters":[{"room":0,"tier":room.tier,"mandatory":true,"budget":0,"members":members}],
-		"stats":{"regenerations":0,"relic_distance":0,"max_distance":0}}
+		"stats":{"regenerations":0,"stairs_distance":0,"max_distance":0}}

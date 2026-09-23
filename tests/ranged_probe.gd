@@ -10,7 +10,7 @@ func _initialize() -> void:
 		for size in [1,2,3]:
 			var spec: Dictionary = Runner.Arena.DEFAULT_SPEC.duplicate(true)
 			spec.members = ARENAS[name].map(func(m): return {"species_id":m[0],"role":m[1]})
-			var config := {"arena":spec,"party_size":size,"build":"melee_1","policy":"rules","rules":Session.DEFAULT_RULES,"supplies":[0,0,0,0,0,0],"max_rounds":60}
+			var config := {"arena":spec,"party_size":size,"build":"melee_1","policy":"rules","rules":Session.DEFAULT_RULES,"supplies":[0,0,0,0,0],"max_rounds":60}
 			var r: Dictionary = Runner.run_many(config,seeds)
 			var taken: float = 0.0
 			taken = float(r.get("damage_taken_total",{}).get("mean",0.0)) if r.has("damage_taken_total") else 0.0

@@ -1,79 +1,42 @@
 extends SceneTree
-const Fixture = preload("res://tests/map_fixture.gd")
-var failed := false
-
-func _initialize() -> void:
-	call_deferred("exercise")
-
-func exercise() -> void:
+var failures := 0
+var checks := 0
+func check(ok: bool, reason: String) -> void:
+	checks += 1
+	if not ok: failures += 1; push_error(reason)
+func _initialize() -> void: call_deferred("run")
+func run() -> void:
 	root.size = Vector2i(390,915)
-	var scene = load("res://expedition/main.tscn").instantiate()
-	scene.session = preload("res://expedition/session.gd").new()
-	root.add_child(scene)
+	var scene = load("res://expedition/main.tscn").instantiate(); root.add_child(scene)
 	await process_frame
-	scene.run_action(scene.session.depart)
-	for frame in range(5): await process_frame
-	var target: int = scene.session.rooms[0].links[0]
-	var event := InputEventMouseButton.new()
-	event.pressed = true; event.button_index = MOUSE_BUTTON_LEFT
-	event.position = scene.minimap.room_rect(target).get_center()
-	scene.minimap._gui_input(event)
-	await process_frame
-	if not scene.map_popup.visible or scene.session.room != 0:
-		failed = true; push_error("minimap must expand without moving")
-	if scene.minimap.size.x > 100 or scene.board.size.x < 340:
-		failed = true; push_error("minimap must stay small and board must use full width")
-	scene.board.geometry()
-	if absf(scene.board.size.x-scene.size.x) > 1 or absf(scene.board.half_width*scene.session.BOARD_SIDE*2-scene.size.x) > 1:
-		failed = true; push_error("board and projected room must fill screen width")
-	for y in range(preload("res://expedition/dungeon_map.gd").ROOM_SIDE):
-		for x in range(preload("res://expedition/dungeon_map.gd").ROOM_SIDE):
-			var cell := Vector2i(x,y)
-			if scene.board.cell_at(scene.board.cell_center(cell)) != cell:
-				failed = true; push_error("top-down hit test failed")
-	if scene.skill_buttons.size() != 6 or scene.item_buttons.size() != 6 or scene.portrait_buttons.size() != 3:
-		failed = true; push_error("v4 slot counts")
-	for node in scene.item_buttons + scene.skill_buttons:
-		if node.size.x < 48 or node.size.y < 48 or not scene.get_global_rect().encloses(node.get_global_rect()):
-			failed = true; push_error("touch target outside screen or too small")
-	event.position = scene.map_view.room_rect(target).get_center()
-	scene.map_view._gui_input(event)
-	await process_frame
-	if scene.session.room != target: failed = true; push_error("map click did not travel")
-	if scene.map_popup.visible: failed = true; push_error("map must close after selecting a room")
-	Fixture.clear_battle(scene.session)
-	var door: Vector2i = scene.session.doors().keys()[0]
-	var destination: int = scene.session.doors()[door]
-	scene.on_cell(door)
-	await process_frame
-	if scene.session.room != destination: failed = true; push_error("door click did not travel")
-	Fixture.reach(scene.session,Fixture.kind_id(scene.session,"battle"))
-	scene.refresh()
-	await process_frame
-	if scene.session.phase == "BATTLE":
-		var control: Button = scene.end_turn_button
-		if control == null or control.size.x < 96 or control.size.y < 48 or not scene.board.get_global_rect().encloses(control.get_global_rect()):
-			failed = true; push_error("end turn must be inside board at bottom right")
-		for y in range(preload("res://expedition/dungeon_map.gd").ROOM_SIDE):
-			for x in range(preload("res://expedition/dungeon_map.gd").ROOM_SIDE):
-				if control.get_rect().has_point(scene.board.cell_center(Vector2i(x,y))):
-					failed = true; push_error("end turn covers a playable tile")
-		var round_before: int = scene.session.round_number
-		control.pressed.emit()
-		await process_frame
-		if scene.session.phase == "BATTLE" and scene.session.round_number != round_before + 1:
-			failed = true; push_error("end turn did not advance one round")
-		var before: int = scene.session.room
-		scene.show_map()
-		scene.on_room(scene.session.rooms[before].links[0])
-		if scene.session.room != before: failed = true; push_error("expanded map bypassed combat lock")
-		scene.map_popup.hide()
-	scene.on_cell(Vector2i(2,2))
-	if scene.session.phase == "BATTLE": scene.run_action(scene.session.end_round)
-	await process_frame
-	scene.run_action(scene.session.retreat)
-	await process_frame
-	print("UI smoke: mobile slots, touch targets, 100 top-down cells, map travel and combat lock")
-	scene.queue_free()
-	await process_frame
-	quit(1 if failed else 0)
+	check(scene.find_child("StartScreen",true,false) != null,"start screen")
+	check(scene.find_child("ArenaButton",true,false) != null,"arena entry")
+	scene.new_run(); await process_frame
+	check(scene.session.depth == 1 and scene.session.party.size() == 1,"solo floor")
+	check(scene.find_child("FoodLabel",true,false) != null and scene.find_child("CampButton",true,false) != null,"floor controls")
+	check(scene.find_child("TorchButton",true,false) == null and scene.find_child("Funds",true,false) == null,"retired resources absent")
+	check(scene.minimap.size.x <= 100 and scene.board.size.x >= 340,"compact map and wide board")
+	var event := InputEventMouseButton.new(); event.pressed = true; event.button_index = MOUSE_BUTTON_LEFT
+	event.position = scene.minimap.size/2; scene.minimap._gui_input(event); await process_frame
+	check(scene.map_popup.visible,"minimap expands")
+	scene.map_popup.hide()
+	var center: Vector2i = scene.session.party[0].pos
+	for dy in range(-3,4):
+		for dx in range(-3,4):
+			var p: Vector2i = center+Vector2i(dx,dy)
+			if not scene.session.inside(p): continue
+			check(scene.board.cell_at(scene.board.cell_center(p)) == p,"board hit test %s" % p)
+	for node in scene.item_buttons:
+		check(node.size.x > 0 and node.size.y >= 44,"item touch target")
+	check(scene.item_buttons.size() == 5,"five supplies")
+	check(scene.find_child("AutoToggle",true,false) != null,"auto combat control")
+	var old_depth: int = scene.session.depth
+	var stairs: Vector2i = scene.session.floor_state.layout.stairs
+	for foe in scene.session.enemies: foe.hp = 0
+	scene.session.party[0].pos = stairs; scene.session.floor_state.observe(scene.session); scene.refresh(); await process_frame
+	scene.on_cell(stairs); await process_frame
+	check(scene.find_child("StairsPopup",true,false) != null,"stairs prompt")
+	scene.find_child("Descend",true,false).pressed.emit(); await process_frame
+	check(scene.session.depth == old_depth+1,"stairs descend")
+	scene.queue_free(); await process_frame
+	print("UI smoke: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)

@@ -39,7 +39,7 @@ static func push_options(s, actor: Dictionary, options: Array) -> void:
 			if after > before: unsafe = true
 		# Do not push a foe onto healing water or out of another ally's melee reach.
 		if moved:
-			if s.boss_trial and s.rooms[s.room].pattern == 0 and s.tile(landing).terrain == "water": unsafe = true
+			if enemy.get("boss",false) and enemy.get("pattern",-1) == 0 and s.tile(landing).terrain == "water": unsafe = true
 			for ally in s.alive():
 				if ally.id != actor.id and s.melee_reach(ally.pos,enemy.pos) and not s.melee_reach(ally.pos,landing) and benefit <= 0: unsafe = true
 		if unsafe: continue

@@ -8,12 +8,12 @@ static func snapshot(s) -> Dictionary:
 	var actors: Array = []
 	for a in s.party+s.enemies:
 		if a.hp <= 0: continue
-		if s.floor_mode and not s.floor_state.visible.has(a.pos): continue
+		if not s.floor_state.visible.has(a.pos): continue
 		var item := {}
 		for key in ["id","name","pos","hp","max_hp","enemy","charging","cast_id","role","ap","guarded","protected_by"]:
 			if a.has(key): item[key] = a[key]
 		actors.append(item)
-	return {"actors":actors,"focus":s.party[s.selected].pos,"intents":s.intents.duplicate(true),"companion_intents":s.companion_intent_snapshot(),"visible":s.floor_state.visible.duplicate() if s.floor_mode else {},"explored":s.floor_state.explored.duplicate() if s.floor_mode else {}}
+	return {"actors":actors,"focus":s.party[s.selected].pos,"intents":s.intents.duplicate(true),"companion_intents":s.companion_intent_snapshot(),"visible":s.floor_state.visible.duplicate(),"explored":s.floor_state.explored.duplicate()}
 
 func begin(s) -> void:
 	frames.clear()

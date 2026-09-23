@@ -153,7 +153,7 @@ func _ready() -> void:
 	_resize_board()
 
 func _resize_board() -> void:
-	custom_minimum_size.y = maxf(180,size.x+4+(56 if action_footer else 8) if session != null and session.phase == "BATTLE" else size.x+8)
+	custom_minimum_size.y = maxf(180,size.x+4+(56 if action_footer else 8) if session != null and session.on_floor() else size.x+8)
 	queue_redraw()
 
 func geometry() -> void:
@@ -165,13 +165,13 @@ func project(cell: Vector2) -> Vector2:
 	return origin + (cell-Vector2(camera_cell()))*half_width*2
 
 func camera_cell() -> Vector2i:
-	if session == null or not session.floor_mode or session.tiles.is_empty(): return Vector2i.ZERO
+	if session == null or session.tiles.is_empty(): return Vector2i.ZERO
 	var focus: Vector2i = playback_focus if is_presenting() else session.party[session.selected].pos
 	var side := visible_side()
 	return focus-Vector2i((side-1)/2,(side-1)/2)
 
 func visible_side() -> int:
-	return view_side if session != null and session.floor_mode else 10
+	return view_side
 
 func set_view_side(value: int) -> void:
 	view_side = clampi(value,6,24); zoom_changed.emit(view_side); queue_redraw()
@@ -200,7 +200,7 @@ func is_wall_tile(point: Vector2i) -> bool:
 # walls to gameplay, the minimap, or any actor/feature behind them.
 func terrain_visibility(point: Vector2i) -> int:
 	if not session.inside(point): return 0
-	if not session.floor_mode: return 2
+
 	var state = session.floor_state
 	var seen: Dictionary = visual_state.visible if is_presenting() else state.visible
 	var known_cells: Dictionary = visual_state.explored if is_presenting() else state.explored
@@ -218,7 +218,7 @@ func outline(points: PackedVector2Array, color: Color, width: float = 1) -> void
 
 func movement_previews() -> Array:
 	var result: Array = []
-	if session == null or session.phase != "BATTLE": return result
+	if session == null or not session.on_floor(): return result
 	for preview in companion_previews:
 		if preview.kind != "MOVE": continue
 		var actor: Dictionary = session.party[preview.actor]
@@ -227,23 +227,7 @@ func movement_previews() -> Array:
 	return result
 
 func draw_movement_previews() -> void:
-	if session.floor_mode: return
-	for preview in movement_previews():
-		var start := cell_center(preview.from)
-		var destination := cell_center(preview.cell)
-		var color := Color("f1ca79") if preview.reserved else Color("a6d8e8")
-		var polygon := tile_polygon(Vector2(preview.cell))
-		draw_colored_polygon(polygon,Color(color,0.13))
-		outline(polygon,Color(color,0.8),2)
-		var side := half_width*1.65
-		Art.paint_actor(self,preview.actor,Rect2(destination-Vector2.ONE*side/2,Vector2.ONE*side),Color(color,0.35))
-		var direction := (destination-start).normalized()
-		var tip := destination-direction*half_width*0.4
-		var tail := start+direction*half_width*0.6
-		var normal := Vector2(-direction.y,direction.x)
-		draw_line(tail,tip,Color(0,0,0,0.7),5,true)
-		draw_line(tail,tip,color,2.5,true)
-		draw_colored_polygon(PackedVector2Array([tip,tip-direction*8+normal*5,tip-direction*8-normal*5]),color)
+	pass
 
 func paint_terrain() -> void:
 	var walls: Array = []
@@ -273,7 +257,7 @@ func paint_terrain() -> void:
 	Art.Masonry.paint_walls(self,walls,is_wall_tile,Art.FirstFloor.material() if uses_first_floor_art() else {})
 
 func uses_first_floor_art() -> bool:
-	return session.floor_mode and session.floor_state.theme_id == "F1_RUINS"
+	return true and session.floor_state.theme_id == "F1_RUINS"
 
 func _draw() -> void:
 	for visual in actor_visuals.values():
@@ -316,52 +300,40 @@ func _draw() -> void:
 			var y: int = local_y+camera_cell().y
 			if x < 0 or y < 0 or x >= session.BOARD_SIDE or y >= session.BOARD_SIDE: continue
 			var point := Vector2i(x,y)
-			if session.floor_mode and not (visual_state.explored if is_presenting() else session.floor_state.explored).has(point): continue
+			if not (visual_state.explored if is_presenting() else session.floor_state.explored).has(point): continue
 			var cell: Dictionary = session.tile(point)
 			var polygon := tile_polygon(Vector2(point))
-			if session.floor_mode and not (visual_state.visible if is_presenting() else session.floor_state.visible).has(point): continue
+			if not (visual_state.visible if is_presenting() else session.floor_state.visible).has(point): continue
 			if cell.terrain not in ["stone","wall"]: outline(polygon,Color(0.08,0.10,0.12,0.25))
 			var center := project(Vector2(point)+Vector2.ONE*0.5)
-			if session.floor_mode and session.floor_state.features.has(point):
+			if session.floor_state.features.has(point):
 				var feature: Dictionary = session.floor_state.features[point]
 				var icon: String = session.Curios.definition(feature).get("icon",feature.kind)
 				var object_id: String = Art.FirstFloor.feature_id(feature) if uses_first_floor_art() else ""
 				if not object_id.is_empty():
 					Art.FirstFloor.paint_object(self,object_id,Rect2(center-Vector2.ONE*half_width,Vector2.ONE*half_width*2),Color("777777") if feature.used else Color.WHITE)
 				else:
-					Icons.paint(self,"entry" if feature.kind in ["entry","altar"] else icon,center,half_width*0.65,Color("655a43") if feature.used else Color("9fe3ff") if feature.kind == "relic" else Color("e4c98e"))
+					Icons.paint(self,"entry" if feature.kind in ["entry","altar"] else icon,center,half_width*0.65,Color("655a43") if feature.used else Color("9fe3ff") if feature.kind in ["stairs","pylon"] else Color("e4c98e"))
 			if point in attacks:
 				draw_colored_polygon(polygon,Color(0.95,0.15,0.18,0.3)); outline(polygon,Color("f37575"),2)
 			if point == target_cell: outline(polygon,Color.WHITE,3)
 			if cell.wet > 0 and cell.terrain != "water": outline(polygon,Color(0.3,0.6,0.8,0.6))
-			if session.doors().has(point):
-				outline(polygon,Color("c2aa76"),2)
-				Icons.paint(self,"entry",center,half_width*0.3,Color("d8c28d"))
 			for intent in (visual_state.intents if is_presenting() else session.intents):
 				if intent.cell == point:
 					draw_colored_polygon(polygon,Color(1,0.45,0.05,0.4)); outline(polygon,Color("ffb447"),3)
 					draw_string(ui_font,center+Vector2(-4,4),"!"+(session.Abilities.badge(intent.kind) if not str(intent.get("kind","")).is_empty() else ""),HORIZONTAL_ALIGNMENT_LEFT,-1,12 if not str(intent.get("kind","")).is_empty() else 18,Color.WHITE)
 			if cell.fire > 0:
 				draw_circle(center,half_width*0.4,Color("a74b24")); draw_circle(center-Vector2(0,4),half_width*0.2,Color("ffc675"))
-			var room: Dictionary = session.rooms[session.room]
-			if session.boss_trial and room.shield and point == room.pylon:
-				draw_line(center+Vector2(0,half_width*0.5),center-Vector2(0,half_width*0.5),Color("7eeaff"),8,true)
-				draw_circle(center-Vector2(0,half_width*0.5),6,Color("bffaff"))
-			if room.kind in ["camp","loot"] and room.feature == point:
-				Icons.paint(self,room.kind,center-Vector2(0,5),half_width*0.45,Color("68716a") if room.used else Color("b5d4a6") if room.kind == "camp" else Color("e0b96e"))
 			var actor: Dictionary = display_at(point)
 			if not actor.is_empty():
 				if not actor.enemy and actor.id == session.selected: outline(polygon,Color("e8c276"),2)
 				draw_set_transform(center*camera.zoom+camera.offset,0,Vector2(1,0.45)*camera.zoom)
 				draw_circle(Vector2.ZERO,half_width*0.6,Color(0,0,0,0.5))
 				draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
-				var sprite: Texture2D = Art.BOSS if actor.enemy and actor.name == "수문장" else Art.ENEMY if actor.enemy else Art.ACTORS[actor.id]
-				if session.boss_trial and not session.floor_mode and actor.enemy: sprite = Art.BOSS
-				if session.boss_trial and actor.enemy and room.shield:
-					draw_arc(center,half_width*0.9,0,TAU,32,Color("7eeaff"),3,true)
+				var sprite: Texture2D = Art.BOSS if actor.get("boss",false) else Art.ENEMY if actor.enemy else Art.ACTORS[actor.id]
 				var side := half_width*1.65
 				var flash := Color.WHITE
-				if actor.enemy and session.floor_mode:
+				if actor.enemy and true:
 					flash = {"MELEE":Color.WHITE,"RANGED":Color("b8d9a2"),"CASTER":Color("c5a5ef")}.get(actor.get("role","MELEE"),Color.WHITE)
 				for effect in effects:
 					if effect.get("kind","") == "ENEMY_ATTACK": continue
@@ -401,9 +373,9 @@ func _draw_foreground(canvas: Node2D) -> void:
 	var actors: Array = visual_state.actors if is_presenting() else session.party+session.enemies
 	for actor in actors:
 		if actor.hp <= 0: continue
-		if session.floor_mode and not (visual_state.visible if is_presenting() else session.floor_state.visible).has(actor.pos): continue
+		if not (visual_state.visible if is_presenting() else session.floor_state.visible).has(actor.pos): continue
 		var center := cell_center(actor.pos)
-		if actor.enemy and session.floor_mode:
+		if actor.enemy and true:
 			var role: String = "준비!" if actor.get("charging",false) else {"MELEE":"근접","RANGED":"사격","CASTER":"마법"}.get(actor.get("role","MELEE"),"")
 			canvas.draw_string(ui_font,center+Vector2(-20,-half_width*0.7),role,HORIZONTAL_ALIGNMENT_CENTER,40,11,Color("ffe2a0"))
 		canvas.draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24,3)),Color("191d24"))
@@ -454,10 +426,6 @@ func _draw_foreground(canvas: Node2D) -> void:
 			canvas.draw_line(center-Vector2(15,-12),center+Vector2(15,-12),color,5,true)
 			canvas.draw_arc(center,8+effect_time*45,0,TAU,20,color,2,true)
 		canvas.draw_string(ui_font,center+Vector2(-12,-14-effect_time*30),"-%d" % effect.amount,HORIZONTAL_ALIGNMENT_LEFT,-1,20,color)
-	if session.floor_mode:
-		var observer: Dictionary = session.floor_state.observer(session)
-		var strength: float = session.floor_state.darkness_strength(session.light)
-		if not observer.is_empty() and strength > 0: canvas.draw_mesh(radial_light.get_mesh(cell_center(observer.pos),size,half_width*2,session.floor_state.sight_radius(session.light),strength),null)
 	canvas.draw_set_transform(Vector2.ZERO)
 	var injury := injury_focus()
 	if not injury.is_empty() and impact_time < 0.45:
@@ -543,7 +511,7 @@ func _actor_for_id(actors: Array, actor_id: int) -> Dictionary:
 func _label_visible(actor: Dictionary) -> bool:
 	if actor.is_empty() or int(actor.get("hp",0)) <= 0: return false
 	var visible: Dictionary = visual_state.get("visible",{}) if is_presenting() else session.floor_state.visible
-	return (not session.floor_mode or visible.has(actor.pos)) and Rect2(Vector2.ZERO,size).has_point(cell_center(actor.pos))
+	return visible.has(actor.pos) and Rect2(Vector2.ZERO,size).has_point(cell_center(actor.pos))
 
 ## Keep the action being replayed readable through its entire frame, even
 ## after its AP was spent. Other members use only this frame's snapshot.

@@ -77,9 +77,9 @@ static func predict(s, actor: Dictionary, action: Dictionary, before: Dictionary
 static func threat_after(s, member: Dictionary, pos_override: Dictionary, hp_override: Dictionary, protected: Dictionary, intents: Array) -> int:
 	var pos: Vector2i = pos_override.get(member.id,member.pos)
 	var worst := 0
-	var bonus: int = s.Floor.enemy_bonus(s.light)
+	var bonus := 0
 	for intent in intents:
-		if intent.cell == pos: worst = maxi(worst,int(intent.damage)+(bonus if s.floor_mode else 0))
+		if intent.cell == pos: worst = maxi(worst,int(intent.damage)+bonus)
 	var roles: Dictionary = s.Floor.MonsterAI.ROLES
 	for e in s.combat_enemies():
 		if int(hp_override.get(e.id,e.hp)) <= 0 or int(e.get("cast_recovery",0)) > 0: continue

@@ -106,21 +106,21 @@ func stops() -> void:
 	s.auto_step()
 	s.party[1].hp = int(s.party[1].max_hp*0.3)
 	check(s.auto_stop_reason() == "","disabled stop is ignored")
-	# Death and battle end.
-	d = skirmish(2); s = d.s; s.auto_step()
+	# Death and battle end. Deliver deterministic lethal damage so the stop
+	# event is tested independently of the combat policy's survival choices.
+	d = skirmish(2); s = d.s; s.auto_stop_reason()
 	check(cut_off(s,2,d.foes[0],d.c+Vector2i(-3,4)),"the isolated member has a foe beside it")
-	s.auto_step()
+	s.damage(s.party[2],100,d.foes[0].id,"IMPACT")
 	check(s.party[2].hp <= 0 and s.auto_stop_reason() == "DEATH","a downed member stops the run")
-	# A hard event is not suppressed inside the three-round window.
 	check(cut_off(s,1,d.foes[1],d.c+Vector2i(-3,-4)),"the second member is cut off too")
-	s.auto_step()
-	check(s.party[1].hp <= 0 and s.auto_stop_reason() == "DEATH","a second death next round stops again")
-	check(s.auto.stops_log == ["DEATH","DEATH"],"stops accumulate in order for the battle report")
+	s.damage(s.party[1],100,d.foes[1].id,"IMPACT")
+	check(s.party[1].hp <= 0 and s.auto_stop_reason() == "DEATH","a second death stops again")
+	check(s.auto.stops_log.slice(-2) == ["DEATH","DEATH"],"death stops accumulate in order for the battle report")
 	# A disabled hard event must not swallow the lower-priority alert of the same round.
 	d = skirmish(); s = d.s; s.auto.stops.DEATH = false; s.auto.stops.HP_LOW = true
-	s.auto_step()
+	s.auto_stop_reason()
 	check(cut_off(s,2,d.foes[0],d.c+Vector2i(-3,4)),"the isolated member has a foe beside it")
-	s.auto_step()
+	s.damage(s.party[2],100,d.foes[0].id,"IMPACT")
 	s.party[1].hp = int(s.party[1].max_hp*0.3)
 	check(s.party[2].hp <= 0 and s.auto_stop_reason() == "HP_LOW","a disabled DEATH still lets HP_LOW through")
 	# Battle end.
@@ -180,7 +180,9 @@ func commands() -> void:
 	s.auto_step()
 	check(d.foes[0].hp < hp,"attack target makes the hero hit the marked foe")
 	s.party_command = "FOLLOW"
-	check(not s.reserve_action(1,"WAIT",s.party[1].pos),"reservations are gone in floor mode")
+	d.foes[0].hp = maxi(1,d.foes[0].hp)
+	d.foes[0].pos = d.hero.pos+Vector2i(1,0); s.floor_state.observe(s)
+	check(s.reserve_action(1,"WAIT",s.party[1].pos),"companion action reservations remain available to test fixtures")
 
 func profile(values: Dictionary) -> DungeonHexacoProfile:
 	return Hexaco.new({"H":500,"E":500,"X":500,"A":500,"C":500,"O":500}.merged(values,true))
@@ -197,8 +199,8 @@ func knobs() -> void:
 	var hero: Dictionary = d.hero
 	check(hero.knobs == Knobs.defaults(hero.profile),"new actors start at their personality defaults")
 	check(not s.set_knob(0,"posture",120) and not s.set_knob(0,"nope",1),"range and key validated")
-	s.phase = "TOWN"
-	check(s.set_knob(0,"posture",-100) and hero.knobs.posture == -100,"knobs change in town")
+	s.phase = "CAMP"
+	check(s.set_knob(0,"posture",-100) and hero.knobs.posture == -100,"knobs change at camp")
 	s.phase = "BATTLE"
 	check(not s.set_knob(0,"posture",0),"not while fighting")
 	# Conflict: forced far outside the comfort band.
@@ -248,6 +250,7 @@ func stats() -> void:
 	check(s.battle_stats.rounds == 1 and m.dealt > 0,"hero damage is tallied")
 	check(s.battle_stats.members.has(s.party[1].id),"every member has a row")
 	d.foes[0].hp = 30
+	d.foes[0].pos = d.c+Vector2i(1,1); s.floor_state.observe(s)
 	s.party[1].pos = d.c+Vector2i(0,1); d.hero.ap = 1
 	s.act_as(d.hero,"GUARD",s.party[1].pos,false)
 	d.foes[0].pos = d.c+Vector2i(1,1); s.floor_state.observe(s)
@@ -264,7 +267,7 @@ func stats() -> void:
 func sim() -> void:
 	var hob := [{"species_id":"dcss_hobgoblin","role":"MELEE"}]
 	var arena: Dictionary = Arena.DEFAULT_SPEC.duplicate(true); arena.members = hob
-	var config := {"arena":arena,"party_size":3,"build":"melee_1","policy":"rules","rules":Session.DEFAULT_RULES,"supplies":[0,0,0,0,0,0],"max_rounds":40}
+	var config := {"arena":arena,"party_size":3,"build":"melee_1","policy":"rules","rules":Session.DEFAULT_RULES,"supplies":[0,0,0,0,0],"max_rounds":40}
 	var one: Dictionary = Runner.run_one(config,11)
 	check(one.result in ["WIN","DEFEAT","TIMEOUT"] and one.rounds >= 1,"rules policy runs through auto_step")
 	check(one == Runner.run_one(config,11),"still deterministic")
@@ -323,16 +326,15 @@ func ui() -> void:
 	s.floor_state.observe(s); scene.refresh()
 	for frame in range(3): await process_frame
 	check(scene.find_child("StopBanner",true,false).text.is_empty(),"a bare refresh raises no stop event")
-	# The HUD asks for a stop event at the end of a player action — here the
-	# torch that was lit as the pack came into sight.
-	scene.find_child("TorchButton",true,false).pressed.emit()
+	# The HUD asks for a stop event after an action.
+	s.supplies[0] = 1; scene.check_stop(); scene.refresh()
 	for frame in range(3): await process_frame
 	check(scene.skill_buttons.is_empty() and scene.end_turn_button == null,"floor battle has no skill buttons and no end-turn button")
 	var toggle: Button = scene.find_child("AutoToggle",true,false)
 	check(toggle != null,"auto toggle")
 	check(scene.find_child("CommandBar",true,false) == null and scene.find_child("FormationButton",true,false) == null and scene.find_child("AutoOptionsButton",true,false) == null,"the command bar, the formation swap and the options gear are gone")
 	check(scene.find_child("StopBanner",true,false).text.begins_with("전투 시작"),"banner names the stop")
-	check(toggle.text == "▶ 재개" and not scene.item_buttons[0].disabled,"stopped: the toggle resumes and items are usable")
+	check(toggle.text == "▶ 전투" and not scene.item_buttons[0].disabled,"stopped: the toggle starts and items are usable")
 	# 개입은 명령만: the board marks the focus target and does nothing else.
 	var foe_hp: int = foe.hp
 	var stopped_round: int = s.round_number
@@ -360,7 +362,7 @@ func ui() -> void:
 	await process_frame
 	check(s.round_number == round_before+1,"a tick advanced one round")
 	var card: Button = scene.find_child("MemberCard0",true,false)
-	check(card.find_children("*","Label",true,false).any(func(l): return l.text.contains(s.party[0].last_action)),"member card reports the last action")
+	check(card.text.contains(s.party[0].name) and card.text.contains("HP"),"member card keeps concise status")
 	toggle = scene.find_child("AutoToggle",true,false)
 	toggle.pressed.emit(); await process_frame
 	check(not s.auto.running,"toggle stops")

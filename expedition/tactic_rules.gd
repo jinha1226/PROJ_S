@@ -70,9 +70,9 @@ static func matches(s, source: Dictionary, candidate: Dictionary, rule: Dictiona
 ## cast, are counted.
 static func lethal_threat(s, ally: Dictionary) -> int:
 	var worst := 0
-	var bonus: int = s.Floor.enemy_bonus(s.light)
+	var bonus := 0
 	for intent in s.intents:
-		if intent.cell == ally.pos: worst = maxi(worst,int(intent.damage)+(bonus if s.floor_mode else 0))
+		if intent.cell == ally.pos: worst = maxi(worst,int(intent.damage)+bonus)
 	var roles: Dictionary = s.Floor.MonsterAI.ROLES
 	for e in s.combat_enemies():
 		if e.hp <= 0 or int(e.get("cast_recovery",0)) > 0: continue

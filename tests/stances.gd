@@ -47,15 +47,15 @@ func data() -> void:
 	var lax := profile({"X":700,"E":300,"C":0})
 	check(Stances.aptitude(lax).CHARGER == 400 and not Stances.comfortable(lax,"SKIRMISHER"),"C 0: band is only 200")
 	# Session: fields, gating, solo guardian refused.
-	var s = Session.new(731,true,true,true,3)
+	var s = Session.new(731,true,true,true,3); s.depart(); s.phase = "CAMP"
 	var hero: Dictionary = s.party[0]
 	check(Stances.IDS.has(hero.stance) and hero.stance == Stances.default_stance(hero.profile) and hero.protect_id == -1,"new actors start on their default stance")
-	check(s.set_stance(0,"GUARDIAN") and hero.stance == "GUARDIAN","stance changes in town")
+	check(s.set_stance(0,"GUARDIAN") and hero.stance == "GUARDIAN","stance changes at camp")
 	check(not s.set_stance(0,"NOPE") and not s.set_stance(9,"CHARGER"),"unknown stance / index refused")
 	check(s.set_protect(0,1) and hero.protect_id == 1 and not s.set_protect(0,0) and s.set_protect(0,-1),"protect target: another member or auto; never self")
-	var solo = Session.new(731,true,false,true,1)
+	var solo = Session.new(731,true,false,true,1); solo.depart(); solo.phase = "CAMP"
 	check(not solo.set_stance(0,"GUARDIAN") and solo.set_stance(0,"SKIRMISHER"),"solo cannot be a guardian")
-	s.depart(); Fixture.arena(s,8)
+	s.phase = "BATTLE"; Fixture.arena(s,8)
 	var foe: Dictionary = s.enemies[0]; foe.hp = 30; foe.max_hp = 30; foe.role = "MELEE"; foe.alert = true; foe.part_id = ""; foe.pos = s.party[0].pos+Vector2i(3,0)
 	s.floor_state.observe(s)
 	check(not s.set_stance(0,"CHARGER"),"not while fighting")
@@ -200,7 +200,7 @@ func skirmisher() -> void:
 	var f := field(["SKIRMISHER","CHARGER","CHARGER"]); var s = f.s; var hero: Dictionary = s.party[0]
 	hero.equipped_abilities = ["KOBOLD_SLING","GUARD"]; hero.rules = [s.Abilities.default_rule("KOBOLD_SLING")]; hero.cooldowns = {}
 	# d > R: approach; 2..R: shoot; d < 2: open distance.
-	f.foes[0].pos = hero.pos+Vector2i(6,0); s.floor_state.observe(s)
+	f.foes[0].pos = hero.pos+Vector2i(5,0); s.floor_state.observe(s)
 	var pick: Dictionary = s.Tactics.choose(s,hero)
 	check(pick.kind == "MOVE" and pick.cell.x > hero.pos.x,"beyond range: closes in")
 	f.foes[0].pos = hero.pos+Vector2i(3,0); s.floor_state.observe(s)
@@ -349,7 +349,7 @@ func defence() -> void:
 ## the retreat toggle and the role line on the battle report.
 func ui() -> void:
 	var scene = load("res://expedition/main.tscn").instantiate()
-	var s = Session.new(731,true,true,true,3)
+	var s = Session.new(731,true,true,true,3); s.depart(); s.phase = "CAMP"
 	scene.session = s; root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
 	await process_frame
 	for frame in range(3): await process_frame
@@ -372,7 +372,7 @@ func ui() -> void:
 	# so both branches of the ⚠ badge run.
 	var warned: Array = []
 	for id in Stances.IDS:
-		check(s.set_stance(0,id),"stance %s can be taken in town" % id)
+		check(s.set_stance(0,id),"stance %s can be taken at camp" % id)
 		scene.show_character(0,"성격")
 		for frame in range(3): await process_frame
 		var pick: Button = scene.modal_content.find_child("Stance_"+id,true,false)
@@ -381,19 +381,19 @@ func ui() -> void:
 	check(true in warned and false in warned,"both branches of the comfort badge were seen")
 	check(s.party[0].stance == "GUARDIAN","the stance card ends on the guardian")
 	scene.details_popup.hide()
-	var solo = Session.new(731,true,false,true,1)
+	var solo = Session.new(731,true,false,true,1); solo.depart(); solo.phase = "CAMP"
 	scene.session = solo; scene.refresh()
 	scene.show_character(0,"성격")
 	for frame in range(3): await process_frame
 	check(scene.modal_content.find_child("Stance_GUARDIAN",true,false).disabled,"solo: guardian disabled")
 	scene.details_popup.hide()
 	# Member card shows the stance letter; report shows role rounds.
-	scene.session = s; s.depart(); Fixture.arena(s,8); Fixture.equip_basics(s)
+	scene.session = s; s.phase = "BATTLE"; Fixture.arena(s,8); Fixture.equip_basics(s)
 	var foe: Dictionary = s.enemies[0]; foe.hp = 30; foe.max_hp = 30; foe.role = "MELEE"; foe.alert = true; foe.part_id = ""; foe.pos = s.party[0].pos+Vector2i(1,0)
 	s.floor_state.observe(s); scene.refresh()
 	for frame in range(3): await process_frame
 	var cards: Array = scene.find_children("MemberCard*","Button",true,false)
-	check(cards.size() == 3 and cards[0].get_child(0).text.contains("[호]"),"member card carries the stance letter")
+	check(cards.size() == 3 and cards[0].text.contains(s.party[0].name) and cards[0].text.contains("HP"),"member card shows concise status")
 	# Battle HUD: no command bar, formation or options; retreat toggle present.
 	check(scene.find_child("CommandBar",true,false) == null and scene.find_child("FormationButton",true,false) == null and scene.find_child("AutoOptionsButton",true,false) == null,"command bar, formation and options are gone")
 	var retreat: Button = scene.find_child("RetreatToggle",true,false)

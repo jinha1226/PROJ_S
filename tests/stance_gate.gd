@@ -113,7 +113,7 @@ func commit_hash() -> String:
 
 func spec_line(ex: Dictionary) -> String:
 	var spec: Dictionary = Arena.DEFAULT_SPEC
-	return "size %d · room %s · door %s · pillars %s · party_entry %s · light %d · supplies %s" % [spec.size,str(spec.room),str(spec.door),str(spec.pillars),str(spec.party_entry),spec.light,str(ex.supplies.map(func(v): return int(v)))]
+	return "size %d · room %s · door %s · pillars %s · party_entry %s · sight 5 · supplies %s" % [spec.size,str(spec.room),str(spec.door),str(spec.pillars),str(spec.party_entry),str(ex.supplies.map(func(v): return int(v)))]
 
 func write_report(table: Array, verdicts: Dictionary, ex: Dictionary, seeds: Array, elapsed: int, quick: bool, explain: bool = false) -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://docs/balance"))

@@ -1,7 +1,7 @@
 extends RefCounted
 const Generator = preload("res://expedition/floor_generator.gd")
 const MonsterAI = preload("res://expedition/monster_ai.gd")
-const Objective = preload("res://expedition/expedition_objective.gd")
+const BossAI = preload("res://expedition/boss_ai.gd")
 const Abilities = preload("res://expedition/abilities.gd")
 const THEME_ID := "F1_RUINS"
 ## Roster health was tuned for a pair; a lone hero meets the same groups at
@@ -19,41 +19,41 @@ var discoveries: Array = []
 var epoch := ""
 var discovered_curios := 0
 var seen_enemies: Dictionary = {}
-## Light tiers (Darkest-Dungeon style): darker pays more and hits harder.
-const TIERS := {"BRIGHT":{"min":60,"label":"밝음","loot":100,"drop":50,"bonus":0},
-	"DIM":{"min":35,"label":"어둑","loot":125,"drop":65,"bonus":1},
-	"DARK":{"min":0,"label":"암흑","loot":150,"drop":80,"bonus":2}}
+const SIGHT_RADIUS := 5.0
 
-static func light_tier(light: int) -> String:
-	return "BRIGHT" if light >= 60 else "DIM" if light >= 35 else "DARK"
+func sight_radius() -> float:
+	return SIGHT_RADIUS
 
-static func tier_label(light: int) -> String:
-	return TIERS[light_tier(light)].label
+static func sight_side() -> int:
+	return ceili(SIGHT_RADIUS)*2+1
 
-static func loot_percent(light: int) -> int:
-	return TIERS[light_tier(light)].loot
-
-static func drop_percent(light: int) -> int:
-	return TIERS[light_tier(light)].drop
-
-static func enemy_bonus(light: int) -> int:
-	return TIERS[light_tier(light)].bonus
+static func theme_for(depth: int) -> Dictionary:
+	var theme: Dictionary = Generator.theme("F1_RUINS" if depth % 2 == 1 else "F2_MINES")
+	if depth >= 3:
+		var scale: float = 1.0+0.25*(depth-2)
+		for key in theme.monsters.budget: theme.monsters.budget[key] = roundi(theme.monsters.budget[key]*scale)
+		theme.monsters.max_members = mini(4,2+int(depth/3))
+	theme.depth = depth
+	theme.boss = depth % 3 == 0
+	if theme.boss: theme.templates.required = ["entry_camp","boss_lair","sealed_treasury"]
+	return theme
 
 func build(s) -> void:
-	var theme: Dictionary = Generator.theme(theme_id)
-	apply(s,theme,Generator.generate(theme,s.seed_value+s.expedition_number*7919,int(theme.depth)))
+	var theme: Dictionary = theme_for(s.depth)
+	apply(s,theme,Generator.generate(theme,s.seed_value+s.depth*7919,s.depth))
 
-## Consumes a §7 layout: tiles, enemies, features, party spawn, objective.
+## Consumes a §7 layout: tiles, enemies, features, and party spawn.
 ## Static so a simulator can drive the floor without the generator; the session
 ## always owns the instance the layout is written into.
 static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 	var state = s.floor_state
 	state.layout = p_layout
+	state.theme_id = str(theme.id)
 	var layout: Dictionary = state.layout
 	assert(not layout.is_empty(),"floor generator returned no layout")
 	var side: int = layout.size
 	state.size = side
-	state.epoch = str(s.seed_value)+"/"+str(s.expedition_number)
+	state.epoch = str(s.seed_value)+"/"+str(s.depth)
 	state.visible.clear(); state.explored.clear(); state.discoveries.clear(); state.features.clear(); state.seen_enemies.clear()
 	state.discovered_curios = 0
 	s.BOARD_SIDE = side; s.tiles = []
@@ -78,28 +78,16 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 	for i in range(s.party.size()):
 		s.party[i].pos = layout.entry+Vector2i(0,i); s.party[i].ap = 1
 		s.party[i].reservation = {}
-	if layout.relic != Vector2i(-1,-1): Objective.register(s,layout.relic)
-	else: s.objective = {}
-	s.rooms = [{"id":0,"name":"1층 · "+str(theme.label),"kind":"floor","links":[],"tiles":s.tiles,"enemies":s.enemies,"started":true,"cleared":false,"shield":false,"pattern":-1,"used":false,"feature":Vector2i(-1,-1)}]
-	s.room = 0; s.phase = "BATTLE"; s.round_number = 1
-	state.observe(s); state.ambush(s)
-
-static func sight_side(light: int) -> int:
-	return ceili(sight_radius(light))*2+1
-
-static func sight_radius(light: int) -> float:
-	# Light changes sight within a bounded four-to-six tile radius.
-	return lerpf(4.0,6.0,clampf(light/60.0,0,1))
-
-static func darkness_strength(light: int) -> float:
-	return 1.0-clampf(light/60.0,0,1)
+	if theme.get("boss",false): BossAI.spawn(s,layout,int(theme.depth))
+	s.phase = "BATTLE" if s.simulation_arena else "EXPLORE"; s.round_number = 1
+	state.observe(s)
 
 func observer(s) -> Dictionary:
 	return s.party[s.selected] if s.party[s.selected].hp > 0 else s.alive()[0] if not s.alive().is_empty() else {}
 
 func observe(s) -> void:
 	visible.clear()
-	var radius := sight_radius(s.light)
+	var radius := SIGHT_RADIUS
 	var before := ceili(radius)
 	var side := before*2+1
 	var center := observer(s)
@@ -116,8 +104,9 @@ func observe(s) -> void:
 					explored[p] = true
 					var feature: Dictionary = features.get(p,{})
 					if feature.get("kind","") == "curio": discovered_curios += 1
-					if feature.get("kind","") == "relic": Objective.discover(s)
-					discoveries.append({"position":[x,y],"terrain_id":s.tile(p).terrain,"visibility_state":"MEMORY","marker":"EXIT" if feature.get("kind","") == "entry" else "PORTAL" if feature.get("kind","") == "relic" else ""})
+					discoveries.append({"position":[x,y],"terrain_id":s.tile(p).terrain,"visibility_state":"MEMORY","marker":"EXIT" if feature.get("kind","") == "entry" else "STAIRS" if feature.get("kind","") == "stairs" else ""})
+	if not s.simulation_arena and s.phase in ["EXPLORE","BATTLE"]:
+		s.phase = "EXPLORE" if safe(s) else "BATTLE"
 
 ## Static markers are cached per epoch by the minimap; a state change rewrites
 ## the row and starts a new epoch so the next observation rebuilds once.
@@ -125,19 +114,6 @@ func clear_marker(p: Vector2i) -> void:
 	for row in discoveries:
 		if row.position == [p.x,p.y]: row.marker = ""
 	epoch += "+"
-
-## In the dark, an enemy sighted for the first time acts immediately.
-## Every visible enemy is remembered so the ambush fires once per foe.
-func ambush(s) -> void:
-	for enemy in s.enemies:
-		if enemy.hp <= 0 or not visible.has(enemy.pos) or seen_enemies.has(enemy.id): continue
-		seen_enemies[enemy.id] = true
-		if light_tier(s.light) != "DARK" or s.phase != "BATTLE": continue
-		enemy.alert = true
-		s.message("기습! 어둠 속에서 %s이(가) 먼저 움직입니다." % enemy.name)
-		MonsterAI.turn(s,enemy)
-		s.check_battle_end()
-		if s.phase != "BATTLE": return
 
 func observation(s) -> Dictionary:
 	var markers: Array = []
@@ -152,18 +128,15 @@ func safe(s) -> bool:
 	return threats(s).is_empty()
 
 func interact(s, p: Vector2i) -> bool:
-	if s.phase != "BATTLE" or s.party[s.selected].hp <= 0 or s.party[s.selected].ap <= 0: return false
+	if s.phase != "EXPLORE" or s.party[s.selected].hp <= 0 or s.party[s.selected].ap <= 0: return false
 	if not visible.has(p) or not features.has(p) or s.distance(s.party[s.selected].pos,p) > 1: return false
 	var feature: Dictionary = features[p]
-	if feature.kind in ["curio","relic"]: return false # Explicit choice required; never auto-claim.
+	if feature.kind in ["curio","stairs","pylon","entry","camp"]: return false # Explicit choice required; never auto-claim.
 	if not safe(s): s.message("주변에 적 있음"); return false
-	if feature.kind == "entry": return s.return_home()
 	if feature.used: return false
 	feature.used = true
-	if feature.kind == "camp":
-		for actor in s.alive(): actor.hp = mini(actor.max_hp,actor.hp+25); s.stress(actor,-20)
-	elif feature.kind == "loot": s.add_stock("supply:0",1); s.add_stock("food",3); s.loot += s.loot_scaled(15)
-	else: s.loot += s.loot_scaled(25); s.light = 100
+	if feature.kind == "loot": s.food += 2; s.score += 5
+	else: s.score += 10
 	s.message(feature.label+" · 사용 완료"); s.act("WAIT",s.party[s.selected].pos); return true
 
 func enemy_turn(s, enemy: Dictionary) -> void:

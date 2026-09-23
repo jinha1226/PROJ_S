@@ -1,9 +1,6 @@
 extends RefCounted
 ## Adapted from ../playtest status folio and mastery cards, using expedition data.
 const Growth = preload("res://expedition/growth.gd")
-const Body = preload("res://game/rebuilt/body_bridge.gd")
-const Silhouette = preload("res://expedition/body_status_silhouette.gd")
-const BodyPresentation = preload("res://expedition/body_presentation.gd")
 const Emblem = preload("res://expedition/growth_emblem.gd")
 const Art = preload("res://expedition/mobile_art.gd")
 const Stances = preload("res://expedition/stances.gd")
@@ -96,7 +93,7 @@ static func status(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	vitals.get_parent().custom_minimum_size.y = 130
 	text(vitals,"체력 %d / %d" % [actor.hp,actor.max_hp]); gauge(vitals,actor.hp,actor.max_hp,Color("9f4544"))
 	text(vitals,"정신 상태 · "+actor.condition); gauge(vitals,actor.stress,200,Color("c6a34c"))
-	if ui.session.floor_mode and ui.session.party.size() == 1:
+	if ui.session.party.size() == 1:
 		text(vitals,"스트레스 150 이상: 받는 피해 +1 · 정신 안정제로 완화",12)
 	var stats := card(list,"능력치 · 남은 포인트 %d" % actor.growth.stat_points)
 	var attributes := grid(stats,3)
@@ -104,20 +101,6 @@ static func status(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		var box := card(attributes,Growth.STATS[id]); text(box,str(actor.growth.stats[id]),20)
 		ui.button(box,"+",func(): preview(ui,id,true),can_invest(ui,actor) and actor.growth.stat_points > 0)
 	text(stats,"일반 공격 %d · 피해 감소 %d%%" % [Growth.power(actor,"MELEE",18),actor.growth.ranks.DEFENSE*4])
-	var body := card(list,"육체 상태")
-	text(body,BodyPresentation.summary(actor),18)
-	if actor.attack_factor < 100: text(body,"팔 손상 · 공격력 감소",14)
-	if actor.move_factor > 100: text(body,"다리 손상",14)
-	if actor.blood < 60: text(body,"혈액 부족",14)
-	var row := HBoxContainer.new(); body.add_child(row)
-	var silhouette := Silhouette.new(); silhouette.body = {"parts":actor.body.parts}; row.add_child(silhouette)
-	var parts := VBoxContainer.new(); parts.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(parts)
-	for part in actor.body.parts:
-		if BodyPresentation.part_state(part) == "정상": continue
-		var line = ui.button(parts,"%s · %s" % [Body.PART_NAMES[part.part_id],BodyPresentation.part_state(part)],func(): detail(ui,Body.PART_NAMES[part.part_id],BodyPresentation.detail(part)))
-		line.custom_minimum_size.y = 44; line.add_theme_color_override("font_color",BodyPresentation.color(part))
-	if parts.get_child_count() == 0: text(parts,"모든 부위가 정상입니다.",16)
-	text(body,"초록: 정상 · 노랑: 상처 · 빨강: 기능 상실",12)
 
 static func can_invest(ui, actor: Dictionary) -> bool:
 	return ui.session.safe_management() and actor.hp > 0
@@ -158,7 +141,7 @@ static func personality(ui, list: VBoxContainer, actor: Dictionary) -> void:
 ## The aptitudes themselves are not drawn; ⚠ and the tooltip carry them.
 static func stances(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	var index: int = ui.tactics_actor
-	var editable: bool = ui.session.phase == "TOWN" or (ui.session.floor_mode and ui.session.safe_management() and not ui.session.in_combat())
+	var editable: bool = ui.session.phase == "CAMP"
 	var chosen: String = str(actor.get("stance",Stances.default_stance(actor.profile)))
 	var box := card(list,"태세"); box.name = "StanceCard"
 	var columns := grid(box,Stances.IDS.size())
@@ -208,7 +191,7 @@ static func choose(ui, index: int, id: String) -> void:
 	ui.refresh(); ui.show_character(index,"성격")
 
 static func memories(ui, list: VBoxContainer, actor: Dictionary) -> void:
-	var names := {"SELF_HARM":["죽음의 문턱","큰 부상을 입거나 빈사 상태에 빠졌다."],"ALLY_DOWNED":["동료가 쓰러짐","동료가 쓰러지는 모습을 보았다."],"ALLY_LOST":["동료를 잃음","함께하던 동료를 잃었다."],"AID_RECEIVED":["동료의 도움","동료에게 도움을 받았다."],"COMMAND_CONFLICT":["명령과 갈등","명령을 따르는 데 갈등을 겪었다."]}
+	var names := {"SELF_HARM":["죽음의 문턱","빈사 상태에 빠졌다."],"ALLY_DOWNED":["동료가 쓰러짐","동료가 쓰러지는 모습을 보았다."],"ALLY_LOST":["동료를 잃음","함께하던 동료를 잃었다."],"AID_RECEIVED":["동료의 도움","동료에게 도움을 받았다."],"COMMAND_CONFLICT":["명령과 갈등","명령을 따르는 데 갈등을 겪었다."]}
 	var important: Array = actor.memory.records.filter(func(record): return int(record.salience) >= 700)
 	if important.is_empty(): text(card(list,"기억"),"남아 있는 중요 기억 없음")
 	for record in important:
@@ -221,7 +204,7 @@ static func memories(ui, list: VBoxContainer, actor: Dictionary) -> void:
 ## Two part slots: what is equipped and how to swap it. How the part is used
 ## is the rules' business, and the rules are no longer the player's.
 static func parts(ui, list: VBoxContainer, actor: Dictionary) -> void:
-	var town: bool = ui.session.phase == "TOWN" and actor.hp > 0
+	var town: bool = ui.session.phase == "CAMP" and actor.hp > 0
 	for slot in range(2):
 		var id: String = str(actor.equipped_abilities[slot])
 		var box := card(list,""); box.get_parent().name = "PartSlot"+str(slot)
@@ -253,7 +236,7 @@ static func replace(ui, slot: int) -> void:
 		count += 1
 		ui.button(list,"%s ×%d" % [ui.Session.Rules.skill(id).name,ui.session.parts_bag[id]],func():
 			if ui.session.equip_part(index,slot,id):
-				ui.item_popup.hide(); ui.refresh(); ui.show_character(index,"파츠"),ui.session.phase == "TOWN" and actor.hp > 0)
+				ui.item_popup.hide(); ui.refresh(); ui.show_character(index,"파츠"),ui.session.phase == "CAMP" and actor.hp > 0)
 	if count == 0: text(list,"가방에 파츠 없음")
 	ui.button(ui.item_detail,"취소",func(): ui.item_popup.hide()); ui.item_popup.popup_centered()
 

@@ -205,7 +205,7 @@ func commit_hash() -> String:
 
 func spec_line(ex: Dictionary) -> String:
 	var spec: Dictionary = Arena.DEFAULT_SPEC
-	return "size %d · room %s · door %s · pillars %s · party_entry %s · light %d · supplies %s" % [spec.size,str(spec.room),str(spec.door),str(spec.pillars),str(spec.party_entry),spec.light,str(ex.supplies.map(func(v): return int(v)))]
+	return "size %d · room %s · door %s · pillars %s · party_entry %s · sight 5 · supplies %s" % [spec.size,str(spec.room),str(spec.door),str(spec.pillars),str(spec.party_entry),str(ex.supplies.map(func(v): return int(v)))]
 
 ## `--explain` (설계 §6): 빌드 × 아레나에서 효용이 고른 행동의 최상위 고려
 ## 사항 빈도. 판정에는 쓰이지 않는다.

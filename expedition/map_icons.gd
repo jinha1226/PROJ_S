@@ -2,6 +2,13 @@ extends RefCounted
 ## Small vector icons shared by the room map and the room interior.
 static func paint(canvas: CanvasItem, kind: String, center: Vector2, radius: float, color: Color) -> void:
 	match kind:
+		"stairs":
+			canvas.draw_colored_polygon(PackedVector2Array([center+Vector2(-radius,radius*0.75),center+Vector2(radius,radius*0.75),center+Vector2(0,-radius)]),Color("24333d"))
+			canvas.draw_line(center+Vector2(-radius,radius*0.75),center+Vector2(radius,radius*0.75),color,2)
+			canvas.draw_line(center+Vector2(0,-radius),center+Vector2(0,radius*0.5),color,2)
+		"pylon":
+			canvas.draw_rect(Rect2(center-Vector2(radius*0.3,radius),Vector2(radius*0.6,radius*2)),Color("24333d"))
+			canvas.draw_circle(center-Vector2(0,radius*0.6),radius*0.36,color)
 		"dirt":
 			canvas.draw_colored_polygon(PackedVector2Array([center+Vector2(-radius,radius*0.6),center+Vector2(-radius*0.3,-radius*0.7),center+Vector2(radius*0.4,-radius*0.3),center+Vector2(radius,radius*0.6)]),Color("74563d"))
 			canvas.draw_line(center+Vector2(-radius,radius*0.6),center+Vector2(radius,radius*0.6),color,2)

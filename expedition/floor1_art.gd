@@ -17,7 +17,7 @@ static func terrain(cell: Dictionary, point: Vector2i) -> AtlasTexture:
 
 static func feature_id(feature: Dictionary) -> String:
 	if feature.kind == "curio":
-		return {"LOCKED_CHEST":"locked_chest","DIRT_PILE":"dirt_pile"}.get(feature.get("curio_id",""),"")
+		return {"SUPPLY_CACHE":"locked_chest","BROKEN_CHEST":"locked_chest","MUSHROOMS":"dirt_pile","DEAD_ADVENTURER":"locked_chest"}.get(feature.get("curio_id",""),"")
 	return {"entry":"gate","altar":"altar","relic":"relic","camp":"campfire"}.get(feature.kind,"")
 
 static func paint_object(canvas: CanvasItem, id: String, cell: Rect2, tint: Color = Color.WHITE) -> void:
