@@ -491,7 +491,11 @@ func _presentation_action(actor: Dictionary, kind: String, target: Vector2i) -> 
 ## the round itself.
 func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = true) -> bool:
 	if phase != "BATTLE" or not inside(target): return false
-	if floor_mode and not floor_state.visible.has(target): return false
+	# A follower can round a corner outside the selected leader's sight.
+	# Only automatic movement bypasses the UI visibility gate; movement_cells
+	# still checks adjacency, terrain and occupancy. Attacks keep their gate.
+	var following: bool = resolving_companions and kind == "MOVE"
+	if floor_mode and not floor_state.visible.has(target) and not following: return false
 	var display_event := _presentation_action(actor,kind,target) if presentation != null else {}
 	if boss_trial and kind == "PYLON":
 		if not BossTrial.disable_pylon(self,target): return false

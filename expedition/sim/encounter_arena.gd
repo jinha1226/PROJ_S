@@ -32,7 +32,11 @@ static func layout(spec: Dictionary, theme: Dictionary, seed: int = 1, max_membe
 	var unplaced: Array = members.filter(func(m): return not m.has("pos"))
 	if not unplaced.is_empty():
 		var rng := RandomNumberGenerator.new(); rng.seed = seed
-		assert(Builder.place(unplaced,floor_cells,[door],Vector2i(-1,-1),[],obstacles,rng),"arena placement failed")
+		# Placement must execute in release exports too (assert expressions do not).
+		var placed: bool = Builder.place(unplaced,floor_cells,[door],Vector2i(-1,-1),[],obstacles,rng)
+		if not placed:
+			push_error("arena placement failed")
+			return {}
 	var room := {"id":0,"rect":rect,"kind":"fight","template_id":"","rows":[],"parsed":{},"doors":[door],"tier":spec.get("tier","deep"),"spine":true}
 	return {"size":size,"seed":0,"theme_id":theme.get("id",""),"depth":int(theme.depth),"terrain":terrain,"rooms":[room],"edges":[],
 		"entry":entry,"relic":Vector2i(-1,-1),"features":{},

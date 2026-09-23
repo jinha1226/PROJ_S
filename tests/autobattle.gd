@@ -295,6 +295,20 @@ func formation() -> void:
 	var step: Dictionary = s.floor_state.follow(s,s.party[0])
 	check(step.kind == "MOVE" and s.distance(step.cell,s.party[2].pos) < s.distance(s.party[0].pos,s.party[2].pos),"followers walk toward the leader, not toward selected")
 
+
+	# A one-cell bend requires a diagonal across a corner outside leader sight.
+	d = skirmish(0); s = d.s
+	for y in range(d.c.y-2,d.c.y+4):
+		for x in range(d.c.x-2,d.c.x+6): s.tile(Vector2i(x,y)).terrain = "wall"
+	for offset in [Vector2i.ZERO,Vector2i(1,1),Vector2i(2,1),Vector2i(3,1),Vector2i(3,0)]:
+		s.tile(d.c+offset).terrain = "stone"
+	s.party[0].pos = d.c+Vector2i(3,0); s.party[1].pos = d.c; s.party[2].hp = 0
+	s.selected = 0; s.floor_state.observe(s)
+	var corner: Vector2i = d.c+Vector2i(1,1)
+	check(not s.floor_state.visible.has(corner),"bend is outside the leader's line of sight")
+	check(s.floor_state.follow(s,s.party[1]).cell == corner,"follower plans diagonal through a narrow bend")
+	check(s.act("WAIT",s.party[0].pos) and s.party[1].pos == corner,"follower executes diagonal even outside leader sight")
+
 ## The floor-mode battle HUD after the diet: member cards without skill
 ## buttons, the auto toggle that runs one round per tick, the stop banner,
 ## the retreat toggle and the battle report.
