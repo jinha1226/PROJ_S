@@ -45,7 +45,12 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 		var pool: Array = options.filter(func(o): return o.kind == "MOVE")+heals
 		if pool.is_empty(): pool = [{"kind":"WAIT","cell":actor.pos,"score":0,"reason":"대기"}]
 		pool.sort_custom(rank); return pool[0]
-	var ruled: Dictionary = rule_choice(s,actor,options)
+	# A 거리형 with a foe on it does not shoot: it opens distance first, so the
+	# rules never see its reaching parts while it is in contact.
+	var pool: Array = options
+	if stance == "SKIRMISHER" and s.combat_enemies().any(func(e): return s.melee_reach(actor.pos,e.pos)):
+		pool = options.filter(func(o): return int(s.Abilities.DEFINITIONS.get(o.kind,{}).get("range",0)) < 3)
+	var ruled: Dictionary = rule_choice(s,actor,pool)
 	if not ruled.is_empty(): return ruled
 	var stance_options: Array = Stances.candidates(s,actor,stance,knobs)
 	for o in stance_options:

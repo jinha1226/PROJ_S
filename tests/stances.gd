@@ -26,6 +26,7 @@ func run() -> void:
 	charger()
 	skirmisher()
 	guardian()
+	defence()
 	target()
 	print("Stances: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
@@ -127,9 +128,12 @@ func skirmisher() -> void:
 	check(s.Tactics.choose(s,hero).kind == "KOBOLD_SLING","in range: fires the part")
 	hero.cooldowns.KOBOLD_SLING = 2
 	check(s.Tactics.choose(s,hero).kind == "WAIT","in range on cooldown: holds position")
+	hero.cooldowns = {}   # the part is ready again: only the contact decides below
 	f.foes[0].pos = hero.pos+Vector2i(1,0); s.floor_state.observe(s)
 	pick = s.Tactics.choose(s,hero)
 	check(pick.kind == "MOVE" and near(pick.cell,f.foes[0].pos) > 1,"adjacent: steps away rather than trading blows")
+	f.foes[0].pos = hero.pos+Vector2i(3,0); s.floor_state.observe(s)
+	check(s.Tactics.choose(s,hero).kind == "KOBOLD_SLING","with room again it fires")
 	# Without a ranged part: approach, strike, break away.
 	var g := field(["SKIRMISHER","CHARGER","CHARGER"]); var t = g.s; var h: Dictionary = t.party[0]
 	g.foes[0].pos = h.pos+Vector2i(2,0); t.floor_state.observe(t)
@@ -187,3 +191,41 @@ func target() -> void:
 	s.auto_step()
 	var rr: Dictionary = s.member_stats(s.party[0].id).role_rounds
 	check(rr.total == 1 and rr.in_role == 1,"role_rounds tallies the charger's contact round")
+
+## Self-defence, the no-path fallback and eight-way adjacency: what the stance
+## does when the shared target is not the problem in front of it.
+func defence() -> void:
+	# A charger answers whatever is on it, not only the party's target.
+	var f := field(["CHARGER","CHARGER","GUARDIAN"],2); var s = f.s
+	s.party[0].pos = f.c; f.foes[0].pos = f.c+Vector2i(1,0)
+	s.party[1].pos = f.c+Vector2i(0,4); f.foes[1].pos = f.c+Vector2i(1,4)
+	s.floor_state.observe(s)
+	check(Stances.party_target(s).id == f.foes[0].id,"the first charger's foe is the party target")
+	var pick: Dictionary = s.Tactics.choose(s,s.party[1])
+	check(pick.kind == "ATTACK" and pick.cell == f.foes[1].pos,"the second charger answers the foe on it")
+	# A guardian standing off its charge does the same.
+	var g := field(["GUARDIAN","CHARGER","CHARGER"],2); var t = g.s
+	var hero: Dictionary = t.party[0]; var p: Dictionary = t.party[1]
+	hero.protect_id = 1; hero.knobs.cohesion = -50   # keep two cells, so a foe on the guardian is no threat to p
+	p.pos = g.c; hero.pos = g.c+Vector2i(2,0); g.foes[0].pos = g.c+Vector2i(3,0)
+	t.party[2].pos = g.c+Vector2i(0,3); g.foes[1].pos = g.c+Vector2i(1,3)
+	t.floor_state.observe(t)
+	check(Stances.threats_to(t,p).is_empty() and Stances.party_target(t).id == g.foes[1].id,"the charge is safe and the target is elsewhere")
+	pick = t.Tactics.choose(t,hero)
+	check(pick.kind == "ATTACK" and pick.cell == g.foes[0].pos,"the guardian answers the foe on it")
+	# Eight-way adjacency: diagonally beside the charge is beside it.
+	hero.knobs.cohesion = 0; hero.pos = p.pos+Vector2i(-1,-1); g.foes[0].pos = g.c+Vector2i(8,0)
+	t.floor_state.observe(t)
+	check(t.Tactics.choose(t,hero).kind == "WAIT","diagonally beside the charge: holds instead of shuffling")
+	# The only way through burns: a charger walks it rather than standing still.
+	var h := field(["CHARGER","CHARGER","CHARGER"],1); var u = h.s
+	var hh: Dictionary = u.party[0]
+	u.party[1].pos = h.c+Vector2i(0,3); u.party[2].pos = h.c+Vector2i(0,4)
+	hh.pos = h.c; h.foes[0].pos = h.c+Vector2i(2,0)
+	for x in range(-1,6):
+		u.tile(h.c+Vector2i(x,-1)).terrain = "wall"; u.tile(h.c+Vector2i(x,1)).terrain = "wall"
+	u.tile(h.c+Vector2i(-1,0)).terrain = "wall"
+	u.tile(h.c+Vector2i(1,0)).fire = 40
+	u.floor_state.observe(u)
+	check(Stances.steps_toward(u,hh,[h.c+Vector2i(1,0)]) == [h.c+Vector2i(1,0)],"the burning corridor cell is still a route")
+	check(u.Tactics.choose(u,hh).kind == "MOVE","a blocked fire-free route does not leave the charger standing")
