@@ -165,7 +165,7 @@ func message(value: String) -> void:
 
 ## Persistent memories are landmarks, not a transcript of ordinary hits.
 func remember_important(actor: Dictionary, kind: String, subject: int, instigator: int, salience: int) -> void:
-	actor.memory.records = actor.memory.records.filter(func(record): return int(record.salience) >= 700)
+	actor.memory.records = actor.memory.records.filter(func(record): return int(record.salience) >= 700 or str(record.kind) in Memory.SOCIAL_KINDS)
 	var key := "%d/%s" % [expedition_number,kind]
 	if kind != "SELF_HARM": key += "/%d" % subject
 	var recorded: Dictionary = actor.get("important_memories",{})
@@ -177,7 +177,7 @@ func remember_important(actor: Dictionary, kind: String, subject: int, instigato
 ## left where they are. Recruitment memories are worth less than 700 and would
 ## not survive `remember_important`'s pruning of its own first line.
 func remember_plain(actor: Dictionary, kind: String, subject: int, instigator: int, salience: int) -> void:
-	var key := "%d/%s/%d" % [expedition_number,kind,subject]
+	var key := "plain/%d/%s/%d" % [expedition_number,kind,subject]
 	var recorded: Dictionary = actor.get("important_memories",{})
 	if recorded.has(key): return
 	if actor.memory.remember(kind,serial,world_time,subject,instigator,salience):
@@ -202,6 +202,11 @@ func reset_battle_stats() -> void:
 func member_stats(id: int) -> Dictionary:
 	if not battle_stats.has("members"): reset_battle_stats()
 	return battle_stats.members.get(id,{})
+
+## An npc still on its own out there: the flag is identity, the party list is
+## what decides how the game treats it.
+func wanderer(actor: Dictionary) -> bool:
+	return bool(actor.get("npc",false)) and not (actor in party)
 
 func alive() -> Array:
 	return party.filter(func(a): return a.hp > 0)
@@ -239,6 +244,7 @@ func answer_offer(accept: bool) -> bool:
 	var npc: Dictionary = found[0]
 	npc.offered_until = round_number+Recruit.COOLDOWN
 	if not accept:
+		npc.declined_until = round_number+Recruit.COOLDOWN
 		serial += 1
 		remember_plain(npc,"DECLINED_BY_PLAYER",Recruit.hero(self),Recruit.hero(self),400)
 		return true
@@ -247,7 +253,8 @@ func answer_offer(accept: bool) -> bool:
 func depart() -> bool:
 	if phase != "TOWN" or alive().is_empty(): return false
 	for actor in party:
-		actor.memory.records = actor.memory.records.filter(func(record): return int(record.salience) >= 700)
+		# A debt owed or refused outlives the expedition it was made in.
+		actor.memory.records = actor.memory.records.filter(func(record): return int(record.salience) >= 700 or str(record.kind) in Memory.SOCIAL_KINDS)
 		actor.important_memories = {}
 	expedition_number += 1
 	for actor in party: actor.hit_and_run = false
@@ -572,7 +579,9 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 	# A follower can round a corner outside the selected leader's sight.
 	# Only automatic movement bypasses the UI visibility gate; movement_cells
 	# still checks adjacency, terrain and occupancy. Attacks keep their gate.
-	var following: bool = (resolving_companions and kind == "MOVE") or bool(actor.get("npc",false))
+	# A recruited npc is a party member: only one still standing in the dungeon
+	# on its own walks outside the party's sight.
+	var following: bool = (resolving_companions and kind == "MOVE") or wanderer(actor)
 	if floor_mode and not floor_state.visible.has(target) and not following: return false
 	var display_event := _presentation_action(actor,kind,target) if presentation != null else {}
 	if boss_trial and kind == "PYLON":
@@ -1176,8 +1185,9 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 		if effect.get("body_injury",false) or entered_crisis:
 			remember_important(target,"SELF_HARM",target.id+1,source+1,800 if target.hp <= 0 else 750)
 		stress(target, 5 + lost / 2)
-		if target.hp <= 0 and target.get("npc",false):
+		if target.hp <= 0 and wanderer(target):
 			target.state = "DEAD"; target.awake = false; target.activity = ""
+			if pending_offer == int(target.id): pending_offer = -1
 			# A stranger's death is not a comrade's: whoever watched it happen is
 			# shaken, and someone the npc owed a debt to feels it twice.
 			var watched: bool = floor_state.visible.has(target.pos)
@@ -1186,6 +1196,8 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> void:
 				stress(ally,5)
 				if int(target.memory.salience_for_subject(ally.id+1,["AID_RECEIVED"])) > 0: stress(ally,10)
 		elif target.hp <= 0:
+			# A recruited member falls as a comrade; the roster still records it.
+			if target.get("npc",false): target.state = "DEAD"; target.awake = false; target.activity = ""
 			if not taken_row.is_empty(): taken_row.downed = true
 			for ally in alive():
 				remember_important(ally,"ALLY_LOST",target.id+1,source+1,900)

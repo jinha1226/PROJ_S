@@ -72,7 +72,9 @@ static func recruit(s, npc: Dictionary) -> Dictionary:
 	join(s,npc); return {"accepted":true,"line":"좋아, 같이 가지."}
 
 static func join(s, npc: Dictionary) -> void:
-	s.npcs.erase(npc); npc.state = "PARTY"; npc.awake = false; npc.mode = ""; npc.activity = ""
+	s.npcs.erase(npc)
+	if s.pending_offer == int(npc.id): s.pending_offer = -1
+	npc.state = "PARTY"; npc.awake = false; npc.mode = ""; npc.activity = ""
 	npc.ap = 0; npc.reservation = {}; npc.hit_and_run = false
 	var subject: int = hero(s)
 	s.party.append(npc); s.formation.append(s.party.size()-1)

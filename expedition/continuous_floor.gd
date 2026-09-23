@@ -193,7 +193,9 @@ func enemy_turn(s, enemy: Dictionary) -> void:
 func follow(s, actor: Dictionary) -> Dictionary:
 	var leader: Dictionary = s.leader()
 	if actor.id == leader.id: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}
-	var order: Array = s.formation.filter(func(i): return i != leader.id)
+	# `formation` holds party indices, not ids: a recruited member keeps its own
+	# 1000+ id and would otherwise rank zeroth, on top of the leader.
+	var order: Array = s.formation.filter(func(i): return i < s.party.size() and s.party[i].id != leader.id).map(func(i): return s.party[i].id)
 	var rank: int = order.find(actor.id)+1
 	var destination: Vector2i = leader.pos+Vector2i(0,rank)
 	if actor.pos == destination: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}

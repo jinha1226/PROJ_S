@@ -23,7 +23,8 @@ func set_facets(npc: Dictionary, x: int, a: int) -> void:
 	npc.profile = Hexaco.new(v)
 
 func run() -> void:
-	aid(); aid_death(); chance(); ask(); offer(); full_party(); duo_close(); duo_strained(); kinds()
+	aid(); aid_death(); memory_survives(); chance(); ask(); offer(); full_party(); duo_close(); duo_strained(); partner_dead()
+	marching_order(); comrade_dies(); stale_offer(); kinds()
 	print("Recruit: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func aid() -> void:
@@ -45,24 +46,39 @@ func aid() -> void:
 	check(Recruit.can_aid(t,n).is_empty() and t.aid(n) and t.food == 2 and not n.hungry,"a full party can still share its food")
 	check(not Recruit.dialogue(t,n).can_propose and Recruit.dialogue(t,n).line == "자리가 없군","aided or not, there is no seat")
 
-## The debt the hero is owed: an npc it fed, dying where it can see, costs more.
+## The debt the hero is owed: an npc it fed, dying where it can see, costs more
+## — and the wound that writes a landmark first must not erase the debt.
 func aid_death() -> void:
 	var stresses: Array = []
-	for aided in [false,true]:
+	for fed in [false,true]:
 		var f := solo(77); var s = f.s; var npc: Dictionary = f.npc
 		npc.hungry = true
-		if aided: check(s.aid(npc),"fed before the fight")
-		npc.hp = 3
-		s.party[0].pos = f.c+Vector2i(-4,0)
-		var foe: Dictionary = s.enemies.filter(func(e): return e.hp <= 0)[0]
-		foe.hp = 30; foe.max_hp = 30; foe.pos = npc.pos+Vector2i(1,0); foe.alert = true
-		foe.role = "MELEE"; foe.charging = false; foe.cast_recovery = 0; foe.part_id = ""
-		s.floor_state.observe(s)
+		if fed: check(s.aid(npc),"fed before the blow")
+		s.damage(npc,npc.max_hp-npc.max_hp/5,999,"IMPACT")
+		check(npc.memory.salience_for_subject(npc.id+1,["SELF_HARM"]) > 0,"the crisis writes a landmark over the debt")
 		var before: int = s.party[0].stress
-		s.floor_state.enemy_turn(s,foe)
+		s.damage(npc,999,999,"IMPACT")
 		check(npc.hp <= 0 and s.floor_state.visible.has(npc.pos),"the npc dies in the hero's sight")
 		stresses.append(s.party[0].stress-before)
 	check(stresses[1] > stresses[0],"the death of one the hero fed weighs heavier (%d > %d)" % [stresses[1],stresses[0]])
+
+## Social records are cheap, so every pruning rule keeps them: the landmark
+## filter, the expedition filter and the eight-record eviction.
+func memory_survives() -> void:
+	var f := solo(); var s = f.s; var npc: Dictionary = f.npc
+	var hero: int = s.party[0].id+1
+	npc.hungry = true; check(s.aid(npc),"fed")
+	s.serial += 1; s.remember_important(npc,"SELF_HARM",npc.id+1,npc.id+1,750)
+	for i in range(8):
+		s.serial += 1; s.world_time += 1
+		s.remember_important(npc,"ALLY_LOST",2000+i,2000+i,900)
+	check(npc.memory.records.size() <= 8 and npc.memory.salience_for_subject(hero,["AID_RECEIVED"]) == 500,"the aid outlives a landmark and eight evictions")
+	set_facets(npc,0,0)
+	check(s.propose(npc).accepted,"the promise still skips the roll")
+	var g := solo(); var t = g.s; var hero_actor: Dictionary = t.party[0]
+	t.serial += 1; t.remember_plain(hero_actor,"RECRUITED",1001,1001,500)
+	t.phase = "TOWN"; t.depart()
+	check(hero_actor.memory.salience_for_subject(1001,["RECRUITED"]) == 500,"and outlives the expedition it was made in")
 
 func chance() -> void:
 	var f := solo(); var s = f.s; var npc: Dictionary = f.npc
@@ -134,6 +150,62 @@ func duo_strained() -> void:
 	set_facets(a,1000,1000); var stress_a: int = a.stress
 	check(s.propose(a).accepted and a.state == "PARTY" and b.state == "MET" and b in s.npcs,"a strained partner stays behind")
 	check(b.memory.salience_for_subject(a.id+1,["LEFT_BY_PARTNER"]) == 600 and a.stress > stress_a,"the one left remembers; the leaver pays stress")
+
+## A partner who is already dead holds nobody back.
+func partner_dead() -> void:
+	var f := solo(78); var s = f.s; var a: Dictionary = f.npc
+	var b: Dictionary = s.roster.filter(func(n): return n.id != a.id)[0]
+	a.partner = b.id; b.partner = a.id; a.bond = "close"; b.bond = "close"
+	b.pos = f.c+Vector2i(1,1); b.hp = 0; b.state = "DEAD"; s.npcs.append(b); s.floor_state.observe(s)
+	set_facets(a,1000,1000)
+	var answer: Dictionary = s.propose(a)
+	check(answer.accepted and answer.line == "좋아, 같이 가지." and s.party.size() == 2,"a dead partner is no duo")
+	check(b.memory.salience_for_subject(a.id+1,["LEFT_BY_PARTNER"]) == 0,"and nothing to remember")
+
+## `formation` holds party indices: a recruit takes the last rank, not the
+## leader's cell.
+func marching_order() -> void:
+	var f := solo(); var s = f.s; var a: Dictionary = f.npc
+	var b: Dictionary = s.roster.filter(func(n): return n.id != a.id)[0]
+	b.pos = f.c+Vector2i(0,-1); b.awake = true; b.hp = b.max_hp; b.state = "MET"
+	b.partner = -1; b.bond = ""; b.hungry = true; a.partner = -1; a.hungry = true
+	s.npcs.append(b); s.floor_state.observe(s)
+	set_facets(a,1000,1000); set_facets(b,1000,1000)
+	check(s.aid(a) and s.propose(a).accepted,"the first joins")
+	check(s.aid(b) and s.propose(b).accepted,"the second joins")
+	check(s.party.size() == 3 and s.formation == [0,1,2],"three ranks, by index")
+	var leader: Dictionary = s.leader()
+	check(leader.id == s.party[0].id,"the hero still leads")
+	s.party[1].pos = leader.pos+Vector2i(0,1); s.party[2].pos = leader.pos+Vector2i(0,2); s.floor_state.observe(s)
+	check(s.floor_state.follow(s,s.party[1]).kind == "WAIT" and s.floor_state.follow(s,s.party[2]).kind == "WAIT","each recruit holds its own rank behind the leader")
+	s.party[1].pos = leader.pos+Vector2i(0,2); s.party[2].pos = leader.pos+Vector2i(0,1); s.floor_state.observe(s)
+	check(s.floor_state.follow(s,s.party[1]).kind == "MOVE","out of place, it walks to its own rank")
+
+## Once recruited it is a comrade: its death is the party's loss, not a
+## stranger's.
+func comrade_dies() -> void:
+	var f := solo(); var s = f.s; var npc: Dictionary = f.npc
+	npc.hungry = true; set_facets(npc,1000,1000)
+	check(s.aid(npc) and s.propose(npc).accepted,"joined")
+	s.damage(npc,999,999,"IMPACT")
+	check(npc.hp <= 0 and s.party[0].memory.salience_for_subject(npc.id+1,["ALLY_LOST"]) > 0,"the party mourns a comrade lost")
+	check(bool(s.member_stats(npc.id).get("downed",false)),"the battle report marks it downed")
+	check(npc.state == "DEAD","the roster row is dead too")
+
+## An offer nobody can answer never blocks the next one.
+func stale_offer() -> void:
+	var f := solo(80); var s = f.s; var npc: Dictionary = f.npc
+	check(s.offer(npc),"offer on the table")
+	s.damage(npc,999,999,"IMPACT")
+	check(npc.hp <= 0 and s.pending_offer < 0,"a dead npc's offer leaves the table")
+	var g := solo(81); var t = g.s; var n: Dictionary = g.npc
+	check(t.offer(n) and t.pending_offer == n.id,"offer stands")
+	t.npcs.erase(n)
+	check(not t.answer_offer(true) and t.pending_offer < 0,"an offer from someone gone clears itself")
+	var u := solo(82); var m: Dictionary = u.s.npcs[0]
+	check(u.s.offer(m),"offer stands on this floor")
+	u.s.NpcRoster.place(u.s)
+	check(u.s.pending_offer < 0,"a new floor clears the table")
 
 func kinds() -> void:
 	var Memory = load("res://sim/party_memory_state.gd")

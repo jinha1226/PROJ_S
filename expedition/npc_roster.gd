@@ -62,6 +62,8 @@ static func situation(npc: Dictionary) -> String:
 ## floor's npc rooms.
 static func place(s) -> void:
 	s.npcs = []
+	# Nobody from the last floor is still standing there with an offer open.
+	s.pending_offer = -1
 	# Re-placing on a live floor: the packs this function minted last time go with it.
 	s.enemies = s.enemies.filter(func(e): return not e.has("npc_pack"))
 	var d: int = depth(s)
