@@ -42,7 +42,7 @@
 ### 1.2 정지 이벤트
 
 ```gdscript
-const AUTO_STOPS := ["BATTLE_START","ALLY_LETHAL","HP_LOW","DEATH","BATTLE_END"]
+const AUTO_STOPS := ["BATTLE_START","BATTLE_END","DEATH","ALLY_LETHAL","HP_LOW"]
 var auto := {"running":false,"stops":{"BATTLE_START":true,"ALLY_LETHAL":true,"HP_LOW":true,"DEATH":true,"BATTLE_END":true},"hp_low":30,"speed":1}
 func auto_stop_reason() -> String   # 이번 라운드 시작 시점에 해당하는 첫 이벤트 id, 없으면 ""
 ```
@@ -55,7 +55,8 @@ func auto_stop_reason() -> String   # 이번 라운드 시작 시점에 해당�
 | `DEATH` | 직전 라운드에 파티원이 쓰러짐 | ON |
 | `BATTLE_END` | `combat_enemies()`가 직전 라운드에는 비어 있지 않았고 지금은 비었음 | ON |
 
-- 평가에 필요한 "직전 라운드" 상태는 `auto`에 `prev_threats: int`, `prev_low: Array[int]`, `prev_alive: int`로 보관하고 `auto_step` 끝에서 갱신한다.
+- `AUTO_STOPS`의 나열 순서가 곧 **우선순위**다: 한 라운드에 여러 이벤트가 동시에 성립해도 `BATTLE_START` → `BATTLE_END` → `DEATH` → `ALLY_LETHAL` → `HP_LOW` 순으로 첫 하나만 보고된다. 앞의 셋은 "굳은" 이벤트라 꺼져 있어도 상태를 소비한다(다음 라운드에 다시 터지지 않는다).
+- 평가에 필요한 "직전 라운드" 상태는 `auto`에 `prev_threats: int`, `prev_low: Array[int]`, `prev_alive: int`로 보관하고 **`auto_step` 시작 시점**에 `remember_round()`로 갱신한다(끝이 아니다). 정지 이벤트는 "이번 라운드 **동안** 무엇이 바뀌었는가"를 묻기 때문에, 그 라운드 안에서 일어난 사망이나 전멸이 델타로 남으려면 스냅샷이 행동 전에 찍혀야 한다. `auto_stop_reason`이 이벤트를 보고할 때도 같은 함수로 한 번 더 갱신해 같은 이벤트가 곧바로 재발화하지 않게 한다.
 - 같은 이벤트가 연속 라운드에 반복되면(예: 계속 치명 위기) 다시 멈추지 않는다: `auto.last_stop = {"reason", "round"}`를 두고 같은 reason이면 3라운드 안에는 재정지하지 않는다. `BATTLE_START`·`BATTLE_END`·`DEATH`는 예외 없이 멈춘다.
 - 시뮬레이터는 정지 이벤트를 무시한다(`auto_stop_reason`을 호출하지 않는다).
 
@@ -105,6 +106,8 @@ func auto_stop_reason() -> String   # 이번 라운드 시작 시점에 해당�
 | 엄호 GUARD | `+ cohesion * 20 / 100` |
 | 이동 후보 전부 | 도착 칸에서 인접 아군 수가 줄면 `− cohesion * 10 / 100`, 늘면 `+ cohesion * 10 / 100`; `cohesion < 0`이면 부호 반대(독자 행동은 흩어짐을 선호) |
 | 후퇴 | `hp*100/max_hp <= retreat_hp`이면: 적과 거리를 벌리는 MOVE 후보(현행 RETREAT 계산) 점수 150, 회복 파츠(HEAL)·회복 아이템 규칙 우선; 공격 후보 −20 |
+
+후퇴선 아래의 후보 풀은 **거리를 벌리는 MOVE와 회복(HEAL) 파츠 둘뿐**이다 — 공격·밀치기·엄호·태세 후보는 전부 탈락하고, 풀이 비면 WAIT. 그 안의 점수는 MOVE `150 + cohesion * 10 / 100`(≤ 160), 회복 파츠 `40 + 150 = 190`이므로 **회복 파츠를 들고 있으면 회복이 이기고, 없으면 거리를 벌리는 MOVE가 유일한 답**이다. 회복 파츠가 없는 빌드(현행 기준 빌드 대부분)에서 후퇴선 아래의 행동이 언제나 한 칸 물러서기인 이유가 이것이다.
 
 규칙 목록(`rules`)이 매칭되면 그것이 먼저다(현행). 노브는 규칙이 고르지 않은 후보들 사이의 순위만 바꾼다. 단 후퇴선은 규칙보다 앞선다(살아야 규칙도 있다) — `retreat_hp` 조건에 들어가면 `rule_choice`를 건너뛰고 위 후퇴 점수로 고른다.
 

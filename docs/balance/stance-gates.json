@@ -1,0 +1,2273 @@
+{
+  "commit": "ebc5d5b-dirty",
+  "elapsed_ms": 43972,
+  "generated": "2026-09-23",
+  "quick": false,
+  "seed_set": {
+    "count": 40,
+    "id": "S4",
+    "start": 8000
+  },
+  "table": [
+    {
+      "arena": "early_hob",
+      "build": "stance_mixed",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 21.0,
+          "median": 14.0,
+          "p90": 49.0,
+          "p95": 49.0,
+          "sd": 20.6074420214316
+        },
+        "damage_wins_per_member": {
+          "mean": 21.0,
+          "median": 21.0,
+          "p90": 21.0,
+          "p95": 21.0,
+          "sd": 0.0
+        },
+        "deaths": 40,
+        "distinct_outcomes": 2,
+        "enemy_skill_uses_mean": {
+          "HOB_CLUB": 2.0
+        },
+        "first_death": {
+          "mean": 12.0,
+          "median": 12.0,
+          "p90": 12.0,
+          "p95": 12.0,
+          "sd": 0.0
+        },
+        "guards": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 1.0,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "WIN": 40
+        },
+        "role_rounds": {
+          "CHARGER": {
+            "in_role": 124,
+            "total": 242
+          },
+          "GUARDIAN": {
+            "in_role": 40,
+            "total": 40
+          },
+          "SKIRMISHER": {
+            "in_role": 202,
+            "total": 242
+          }
+        },
+        "rounds": {
+          "mean": 19.05,
+          "median": 19.0,
+          "p90": 19.0,
+          "p95": 19.0,
+          "sd": 0.217944947177034
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "KOBOLD_SLING": 2.0,
+          "PUSH": 1.0
+        },
+        "win_ci": [
+          0.912375460749608,
+          1.0
+        ],
+        "win_rate": 1.0
+      },
+      "tier": "early"
+    },
+    {
+      "arena": "early_pair",
+      "build": "stance_mixed",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 4.525,
+          "median": 0.0,
+          "p90": 14.0,
+          "p95": 21.0,
+          "sd": 6.9233451693046
+        },
+        "damage_wins_per_member": {
+          "mean": 4.525,
+          "median": 2.33333333333333,
+          "p90": 8.0,
+          "p95": 8.0,
+          "sd": 2.47755199519382
+        },
+        "deaths": 0,
+        "distinct_outcomes": 6,
+        "enemy_skill_uses_mean": {
+          "KOBOLD_SLING": 0.85,
+          "RAT_GNAW": 0.15
+        },
+        "first_death": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "guards": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 0.975,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "WIN": 40
+        },
+        "role_rounds": {
+          "CHARGER": {
+            "in_role": 132,
+            "total": 260
+          },
+          "GUARDIAN": {
+            "in_role": 260,
+            "total": 260
+          },
+          "SKIRMISHER": {
+            "in_role": 197,
+            "total": 260
+          }
+        },
+        "rounds": {
+          "mean": 9.7,
+          "median": 9.0,
+          "p90": 13.0,
+          "p95": 13.0,
+          "sd": 1.552417469626
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "KOBOLD_SLING": 0.8,
+          "PUSH": 0.975
+        },
+        "win_ci": [
+          0.912375460749608,
+          1.0
+        ],
+        "win_rate": 1.0
+      },
+      "tier": "early"
+    },
+    {
+      "arena": "deep_mixed",
+      "build": "stance_mixed",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 27.3,
+          "median": 23.0,
+          "p90": 51.0,
+          "p95": 52.0,
+          "sd": 18.114266937049
+        },
+        "damage_wins_per_member": {
+          "mean": 23.2941176470588,
+          "median": 21.6666666666667,
+          "p90": 38.6666666666667,
+          "p95": 40.0,
+          "sd": 9.0488018583195
+        },
+        "deaths": 21,
+        "distinct_outcomes": 32,
+        "enemy_skill_uses_mean": {
+          "GOBLIN_SHIV": 0.9,
+          "HOB_CLUB": 0.325,
+          "KOBOLD_SLING": 2.025
+        },
+        "first_death": {
+          "mean": 21.3333333333333,
+          "median": 21.0,
+          "p90": 40.0,
+          "p95": 40.0,
+          "sd": 9.32142096940638
+        },
+        "guards": {
+          "mean": 0.35,
+          "median": 0.0,
+          "p90": 2.0,
+          "p95": 2.0,
+          "sd": 0.909670269933012
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 2.575,
+        "redirects": {
+          "mean": 0.175,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 1.0,
+          "sd": 0.586834729715276
+        },
+        "results": {
+          "DEFEAT": 6,
+          "WIN": 34
+        },
+        "role_rounds": {
+          "CHARGER": {
+            "in_role": 258,
+            "total": 582
+          },
+          "GUARDIAN": {
+            "in_role": 535,
+            "total": 603
+          },
+          "SKIRMISHER": {
+            "in_role": 500,
+            "total": 605
+          }
+        },
+        "rounds": {
+          "mean": 21.05,
+          "median": 16.0,
+          "p90": 35.0,
+          "p95": 38.0,
+          "sd": 9.60715878915301
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "GUARD": 0.35,
+          "KOBOLD_SLING": 4.15,
+          "PUSH": 2.575
+        },
+        "win_ci": [
+          0.7092737396098,
+          0.929389082914926
+        ],
+        "win_rate": 0.85
+      },
+      "tier": "deep"
+    },
+    {
+      "arena": "deep_caster",
+      "build": "stance_mixed",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 28.3166666666667,
+          "median": 34.0,
+          "p90": 51.0,
+          "p95": 52.0,
+          "sd": 20.7589271292029
+        },
+        "damage_wins_per_member": {
+          "mean": 12.4848484848485,
+          "median": 12.6666666666667,
+          "p90": 14.0,
+          "p95": 14.0,
+          "sd": 7.56702527032186
+        },
+        "deaths": 56,
+        "distinct_outcomes": 14,
+        "enemy_skill_uses_mean": {
+          "GOBLIN_SHIV": 0.625,
+          "ORC_CLEAVER": 1.1
+        },
+        "first_death": {
+          "mean": 9.78947368421053,
+          "median": 11.0,
+          "p90": 11.0,
+          "p95": 11.0,
+          "sd": 1.32104214715907
+        },
+        "guards": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 1.175,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "DEFEAT": 18,
+          "WIN": 22
+        },
+        "role_rounds": {
+          "CHARGER": {
+            "in_role": 189,
+            "total": 399
+          },
+          "GUARDIAN": {
+            "in_role": 214,
+            "total": 214
+          },
+          "SKIRMISHER": {
+            "in_role": 278,
+            "total": 358
+          }
+        },
+        "rounds": {
+          "mean": 18.125,
+          "median": 13.0,
+          "p90": 24.0,
+          "p95": 36.0,
+          "sd": 8.66368137687438
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "KOBOLD_SLING": 2.275,
+          "PUSH": 1.175
+        },
+        "win_ci": [
+          0.398288298884408,
+          0.692949247190553
+        ],
+        "win_rate": 0.55
+      },
+      "tier": "deep"
+    },
+    {
+      "arena": "opt_archers",
+      "build": "stance_mixed",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 21.1,
+          "median": 18.0,
+          "p90": 48.0,
+          "p95": 49.0,
+          "sd": 17.4233559721809
+        },
+        "damage_wins_per_member": {
+          "mean": 18.8558558558559,
+          "median": 16.6666666666667,
+          "p90": 27.6666666666667,
+          "p95": 33.0,
+          "sd": 5.69839582322968
+        },
+        "deaths": 12,
+        "distinct_outcomes": 28,
+        "enemy_skill_uses_mean": {
+          "GOBLIN_SHIV": 1.075,
+          "KOBOLD_SLING": 1.525,
+          "RAT_GNAW": 0.05
+        },
+        "first_death": {
+          "mean": 10.4,
+          "median": 10.0,
+          "p90": 16.0,
+          "p95": 16.0,
+          "sd": 3.38230690505755
+        },
+        "guards": {
+          "mean": 0.775,
+          "median": 0.0,
+          "p90": 3.0,
+          "p95": 4.0,
+          "sd": 2.16203029580994
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 1.1,
+        "redirects": {
+          "mean": 0.2,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 1.0,
+          "sd": 0.842614977317635
+        },
+        "results": {
+          "DEFEAT": 3,
+          "WIN": 37
+        },
+        "role_rounds": {
+          "CHARGER": {
+            "in_role": 195,
+            "total": 462
+          },
+          "GUARDIAN": {
+            "in_role": 430,
+            "total": 466
+          },
+          "SKIRMISHER": {
+            "in_role": 366,
+            "total": 473
+          }
+        },
+        "rounds": {
+          "mean": 15.5,
+          "median": 13.0,
+          "p90": 23.0,
+          "p95": 25.0,
+          "sd": 4.93963561409139
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "GUARD": 0.775,
+          "KOBOLD_SLING": 3.675,
+          "PUSH": 1.1
+        },
+        "win_ci": [
+          0.801354698409025,
+          0.974164443228142
+        ],
+        "win_rate": 0.925
+      },
+      "tier": "optional"
+    },
+    {
+      "arena": "opt_gnoll",
+      "build": "stance_mixed",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 14.325,
+          "median": 7.0,
+          "p90": 42.0,
+          "p95": 43.0,
+          "sd": 16.1256330625085
+        },
+        "damage_wins_per_member": {
+          "mean": 13.4017094017094,
+          "median": 12.6666666666667,
+          "p90": 19.0,
+          "p95": 33.6666666666667,
+          "sd": 7.130121286246
+        },
+        "deaths": 5,
+        "distinct_outcomes": 34,
+        "enemy_skill_uses_mean": {
+          "GNOLL_SPEAR": 0.925,
+          "RAT_GNAW": 0.425
+        },
+        "first_death": {
+          "mean": 30.0,
+          "median": 26.0,
+          "p90": 40.0,
+          "p95": 40.0,
+          "sd": 7.11805216802087
+        },
+        "guards": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 3.95,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "DEFEAT": 1,
+          "WIN": 39
+        },
+        "role_rounds": {
+          "CHARGER": {
+            "in_role": 342,
+            "total": 614
+          },
+          "GUARDIAN": {
+            "in_role": 575,
+            "total": 605
+          },
+          "SKIRMISHER": {
+            "in_role": 526,
+            "total": 626
+          }
+        },
+        "rounds": {
+          "mean": 19.1,
+          "median": 16.0,
+          "p90": 27.0,
+          "p95": 30.0,
+          "sd": 10.3242433136768
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "KOBOLD_SLING": 3.85,
+          "PUSH": 3.95
+        },
+        "win_ci": [
+          0.871183405119922,
+          0.995573282592205
+        ],
+        "win_rate": 0.975
+      },
+      "tier": "optional"
+    },
+    {
+      "arena": "early_hob",
+      "build": "stance_charger",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 18.6666666666667,
+          "median": 7.0,
+          "p90": 49.0,
+          "p95": 49.0,
+          "sd": 21.6384431561566
+        },
+        "damage_wins_per_member": {
+          "mean": 18.6666666666667,
+          "median": 18.6666666666667,
+          "p90": 18.6666666666667,
+          "p95": 18.6666666666667,
+          "sd": 0.000000000000007105427357601
+        },
+        "deaths": 40,
+        "distinct_outcomes": 2,
+        "enemy_skill_uses_mean": {
+          "HOB_CLUB": 2.0
+        },
+        "first_death": {
+          "mean": 12.0,
+          "median": 12.0,
+          "p90": 12.0,
+          "p95": 12.0,
+          "sd": 0.0
+        },
+        "guards": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 0.0,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "WIN": 40
+        },
+        "role_rounds": {
+          "CHARGER": {
+            "in_role": 160,
+            "total": 280
+          }
+        },
+        "rounds": {
+          "mean": 16.0,
+          "median": 16.0,
+          "p90": 16.0,
+          "p95": 16.0,
+          "sd": 0.0
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+
+        },
+        "win_ci": [
+          0.912375460749608,
+          1.0
+        ],
+        "win_rate": 1.0
+      },
+      "tier": "early"
+    },
+    {
+      "arena": "early_pair",
+      "build": "stance_charger",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 8.075,
+          "median": 7.0,
+          "p90": 23.0,
+          "p95": 39.0,
+          "sd": 11.1774792179036
+        },
+        "damage_wins_per_member": {
+          "mean": 8.075,
+          "median": 5.0,
+          "p90": 23.6666666666667,
+          "p95": 23.6666666666667,
+          "sd": 7.39312274271765
+        },
+        "deaths": 0,
+        "distinct_outcomes": 14,
+        "enemy_skill_uses_mean": {
+          "KOBOLD_SLING": 0.675,
+          "RAT_GNAW": 0.3
+        },
+        "first_death": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "guards": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 1.95,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "WIN": 40
+        },
+        "role_rounds": {
+          "CHARGER": {
+            "in_role": 293,
+            "total": 726
+          }
+        },
+        "rounds": {
+          "mean": 10.25,
+          "median": 10.0,
+          "p90": 15.0,
+          "p95": 15.0,
+          "sd": 2.32109887768703
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "PUSH": 1.95
+        },
+        "win_ci": [
+          0.912375460749608,
+          1.0
+        ],
+        "win_rate": 1.0
+      },
+      "tier": "early"
+    },
+    {
+      "arena": "deep_mixed",
+      "build": "stance_charger",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 21.3,
+          "median": 17.0,
+          "p90": 49.0,
+          "p95": 52.0,
+          "sd": 15.5539919849107
+        },
+        "damage_wins_per_member": {
+          "mean": 17.1904761904762,
+          "median": 15.6666666666667,
+          "p90": 28.3333333333333,
+          "p95": 28.3333333333333,
+          "sd": 7.01621057867805
+        },
+        "deaths": 15,
+        "distinct_outcomes": 33,
+        "enemy_skill_uses_mean": {
+          "GOBLIN_SHIV": 0.825,
+          "HOB_CLUB": 0.325,
+          "KOBOLD_SLING": 1.175
+        },
+        "first_death": {
+          "mean": 15.0,
+          "median": 15.0,
+          "p90": 19.0,
+          "p95": 19.0,
+          "sd": 3.5213633723318
+        },
+        "guards": {
+          "mean": 0.075,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.345506874027131
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 1.925,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "DEFEAT": 5,
+          "WIN": 35
+        },
+        "role_rounds": {
+          "CHARGER": {
+            "in_role": 438,
+            "total": 1002
+          }
+        },
+        "rounds": {
+          "mean": 12.375,
+          "median": 10.0,
+          "p90": 23.0,
+          "p95": 27.0,
+          "sd": 5.58429718048744
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "GUARD": 0.075,
+          "PUSH": 1.925
+        },
+        "win_ci": [
+          0.738875793297619,
+          0.945405802264587
+        ],
+        "win_rate": 0.875
+      },
+      "tier": "deep"
+    },
+    {
+      "arena": "deep_caster",
+      "build": "stance_charger",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 28.0083333333333,
+          "median": 21.0,
+          "p90": 51.0,
+          "p95": 52.0,
+          "sd": 19.5219943624848
+        },
+        "damage_wins_per_member": {
+          "mean": 11.8484848484849,
+          "median": 8.66666666666667,
+          "p90": 14.3333333333333,
+          "p95": 14.3333333333333,
+          "sd": 7.67767804277819
+        },
+        "deaths": 55,
+        "distinct_outcomes": 21,
+        "enemy_skill_uses_mean": {
+          "GOBLIN_SHIV": 0.325,
+          "ORC_CLEAVER": 0.95
+        },
+        "first_death": {
+          "mean": 9.78947368421053,
+          "median": 11.0,
+          "p90": 11.0,
+          "p95": 11.0,
+          "sd": 1.32104214715907
+        },
+        "guards": {
+          "mean": 0.05,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.217944947177034
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 1.975,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "DEFEAT": 18,
+          "WIN": 22
+        },
+        "role_rounds": {
+          "CHARGER": {
+            "in_role": 452,
+            "total": 959
+          }
+        },
+        "rounds": {
+          "mean": 17.175,
+          "median": 12.0,
+          "p90": 31.0,
+          "p95": 32.0,
+          "sd": 8.39906988898176
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "GUARD": 0.05,
+          "PUSH": 1.975
+        },
+        "win_ci": [
+          0.398288298884408,
+          0.692949247190553
+        ],
+        "win_rate": 0.55
+      },
+      "tier": "deep"
+    },
+    {
+      "arena": "opt_archers",
+      "build": "stance_charger",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 18.0833333333333,
+          "median": 15.0,
+          "p90": 38.0,
+          "p95": 44.0,
+          "sd": 13.2750287716784
+        },
+        "damage_wins_per_member": {
+          "mean": 18.0833333333333,
+          "median": 17.0,
+          "p90": 21.6666666666667,
+          "p95": 27.6666666666667,
+          "sd": 4.54040502353895
+        },
+        "deaths": 3,
+        "distinct_outcomes": 28,
+        "enemy_skill_uses_mean": {
+          "GOBLIN_SHIV": 0.875,
+          "KOBOLD_SLING": 1.075,
+          "RAT_GNAW": 0.075
+        },
+        "first_death": {
+          "mean": 6.33333333333333,
+          "median": 7.0,
+          "p90": 7.0,
+          "p95": 7.0,
+          "sd": 0.942809041582063
+        },
+        "guards": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 1.8,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "WIN": 40
+        },
+        "role_rounds": {
+          "CHARGER": {
+            "in_role": 404,
+            "total": 1048
+          }
+        },
+        "rounds": {
+          "mean": 11.575,
+          "median": 11.0,
+          "p90": 13.0,
+          "p95": 15.0,
+          "sd": 1.57935904720871
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "PUSH": 1.8
+        },
+        "win_ci": [
+          0.912375460749608,
+          1.0
+        ],
+        "win_rate": 1.0
+      },
+      "tier": "optional"
+    },
+    {
+      "arena": "opt_gnoll",
+      "build": "stance_charger",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 12.8666666666667,
+          "median": 12.0,
+          "p90": 28.0,
+          "p95": 33.0,
+          "sd": 11.2967055177851
+        },
+        "damage_wins_per_member": {
+          "mean": 12.8666666666667,
+          "median": 11.0,
+          "p90": 19.0,
+          "p95": 24.3333333333333,
+          "sd": 6.47550941797031
+        },
+        "deaths": 0,
+        "distinct_outcomes": 35,
+        "enemy_skill_uses_mean": {
+          "GNOLL_SPEAR": 0.475,
+          "RAT_GNAW": 0.275
+        },
+        "first_death": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "guards": {
+          "mean": 0.1,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.435889894354067
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 4.275,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "WIN": 40
+        },
+        "role_rounds": {
+          "CHARGER": {
+            "in_role": 711,
+            "total": 1341
+          }
+        },
+        "rounds": {
+          "mean": 13.775,
+          "median": 13.0,
+          "p90": 17.0,
+          "p95": 18.0,
+          "sd": 2.6027629550153
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "GUARD": 0.1,
+          "PUSH": 4.275
+        },
+        "win_ci": [
+          0.912375460749608,
+          1.0
+        ],
+        "win_rate": 1.0
+      },
+      "tier": "optional"
+    },
+    {
+      "arena": "early_hob",
+      "build": "stance_skirmisher",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage_wins_per_member": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "deaths": 0,
+        "distinct_outcomes": 1,
+        "enemy_skill_uses_mean": {
+          "HOB_CLUB": 1.0
+        },
+        "first_death": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "guards": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 0.0,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "WIN": 40
+        },
+        "role_rounds": {
+          "SKIRMISHER": {
+            "in_role": 440,
+            "total": 480
+          }
+        },
+        "rounds": {
+          "mean": 9.0,
+          "median": 9.0,
+          "p90": 9.0,
+          "p95": 9.0,
+          "sd": 0.0
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "KOBOLD_SLING": 4.0
+        },
+        "win_ci": [
+          0.912375460749608,
+          1.0
+        ],
+        "win_rate": 1.0
+      },
+      "tier": "early"
+    },
+    {
+      "arena": "early_pair",
+      "build": "stance_skirmisher",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 4.68333333333333,
+          "median": 0.0,
+          "p90": 7.0,
+          "p95": 48.0,
+          "sd": 12.4217439283791
+        },
+        "damage_wins_per_member": {
+          "mean": 4.68333333333333,
+          "median": 2.33333333333333,
+          "p90": 20.3333333333333,
+          "p95": 20.3333333333333,
+          "sd": 7.54429512206998
+        },
+        "deaths": 7,
+        "distinct_outcomes": 13,
+        "enemy_skill_uses_mean": {
+          "KOBOLD_SLING": 1.375,
+          "RAT_GNAW": 0.725
+        },
+        "first_death": {
+          "mean": 14.0,
+          "median": 12.0,
+          "p90": 22.0,
+          "p95": 22.0,
+          "sd": 3.54562104171167
+        },
+        "guards": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 0.0,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "WIN": 40
+        },
+        "role_rounds": {
+          "SKIRMISHER": {
+            "in_role": 512,
+            "total": 669
+          }
+        },
+        "rounds": {
+          "mean": 11.975,
+          "median": 10.0,
+          "p90": 16.0,
+          "p95": 16.0,
+          "sd": 3.82418291926524
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "KOBOLD_SLING": 4.9
+        },
+        "win_ci": [
+          0.912375460749608,
+          1.0
+        ],
+        "win_rate": 1.0
+      },
+      "tier": "early"
+    },
+    {
+      "arena": "deep_mixed",
+      "build": "stance_skirmisher",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 23.7833333333333,
+          "median": 23.0,
+          "p90": 45.0,
+          "p95": 48.0,
+          "sd": 15.2382103790293
+        },
+        "damage_wins_per_member": {
+          "mean": 22.4298245614035,
+          "median": 20.3333333333333,
+          "p90": 30.3333333333333,
+          "p95": 34.3333333333333,
+          "sd": 6.28648782779283
+        },
+        "deaths": 12,
+        "distinct_outcomes": 37,
+        "enemy_skill_uses_mean": {
+          "GOBLIN_SHIV": 0.725,
+          "HOB_CLUB": 1.3,
+          "KOBOLD_SLING": 1.775
+        },
+        "first_death": {
+          "mean": 15.2857142857143,
+          "median": 10.0,
+          "p90": 34.0,
+          "p95": 34.0,
+          "sd": 8.7294949242584
+        },
+        "guards": {
+          "mean": 0.3,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 1.46969384566991
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 0.0,
+        "redirects": {
+          "mean": 0.125,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.639824194603486
+        },
+        "results": {
+          "DEFEAT": 2,
+          "WIN": 38
+        },
+        "role_rounds": {
+          "SKIRMISHER": {
+            "in_role": 1107,
+            "total": 1633
+          }
+        },
+        "rounds": {
+          "mean": 17.825,
+          "median": 16.0,
+          "p90": 25.0,
+          "p95": 26.0,
+          "sd": 5.48127494293071
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "GUARD": 0.3,
+          "KOBOLD_SLING": 8.825
+        },
+        "win_ci": [
+          0.834958291820748,
+          0.986179622853899
+        ],
+        "win_rate": 0.95
+      },
+      "tier": "deep"
+    },
+    {
+      "arena": "deep_caster",
+      "build": "stance_skirmisher",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 27.525,
+          "median": 30.0,
+          "p90": 51.0,
+          "p95": 52.0,
+          "sd": 19.822950713756
+        },
+        "damage_wins_per_member": {
+          "mean": 21.2043010752688,
+          "median": 19.0,
+          "p90": 40.3333333333333,
+          "p95": 44.6666666666667,
+          "sd": 10.3451813517055
+        },
+        "deaths": 40,
+        "distinct_outcomes": 20,
+        "enemy_skill_uses_mean": {
+          "GOBLIN_SHIV": 0.75,
+          "ORC_CLEAVER": 1.15
+        },
+        "first_death": {
+          "mean": 13.4117647058824,
+          "median": 15.0,
+          "p90": 15.0,
+          "p95": 15.0,
+          "sd": 2.47478634917207
+        },
+        "guards": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 0.0,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "DEFEAT": 9,
+          "WIN": 31
+        },
+        "role_rounds": {
+          "SKIRMISHER": {
+            "in_role": 730,
+            "total": 1158
+          }
+        },
+        "rounds": {
+          "mean": 20.025,
+          "median": 16.0,
+          "p90": 39.0,
+          "p95": 39.0,
+          "sd": 10.4318922061149
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "KOBOLD_SLING": 6.125
+        },
+        "win_ci": [
+          0.62496603595907,
+          0.876840467453215
+        ],
+        "win_rate": 0.775
+      },
+      "tier": "deep"
+    },
+    {
+      "arena": "opt_archers",
+      "build": "stance_skirmisher",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 28.0833333333333,
+          "median": 27.0,
+          "p90": 49.0,
+          "p95": 51.0,
+          "sd": 16.495243422137
+        },
+        "damage_wins_per_member": {
+          "mean": 23.7979797979798,
+          "median": 22.3333333333333,
+          "p90": 30.6666666666667,
+          "p95": 37.3333333333333,
+          "sd": 6.08743221199372
+        },
+        "deaths": 23,
+        "distinct_outcomes": 31,
+        "enemy_skill_uses_mean": {
+          "GOBLIN_SHIV": 0.5,
+          "KOBOLD_SLING": 1.525,
+          "RAT_GNAW": 0.45
+        },
+        "first_death": {
+          "mean": 13.6666666666667,
+          "median": 10.0,
+          "p90": 28.0,
+          "p95": 28.0,
+          "sd": 7.39369100427294
+        },
+        "guards": {
+          "mean": 0.375,
+          "median": 0.0,
+          "p90": 1.0,
+          "p95": 3.0,
+          "sd": 1.06507042020704
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 0.0,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "DEFEAT": 7,
+          "WIN": 33
+        },
+        "role_rounds": {
+          "SKIRMISHER": {
+            "in_role": 951,
+            "total": 1557
+          }
+        },
+        "rounds": {
+          "mean": 18.55,
+          "median": 17.0,
+          "p90": 27.0,
+          "p95": 34.0,
+          "sd": 7.300513680557
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "GUARD": 0.375,
+          "KOBOLD_SLING": 8.9
+        },
+        "win_ci": [
+          0.680497079456076,
+          0.912546970031169
+        ],
+        "win_rate": 0.825
+      },
+      "tier": "optional"
+    },
+    {
+      "arena": "opt_gnoll",
+      "build": "stance_skirmisher",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 12.0916666666667,
+          "median": 7.0,
+          "p90": 30.0,
+          "p95": 40.0,
+          "sd": 12.9948681109976
+        },
+        "damage_wins_per_member": {
+          "mean": 12.0916666666667,
+          "median": 9.33333333333333,
+          "p90": 24.0,
+          "p95": 26.0,
+          "sd": 7.8081109893637
+        },
+        "deaths": 3,
+        "distinct_outcomes": 38,
+        "enemy_skill_uses_mean": {
+          "GNOLL_SPEAR": 2.325,
+          "RAT_GNAW": 1.9
+        },
+        "first_death": {
+          "mean": 17.6666666666667,
+          "median": 18.0,
+          "p90": 20.0,
+          "p95": 20.0,
+          "sd": 2.05480466765633
+        },
+        "guards": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 0.0,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "WIN": 40
+        },
+        "role_rounds": {
+          "SKIRMISHER": {
+            "in_role": 1460,
+            "total": 1811
+          }
+        },
+        "rounds": {
+          "mean": 18.65,
+          "median": 17.0,
+          "p90": 23.0,
+          "p95": 30.0,
+          "sd": 4.23998820753077
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "KOBOLD_SLING": 10.25
+        },
+        "win_ci": [
+          0.912375460749608,
+          1.0
+        ],
+        "win_rate": 1.0
+      },
+      "tier": "optional"
+    },
+    {
+      "arena": "early_hob",
+      "build": "stance_guardian",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 40.25,
+          "median": 49.0,
+          "p90": 49.0,
+          "p95": 49.0,
+          "sd": 11.0771912805849
+        },
+        "damage_wins_per_member": {
+          "mean": 40.25,
+          "median": 39.6666666666667,
+          "p90": 42.0,
+          "p95": 42.0,
+          "sd": 2.00381580435373
+        },
+        "deaths": 80,
+        "distinct_outcomes": 7,
+        "enemy_skill_uses_mean": {
+          "HOB_CLUB": 4.0
+        },
+        "first_death": {
+          "mean": 15.5,
+          "median": 15.0,
+          "p90": 17.0,
+          "p95": 17.0,
+          "sd": 1.58113883008419
+        },
+        "guards": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 1.1,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "WIN": 40
+        },
+        "role_rounds": {
+          "GUARDIAN": {
+            "in_role": 184,
+            "total": 416
+          }
+        },
+        "rounds": {
+          "mean": 31.4,
+          "median": 31.0,
+          "p90": 31.0,
+          "p95": 35.0,
+          "sd": 1.2
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "PUSH": 1.1
+        },
+        "win_ci": [
+          0.912375460749608,
+          1.0
+        ],
+        "win_rate": 1.0
+      },
+      "tier": "early"
+    },
+    {
+      "arena": "early_pair",
+      "build": "stance_guardian",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 10.2666666666667,
+          "median": 0.0,
+          "p90": 36.0,
+          "p95": 43.0,
+          "sd": 15.1359028655563
+        },
+        "damage_wins_per_member": {
+          "mean": 10.2666666666667,
+          "median": 10.3333333333333,
+          "p90": 14.3333333333333,
+          "p95": 19.6666666666667,
+          "sd": 5.26107297885982
+        },
+        "deaths": 4,
+        "distinct_outcomes": 15,
+        "enemy_skill_uses_mean": {
+          "KOBOLD_SLING": 1.45,
+          "RAT_GNAW": 0.225
+        },
+        "first_death": {
+          "mean": 21.5,
+          "median": 20.0,
+          "p90": 23.0,
+          "p95": 23.0,
+          "sd": 1.5
+        },
+        "guards": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 2.9,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "WIN": 40
+        },
+        "role_rounds": {
+          "GUARDIAN": {
+            "in_role": 1243,
+            "total": 1324
+          }
+        },
+        "rounds": {
+          "mean": 16.0,
+          "median": 14.0,
+          "p90": 19.0,
+          "p95": 28.0,
+          "sd": 4.83218377133983
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "PUSH": 2.9
+        },
+        "win_ci": [
+          0.912375460749608,
+          1.0
+        ],
+        "win_rate": 1.0
+      },
+      "tier": "early"
+    },
+    {
+      "arena": "deep_mixed",
+      "build": "stance_guardian",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 45.7416666666667,
+          "median": 50.0,
+          "p90": 54.0,
+          "p95": 54.0,
+          "sd": 11.4035782639583
+        },
+        "damage_wins_per_member": {
+          "mean": 30.1481481481482,
+          "median": 30.0,
+          "p90": 44.6666666666667,
+          "p95": 44.6666666666667,
+          "sd": 9.7234743461773
+        },
+        "deaths": 84,
+        "distinct_outcomes": 39,
+        "enemy_skill_uses_mean": {
+          "GOBLIN_SHIV": 0.65,
+          "HOB_CLUB": 0.3,
+          "KOBOLD_SLING": 1.95
+        },
+        "first_death": {
+          "mean": 33.5882352941176,
+          "median": 35.0,
+          "p90": 52.0,
+          "p95": 56.0,
+          "sd": 15.029613213799
+        },
+        "guards": {
+          "mean": 5.6,
+          "median": 0.0,
+          "p90": 16.0,
+          "p95": 30.0,
+          "sd": 10.5612499260267
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 3.4,
+        "redirects": {
+          "mean": 1.775,
+          "median": 0.0,
+          "p90": 8.0,
+          "p95": 9.0,
+          "sd": 3.52482269057608
+        },
+        "results": {
+          "DEFEAT": 22,
+          "TIMEOUT": 9,
+          "WIN": 9
+        },
+        "role_rounds": {
+          "GUARDIAN": {
+            "in_role": 2519,
+            "total": 3439
+          }
+        },
+        "rounds": {
+          "mean": 44.6,
+          "median": 47.0,
+          "p90": 61.0,
+          "p95": 61.0,
+          "sd": 13.819913169047
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "GUARD": 5.6,
+          "PUSH": 3.4
+        },
+        "win_ci": [
+          0.123159532546785,
+          0.37503396404093
+        ],
+        "win_rate": 0.225
+      },
+      "tier": "deep"
+    },
+    {
+      "arena": "deep_caster",
+      "build": "stance_guardian",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 43.675,
+          "median": 48.0,
+          "p90": 52.0,
+          "p95": 52.0,
+          "sd": 10.7301463953977
+        },
+        "damage_wins_per_member": {
+          "mean": 38.5882352941176,
+          "median": 42.6666666666667,
+          "p90": 44.0,
+          "p95": 46.0,
+          "sd": 6.37860948619026
+        },
+        "deaths": 92,
+        "distinct_outcomes": 32,
+        "enemy_skill_uses_mean": {
+          "GOBLIN_SHIV": 0.9,
+          "ORC_CLEAVER": 0.525
+        },
+        "first_death": {
+          "mean": 19.6842105263158,
+          "median": 15.0,
+          "p90": 41.0,
+          "p95": 52.0,
+          "sd": 11.9474843490782
+        },
+        "guards": {
+          "mean": 1.2,
+          "median": 0.0,
+          "p90": 4.0,
+          "p95": 5.0,
+          "sd": 2.06397674405503
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 2.55,
+        "redirects": {
+          "mean": 0.5,
+          "median": 0.0,
+          "p90": 2.0,
+          "p95": 3.0,
+          "sd": 1.20415945787923
+        },
+        "results": {
+          "DEFEAT": 21,
+          "TIMEOUT": 2,
+          "WIN": 17
+        },
+        "role_rounds": {
+          "GUARDIAN": {
+            "in_role": 1890,
+            "total": 2637
+          }
+        },
+        "rounds": {
+          "mean": 36.5,
+          "median": 36.0,
+          "p90": 55.0,
+          "p95": 60.0,
+          "sd": 11.6211014968462
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "GUARD": 1.2,
+          "PUSH": 2.55
+        },
+        "win_ci": [
+          0.285091685248159,
+          0.5780519956394
+        ],
+        "win_rate": 0.425
+      },
+      "tier": "deep"
+    },
+    {
+      "arena": "opt_archers",
+      "build": "stance_guardian",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 47.4666666666667,
+          "median": 49.0,
+          "p90": 54.0,
+          "p95": 54.0,
+          "sd": 6.73292077944054
+        },
+        "damage_wins_per_member": {
+          "mean": 32.6666666666667,
+          "median": 38.0,
+          "p90": 38.6666666666667,
+          "p95": 38.6666666666667,
+          "sd": 8.01849713451943
+        },
+        "deaths": 113,
+        "distinct_outcomes": 39,
+        "enemy_skill_uses_mean": {
+          "GOBLIN_SHIV": 0.525,
+          "KOBOLD_SLING": 0.9,
+          "RAT_GNAW": 0.1
+        },
+        "first_death": {
+          "mean": 24.8717948717949,
+          "median": 26.0,
+          "p90": 38.0,
+          "p95": 38.0,
+          "sd": 9.32374824809314
+        },
+        "guards": {
+          "mean": 4.475,
+          "median": 0.0,
+          "p90": 16.0,
+          "p95": 17.0,
+          "sd": 7.17630650125815
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 1.325,
+        "redirects": {
+          "mean": 2.2,
+          "median": 0.0,
+          "p90": 6.0,
+          "p95": 10.0,
+          "sd": 3.88715834511536
+        },
+        "results": {
+          "DEFEAT": 37,
+          "WIN": 3
+        },
+        "role_rounds": {
+          "GUARDIAN": {
+            "in_role": 2084,
+            "total": 2655
+          }
+        },
+        "rounds": {
+          "mean": 35.625,
+          "median": 37.0,
+          "p90": 43.0,
+          "p95": 45.0,
+          "sd": 7.41514497498195
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "GUARD": 4.475,
+          "PUSH": 1.325
+        },
+        "win_ci": [
+          0.0258355567718582,
+          0.198645301590975
+        ],
+        "win_rate": 0.075
+      },
+      "tier": "optional"
+    },
+    {
+      "arena": "opt_gnoll",
+      "build": "stance_guardian",
+      "party": 3.0,
+      "stats": {
+        "before_first": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "damage": {
+          "mean": 26.4333333333333,
+          "median": 29.0,
+          "p90": 49.0,
+          "p95": 51.0,
+          "sd": 18.3260894779971
+        },
+        "damage_wins_per_member": {
+          "mean": 21.3870967741935,
+          "median": 19.3333333333333,
+          "p90": 37.6666666666667,
+          "p95": 38.0,
+          "sd": 8.84720832554028
+        },
+        "deaths": 18,
+        "distinct_outcomes": 40,
+        "enemy_skill_uses_mean": {
+          "GNOLL_SPEAR": 1.6,
+          "RAT_GNAW": 1.3
+        },
+        "first_death": {
+          "mean": 34.1818181818182,
+          "median": 35.0,
+          "p90": 52.0,
+          "p95": 58.0,
+          "sd": 16.5519467782119
+        },
+        "guards": {
+          "mean": 0.1,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.489897948556636
+        },
+        "heals": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "interrupts_mean": 10.05,
+        "redirects": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0,
+          "sd": 0.0
+        },
+        "results": {
+          "DEFEAT": 1,
+          "TIMEOUT": 8,
+          "WIN": 31
+        },
+        "role_rounds": {
+          "GUARDIAN": {
+            "in_role": 3132,
+            "total": 3923
+          }
+        },
+        "rounds": {
+          "mean": 38.95,
+          "median": 35.0,
+          "p90": 61.0,
+          "p95": 61.0,
+          "sd": 14.0640499145872
+        },
+        "samples": 40,
+        "skill_uses_mean": {
+          "GUARD": 0.1,
+          "PUSH": 10.05
+        },
+        "win_ci": [
+          0.62496603595907,
+          0.876840467453215
+        ],
+        "win_rate": 0.775
+      },
+      "tier": "optional"
+    }
+  ],
+  "verdicts": {
+    "mixed_build": "stance_mixed",
+    "mixed_fail_arenas": [
+      "deep_caster"
+    ],
+    "mixed_pass": 5,
+    "pass_all": false,
+    "per_build": {
+      "stance_charger": {
+        "ok": true,
+        "pass_arenas": [
+          "early_hob",
+          "early_pair",
+          "deep_mixed",
+          "opt_archers",
+          "opt_gnoll"
+        ]
+      },
+      "stance_guardian": {
+        "ok": false,
+        "pass_arenas": [
+          "early_hob",
+          "early_pair",
+          "opt_gnoll"
+        ]
+      },
+      "stance_skirmisher": {
+        "ok": true,
+        "pass_arenas": [
+          "early_hob",
+          "early_pair",
+          "deep_mixed",
+          "deep_caster",
+          "opt_archers",
+          "opt_gnoll"
+        ]
+      }
+    }
+  }
+}
