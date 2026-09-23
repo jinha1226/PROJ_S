@@ -8,7 +8,7 @@
     "closes_distance":  {"curve": "linear",  "doc": "표적까지 좁힌 거리 / 2"},
     "opens_distance":   {"curve": "linear",  "doc": "표적에서 벌린 거리 / 2"},
     "in_band":          {"curve": "step",    "doc": "원거리 파츠의 사거리 띠(2..R) 안"},
-    "cell_danger":      {"curve": "linear",  "doc": "도착 칸의 안전함 = 1 − 위험/20"},
+    "cell_danger":      {"curve": "signed",  "doc": "제자리 위험 − 도착 칸 위험, 내 HP로 나눔(−1..1)"},
     "ally_delta":       {"curve": "linear",  "doc": "도착 칸 인접 아군 수 증감, −1..1 → 0..1"},
     "protectee_near":   {"curve": "step",    "doc": "도착 칸이 보호 대상 곁"},
     "protectee_gap":    {"curve": "step",    "doc": "도착 칸이 보호 대상과 위협 사이"},
@@ -16,8 +16,8 @@
     "rule_ready":       {"curve": "linear",  "doc": "이 파츠의 규칙 조건이 지금 참 — 규칙 순위·대상 선호를 담은 등급"},
     "contact_penalty":  {"curve": "step",    "doc": "근접 접촉 중인데 사거리 3 이상 파츠"},
     "same_as_last":     {"curve": "step",    "doc": "직전 라운드와 같은 종류·방향"},
-    "la_self_hit":      {"curve": "linear",  "doc": "룩어헤드: 내가 받을 피해, 뒤집음"},
-    "la_ally_hit":      {"curve": "linear",  "doc": "룩어헤드: 아군이 받을 피해, 뒤집음"},
+    "la_self_hit":      {"curve": "signed",  "doc": "룩어헤드: 제자리 대비 내가 덜 받는 피해 / 내 HP(−1..1)"},
+    "la_ally_hit":      {"curve": "signed",  "doc": "룩어헤드: 제자리 대비 아군이 덜 받는 피해 / 아군 HP 합(−1..1)"},
     "la_enemy_hit":     {"curve": "linear",  "doc": "룩어헤드: 적에게 주는 피해 / 40"},
     "la_lethal_saved":  {"curve": "linear",  "doc": "룩어헤드: 치명 위기를 벗어나는 아군 수 / 3"}
   },
@@ -33,7 +33,7 @@
       "ATTACK":        {"any_foe_adjacent": 100, "damage": 40, "kill": 20, "la_enemy_hit": 20, "la_self_hit": 20, "same_as_last": 10},
       "MOVE:approach": {"closes_distance": 80, "cell_danger": 20, "ally_delta": 0, "la_self_hit": 20, "same_as_last": 10},
       "MOVE:sidestep": {"cell_danger": 60, "ally_delta": 0},
-      "PART":          {"rule_ready": 200, "damage": 40, "kill": 20, "la_enemy_hit": 30, "la_lethal_saved": 200, "contact_penalty": -1000},
+      "PART":          {"rule_ready": 150, "damage": 40, "kill": 20, "la_enemy_hit": 30, "la_self_hit": 40, "la_lethal_saved": 200, "contact_penalty": -1000},
       "WAIT":          {}
     },
     "SKIRMISHER": {
@@ -42,7 +42,7 @@
       "MOVE:approach":  {"closes_distance": 80, "cell_danger": 40, "ally_delta": 0, "la_self_hit": 40},
       "ATTACK":         {"any_foe_adjacent": 60, "damage": 30, "kill": 20, "la_self_hit": 20},
       "WAIT:hold":      {"in_band": 50, "cell_danger": 20},
-      "PART":           {"rule_ready": 320, "in_band": 40, "damage": 40, "kill": 20, "la_enemy_hit": 30, "la_lethal_saved": 200, "contact_penalty": -1000}
+      "PART":           {"rule_ready": 140, "in_band": 40, "damage": 40, "kill": 20, "la_enemy_hit": 30, "la_self_hit": 60, "la_lethal_saved": 200, "contact_penalty": -1000}
     },
     "GUARDIAN": {
       "ATTACK:intercept": {"any_foe_adjacent": 100, "damage": 30, "la_ally_hit": 40},
@@ -53,7 +53,7 @@
       "WAIT:hold":        {"protectee_near": 40},
       "MOVE:approach":    {"closes_distance": 80, "cell_danger": 20, "ally_delta": 0, "la_self_hit": 20, "same_as_last": 10},
       "MOVE:sidestep":    {"cell_danger": 60, "ally_delta": 0},
-      "PART":             {"rule_ready": 200, "la_lethal_saved": 300, "la_ally_hit": 60, "damage": 20, "contact_penalty": -1000}
+      "PART":             {"rule_ready": 150, "la_lethal_saved": 300, "la_ally_hit": 60, "la_self_hit": 40, "damage": 20, "contact_penalty": -1000}
     }
   }
 }

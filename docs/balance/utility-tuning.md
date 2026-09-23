@@ -125,6 +125,110 @@ O(풀) — 라운드당 후보 20개면 무시할 수준이다.
 | `encounter_sim` | 0 failures |
 | `solo_balance` | 0 failures; **4/8 완주** (기준 ≥ 3/8, 기준선 4/8 유지) |
 
+## Task 3 — 룩어헤드 예측기와 부호 있는 안전 항
+
+### 안전 고려 사항은 절대값이 아니라 **제자리 대비 차이**다 (설계 §2 수정)
+
+Task 2까지 `cell_danger`는 "도착 칸이 얼마나 안전한가"(1 − 위험/20)였고 `la_self_hit`·`la_ally_hit`는
+룩어헤드가 꺼져 있어 상수 1.0이었다. 셋 다 **절대값**이라, 아무 일도 하지 않는 안전한 칸에도
+가중치 전액을 지급했다. 그 결과 태세 후보(`MOVE:escape` 200, `MOVE:approach` 20~40 …)는
+가만히 있기만 해도 수십~200점을 벌었지만 `PART` 열에는 그런 상수 항이 거의 없어, Task 2는
+계약을 지키려고 `rule_ready`를 200~320까지 밀어 올려야 했다. 즉 **파츠가 태세를 이기려면
+파츠가 아니라 규칙 가중치가 커져야 하는** 구조였다.
+
+Task 3은 셋을 **부호 있는 차이**로 바꾸고 새 곡선 `signed`(−1..1로만 클램프, 0 바닥 없음)를 넣었다.
+
+| id | 전 | 후 |
+| --- | --- | --- |
+| `cell_danger` | `1 − min(1, danger(dest)/20)`, 곡선 `linear` | `(danger(내 칸) − danger(dest)) / max(1, 내 HP)`, 곡선 `signed` (MOVE가 아니면 0) |
+| `la_self_hit` | 상수 `1.0`, 곡선 `linear` | `(predict(제자리).self − predict(행동).self) / max(1, 내 HP)`, 곡선 `signed` |
+| `la_ally_hit` | 상수 `1.0`, 곡선 `linear` | `(제자리.allies − 행동.allies) / max(1, 나를 뺀 생존 아군 HP 합)`, 곡선 `signed` |
+| `la_enemy_hit` | `damage/40` | `min(1, predict(행동).enemies/40)` (범위·밀치기 낙하 피해 포함) |
+| `la_lethal_saved` | 상수 `0.0` | `min(1, lethal_saved/3)` |
+
+중립은 0이고, 더 위험한 칸으로 가는 것은 **실제 벌점**이다. 룩어헤드를 끄면
+`la_self_hit = la_ally_hit = 0.0`(1.0이 아니다), `la_lethal_saved = 0`, `la_enemy_hit = damage/40`.
+제자리 예측(`ctx.stand`)과 `danger(내 칸)`은 액터당 한 번, 행동 예측은 후보당 한 번 계산한다.
+
+### 가중치: 전 → 후
+
+| 열 | 항목 | Task 2 | Task 3 | 왜 |
+| --- | --- | --- | --- | --- |
+| `considerations.cell_danger` | 곡선 | `linear` | **`signed`** | 위 |
+| `considerations.la_self_hit` | 곡선 | `linear` | **`signed`** | 위 |
+| `considerations.la_ally_hit` | 곡선 | `linear` | **`signed`** | 위 |
+| CHARGER/`PART` | `rule_ready` | 200 | **150** | 설계 §4는 120. 부호 있는 안전 항이 들어오자 태세 후보의 상수 보너스가 사라져 120까지 내릴 수 있었지만, 120은 `skill_rule_conditions`의 "PUSH follows the wound" / "PUSH fires on a wounded foe"를 깬다. 그 장면의 점수 차: 12 HP 적을 마무리하는 `ATTACK` **146점**(any_foe_adjacent 100 + damage 20 + kill 20 + la_enemy_hit 6) 대 `PUSH` **120점** → **−26**. 필요한 최솟값은 147이고 145는 실패, 150은 통과하므로 150으로 올림했다. |
+| SKIRMISHER/`PART` | `rule_ready` | 320 | **140** | 설계 §4 값으로 복귀. `MOVE:escape`의 `cell_danger` 200이 더 이상 상수 보너스가 아니라 320이 필요 없다. |
+| GUARDIAN/`PART` | `rule_ready` | 200 | **150** | 설계 §4 값으로 복귀. 같은 이유. |
+| CHARGER/`PART` | `la_self_hit` | 없음 | **40** | 파츠도 자기 안전을 읽어야 한다(밀치기로 예고를 끊는 선택이 그 자체로 점수를 받는다). |
+| SKIRMISHER/`PART` | `la_self_hit` | 없음 | **60** | 거리형은 같은 항을 이동 후보에서 40~60으로 쓴다. |
+| GUARDIAN/`PART` | `la_self_hit` | 없음 | **40** | 돌격형과 같음. |
+| 모든 열 | `same_as_last` | 10 | **10 (그대로)** | `oscillation()`이 10에서 통과했다 — 15까지 올릴 필요가 없었다. |
+| 모든 열 | `contact_penalty` | −1000 | **−1000 (그대로)** | 다만 발동 조건이 좁아졌다(아래). |
+
+그 밖의 가중치는 한 칸도 움직이지 않았다.
+
+### `contact_penalty`는 진짜 원거리 파츠에만 (판정 R3-a)
+
+전: `range ≥ 3`. 후: `axis == "RANGED"` **그리고** `range ≥ 3`. 돌진(`LUNGE`)·기습(`GOBLIN_SHIV`)은
+사거리 3이지만 `axis`가 `MELEE`다 — 붙기 위해 3칸을 뻗는 파츠라 접촉 중에 집어넣을 이유가 없다.
+벌점 값은 세 `PART` 열 모두 −1000 그대로.
+
+### `rule_ready` 등급의 기본값 (판정 R3-b)
+
+`1.0 − 0.1·min(index,4)` → **`1.0 − 0.02·min(index,4)`**. 규칙 순위는 스케일이 아니라 동점 처리라는
+판정이다. 대상 선호 계수 ×0.8은 그대로. 순위를 셀 때 **장착하지 않은 파츠의 규칙은 건너뛴다**(옛
+`rule_choice`와 같다). 죽은 검사였던 `rule.get("enabled",true)`는 지웠다 — `Rules.matches`가 이미 본다.
+
+`Utility.preference`의 빈 칸 처리도 고쳤다: `s.at(cell)`이 비어 있으면 HP 0이 아니라 **가장 덜 선호**(9999)다.
+
+### 예측기 설계 메모 (`expedition/lookahead.gd`)
+
+- 세션을 복제하지 않는다. 행동의 즉시 효과를 `pos_override`/`hp_override`/`protected`/`intents`
+  네 개의 스크래치 사전에 담고, 그 위에서 `Rules.lethal_threat`을 다시 계산한다(`threat_after`).
+- `threat_after`는 `lethal_threat`의 조건을 그대로 복사했다: 예고 칸 피해(+floor면 어둠 보너스),
+  경계 중이거나 시야 9 안에 있는 적만, `cast_recovery > 0`인 적은 제외, 근접 접촉이면 역할 피해
+  (비근접 역할은 4), 사선 안이면 원거리 역할 피해, 그리고 엄호 대상은 절반(최소 1).
+- 순수·결정론적이다. 세션은 읽기만 한다.
+- 비용: 후보당 O(파티 × 적). 제자리 예측은 액터당 한 번만.
+
+### 테스트 수정 (검사 단위, 옛 → 새)
+
+| 파일·검사 | 옛 | 새 | 왜 |
+| --- | --- | --- | --- |
+| `utility.gd` / "approach step…" | `inp.cell_danger == 1.0` | `inp.cell_danger == 0.0` | 안전한 칸 → 안전한 칸은 차이가 없다. |
+| `utility.gd` / "telegraphed cell" | `inp.cell_danger == 0.5` | `== -10.0/hero.hp` (+ 반대 방향 한 칸을 `+10.0/hero.hp`로 새로 검사) | 10 피해 예고 칸으로 들어가는 것은 음의 차이, 빠져나오는 것은 같은 크기의 양의 차이. |
+| `utility.gd` / "disabled: neutral" | `la_self_hit == 1.0` | `== 0.0` | 꺼진 룩어헤드는 중립 0이지 공짜 보너스가 아니다. |
+| `utility.gd` / 노브 곱 fixture | 적 HP 30 | 적 HP **5**(일격 처치) + `la_self_hit > 0` 사전 확인 | 차이형이 되면서 살아남는 적을 때리는 `la_self_hit`가 0이 되어 posture 스케일 항이 하나만 남았다. 처치 장면이라야 `damage`와 `la_self_hit` 둘 다 움직인다. 기대값은 여전히 프로필에서 계산한다(`knob_shift`). 이 장면 뒤 적 HP는 30으로 되돌린다. |
+| `utility.gd` / curves | — | `signed`가 부호를 유지하고 −1..1로 클램프하는지 (신규) | 새 곡선. |
+| `utility.gd` / `lookahead()`·`oscillation()` | — | 브리프 원문 그대로 신규 | Task 3. |
+| `companion_tactics.gd` / "first matching skill wins" | `choose(...).kind == "PUSH"` | `grade(PUSH) > grade(GUARD)` + `choose(...).kind == "GUARD"` | 설계 §7.1이 예고한 의도 변경 (a): 파츠는 선점하지 않고 경쟁한다. 이 장면에서 엄호는 7 피해를 3으로 줄여 5 HP 리더를 **실제로 살리고**(`la_lethal_saved` +67), 밀치기는 보스를 여전히 리더에게 닿는 칸으로 밀 뿐이다. 순위 차는 등급 −2%(≈4점)뿐이라 살린 목숨이 이긴다. 규칙 순위 자체는 `rule_ready` 등급 비교로 계속 검사한다. |
+| `companion_tactics.gd` / "skill reordering still applies" | `choose(...).kind == "GUARD"` | `grade(GUARD) > grade(PUSH)` | 같은 이유. `reorder_rule`이 등급 순서를 뒤집는다는 약속은 그대로 지킨다. |
+
+`stances.gd`(98) · `protect.gd`(38) · `parts.gd`(338) · `skill_rule_conditions.gd`(962) ·
+`autobattle.gd`(109)는 **한 줄도 고치지 않았다**.
+
+### 진동 없음 (commitment)
+
+브리프의 `oscillation()`: 정지한 적에게서 5칸 떨어진 투석 거리형이 4라운드를 돌아
+A-B-A-B가 되지 않는지. `same_as_last` **10**(설계 §4 값)에서 바로 통과했으므로 15로 올리지 않았다.
+
+### 계약 테스트 결과 (Task 3)
+
+| 스위트 | 결과 |
+| --- | --- |
+| `utility` | 147 checks, 0 failures (`lookahead()`·`oscillation()`·`signed` 곡선 추가) |
+| `stances` | 98 checks, 0 failures |
+| `autobattle` | 109 checks, 0 failures |
+| `protect` | 38 checks, 0 failures |
+| `skill_rule_conditions` | 962 checks, 0 failures |
+| `parts` | 338 checks, 0 failures |
+| `companion_tactics` | 0 failures |
+| `encounter_sim` | 0 failures |
+| `solo_balance` | 0 failures; **4/8 완주** (기준 ≥ 3/8, 기준선 4/8 유지) |
+| `ranged_probe` 2인 | `deep_mixed` 0.93 · `opt_archers` 1.00 · `two_archers` 1.00 (이전 0.73 / 0.90 / 1.00) |
+| 임포트 | 오류 0 |
+
 ## 눈으로 보는 체크리스트 (사용자 확인 항목)
 
 전투 시험 모드에서 세 태세 × 아레나 3개를 보고 채운다. Task 4 이후에 기록한다.

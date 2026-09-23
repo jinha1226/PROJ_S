@@ -5,6 +5,7 @@ extends RefCounted
 const Stances = preload("res://expedition/stances.gd")
 const Rules = preload("res://expedition/tactic_rules.gd")
 const Abilities = preload("res://expedition/abilities.gd")
+const Lookahead = preload("res://expedition/lookahead.gd")
 static var _profiles: Dictionary = {}
 
 static func profiles() -> Dictionary:
@@ -14,7 +15,11 @@ static func profiles() -> Dictionary:
 		else: push_error("tactics_profiles.json is not a JSON object; every candidate will score 0")
 	return _profiles
 
+## Every curve but `signed` reads a 0..1 input. `signed` is the exception the
+## safety considerations need: a delta against standing pat, -1..1, where a
+## worse cell is a real penalty and neutral is 0 rather than a paid bonus.
 static func curve(name: String, x: float) -> float:
+	if name == "signed": return clampf(x,-1.0,1.0)
 	x = clampf(x,0.0,1.0)
 	match name:
 		"inverse": return 1.0-x
@@ -45,8 +50,16 @@ static func context(s, actor: Dictionary, pool: Array = []) -> Dictionary:
 		if not threats.is_empty():
 			var t: Dictionary = threats[0]
 			gap = protectee.pos+Vector2i(signi(t.pos.x-protectee.pos.x),signi(t.pos.y-protectee.pos.y))
+	# The baseline every safety consideration is measured against: what this
+	# round costs if the member simply stands where it is. Predicted once.
+	var stand: Dictionary = {"self":0,"allies":0,"enemies":0,"lethal_saved":0}
+	if bool(s.lookahead_enabled): stand = Lookahead.predict(s,actor,{"kind":"WAIT","cell":actor.pos})
+	var ally_hp := 0
+	for mate in s.alive():
+		if mate.id != actor.id: ally_hp += int(mate.hp)
 	return {"pool":pool,"target":Stances.party_target(s),"protectee":protectee,"threats":threats,
 		"protectee_lethal":lethal,"gap":gap,"ranged":Stances.ranged_part(actor),
+		"stand":stand,"ally_hp":ally_hp,"danger_now":int(s.Tactics.danger(s,actor.pos)),
 		"last_kind":str(actor.get("last_action_kind","")),"last_dir":actor.get("last_action_dir",Vector2i.ZERO)}
 
 ## Every consideration's value for one candidate, all normalised to 0..1.
@@ -58,6 +71,20 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary) ->
 	var d_then: int = Stances.steps_between(dest,target.pos) if not target.is_empty() else 0
 	var damage: float = float(action.get("damage",0))
 	var victim: Dictionary = s.at(action.cell) if kind != "MOVE" else {}
+	# 설계 §2 개정(Task 3): the three safety considerations are signed deltas
+	# against standing pat -- 0 means "no better and no worse than staying".
+	var own_hp: float = maxf(1.0,float(actor.hp))
+	var la_self := 0.0
+	var la_ally := 0.0
+	var la_enemy: float = damage/40.0
+	var la_saved := 0.0
+	if bool(s.lookahead_enabled):
+		var stand: Dictionary = ctx.get("stand",{"self":0,"allies":0,"enemies":0})
+		var after: Dictionary = Lookahead.predict(s,actor,action)
+		la_self = float(int(stand.self)-int(after.self))/own_hp
+		la_ally = float(int(stand.allies)-int(after.allies))/maxf(1.0,float(ctx.get("ally_hp",0)))
+		la_enemy = minf(1.0,float(after.enemies)/40.0)
+		la_saved = minf(1.0,float(after.lethal_saved)/3.0)
 	var result := {
 		"target_adjacent": 1.0 if not target.is_empty() and s.melee_reach(dest,target.pos) else 0.0,
 		"any_foe_adjacent": 1.0 if s.combat_enemies().any(func(e): return s.melee_reach(dest,e.pos)) else 0.0,
@@ -65,12 +92,13 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary) ->
 		"kill": 1.0 if not victim.is_empty() and victim.get("enemy",false) and damage >= float(victim.hp) else 0.0,
 		"closes_distance": maxf(0.0,float(d_now-d_then))/2.0,
 		"opens_distance": maxf(0.0,float(d_then-d_now))/2.0,
-		"in_band": 0.0, "cell_danger": 1.0-minf(1.0,float(s.Tactics.danger(s,dest))/20.0),
+		"in_band": 0.0,
+		"cell_danger": float(int(ctx.get("danger_now",0))-int(s.Tactics.danger(s,dest)))/own_hp,
 		"ally_delta": (float(s.Tactics.adjacent_allies(s,actor,dest)-s.Tactics.adjacent_allies(s,actor,actor.pos))+1.0)/2.0,
 		"protectee_near": 0.0, "protectee_gap": 0.0, "protectee_lethal": 0.0,
 		"rule_ready": 0.0, "contact_penalty": 0.0,
 		"same_as_last": 1.0 if kind == ctx.last_kind and (kind != "MOVE" or action.get("dir",Vector2i.ZERO) == ctx.last_dir) else 0.0,
-		"la_self_hit": 1.0, "la_ally_hit": 1.0, "la_enemy_hit": damage/40.0, "la_lethal_saved": 0.0}
+		"la_self_hit": la_self, "la_ally_hit": la_ally, "la_enemy_hit": la_enemy, "la_lethal_saved": la_saved}
 	if not str(ctx.ranged).is_empty() and not target.is_empty():
 		# The band is measured the way the skirmisher's own generator builds it:
 		# `s.distance`, not the eight-way step count, and the part's raw range —
@@ -86,20 +114,26 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary) ->
 	if Abilities.DEFINITIONS.has(kind):
 		var def: Dictionary = Abilities.DEFINITIONS[kind]
 		result.rule_ready = rule_grade(s,actor,action,ctx)
-		if int(def.range) >= 3 and s.combat_enemies().any(func(e): return s.melee_reach(actor.pos,e.pos)): result.contact_penalty = 1.0
+		# Only a genuinely ranged part is holstered in contact: a MELEE dash part
+		# (돌진·기습) reaches three cells precisely in order to close.
+		if str(def.get("axis","")) == "RANGED" and int(def.range) >= 3 and s.combat_enemies().any(func(e): return s.melee_reach(actor.pos,e.pos)): result.contact_penalty = 1.0
 	return result
 
 ## 설계 §2 `rule_ready`, Task 2 판정: 등급형이다. The rule list used to be a
 ## priority sort with a target preference inside it (`rule_choice`); both have
-## to survive as a number now that the parts merely compete. The first enabled
-## rule that matches this candidate gives 1.0 − 0.1·min(index,4), and a
-## candidate its rule would not have targeted keeps four fifths of that.
+## to survive as a number now that the parts merely compete. The first matching
+## rule gives 1.0 − 0.02·min(index,4) — a tiebreak between rules, not a scale —
+## and a candidate its rule would not have targeted keeps four fifths of that.
+## Rules for parts the member is not carrying are skipped before the count, the
+## way `rule_choice` skipped them; `Rules.matches` already reads `enabled`.
 static func rule_grade(s, actor: Dictionary, action: Dictionary, ctx: Dictionary) -> float:
-	for index in range(actor.rules.size()):
-		var rule: Dictionary = actor.rules[index]
-		if not bool(rule.get("enabled",true)) or not Rules.matches(s,actor,action,rule): continue
-		var base: float = 1.0-0.1*float(mini(index,4))
-		return base if preferred(s,actor,action,rule,ctx) else base*0.8
+	var index := 0
+	for rule in actor.rules:
+		if str(rule.get("skill","")) not in actor.equipped_abilities: continue
+		if Rules.matches(s,actor,action,rule):
+			var base: float = 1.0-0.02*float(mini(index,4))
+			return base if preferred(s,actor,action,rule,ctx) else base*0.8
+		index += 1
 	return 0.0
 
 ## Whether `action` is the cell this rule would have picked among the sibling
@@ -116,7 +150,10 @@ static func preferred(s, actor: Dictionary, action: Dictionary, rule: Dictionary
 	return want == action.cell
 
 static func preference(s, actor: Dictionary, cell: Vector2i, rule: Dictionary) -> int:
-	if str(rule.get("target","")) in ["LOWEST_HP","ALLY"]: return int(s.at(cell).get("hp",0))
+	if str(rule.get("target","")) in ["LOWEST_HP","ALLY"]:
+		# An empty cell has no wound to follow: least preferred, not hp 0.
+		var occupant: Dictionary = s.at(cell)
+		return int(occupant.hp) if not occupant.is_empty() else 9999
 	return int(s.distance(actor.pos,cell))
 
 ## Σ weight × curve(input) for the stance's column, rounded to an integer, with

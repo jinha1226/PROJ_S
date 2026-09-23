@@ -73,6 +73,9 @@ var expedition_number := 0
 var selected := 0
 var intents: Array = []
 var effects: Array = []
+## Utility selector: whether `Lookahead.predict` answers the `la_*`
+## considerations. On by default; a simulation tool can turn it off to compare.
+var lookahead_enabled := true
 var hunger := 0
 var supplies: Array = [2,2,1,1,1,3]
 const Curios = preload("res://expedition/curios.gd")

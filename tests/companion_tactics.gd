@@ -1,10 +1,21 @@
 extends SceneTree
 const Session = preload("res://expedition/session.gd")
+const Utility = preload("res://expedition/utility.gd")
+const PartsCandidates = preload("res://expedition/parts_candidates.gd")
 var failures := 0
 func check(value: bool, reason: String) -> void:
 	if not value: failures += 1; push_error(reason)
 func _initialize() -> void:
 	call_deferred("exercise")
+## The best `rule_ready` grade any candidate of this part earns right now: the
+## number the rule order survives as once the parts compete instead of pre-empt.
+func grade(s, actor: Dictionary, kind: String) -> float:
+	var pool: Array = PartsCandidates.candidates(s,actor)
+	var ctx: Dictionary = Utility.context(s,actor,pool)
+	var best := 0.0
+	for o in pool:
+		if str(o.kind) == kind: best = maxf(best,float(Utility.inputs(s,actor,o,ctx).rule_ready))
+	return best
 func arena():
 	var s = Session.new(731,true,true); s.depart()
 	for cell in s.tiles: cell.terrain = "stone"; cell.fire = 0
@@ -73,9 +84,16 @@ func exercise() -> void:
 	check(ally.rules.size() == 2 and not s.Rules.catalog().has("ATTACK"),"basic attack removed from skill rules")
 	check(not s.reorder_rule(1,2,-1),"basic attack cannot be reordered ahead of skills")
 	s.update_rule(1,0,"enabled",true); s.update_rule(1,0,"when","ALWAYS")
-	check(s.Tactics.choose(s,ally).kind == "PUSH","first matching skill wins")
+	# 설계 §1 4단계(Task 3): 파츠는 선점하지 않고 같은 풀에서 경쟁한다. 규칙 순위는
+	# `rule_ready` 등급(순위마다 −2%)으로만 남고 한 라운드 룩어헤드가 그 위에 얹히므로,
+	# "먼저 맞는 규칙"은 무엇을 눌렀는지가 아니라 어느 쪽 등급이 높은지로 확인한다.
+	check(grade(s,ally,"PUSH") > grade(s,ally,"GUARD"),"first matching skill grades highest")
+	# 그리고 그 등급 위에서 룩어헤드가 결정한다: 엄호는 7 피해를 3으로 줄여 5 HP
+	# 리더를 실제로 살리고(`la_lethal_saved`), 밀치기는 보스를 여전히 리더에게 닿는
+	# 칸으로 밀 뿐이다 — 살린 목숨이 규칙 순위를 이긴다.
+	check(s.Tactics.choose(s,ally).kind == "GUARD","a life the lookahead saves outranks the rule order")
 	s.reorder_rule(1,1,-1)
-	check(s.Tactics.choose(s,ally).kind == "GUARD","skill reordering still applies")
+	check(grade(s,ally,"GUARD") > grade(s,ally,"PUSH"),"skill reordering still applies")
 	check(s.round_number == turn,"all editor changes are free")
 	s.reorder_rule(1,0,1)
 	s.update_rule(1,1,"enabled",false)

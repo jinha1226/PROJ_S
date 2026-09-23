@@ -51,9 +51,6 @@
 | `protectee_gap` | 도착 칸이 보호 대상과 위협 사이(가로막기 칸) | 호위 |
 | `protectee_lethal` | 보호 대상이 치명 위기 | 엄호·가로막기 |
 | `rule_ready` | 이 파츠의 규칙 조건(`Rules.matches`)이 지금 참 | 파츠 타이밍 |
-
-> 입력은 등급형: 목록에서 처음 맞는 규칙의 순위(`1.0 − 0.1·min(index,4)`) × 대상 선호(선호 대상이면 1.0, 아니면 0.8), 맞는 규칙이 없으면 0 — `rule_choice`가 지키던 규칙 순위와 `LOWEST_HP`/`NEAREST` 선호를 점수로 옮긴 것이다. 곡선은 `step`이 아니라 `linear`. Task 2 판정 · `docs/balance/utility-tuning.md`.
-
 | `contact_penalty` | 근접 접촉 중이고 파츠 range ≥ 3 | 거리형 제약 |
 | `same_as_last` | 직전 라운드와 같은 kind이고, MOVE면 같은 방향(부호) | commitment |
 | `la_self_hit` | 룩어헤드: 이 행동 뒤 내가 받을 예상 피해 / 내 HP, 뒤집음 | §3 |
@@ -61,7 +58,11 @@
 | `la_enemy_hit` | 룩어헤드: 이 행동이 적에게 주는 피해 / 40 (damage와 같되 파츠 범위·밀치기 낙하 피해 포함) | §3 |
 | `la_lethal_saved` | 룩어헤드: 이 행동으로 치명 위기에서 벗어나는 아군 수 / 3 (엄호·가로막기·밀치기 취소) | §3 |
 
-곡선: `linear`, `inverse`(1−x), `step`(x ≥ 1), `quad`(x²), `sqrt`. 각 고려 사항의 기본 곡선은 JSON에.
+> **`rule_ready` 수정 (Task 2·3 판정)** — 불리언이 아니라 등급이다: 목록에서 처음 맞는 규칙의 순위(`1.0 − 0.02·min(index,4)`, 스케일이 아니라 동점 처리) × 대상 선호(선호 대상 1.0, 아니면 0.8), 맞는 규칙이 없으면 0. 장착하지 않은 파츠의 규칙은 순위를 세기 전에 건너뛴다. 곡선은 `step`이 아니라 `linear`.
+>
+> **`cell_danger`·`la_self_hit`·`la_ally_hit` 수정 (Task 3 판정)** — 절대값이 아니라 **제자리 대비 부호 있는 차이**(곡선 `signed`, −1..1, 중립 0)다: 안전한 칸에 가만히 있는 것은 더 이상 보너스를 받지 못하고, 더 위험한 칸으로 가는 것이 실제 벌점이 된다. `docs/balance/utility-tuning.md` Task 3.
+
+곡선: `linear`, `inverse`(1−x), `step`(x ≥ 1), `quad`(x²), `sqrt`, `signed`(−1..1로만 클램프). 각 고려 사항의 기본 곡선은 JSON에.
 
 ## 3. 룩어헤드 예측기 (`expedition/lookahead.gd`)
 

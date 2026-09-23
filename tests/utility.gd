@@ -6,6 +6,7 @@ const Stances = preload("res://expedition/stances.gd")
 const Knobs = preload("res://expedition/knobs.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Parts = preload("res://expedition/parts_candidates.gd")
+const Lookahead = preload("res://expedition/lookahead.gd")
 ## Every (stance, tag) pair the candidate generators in stances.gd can emit.
 ## 호위형 runs the charger programme whenever it has no living protectee, so it
 ## needs the charger's columns as well as its own.
@@ -26,6 +27,8 @@ func run() -> void:
 	inputs_and_score()
 	commitment()
 	parts()
+	lookahead()
+	oscillation()
 	retreat_needs_no_column()
 	print("Utility: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
@@ -35,6 +38,7 @@ func curves() -> void:
 	check(absf(Utility.curve("quad",0.5)-0.25) < 0.001 and absf(Utility.curve("sqrt",0.25)-0.5) < 0.001,"quad and sqrt")
 	check(Utility.curve("linear",1.7) == 1.0 and Utility.curve("linear",-1.0) == 0.0,"inputs are clamped")
 	check(Utility.curve("nope",0.5) == 0.5,"unknown curve is linear")
+	check(Utility.curve("signed",-0.5) == -0.5 and Utility.curve("signed",-2.0) == -1.0 and Utility.curve("signed",2.0) == 1.0,"signed keeps the sign and clamps to -1..1")
 
 func profiles() -> void:
 	var p: Dictionary = Utility.profiles()
@@ -88,10 +92,14 @@ func inputs_and_score() -> void:
 	check(ctx.target.id == f.foes[0].id and ctx.has("protectee") and ctx.has("threats") and ctx.has("gap"),"context carries the shared target and the protectee's own facts")
 	var step := {"kind":"MOVE","cell":hero.pos+Vector2i(1,0),"tag":"MOVE:approach","dir":Vector2i(1,0)}
 	var inp: Dictionary = Utility.inputs(s,hero,step,ctx)
-	check(inp.closes_distance == 0.5 and inp.target_adjacent == 1.0 and inp.cell_danger == 1.0,"approach step: closes half a band, lands adjacent, safe cell")
+	check(inp.closes_distance == 0.5 and inp.target_adjacent == 1.0 and inp.cell_danger == 0.0,"approach step: closes half a band, lands adjacent, no safer and no worse")
 	s.intents = [{"id":f.foes[0].id,"cell":step.cell,"damage":10,"kind":""}]
 	inp = Utility.inputs(s,hero,step,ctx)
-	check(inp.cell_danger == 0.5,"telegraphed cell: danger 10/20 → 0.5")
+	check(inp.cell_danger == -10.0/float(hero.hp),"stepping onto a 10-damage telegraph is a negative delta")
+	hero.pos = step.cell; s.floor_state.observe(s)
+	var back := {"kind":"MOVE","cell":hero.pos+Vector2i(-1,0),"tag":"MOVE:approach","dir":Vector2i(-1,0)}
+	check(Utility.inputs(s,hero,back,Utility.context(s,hero)).cell_danger == 10.0/float(hero.hp),"stepping off it is the same delta, positive")
+	hero.pos = step.cell+Vector2i(-1,0); s.floor_state.observe(s)
 	s.intents = []
 	# Score: weights × curves, integer, deterministic, explained.
 	var scored: Dictionary = Utility.score(s,hero,step,ctx,"CHARGER",Knobs.DEFAULT)
@@ -99,15 +107,20 @@ func inputs_and_score() -> void:
 	check(scored == Utility.score(s,hero,step,ctx,"CHARGER",Knobs.DEFAULT),"deterministic")
 	# Personality multiplier: posture +100 shifts every posture-scaled weight of
 	# the tag at once (damage +15, la_self_hit −30 in the charger's ATTACK).
-	f.foes[0].pos = hero.pos+Vector2i(1,0); s.floor_state.observe(s); ctx = Utility.context(s,hero)
+	# The foe is nearly down: the blow kills it, so the lookahead's `la_self_hit`
+	# is a real positive delta and both posture-scaled terms of the column move.
+	f.foes[0].pos = hero.pos+Vector2i(1,0); f.foes[0].hp = 5; s.floor_state.observe(s); ctx = Utility.context(s,hero)
 	var atk := {"kind":"ATTACK","cell":f.foes[0].pos,"tag":"ATTACK","damage":18}
+	var atk_inputs: Dictionary = Utility.inputs(s,hero,atk,ctx)
+	check(atk_inputs.la_self_hit > 0.0 and atk_inputs.damage > 0.0,"the knob fixture drives both posture-scaled terms")
 	var calm: int = Utility.score(s,hero,atk,ctx,"CHARGER",Knobs.DEFAULT).score
 	var bold: Dictionary = Knobs.DEFAULT.duplicate(); bold.posture = 100
 	var boldly: int = Utility.score(s,hero,atk,ctx,"CHARGER",bold).score
 	var data: Dictionary = Utility.profiles()
-	var expected: float = knob_shift(data,data.profiles.CHARGER.ATTACK,"posture",Utility.inputs(s,hero,atk,ctx))
+	var expected: float = knob_shift(data,data.profiles.CHARGER.ATTACK,"posture",atk_inputs)
 	check(expected != 0.0 and boldly-calm == int(round(expected)),"posture shifts the profile's posture-scaled weights")
 	# Stance profiles differ: the same disengage step scores higher for a skirmisher than a charger.
+	f.foes[0].hp = 30; s.floor_state.observe(s); ctx = Utility.context(s,hero)
 	var away := {"kind":"MOVE","cell":hero.pos+Vector2i(-1,0),"tag":"MOVE:disengage","dir":Vector2i(-1,0)}
 	check(Utility.score(s,hero,away,ctx,"SKIRMISHER",Knobs.DEFAULT).score > Utility.score(s,hero,away,ctx,"CHARGER",Knobs.DEFAULT).score,"profiles differ per stance")
 	# The band is Manhattan, the metric the skirmisher's generator builds it with:
@@ -172,6 +185,50 @@ func parts() -> void:
 	check(t.Tactics.choose(t,h).kind == "KOBOLD_SLING","at range: fires")
 	# The part choice carries an explanation naming rule_ready.
 	check(t.Tactics.choose(t,h).explain.any(func(e): return e.id == "rule_ready"),"explanation names the rule")
+
+## 설계 §3: one round ahead from public information only.
+func lookahead() -> void:
+	var f := field(["CHARGER","CHARGER","CHARGER"]); var s = f.s; var hero: Dictionary = s.party[0]
+	# Stepping onto a telegraphed cell is predicted as damage to self.
+	var cell: Vector2i = hero.pos+Vector2i(1,0)
+	s.intents = [{"id":f.foes[0].id,"cell":cell,"damage":10,"kind":""}]; f.foes[0].charging = true
+	var stay := Lookahead.predict(s,hero,{"kind":"WAIT","cell":hero.pos})
+	var into := Lookahead.predict(s,hero,{"kind":"MOVE","cell":cell})
+	check(stay.self == 0 and into.self >= 10,"moving into the telegraph costs at least the announced damage")
+	# Guarding a lethal ally saves it.
+	s.intents = [{"id":f.foes[0].id,"cell":s.party[1].pos,"damage":9,"kind":""}]; s.party[1].hp = 5
+	var guard := Lookahead.predict(s,hero,{"kind":"GUARD","cell":s.party[1].pos})
+	check(guard.lethal_saved == 1,"guard saves a lethal ally")
+	# Pushing the caster cancels its intent.
+	f.foes[0].pos = hero.pos+Vector2i(1,0); s.floor_state.observe(s)
+	var push := Lookahead.predict(s,hero,{"kind":"PUSH","cell":f.foes[0].pos,"damage":8})
+	check(push.lethal_saved == 1 and push.allies == 0,"push cancels the telegraph")
+	s.intents = []; f.foes[0].charging = false; s.party[1].hp = s.party[1].max_hp
+	# Killing blow is predicted as enemy damage and removes that foe's threat.
+	f.foes[0].hp = 5
+	var kill := Lookahead.predict(s,hero,{"kind":"ATTACK","cell":f.foes[0].pos,"damage":18})
+	check(kill.enemies >= 5 and kill.self == 0,"a kill removes the foe's threat")
+	# Inputs are wired: la_self_hit lower for the telegraphed step.
+	f.foes[0].hp = 30; s.intents = [{"id":f.foes[0].id,"cell":cell,"damage":10,"kind":""}]; f.foes[0].charging = true
+	var ctx: Dictionary = Utility.context(s,hero)
+	check(Utility.inputs(s,hero,{"kind":"MOVE","cell":cell,"tag":"MOVE:approach"},ctx).la_self_hit < Utility.inputs(s,hero,{"kind":"WAIT","cell":hero.pos,"tag":"WAIT"},ctx).la_self_hit,"la_self_hit reads the predictor")
+	s.lookahead_enabled = false
+	check(Utility.inputs(s,hero,{"kind":"MOVE","cell":cell,"tag":"MOVE:approach"},ctx).la_self_hit == 0.0,"disabled: neutral is 0, not a paid bonus")
+	s.lookahead_enabled = true
+
+## Commitment has to beat the flip-flop: four rounds against a stationary foe
+## must not come out A-B-A-B.
+func oscillation() -> void:
+	var f := field(["SKIRMISHER","CHARGER","CHARGER"]); var s = f.s; var h: Dictionary = s.party[0]
+	h.equipped_abilities = ["KOBOLD_SLING","GUARD"]; h.rules = [s.Abilities.default_rule("KOBOLD_SLING"),s.Abilities.default_rule("GUARD")]; h.cooldowns = {}
+	f.foes[0].pos = h.pos+Vector2i(5,0); f.foes[0].alert = false; s.floor_state.observe(s)
+	var kinds: Array = []
+	for round in range(4):
+		h.ap = 1
+		var pick: Dictionary = s.Tactics.choose(s,h)
+		kinds.append(pick.kind+str(pick.get("dir",Vector2i.ZERO)))
+		s.act_as(h,pick.kind,pick.cell,false)
+	check(not (kinds[0] == kinds[2] and kinds[1] == kinds[3] and kinds[0] != kinds[1]),"no A-B-A-B: %s" % [kinds])
 
 ## The retreat line is the stage above the utility pool: its MOVE carries no tag
 ## and is ranked by the hand constant, so no profile column applies to it.
