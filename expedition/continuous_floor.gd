@@ -65,15 +65,7 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 	for e in range(layout.encounters.size()):
 		var encounter: Dictionary = layout.encounters[e]
 		for member in encounter.members:
-			var enemy: Dictionary = s.make_actor(100+s.enemies.size(),member.display_name,true)
-			enemy.pos = member.pos; enemy.hp = int(member.max_health)
-			if s.party.size() == 1: enemy.hp = clampi(enemy.hp*SOLO_HP_PERCENT/100,SOLO_HP_MIN,SOLO_HP_MAX)
-			enemy.max_hp = enemy.hp
-			enemy.group = "F%d_E%02d" % [int(theme.depth),e+1]; enemy.home = enemy.pos; enemy.alert = false
-			enemy.species_id = member.species_id; enemy.tier = encounter.tier; enemy.mandatory = encounter.mandatory
-			MonsterAI.configure(enemy,member.role)
-			enemy.part_id = Abilities.species_part(member.species_id)
-			s.enemies.append(enemy)
+			mint_enemy(s,member,"F%d_E%02d" % [int(theme.depth),e+1],encounter.tier,encounter.mandatory)
 	for p in layout.features: state.features[p] = layout.features[p].duplicate(true)
 	for i in range(s.party.size()):
 		s.party[i].pos = layout.entry+Vector2i(0,i); s.party[i].ap = 1
@@ -81,6 +73,20 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 	if theme.get("boss",false): BossAI.spawn(s,layout,int(theme.depth))
 	s.phase = "BATTLE" if s.simulation_arena else "EXPLORE"; s.round_number = 1
 	state.observe(s)
+
+## One floor monster from an encounter member: the roster health (scaled down for
+## a lone hero), its group, home and role. Appended to `s.enemies` and returned.
+static func mint_enemy(s, member: Dictionary, group: String, tier: String, mandatory: bool) -> Dictionary:
+	var enemy: Dictionary = s.make_actor(100+s.enemies.size(),member.display_name,true)
+	enemy.pos = member.pos; enemy.hp = int(member.max_health)
+	if s.party.size() == 1: enemy.hp = clampi(enemy.hp*SOLO_HP_PERCENT/100,SOLO_HP_MIN,SOLO_HP_MAX)
+	enemy.max_hp = enemy.hp
+	enemy.group = group; enemy.home = enemy.pos; enemy.alert = false
+	enemy.species_id = member.species_id; enemy.tier = tier; enemy.mandatory = mandatory
+	MonsterAI.configure(enemy,member.role)
+	enemy.part_id = Abilities.species_part(member.species_id)
+	s.enemies.append(enemy)
+	return enemy
 
 func observer(s) -> Dictionary:
 	return s.party[s.selected] if s.party[s.selected].hp > 0 else s.alive()[0] if not s.alive().is_empty() else {}
@@ -121,11 +127,23 @@ func observation(s) -> Dictionary:
 		if actor.hp > 0 and visible.has(actor.pos): markers.append({"position":[actor.pos.x,actor.pos.y],"marker":"ENEMY" if actor.enemy else "HERO"})
 	return {"width":size,"height":size,"epoch":epoch,"cells":discoveries,"discovery_rows":discoveries,"static_count":discoveries.size(),"visible":visible.keys().map(func(p): return [p.x,p.y]),"markers":markers}
 
+## The fight the party is in: the foes it can see, plus the ones an awake npc
+## has in its own sight — an npc's battle is a battle on this floor.
 func threats(s) -> Array:
+	var seen: int = MonsterAI.sight(s)
+	# Hoisted: the watchers are the same for every enemy this call weighs.
+	var watchers: Array = s.npcs.filter(func(n): return n.awake and n.hp > 0)
+	return s.enemies.filter(func(e): return e.hp > 0 and (visible.has(e.pos) or watchers.any(func(n): return MonsterAI.line(s,n.pos,e.pos,seen))))
+
+## Only what the party itself sees: the auto-run's stop events are about the
+## party's eyes, not an npc's.
+func party_threats(s) -> Array:
 	return s.enemies.filter(func(e): return e.hp > 0 and visible.has(e.pos))
 
+## Whether the party may treat this cell as quiet: its own eyes decide, not a
+## fight an npc picked out of its sight.
 func safe(s) -> bool:
-	return threats(s).is_empty()
+	return party_threats(s).is_empty()
 
 func interact(s, p: Vector2i) -> bool:
 	if s.phase != "EXPLORE" or s.party[s.selected].hp <= 0 or s.party[s.selected].ap <= 0: return false
@@ -148,7 +166,9 @@ func enemy_turn(s, enemy: Dictionary) -> void:
 func follow(s, actor: Dictionary) -> Dictionary:
 	var leader: Dictionary = s.leader()
 	if actor.id == leader.id: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}
-	var order: Array = s.formation.filter(func(i): return i != leader.id)
+	# `formation` holds party indices, not ids: a recruited member keeps its own
+	# 1000+ id and would otherwise rank zeroth, on top of the leader.
+	var order: Array = s.formation.filter(func(i): return i < s.party.size() and s.party[i].id != leader.id).map(func(i): return s.party[i].id)
 	var rank: int = order.find(actor.id)+1
 	var destination: Vector2i = leader.pos+Vector2i(0,rank)
 	if actor.pos == destination: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}

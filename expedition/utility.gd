@@ -63,7 +63,7 @@ static func context(s, actor: Dictionary, pool: Array = []) -> Dictionary:
 		before = Lookahead.baseline(s)
 		stand = Lookahead.predict(s,actor,{"kind":"WAIT","cell":actor.pos},before)
 	var ally_hp := 0
-	for mate in s.alive():
+	for mate in s.friends():
 		if mate.id != actor.id: ally_hp += int(mate.hp)
 	return {"pool":pool,"target":Stances.party_target(s),"protectee":protectee,"threats":threats,
 		"protectee_lethal":lethal,"gap":gap,"ranged":Stances.ranged_part(actor),

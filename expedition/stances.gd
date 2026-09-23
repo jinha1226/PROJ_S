@@ -78,18 +78,18 @@ static func party_target(s) -> Dictionary:
 	if s.party_command == "ATTACK_TARGET":
 		for e in s.combat_enemies():
 			if e.id == s.command_target: return e
-	for a in s.alive():
+	for a in s.friends():
 		if effective(a) != "CHARGER": continue
 		for e in s.combat_enemies():
 			if s.melee_reach(a.pos,e.pos): return e
 	var best_d := 999
-	for a in s.alive():
+	for a in s.friends():
 		for e in s.combat_enemies():
 			best_d = mini(best_d,s.distance(a.pos,e.pos))
-	var nearest: Array = s.combat_enemies().filter(func(e): return s.alive().any(func(a): return s.distance(a.pos,e.pos) == best_d))
+	var nearest: Array = s.combat_enemies().filter(func(e): return s.friends().any(func(a): return s.distance(a.pos,e.pos) == best_d))
 	if nearest.is_empty(): return {}
 	# `basic_target` survives only as the tie-break between equally near foes.
-	var lowest: bool = s.alive().any(func(a): return a.basic_target == "LOWEST_HP")
+	var lowest: bool = s.friends().any(func(a): return a.basic_target == "LOWEST_HP")
 	nearest.sort_custom(func(x,y):
 		if lowest and x.hp != y.hp: return x.hp < y.hp
 		return x.id < y.id)
@@ -100,10 +100,10 @@ static func party_target(s) -> Dictionary:
 static func protectee(s, actor: Dictionary) -> Dictionary:
 	var idx: int = int(actor.get("protect_id",-1))
 	if idx >= 0 and idx < s.party.size() and s.party[idx].hp > 0 and s.party[idx].id != actor.id: return s.party[idx]
-	for a in s.alive():
+	for a in s.friends():
 		if a.id != actor.id and effective(a) == "SKIRMISHER": return a
 	var best: Dictionary = {}
-	for a in s.alive():
+	for a in s.friends():
 		if a.id == actor.id: continue
 		if best.is_empty() or a.hp*100/a.max_hp < best.hp*100/best.max_hp: best = a
 	return best

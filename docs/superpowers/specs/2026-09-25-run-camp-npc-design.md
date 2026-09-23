@@ -1,6 +1,6 @@
 # 하강 Run · 야영 · 던전 NPC 설계
 
-작성일: 2026-09-25 · 상태: Plan A 구현됨(§5 NPC 제외) · 구현 계획: [하강 Run 계획](../plans/2026-09-25-descent-run.md)
+작성일: 2026-09-25 · 상태: Plan A·B 구현됨 · 구현 계획: [하강 Run 계획](../plans/2026-09-25-descent-run.md) · [던전 NPC 계획](../plans/2026-09-25-dungeon-npc.md) (`.superpowers/sdd/2026-09-25-dungeon-npc/`)
 선행 작업(이전 코드베이스 `/mnt/d/SS`, 코드는 재사용하지 않고 설계만 계승): `docs/EXPEDITION_AID_RECRUITMENT.ko.md`(도움 → 동행 수락, 커밋 b6f38c1) · `docs/INDEPENDENT_EXPLORER_UTILITY.ko.md`(독립 탐험 NPC의 모드 효용, 유지·전환 문턱, 활동 문구)
 근거: [층 생성기](2026-09-22-floor-generator-design.md) · [태세](2026-09-23-stances-design.md) · [전술 단순화·전투 시험](2026-09-24-simple-tactics-arena-design.md) · [효용 선택기](2026-09-24-utility-lookahead-design.md)
 
@@ -111,7 +111,7 @@
 
 ### 5.1 명부
 
-- Run 시작 시 NPC **10명** 생성(`s.roster: Array`), 각각 `{id: 100+i, name, profile: Hexaco.generated(seed, 100+i), stance: Stances.default_stance(profile), hp, max_hp 55, stress: 0~40, equipped_abilities: [파츠 0~1], rules, memory: Memory.new(), partner: id | -1, bond: "close"|"strained"|"", state: "UNMET"|"MET"|"PARTY"|"DEAD", floor_seen: int}`.
+- Run 시작 시 NPC **10명** 생성(`s.roster: Array`), 각각 `{id: 1000+i, name, profile: Hexaco.generated(seed, 1000+i), stance: Stances.default_stance(profile), hp, max_hp 55, stress: 0~40, equipped_abilities: [파츠 0~1], rules, memory: Memory.new(), partner: id | -1, bond: "close"|"strained"|"", state: "UNMET"|"MET"|"PARTY"|"DEAD", floor_seen: int}`.
 - 이름은 `data/content/npc_names.json`(20개)에서 시드로 중복 없이.
 - 파츠: 40%로 카탈로그에서 무작위 1개 장착(`default_rule` 포함).
 - **2인 조**: 10명 중 2쌍(4명). `partner` 상호 지정, `bond`는 60% `close` / 40% `strained`.
@@ -124,7 +124,7 @@
 
 | 상황 | 위치 | 상태 |
 | --- | --- | --- |
-| 교전 중 | 조우 방 옆 NPC 방에 몬스터 무리 1개(예산 3) 추가 배치, NPC는 무리와 인접 | HP 60~80%, 50% 굶주림 |
+| 교전 중 | 조우 방 옆 NPC 방에 몬스터 무리 1개(예산 3) 추가 배치, NPC는 무리와 거리 2 이내 | HP 60~80%, 50% 굶주림 |
 | 부상 | NPC 방, 혼자 | HP 30~50%, 스트레스 +30, 50% 굶주림 |
 | 휴식 | NPC 방 | HP 그대로 |
 
@@ -142,7 +142,7 @@
 
 깨어 있는 NPC는 매 라운드(파티 차례 뒤, 적 차례 앞) 한 번 행동한다.
 
-- **전투 중(자기 시야에 적)**: `Tactics.choose(s, npc)`를 그대로 쓴다. 이를 위해 아군 판정을 한 곳으로 모은다: `s.friends(actor)` = 파티 생존자 + 깨어 있는 NPC(전원 서로 아군). 태세·효용·룩어헤드·규칙(`alive()`를 아군으로 쓰는 곳)과 몬스터 AI의 표적(`targets`)이 이 함수를 쓴다. 즉 깨어 있는 NPC는 전투에서 파티 편이고, 몬스터도 NPC를 노린다. 명령(집중 공격·후퇴)은 받지 않는다. 실수 규칙도 적용.
+- **전투 중(자기 시야에 적)**: `Tactics.choose(s, npc)`를 그대로 쓴다. 이를 위해 아군 판정을 한 곳으로 모은다: `s.friends(actor)` = 파티 생존자 + 깨어 있는 NPC(전원 서로 아군). 태세·효용·룩어헤드·규칙(`alive()`를 아군으로 쓰는 곳)과 몬스터 AI의 표적(`targets`)이 이 함수를 쓴다. 즉 깨어 있는 NPC는 전투에서 파티 편이고, 몬스터도 NPC를 노린다. 명령(집중 공격·후퇴)은 받지 않는다 — 다만 집중 공격 표적은 공유 휴리스틱이라 NPC도 따른다(명령이 아니다). 실수 규칙도 적용.
 - **전투 아님 — 활동 모드**: 이전 코드베이스의 독립 탐험 NPC 효용을 우리 `Utility` 코어로 다시 만든다. 모드 4개를 `tactics_profiles.json`의 새 표 `npc_modes`에 두고 `Utility.score`로 고른다(정수 가중합, 결정론, 설명 상위 3). 유지 10라운드, 80점 이상 차이면 즉시 전환(이전 설계의 300시간·80점을 라운드로 옮김).
 
 | 모드 | 행동 | 주요 고려 사항(입력 0~1 / 부호) |
@@ -154,7 +154,7 @@
 
   - 2인 조는 뒤처진 쪽이 파트너에게 한 걸음(모드보다 우선).
   - 활동 문구를 NPC 카드에 한 줄로: "다가오는 중" / "거리를 두고 지켜보는 중" / "부상으로 대기 중" / "주변을 탐색 중" / "교전 중". 설명(`explain`)은 `battle_stats`처럼 `npc.explains`에 최근 20개.
-- NPC가 전투에서 죽으면 명부 `DEAD`, 결과 화면 이력에 남는다.
+- NPC가 전투에서 죽으면 명부 `DEAD`. 결과 화면 이력에는 **동행한 적이 있는 NPC만** 남는다(`joined_floor > 0`) — 영입한 적 없는 방랑자가 곁에서 죽어도 `DEAD`가 되므로, 죽음이 아니라 합류가 이력의 기준이다.
 
 ### 5.5 영입
 
@@ -177,7 +177,7 @@
 
 - **시작 화면**: 제목 · [새 Run] · [전투 시험]. 마을 화면(`show_town_*`, 훈련·요양·상점·보급)은 삭제. 전투 시험은 지금처럼 별도 세션(`town_session` → `menu_session`으로 이름만).
 - **HUD**: 기존 멤버 카드·▶/⏸·속도·후퇴·가방 + **식량 n** 표시 + **야영** 버튼. 횃불 버튼 삭제. 상단 위치 표시는 "n층".
-- **NPC 표시**: 보드에 이름표가 붙은 아군색 토큰. 인접 탭 → 대화 팝업(§5.5). 비인접 탭 → 카메라만.
+- **NPC 표시**: 보드에 이름표(이름 위, 활동 문구 아래)가 붙은 토큰. 색은 파티(아군색)도 적도 아닌 **제3색 `d8c98a`** — 아직 남인지 동료인지가 한눈에 보여야 한다(영입되면 그때부터 동료색). 인접 탭 → 대화 팝업(§5.5). 비인접 탭 → 알림(이름 · 활동)만.
 - **야영 화면**: §3.
 - **결과 화면**: §1.2. 전투 결과 카드(`BattleReport`)는 그대로.
 - 전투 중 NPC는 멤버 카드에 나오지 않는다(파티가 아님). 로그에는 "이름 · 행동"으로 찍힌다.

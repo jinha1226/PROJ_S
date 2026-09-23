@@ -54,6 +54,11 @@ var map_view
 var map_popup: PopupPanel
 var details_popup: PopupPanel
 var modal_content: VBoxContainer
+## An npc's own offer has its own popup: it outranks whatever else is open and
+## the run waits on it.
+var offer_popup: PopupPanel
+var offer_content: VBoxContainer
+var proposal_line := ""
 var notice := "":
 	set(value):
 		notice = value
@@ -98,6 +103,8 @@ func _ready() -> void:
 	item_popup = PopupPanel.new(); details_popup.add_child(item_popup)
 	item_popup.transient = true; item_popup.exclusive = true
 	item_detail = VBoxContainer.new(); item_detail.custom_minimum_size = Vector2(300,200); item_popup.add_child(item_detail)
+	offer_popup = PopupPanel.new(); offer_popup.name = "OfferPopup"; add_child(offer_popup)
+	offer_content = VBoxContainer.new(); offer_content.custom_minimum_size = Vector2(popup_width(),160); offer_popup.add_child(offer_content)
 	log_popup = PopupPanel.new(); add_child(log_popup)
 	toast = Label.new(); toast.name = "NoticeToast"; toast.mouse_filter = MOUSE_FILTER_IGNORE
 	add_child(toast); toast.set_anchors_and_offsets_preset(PRESET_TOP_WIDE)
@@ -115,7 +122,7 @@ func stop_navigation() -> void:
 	if is_instance_valid(auto_explore_button): auto_explore_button.text = "자동탐험"
 
 func popup_open() -> bool:
-	return details_popup.visible or map_popup.visible or log_popup.visible or item_popup.visible
+	return details_popup.visible or map_popup.visible or log_popup.visible or item_popup.visible or is_instance_valid(offer_popup) and offer_popup.visible
 
 ## One timer step of the auto battle: 0.7s at 1×, half that at 2×.
 func auto_interval() -> float:
@@ -184,7 +191,7 @@ func note_stop(reason: String) -> void:
 ## The Korean sentence of a stop event, with whoever caused it.
 func stop_message(reason: String) -> String:
 	match reason:
-		"BATTLE_START": return "전투 시작 · 적 %d" % session.combat_enemies().size()
+		"BATTLE_START": return "전투 시작 · 적 %d" % session.party_enemies().size()
 		"BATTLE_END": return "전투 종료"
 		"DEATH":
 			var fallen: Array = session.party.filter(func(a): return a.hp <= 0)
@@ -251,7 +258,7 @@ func navigation_tick() -> void:
 	if step.x < 0: stop_navigation(); return
 	var health: Array = session.party.map(func(a): return a.hp)
 	run_action(func(): return session.act("MOVE",step),true)
-	if session.party.map(func(a): return a.hp) != health or not session.combat_enemies().is_empty() or session.party[session.selected].pos != step:
+	if session.party.map(func(a): return a.hp) != health or not session.party_enemies().is_empty() or session.party[session.selected].pos != step:
 		stop_navigation()
 	elif session.floor_state.features.keys().any(func(p): return session.floor_state.features[p].kind in ["curio","stairs"] and not session.floor_state.features[p].used and session.distance(step,p) <= 1):
 		stop_navigation()
@@ -337,6 +344,7 @@ func resource_gauge(parent: Button, id: String, value: int, color: Color, hint: 
 
 func refresh() -> void:
 	if is_instance_valid(board) and board.is_presenting(): return
+	update_offer_popup()
 	if is_instance_valid(board): root_layout.remove_child(board); board.queue_free(); board = null
 	if is_instance_valid(minimap):
 		if minimap.get_parent() != null: minimap.get_parent().remove_child(minimap)
@@ -466,7 +474,7 @@ func run_action(callback: Callable, navigating: bool = false) -> void:
 	if not navigating: stop_navigation()
 	session.effects.clear()
 	var recorder = Presentation.new()
-	var show_battle: bool = is_processing() and true and session.phase == "BATTLE" and not session.combat_enemies().is_empty()
+	var show_battle: bool = is_processing() and session.phase == "BATTLE" and not session.party_enemies().is_empty()
 	if show_battle:
 		recorder.begin(session); session.presentation = recorder
 	var accepted: bool = callback.call()
@@ -531,11 +539,20 @@ func queue_action(kind: String, point: Vector2i) -> void:
 func on_cell(point: Vector2i) -> void:
 	if session == null or not session.on_floor(): return
 	stop_navigation()
+	if command_targeting:
+		focus_enemy(point)
+		refresh(); return
 	var feature: Dictionary = session.floor_state.features.get(point,{})
 	if feature.get("kind","") == "pylon" and session.floor_state.visible.has(point):
 		run_action(func(): return session.act("PYLON",point)); return
 	if session.in_combat(): focus_enemy(point); refresh(); return
 	if session.floor_state.visible.has(point):
+		# A tap only reaches an npc the party can see, and only an adjacent one talks.
+		var wanderer: Dictionary = session.at(point)
+		if session.wanderer(wanderer):
+			if session.melee_reach(session.party[session.selected].pos,point): show_npc(wanderer)
+			else: notice = "%s · %s" % [wanderer.name,wanderer.get("activity","")] if not str(wanderer.get("activity","")).is_empty() else str(wanderer.name); refresh()
+			return
 		if feature.get("kind","") == "curio": show_curio(point); return
 		if feature.get("kind","") == "stairs" and session.distance(session.party[session.selected].pos,point) <= 1: show_stairs(); return
 		if not feature.is_empty() and session.distance(session.party[session.selected].pos,point) <= 1:
@@ -543,9 +560,14 @@ func on_cell(point: Vector2i) -> void:
 	if pending_item >= 0: run_action(func(): return session.use_supply(pending_item,point)); return
 	if not mode.is_empty(): run_action(func(): return session.act(mode,point)); return
 	var actor: Dictionary = session.at(point)
+	if session.wanderer(actor): return
 	if not actor.is_empty():
 		if actor.enemy: run_action(func(): return session.act("ATTACK",point))
-		else: select_actor(actor.id)
+		else:
+			# `selected` is a party index, and a recruit's id is its roster id: the
+			# two only look alike for the three the run started with.
+			var index: int = session.party.find(actor)
+			if index >= 0: select_actor(index)
 		return
 	if maxi(absi(point.x-session.party[session.selected].pos.x),absi(point.y-session.party[session.selected].pos.y)) > 1:
 		if navigation.start(session,point): navigation_tick()
@@ -554,11 +576,69 @@ func on_cell(point: Vector2i) -> void:
 
 func focus_enemy(point: Vector2i) -> void:
 	var target: Dictionary = session.at(point)
-	if target in session.combat_enemies():
+	if target in session.combat_enemies() and session.floor_state.visible.has(point):
 		session.command_target = target.id; session.party_command = "ATTACK_TARGET"
 		command_targeting = false; notice = "집중 공격"
 	elif command_targeting:
 		command_targeting = false; notice = ""
+
+## One line of who this npc is: the nouns of its two social facets.
+func npc_personality(npc: Dictionary) -> String:
+	var words: Array = []
+	for facet in ["X","A"]:
+		var terms: Dictionary = Session.Hexaco.STYLE_AXES[facet]
+		words.append(str(terms.high_noun if npc.profile.value(facet) >= 500 else terms.low_noun))
+	return " · ".join(words)
+
+## The npc popup: who it is, what it is doing, and the two things the party has
+## to offer — a share of the food and a place in the line.
+func show_npc(npc: Dictionary) -> void:
+	stop_navigation(); clear(modal_content)
+	modal_content.custom_minimum_size.y = 0
+	var page := VBoxContainer.new(); page.name = "NpcPopup"; modal_content.add_child(page)
+	var talk: Dictionary = Session.Recruit.dialogue(session,npc)
+	label(page,str(npc.name),20)
+	label(page,npc_personality(npc),14)
+	var doing: String = str(npc.get("activity",""))
+	if not doing.is_empty(): label(page,doing,14)
+	label(page,"HP %d/%d" % [npc.hp,npc.max_hp],14)
+	label(page,str(talk.line),15)
+	var ask := button(page,"동행 제안",func(): propose_npc(npc),bool(talk.can_propose))
+	ask.name = "ProposeButton"
+	var share := button(page,"식량 1 나누기 · 보유 %d" % session.food,func(): details_popup.hide(); run_action(func(): return session.aid(npc)),bool(talk.can_aid))
+	share.name = "AidButton"
+	var close := button(page,"닫기",func(): details_popup.hide())
+	close.name = "CloseNpc"
+	details_popup.popup_centered()
+
+## The ask itself always goes through: what comes back is the npc's answer, and
+## the sentence it answers with is the notice.
+func propose_npc(npc: Dictionary) -> void:
+	details_popup.hide()
+	# A lambda captures its locals by value, so the answer comes back on the node.
+	proposal_line = ""
+	run_action(func(): proposal_line = str(session.propose(npc).line); return true)
+	notice = proposal_line
+
+## An npc that asks to come along stops the run and waits for an answer; the
+## popup lives exactly as long as the offer does.
+func update_offer_popup() -> void:
+	if session == null or not is_instance_valid(offer_popup): return
+	var standing: Array = session.npcs.filter(func(n): return n.id == session.pending_offer) if session.pending_offer >= 0 else []
+	if standing.is_empty():
+		offer_popup.hide(); return
+	var npc: Dictionary = standing[0]
+	session.auto.running = false
+	stop_navigation()
+	stop_text = "%s이(가) 말을 겁니다" % npc.name
+	clear(offer_content)
+	label(offer_content,str(npc.name),20)
+	label(offer_content,str(Session.Recruit.dialogue(session,npc).line),15)
+	var accept := button(offer_content,"동행",func(): offer_popup.hide(); run_action(func(): return session.answer_offer(true)),session.alive().size() < Session.Recruit.MAX_PARTY)
+	accept.name = "OfferAccept"
+	var refuse := button(offer_content,"거절",func(): offer_popup.hide(); run_action(func(): return session.answer_offer(false)))
+	refuse.name = "OfferDecline"
+	offer_popup.popup_centered()
 
 func show_map() -> void:
 	stop_navigation()
@@ -624,8 +704,18 @@ func build_result_card() -> void:
 	for actor in session.party.slice(1):
 		label(card,"%s · %s" % [actor.name,"생존" if actor.hp > 0 else "%d층에서 전사" % session.depth],14)
 	label(card,"실수 %d" % int(session.run_stats.mistakes),14)
+	companion_history(card)
 	var start := button(card,"새 Run",new_run); start.name = "NewRun"
 	button(card,"시작 화면",func(): session = null; refresh())
+
+## Who walked with the party this run, where they joined and whether they came
+## back out (스펙 §1.2).
+func companion_history(list: VBoxContainer) -> void:
+	var rows: Array = session.companion_rows()
+	if rows.is_empty(): return
+	label(list,"동료 이력",15)
+	for row in rows:
+		label(list,"%s · %d층 합류 · %s" % [row.name,int(row.joined_floor),"생존" if row.alive else "전사"],13)
 
 func show_orders() -> void:
 	stop_navigation()

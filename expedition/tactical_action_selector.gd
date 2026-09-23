@@ -103,7 +103,7 @@ static func rank(a, b) -> bool:
 ## Living allies whose melee reach `cell` sits inside.
 static func adjacent_allies(s, actor: Dictionary, cell: Vector2i) -> int:
 	var count := 0
-	for mate in s.alive():
+	for mate in s.friends():
 		if mate.id != actor.id and s.melee_reach(cell,mate.pos): count += 1
 	return count
 

@@ -158,7 +158,7 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 			var amount: int = power(s,actor,def)
 			s.effects.append({"kind":"ENEMY_ATTACK","from":actor.pos,"cell":target,"cells":affected,"area":true,"amount":0,"form":"IMPACT"})
 			var hit := 0
-			for other in s.party+s.enemies:
+			for other in s.party+s.npcs+s.enemies:
 				if other.hp <= 0 or other.id == actor.id or other.pos not in affected: continue
 				if not def.allies_hit and other.enemy == actor.enemy: continue
 				s.damage(other,amount,actor.id,"IMPACT"); hit += 1

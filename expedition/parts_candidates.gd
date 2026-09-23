@@ -32,7 +32,7 @@ static func push_options(s, actor: Dictionary, options: Array) -> void:
 		var moved: bool = s.can_step(enemy.pos,landing)
 		var benefit := 0
 		var unsafe := false
-		for ally in s.alive():
+		for ally in s.friends():
 			var before: int = s.Tactics.threat(s,enemy,ally.pos,enemy.pos)
 			var after: int = 0 if enemy.get("charging",false) else s.Tactics.threat(s,enemy,ally.pos,landing if moved else enemy.pos)
 			benefit += before-after
@@ -40,7 +40,7 @@ static func push_options(s, actor: Dictionary, options: Array) -> void:
 		# Do not push a foe onto healing water or out of another ally's melee reach.
 		if moved:
 			if enemy.get("boss",false) and enemy.get("pattern",-1) == 0 and s.tile(landing).terrain == "water": unsafe = true
-			for ally in s.alive():
+			for ally in s.friends():
 				if ally.id != actor.id and s.melee_reach(ally.pos,enemy.pos) and not s.melee_reach(ally.pos,landing) and benefit <= 0: unsafe = true
 		if unsafe: continue
 		# A shove with nowhere to go is an 8-damage hit instead.
@@ -49,7 +49,7 @@ static func push_options(s, actor: Dictionary, options: Array) -> void:
 ## 엄호 has no self form: one candidate per adjacent living ally.
 static func guard_options(s, actor: Dictionary, options: Array) -> void:
 	if "GUARD" not in actor.equipped_abilities: return
-	for mate in s.alive():
+	for mate in s.friends():
 		if mate.id != actor.id and s.melee_reach(actor.pos,mate.pos):
 			options.append(part("GUARD",mate.pos,0,int(mate.id)))
 
@@ -64,7 +64,7 @@ static func part_options(s, actor: Dictionary, options: Array) -> void:
 			if not Abilities.legal(s,actor,id,target.pos): continue
 			if def.effect == "DAMAGE":
 				var cells: Array = Abilities.cells(s,actor,id,target.pos)
-				if s.alive().any(func(a): return (a.id != actor.id or def.self_hit) and a.pos in cells): continue
+				if s.friends().any(func(a): return (a.id != actor.id or def.self_hit) and a.pos in cells): continue
 				if not s.combat_enemies().any(func(e): return e.hp > 0 and e.pos in cells): continue
 			var damage: int = Abilities.power(s,actor,def) if def.effect in ["DAMAGE","LUNGE"] else 0
 			options.append(part(id,target.pos,damage,int(target.id)))

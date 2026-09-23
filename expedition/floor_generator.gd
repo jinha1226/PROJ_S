@@ -464,7 +464,7 @@ static func build_encounters(layout: Dictionary, theme: Dictionary, painted: Dic
 		if theme.get("boss",false) and room.template_id == "boss_lair": continue
 		var mandatory: bool = id in chosen.mandatory
 		var budget: int = theme.monsters.budget[room.tier] if mandatory else theme.monsters.budget.optional
-		var members := Encounters.fill(rng,depth,budget,room.tier == "deep" or not mandatory,int(theme.monsters.get("max_members",Encounters.MAX_MEMBERS)))
+		var members := Encounters.fill(rng,mini(depth,6),budget,room.tier == "deep" or not mandatory,int(theme.monsters.get("max_members",Encounters.MAX_MEMBERS)))
 		var obstacles: Dictionary = painted.get(id,{}).get("obstacles",{}).duplicate()
 		for p in reserved:
 			obstacles[p] = true

@@ -4,7 +4,13 @@ extends RefCounted
 const SCHEMA_VERSION := 1
 const MAX_RECORDS := 8
 const KINDS := ["SELF_HARM", "ALLY_DOWNED", "ALLY_LOST", "AID_RECEIVED",
-	"COMMAND_CONFLICT"]
+	"COMMAND_CONFLICT", "RECRUITED", "DECLINED_BY_PLAYER", "DECLINED_PLAYER",
+	"LEFT_BY_PARTNER"]
+## What the party owes and is owed. These are cheap next to a death, so every
+## pruning rule — eviction here, the landmark filters in `Session` — keeps them
+## until nothing else is left to drop.
+const SOCIAL_KINDS := ["AID_RECEIVED", "RECRUITED", "DECLINED_BY_PLAYER",
+	"DECLINED_PLAYER", "LEFT_BY_PARTNER"]
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 const MAX_WORLD_TIME := 9223372036854775707
 
@@ -146,9 +152,17 @@ static func transition_magnitude(before: Dictionary, after: Dictionary) -> int:
 	return maxi(1, total)
 
 
+## The record a new one displaces: the weakest of those that are not social,
+## and a social one only when every record is social.
 func _weakest_index() -> int:
-	var weakest := 0
-	for index in range(1, records.size()):
+	var pool: Array[int] = []
+	for index in range(records.size()):
+		if str(records[index].kind) not in SOCIAL_KINDS:
+			pool.append(index)
+	if pool.is_empty():
+		pool.assign(range(records.size()))
+	var weakest: int = pool[0]
+	for index in pool:
 		if _is_more_retained(records[weakest], records[index]):
 			weakest = index
 	return weakest

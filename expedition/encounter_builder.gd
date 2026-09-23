@@ -90,9 +90,7 @@ static func valid(members: Array, budget: int, max_members: int = MAX_MEMBERS) -
 static func attempt(rng: RandomNumberGenerator, depth: int, budget: int, ood: bool, max_members: int = MAX_MEMBERS) -> Array:
 	var members: Array = []
 	var remaining := budget
-	# The current catalog ends at depth eight; deeper runs reuse its mature
-	# roster while the encounter budget keeps scaling.
-	var table_depth := mini(depth,6)
+	var table_depth := depth
 	if ood and rng.randi_range(1,100) <= OOD_PERCENT: table_depth = depth+1
 	var draws := 0
 	while remaining >= 1 and members.size() < max_members:
@@ -125,31 +123,21 @@ static func fill(rng: RandomNumberGenerator, depth: int, budget: int, ood: bool,
 	for _try in range(MAX_REROLLS):
 		var members := attempt(rng,depth,budget,ood,max_members)
 		if valid(members,budget,max_members).is_empty(): return members
-	# A small bounded search is the safety net for deep budgets. A single-unit
-	# fallback silently produced packs far below the requested threat.
-	var options: Array = []
-	for row in candidates(mini(depth,6),budget+1):
-		for role in row.roles: options.append(member(row,role))
-	options.sort_custom(func(a,b): return int(a.threat) > int(b.threat))
-	var result: Array = _fill_search([],options,budget,max_members,0)
-	if not result.is_empty(): return result
-	return [options[0]] if not options.is_empty() else [member(species("kobold"),"MELEE")]
+	# Fallback: the strongest single species that fits, always legal for budget-1..budget+1.
+	var rows: Array = candidates(depth,budget+1)
+	rows.sort_custom(func(a,b): return int(a.threat) > int(b.threat))
+	for row in rows:
+		var solo := [member(row,"MELEE")]
+		if valid(solo,budget,max_members).is_empty(): return solo
+	return [member(rows[0] if not rows.is_empty() else species("kobold"),"MELEE")]
 
-static func _fill_search(group: Array, options: Array, budget: int, max_members: int, start: int) -> Array:
-	if valid(group,budget,max_members).is_empty(): return group
-	if group.size() >= max_members: return []
-	var total := 0
-	for unit in group: total += int(unit.threat)
-	if total > budget+1: return []
-	for i in range(start,options.size()):
-		var unit: Dictionary = options[i]
-		if int(unit.threat)+total > budget+1: continue
-		if unit.role == "CASTER" and group.any(func(m): return m.role == "CASTER"): continue
-		if group.filter(func(m): return m.species_id == unit.species_id and m.role == unit.role).size() >= 2: continue
-		var next := group.duplicate(); next.append(unit.duplicate(true))
-		var found := _fill_search(next,options,budget,max_members,i)
-		if not found.is_empty(): return found
-	return []
+## One pack for a theme at this depth, seeded on its own. Members match
+## `layout.encounters[].members` in shape: species_id, display_name, max_health, role.
+static func pack(theme: Dictionary, budget: int, depth: int, pack_seed: int) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = pack_seed
+	var max_members: int = int(theme.get("monsters",{}).get("max_members",MAX_MEMBERS))
+	return fill(rng,maxi(1,depth),budget,false,max_members)
 
 static func chebyshev(a: Vector2i, b: Vector2i) -> int:
 	return maxi(absi(a.x-b.x),absi(a.y-b.y))

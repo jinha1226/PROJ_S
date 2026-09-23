@@ -16,4 +16,4 @@ func _draw() -> void:
 	if actor.enemy:
 		draw_texture_rect(Art.BOSS if boss else Art.ENEMY,rect,false,tint)
 	else:
-		Art.paint_actor(self,actor.id,rect,tint)
+		Art.paint_actor(self,int(actor.id) % Art.ACTORS.size() if actor.get("npc",false) else int(actor.id),rect,tint)

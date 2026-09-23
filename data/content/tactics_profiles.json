@@ -55,5 +55,12 @@
       "MOVE:sidestep":    {"cell_danger": 60, "ally_delta": 0},
       "PART":             {"rule_ready": 150, "la_lethal_saved": 300, "la_ally_hit": 60, "la_self_hit": 40, "damage": 20, "contact_penalty": -1000}
     }
+  },
+  "npc_modes": {
+    "considerations": {"X":"외향 /1000","A":"온화 /1000","C":"신중 /1000","O":"개방 /1000","wounded":"HP<40%","hp_ratio":"HP/최대","party_room":"파티 인원/3","declined":"거절 기억","stress":"스트레스/200","party_seen":"파티가 시야에"},
+    "APPROACH": {"X":120,"A":60,"wounded":80,"party_room":-90,"declined":-150,"base":40},
+    "HOLD":     {"X":-60,"C":80,"declined":120,"base":60},
+    "REST":     {"wounded":200,"stress":80,"base":0},
+    "EXPLORE":  {"O":120,"hp_ratio":60,"party_seen":-120,"base":30}
   }
 }

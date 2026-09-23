@@ -13,7 +13,7 @@ var ready: Dictionary = {}
 func _init(host,source: Dictionary) -> void:
 	s = host; seed = s.seed_value; now = s.world_time
 	timeline = self; Effects = self; body_bridge = self
-	for actor in s.party+[source]:
+	for actor in s.friends()+[source]:   # an awake npc is a target like any party member
 		if actor.hp <= 0: continue
 		var row: Dictionary = actor.duplicate()
 		row.position = actor.pos; row.team = 1 if actor.enemy else 0
@@ -31,7 +31,7 @@ func assess(_kind: String,_source: Dictionary,_target: Dictionary,_actors: Array
 func preview(_source: int,_kind: String,_target: int) -> Dictionary: return {"accepted":false}
 func _next_step(a: Vector2i,b: Vector2i) -> Vector2i:
 	# There is no approach move to make once this melee unit is in contact.
-	if s.alive().any(func(ally): return s.melee_reach(a,ally.pos)): return a
+	if s.friends().any(func(ally): return s.melee_reach(a,ally.pos)): return a
 	var goals: Array = []
 	for d in s.DIRECTIONS:
 		if s.is_free(b+d) and s.melee_reach(b+d,b): goals.append(b+d)
