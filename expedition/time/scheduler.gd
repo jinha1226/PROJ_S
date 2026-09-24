@@ -6,6 +6,8 @@ const Tactics = preload("res://expedition/ai/tactical_action_selector.gd")
 const NpcAI = preload("res://expedition/actors/npc_ai.gd")
 const Rules = preload("res://expedition/combat/combat_rules.gd")
 const ElementRules = preload("res://sim/environment_rules.gd")
+const Statuses = preload("res://expedition/combat/statuses.gd")
+const Summons = preload("res://expedition/spells/summons.gd")
 
 static func actors(s) -> Array:
 	return s.party.slice(1).filter(func(a): return a.hp > 0) + s.npcs.filter(func(n): return n.hp > 0 and n.awake) + s.enemies.filter(func(e): return e.hp > 0)
@@ -102,10 +104,7 @@ static func act(s, actor: Dictionary) -> void:
 	actor.ready_at = s.time + maxi(40, cost)
 
 static func environment_tick(s) -> void:
-	# A summon lasts the span its spell bought it and then simply is not there.
-	for pet in s.npcs.duplicate():
-		if bool(pet.get("summoned",false)) and int(pet.get("expires_at",0)) <= s.time:
-			pet.hp = 0; s.npcs.erase(pet)
+	Summons.expire(s)
 	for y in range(s.BOARD_SIDE):
 		for x in range(s.BOARD_SIDE):
 			var point := Vector2i(x, y)
@@ -128,19 +127,7 @@ static func environment_tick(s) -> void:
 		actor["guarded"] = false; actor["protected_by"] = -1
 		actor.iron_guard = false
 		for id in actor.cooldowns: actor.cooldowns[id] = maxi(0, int(actor.cooldowns[id]) - 1)
-	for actor in s.party + s.npcs + s.enemies:
-		if actor.hp <= 0: continue
-		var payload: Dictionary = actor.get("status_power",{})
-		for status in actor.get("statuses",{}).keys():
-			var until: int = int(actor.statuses[status])
-			if until < s.time:
-				actor.statuses.erase(status); payload.erase(status); continue
-			if status == "bleed": Rules.damage(s,{},actor,2,"physical")
-			# A spell's burn says how hard it bites; the old mastery burn keeps
-			# the single point it always did.
-			elif status == "burn": Rules.damage(s,{},actor,int(payload.get("burn",1)),"fire")
-			elif status == "poison": Rules.damage(s,{},actor,2,"poison")
-			if until <= s.time: actor.statuses.erase(status); payload.erase(status)
+	Statuses.tick(s)
 	for actor in s.alive():
 		if not s.floor_state.safe(s): s.stress(actor, 2)
 	# A dominated monster stands on both lists; nobody's passives run twice.

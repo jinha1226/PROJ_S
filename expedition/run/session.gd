@@ -25,6 +25,7 @@ const CombatRules = preload("res://expedition/combat/combat_rules.gd")
 const Scheduler = preload("res://expedition/time/scheduler.gd")
 const Spells = preload("res://expedition/spells/spells.gd")
 const Passives = preload("res://expedition/combat/passives.gd")
+const Statuses = preload("res://expedition/combat/statuses.gd")
 ## Run modules: the session keeps the state and hands each group of verbs to
 ## its own file. Every public name here stays on the session as a delegate.
 const Camp = preload("res://expedition/run/camp.gd")
@@ -483,12 +484,9 @@ func can_submit(actor: Dictionary, kind: String, target: Vector2i, value: String
 func cast(id: String, target: Vector2i) -> bool:
 	return submit("CAST",target,id)
 
-## 빙결 and 속박 stop the feet; only 빙결 also stops the arms.
-func status_blocks(actor: Dictionary, kind: String) -> bool:
-	var statuses: Dictionary = actor.get("statuses",{})
-	if kind == "MOVE": return statuses.has("freeze") or statuses.has("bind")
-	if kind == "ATTACK": return statuses.has("freeze")
-	return false
+## 빙결 and 속박 stop the feet; only 빙결 also stops the arms. `Statuses` holds
+## the body.
+func status_blocks(actor: Dictionary, kind: String) -> bool: return Statuses.blocks(actor,kind)
 
 func prepare_spell(index: int, id: String, on: bool) -> bool: return Camp.prepare_spell(self,index,id,on)
 
