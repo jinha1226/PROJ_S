@@ -12,8 +12,12 @@ const Kernel = preload("res://sim/combat_kernel.gd")
 const primitives := ["bolt", "line", "cone", "burst", "wall", "self", "mark", "summon"]
 ## The ten statuses a spell can hang on what it hits.
 const STATUSES := ["confuse", "slow", "freeze", "bind", "burn", "weak", "brittle", "distort", "vulnerable", "dominate"]
-## The port's own spells, kept out of every book: they no longer drop.
-const RELICS := ["bolt", "blast", "blink", "confuse", "mend", "cone", "cloud", "hound"]
+## The spec's seven artefact spells: still in the data, in no book, dropped by
+## nothing. The five the port started with are now rows of the table instead.
+const RELICS := ["blast", "blink", "mend", "passwall", "ward", "turret", "ignite"]
+## What a spell's own burn does per boundary tick, told apart from the single
+## point the fire mastery's burn has always done.
+const BURN_DAMAGE := 4
 
 static var _implemented: Array = []
 
@@ -135,20 +139,36 @@ static func summons_of(s, caster: Dictionary) -> Array:
 # ── casting ───────────────────────────────────────────────────────────────
 
 static func can_cast(s, caster: Dictionary, id: String, target: Vector2i) -> bool:
+	return refusal(s,caster,id,target).is_empty()
+
+## Why this cast will not happen — empty when it will. The HUD says this back
+## to the player instead of swallowing the tap.
+static func refusal(s, caster: Dictionary, id: String, target: Vector2i) -> String:
 	var spell: Dictionary = definition(id)
-	if spell.is_empty() or id not in caster.get("prepared",[]) or caster.mp < int(spell.mp): return false
+	if spell.is_empty(): return "없는 주문"
+	if id not in caster.get("prepared",[]): return "준비 안 됨"
+	if caster.mp < int(spell.mp): return "MP 부족"
 	var shape: String = shape_of(spell)
-	if shape.is_empty(): return relic_can_cast(s,caster,id,target,spell)
-	if shape == "self": return true
-	if shape == "summon": return not summon_cells(s,caster).is_empty()
-	if bool(spell.get("sacrifice",false)): return not summons_of(s,caster).is_empty()
-	if not s.inside(target) or not s.floor_state.visible.has(target): return false
-	if s.distance(caster.pos,target) > int(spell.range): return false
-	if not bool(spell.get("ignore_los",false)) and not Kernel.sees(caster.pos,target,func(p): return s.tile(p).terrain == "wall",int(spell.range)): return false
+	if shape.is_empty(): return "" if relic_can_cast(s,caster,id,target,spell) else "시전 불가"
+	if shape == "self": return ""
+	if shape == "summon": return "" if not summon_cells(s,caster).is_empty() else "설 자리 없음"
+	if bool(spell.get("sacrifice",false)): return "" if not summons_of(s,caster).is_empty() else "소환수 없음"
+	if not s.inside(target) or not s.floor_state.visible.has(target): return "시야 밖"
+	if s.distance(caster.pos,target) > int(spell.range): return "사거리 초과"
+	if not bool(spell.get("ignore_los",false)) and not Kernel.sees(caster.pos,target,func(p): return s.tile(p).terrain == "wall",int(spell.range)): return "가로막힘"
+	# A straight run only runs straight: the aimed cell has to lie on one of the
+	# eight rays out of the caster, or the spell would spend its MP on nothing.
+	if shape == "line" and not on_ray(caster.pos,target): return "직선이 아님"
 	if shape in ["bolt","mark"]:
 		var victim: Dictionary = s.at(target)
-		return not victim.is_empty() and bool(victim.enemy) != bool(caster.enemy)
-	return true
+		if victim.is_empty() or s.side_of(victim) == s.side_of(caster): return "대상 없음"
+	return ""
+
+## Whether b lies on one of the eight rays out of a.
+static func on_ray(a: Vector2i, b: Vector2i) -> bool:
+	var delta: Vector2i = b-a
+	if delta == Vector2i.ZERO: return false
+	return delta.x == 0 or delta.y == 0 or absi(delta.x) == absi(delta.y)
 
 static func cast(s, caster: Dictionary, id: String, target: Vector2i) -> bool:
 	if not can_cast(s,caster,id,target): return false
@@ -176,18 +196,22 @@ static func shaped_cast(s, caster: Dictionary, id: String, target: Vector2i, spe
 	var ticks: int = int(spell.get("ticks",0))
 	var chain: int = int(spell.get("chain",0))
 	# What an earlier "축적" spell stored is spent on the first spell it fits.
+	var hurts: bool = power > 0
+	var slows: bool = str(spell.get("status","")) == "slow" and ticks > 0
 	match school:
 		"fire":
 			power = Effects.fire_power(caster,power)
 			if statuses.has("fire_mastery"): power = power*3/2
-			if buffs.has("next_fire"): power = power*int(buffs.next_fire)/100; buffs.erase("next_fire")
-			if buffs.has("next_pierce"): penetration += int(buffs.next_pierce); buffs.erase("next_pierce")
+			# A charge waits for a spell that can actually spend it.
+			if hurts and buffs.has("next_fire"): power = power*int(buffs.next_fire)/100; buffs.erase("next_fire")
+			if hurts and buffs.has("next_pierce"): penetration += int(buffs.next_pierce); buffs.erase("next_pierce")
 		"ice":
-			if buffs.has("next_ice_slow"): ticks = ticks*int(buffs.next_ice_slow)/100; buffs.erase("next_ice_slow")
+			if slows and buffs.has("next_ice_slow"): ticks = ticks*int(buffs.next_ice_slow)/100; buffs.erase("next_ice_slow")
 		"air":
-			if statuses.has("air_chain"): chain += 1
-			if buffs.has("next_chain"): chain += int(buffs.next_chain); buffs.erase("next_chain")
-	if shape == "mark" and statuses.has("hex_mastery"): ticks *= 2
+			if hurts and statuses.has("air_chain"): chain += 1
+			if hurts and buffs.has("next_chain"): chain += int(buffs.next_chain); buffs.erase("next_chain")
+	# 변이 지배 lengthens whatever the hex school hangs on anybody, mark or not.
+	if school == "hex" and not str(spell.get("status","")).is_empty() and statuses.has("hex_mastery"): ticks *= 2
 	match shape:
 		"self": apply_self(s,caster,spell)
 		"summon":
@@ -214,7 +238,7 @@ static func shaped_cast(s, caster: Dictionary, id: String, target: Vector2i, spe
 			var struck: Array = []
 			for cell in cells(s,caster,id,centre):
 				var victim: Dictionary = s.at(cell)
-				if victim.is_empty() or bool(victim.enemy) == bool(caster.get("enemy",false)) or victim.id == caster.id: continue
+				if victim.is_empty() or s.side_of(victim) == s.side_of(caster): continue
 				var hit: int = power
 				if bool(spell.get("wet_bonus",false)) and int(s.tile(cell).wet) > 0: hit *= 2
 				strike(s,caster,victim,spell,hit,penetration,ticks)
@@ -228,7 +252,7 @@ static func shaped_cast(s, caster: Dictionary, id: String, target: Vector2i, spe
 					if source.is_empty() or int(source.id) not in struck: continue
 					for other in s.enemies+s.npcs:
 						if other.hp <= 0 or int(other.id) in struck: continue
-						if bool(other.enemy) == bool(caster.get("enemy",false)): continue
+						if s.side_of(other) == s.side_of(caster): continue
 						if not s.melee_reach(source.pos,other.pos): continue
 						strike(s,caster,other,spell,maxi(1,power/2),penetration,ticks)
 						struck.append(int(other.id)); jumped = true
@@ -244,11 +268,18 @@ static func strike(s, caster: Dictionary, victim: Dictionary, spell: Dictionary,
 	if power > 0: Rules.damage(s,caster,victim,power,str(spell.get("element","physical")),penetration)
 	if victim.hp <= 0: return
 	var status: String = str(spell.get("status",""))
-	if status in STATUSES and ticks > 0: victim.statuses[status] = s.time+ticks
+	if status in STATUSES and ticks > 0: apply_status(s,victim,status,ticks)
 	if status == "dominate" and ticks > 0: victim["dominated_until"] = s.time+ticks
 	if school == "ice" and caster.get("statuses",{}).has("ice_freeze") and Rules.roll(s,caster,victim,"ice_freeze",100) < 30:
 		victim.statuses["freeze"] = s.time+100
 	if school == "fire": Effects.on_spell_hit(s,caster,victim,school)
+
+## A status a spell hangs on somebody. `statuses` keeps the clock; anything the
+## status needs to know beyond that goes in `status_power`, which the scheduler
+## reads and drops when the status runs out.
+static func apply_status(s, victim: Dictionary, status: String, ticks: int) -> void:
+	victim.statuses[status] = s.time+ticks
+	if status == "burn": victim.get_or_add("status_power",{})["burn"] = BURN_DAMAGE
 
 ## The hex marks: a will save, then the status the row names. Four of them are
 ## not a status at all but something done to the statuses already there.
@@ -269,18 +300,20 @@ static func mark(s, caster: Dictionary, victim: Dictionary, spell: Dictionary, p
 			if status == "spread_burn": carried["burn"] = s.time+ticks
 			else:
 				for id in victim.statuses: carried[id] = victim.statuses[id]
-			if status == "spread_burn": victim.statuses["burn"] = s.time+ticks
+			if status == "spread_burn": apply_status(s,victim,"burn",ticks)
 			for other in s.enemies+s.npcs:
 				if other.hp <= 0 or int(other.id) == int(victim.id): continue
-				if bool(other.enemy) == bool(caster.get("enemy",false)): continue
+				if s.side_of(other) == s.side_of(caster): continue
 				if not s.melee_reach(victim.pos,other.pos): continue
-				for id in carried: other.statuses[id] = carried[id]
+				for id in carried:
+					other.statuses[id] = carried[id]
+					if id == "burn": other.get_or_add("status_power",{})["burn"] = BURN_DAMAGE
 		"dominate":
 			victim.statuses["dominate"] = s.time+ticks
 			victim["dominated_until"] = s.time+ticks
 			s.message(str(victim.name)+" 지배")
 		_:
-			if status in STATUSES: victim.statuses[status] = s.time+ticks
+			if status in STATUSES: apply_status(s,victim,status,ticks)
 	if str(spell.get("element","")) != "" and int(spell.power) > 0:
 		Rules.damage(s,caster,victim,power,str(spell.element))
 
@@ -292,7 +325,7 @@ static func apply_self(s, caster: Dictionary, spell: Dictionary) -> void:
 	var ticks: int = int(spell.get("ticks",0))
 	var value: int = int(spell.get("value",0))
 	if buff == "summon_power":
-		for pet in summons_of(s,caster): pet.statuses["rage"] = s.time+ticks
+		for pet in summons_of(s,caster): pet.statuses["summon_power"] = s.time+ticks
 		caster.statuses[buff] = s.time+ticks
 		return
 	if ticks > 0:
@@ -344,28 +377,22 @@ static func summon(s, caster: Dictionary, cell: Vector2i, kind: String = "hound"
 	pet.power = int(row.power); pet.speed = int(row.speed); pet.stress = 0
 	pet.pos = cell; pet.ap = 1; pet.ready_at = s.time+100
 	pet.enemy = bool(caster.get("enemy",false))
-	if caster.get("statuses",{}).has("summon_power"): pet.statuses["rage"] = int(caster.statuses.summon_power)
+	if caster.get("statuses",{}).has("summon_power"): pet.statuses["summon_power"] = int(caster.statuses.summon_power)
 	s.npcs.append(pet)
 	return pet
 
 # ── the port's own spells, kept working and kept out of the books ─────────
 
-static func relic_cells(s, caster: Dictionary, id: String, target: Vector2i) -> Array:
-	if id == "cone": return cone_cells(s,caster,target)
-	if id == "hound": return []
-	if id != "blast" and id != "cloud" and not (id == "bolt" and Mastery.rank(caster,"fire") >= 5): return [target]
-	return burst_cells(s,target,1)
+static func relic_cells(s, caster: Dictionary, _id2: String, target: Vector2i) -> Array:
+	if _id2 == "blast": return burst_cells(s,target,1)
+	return [target] if s.inside(target) else []
 
 static func relic_can_cast(s, caster: Dictionary, id: String, target: Vector2i, spell: Dictionary) -> bool:
 	if id == "mend": return caster.hp < caster.max_hp
 	if id == "blink": return not blink_cells(s,caster).is_empty()
-	if id == "hound": return not summon_cells(s,caster).is_empty()
 	if not s.inside(target) or not s.floor_state.visible.has(target): return false
 	if s.distance(caster.pos,target) > int(spell.range): return false
 	if not Kernel.sees(caster.pos,target,func(p): return s.tile(p).terrain == "wall",int(spell.range)): return false
-	if id in ["bolt","confuse","cone","cloud"]:
-		var victim: Dictionary = s.at(target)
-		return not victim.is_empty() and bool(victim.enemy) != bool(caster.enemy)
 	return true
 
 static func blink_cells(s, caster: Dictionary) -> Array:
@@ -386,28 +413,7 @@ static func relic_cast(s, caster: Dictionary, id: String, target: Vector2i, spel
 		"mend":
 			caster.hp = mini(caster.max_hp,caster.hp+power)
 			caster.statuses["slow"] = s.time+300
-		"confuse":
-			var victim: Dictionary = s.at(target)
-			if Rules.roll(s,caster,victim,"confuse",100)+power >= int(victim.get("will",80)):
-				victim.statuses["confuse"] = s.time+300
-				if victim.enemy: Mastery.record(caster,int(victim.id),school)
-			else: s.message(str(victim.name)+" 저항")
-		"cone":
-			for cell in cells(s,caster,id,target):
-				var victim: Dictionary = s.at(cell)
-				if victim.is_empty() or bool(victim.enemy) == bool(caster.enemy): continue
-				if victim.enemy: Mastery.record(caster,int(victim.id),school)
-				Rules.damage(s,caster,victim,power,"ice")
-				if victim.hp > 0: victim.statuses["slow"] = s.time+200
-		"cloud":
-			for cell in cells(s,caster,id,target):
-				var victim: Dictionary = s.at(cell)
-				if victim.is_empty() or bool(victim.enemy) == bool(caster.enemy): continue
-				if victim.enemy: Mastery.record(caster,int(victim.id),school)
-				Rules.damage(s,caster,victim,power,"air")
-		"hound":
-			summon(s,caster,summon_cells(s,caster)[0])
-		"bolt", "blast":
+		"blast":
 			var penetration := 20 if Mastery.rank(caster,"fire") >= 7 else 0
 			for cell in cells(s,caster,id,target):
 				var victim: Dictionary = s.at(cell)
@@ -415,5 +421,4 @@ static func relic_cast(s, caster: Dictionary, id: String, target: Vector2i, spel
 				if victim.enemy: Mastery.record(caster,int(victim.id),school)
 				Rules.damage(s,caster,victim,power,"fire",penetration)
 				Effects.on_spell_hit(s,caster,victim,school)
-			if id == "blast":
-				for cell in cells(s,caster,id,target): s.tile(cell).fire = mini(100,int(s.tile(cell).fire)+30)
+			for cell in cells(s,caster,id,target): s.tile(cell).fire = mini(100,int(s.tile(cell).fire)+30)

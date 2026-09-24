@@ -4,8 +4,14 @@ const Abilities = preload("res://expedition/abilities.gd")
 const NAMES = ["수렁 포식자", "폭탄 암살자", "과부하 거인"]
 const HINTS = ["폭발 후 탈진 틈에 공격 · 물에서 회복", "폭탄 예고 회피 · 순간이동한 보스 추격", "보호막 가동 시 전력탑 옆에서 탑 터치"]
 
+## Whom the boss is coming for. A dominated boss comes for its own kind.
+static func victims(s, boss: Dictionary) -> Array:
+	if s.dominated(boss): return s.hostiles_of(boss)
+	return s.alive()
+
 static func target(s, boss: Dictionary) -> Dictionary:
-	var allies: Array = s.alive()
+	var allies: Array = victims(s,boss)
+	if allies.is_empty(): allies = s.alive()
 	allies.sort_custom(func(a,b): return s.distance(a.pos,boss.pos) < s.distance(b.pos,boss.pos))
 	return allies[0]
 
@@ -54,6 +60,9 @@ static func plan(s, boss: Dictionary) -> void:
 				s.intents.append({"id":boss.id,"cell":cell,"damage":16,"kind":"BOSS","resolve_at":int(boss.resolve_at)})
 
 static func turn(s, boss: Dictionary) -> void:
+	# A frozen boss spends its turn where it stands; a bound one still swings.
+	if s.status_blocks(boss,"ATTACK"): return
+	var held: bool = s.status_blocks(boss,"MOVE")
 	var hero: Dictionary = target(s,boss)
 	if boss.pattern == 0 and s.tile(boss.pos).terrain == "water": boss.hp = mini(boss.max_hp,boss.hp+3)
 	if boss.get("recovery",0) > 0:
@@ -67,7 +76,7 @@ static func turn(s, boss: Dictionary) -> void:
 		s.enemy_attack_effect(boss,cells,true)
 		for intent in s.intents:
 			if intent.id != boss.id: continue
-			for ally in s.alive():
+			for ally in victims(s,boss):
 				if intent.cell == ally.pos: s.damage(ally,intent.damage,boss.id,"IMPACT")
 		boss.charging = false
 		boss.recovery = 1; boss.cooldown = 6
@@ -84,6 +93,7 @@ static func turn(s, boss: Dictionary) -> void:
 			boss.power = 8; s.CombatRules.attack(s,boss,hero)
 		else: s.damage(hero,8,boss.id,"IMPACT")
 		return
+	if held: return
 	var goals: Array = []
 	for direction in s.DIRECTIONS:
 		if s.is_free(hero.pos+direction) and s.melee_reach(hero.pos+direction,hero.pos): goals.append(hero.pos+direction)

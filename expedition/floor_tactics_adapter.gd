@@ -10,13 +10,18 @@ var BOUNDS := Vector2i(100,100)
 var seed: int
 var now: int
 var ready: Dictionary = {}
+var origin: Dictionary = {}
 func _init(host,source: Dictionary) -> void:
-	s = host; seed = s.seed_value; now = s.world_time
+	s = host; seed = s.seed_value; now = s.world_time; origin = source
 	timeline = self; Effects = self; body_bridge = self
-	for actor in s.friends()+[source]:   # an awake npc is a target like any party member
-		if actor.hp <= 0: continue
+	# An awake npc is a target like any party member, and a dominated monster
+	# reads the same roster the other way round: its own kind is the other team.
+	var seen_ids: Dictionary = {}
+	for actor in s.friends()+s.hostiles_of(source)+[source]:
+		if actor.hp <= 0 or seen_ids.has(int(actor.id)): continue
+		seen_ids[int(actor.id)] = true
 		var row: Dictionary = actor.duplicate()
-		row.position = actor.pos; row.team = 1 if actor.enemy else 0
+		row.position = actor.pos; row.team = s.side_of(actor)
 		row.profile = actor.profile.to_dict(); row.skills = []; row.barrier = 0
 		actors.append(row); ready[row.id] = now
 func duration(_actor: Dictionary,_kind: String) -> int: return 100
@@ -30,8 +35,10 @@ func use_error(_actor: Dictionary,_kind: String) -> String: return ""
 func assess(_kind: String,_source: Dictionary,_target: Dictionary,_actors: Array,_blocked: Callable,_bounds: Vector2i) -> Dictionary: return {"accepted":false}
 func preview(_source: int,_kind: String,_target: int) -> Dictionary: return {"accepted":false}
 func _next_step(a: Vector2i,b: Vector2i) -> Vector2i:
-	# There is no approach move to make once this melee unit is in contact.
-	if s.friends().any(func(ally): return s.melee_reach(a,ally.pos)): return a
+	# There is no approach move to make once this melee unit is in contact with
+	# something it actually fights — which, for a dominated monster, is its own
+	# kind rather than the party.
+	if s.hostiles_of(origin).any(func(foe): return s.melee_reach(a,foe.pos)): return a
 	var goals: Array = []
 	for d in s.DIRECTIONS:
 		if s.is_free(b+d) and s.melee_reach(b+d,b): goals.append(b+d)

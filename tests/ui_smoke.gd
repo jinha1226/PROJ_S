@@ -55,13 +55,13 @@ func run() -> void:
 	scene.on_cell(foe.pos); await process_frame
 	check(scene.session.time > before_time and scene.mode.is_empty(),"armed attack fires and clears selection")
 	var hero: Dictionary = scene.session.party[0]
-	hero.spells = ["bolt"]; hero.prepared = ["bolt"]
+	hero.spells = ["fire_1"]; hero.prepared = ["fire_1"]
 	scene.refresh(); await process_frame
 	scene.find_child("Tactics",true,false).pressed.emit(); await process_frame
-	check(scene.find_child("Spell_bolt",true,false) != null,"prepared spell appears in tactics")
+	check(scene.find_child("Spell_fire_1",true,false) != null,"prepared spell appears in tactics")
 	var before_mp: int = hero.mp
 	before_time = scene.session.time
-	scene.find_child("Spell_bolt",true,false).pressed.emit(); scene.on_cell(foe.pos); await process_frame
+	scene.find_child("Spell_fire_1",true,false).pressed.emit(); scene.on_cell(foe.pos); await process_frame
 	check(hero.mp < before_mp and scene.session.time > before_time,"prepared spell casts with one target tap")
 	var old_depth: int = scene.session.depth
 	var stairs: Vector2i = scene.session.floor_state.layout.stairs

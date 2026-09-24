@@ -862,6 +862,10 @@ func on_cell(point: Vector2i) -> void:
 	if pending_item >= 0: run_action(func(): return session.use_supply(pending_item,point)); return
 	if mode.begins_with("CAST:"):
 		var spell_id := mode.trim_prefix("CAST:")
+		# A refused cast says why rather than swallowing the tap.
+		var refusal: String = Session.Spells.refusal(session,session.party[0],spell_id,point)
+		if not refusal.is_empty():
+			notice = refusal; refresh(); return
 		run_action(func(): return session.cast(spell_id,point)); return
 	if not mode.is_empty() and mode != "ATTACK": run_action(func(): return session.act(mode,point)); return
 	var actor: Dictionary = session.at(point)

@@ -23,6 +23,9 @@ func run() -> void:
 	drops()
 	await process_frame
 	await effects()
+	held_monsters()
+	turned()
+	rays()
 	determinism()
 	print("Spellbooks: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
@@ -111,7 +114,7 @@ func learning() -> void:
 	# Five ready at once, and no more.
 	for id in ["fire_2","fire_3","ice_1"]: check(s.prepare_spell(0,id,true),"prepare "+id)
 	check(hero.prepared.size() == 4,"four of five slots are full")
-	check(s.grant_book("ice_2") and true,"another book")
+	check(s.grant_book("ice_2"),"another book")
 	hero.spells.append("ice_4")
 	check(s.prepare_spell(0,"ice_4",true),"the fifth slot fills")
 	hero.spells.append("ice_5")
@@ -313,7 +316,10 @@ func mark_shape() -> void:
 	bind.hero.statuses["bind"] = bind.s.time+300
 	check(not bind.s.can_submit(bind.hero,"MOVE",step),"속박 refuses the step")
 	check(not bind.s.act_as(bind.hero,"MOVE",step,false),"and the move itself is refused")
-	check(bind.s.can_submit(bind.hero,"ATTACK",bind.foe.pos) or true,"a bound hero may still swing")
+	# The arms are free: put the foe within reach and the bound hero still swings.
+	bind.foe.pos = bind.hero.pos+Vector2i(1,0)
+	bind.s.floor_state.observe(bind.s)
+	check(bind.s.can_submit(bind.hero,"ATTACK",bind.foe.pos),"a bound hero may still swing")
 	bind.hero.statuses.erase("bind")
 	bind.hero.statuses["freeze"] = bind.s.time+300
 	check(not bind.s.act_as(bind.hero,"MOVE",step,false),"빙결 stops the feet too")
@@ -343,7 +349,8 @@ func summon_shape() -> void:
 	check(pets.all(func(p): return str(p.name) == "임프" and int(p.max_hp) == 12),"and they are imps")
 	check(pets.all(func(p): return s.melee_reach(hero.pos,p.pos)),"they stand within arm's reach")
 	check(pets.all(func(p): return p in s.friends()),"they count as friends")
-	check(pets.all(func(p): return int(p.joined_floor) == 0),"they never join the party")
+	check(pets.all(func(p): return not Session.Recruit.can_aid(s,p).is_empty()),"they take no food")
+	check(pets.all(func(p): return not Session.Recruit.propose(s,p).accepted),"they will not join")
 	check(s.roster.all(func(n): return not bool(n.get("summoned",false))),"they are not on the roster")
 	check(s.companion_rows().all(func(r): return str(r.name) != "임프"),"and not companions of record")
 	# A wolf is the bigger creature, and it goes when its time is up.
@@ -358,6 +365,21 @@ func summon_shape() -> void:
 		wolf_pack.s.act("WAIT",wolf_pack.s.party[0].pos); guard += 1
 	check(wolf_pack.s.time > born,"the clock runs past the wolf's span")
 	check(wolf_pack.s.npcs.all(func(n): return not bool(n.get("summoned",false))),"the wolf is gone when its time is up")
+	# A creature fights with the power its row gave it, and 공명 lifts that.
+	var power_pack: Dictionary = board("summon",34)
+	var rat: Dictionary = Spells.summon(power_pack.s,power_pack.hero,power_pack.hero.pos+Vector2i(0,1),"rat")
+	var wolf: Dictionary = Spells.summon(power_pack.s,power_pack.hero,power_pack.hero.pos+Vector2i(0,-1),"wolf")
+	var rat_damage: int = int(Session.CombatStats.stats(power_pack.s,rat).damage)
+	var wolf_damage: int = int(Session.CombatStats.stats(power_pack.s,wolf).damage)
+	check(rat_damage == int(Stats.content.summons.rat.power),"a rat hits with a rat's power")
+	check(wolf_damage == int(Stats.content.summons.wolf.power),"a wolf hits with a wolf's")
+	check(wolf_damage > rat_damage,"and the wolf hits harder than the rat")
+	var hound: Dictionary = Spells.summon(power_pack.s,power_pack.hero,power_pack.hero.pos+Vector2i(1,0),"hound")
+	var plain_hound: int = int(Session.CombatStats.stats(power_pack.s,hound).damage)
+	ready(power_pack.s,power_pack.hero,"summon_8")
+	check(power_pack.s.cast("summon_8",power_pack.hero.pos),"공명 is cast")
+	check(hound.statuses.has("summon_power"),"and the hound resonates")
+	check(int(Session.CombatStats.stats(power_pack.s,hound).damage) == plain_hound*3/2,"a resonating hound hits half again as hard")
 	# Nobody grieves a spell running out — nor a summon cut down.
 	var grief: Dictionary = board("summon",33)
 	ready(grief.s,grief.hero,"summon_1")
@@ -372,6 +394,113 @@ func summon_shape() -> void:
 	check(int(dog[0].hp) <= 0,"the hound falls")
 	check(int(grief.hero.stress) == 0,"and the party is not shaken by it")
 	await process_frame
+
+## ── the statuses hold monsters too ───────────────────────────────────────
+
+## 빙결 stops a monster where it stands; 속박 only takes its feet.
+func held_monsters() -> void:
+	var ice: Dictionary = board("ice",41)
+	var s = ice.s
+	ready(s,ice.hero,"ice_3")
+	check(s.cast("ice_3",ice.foe.pos),"빙결 is cast at a foe")
+	check(ice.foe.statuses.has("freeze"),"and the foe is frozen")
+	# Hold it long enough to watch three turns go past unused.
+	ice.foe.statuses["freeze"] = s.time+900
+	ice.foe.ready_at = s.time+50
+	ice.foe.alert = true
+	var where: Vector2i = ice.foe.pos
+	var hero_hp: int = ice.hero.hp
+	var clock: int = s.time
+	for i in range(3): s.act("WAIT",s.party[0].pos)
+	check(s.time > clock+200,"three turns of the clock go by")
+	check(ice.foe.pos == where,"a frozen monster does not move")
+	check(int(ice.hero.hp) == hero_hp,"nor strike")
+	# 속박 takes the feet only: the foe starts beside the hero and keeps swinging.
+	var hex: Dictionary = board("hex",42)
+	var bound = hex.s
+	bound.phase = "BATTLE"
+	hex.foe.pos = hex.hero.pos+Vector2i(1,0)
+	hex.foe.ready_at = bound.time+50
+	hex.foe.alert = true
+	hex.foe.statuses["bind"] = bound.time+900
+	bound.floor_state.observe(bound)
+	var stood: Vector2i = hex.foe.pos
+	var before_hp: int = hex.hero.hp
+	for i in range(4):
+		if hex.hero.hp <= 0: break
+		bound.act("WAIT",bound.party[0].pos)
+	check(hex.foe.pos == stood,"a bound monster does not move")
+	check(int(hex.hero.hp) < before_hp,"but it still reaches what stands beside it")
+
+## ── a dominated monster changes sides ────────────────────────────────────
+
+func turned() -> void:
+	var pack: Dictionary = board("hex",43)
+	var s = pack.s
+	var foe: Dictionary = pack.foe
+	ready(s,pack.hero,"hex_9")
+	check(not s.party_enemies().is_empty(),"a monster is a threat to begin with")
+	check(s.cast("hex_9",foe.pos),"지배 is cast")
+	check(s.dominated(foe),"the foe is dominated")
+	check(s.side_of(foe) == s.side_of(pack.hero),"and stands on the hero's side")
+	check(bool(foe.enemy),"without its flag moving")
+	s.floor_state.observe(s)
+	check(s.party_enemies().is_empty(),"a dominated monster is no threat to the party")
+	check(s.floor_state.safe(s),"the floor is quiet while it holds")
+	check(s.combat_enemies().all(func(e): return int(e.id) != int(foe.id)),"nor a foe an npc would pick")
+	check(s.hostiles_of(pack.hero).all(func(e): return int(e.id) != int(foe.id)),"and no foe of the hero's")
+	# It comes for its own kind, and gets there before the spell runs out.
+	var other: Dictionary = s.enemies[1]
+	other.hp = 200; other.max_hp = 200; other.pos = foe.pos+Vector2i(1,0)
+	other.alert = true; other.ready_at = 99000
+	s.floor_state.observe(s)
+	check(s.hostiles_of(foe).any(func(a): return int(a.id) == int(other.id)),"its own kind are its foes now")
+	check(s.hostiles_of(foe).all(func(a): return bool(a.enemy)),"and nobody on the hero's side is")
+	var struck: int = other.hp
+	s.phase = "BATTLE"
+	foe.ready_at = s.time+50
+	s.act("WAIT",s.party[0].pos)
+	check(int(other.hp) < struck,"a dominated monster attacks another monster")
+	# And when it wears off it is a monster again.
+	s.time = int(foe.dominated_until)+1
+	s.floor_state.observe(s)
+	check(not s.dominated(foe),"the spell runs out")
+	check(s.side_of(foe) == 1,"and it is back on the dungeon's side")
+	check(s.party_enemies().any(func(e): return int(e.id) == int(foe.id)),"a threat once more")
+	# A burst the hero throws never touches one it holds.
+	var spare: Dictionary = board("hex",45)
+	spare.hero.spells.append_array(["hex_9","fire_3"])
+	spare.hero.prepared = ["hex_9","fire_3"]
+	spare.hero.skill_xp["fire"] = 25*100
+	check(spare.s.cast("hex_9",spare.foe.pos),"지배 again")
+	check(spare.s.dominated(spare.foe),"and it holds")
+	var untouched: int = spare.foe.hp
+	spare.s.cast("fire_3",spare.foe.pos+Vector2i(1,0))
+	check(int(spare.foe.hp) == untouched,"the hero's burst spares what it holds")
+
+## ── a line needs a ray ───────────────────────────────────────────────────
+
+func rays() -> void:
+	var pack: Dictionary = board("ice",44)
+	var s = pack.s
+	var hero: Dictionary = pack.hero
+	ready(s,hero,"ice_1")
+	var off: Vector2i = hero.pos+Vector2i(2,1)
+	check(Spells.refusal(s,hero,"ice_1",off) == "직선이 아님","an off-ray cell is refused by name")
+	var mp: int = hero.mp
+	check(not s.cast("ice_1",off),"and the spell is not cast")
+	check(int(hero.mp) == mp,"so no MP is spent")
+	check(Spells.on_ray(hero.pos,hero.pos+Vector2i(0,3)),"a column is a ray")
+	check(Spells.on_ray(hero.pos,hero.pos+Vector2i(2,2)),"so is a diagonal")
+	check(not Spells.on_ray(hero.pos,hero.pos),"the caster's own cell is not")
+	var diagonal: Vector2i = hero.pos+Vector2i(1,1)
+	var victim: Dictionary = pack.foe
+	victim.pos = diagonal
+	s.floor_state.observe(s)
+	check(Spells.refusal(s,hero,"ice_1",diagonal) == "","a diagonal is a ray like any other")
+	check(s.cast("ice_1",diagonal),"and the line is cast along it")
+	check(int(victim.hp) < 200,"reaching what stands on it")
+	check(int(hero.mp) < mp,"this one spends its MP")
 
 ## ── determinism ──────────────────────────────────────────────────────────
 

@@ -227,10 +227,17 @@ func friends() -> Array:
 func dominated(actor: Dictionary) -> bool:
 	return int(actor.get("dominated_until",0)) > time
 
+## Which side an actor fights on this tick: 0 the party's, 1 the dungeon's.
+## Domination moves a monster across without touching its `enemy` flag, so
+## everything that used to read `enemy` to tell friend from foe reads this.
+func side_of(actor: Dictionary) -> int:
+	return 1 if bool(actor.get("enemy",false)) != dominated(actor) else 0
+
 ## Whom this actor fights. A dominated monster turns on its own kind.
 func hostiles_of(actor: Dictionary) -> Array:
-	if dominated(actor): return enemies.filter(func(e): return e.hp > 0 and int(e.id) != int(actor.id) and not dominated(e))
-	return friends().filter(func(a): return int(a.id) != int(actor.id))
+	var side: int = side_of(actor)
+	if side == 1: return friends().filter(func(a): return int(a.id) != int(actor.id) and side_of(a) == 0)
+	return enemies.filter(func(e): return e.hp > 0 and int(e.id) != int(actor.id) and side_of(e) == 1)
 
 ## Who walked with the party this run: only those who actually joined, in
 ## roster order, each with the floor it joined on and whether it is still up.

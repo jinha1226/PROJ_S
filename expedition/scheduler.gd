@@ -130,17 +130,25 @@ static func environment_tick(s) -> void:
 		for id in actor.cooldowns: actor.cooldowns[id] = maxi(0, int(actor.cooldowns[id]) - 1)
 	for actor in s.party + s.npcs + s.enemies:
 		if actor.hp <= 0: continue
+		var payload: Dictionary = actor.get("status_power",{})
 		for status in actor.get("statuses",{}).keys():
 			var until: int = int(actor.statuses[status])
 			if until < s.time:
-				actor.statuses.erase(status); continue
+				actor.statuses.erase(status); payload.erase(status); continue
 			if status == "bleed": Rules.damage(s,{},actor,2,"physical")
-			elif status == "burn": Rules.damage(s,{},actor,4,"fire")
+			# A spell's burn says how hard it bites; the old mastery burn keeps
+			# the single point it always did.
+			elif status == "burn": Rules.damage(s,{},actor,int(payload.get("burn",1)),"fire")
 			elif status == "poison": Rules.damage(s,{},actor,2,"poison")
-			if until <= s.time: actor.statuses.erase(status)
+			if until <= s.time: actor.statuses.erase(status); payload.erase(status)
 	for actor in s.alive():
 		if not s.floor_state.safe(s): s.stress(actor, 2)
-	for actor in s.friends() + s.party_enemies(): s.Passives.round_start(s, actor)
+	# A dominated monster stands on both lists; nobody's passives run twice.
+	var started: Dictionary = {}
+	for actor in s.friends() + s.party_enemies():
+		if started.has(int(actor.id)): continue
+		started[int(actor.id)] = true
+		s.Passives.round_start(s, actor)
 
 static func double_movers(s, cost: int) -> Array:
 	var result: Array = []

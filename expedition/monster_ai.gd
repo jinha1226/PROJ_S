@@ -72,6 +72,10 @@ static func turn(s, enemy: Dictionary) -> void:
 	# A dominated monster reads this list the other way round.
 	var targets: Array = s.hostiles_of(enemy)
 	if enemy.hp <= 0 or targets.is_empty(): return
+	# 빙결 and 속박 hold a monster exactly as they hold the hero: the turn is
+	# spent either way, but a frozen one neither steps nor swings and a bound
+	# one can still reach whatever already stands beside it.
+	if s.status_blocks(enemy,"ATTACK"): return
 	var seen: int = sight(s)
 	if targets.any(func(a): return line(s,enemy.pos,a.pos,seen)): enemy.alert = true
 	if not enemy.get("alert",false): return
@@ -94,7 +98,9 @@ static func turn(s, enemy: Dictionary) -> void:
 		if id.is_empty(): resolve_spell(s,enemy,cell)
 		else: Abilities.resolve(s,enemy,id,cell)
 		return
-	if Abilities.DEFINITIONS.has(part) and int(enemy.cooldowns.get(part,0)) <= 0:
+	# A bound monster cannot work a manoeuvre that carries it anywhere; it is
+	# left with whatever it can already reach.
+	if Abilities.DEFINITIONS.has(part) and int(enemy.cooldowns.get(part,0)) <= 0 and not s.status_blocks(enemy,"MOVE"):
 		targets.sort_custom(func(a,b): return distance(enemy.pos,a.pos) < distance(enemy.pos,b.pos))
 		for target in targets:
 			if not line(s,enemy.pos,target.pos,seen) or not Abilities.legal(s,enemy,part,target.pos): continue
@@ -104,7 +110,7 @@ static func turn(s, enemy: Dictionary) -> void:
 			enemy.resolve_at = s.time+prep*100
 			plan(s); s.message("%s · %s 준비" % [enemy.name,Abilities.DEFINITIONS[part].name])
 			return
-	role_turn(s,enemy,targets)
+	role_turn(s,enemy,targets,s.status_blocks(enemy,"MOVE"))
 
 ## The caster's own spell, cell-locked at SPELL_DAMAGE.
 static func resolve_spell(s, enemy: Dictionary, cell: Vector2i) -> void:
@@ -112,14 +118,16 @@ static func resolve_spell(s, enemy: Dictionary, cell: Vector2i) -> void:
 	if not line(s,enemy.pos,cell,4): return
 	s.enemy_attack_effect(enemy,[cell],true)
 	var victim: Dictionary = s.at(cell)
-	if not victim.is_empty() and not victim.enemy: s.damage(victim,SPELL_DAMAGE,enemy.id,"ELECTRIC")
+	if not victim.is_empty() and s.side_of(victim) != s.side_of(enemy): s.damage(victim,SPELL_DAMAGE,enemy.id,"ELECTRIC")
 	s.message(enemy.name+"의 마법이 예고한 지점에 떨어졌습니다.")
 
-static func role_turn(s, enemy: Dictionary, targets: Array) -> void:
+static func role_turn(s, enemy: Dictionary, targets: Array, held: bool = false) -> void:
 	var role: String = enemy.get("role","MELEE")
 	if role == "MELEE":
 		var choice: Dictionary = Melee.new(s,enemy).choose(enemy)
-		if choice.kind == "MOVE": enemy.pos = choice.cell
+		if choice.kind == "MOVE":
+			if held: return
+			enemy.pos = choice.cell
 		elif choice.kind == "ATTACK": strike(s,enemy,s.at(choice.cell),7)
 		return
 	targets.sort_custom(func(a,b): return distance(enemy.pos,a.pos) < distance(enemy.pos,b.pos))
@@ -154,12 +162,12 @@ static func role_turn(s, enemy: Dictionary, targets: Array) -> void:
 		for x in range(maxi(0,target.pos.x-reach),mini(s.BOARD_SIDE,target.pos.x+reach+1)):
 			var p := Vector2i(x,y)
 			if s.is_free(p) and distance(p,target.pos) >= 2 and line(s,p,target.pos,reach): goals.append(p)
-	if goals.is_empty(): return
+	if goals.is_empty() or held: return
 	var route: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,enemy.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100,100,20)
 	if route.found and route.path.size() > 1: enemy.pos = route.path[1]
 
 static func strike(s, enemy: Dictionary, target: Dictionary, amount: int) -> void:
-	if target.is_empty() or target.enemy: return
+	if target.is_empty() or s.side_of(target) == s.side_of(enemy): return
 	s.enemy_attack_effect(enemy,[target.pos])
 	if s.manual_mode:
 		enemy.power = amount

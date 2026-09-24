@@ -14,20 +14,20 @@ func run() -> void:
 	s.depart(); Fixture.arena(s,10); s.manual_mode = true
 	var hero: Dictionary = s.party[0]
 	# The port's own spells belong to no book: nothing teaches them any more.
-	for id in ["bolt","blast","blink","confuse","mend","cone"]:
+	for id in ["blast","blink","mend","passwall","ward","turret"]:
 		check(not s.learn_spell(0,id),"no book teaches the relic "+id)
 		hero.spells.append(id)
 	s.phase = "CAMP"
-	check(s.prepare_spell(0,"bolt",true) and s.prepare_spell(0,"mend",true) and s.prepare_spell(0,"blink",true),"prepare three spells")
-	check(s.prepare_spell(0,"blast",true) and s.prepare_spell(0,"confuse",true),"prepare five spells")
-	check(not s.prepare_spell(0,"cone",true),"sixth spell refused")
+	check(s.prepare_spell(0,"blast",true) and s.prepare_spell(0,"mend",true) and s.prepare_spell(0,"blink",true),"prepare three spells")
+	check(s.prepare_spell(0,"passwall",true) and s.prepare_spell(0,"ward",true),"prepare five spells")
+	check(not s.prepare_spell(0,"turret",true),"sixth spell refused")
 	s.phase = "EXPLORE"
 	var foe: Dictionary = s.enemies[0]
 	foe.hp = 100; foe.max_hp = 100; foe.pos = hero.pos+Vector2i(2,0); foe.alert = true; foe.ready_at = 1000
 	s.floor_state.observe(s)
 	var before: int = foe.hp
-	check(s.cast("bolt",foe.pos),"bolt cast")
-	check(foe.hp < before or hero.mp == 15,"bolt damages or fails after spending 3 MP")
+	check(s.cast("blast",foe.pos),"blast cast")
+	check(foe.hp < before or hero.mp == 12,"blast damages or fails after spending 6 MP")
 	hero.hp = 20; hero.mp = 18
 	check(s.cast("mend",hero.pos),"mend cast")
 	check(hero.hp > 20 or hero.mp == 12,"mend heals or fails after spending 6 MP")

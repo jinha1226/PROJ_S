@@ -42,7 +42,7 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 		"drain": source.hp = mini(int(source.max_hp), int(source.hp) + 3)
 	if offense.trait == "cleave":
 		for other in s.party + s.npcs + s.enemies:
-			if other.id != target.id and other.hp > 0 and bool(other.enemy) != bool(source.enemy) and s.melee_reach(source.pos, other.pos):
+			if other.id != target.id and other.hp > 0 and s.side_of(other) != s.side_of(source) and s.melee_reach(source.pos, other.pos):
 				damage(s, source, other, maxi(1, raw / 2 - int(Stats.stats(s, other).ac)), "physical")
 	return out
 

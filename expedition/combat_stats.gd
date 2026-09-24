@@ -31,6 +31,9 @@ static func stats(_session, actor: Dictionary) -> Dictionary:
 			result.trait = str(weapon_def.trait)
 			result.brand = str(weapon.get("brand", ""))
 			if result.trait == "focus": result.power += 4
+		# A summoned creature carries no gear at all: it fights with the power
+		# its own row in `combat.json.summons` gave it.
+		if bool(actor.get("summoned", false)) and weapon_def.is_empty(): result.damage = int(actor.get("power", 7))
 		var armour: Dictionary = gear.get("armour", {})
 		var armour_def: Dictionary = content.armours.get(str(armour.get("type", "")), {})
 		if not armour_def.is_empty():
@@ -52,5 +55,6 @@ static func stats(_session, actor: Dictionary) -> Dictionary:
 	# blow; 폭풍의 눈 is the air school's own coat of wind.
 	if statuses.has("brittle"): result.ac = maxi(0, int(result.ac) - 4)
 	if statuses.has("weak"): result.damage = int(result.damage) * 7 / 10
+	if statuses.has("summon_power"): result.damage = int(result.damage) * 3 / 2
 	if statuses.has("stormeye"): result.ev += 20
 	return result
