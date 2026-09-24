@@ -367,6 +367,18 @@ func leader() -> Dictionary:
 func rally_point() -> Vector2i:
 	return leader().pos
 
+## The five field orders shared with the party command UI. Choosing an order
+## changes the next companion decision; it never spends the hero's turn.
+func issue_party_command(command: String, target_id: int = -1) -> bool:
+	if not on_floor() or command not in ["ATTACK_TARGET","RETREAT","STOP_ATTACK","HOLD_POSITION","FOLLOW"]: return false
+	if command == "ATTACK_TARGET":
+		if not in_combat() or not combat_enemies().any(func(enemy): return enemy.id == target_id and floor_state.visible.has(enemy.pos)): return false
+	elif target_id != -1: return false
+	elif command in ["RETREAT","STOP_ATTACK"] and not in_combat(): return false
+	party_command = command
+	command_target = target_id if command == "ATTACK_TARGET" else -1
+	return true
+
 func can_swap_formation() -> bool: return Orders.can_swap_formation(self)
 
 func swap_formation(a: int, b: int) -> bool: return Orders.swap_formation(self,a,b)

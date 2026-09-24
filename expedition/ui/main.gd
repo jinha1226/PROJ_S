@@ -399,6 +399,11 @@ func queue_action(kind: String, point: Vector2i) -> void:
 func on_cell(point: Vector2i) -> void:
 	if session == null or not session.on_floor(): return
 	stop_navigation()
+	if mode == "COMMAND_TARGET":
+		var marked: Dictionary = session.at(point)
+		if not marked.is_empty() and session.issue_party_command("ATTACK_TARGET",int(marked.id)):
+			mode = ""; notice = ""; refresh()
+		return
 	if session.manual_mode and mode == "ATTACK":
 		var target: Dictionary = session.at(point)
 		if not target.is_empty() and target.enemy and not session.attack_preview(point).is_empty():
@@ -452,8 +457,7 @@ func on_cell(point: Vector2i) -> void:
 
 func focus_enemy(point: Vector2i) -> void:
 	var target: Dictionary = session.at(point)
-	if target in session.combat_enemies() and session.floor_state.visible.has(point):
-		session.command_target = target.id; session.party_command = "ATTACK_TARGET"
+	if target in session.combat_enemies() and session.issue_party_command("ATTACK_TARGET",int(target.id)):
 		notice = "집중 공격"
 
 ## The screens keep their entry points on the node: the tests, the signals and

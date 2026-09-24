@@ -184,6 +184,9 @@ static func arm_attack(ui) -> void:
 	var hero: Dictionary = session.party[0]
 	var targets: Array = session.enemies.filter(func(enemy): return enemy.hp > 0 and session.floor_state.visible.has(enemy.pos))
 	if targets.is_empty(): return
+	if session.party_command == "ATTACK_TARGET":
+		var marked: Array = targets.filter(func(enemy): return enemy.id == session.command_target)
+		if not marked.is_empty(): targets = marked
 	targets.sort_custom(func(a,b):
 		var da: int = session.distance(hero.pos,a.pos)
 		var db: int = session.distance(hero.pos,b.pos)
@@ -227,6 +230,21 @@ static func show_manual_tactics(ui) -> void:
 	ui.label(vital,"%s · Lv.%d" % [actor.name,actor.level],16)
 	ui.label(vital,"HP %d/%d" % [actor.hp,actor.max_hp],12); ui.gauge(vital,actor.hp,actor.max_hp,Color("bf5450"))
 	ui.label(vital,"MP %d/%d" % [actor.mp,actor.max_mp],12); ui.gauge(vital,actor.mp,actor.max_mp,Color("507eb9"))
+	var targets: Array = session.combat_enemies().filter(func(enemy): return session.floor_state.visible.has(enemy.pos))
+	var focus = ui.button(box,"집중 공격",func():
+		ui.details_popup.hide(); ui.mode = "COMMAND_TARGET"; ui.refresh(),not targets.is_empty())
+	focus.name = "TacticFocus"
+	if session.party.size() == 1:
+		var hold = ui.button(box,"제자리 대기",func():
+			ui.details_popup.hide(); ui.run_action(func(): return session.act("WAIT",actor.pos)))
+		hold.name = "TacticHold"
+	else:
+		for row in [["HOLD_POSITION","자리 지키기"],["RETREAT","후퇴"],["STOP_ATTACK","공격 중지"],["FOLLOW","따라오기"]]:
+			var command: String = row[0]
+			var pick = ui.button(box,str(row[1]),func(): choose_party_command(ui,command),
+				session.in_combat() or command in ["HOLD_POSITION","FOLLOW"])
+			pick.name = "Tactic_"+command
+			pick.toggle_mode = true; pick.button_pressed = session.party_command == command
 	ui.label(box,"준비한 주문",17)
 	var scroll := ScrollContainer.new(); scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; box.add_child(scroll)
@@ -250,6 +268,10 @@ static func show_manual_tactics(ui) -> void:
 		part.alignment = HORIZONTAL_ALIGNMENT_LEFT; part.custom_minimum_size.y = 54
 	ui.button(box,"닫기",func(): ui.details_popup.hide())
 	ui.details_popup.popup_centered(Vector2i(ui.get_viewport_rect().size))
+
+static func choose_party_command(ui, command: String) -> void:
+	if not ui.session.issue_party_command(command): return
+	ui.details_popup.hide(); ui.mode = ""; ui.notice = ""; ui.refresh()
 
 static func show_part_actions(ui) -> void:
 	var session = ui.session

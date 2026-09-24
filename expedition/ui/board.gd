@@ -49,13 +49,18 @@ var skill_badges: Dictionary = {}
 var walk_actor_id := -1
 var walk_from := Vector2i.ZERO
 var walk_to := Vector2i.ZERO
+var walk_visual_from := Vector2.ZERO
 var walk_elapsed := 0.0
 var walk_duration := 0.11
 
 func animate_walk(actor_id: int, from: Vector2i, to: Vector2i, duration: float = 0.11) -> void:
+	var start := Vector2(from)
+	if walk_actor_id == actor_id and walk_to == from:
+		start = walk_visual_from.lerp(Vector2(from),clampf(walk_elapsed/walk_duration,0.0,1.0))
 	walk_actor_id = actor_id
 	walk_from = from
 	walk_to = to
+	walk_visual_from = start
 	walk_elapsed = 0.0
 	walk_duration = maxf(0.01,duration)
 	queue_redraw()
@@ -64,7 +69,7 @@ func display_center(actor: Dictionary) -> Vector2:
 	var center := cell_center(actor.pos)
 	if not is_presenting() and walk_actor_id == int(actor.id) and actor.pos == walk_to:
 		var t := clampf(walk_elapsed/walk_duration,0.0,1.0)
-		center = cell_center(walk_from).lerp(center,1.0-pow(1.0-t,2.0))
+		center = project(walk_visual_from+Vector2.ONE*0.5).lerp(center,t)
 	for effect in effects:
 		if effect.get("kind","") == "ATTACK_SWING" and effect.from == actor.pos and effect_time < 0.2:
 			var progress := clampf(effect_time/0.2,0.0,1.0)
@@ -195,13 +200,18 @@ func geometry() -> void:
 	origin = Vector2(0,4)
 
 func project(cell: Vector2) -> Vector2:
-	return origin + (cell-Vector2(camera_cell()))*half_width*2
+	return origin + (cell-camera_origin())*half_width*2
+
+func camera_origin() -> Vector2:
+	if session == null or session.tiles.is_empty(): return Vector2.ZERO
+	var focus: Vector2 = Vector2(playback_focus) if is_presenting() else Vector2(session.party[session.selected].pos)
+	if not is_presenting() and walk_actor_id == int(session.party[session.selected].id) and walk_to == session.party[session.selected].pos:
+		focus = walk_visual_from.lerp(Vector2(walk_to),clampf(walk_elapsed/walk_duration,0.0,1.0))
+	return focus-Vector2.ONE*float((visible_side()-1)/2)
 
 func camera_cell() -> Vector2i:
-	if session == null or session.tiles.is_empty(): return Vector2i.ZERO
-	var focus: Vector2i = playback_focus if is_presenting() else session.party[session.selected].pos
-	var side := visible_side()
-	return focus-Vector2i((side-1)/2,(side-1)/2)
+	var top_left := camera_origin()
+	return Vector2i(floori(top_left.x),floori(top_left.y))
 
 func visible_side() -> int:
 	return view_side
@@ -217,7 +227,8 @@ func cell_at(point: Vector2) -> Vector2i:
 	geometry()
 	var camera := impact_transform()
 	var delta: Vector2 = (point-camera.offset)/camera.zoom-origin
-	return Vector2i(floori(delta.x/(half_width*2)),floori(delta.y/(half_width*2)))+camera_cell()
+	var world: Vector2 = delta/(half_width*2)+camera_origin()
+	return Vector2i(floori(world.x),floori(world.y))
 
 func tile_polygon(point: Vector2) -> PackedVector2Array:
 	var result := PackedVector2Array()
@@ -286,8 +297,8 @@ func paint_terrain() -> void:
 	var walls: Array = []
 	var camera := camera_cell()
 	# One additional row supplies the raised portion of walls below the viewport.
-	for y in range(camera.y,camera.y+visible_side()+1):
-		for x in range(camera.x,camera.x+visible_side()):
+	for y in range(camera.y,camera.y+visible_side()+2):
+		for x in range(camera.x,camera.x+visible_side()+2):
 			var point := Vector2i(x,y)
 			if not session.inside(point): continue
 			var visibility := terrain_visibility(point)
@@ -341,15 +352,15 @@ func _draw() -> void:
 	elif session.Abilities.DEFINITIONS.has(targeting_skill) and session.Abilities.DEFINITIONS[targeting_skill].target == "ENEMY" and session.Abilities.DEFINITIONS[targeting_skill].range > 0:
 		attacks.clear()
 		var caster: Dictionary = session.party[session.selected if input_actor < 0 else input_actor]
-		for y in range(camera_cell().y,camera_cell().y+visible_side()):
-			for x in range(camera_cell().x,camera_cell().x+visible_side()):
+		for y in range(camera_cell().y,camera_cell().y+visible_side()+2):
+			for x in range(camera_cell().x,camera_cell().x+visible_side()+2):
 				if x < 0 or y < 0 or x >= session.BOARD_SIDE or y >= session.BOARD_SIDE: continue
 				var cell := Vector2i(x,y)
 				if session.distance(caster.pos,cell) <= int(session.Abilities.DEFINITIONS[targeting_skill].range) and session.tile(cell).terrain != "wall" and session.TurnCore.Geometry.sees(caster.pos,cell,func(p): return session.tile(p).terrain == "wall"): attacks.append(cell)
-	for depth in range(visible_side()*2-1):
-		for local_x in range(visible_side()):
+	for depth in range((visible_side()+2)*2-1):
+		for local_x in range(visible_side()+2):
 			var local_y := depth-local_x
-			if local_y < 0 or local_y >= visible_side(): continue
+			if local_y < 0 or local_y >= visible_side()+2: continue
 			var x: int = local_x+camera_cell().x
 			var y: int = local_y+camera_cell().y
 			if x < 0 or y < 0 or x >= session.BOARD_SIDE or y >= session.BOARD_SIDE: continue

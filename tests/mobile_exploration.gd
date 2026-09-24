@@ -1,5 +1,6 @@
 extends SceneTree
 const Session = preload("res://expedition/run/session.gd")
+const Fixture = preload("res://tests/floor_fixture.gd")
 var failures := 0
 func check(ok: bool, reason: String) -> void:
 	if not ok: failures += 1; push_error(reason)
@@ -19,11 +20,24 @@ func run() -> void:
 	var s = scene.session
 	var start: Vector2i = s.party[0].pos
 	var target := start+Vector2i(4,0)
+	var center_before: Vector2 = scene.board.cell_center(start)
+	var floor_before: Vector2 = scene.board.cell_center(start+Vector2i(2,0))
 	var turns: int = s.round_number
 	scene.on_cell(target)
 	check(s.party[0].pos != start and s.party[0].pos != target and s.round_number == turns+1,"distant tap advances one step, not teleport")
 	check(scene.board.walk_actor_id == int(s.party[0].id) and scene.board.walk_from == start and scene.board.walk_to == s.party[0].pos,
 		"travel step animates from the previous tile")
+	var board = scene.board
+	check(board.display_center(s.party[0]).distance_to(center_before) < 0.01,"the hero does not jump when a travel step begins")
+	board.walk_elapsed = board.walk_duration*0.5
+	check(board.display_center(s.party[0]).distance_to(center_before) < 0.01,"the camera and hero move together")
+	check(board.cell_center(start+Vector2i(2,0)).distance_to(floor_before-Vector2(board.half_width,0)) < 0.01,
+		"the floor scrolls linearly through half a tile")
+	check(board.cell_at(board.cell_center(start)) == start,"touch coordinates follow the scrolling camera")
+	board.animate_walk(int(s.party[0].id),s.party[0].pos,s.party[0].pos+Vector2i.RIGHT,board.walk_duration)
+	check(board.walk_visual_from.distance_to(Vector2(start)+Vector2(0.5,0)) < 0.01,
+		"a queued step continues from the current visual position")
+	board.animate_walk(int(s.party[0].id),start,s.party[0].pos,board.walk_duration)
 	for i in range(10):
 		if scene.navigation.active: scene.navigation_tick()
 	check(s.party[0].pos == target and s.round_number == turns+4 and not scene.navigation.active,"queued movement arrives using four turns")
@@ -37,7 +51,7 @@ func run() -> void:
 	check(not scene.navigation.active and s.round_number == turns,"enemy contact stops before another action")
 	s.enemies[0].pos = Vector2i(s.BOARD_SIDE-2,s.BOARD_SIDE-2); s.floor_state.observe(s)
 	scene.refresh(); await process_frame
-	var board = scene.board
+	board = scene.board
 	var position: Vector2i = s.party[0].pos
 	turns = s.round_number
 	var initial_side: int = board.view_side
@@ -89,5 +103,32 @@ func run() -> void:
 	s.damage(target_actor,2,999,"FIRE")
 	check(s.log_lines[-1].begins_with("불길이 "),"environmental damage has a named cause")
 	check(Session.subject_name("아린") == "아린이" and Session.subject_name("세라") == "세라가","Korean subject particles")
+	var center: Vector2i = Fixture.arena(s,8)
+	target_actor.hp = 100; target_actor.pos = center+Vector2i.RIGHT; s.floor_state.observe(s)
+	scene.refresh(); await process_frame
+	turns = s.round_number
+	scene.find_child("Tactics",true,false).pressed.emit(); await process_frame
+	check(scene.find_child("TacticFocus",true,false) != null and scene.find_child("TacticHold",true,false) != null,
+		"solo tactics offer a target order and a real wait action")
+	scene.find_child("TacticFocus",true,false).pressed.emit()
+	check(scene.mode == "COMMAND_TARGET","focus command waits for an enemy tile")
+	scene.on_cell(target_actor.pos)
+	check(s.party_command == "ATTACK_TARGET" and s.command_target == target_actor.id and s.round_number == turns,
+		"marking a target issues an order without spending a turn")
+	target_actor.hp = 0; s.floor_state.observe(s); scene.refresh(); await process_frame
+	scene.find_child("Tactics",true,false).pressed.emit(); await process_frame
+	turns = s.round_number
+	scene.find_child("TacticHold",true,false).pressed.emit()
+	check(s.round_number == turns+1,"solo hold spends one turn in place")
+	s.companions = true; s.party.append(s.make_actor(1,"브란",false)); s.party[1].pos = center+Vector2i.DOWN
+	s.formation = [0,1]; target_actor.hp = 100; target_actor.pos = center+Vector2i(3,0)
+	s.floor_state.observe(s); scene.refresh(); await process_frame
+	scene.find_child("Tactics",true,false).pressed.emit(); await process_frame
+	check(scene.find_child("Tactic_HOLD_POSITION",true,false) != null and scene.find_child("Tactic_RETREAT",true,false) != null
+		and scene.find_child("Tactic_STOP_ATTACK",true,false) != null and scene.find_child("Tactic_FOLLOW",true,false) != null,
+		"party tactics expose the four standing orders")
+	scene.find_child("Tactic_HOLD_POSITION",true,false).pressed.emit()
+	check(s.party_command == "HOLD_POSITION" and s.command_choice(s.party[1]).kind == "WAIT",
+		"hold order makes a distant companion stay put")
 	scene.queue_free(); await process_frame
 	print("Mobile exploration: %d failures" % failures); quit(1 if failures else 0)
