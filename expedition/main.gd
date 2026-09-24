@@ -475,7 +475,7 @@ func refresh() -> void:
 		item.disabled = session.supplies[slot] <= 0 or session.auto.running; item_buttons.append(item)
 	if session.manual_mode:
 		var spells := HBoxContainer.new(); spells.name = "SpellBar"; root_layout.add_child(spells)
-		for slot in range(3):
+		for slot in range(Session.PREPARED_SLOTS):
 			var prepared: Array = session.party[0].prepared
 			var id: String = str(prepared[slot]) if slot < prepared.size() else ""
 			var caption: String = str(Session.CombatStats.content.spells[id].name) if not id.is_empty() else "—"
@@ -515,6 +515,16 @@ func build_manual_controls() -> void:
 		image.mouse_filter = MOUSE_FILTER_IGNORE; content.add_child(image)
 		var caption := label(content,"%s · Lv%d\nHP %d/%d · MP %d/%d\n스트레스 %d" % [actor.name,int(actor.level),int(actor.hp),int(actor.max_hp),int(actor.mp),int(actor.max_mp),int(actor.stress)],12 if session.party.size() == 1 else 10)
 		caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; caption.autowrap_mode = TextServer.AUTOWRAP_OFF
+	var prepared: Array = session.party[0].prepared
+	if not prepared.is_empty():
+		var spells := HBoxContainer.new(); spells.name = "SpellBar"
+		spells.add_theme_constant_override("separation",3); root_layout.add_child(spells)
+		for slot in range(Session.PREPARED_SLOTS):
+			var id: String = str(prepared[slot]) if slot < prepared.size() else ""
+			var caption: String = str(Session.CombatStats.content.spells[id].name) if not id.is_empty() else "—"
+			var spell := button(spells,caption,func(): choose_spell(id),not id.is_empty())
+			spell.name = "Spell%d" % slot; spell.custom_minimum_size.y = 44
+			spell.size_flags_horizontal = SIZE_EXPAND_FILL
 	var nav := HBoxContainer.new(); nav.name = "BottomActions"
 	nav.add_theme_constant_override("separation",3); root_layout.add_child(nav)
 	var attack := button(nav,"공격",arm_attack); attack.name = "Attack"
@@ -608,6 +618,7 @@ func build_camp_screen() -> void:
 		if session.manual_mode:
 			button(card,"장비",func(): show_gear(i))
 			button(card,"주문 준비",func(): show_prepare(i))
+			button(card,"주문 배우기",func(): show_learn(i))
 	button(box,"가방",show_supplies)
 	var end := button(box,"야영 끝",func(): run_action(session.end_camp)); end.name = "CampEnd"
 
@@ -685,6 +696,32 @@ func show_prepare(index: int) -> void:
 		var spell: Dictionary = Session.CombatStats.content.spells[id]
 		button(box,("✓ " if id in actor.prepared else "○ ")+str(spell.name),func():
 			if session.prepare_spell(index,id,id not in actor.prepared): show_prepare(index))
+	button(box,"닫기",func(): details_popup.hide())
+	details_popup.popup_centered()
+
+## The camp's reading. Every spell the bag's books hold is listed; the ones
+## this rank cannot take yet say why beside their name.
+func show_learn(index: int) -> void:
+	if session.phase != "CAMP" or index < 0 or index >= session.party.size(): return
+	clear(modal_content)
+	var box := VBoxContainer.new(); box.name = "LearnList"; modal_content.add_child(box)
+	var actor: Dictionary = session.party[index]
+	label(box,actor.name+" · 주문 배우기",20)
+	if actor.books.is_empty(): label(box,"주문서 없음",14)
+	for entry in actor.books:
+		var book_id: String = str(entry)
+		var row: Dictionary = Session.Spells.book(book_id)
+		label(box,str(row.get("name",book_id)),15)
+		for spell_entry in Session.Spells.book_spells(book_id):
+			var spell_id: String = str(spell_entry)
+			var spell: Dictionary = Session.CombatStats.content.spells[spell_id]
+			var reason: String = Session.Spells.learnable(session,actor,spell_id)
+			var caption: String = "%s · Lv%d · %dMP" % [str(spell.name),int(spell.level),int(spell.mp)]
+			if not reason.is_empty(): caption += "  (%s)" % reason
+			var choice := button(box,caption,func():
+				if session.learn_spell(index,spell_id): show_learn(index),reason.is_empty())
+			choice.name = "Learn_"+spell_id
+			choice.custom_minimum_size.y = 44
 	button(box,"닫기",func(): details_popup.hide())
 	details_popup.popup_centered()
 
