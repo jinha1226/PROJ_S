@@ -56,8 +56,10 @@ static func build_kit_picker(ui, parent: Node) -> void:
 			node.add_child(glyph); glyph.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 			glyph.offset_left = -16; glyph.offset_right = 16; glyph.offset_top = 5; glyph.offset_bottom = 37
 			if id == ui.kit_choice:
-				var gold = node.get_theme_stylebox("normal").duplicate(); gold.border_color = Color("e9c575")
-				gold.set_border_width_all(2); node.add_theme_stylebox_override("normal",gold)
+				var gold = node.get_theme_stylebox("normal").duplicate()
+				if gold is StyleBoxFlat:
+					gold.border_color = Color("e9c575"); gold.set_border_width_all(2)
+				node.add_theme_stylebox_override("normal",gold)
 
 ## What the kit is, in one line: a weapon's numbers, or the spell it comes with.
 static func kit_detail(kit: Dictionary) -> String:

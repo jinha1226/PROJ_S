@@ -1,0 +1,15 @@
+{
+  "name": "ui-atlas-8bit-v1",
+  "grid": {"columns": 6, "rows": 4, "cell_px": 256},
+  "rows": {
+    "0": ["attack", "guard", "wait", "explore", "tactics", "inventory"],
+    "1": ["heal", "mana", "antidote", "scroll", "torch", "food"],
+    "2": ["normal_frame", "hover_frame", "pressed_frame", "disabled_frame", "panel_frame", "selected_frame"],
+    "3": ["map_pin", "campfire", "retreat", "log", "plus", "close"]
+  },
+  "source": "imagegen prompt recorded in docs/art/ui-atlas-8bit-v1.md",
+  "usage": {
+    "icons": "mobile_art.ui_icon(index)",
+    "button_frames": "mobile_art.ui_frame(state), state 0 normal, 1 hover, 2 pressed, 3 disabled"
+  }
+}

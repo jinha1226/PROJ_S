@@ -10,6 +10,7 @@ const CampScreen = preload("res://expedition/ui/screens/camp_screen.gd")
 const ResultCard = preload("res://expedition/ui/screens/result_card.gd")
 const Popups = preload("res://expedition/ui/screens/popups.gd")
 const AutoBattleHud = preload("res://expedition/ui/screens/autobattle_hud.gd")
+const Art = preload("res://expedition/art/mobile_art.gd")
 var portrait_gesture = preload("res://expedition/legacy/portrait_gesture.gd").new()
 var navigation = preload("res://expedition/level/exploration_navigation.gd").new()
 const NAVIGATION_STEP_SECONDS := 0.06
@@ -87,10 +88,13 @@ var battle_reported := false
 func _ready() -> void:
 	var skin := Theme.new(); skin.default_font = FONT; skin.default_font_size = 12
 	for state in ["normal","hover","pressed","focus","disabled"]:
-		var box := StyleBoxFlat.new(); box.bg_color = Color("211f1c") if state != "pressed" else Color("493b27")
-		box.border_color = Color("c5a363") if state in ["hover","pressed","focus"] else Color("695b45")
-		box.set_border_width_all(1); box.set_corner_radius_all(2)
-		box.content_margin_left = 5; box.content_margin_right = 5; skin.set_stylebox(state,"Button",box)
+		var frame_state: int = {"normal":0,"hover":1,"pressed":2,"focus":1,"disabled":3}[state]
+		var box := StyleBoxTexture.new(); box.texture = Art.ui_frame(frame_state)
+		box.texture_margin_left = 64; box.texture_margin_right = 64
+		box.texture_margin_top = 64; box.texture_margin_bottom = 64
+		box.content_margin_left = 8; box.content_margin_right = 8
+		box.content_margin_top = 5; box.content_margin_bottom = 5
+		skin.set_stylebox(state,"Button",box)
 	skin.set_color("font_color","Button",Color("e0d3b9"))
 	skin.set_stylebox("panel","PopupPanel",CharacterUI.surface(Color("100f0d")))
 	theme = skin
@@ -256,6 +260,12 @@ func icon_button(parent: Node, texture: Texture2D, callback: Callable, hint: Str
 		number.add_theme_color_override("font_shadow_color",Color.BLACK); number.add_theme_constant_override("shadow_offset_x",1); number.add_theme_constant_override("shadow_offset_y",1)
 	return node
 
+func action_button(parent: Node, text: String, texture: Texture2D, callback: Callable, enabled: bool = true) -> Button:
+	var node := button(parent,text,callback,enabled)
+	node.icon = texture
+	node.add_theme_constant_override("icon_max_width",22)
+	return node
+
 func gauge(parent: Node, value: int, maximum: int, color: Color) -> void:
 	var bar := ProgressBar.new(); bar.max_value = maximum; bar.value = value; bar.show_percentage = false
 	bar.custom_minimum_size.y = 4; bar.mouse_filter = MOUSE_FILTER_IGNORE
@@ -273,8 +283,10 @@ func resource_gauge(parent: Button, id: String, value: int, color: Color, hint: 
 	bar.add_theme_stylebox_override("fill",fill); bar.add_theme_stylebox_override("background",background)
 	parent.custom_minimum_size.y = 48; parent.tooltip_text = hint
 	for state in ["normal","hover","pressed","focus","disabled"]:
-		var style := parent.get_theme_stylebox(state).duplicate() as StyleBoxFlat
-		style.content_margin_bottom = 8; parent.add_theme_stylebox_override(state,style)
+		var style := parent.get_theme_stylebox(state).duplicate()
+		if style is StyleBoxFlat:
+			style.content_margin_bottom = 8
+		parent.add_theme_stylebox_override(state,style)
 
 func modal(title: String, body: String) -> void:
 	clear(modal_content); label(modal_content,title,18)

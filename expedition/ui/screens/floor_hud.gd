@@ -79,12 +79,14 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 		stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; stats.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		if i == session.selected:
-			var gold = portrait.get_theme_stylebox("normal").duplicate(); gold.border_color = Color("e9c575")
-			gold.set_border_width_all(2); portrait.add_theme_stylebox_override("normal",gold)
+			var gold = portrait.get_theme_stylebox("normal").duplicate()
+			if gold is StyleBoxFlat:
+				gold.border_color = Color("e9c575"); gold.set_border_width_all(2)
+			portrait.add_theme_stylebox_override("normal",gold)
 		if actor.hp <= 0: portrait.modulate = Color("636369")
 	var shared := HBoxContainer.new(); ui.root_layout.add_child(shared)
 	for slot in range(5):
-		var item = ui.icon_button(shared,Art.item(slot),func(): choose_item(ui,slot),Session.SUPPLY_NAMES[slot],str(session.supplies[slot]))
+		var item = ui.icon_button(shared,Art.ui_icon(6+slot),func(): choose_item(ui,slot),Session.SUPPLY_NAMES[slot],str(session.supplies[slot]))
 		item.disabled = session.supplies[slot] <= 0 or session.auto.running; ui.item_buttons.append(item)
 	if session.manual_mode:
 		var spells := HBoxContainer.new(); spells.name = "SpellBar"; ui.root_layout.add_child(spells)
@@ -95,21 +97,21 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 			var spell = ui.button(spells,caption,func(): choose_spell(ui,id),not id.is_empty())
 			spell.name = "Spell%d" % slot; spell.custom_minimum_size.y = 44
 	var nav := GridContainer.new(); nav.name = "BottomActions"; nav.columns = 4; ui.root_layout.add_child(nav)
-	var attack = ui.button(nav,"공격",func():
+	var attack = ui.action_button(nav,"공격",Art.ui_icon(0),func():
 		if session.manual_mode:
 			ui.mode = "ATTACK"; ui.show_attack_range = true; ui.refresh()
 		else: ui.run_action(session.auto_attack),session.in_combat()); attack.name = "Attack"
-	var wait = ui.button(nav,"대기",func(): ui.run_action(func(): return session.act("WAIT",session.party[session.selected].pos))); wait.name = "Wait"; ui.wait_button = wait
+	var wait = ui.action_button(nav,"대기",Art.ui_icon(2),func(): ui.run_action(func(): return session.act("WAIT",session.party[session.selected].pos))); wait.name = "Wait"; ui.wait_button = wait
 	if session.manual_mode:
-		var parts_button = ui.button(nav,"파츠",func(): show_part_actions(ui),session.in_combat()); parts_button.name = "PartActions"
+		var parts_button = ui.action_button(nav,"파츠",Art.ui_icon(4),func(): show_part_actions(ui),session.in_combat()); parts_button.name = "PartActions"
 	if not session.manual_mode:
-		var toggle = ui.button(nav,"⏸ 정지" if session.auto.running else "▶ 전투",func(): AutoBattleHud.toggle_auto(ui),session.in_combat()); toggle.name = "AutoToggle"
+		var toggle = ui.action_button(nav,"⏸ 정지" if session.auto.running else "▶ 전투",Art.ui_icon(0),func(): AutoBattleHud.toggle_auto(ui),session.in_combat()); toggle.name = "AutoToggle"
 		var speed = ui.button(nav,"%d×" % int(session.auto.speed),func(): AutoBattleHud.toggle_speed(ui)); speed.name = "SpeedToggle"
-		var retreat = ui.button(nav,"후퇴 해제" if session.party_command == "RETREAT" else "후퇴",func(): AutoBattleHud.toggle_retreat(ui),session.in_combat()); retreat.name = "RetreatToggle"
-	ui.auto_explore_button = ui.button(nav,"중지" if ui.navigation.active else "자동탐험",ui.toggle_explore,not session.in_combat() and not session.auto.running)
-	var camp = ui.button(nav,"야영",func(): ui.run_action(session.camp),session.can_camp().is_empty() and not session.auto.running)
+		var retreat = ui.action_button(nav,"후퇴 해제" if session.party_command == "RETREAT" else "후퇴",Art.ui_icon(20),func(): AutoBattleHud.toggle_retreat(ui),session.in_combat()); retreat.name = "RetreatToggle"
+	ui.auto_explore_button = ui.action_button(nav,"중지" if ui.navigation.active else "자동탐험",Art.ui_icon(3),ui.toggle_explore,not session.in_combat() and not session.auto.running)
+	var camp = ui.action_button(nav,"야영",Art.ui_icon(19),func(): ui.run_action(session.camp),session.can_camp().is_empty() and not session.auto.running)
 	camp.name = "CampButton"; camp.tooltip_text = session.can_camp()
-	ui.button(nav,"가방",func(): Popups.show_supplies(ui))
+	ui.action_button(nav,"가방",Art.ui_icon(5),func(): Popups.show_supplies(ui))
 	if not session.manual_mode: build_stop_banner(ui)
 
 static func build_manual_controls(ui) -> void:
@@ -149,12 +151,12 @@ static func build_manual_controls(ui) -> void:
 		ui.gauge(values,actor.mp,actor.max_mp,Color("507eb9"))
 	var nav := HBoxContainer.new(); nav.name = "BottomActions"
 	nav.add_theme_constant_override("separation",3); ui.root_layout.add_child(nav)
-	var attack = ui.button(nav,"공격",func(): arm_attack(ui)); attack.name = "Attack"
+	var attack = ui.action_button(nav,"공격",Art.ui_icon(0),func(): arm_attack(ui)); attack.name = "Attack"
 	attack.toggle_mode = true; attack.button_pressed = ui.mode == "ATTACK"
-	var wait = ui.button(nav,"대기",func(): ui.run_action(func(): return session.act("WAIT",session.party[0].pos))); wait.name = "Wait"; ui.wait_button = wait
-	ui.auto_explore_button = ui.button(nav,"중지" if ui.navigation.active else "탐색",ui.toggle_explore,not session.in_combat())
-	var tactics = ui.button(nav,"전술",func(): show_manual_tactics(ui)); tactics.name = "Tactics"
-	ui.button(nav,"가방",func(): Popups.show_supplies(ui))
+	var wait = ui.action_button(nav,"대기",Art.ui_icon(2),func(): ui.run_action(func(): return session.act("WAIT",session.party[0].pos))); wait.name = "Wait"; ui.wait_button = wait
+	ui.auto_explore_button = ui.action_button(nav,"중지" if ui.navigation.active else "탐색",Art.ui_icon(3),ui.toggle_explore,not session.in_combat())
+	var tactics = ui.action_button(nav,"전술",Art.ui_icon(4),func(): show_manual_tactics(ui)); tactics.name = "Tactics"
+	ui.action_button(nav,"가방",Art.ui_icon(5),func(): Popups.show_supplies(ui))
 	for action in nav.get_children(): action.custom_minimum_size.y = 48
 
 static func build_stop_banner(ui) -> void:

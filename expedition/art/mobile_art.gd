@@ -11,6 +11,8 @@ const TOPDOWN = [preload("res://assets/topdown/floor1_atlas_16x1_16.png"),preloa
 const Masonry = preload("res://expedition/art/masonry_tiles.gd")
 const FirstFloor = preload("res://expedition/art/floor1_art.gd")
 const FLAGSTONE = preload("res://assets/topdown/flagstone-floor-v1.png")
+const UI_ATLAS_8BIT = preload("res://assets/ui/ui-atlas-8bit-v1.png")
+const UI_CELL := 256
 static var terrain_cache: Dictionary = {}
 
 static func paint_actor(canvas: CanvasItem, index: int, rect: Rect2, tint: Color = Color.WHITE) -> void:
@@ -57,3 +59,15 @@ static func item(index: int) -> AtlasTexture:
 
 static func navigation(index: int) -> AtlasTexture:
 	return region(Rect2([93,315,546,777][index],1560,60,49))
+
+static func ui_region(column: int, row: int) -> AtlasTexture:
+	var texture := AtlasTexture.new(); texture.atlas = UI_ATLAS_8BIT
+	texture.region = Rect2(column*UI_CELL,row*UI_CELL,UI_CELL,UI_CELL)
+	texture.filter_clip = true
+	return texture
+
+static func ui_icon(index: int) -> AtlasTexture:
+	return ui_region(posmod(index,6),index/6)
+
+static func ui_frame(state: int) -> AtlasTexture:
+	return ui_region(clampi(state,0,5),2)
