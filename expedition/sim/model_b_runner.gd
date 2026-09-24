@@ -1,6 +1,6 @@
 extends RefCounted
 ## Deterministic balance probes using the same submit path as manual play.
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Tactics = preload("res://expedition/ai/tactical_action_selector.gd")
 
 static func run_one(arena_id: String, party_size: int, seed: int, limit: int = 80, hero_hp: int = 55) -> Dictionary:

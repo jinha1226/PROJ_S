@@ -1,6 +1,6 @@
 extends SceneTree
 ## Scripted first-floor descent using only public actions and paid camps.
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Curios = preload("res://expedition/items/curios.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const SEEDS := 8

@@ -1,7 +1,7 @@
 extends SceneTree
 ## Curios after the tool table: four kinds, food-first outcomes, the three
 ## refusal reasons, and the beast meat a kill drops (스펙 §2.1).
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Curios = preload("res://expedition/items/curios.gd")
 const Generator = preload("res://expedition/level/floor_generator.gd")

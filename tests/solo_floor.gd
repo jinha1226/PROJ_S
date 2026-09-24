@@ -1,6 +1,6 @@
 extends SceneTree
 ## Solo descent: stair placement, visibility, camp, persistence, and death.
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Floor = preload("res://expedition/level/continuous_floor.gd")
 const Generator = preload("res://expedition/level/floor_generator.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")

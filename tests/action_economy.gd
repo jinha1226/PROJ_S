@@ -4,7 +4,7 @@ extends SceneTree
 ##   godot --headless --path . --script res://tests/action_economy.gd -- [--quick]
 const Runner = preload("res://expedition/sim/encounter_runner.gd")
 const Arena = preload("res://expedition/sim/encounter_arena.gd")
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Floor = preload("res://expedition/level/continuous_floor.gd")
 static var experiments: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/balance_experiments.json"))
 

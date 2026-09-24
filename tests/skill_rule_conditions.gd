@@ -2,7 +2,7 @@ extends SceneTree
 ## Every catalog skill must be configurable through the same rule schema: the
 ## catalog agrees with the UI pickers, and the rule engine honours each
 ## condition it advertises.
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
 const Rules = preload("res://expedition/ai/tactic_rules.gd")

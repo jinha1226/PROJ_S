@@ -1,6 +1,6 @@
 extends SceneTree
 ## Manual build probe on the current fixed-sight combat core. Not in CI.
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Runner = preload("res://expedition/sim/encounter_runner.gd")
 const Arena = preload("res://expedition/sim/encounter_arena.gd")
 const BUILDS := ["melee_1","b_strike","b_knife","b_dressing","b_lunge","b_bomb","b_shockwave","b_iron"]

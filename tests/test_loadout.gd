@@ -1,6 +1,6 @@
 extends SceneTree
 ## Playtest loadout helper and camp-only part editing.
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 var failures := 0
 func check(value: bool, message: String) -> void:
 	if not value: failures += 1; push_error(message)

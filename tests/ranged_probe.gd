@@ -1,7 +1,7 @@
 extends SceneTree
 ## Manual probe: ranged-heavy arenas by party size, rules policy, no supplies.
 const Runner = preload("res://expedition/sim/encounter_runner.gd")
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const ARENAS := {"early_pair":[["kobold","MELEE"],["dcss_rat","MELEE"]],"deep_mixed":[["dcss_hobgoblin","MELEE"],["goblin","RANGED"],["kobold","MELEE"]],
 	"opt_archers":[["kobold","RANGED"],["goblin","RANGED"],["dcss_rat","MELEE"]],"two_archers":[["kobold","RANGED"],["goblin","RANGED"]]}
 func _initialize() -> void:

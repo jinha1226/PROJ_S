@@ -1,5 +1,5 @@
 extends SceneTree
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 var failures := 0
 var checks := 0
 

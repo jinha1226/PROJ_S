@@ -2,7 +2,7 @@ extends SceneTree
 ## 엄호: a party member stands in front of an adjacent ally for the round and
 ## takes their hits at half. Covers the act() guard, the redirect in damage(),
 ## the round reset and the two UI paths (party and solo).
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Rules = preload("res://expedition/ai/tactic_rules.gd")
 const Tactics = preload("res://expedition/ai/tactical_action_selector.gd")

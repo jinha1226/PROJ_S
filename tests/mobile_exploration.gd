@@ -1,5 +1,5 @@
 extends SceneTree
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 var failures := 0
 func check(ok: bool, reason: String) -> void:
 	if not ok: failures += 1; push_error(reason)

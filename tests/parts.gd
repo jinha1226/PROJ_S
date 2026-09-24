@@ -1,7 +1,7 @@
 extends SceneTree
 ## Monster signature parts: catalog shape, basic parts (PUSH/GUARD) as catalog
 ## entries, passives, enemy telegraphs, camp-only equipping and drops.
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
 const Rules = preload("res://expedition/ai/tactic_rules.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")

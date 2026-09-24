@@ -1,7 +1,7 @@
 extends SceneTree
 ## Autobattle: one rules-driven round per auto_step, stop events, party-wide
 ## commands, knobs from personality, battle stats and the marching order.
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Rules = preload("res://expedition/ai/tactic_rules.gd")
 const Knobs = preload("res://expedition/ai/knobs.gd")

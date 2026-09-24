@@ -1,5 +1,5 @@
 extends SceneTree
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Mastery = preload("res://expedition/progression/mastery.gd")
 const Effects = preload("res://expedition/progression/mastery_effects.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")

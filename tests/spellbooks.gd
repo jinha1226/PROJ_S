@@ -1,7 +1,7 @@
 extends SceneTree
 ## Fifty spells in five schools, written in eight shapes; three books a school,
 ## read at camp and nowhere else.
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Stats = preload("res://expedition/combat/combat_stats.gd")
 const Spells = preload("res://expedition/spells/spells.gd")
 const Mastery = preload("res://expedition/progression/mastery.gd")

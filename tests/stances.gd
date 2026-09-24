@@ -1,7 +1,7 @@
 extends SceneTree
 ## Stances: aptitude from personality, session gating, conflict, and the three
 ## behaviour programmes the tactics selector runs.
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const Knobs = preload("res://expedition/ai/knobs.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")

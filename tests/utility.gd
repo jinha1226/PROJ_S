@@ -1,6 +1,6 @@
 extends SceneTree
 ## Utility selector: curves, profiles, inputs, scoring and explanations.
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Utility = preload("res://expedition/ai/utility.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const Knobs = preload("res://expedition/ai/knobs.gd")

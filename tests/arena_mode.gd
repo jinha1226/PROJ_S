@@ -1,7 +1,7 @@
 extends SceneTree
 ## Battle test mode: a throwaway session dropped straight into an arena with
 ## freely chosen parts and stances; the town session is never touched.
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
 var failures := 0
 var checks := 0

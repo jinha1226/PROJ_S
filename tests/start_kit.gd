@@ -1,6 +1,6 @@
 extends SceneTree
 ## The run's first choice: one of ten kits, one per mastery axis.
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Stats = preload("res://expedition/combat/combat_stats.gd")
 const Mastery = preload("res://expedition/progression/mastery.gd")
 const Spells = preload("res://expedition/spells/spells.gd")

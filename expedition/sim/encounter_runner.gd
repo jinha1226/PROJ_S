@@ -1,6 +1,6 @@
 extends RefCounted
 ## Fixed-arena encounter runs and their statistics. Public session API only.
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Floor = preload("res://expedition/level/continuous_floor.gd")
 const Generator = preload("res://expedition/level/floor_generator.gd")
 const Arena = preload("res://expedition/sim/encounter_arena.gd")

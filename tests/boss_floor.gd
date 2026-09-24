@@ -1,5 +1,5 @@
 extends SceneTree
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Floor = preload("res://expedition/level/continuous_floor.gd")
 const Generator = preload("res://expedition/level/floor_generator.gd")
 var failures := 0

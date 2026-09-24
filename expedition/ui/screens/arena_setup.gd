@@ -2,7 +2,7 @@ extends RefCounted
 ## The battle-test setup screen: an arena, a seed, a party size, and for every
 ## member a stance and two freely chosen parts. It only reads and writes
 ## `ui.arena_config` — the session is built when 시작 is pressed. The hero is manual.
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const CharacterUI = preload("res://expedition/ui/screens/character_folio.gd")

@@ -1,5 +1,5 @@
 extends Control
-const Session = preload("res://expedition/session.gd")
+const Session = preload("res://expedition/run/session.gd")
 const Presentation = preload("res://expedition/ui/battle_presentation.gd")
 const Board = preload("res://expedition/ui/board.gd")
 const MapView = preload("res://expedition/ui/map_view.gd")
