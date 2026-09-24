@@ -3,22 +3,42 @@ extends RefCounted
 ## plus the stairs popup that ends a floor. Moved out of main.gd.
 const Session = preload("res://expedition/run/session.gd")
 const Popups = preload("res://expedition/ui/screens/popups.gd")
+const CharacterUI = preload("res://expedition/ui/screens/character_folio.gd")
+const CAMP_MOCKUP = preload("res://assets/ui/camp-background.png")
 
 static func build_camp_screen(ui) -> void:
 	var session = ui.session
 	var box := VBoxContainer.new(); box.name = "CampScreen"; box.size_flags_vertical = Control.SIZE_EXPAND_FILL; ui.root_layout.add_child(box)
-	ui.label(box,"야영 · 식량 %d" % session.food,22)
+	box.add_theme_constant_override("separation",5)
+	var header := HBoxContainer.new(); box.add_child(header)
+	var title = ui.label(header,"야영",22); title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ui.label(header,"식량 %d" % session.food,15)
+	var scene_art := TextureRect.new(); scene_art.name = "CampArt"
+	# The mockup shows three illustrated people. Only reuse the fire so party
+	# portraits below always reflect the actual one-to-three member roster.
+	var scene_crop := AtlasTexture.new(); scene_crop.atlas = CAMP_MOCKUP; scene_crop.region = Rect2(349,410,168,226)
+	scene_art.texture = scene_crop; scene_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	scene_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	scene_art.custom_minimum_size.y = minf(175,ui.get_viewport_rect().size.y*0.21)
+	scene_art.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	box.add_child(scene_art)
 	for i in range(session.party.size()):
 		var actor: Dictionary = session.party[i]
-		var card := VBoxContainer.new(); card.name = "CampMember%d" % i; box.add_child(card)
-		ui.label(card,"%s  HP %d/%d  MP %d/%d" % [actor.name,actor.hp,actor.max_hp,actor.mp,actor.max_mp],15)
+		var frame := PanelContainer.new(); frame.add_theme_stylebox_override("panel",CharacterUI.surface(Color("211e1a")))
+		box.add_child(frame)
+		var card := VBoxContainer.new(); card.name = "CampMember%d" % i; frame.add_child(card)
+		var name = ui.label(card,"%s  HP %d/%d  MP %d/%d  스트레스 %d" % [actor.name,actor.hp,actor.max_hp,actor.mp,actor.max_mp,actor.stress],13)
+		name.clip_text = true
+		ui.gauge(card,actor.hp,actor.max_hp,Color("bf5450"))
+		var actions := HBoxContainer.new(); card.add_child(actions)
 		if not session.manual_mode:
-			ui.button(card,"태세 · %s" % actor.stance,func(): Popups.show_character(ui,i,"태세"))
-			ui.button(card,"파츠",func(): Popups.show_character(ui,i,"파츠"))
+			ui.button(actions,"태세",func(): Popups.show_character(ui,i,"성격"))
+			ui.button(actions,"파츠",func(): Popups.show_character(ui,i,"파츠"))
 		if session.manual_mode:
-			ui.button(card,"장비",func(): show_gear(ui,i))
-			ui.button(card,"주문 준비",func(): show_prepare(ui,i))
-			ui.button(card,"주문 배우기",func(): show_learn(ui,i))
+			ui.button(actions,"장비",func(): show_gear(ui,i))
+			ui.button(actions,"주문 준비",func(): show_prepare(ui,i))
+			ui.button(actions,"주문 배우기",func(): show_learn(ui,i))
+	var spacer := Control.new(); spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL; box.add_child(spacer)
 	ui.button(box,"가방",func(): Popups.show_supplies(ui))
 	var end = ui.button(box,"야영 끝",func(): ui.run_action(session.end_camp)); end.name = "CampEnd"
 

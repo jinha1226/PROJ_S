@@ -37,7 +37,7 @@ func run() -> void:
 				if tab == "숙련": check(scene.modal_content.find_child("MasteryGrid",true,false).columns == 2,"two-column mastery cards")
 				var folio: Control = scene.modal_content.find_child("CharacterFolio",true,false)
 				check(folio.size == Vector2(390,844),"approved design dimensions")
-				check(folio.get_node("CharacterTabs").position.y == 110,"fixed tab placement")
+				check(folio.get_node("CharacterTabs").position.y == 168,"mockup tab placement")
 				check(folio.get_node("CharacterClose").position.y == 768,"fixed close placement")
 				if "--capture" in OS.get_cmdline_user_args() and viewport == Vector2i(390,844) and member == 1:
 					await RenderingServer.frame_post_draw

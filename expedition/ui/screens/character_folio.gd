@@ -10,9 +10,9 @@ const Art = preload("res://expedition/art/mobile_art.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const Memory = preload("res://sim/party_memory_state.gd")
 
-static func surface(color: Color, border: Color = Color("65522a")) -> StyleBoxFlat:
+static func surface(color: Color, border: Color = Color("6d5b3f")) -> StyleBoxFlat:
 	var skin := StyleBoxFlat.new(); skin.bg_color = color; skin.border_color = border
-	skin.set_border_width_all(1); skin.set_content_margin_all(10)
+	skin.set_border_width_all(1); skin.set_content_margin_all(8)
 	skin.shadow_color = Color(0,0,0,0.35); skin.shadow_size = 2
 	return skin
 
@@ -24,44 +24,46 @@ static func shell(ui, tab: String) -> VBoxContainer:
 	var screen: Vector2 = ui.get_viewport_rect().size
 	var skin: Theme = ui.theme.duplicate()
 	for state in ["normal","hover","pressed","focus","disabled"]:
-		skin.set_stylebox(state,"Button",surface(Color("15191d"),Color("74cfca") if state in ["pressed","focus"] else Color("65522a")))
-	skin.set_color("font_color","Button",Color("d0c8b4"))
-	skin.set_color("font_pressed_color","Button",Color("9fece6"))
-	var opaque := surface(Color("101416")); opaque.set_content_margin_all(0)
+		skin.set_stylebox(state,"Button",surface(Color("201d19"),Color("c3a366") if state in ["pressed","focus"] else Color("6d5b3f")))
+	skin.set_color("font_color","Button",Color("e0d4bc"))
+	skin.set_color("font_pressed_color","Button",Color("ffe0a3"))
+	var opaque := surface(Color("0e0d0c")); opaque.set_content_margin_all(0)
 	opaque.shadow_size = 0; opaque.set_border_width_all(0)
 	skin.set_stylebox("panel","PopupPanel",opaque)
 	ui.details_popup.theme = skin
 	ui.modal_content.custom_minimum_size = screen
 	var canvas := Control.new(); canvas.custom_minimum_size = screen; ui.modal_content.add_child(canvas)
-	var background := ColorRect.new(); background.color = Color("101416"); background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var background := ColorRect.new(); background.color = Color("0e0d0c"); background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	place(background,canvas,Rect2(Vector2.ZERO,screen))
 	var design := Control.new(); design.name = "CharacterFolio"
 	var factor: float = minf(screen.x/390.0,screen.y/844.0)
 	place(design,canvas,Rect2((screen-Vector2(390,844)*factor)/2,Vector2(390,844))); design.scale = Vector2.ONE*factor
-	var header := HBoxContainer.new(); header.name = "CharacterHeader"; header.add_theme_constant_override("separation",14)
-	place(header,design,Rect2(8,8,374,94))
-	var portrait := TextureRect.new(); portrait.texture = Art.portrait(ui.tactics_actor)
+	var header_panel := Panel.new(); header_panel.add_theme_stylebox_override("panel",surface(Color("171512")))
+	place(header_panel,design,Rect2(8,8,374,150))
+	var header := HBoxContainer.new(); header.name = "CharacterHeader"; header.add_theme_constant_override("separation",12)
+	place(header,design,Rect2(16,16,358,134))
+	var portrait := TextureRect.new(); portrait.texture = Art.portrait_face(ui.tactics_actor)
 	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	portrait.custom_minimum_size = Vector2(94,94); header.add_child(portrait)
+	portrait.custom_minimum_size = Vector2(128,128); header.add_child(portrait)
 	var info := VBoxContainer.new(); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL; header.add_child(info)
 	var title := HBoxContainer.new(); info.add_child(title)
-	text(title,ui.session.party[ui.tactics_actor].name+" · 캐릭터",20)
+	text(title,ui.session.party[ui.tactics_actor].name,24)
 	var close = ui.button(title,"×",func(): ui.details_popup.hide()); close.size_flags_horizontal = 0; close.custom_minimum_size.x = 32
 	var members := HBoxContainer.new(); info.add_child(members)
 	for index in range(ui.session.party.size()):
 		var member = ui.button(members,ui.session.party[index].name,func(): ui.show_character(index,ui.character_tab))
 		member.toggle_mode = true; member.button_pressed = index == ui.tactics_actor
 	var tabs := HBoxContainer.new(); tabs.name = "CharacterTabs"; tabs.add_theme_constant_override("separation",0)
-	place(tabs,design,Rect2(0,110,390,42))
+	place(tabs,design,Rect2(0,168,390,46))
 	for name in ["상태","성격","기억","숙련","파츠"]:
 		var button = ui.button(tabs,name,func(): ui.show_character(ui.tactics_actor,name))
-		button.toggle_mode = true; button.button_pressed = tab == name; button.custom_minimum_size.y = 42
+		button.toggle_mode = true; button.button_pressed = tab == name; button.custom_minimum_size.y = 46
 		button.size_flags_stretch_ratio = 1
 	var heading := Label.new(); heading.text = "파츠 슬롯 %d / 2" % ui.session.party[ui.tactics_actor].equipped_abilities.filter(func(id): return not str(id).is_empty()).size() if tab == "파츠" else "현재 상태" if tab == "상태" else tab
 	heading.add_theme_font_size_override("font_size",19); heading.add_theme_color_override("font_color",Color("d0c8b4"))
-	place(heading,design,Rect2(22,166,346,30))
+	place(heading,design,Rect2(22,220,346,28))
 	var scroll := ScrollContainer.new(); scroll.name = "CharacterScroll"; scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	place(scroll,design,Rect2(12,206,366,536))
+	place(scroll,design,Rect2(12,252,366,504))
 	var list := VBoxContainer.new(); list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	list.add_theme_constant_override("separation",12); scroll.add_child(list)
 	var close_button := Button.new(); close_button.text = "닫기"; close_button.add_theme_font_size_override("font_size",20)
@@ -71,22 +73,22 @@ static func shell(ui, tab: String) -> VBoxContainer:
 
 static func card(parent: Node, title: String) -> VBoxContainer:
 	var panel := PanelContainer.new(); panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var skin := surface(Color("111719"))
+	var skin := surface(Color("1b1916"))
 	panel.add_theme_stylebox_override("panel",skin); parent.add_child(panel)
 	var box := VBoxContainer.new(); box.add_theme_constant_override("separation",6); panel.add_child(box)
-	if not title.is_empty(): text(box,title,18).add_theme_color_override("font_color",Color("e2d6be"))
+	if not title.is_empty(): text(box,title,18).add_theme_color_override("font_color",Color("e5d0a4"))
 	return box
 
 static func text(parent: Node, value: String, font_size: int = 14) -> Label:
 	var label := Label.new(); label.text = value; label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL; label.add_theme_font_size_override("font_size",font_size)
-	label.add_theme_color_override("font_color",Color("d0c8b4")); parent.add_child(label); return label
+	label.add_theme_color_override("font_color",Color("e0d4bc")); parent.add_child(label); return label
 
 static func gauge(parent: Node, value: float, maximum: float, color: Color) -> ProgressBar:
 	var bar := ProgressBar.new(); bar.max_value = maxf(1,maximum); bar.value = value; bar.show_percentage = false
-	bar.custom_minimum_size.y = 8
+	bar.custom_minimum_size.y = 10
 	var fill := StyleBoxFlat.new(); fill.bg_color = color; bar.add_theme_stylebox_override("fill",fill)
-	var bg := StyleBoxFlat.new(); bg.bg_color = Color("070b0c"); bar.add_theme_stylebox_override("background",bg)
+	var bg := StyleBoxFlat.new(); bg.bg_color = Color("090807"); bar.add_theme_stylebox_override("background",bg)
 	parent.add_child(bar); return bar
 
 static func grid(parent: Node, columns: int) -> GridContainer:
@@ -97,11 +99,23 @@ static func grid(parent: Node, columns: int) -> GridContainer:
 static func status(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	if ui.session.manual_mode:
 		var vitals := card(list,"Lv.%d · %s" % [int(actor.get("level",1)),actor.name])
-		text(vitals,"체력 %d / %d" % [actor.hp,actor.max_hp]); gauge(vitals,actor.hp,actor.max_hp,Color("9f4544"))
-		text(vitals,"마력 %d / %d" % [actor.mp,actor.max_mp]); gauge(vitals,actor.mp,actor.max_mp,Color("4d6c9f"))
-		text(vitals,"스트레스 %d" % actor.stress); gauge(vitals,actor.stress,200,Color("c6a34c"))
+		text(vitals,"HP  %d / %d" % [actor.hp,actor.max_hp]); gauge(vitals,actor.hp,actor.max_hp,Color("bf5450"))
+		text(vitals,"MP  %d / %d" % [actor.mp,actor.max_mp]); gauge(vitals,actor.mp,actor.max_mp,Color("507eb9"))
+		text(vitals,"스트레스  %d / 200" % actor.stress); gauge(vitals,actor.stress,200,Color("c9a251"))
 		var values: Dictionary = CombatStats.stats(ui.session,actor)
-		text(card(list,"전투"),"피해 %d · 공격 시간 %d · 방어 %d · 회피 %d" % [values.damage,values.delay,values.ac,values.ev])
+		var combat := card(list,"전투")
+		var stats := grid(combat,2)
+		for entry in [["피해",values.damage],["공격 시간",values.delay],["방어",values.ac],["회피",values.ev]]:
+			var stat := card(stats,str(entry[0])); text(stat,str(entry[1]),20)
+		var equipped := card(list,"장비")
+		var gear: Dictionary = actor.get("gear",{})
+		var slot_names := {"weapon":"무기","armour":"갑옷","shield":"방패","ring":"반지"}
+		for slot in ["weapon","armour","shield","ring"]:
+			var item: Dictionary = gear.get(slot,{})
+			var catalogue: Dictionary = CombatStats.content.weapons if slot == "weapon" else CombatStats.content.armours if slot == "armour" else CombatStats.content.rings if slot == "ring" else {}
+			var item_id: String = str(item.get("type",""))
+			var item_name: String = "—" if item.is_empty() else "방패" if slot == "shield" else str(catalogue.get(item_id,{}).get("name",item_id))
+			text(equipped,"%s   %s" % [slot_names[slot],item_name],13)
 		return
 	var vitals := card(list,"Lv.%d · %s" % [actor.growth.level,actor.name])
 	vitals.get_parent().custom_minimum_size.y = 130
@@ -175,12 +189,11 @@ static func detail(ui, title: String, message: String) -> void:
 
 static func personality(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	var box := card(list,actor.profile.style_summary().label)
-	text(box,actor.name+"의 성향")
 	var names := {"H":"정직·겸손","E":"정서성","X":"외향성","A":"우호성","C":"성실성","O":"개방성"}
 	for id in names:
 		var row := VBoxContainer.new(); row.custom_minimum_size.y = 44; box.add_child(row)
-		text(row,"%s                         %d" % [names[id],actor.profile.value(id)])
-		gauge(row,actor.profile.value(id),1000,Color("69cfc2"))
+		text(row,"%s   %d / 100" % [names[id],int(actor.profile.value(id)/10)])
+		gauge(row,actor.profile.value(id),1000,Color("c9a251"))
 	stances(ui,list,actor)
 
 ## How this member fights: one button per stance, the build the parts suggest,
@@ -204,7 +217,7 @@ static func stances(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		# What this stance would cost in mistakes, asked of a copy of the member.
 		var probe: Dictionary = actor.duplicate(); probe["stance"] = id
 		pick.tooltip_text = "실수 확률 %d%%" % Stances.mistake_chance(probe)
-	var badge := text(box,"빌드 추천: %s" % Stances.NAMES[Stances.suggested(actor)],13)
+	var badge := text(box,Stances.NAMES[Stances.suggested(actor)],13)
 	badge.name = "StanceSuggestion"
 	var line := text(box,mistake_line(actor),13); line.name = "MistakeLine"
 	if not Stances.comfortable(actor.profile,chosen): line.add_theme_color_override("font_color",Color("d1a05f"))
@@ -241,13 +254,13 @@ static func memories(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	var names := {"SELF_HARM":["죽음의 문턱","빈사 상태에 빠졌다."],"ALLY_DOWNED":["동료가 쓰러짐","동료가 쓰러지는 모습을 보았다."],"ALLY_LOST":["동료를 잃음","함께하던 동료를 잃었다."],"AID_RECEIVED":["동료의 도움","동료에게 도움을 받았다."],"COMMAND_CONFLICT":["명령과 갈등","명령을 따르는 데 갈등을 겪었다."],"RECRUITED":["동행 시작","함께 가기로 했다."],"DECLINED_BY_PLAYER":["동행 거절당함","동행 제안을 거절당했다."],"DECLINED_PLAYER":["동행 거절","동행 제안을 거절했다."],"LEFT_BY_PARTNER":["동료의 이별","동료가 나를 두고 떠났다."]}
 	# The same exemption the pruning rules make: a social record is cheap and stays.
 	var important: Array = actor.memory.records.filter(func(record): return int(record.salience) >= 700 or str(record.kind) in Memory.SOCIAL_KINDS)
-	if important.is_empty(): text(card(list,"기억"),"남아 있는 중요 기억 없음")
+	if important.is_empty(): text(card(list,"기억"),"중요 기억 없음")
 	for record in important:
 		var copy: Dictionary = record.duplicate(true)
 		var entry: Array = names.get(record.kind,[record.kind,"기억이 남았다."])
 		var box := card(list,entry[0]); box.get_parent().custom_minimum_size.y = 90
 		text(box,entry[1])
-		ui.button(box,"강도 %d    ›" % record.salience,func(): detail(ui,entry[0],entry[1]+"\n강도 %d\n발생 시각 %d · 사건 %d" % [copy.salience,copy.observed_time,copy.source_event_id]))
+		ui.button(box,"›",func(): detail(ui,entry[0],entry[1]+"\n%d턴" % copy.observed_time))
 
 ## Two part slots: what is equipped and how to swap it. How the part is used
 ## is the rules' business, and the rules are no longer the player's.
@@ -262,7 +275,6 @@ static func parts(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		var actions := VBoxContainer.new(); row.add_child(actions)
 		if id.is_empty():
 			text(info,"빈 슬롯",20)
-			text(info,"마을에서 가방의 파츠를 장착합니다.",13)
 			ui.button(actions,"장착",func(): replace(ui,slot),town)
 			continue
 		var def: Dictionary = ui.Session.Abilities.DEFINITIONS[id]

@@ -16,6 +16,7 @@ const NAVIGATION_STEP_SECONDS := 0.06
 var navigation_clock := 0.0
 var view_side := 17
 var log_popup: PopupPanel
+var log_filter := "전체"
 var auto_explore_button: Button
 var inventory_filter := "전체"
 ## The starting kit the picker has on it, spent when a run departs.
@@ -86,24 +87,28 @@ var battle_reported := false
 func _ready() -> void:
 	var skin := Theme.new(); skin.default_font = FONT; skin.default_font_size = 12
 	for state in ["normal","hover","pressed","focus","disabled"]:
-		var box := StyleBoxFlat.new(); box.bg_color = Color("151c24") if state != "pressed" else Color("433c2c")
-		box.border_color = Color("bba16b") if state in ["hover","pressed","focus"] else Color("50535a")
-		box.set_border_width_all(1); box.set_corner_radius_all(4)
-		box.content_margin_left = 3; box.content_margin_right = 3; skin.set_stylebox(state,"Button",box)
-	skin.set_stylebox("panel","PopupPanel",CharacterUI.surface(Color("101416")))
+		var box := StyleBoxFlat.new(); box.bg_color = Color("211f1c") if state != "pressed" else Color("493b27")
+		box.border_color = Color("c5a363") if state in ["hover","pressed","focus"] else Color("695b45")
+		box.set_border_width_all(1); box.set_corner_radius_all(2)
+		box.content_margin_left = 5; box.content_margin_right = 5; skin.set_stylebox(state,"Button",box)
+	skin.set_color("font_color","Button",Color("e0d3b9"))
+	skin.set_stylebox("panel","PopupPanel",CharacterUI.surface(Color("100f0d")))
 	theme = skin
 	var margin := MarginContainer.new(); margin.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	for side in ["left","right","top","bottom"]: margin.add_theme_constant_override("margin_"+side,0 if side in ["left","right"] else 8)
 	add_child(margin)
-	root_layout = VBoxContainer.new(); root_layout.add_theme_constant_override("separation",5); margin.add_child(root_layout)
+	root_layout = VBoxContainer.new(); root_layout.add_theme_constant_override("separation",4); margin.add_child(root_layout)
 	parked = Node.new(); parked.name = "Parked"; add_child(parked)
 	map_popup = PopupPanel.new(); add_child(map_popup)
 	var map_box := VBoxContainer.new(); map_box.custom_minimum_size = Vector2(300,360); map_popup.add_child(map_box)
 	map_view = MapView.new(); map_view.session = session; map_view.ui_font = FONT; map_view.minimum_side = 280
 	map_box.add_child(map_view)
+	var map_legend := label(map_box,"▲ 현재 위치     › 계단     ◆ 동료",12)
+	map_legend.name = "MapLegend"; map_legend.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	button(map_box,"닫기",func(): map_popup.hide())
 	details_popup = PopupPanel.new(); add_child(details_popup)
 	modal_content = VBoxContainer.new(); modal_content.custom_minimum_size = Vector2(popup_width(),210); details_popup.add_child(modal_content)
+	details_popup.popup_hide.connect(func(): clear(modal_content))
 	item_popup = PopupPanel.new(); details_popup.add_child(item_popup)
 	item_popup.transient = true; item_popup.exclusive = true
 	item_detail = VBoxContainer.new(); item_detail.custom_minimum_size = Vector2(300,200); item_popup.add_child(item_detail)

@@ -13,17 +13,19 @@ const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 
 static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 	var session = ui.session
-	var header := HBoxContainer.new(); header.name = "TopHUD"; header.add_theme_constant_override("separation",3); ui.root_layout.add_child(header)
+	var header := HBoxContainer.new(); header.name = "TopHUD"; header.add_theme_constant_override("separation",5)
+	header.custom_minimum_size.y = 52; ui.root_layout.add_child(header)
 	if not is_instance_valid(ui.minimap):
 		ui.minimap = MapView.new(); ui.minimap.compact = true; ui.minimap.minimum_side = 44
 		ui.minimap.ui_font = FONT; ui.minimap.expand_requested.connect(ui.show_map)
 	if ui.minimap.get_parent() != null: ui.minimap.get_parent().remove_child(ui.minimap)
 	ui.minimap.session = session; ui.minimap.visible = true; ui.minimap.queue_redraw(); header.add_child(ui.minimap)
 	var place = ui.label(header,"%d층" % session.depth,18); place.name = "Location"; place.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	place.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	place.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; place.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var food_label = ui.label(header,"식량 %d" % session.food,14); food_label.name = "FoodLabel"
 	food_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	var menu = ui.button(header,"메뉴",ui.show_menu); menu.name = "ExpeditionMenu"; menu.size_flags_horizontal = Control.SIZE_SHRINK_END
+	var menu = ui.button(header,"☰",ui.show_menu); menu.name = "ExpeditionMenu"; menu.size_flags_horizontal = Control.SIZE_SHRINK_END
+	menu.custom_minimum_size.x = 44; menu.tooltip_text = "메뉴"
 	if not is_instance_valid(ui.board):
 		ui.board = Board.new(); ui.board.ui_font = FONT; ui.board.cell_pressed.connect(ui.on_cell)
 		ui.board.cell_inspected.connect(ui.inspect_cell)
@@ -55,6 +57,7 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 		log_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		log_button.autowrap_mode = TextServer.AUTOWRAP_OFF
 		log_button.clip_text = true
+		log_button.add_theme_font_size_override("font_size",12)
 	if session.manual_mode:
 		build_manual_controls(ui)
 		return
@@ -111,21 +114,6 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 
 static func build_manual_controls(ui) -> void:
 	var session = ui.session
-	var portraits := HBoxContainer.new(); portraits.name = "PortraitRow"
-	portraits.add_theme_constant_override("separation",4); ui.root_layout.add_child(portraits)
-	for i in range(session.party.size()):
-		var actor: Dictionary = session.party[i]
-		var portrait = ui.button(portraits,"",func(): Popups.show_character(ui,i,"상태"))
-		portrait.name = "HeroStatus" if i == 0 else "MemberStatus%d" % i
-		portrait.custom_minimum_size.y = 68
-		var content := HBoxContainer.new(); content.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		portrait.add_child(content); content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		var image := TextureRect.new(); image.texture = Art.portrait(i)
-		image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		image.custom_minimum_size.x = 56 if session.party.size() == 1 else 40
-		image.mouse_filter = Control.MOUSE_FILTER_IGNORE; content.add_child(image)
-		var caption = ui.label(content,"%s · Lv%d\nHP %d/%d · MP %d/%d\n스트레스 %d" % [actor.name,int(actor.level),int(actor.hp),int(actor.max_hp),int(actor.mp),int(actor.max_mp),int(actor.stress)],12 if session.party.size() == 1 else 10)
-		caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; caption.autowrap_mode = TextServer.AUTOWRAP_OFF
 	var prepared: Array = session.party[0].prepared
 	if not prepared.is_empty():
 		var spells := HBoxContainer.new(); spells.name = "SpellBar"
@@ -136,6 +124,29 @@ static func build_manual_controls(ui) -> void:
 			var spell = ui.button(spells,caption,func(): choose_spell(ui,id),not id.is_empty())
 			spell.name = "Spell%d" % slot; spell.custom_minimum_size.y = 44
 			spell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var portraits := HBoxContainer.new(); portraits.name = "PortraitRow"
+	portraits.add_theme_constant_override("separation",4); ui.root_layout.add_child(portraits)
+	for i in range(session.party.size()):
+		var actor: Dictionary = session.party[i]
+		var portrait = ui.button(portraits,"",func(): Popups.show_character(ui,i,"상태"))
+		portrait.name = "HeroStatus" if i == 0 else "MemberStatus%d" % i
+		portrait.custom_minimum_size.y = 78
+		var content := HBoxContainer.new(); content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		content.add_theme_constant_override("separation",6)
+		portrait.add_child(content); content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		var image := TextureRect.new(); image.texture = Art.portrait_face(i)
+		image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		image.custom_minimum_size.x = 66 if session.party.size() == 1 else 42
+		image.mouse_filter = Control.MOUSE_FILTER_IGNORE; content.add_child(image)
+		var values := VBoxContainer.new(); values.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		values.add_theme_constant_override("separation",2); content.add_child(values)
+		var name = ui.label(values,"%s  Lv.%d" % [actor.name,int(actor.level)],13 if session.party.size() == 1 else 11)
+		name.add_theme_color_override("font_color",Color("e7d6b0"))
+		var hp = ui.label(values,"HP %d/%d" % [actor.hp,actor.max_hp],11)
+		hp.name = "HeroHP" if i == 0 else "MemberHP%d" % i
+		ui.gauge(values,actor.hp,actor.max_hp,Color("bf5450"))
+		ui.label(values,"MP %d/%d · 스트레스 %d" % [actor.mp,actor.max_mp,actor.stress],10)
+		ui.gauge(values,actor.mp,actor.max_mp,Color("507eb9"))
 	var nav := HBoxContainer.new(); nav.name = "BottomActions"
 	nav.add_theme_constant_override("separation",3); ui.root_layout.add_child(nav)
 	var attack = ui.button(nav,"공격",func(): arm_attack(ui)); attack.name = "Attack"
@@ -161,24 +172,43 @@ static func show_manual_tactics(ui) -> void:
 	var session = ui.session
 	if session == null or not session.manual_mode: return
 	ui.clear(ui.modal_content)
-	var box := VBoxContainer.new(); box.name = "ManualTactics"; ui.modal_content.add_child(box)
-	ui.label(box,"전술",20)
+	ui.modal_content.custom_minimum_size = ui.get_viewport_rect().size-Vector2(12,12)
+	var box := VBoxContainer.new(); box.name = "ManualTactics"; box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation",8); ui.modal_content.add_child(box)
+	var header := HBoxContainer.new(); box.add_child(header)
+	var title = ui.label(header,"전술",22); title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ui.button(header,"×",func(): ui.details_popup.hide()).custom_minimum_size.x = 44
 	var actor: Dictionary = session.party[0]
+	var hero := HBoxContainer.new(); box.add_child(hero)
+	var portrait := TextureRect.new(); portrait.texture = Art.portrait_face(0)
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.custom_minimum_size = Vector2(76,76); hero.add_child(portrait)
+	var vital := VBoxContainer.new(); vital.size_flags_horizontal = Control.SIZE_EXPAND_FILL; hero.add_child(vital)
+	ui.label(vital,"%s · Lv.%d" % [actor.name,actor.level],16)
+	ui.label(vital,"HP %d/%d" % [actor.hp,actor.max_hp],12); ui.gauge(vital,actor.hp,actor.max_hp,Color("bf5450"))
+	ui.label(vital,"MP %d/%d" % [actor.mp,actor.max_mp],12); ui.gauge(vital,actor.mp,actor.max_mp,Color("507eb9"))
+	ui.label(box,"준비한 주문",17)
+	var scroll := ScrollContainer.new(); scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; box.add_child(scroll)
+	var choices := VBoxContainer.new(); choices.size_flags_horizontal = Control.SIZE_EXPAND_FILL; scroll.add_child(choices)
 	for id in actor.prepared:
 		var spell_id: String = str(id)
 		var definition: Dictionary = Session.CombatStats.content.spells.get(spell_id,{})
-		var spell = ui.button(box,"%s · %d MP" % [str(definition.get("name",spell_id)),int(definition.get("mp",0))],func(): ui.details_popup.hide(); choose_spell(ui,spell_id),actor.mp >= int(definition.get("mp",0)))
+		var spell = ui.button(choices,"%s   ·   MP %d" % [str(definition.get("name",spell_id)),int(definition.get("mp",0))],func(): ui.details_popup.hide(); choose_spell(ui,spell_id),actor.mp >= int(definition.get("mp",0)))
 		spell.name = "Spell_"+spell_id
+		spell.alignment = HORIZONTAL_ALIGNMENT_LEFT; spell.custom_minimum_size.y = 54
+	ui.label(choices,"장착 파츠",17)
 	for id in actor.equipped_abilities:
 		var part_id: String = str(id)
 		if part_id.is_empty() or not Session.Abilities.DEFINITIONS.has(part_id): continue
 		var def: Dictionary = Session.Abilities.DEFINITIONS[part_id]
 		var available: bool = session.in_combat() and int(actor.cooldowns.get(part_id,0)) <= 0
 		if def.target == "SELF": available = available and Session.Abilities.legal(session,actor,part_id,actor.pos)
-		var part = ui.button(box,str(def.name),func(): choose_part(ui,part_id),available)
+		var part = ui.button(choices,"%s   ·   %d턴" % [str(def.name),int(actor.cooldowns.get(part_id,0))],func(): choose_part(ui,part_id),available)
 		part.name = "Part_"+part_id
+		part.alignment = HORIZONTAL_ALIGNMENT_LEFT; part.custom_minimum_size.y = 54
 	ui.button(box,"닫기",func(): ui.details_popup.hide())
-	ui.details_popup.popup_centered()
+	ui.details_popup.popup_centered(Vector2i(ui.get_viewport_rect().size))
 
 static func show_part_actions(ui) -> void:
 	var session = ui.session

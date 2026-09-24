@@ -44,6 +44,11 @@ static func region(rect: Rect2) -> AtlasTexture:
 static func portrait(index: int) -> AtlasTexture:
 	return region(Rect2([43,344,645][index],1254,245,88))
 
+static func portrait_face(index: int) -> AtlasTexture:
+	# The full atlas region includes a nameplate and gauges. Character cards
+	# draw only the face; their labels and bars come from the current session.
+	return region(Rect2([43,344,645][index]+50,1254,100,74))
+
 static func skill(index: int) -> AtlasTexture:
 	return region(Rect2([48,180,347,480,647,780][index],1156,105,78))
 

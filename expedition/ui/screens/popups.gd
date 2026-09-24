@@ -10,6 +10,7 @@ const CharacterUI = preload("res://expedition/ui/screens/character_folio.gd")
 static func show_menu(ui) -> void:
 	var session = ui.session
 	ui.clear(ui.modal_content)
+	ui.modal_content.custom_minimum_size = Vector2(148,0)
 	if session != null and session.manual_mode:
 		ui.button(ui.modal_content,"야영",func(): ui.details_popup.hide(); ui.run_action(session.camp),session.can_camp().is_empty())
 	ui.button(ui.modal_content,"기록",func(): show_logs(ui))
@@ -17,24 +18,39 @@ static func show_menu(ui) -> void:
 	if session != null and session.manual_mode: ui.button(ui.modal_content,"인물",func(): show_character(ui,0,"상태"))
 	ui.button(ui.modal_content,"닫기",func(): ui.details_popup.hide())
 	ui.details_popup.popup_centered()
+	ui.details_popup.position = Vector2i(ui.get_viewport_rect().size.x-ui.details_popup.size.x-8,58)
 
 static func show_logs(ui) -> void:
 	ui.stop_navigation(); ui.clear(ui.log_popup)
 	var skin: Theme = ui.theme.duplicate()
-	var panel := CharacterUI.surface(Color("101416")); panel.set_content_margin_all(8); panel.shadow_size = 0
+	var panel := CharacterUI.surface(Color("100f0d")); panel.set_content_margin_all(8); panel.shadow_size = 0
 	skin.set_stylebox("panel","PopupPanel",panel); ui.log_popup.theme = skin
-	var box := VBoxContainer.new(); box.custom_minimum_size = ui.size-Vector2(16,16); ui.log_popup.add_child(box)
-	ui.label(box,"전체 기록",22)
+	var box := VBoxContainer.new(); box.custom_minimum_size = ui.get_viewport_rect().size-Vector2(16,16)
+	box.add_theme_constant_override("separation",8); ui.log_popup.add_child(box)
+	var header := HBoxContainer.new(); box.add_child(header)
+	var title = ui.label(header,"기록",22); title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ui.button(header,"×",func(): ui.log_popup.hide()).custom_minimum_size.x = 44
+	var tabs := HBoxContainer.new(); box.add_child(tabs)
+	for kind in ["전체","중요"]:
+		var tab = ui.button(tabs,kind,func(): ui.log_filter = kind; show_logs(ui))
+		tab.toggle_mode = true; tab.button_pressed = ui.log_filter == kind
 	var history := RichTextLabel.new(); history.name = "FullHistory"; history.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	history.add_theme_font_size_override("normal_font_size",18); history.text = "\n\n".join(ui.session.log_lines)
+	history.add_theme_font_size_override("normal_font_size",15)
+	var entries: Array = ui.session.log_lines
+	if ui.log_filter == "중요":
+		entries = entries.filter(func(entry): return ["합류","보스","쓰러","내려","동행","전사"].any(func(term): return str(entry).contains(term)))
+	history.text = "\n\n".join(entries)
 	history.scroll_following = true; box.add_child(history)
 	ui.button(box,"닫기",func(): ui.log_popup.hide())
-	ui.log_popup.popup_centered(Vector2i(ui.size))
+	ui.log_popup.popup_centered(Vector2i(ui.get_viewport_rect().size))
 
 static func show_map(ui) -> void:
 	ui.stop_navigation()
 	if ui.session == null or not ui.session.on_floor(): return
-	ui.map_view.session = ui.session; ui.map_view.queue_redraw(); ui.map_popup.popup_centered()
+	var map_box := ui.map_view.get_parent() as VBoxContainer
+	map_box.custom_minimum_size = ui.get_viewport_rect().size-Vector2(16,16)
+	ui.map_view.session = ui.session; ui.map_view.queue_redraw()
+	ui.map_popup.popup_centered(Vector2i(ui.get_viewport_rect().size))
 
 static func show_curio(ui, point: Vector2i) -> void:
 	var session = ui.session
@@ -88,18 +104,21 @@ static func npc_personality(ui, npc: Dictionary) -> String:
 static func show_npc(ui, npc: Dictionary) -> void:
 	var session = ui.session
 	ui.stop_navigation(); ui.clear(ui.modal_content)
-	ui.modal_content.custom_minimum_size.y = 0
+	ui.modal_content.custom_minimum_size = Vector2(ui.popup_width(),0)
 	var page := VBoxContainer.new(); page.name = "NpcPopup"; ui.modal_content.add_child(page)
+	page.add_theme_constant_override("separation",8)
 	var talk: Dictionary = Session.Recruit.dialogue(session,npc)
-	ui.label(page,str(npc.name),20)
-	ui.label(page,npc_personality(ui,npc),14)
-	var doing: String = str(npc.get("activity",""))
-	if not doing.is_empty(): ui.label(page,doing,14)
-	ui.label(page,"HP %d/%d" % [npc.hp,npc.max_hp],14)
-	ui.label(page,str(talk.line),15)
+	var heading := HBoxContainer.new(); page.add_child(heading)
+	var portrait := TextureRect.new(); portrait.texture = Art.portrait_face(posmod(int(npc.id),3))
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.custom_minimum_size = Vector2(64,64); heading.add_child(portrait)
+	var words := VBoxContainer.new(); heading.add_child(words)
+	ui.label(words,str(npc.name),20)
+	var dialogue = ui.label(words,str(talk.line),15)
+	dialogue.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var ask = ui.button(page,"동행 제안",func(): propose_npc(ui,npc),bool(talk.can_propose))
 	ask.name = "ProposeButton"
-	var share = ui.button(page,"식량 1 나누기 · 보유 %d" % session.food,func(): ui.details_popup.hide(); ui.run_action(func(): return session.aid(npc)),bool(talk.can_aid))
+	var share = ui.button(page,"식량 1 나누기",func(): ui.details_popup.hide(); ui.run_action(func(): return session.aid(npc)),bool(talk.can_aid))
 	share.name = "AidButton"
 	var close = ui.button(page,"닫기",func(): ui.details_popup.hide())
 	close.name = "CloseNpc"
@@ -128,8 +147,14 @@ static func update_offer_popup(ui) -> void:
 	ui.stop_navigation()
 	ui.stop_text = "%s이(가) 말을 겁니다" % npc.name
 	ui.clear(ui.offer_content)
-	ui.label(ui.offer_content,str(npc.name),20)
-	ui.label(ui.offer_content,str(Session.Recruit.dialogue(session,npc).line),15)
+	var heading := HBoxContainer.new(); ui.offer_content.add_child(heading)
+	var portrait := TextureRect.new(); portrait.texture = Art.portrait_face(posmod(int(npc.id),3))
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.custom_minimum_size = Vector2(64,64); heading.add_child(portrait)
+	var words := VBoxContainer.new(); heading.add_child(words)
+	ui.label(words,str(npc.name),20)
+	var dialogue = ui.label(words,str(Session.Recruit.dialogue(session,npc).line),15)
+	dialogue.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var accept = ui.button(ui.offer_content,"동행",func(): ui.offer_popup.hide(); ui.run_action(func(): return session.answer_offer(true)),session.alive().size() < Session.Recruit.MAX_PARTY)
 	accept.name = "OfferAccept"
 	var refuse = ui.button(ui.offer_content,"거절",func(): ui.offer_popup.hide(); ui.run_action(func(): return session.answer_offer(false)))
@@ -221,7 +246,46 @@ static func tactic_pick(ui, parent: Node, title: String, values: Array, names: D
 
 static func show_supplies(ui) -> void:
 	ui.stop_navigation()
-	ui.clear(ui.modal_content); ui.label(ui.modal_content,"공용 가방",18); build_inventory(ui)
+	ui.clear(ui.modal_content)
+	if ui.session.manual_mode: build_manual_inventory(ui)
+	else: ui.label(ui.modal_content,"공용 가방",18); build_inventory(ui)
+
+static func build_manual_inventory(ui) -> void:
+	ui.modal_content.custom_minimum_size = ui.get_viewport_rect().size-Vector2(12,12)
+	var box := VBoxContainer.new(); box.name = "ManualInventory"; box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation",8); ui.modal_content.add_child(box)
+	var header := HBoxContainer.new(); box.add_child(header)
+	var title = ui.label(header,"가방",22); title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ui.button(header,"×",func(): ui.details_popup.hide()).custom_minimum_size.x = 44
+	var filters := HBoxContainer.new(); filters.name = "InventoryTabs"; filters.add_theme_constant_override("separation",2); box.add_child(filters)
+	for category in ["전체","소모품","장비","파츠","자원"]:
+		var pick = ui.button(filters,category,func(): ui.inventory_filter = category; show_supplies(ui))
+		pick.toggle_mode = true; pick.button_pressed = category == ui.inventory_filter
+		pick.add_theme_font_size_override("font_size",11)
+	var rows: Array = inventory_rows(ui).filter(func(r): return ui.inventory_filter == "전체" or r.category == ui.inventory_filter)
+	if not rows.any(func(r): return r.id == ui.inventory_selected):
+		ui.inventory_selected = str(rows[0].id) if not rows.is_empty() else ""
+	ui.label(box,"%s · %d종" % [ui.inventory_filter,rows.size()],13)
+	var scroll := ScrollContainer.new(); scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; box.add_child(scroll)
+	var grid := GridContainer.new(); grid.columns = 4; grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation",6); grid.add_theme_constant_override("v_separation",6); scroll.add_child(grid)
+	ui.inventory_slots.clear()
+	for i in range(maxi(16,int(ceil(rows.size()/4.0))*4)):
+		var slot = InventorySlot.new(); grid.add_child(slot)
+		var row: Dictionary = rows[i] if i < rows.size() else {}
+		slot.configure(row,row.get("id","") == ui.inventory_selected); ui.inventory_slots.append(slot)
+		if not row.is_empty(): slot.pressed.connect(func(): show_item_detail(ui,row.id))
+	var selected: Array = inventory_rows(ui).filter(func(r): return r.id == ui.inventory_selected)
+	var detail := PanelContainer.new(); detail.name = "InventorySelection"
+	detail.custom_minimum_size.y = 72
+	detail.add_theme_stylebox_override("panel",CharacterUI.surface(Color("211e1a"))); box.add_child(detail)
+	var details := VBoxContainer.new(); detail.add_child(details)
+	if not selected.is_empty():
+		ui.label(details,str(selected[0].label),16)
+		ui.label(details,str(selected[0].description),12)
+	ui.button(box,"닫기",func(): ui.details_popup.hide())
+	ui.details_popup.popup_centered(Vector2i(ui.get_viewport_rect().size))
 
 static func gear_name(ui, item: Dictionary, slot: String) -> String:
 	if slot == "shield": return "방패"
