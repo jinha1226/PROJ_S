@@ -63,8 +63,10 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 	if config.has("rules_override"):
 		for actor in s.party: actor.rules = config.rules_override.map(func(r): return Rules.make_rule(r[0],r[1],r[2]))
 	var theme: Dictionary = Generator.theme("F1_RUINS")
-	# Keep only the five run supplies; the arena shares the fixed sight rules.
-	s.supplies = config.supplies.slice(0,5).duplicate()
+	# Experimental JSON keeps its five-slot row; only healing and calm survive.
+	var supply_row: Array = config.get("supplies",[])
+	if supply_row.size() > 0 and int(supply_row[0]) > 0: s.grant_item("healing",int(supply_row[0]),true)
+	if supply_row.size() > 1 and int(supply_row[1]) > 0: s.grant_item("calm",int(supply_row[1]),true)
 	var cap: int = int(config.rules.get("solo_max_members",0)) if size == 1 else 0
 	Floor.apply(s,theme,Arena.layout(config.arena,theme,seed,cap))
 	# No stop events run here, so the arena opens the battle report itself.

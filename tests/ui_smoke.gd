@@ -29,6 +29,11 @@ func run() -> void:
 	check(scene.item_buttons.is_empty() and scene.find_child("PartyRow",true,false) == null,"manual floor uses a hero status instead of party controls")
 	check(scene.find_child("HeroStatus",true,false) != null and scene.find_child("AutoToggle",true,false) == null,"manual hero HUD")
 	check(scene.find_child("SpellBar",true,false) == null,"empty prepared spells do not occupy the HUD")
+	var item_step: Vector2i = scene.session.movement_cells(0)[0]
+	scene.session.floor_state.features[item_step] = {"kind":"item","item_id":"healing"}
+	scene.refresh(); await process_frame
+	scene.on_cell(item_step); await process_frame
+	check(scene.session.party[0].pos == item_step and int(scene.session.bag.get("healing",0)) == 1,"tapping a floor item walks onto it and picks it up")
 	var duel: Vector2i = preload("res://tests/floor_fixture.gd").arena(scene.session,8)
 	var foe: Dictionary = scene.session.enemies[0]
 	foe.hp = 100; foe.max_hp = 100; foe.pos = duel+Vector2i(1,0); foe.alert = true; foe.ready_at = 1000
@@ -50,12 +55,17 @@ func run() -> void:
 	scene._unhandled_key_input(key); await process_frame
 	check(scene.session.time > before_time,"direction key attacks the adjacent enemy")
 	before_time = scene.session.time
+	key.keycode = KEY_TAB
+	scene._unhandled_key_input(key); await process_frame
+	check(scene.session.time > before_time and scene.mode.is_empty(),"Tab takes one attack action")
+	before_time = scene.session.time
 	scene.find_child("Attack",true,false).pressed.emit(); await process_frame
 	check(scene.session.time > before_time and scene.mode.is_empty(),"attack button strikes an in-range enemy immediately")
 	foe.pos = duel+Vector2i(3,0); scene.session.floor_state.observe(scene.session); scene.refresh(); await process_frame
 	before_time = scene.session.time
+	var before_pos: Vector2i = scene.session.party[0].pos
 	scene.find_child("Attack",true,false).pressed.emit(); await process_frame
-	check(scene.session.time == before_time and scene.mode == "ATTACK" and scene.board.show_attack_range,"attack button exposes target selection when no enemy is in range")
+	check(scene.session.time > before_time and scene.session.party[0].pos != before_pos and scene.mode.is_empty() and not scene.board.show_attack_range,"attack button approaches a visible enemy one step")
 	foe.pos = duel+Vector2i(1,0); scene.session.floor_state.observe(scene.session)
 	scene.on_cell(foe.pos); await process_frame
 	check(scene.session.time > before_time and scene.mode.is_empty(),"armed attack fires and clears selection")

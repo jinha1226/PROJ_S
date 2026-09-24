@@ -73,7 +73,7 @@ static func choose_kit(ui, id: String) -> void:
 static func new_run(ui) -> void:
 	ui.session = Session.new_run(randi(),ui.kit_choice)
 	ui.stop_text = ""; ui.battle_reported = false
-	ui.mode_arena_setup = false; ui.mode_arena_active = false; ui.mode = ""; ui.pending_item = -1; ui.pending_attack = {}; ui.show_attack_range = false; ui.action_effects = []; ui.reset_effects = true
+	ui.mode_arena_setup = false; ui.mode_arena_active = false; ui.mode = ""; ui.pending_item = ""; ui.pending_attack = {}; ui.show_attack_range = false; ui.action_effects = []; ui.reset_effects = true
 	AutoBattleHud.check_stop(ui); ui.refresh()
 
 static func depart(ui) -> void:

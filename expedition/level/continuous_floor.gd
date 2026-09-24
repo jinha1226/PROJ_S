@@ -175,7 +175,7 @@ func interact(s, p: Vector2i) -> bool:
 	if s.phase != "EXPLORE" or s.party[s.selected].hp <= 0 or s.party[s.selected].ap <= 0: return false
 	if not visible.has(p) or not features.has(p) or s.distance(s.party[s.selected].pos,p) > 1: return false
 	var feature: Dictionary = features[p]
-	if feature.kind in ["curio","stairs","pylon","entry","camp"]: return false # Explicit choice required; never auto-claim.
+	if feature.kind in ["curio","stairs","pylon","entry","camp","item"]: return false # Items are picked up by stepping onto them.
 	if not safe(s): s.message("주변에 적 있음"); return false
 	if feature.used: return false
 	feature.used = true

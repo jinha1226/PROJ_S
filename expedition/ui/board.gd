@@ -333,12 +333,12 @@ func _draw() -> void:
 			var center := project(Vector2(point)+Vector2.ONE*0.5)
 			if session.floor_state.features.has(point):
 				var feature: Dictionary = session.floor_state.features[point]
-				var icon: String = session.Curios.definition(feature).get("icon",feature.kind)
+				var icon: String = ("potion" if session.Consumables.definition(str(feature.get("item_id",""))).get("class","") == "potion" else "scroll") if feature.kind == "item" else session.Curios.definition(feature).get("icon",feature.kind)
 				var object_id: String = Art.FirstFloor.feature_id(feature) if uses_first_floor_art() else ""
 				if not object_id.is_empty():
-					Art.FirstFloor.paint_object(self,object_id,Rect2(center-Vector2.ONE*half_width,Vector2.ONE*half_width*2),Color("777777") if feature.used else Color.WHITE)
+					Art.FirstFloor.paint_object(self,object_id,Rect2(center-Vector2.ONE*half_width,Vector2.ONE*half_width*2),Color("777777") if bool(feature.get("used",false)) else Color.WHITE)
 				else:
-					Icons.paint(self,"entry" if feature.kind in ["entry","altar"] else icon,center,half_width*0.65,Color("655a43") if feature.used else Color("9fe3ff") if feature.kind in ["stairs","pylon"] else Color("e4c98e"))
+					Icons.paint(self,"entry" if feature.kind in ["entry","altar"] else icon,center,half_width*0.65,Color("655a43") if bool(feature.get("used",false)) else Color("9fe3ff") if feature.kind in ["stairs","pylon"] else Color("e4c98e"))
 			if point in attacks:
 				draw_colored_polygon(polygon,Color(0.95,0.15,0.18,0.3)); outline(polygon,Color("f37575"),2)
 			if point == target_cell: outline(polygon,Color.WHITE,3)

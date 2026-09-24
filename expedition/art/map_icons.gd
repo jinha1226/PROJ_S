@@ -2,6 +2,14 @@ extends RefCounted
 ## Small vector icons shared by the room map and the room interior.
 static func paint(canvas: CanvasItem, kind: String, center: Vector2, radius: float, color: Color) -> void:
 	match kind:
+		"potion":
+			canvas.draw_rect(Rect2(center+Vector2(-radius*0.3,-radius),Vector2(radius*0.6,radius*0.45)),color)
+			canvas.draw_colored_polygon(PackedVector2Array([center+Vector2(-radius*0.4,-radius*0.55),center+Vector2(radius*0.4,-radius*0.55),center+Vector2(radius*0.65,radius*0.7),center+Vector2(-radius*0.65,radius*0.7)]),Color("6e354d"))
+			canvas.draw_rect(Rect2(center+Vector2(-radius*0.65,-radius*0.55),Vector2(radius*1.3,radius*1.25)),color,false,2)
+		"scroll":
+			canvas.draw_rect(Rect2(center+Vector2(-radius*0.65,-radius*0.75),Vector2(radius*1.3,radius*1.5)),Color("d5bd87"))
+			canvas.draw_line(center+Vector2(-radius*0.4,-radius*0.25),center+Vector2(radius*0.35,-radius*0.25),color,2)
+			canvas.draw_line(center+Vector2(-radius*0.4,radius*0.2),center+Vector2(radius*0.25,radius*0.2),color,2)
 		"stairs":
 			canvas.draw_colored_polygon(PackedVector2Array([center+Vector2(-radius,radius*0.75),center+Vector2(radius,radius*0.75),center+Vector2(0,-radius)]),Color("24333d"))
 			canvas.draw_line(center+Vector2(-radius,radius*0.75),center+Vector2(radius,radius*0.75),color,2)

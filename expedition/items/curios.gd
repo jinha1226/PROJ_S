@@ -38,10 +38,10 @@ static func resolve(s, point: Vector2i, option: String) -> bool:
 	if bonus < int(outcome.get("part_chance",0)) and not part_ids.is_empty():
 		s.grant_part(part_ids[s.Hexaco.sample(s.seed_value,key,"curio_part",part_ids.size())])
 	elif bonus < int(outcome.get("part_chance",0))+int(outcome.get("supply_chance",0)):
-		s.grant_supply(s.Hexaco.sample(s.seed_value,key,"curio_supply",s.supplies.size()))
+		s.grant_item(s.Consumables.random_kind(s.seed_value,key))
 	if outcome.get("item",false):
 		if bonus < 50 and not part_ids.is_empty(): s.grant_part(part_ids[s.Hexaco.sample(s.seed_value,key,"curio_part",part_ids.size())])
-		else: s.grant_supply(s.Hexaco.sample(s.seed_value,key,"curio_supply",s.supplies.size()))
+		else: s.grant_item(s.Consumables.random_kind(s.seed_value,key+1))
 	if int(outcome.get("spellbook_chance",0)) > 0 and s.Hexaco.sample(s.seed_value,key,"spellbook",100) < int(outcome.spellbook_chance):
 		s.grant_book(s.random_book(key))
 	if int(outcome.get("gear_chance",0)) > 0 and s.Hexaco.sample(s.seed_value,key,"gear",100) < int(outcome.gear_chance):

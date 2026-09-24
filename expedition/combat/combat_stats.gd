@@ -18,14 +18,15 @@ static func stats(_session, actor: Dictionary) -> Dictionary:
 	var result := {"damage":int(actor.get("power", 7)), "delay":100, "ac":int(actor.get("ac", 0)), "ev":int(actor.get("ev", 3)), "sh":int(actor.get("sh", 0)), "enc":0, "range":1, "brand":"", "trait":"", "res":actor.get("res", {}).duplicate(), "power":0}
 	if not bool(actor.get("enemy", false)):
 		var spec: Dictionary = species(actor)
+		var strength: int = int(spec.str)+int(actor.get("str_bonus",0))
 		var gear: Dictionary = actor.get("gear", {})
 		var weapon: Dictionary = gear.get("weapon", {})
 		var weapon_def: Dictionary = content.weapons.get(str(weapon.get("type", "")), {})
-		result.damage = 4 + int(spec.str) / 6
+		result.damage = 4 + strength / 6
 		result.ac = 0; result.ev = int(spec.dex) / 3
 		if not weapon_def.is_empty():
 			var level := Mastery.rank(actor, Mastery.weapon_axis(str(weapon.type)))
-			result.damage = int(weapon_def.damage) + int(weapon.get("enchant", 0)) + level + int(spec.str) / 6
+			result.damage = int(weapon_def.damage) + int(weapon.get("enchant", 0)) + level + strength / 6
 			result.delay = maxi(60, int(weapon_def.delay) - level * 4)
 			result.range = int(weapon_def.range)
 			result.trait = str(weapon_def.trait)
@@ -38,7 +39,7 @@ static func stats(_session, actor: Dictionary) -> Dictionary:
 		var armour_def: Dictionary = content.armours.get(str(armour.get("type", "")), {})
 		if not armour_def.is_empty():
 			result.ac += int(armour_def.ac) + int(armour.get("enchant", 0))
-			result.enc = maxi(0, int(armour_def.enc) - int(spec.str) / 5)
+			result.enc = maxi(0, int(armour_def.enc) - strength / 5)
 			result.ev -= int(armour_def.ev_penalty)
 		if not gear.get("shield", {}).is_empty() and result.trait not in ["ranged", "focus"]:
 			result.sh = 15; result.enc += 2

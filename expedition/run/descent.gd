@@ -10,6 +10,8 @@ static func depart(s) -> bool:
 	var kit: Dictionary = CombatStats.kit(s.kit_id)
 	if kit.is_empty(): return false
 	s.depth = 1; s.score = 0; s.run_stats = {"mistakes":0,"kills":0}
+	s.bag.clear(); s.known.clear(); s.pending_choice.clear()
+	s.appearances = s.Consumables.shuffle_appearances(s.seed_value)
 	s.time = 0; s.boundary = 100; s.turn_serial = 0; s.roll_serial = 0
 	s.party[0].gear.weapon = {"type":str(kit.weapon),"enchant":0}
 	s.party[0].gear.armour = {"type":"robe","enchant":0}

@@ -31,6 +31,7 @@ const Statuses = preload("res://expedition/combat/statuses.gd")
 const Camp = preload("res://expedition/run/camp.gd")
 const Descent = preload("res://expedition/run/descent.gd")
 const Gear = preload("res://expedition/items/gear.gd")
+const Consumables = preload("res://expedition/items/consumables.gd")
 const AutoBattle = preload("res://expedition/run/autobattle.gd")
 const Orders = preload("res://expedition/run/orders.gd")
 const ArenaTest = preload("res://expedition/run/arena_test.gd")
@@ -101,10 +102,12 @@ var effects: Array = []
 ## Utility selector: whether `Lookahead.predict` answers the `la_*`
 ## considerations. On by default; a simulation tool can turn it off to compare.
 var lookahead_enabled := true
-var supplies: Array = [0,0,0,0,0]
+var bag: Dictionary = {}
+var known: Dictionary = {}
+var appearances: Dictionary = {}
+var pending_choice: Dictionary = {}
 const Curios = preload("res://expedition/items/curios.gd")
 const BossAI = preload("res://expedition/actors/boss_ai.gd")
-const SUPPLY_NAMES = ["치유 물약","정신 안정제","활력 물약","화염 두루마리","물 두루마리"]
 
 ## Experiment rules: the defaults reproduce shipped behaviour byte for byte.
 const DEFAULT_RULES := {"solo_actions":1,"solo_max_members":0}
@@ -124,6 +127,7 @@ static func new_run(seed: int, p_kit_id: String = "sword"):
 
 func _init(p_seed: int = 731, _p_boss_trial: bool = false, p_companions: bool = false, _p_floor: bool = true, p_party_size: int = 0) -> void:
 	seed_value = p_seed
+	appearances = Consumables.shuffle_appearances(p_seed)
 	companions = (p_party_size > 1) if p_party_size > 0 else p_companions
 	floor_state = Floor.new(); BOARD_SIDE = floor_state.size
 	parts_bag = STARTING_PARTS.duplicate(true)
@@ -143,7 +147,7 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"gear":{"weapon":{},"armour":{},"shield":{},"ring":{}},
 		"mp":18,"max_mp":18,"skill_xp":{},"usage":{},"statuses":{},"spells":[],"prepared":[],
 		"books":[],"buffs":{},
-		"level":1,"level_xp":0,"ready_at":0,
+		"level":1,"level_xp":0,"str_bonus":0,"sleep_until":0,"ready_at":0,
 		"pos":Vector2i.ZERO, "hp":28 if enemy else 55, "max_hp":28 if enemy else 55,
 		"stress":0, "condition":"평온", "ap":2,
 		"body":Body.create(id, seed_value, enemy),
@@ -297,7 +301,11 @@ func descend() -> bool: return Descent.descend(self)
 
 func grant_part(id: String) -> void: Gear.grant_part(self,id)
 
-func grant_supply(slot: int) -> void: Gear.grant_supply(self,slot)
+func grant_item(kind: String, count: int = 1, identified: bool = false) -> void: Consumables.grant(self,kind,count,identified)
+func use_item(kind: String, target: Vector2i = Vector2i(-1,-1), recipient: int = -1) -> bool: return Consumables.use(self,kind,target,recipient)
+func identify_item(kind: String) -> void: Consumables.identify(self,kind)
+func resolve_choice(option: String) -> bool: return Consumables.resolve_choice(self,option)
+func item_label(kind: String) -> String: return Consumables.label(self,kind)
 
 func start_battle() -> void:
 	phase = "BATTLE"; round_number = 1
@@ -435,6 +443,7 @@ func attack_reach(actor: Dictionary, target: Vector2i, attack_range: int) -> boo
 	return distance(actor.pos,target) <= attack_range and Floor.MonsterAI.line(self,actor.pos,target,attack_range)
 
 func act(kind: String, target: Vector2i) -> bool:
+	if not pending_choice.is_empty(): return false
 	if manual_mode: return submit(kind,target)
 	return act_as(party[selected],kind,target,true)
 
@@ -455,6 +464,7 @@ func action_cost(actor: Dictionary, kind: String, target: Vector2i, _value: Stri
 	return maxi(40,cost)
 
 func submit(kind: String, target: Vector2i, value: String = "") -> bool:
+	if not pending_choice.is_empty(): return false
 	if not on_floor() or party.is_empty() or party[0].hp <= 0: return false
 	manual_mode = true
 	var actor: Dictionary = party[0]
@@ -517,6 +527,7 @@ func _presentation_action(actor: Dictionary, kind: String, target: Vector2i) -> 
 ## the round itself.
 func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = true) -> bool:
 	if not on_floor() or not inside(target): return false
+	if not pending_choice.is_empty(): return false
 	# A follower can round a corner outside the selected leader's sight.
 	# Only automatic movement bypasses the UI visibility gate; movement_cells
 	# still checks adjacency, terrain and occupancy. Attacks keep their gate.
@@ -551,6 +562,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 			else:
 				if target not in movement_cells(party.find(actor)): return false
 			actor.pos = target
+			if actor in party: Consumables.pickup(self,actor)
 			actor.hit_and_run = false
 		"ATTACK":
 			if victim.is_empty() or not victim.enemy or not attack_reach(actor,target,int(CombatStats.stats(self,actor).range)): return false
@@ -754,6 +766,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 	if party.size() == 1 and not target.enemy and target.stress >= 150 and amount > 0: amount += 1
 	serial += 1
 	var lost := mini(int(target.hp), amount)
+	if lost > 0 and bool(target.get("enemy",false)): target.sleep_until = 0
 	var source_cell: Vector2i = target.pos
 	var source_name: String = {"FIRE":"불길","ELECTRIC":"방전","POISON":"독"}.get(form,"함정")
 	if not attacker.is_empty(): source_cell = attacker.pos; source_name = attacker.name
@@ -818,5 +831,3 @@ func end_round() -> bool: return AutoBattle.end_round(self)
 
 func check_battle_end() -> void:
 	if on_floor() and party[0].hp <= 0: phase = "DEFEAT"; message("원정 종료")
-
-func use_supply(slot: int, target: Vector2i = Vector2i(-1,-1), recipient: int = -1) -> bool: return Gear.use_supply(self,slot,target,recipient)

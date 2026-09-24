@@ -4,6 +4,7 @@ extends RefCounted
 ## encounters. Pure static functions; output contract in the spec §7.
 const Templates = preload("res://expedition/level/floor_templates.gd")
 const Encounters = preload("res://expedition/level/encounter_builder.gd")
+const Consumables = preload("res://expedition/items/consumables.gd")
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/floor_themes.json"))
 const PLACE_TRIES := 200
 const MAX_REGENERATIONS := 5
@@ -495,13 +496,13 @@ static func place_features(layout: Dictionary, theme: Dictionary, rng: RandomNum
 	var dead_end_plain: Array = branch_plain.filter(func(r): return adj[r.id].size() == 1)
 	var is_corner := func(room: Dictionary, p: Vector2i) -> bool:
 		return (p.x == room.rect.position.x or p.x == room.rect.end.x-1) and (p.y == room.rect.position.y or p.y == room.rect.end.y-1)
-	var free_cell := func(room: Dictionary, corner: bool) -> Vector2i:
+	var free_cell := func(room: Dictionary, corner: bool, draw_rng: RandomNumberGenerator) -> Vector2i:
 		var cells: Array = floor_cells(layout.terrain,size,room.rect).filter(func(p): return not features.has(p) and room.doors.all(func(d): return maxi(absi(p.x-d.x),absi(p.y-d.y)) > 1))
 		if corner:
 			var corners: Array = cells.filter(func(p): return is_corner.call(room,p))
 			if not corners.is_empty(): cells = corners
 		if cells.is_empty(): return Vector2i(-1,-1)
-		return cells[rng.randi_range(0,cells.size()-1)]
+		return cells[draw_rng.randi_range(0,cells.size()-1)]
 	for id in ["supply_cache","mushrooms","dead_adventurer","broken_chest"]:
 		var target: int = rng.randi_range(theme.curios[id][0],theme.curios[id][1])
 		var glyph: String = {"supply_cache":"&","mushrooms":"^","dead_adventurer":"!","broken_chest":"$"}[id]
@@ -509,8 +510,28 @@ static func place_features(layout: Dictionary, theme: Dictionary, rng: RandomNum
 		var guard := 0
 		while count.call("curio",id.to_upper()) < target and not rooms_for.is_empty() and guard < 30:
 			guard += 1
-			var cell: Vector2i = free_cell.call(rooms_for[rng.randi_range(0,rooms_for.size()-1)],id == "mushrooms")
+			var cell: Vector2i = free_cell.call(rooms_for[rng.randi_range(0,rooms_for.size()-1)],id == "mushrooms",rng)
 			if cell.x >= 0: features[cell] = Templates.feature_for(glyph)
+	# A separate generator keeps monster compositions stable when loot changes.
+	var item_rng := RandomNumberGenerator.new()
+	item_rng.seed = int(layout.seed)+0x4D595DF4
+	var item_count: int = item_rng.randi_range(int(theme.items[0]),int(theme.items[1]))
+	var item_rooms: Array = rooms.filter(func(r): return r.kind == "plain")
+	for _i in range(item_count):
+		var options: Array = item_rooms.duplicate()
+		while not options.is_empty():
+			var room: Dictionary = options.pop_at(item_rng.randi_range(0,options.size()-1))
+			var cell: Vector2i = free_cell.call(room,false,item_rng)
+			if cell.x < 0: continue
+			var weight_total := 0
+			for row in Consumables.content.kinds: weight_total += int(row.weight)
+			var roll: int = item_rng.randi_range(0,weight_total-1)
+			for row in Consumables.content.kinds:
+				roll -= int(row.weight)
+				if roll < 0:
+					features[cell] = {"kind":"item","item_id":str(row.id),"label":str(row.name)}
+					break
+			break
 	layout.features = features
 
 static func attempt_layout(theme: Dictionary, seed: int, depth: int) -> Dictionary:

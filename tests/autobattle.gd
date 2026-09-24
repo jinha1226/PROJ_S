@@ -327,14 +327,14 @@ func ui() -> void:
 	for frame in range(3): await process_frame
 	check(scene.find_child("StopBanner",true,false).text.is_empty(),"a bare refresh raises no stop event")
 	# The HUD asks for a stop event after an action.
-	s.supplies[0] = 1; scene.check_stop(); scene.refresh()
+	s.grant_item("healing",1,true); scene.check_stop(); scene.refresh()
 	for frame in range(3): await process_frame
 	check(scene.skill_buttons.is_empty() and scene.end_turn_button == null,"floor battle has no skill buttons and no end-turn button")
 	var toggle: Button = scene.find_child("AutoToggle",true,false)
 	check(toggle != null,"auto toggle")
 	check(scene.find_child("CommandBar",true,false) == null and scene.find_child("FormationButton",true,false) == null and scene.find_child("AutoOptionsButton",true,false) == null,"the command bar, the formation swap and the options gear are gone")
 	check(scene.find_child("StopBanner",true,false).text.begins_with("전투 시작"),"banner names the stop")
-	check(toggle.text == "▶ 전투" and not scene.item_buttons[0].disabled,"stopped: the toggle starts and items are usable")
+	check(toggle.text == "▶ 전투" and scene.item_buttons.is_empty() and int(s.bag.get("healing",0)) == 1,"stopped: the toggle starts and supplies live in the bag")
 	# 개입은 명령만: the board marks the focus target and does nothing else.
 	var foe_hp: int = foe.hp
 	var stopped_round: int = s.round_number
@@ -346,7 +346,7 @@ func ui() -> void:
 	toggle.pressed.emit(); await process_frame
 	# Every action rebuilds the HUD, so each control is looked up again.
 	check(s.auto.running,"the toggle starts the run")
-	check(scene.find_child("AutoToggle",true,false).text == "⏸ 정지" and scene.item_buttons[0].disabled,"running: the toggle stops and items are locked")
+	check(scene.find_child("AutoToggle",true,false).text == "⏸ 정지" and scene.item_buttons.is_empty(),"running: the toggle stops and no HUD item strip appears")
 	# This stretch measures the timer, so the soft alerts are switched off.
 	s.auto.stops.ALLY_LETHAL = false; s.auto.stops.HP_LOW = false
 	var round_before: int = s.round_number

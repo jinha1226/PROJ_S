@@ -66,8 +66,8 @@ func data() -> void:
 	var rs = Session.new(19,false,false,true,1); rs.depart(); Fixture.arena(rs,8)
 	var rh: Dictionary = rs.party[0]; rh.spells.append("ward"); rh.prepared = ["ward"]; rh.mp = rh.max_mp
 	check(Spells.refusal(rs,rh,"ward",rh.pos) == "아직 쓸 수 없는 유물" and not Spells.cast(rs,rh,"ward",rh.pos) and rh.mp == rh.max_mp,"an effect-less relic is refused and costs nothing")
-	check(Stats.content.summons.size() == 4,"four kinds of summon")
-	for kind in ["hound","imp","rat","wolf"]:
+	check(Stats.content.summons.size() == 5,"five kinds of summon")
+	for kind in ["hound","imp","rat","wolf","mirror"]:
 		var row: Dictionary = Stats.content.summons[kind]
 		check(int(row.hp) > 0 and int(row.power) > 0 and int(row.speed) > 0 and int(row.duration) > 0,"%s is a whole creature" % kind)
 	check(int(Stats.content.summons.wolf.hp) == 40,"a wolf comes with forty hit points")

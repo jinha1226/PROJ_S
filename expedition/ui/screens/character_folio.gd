@@ -12,8 +12,8 @@ const Memory = preload("res://sim/party_memory_state.gd")
 
 static func surface(color: Color, border: Color = Color("6d5b3f")) -> StyleBoxFlat:
 	var skin := StyleBoxFlat.new(); skin.bg_color = color; skin.border_color = border
-	skin.set_border_width_all(1); skin.set_content_margin_all(8)
-	skin.shadow_color = Color(0,0,0,0.35); skin.shadow_size = 2
+	skin.set_border_width_all(2); skin.set_content_margin_all(8)
+	skin.shadow_size = 0
 	return skin
 
 static func place(node: Control, parent: Node, rect: Rect2) -> void:

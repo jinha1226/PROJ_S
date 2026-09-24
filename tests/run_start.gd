@@ -12,7 +12,7 @@ func run() -> void:
 	check(s.depart(),"start")
 	check(s.phase == "EXPLORE" and s.depth == 1 and s.food == 2,"floor 1 state")
 	check(s.party[0].equipped_abilities == ["",""],"empty ability slots")
-	check(s.supplies.size() == 5 and s.supplies.all(func(n): return n == 0),"five empty supplies")
+	check(s.bag.is_empty() and s.known.is_empty() and s.appearances.size() == 16,"empty bag and shuffled appearances")
 	check(s.floor_state.sight_radius() == 5.0,"fixed sight")
 	var body_before: Dictionary = s.party[0].body.to_dict()
 	s.damage(s.party[0],10,999,"IMPACT")

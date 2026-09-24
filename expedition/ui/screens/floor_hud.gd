@@ -9,7 +9,7 @@ const Art = preload("res://expedition/art/mobile_art.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const Popups = preload("res://expedition/ui/screens/popups.gd")
 const AutoBattleHud = preload("res://expedition/ui/screens/autobattle_hud.gd")
-const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
+const FONT = preload("res://assets/fonts/Galmuri11.ttf")
 
 static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 	var session = ui.session
@@ -81,10 +81,6 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 		if i == session.selected:
 			ui.mark_selected(portrait)
 		if actor.hp <= 0: portrait.modulate = Color("636369")
-	var shared := HBoxContainer.new(); ui.root_layout.add_child(shared)
-	for slot in range(5):
-		var item = ui.icon_button(shared,Art.ui_icon(6+slot),func(): choose_item(ui,slot),Session.SUPPLY_NAMES[slot],str(session.supplies[slot]))
-		item.disabled = session.supplies[slot] <= 0 or session.auto.running; ui.item_buttons.append(item)
 	if session.manual_mode:
 		var spells := HBoxContainer.new(); spells.name = "SpellBar"; ui.root_layout.add_child(spells)
 		for slot in range(Session.PREPARED_SLOTS):
@@ -133,6 +129,7 @@ static func build_manual_controls(ui) -> void:
 		var content := HBoxContainer.new(); content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		content.add_theme_constant_override("separation",6)
 		portrait.add_child(content); content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		content.offset_left = 6; content.offset_right = -6; content.offset_top = 7; content.offset_bottom = -5
 		var image := TextureRect.new(); image.texture = Art.portrait_face(i)
 		image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		image.custom_minimum_size.x = 66 if session.party.size() == 1 else 42
@@ -149,7 +146,6 @@ static func build_manual_controls(ui) -> void:
 	var nav := HBoxContainer.new(); nav.name = "BottomActions"
 	nav.add_theme_constant_override("separation",3); ui.root_layout.add_child(nav)
 	var attack = ui.action_button(nav,"공격",Art.ui_icon(0),func(): arm_attack(ui)); attack.name = "Attack"
-	attack.toggle_mode = true; attack.button_pressed = ui.mode == "ATTACK"
 	var wait = ui.action_button(nav,"대기",Art.ui_icon(2),func(): ui.run_action(func(): return session.act("WAIT",session.party[0].pos))); wait.name = "Wait"; ui.wait_button = wait
 	ui.auto_explore_button = ui.action_button(nav,"중지" if ui.navigation.active else "탐색",Art.ui_icon(3),ui.toggle_explore,not session.in_combat())
 	var tactics = ui.action_button(nav,"전술",Art.ui_icon(4),func(): show_manual_tactics(ui)); tactics.name = "Tactics"
@@ -165,18 +161,31 @@ static func arm_attack(ui) -> void:
 	if ui.session == null or not ui.session.manual_mode: return
 	var session = ui.session
 	var hero: Dictionary = session.party[0]
-	var targets: Array = session.enemies.filter(func(enemy): return enemy.hp > 0 and session.floor_state.visible.has(enemy.pos) and not session.attack_preview(enemy.pos).is_empty())
-	if not targets.is_empty() and not session.status_blocks(hero,"ATTACK"):
-		targets.sort_custom(func(a,b):
-			var a_distance: int = session.distance(hero.pos,a.pos)
-			var b_distance: int = session.distance(hero.pos,b.pos)
-			return a_distance < b_distance if a_distance != b_distance else a.id < b.id)
-		var cell: Vector2i = targets[0].pos
-		ui.run_action(func(): return session.act("ATTACK",cell))
-		return
-	ui.mode = "" if ui.mode == "ATTACK" else "ATTACK"
-	ui.show_attack_range = ui.mode == "ATTACK"
-	ui.refresh()
+	var targets: Array = session.enemies.filter(func(enemy): return enemy.hp > 0 and session.floor_state.visible.has(enemy.pos))
+	if targets.is_empty(): return
+	targets.sort_custom(func(a,b):
+		var da: int = session.distance(hero.pos,a.pos)
+		var db: int = session.distance(hero.pos,b.pos)
+		return da < db if da != db else a.id < b.id)
+	for enemy in targets:
+		if not session.attack_preview(enemy.pos).is_empty() and not session.status_blocks(hero,"ATTACK"):
+			ui.run_action(func(): return session.act("ATTACK",enemy.pos))
+			return
+	if session.status_blocks(hero,"MOVE"): return
+	var reach: int = int(Session.CombatStats.stats(session,hero).range)
+	var goals: Array = []
+	for enemy in targets:
+		for y in range(maxi(0,enemy.pos.y-reach),mini(session.BOARD_SIDE,enemy.pos.y+reach+1)):
+			for x in range(maxi(0,enemy.pos.x-reach),mini(session.BOARD_SIDE,enemy.pos.x+reach+1)):
+				var cell := Vector2i(x,y)
+				if not session.floor_state.visible.has(cell) or not session.is_free(cell): continue
+				var in_reach: bool = session.melee_reach(cell,enemy.pos) if reach <= 1 else Session.Floor.MonsterAI.line(session,cell,enemy.pos,reach)
+				if not in_reach: continue
+				if cell not in goals: goals.append(cell)
+	if goals.is_empty(): return
+	var route: Dictionary = session.TurnCore.path(session.BOARD_SIDE,session.BOARD_SIDE,hero.pos,goals,
+		func(a,b): return session.floor_state.visible.has(b) and session.can_step(a,b),func(_p): return 100)
+	if route.found and route.path.size() > 1: ui.run_action(func(): return session.act("MOVE",route.path[1]))
 
 static func show_manual_tactics(ui) -> void:
 	var session = ui.session
@@ -255,13 +264,12 @@ static func choose_spell(ui, id: String) -> void:
 		ui.run_action(func(): return ui.session.cast(id,ui.session.party[0].pos)); return
 	ui.mode = "CAST:"+id; ui.notice = "대상 선택"; ui.refresh()
 
-static func choose_item(ui, slot: int) -> void:
+static func choose_item(ui, kind: String) -> void:
 	ui.stop_navigation()
 	ui.reservation_actor = -1
 	ui.pending_attack = {}
-	ui.mode = ""; ui.pending_item = slot
-	if slot in [3,4]: ui.notice = Session.SUPPLY_NAMES[slot]+" · 대상 칸 선택"; ui.refresh()
-	else: ui.run_action(func(): return ui.session.use_supply(slot))
+	ui.mode = ""; ui.pending_item = kind
+	ui.notice = ui.session.item_label(kind)+" · 대상 칸 선택"; ui.refresh()
 
 static func preview_attack(ui, point: Vector2i) -> void:
 	ui.pending_attack = ui.session.attack_preview(point)
@@ -285,4 +293,4 @@ static func select_actor(ui, index: int) -> void:
 	if session.manual_mode and index != 0:
 		Popups.show_character(ui,index); return
 	ui.pending_attack = {}; ui.show_attack_range = false
-	session.selected = index; ui.mode = ""; ui.pending_item = -1; ui.notice = session.party[index].name; ui.refresh()
+	session.selected = index; ui.mode = ""; ui.pending_item = ""; ui.notice = session.party[index].name; ui.refresh()

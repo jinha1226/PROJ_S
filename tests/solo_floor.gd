@@ -17,7 +17,7 @@ func run() -> void:
 		var layout: Dictionary = s.floor_state.layout
 		var stairs: Vector2i = layout.stairs
 		check(s.party.size() == 1 and not s.companions,"seed %d starts solo" % seed)
-		check(s.food == 2 and s.supplies.size() == 5,"seed %d uses run resources" % seed)
+		check(s.food == 2 and s.bag.is_empty(),"seed %d uses run resources" % seed)
 		check(stairs.x >= 0 and s.floor_state.features.get(stairs,{}).get("kind","") == "stairs","seed %d has stairs" % seed)
 		check(stairs != layout.entry and s.tile(stairs).terrain != "wall","seed %d stairs separate from entry" % seed)
 		check(s.floor_state.features.values().filter(func(f): return f.get("kind","") == "stairs").size() == 1,"seed %d exactly one stair" % seed)
@@ -149,17 +149,17 @@ func persistence() -> void:
 	var s = Session.new_run(55)
 	for enemy in s.enemies: enemy.hp = 0
 	var actor: Dictionary = hero(s)
-	s.grant_part("BOMB"); s.grant_supply(0)
+	s.grant_part("BOMB"); s.grant_item("healing"); s.grant_item("identify",1,true)
 	actor.stress = 44
 	var parts: Dictionary = s.parts_bag.duplicate(true)
-	var supplies: Array = s.supplies.duplicate()
+	var bag: Dictionary = s.bag.duplicate(); var known: Dictionary = s.known.duplicate(); var looks: Dictionary = s.appearances.duplicate()
 	var memory: Dictionary = actor.memory.to_dict()
 	var kills: int = int(s.run_stats.kills)
 	var stairs: Vector2i = s.floor_state.layout.stairs
 	actor.pos = beside(s,stairs); s.floor_state.observe(s)
 	check(s.descend(),"the hero takes the stairs")
 	check(s.parts_bag == parts,"the parts bag follows")
-	check(s.supplies == supplies,"the supplies follow")
+	check(s.bag == bag and s.known == known and s.appearances == looks,"the bag follows")
 	check(actor.stress == 44,"the stress follows")
 	check(actor.memory.to_dict() == memory,"the memories follow")
 	check(int(s.run_stats.kills) == kills,"the run tally keeps counting")

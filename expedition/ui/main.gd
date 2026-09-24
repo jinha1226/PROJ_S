@@ -26,7 +26,7 @@ var inventory_selected := ""
 var inventory_slots: Array = []
 var item_popup: PopupPanel
 var item_detail: VBoxContainer
-const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
+const FONT = preload("res://assets/fonts/Galmuri11.ttf")
 const SKILLS = [["PUSH","GUARD"],["ATTACK","GUARD"],["WATER","ELECTRIC"]]
 const SKILL_NAMES = [["밀쳐내기","엄호"],["강타","엄호"],["물","방전"]]
 var session = null
@@ -40,7 +40,7 @@ var mode_arena_setup := false
 var mode_arena_active := false
 var mode := ""
 var reservation_actor := -1
-var pending_item := -1
+var pending_item := ""
 var pending_attack: Dictionary = {}
 var attack_button: Button
 var show_attack_range := false
@@ -217,10 +217,13 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	elif key in [KEY_PERIOD,KEY_SPACE]:
 		run_action(func(): return session.act("WAIT",session.party[0].pos))
 		get_viewport().set_input_as_handled()
+	elif key == KEY_TAB:
+		FloorHud.arm_attack(self)
+		get_viewport().set_input_as_handled()
 
 func toggle_explore() -> void:
 	if navigation.active: stop_navigation(); return
-	mode = ""; pending_item = -1; reservation_actor = -1
+	mode = ""; pending_item = ""; reservation_actor = -1
 	if navigation.explore(session): auto_explore_button.text = "탐험 중지"
 	else: notice = "주변에 적 있음"; refresh()
 
@@ -279,7 +282,7 @@ func mark_selected(button_node: Button) -> void:
 func gauge(parent: Node, value: int, maximum: int, color: Color) -> void:
 	var bar := ProgressBar.new(); bar.max_value = maximum; bar.value = value; bar.show_percentage = false
 	bar.custom_minimum_size.y = 4; bar.mouse_filter = MOUSE_FILTER_IGNORE
-	var fill := StyleBoxFlat.new(); fill.bg_color = color; fill.set_corner_radius_all(2)
+	var fill := StyleBoxFlat.new(); fill.bg_color = color
 	var background := StyleBoxFlat.new(); background.bg_color = Color("0b1016")
 	bar.add_theme_stylebox_override("fill",fill); bar.add_theme_stylebox_override("background",background); parent.add_child(bar)
 
@@ -288,7 +291,7 @@ func resource_gauge(parent: Button, id: String, value: int, color: Color, hint: 
 	bar.show_percentage = false; bar.mouse_filter = MOUSE_FILTER_IGNORE
 	parent.add_child(bar); bar.set_anchors_and_offsets_preset(PRESET_BOTTOM_WIDE)
 	bar.offset_left = 4; bar.offset_right = -4; bar.offset_top = -7; bar.offset_bottom = -3
-	var fill := StyleBoxFlat.new(); fill.bg_color = color; fill.set_corner_radius_all(2)
+	var fill := StyleBoxFlat.new(); fill.bg_color = color
 	var background := StyleBoxFlat.new(); background.bg_color = Color("080c10")
 	bar.add_theme_stylebox_override("fill",fill); bar.add_theme_stylebox_override("background",background)
 	parent.custom_minimum_size.y = 48; parent.tooltip_text = hint
@@ -333,9 +336,13 @@ func refresh() -> void:
 	if session == null:
 		StartScreen.build_start_screen(self); return
 	map_view.session = session; map_view.queue_redraw()
-	if session.phase == "CAMP": CampScreen.build_camp_screen(self); return
+	if session.phase == "CAMP": CampScreen.build_camp_screen(self); show_choice_if_pending(); return
 	if session.phase == "DEFEAT": ResultCard.build_result_card(self); return
 	FloorHud.build(self,elapsed,impact_elapsed)
+	show_choice_if_pending()
+
+func show_choice_if_pending() -> void:
+	if session != null and not session.pending_choice.is_empty(): Popups.show_choice(self)
 
 func finish_presentation() -> void:
 	action_effects = []; reset_effects = true; auto_clock = 0.0
@@ -363,7 +370,7 @@ func run_action(callback: Callable, navigating: bool = false) -> void:
 	pending_attack = {}
 	notice = "" if accepted else "사용 불가"
 	if accepted:
-		mode = ""; pending_item = -1; reservation_actor = -1
+		mode = ""; pending_item = ""; reservation_actor = -1
 		if session.manual_mode: show_attack_range = false
 		# In floor mode auto_step ends the round itself.
 	if show_battle: recorder.finish(session)
@@ -409,9 +416,9 @@ func on_cell(point: Vector2i) -> void:
 			return
 		if feature.get("kind","") == "curio": Popups.show_curio(self,point); return
 		if feature.get("kind","") == "stairs" and session.distance(session.party[session.selected].pos,point) <= 1: show_stairs(); return
-		if not feature.is_empty() and session.distance(session.party[session.selected].pos,point) <= 1:
+		if not feature.is_empty() and feature.get("kind","") != "item" and session.distance(session.party[session.selected].pos,point) <= 1:
 			run_action(func(): return session.floor_state.interact(session,point)); return
-	if pending_item >= 0: run_action(func(): return session.use_supply(pending_item,point)); return
+	if not pending_item.is_empty(): run_action(func(): return session.use_item(pending_item,point)); return
 	if mode.begins_with("CAST:"):
 		var spell_id := mode.trim_prefix("CAST:")
 		# A refused cast says why rather than swallowing the tap.
@@ -450,7 +457,7 @@ func focus_enemy(point: Vector2i) -> void:
 func new_run() -> void: StartScreen.new_run(self)
 func depart() -> void: StartScreen.depart(self)
 func select_actor(index: int) -> void: FloorHud.select_actor(self,index)
-func choose_item(slot: int) -> void: FloorHud.choose_item(self,slot)
+func choose_item(kind: String) -> void: FloorHud.choose_item(self,kind)
 func inspect_cell(point: Vector2i) -> void: Popups.inspect_cell(self,point)
 func show_menu() -> void: Popups.show_menu(self)
 func show_logs() -> void: Popups.show_logs(self)

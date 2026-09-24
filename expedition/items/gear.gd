@@ -7,7 +7,6 @@ const Growth = preload("res://expedition/progression/growth.gd")
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const Mastery = preload("res://expedition/progression/mastery.gd")
 const Rules = preload("res://expedition/ai/tactic_rules.gd")
-const Scheduler = preload("res://expedition/time/scheduler.gd")
 
 static func gear_slot(s, item: Dictionary) -> String:
 	var id: String = str(item.get("type",""))
@@ -77,38 +76,6 @@ static func grant_part(s, id: String) -> void:
 	if not Abilities.DEFINITIONS.has(id): return
 	s.parts_bag[id] = int(s.parts_bag.get(id,0))+1
 	s.message(Abilities.DEFINITIONS[id].item+" 획득")
-
-static func grant_supply(s, slot: int) -> void:
-	if slot < 0 or slot >= s.supplies.size(): return
-	s.supplies[slot] += 1
-	s.message(s.SUPPLY_NAMES[slot]+" 획득")
-
-static func use_supply(s, slot: int, target: Vector2i = Vector2i(-1,-1), recipient: int = -1) -> bool:
-	if s.phase not in ["EXPLORE","BATTLE","CAMP"] or slot < 0 or slot >= s.supplies.size() or s.supplies[slot] <= 0: return false
-	var user: Dictionary = s.party[s.selected]
-	if recipient < -1 or recipient >= s.party.size(): return false
-	var actor: Dictionary = s.party[s.selected if recipient == -1 else recipient]
-	if actor.hp <= 0 or user.hp <= 0 or s.on_floor() and user.ap <= 0: return false
-	if slot in [3,4]:
-		if not s.on_floor() or recipient != -1: return false
-		s.supplies[slot] -= 1
-		if not s.act("FIRE" if slot == 3 else "WATER",target): s.supplies[slot] += 1; return false
-	else:
-		if slot == 0 and actor.hp >= actor.max_hp: return false
-		if slot == 1 and actor.stress == 0: return false
-		if slot == 2 and actor.stress == 0 and actor.hp >= actor.max_hp: return false
-		match slot:
-			0: actor.hp = mini(actor.max_hp,actor.hp+20); Body.heal(actor)
-			1: s.stress(actor,-25)
-			2: s.stress(actor,-10); actor.hp = mini(actor.max_hp,actor.hp+5)
-		s.supplies[slot] -= 1
-		if s.on_floor(): user.ap -= 1
-	s.message("%s · %s 사용" % [actor.name,s.SUPPLY_NAMES[slot]])
-	if slot not in [3,4] and s.on_floor():
-		if s.manual_mode:
-			user.ap = 1; Scheduler.advance(s,100)
-		else: s.finish_player_action()
-	return true
 
 static func roll_part(s, enemy: Dictionary) -> void:
 	if not enemy.enemy or enemy.hp > 0 or enemy.get("part_rolled",false): return

@@ -72,12 +72,12 @@ func exercise() -> void:
 		if tab == "파츠": check(scene.modal_content.find_children("PartSlot*","PanelContainer",true,false).size() == 2,"parts tab shows both slot cards")
 		check(not scene.modal_content.find_children("*","Button",true,false).any(func(b): return b.text == "가방"),"character window has no bag tab")
 	scene.inventory_filter = "전체"; scene.show_supplies()
-	s.supplies[0] = 1; scene.show_supplies()
+	s.grant_item("healing",1,true); scene.show_supplies()
 	for frame in range(3): await process_frame
 	check(scene.inventory_slots.size() >= 12,"inventory displays grid slots")
 	for slot in scene.inventory_slots:
 		check(slot.size.x >= 44 and slot.size.y >= 44,"inventory touch targets")
-	scene.show_item_detail("supply:0")
+	scene.show_item_detail("item:healing")
 	await process_frame
 	check(scene.item_popup.visible and scene.item_popup.size.x <= root.size.x,"item detail popup fits")
 	check(scene.item_popup.get_parent() == scene.details_popup and scene.item_popup.transient and scene.item_popup.exclusive,"item details belong above inventory modal")
@@ -88,13 +88,13 @@ func exercise() -> void:
 		for frame in range(3): await process_frame
 		check(scene.details_popup.size.x <= root.size.x and scene.details_popup.size.y <= root.size.y,"inventory fits mobile viewport")
 	var supply_test = arena()
-	supply_test.supplies[0] = 2
+	supply_test.grant_item("healing",2,true)
 	supply_test.party[1].hp = 20; supply_test.enemies[0].recovery = 30
 	var turn: int = supply_test.round_number
-	check(supply_test.use_supply(0,Vector2i(-1,-1),1),"shared potion can target companion")
-	check(supply_test.party[1].hp == 40 and supply_test.selected == 0 and supply_test.round_number == turn+1 and supply_test.supplies[0] == 1,"recipient healing keeps leader and consumes one turn and item")
+	check(supply_test.use_item("healing",Vector2i(-1,-1),1),"shared potion can target companion")
+	check(supply_test.party[1].hp == 40 and supply_test.selected == 0 and supply_test.round_number == turn+1 and supply_test.bag.healing == 1,"recipient healing keeps leader and consumes one turn and item")
 	supply_test.party[1].hp = supply_test.party[1].max_hp
-	check(not supply_test.use_supply(0,Vector2i(-1,-1),1) and supply_test.supplies[0] == 1,"invalid recipient effect does not consume")
-	check(not supply_test.use_supply(0,Vector2i(-1,-1),99),"invalid recipient rejected")
+	check(not supply_test.use_item("healing",Vector2i(-1,-1),1) and supply_test.bag.healing == 1,"invalid recipient effect does not consume")
+	check(not supply_test.use_item("healing",Vector2i(-1,-1),99),"invalid recipient rejected")
 	scene.queue_free(); await process_frame
 	print("Abilities and growth: %d failures" % failures); quit(1 if failures else 0)

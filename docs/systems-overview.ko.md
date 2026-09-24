@@ -9,7 +9,7 @@
 - **층**: `descend()` — EXPLORE·안전·보스 없음·계단 인접일 때. `Floor.theme_for(depth)`: 홀수 `F1_RUINS`, 짝수 `F2_MINES`, 3층부터 몬스터 예산 ×(1+0.25·(depth−2))에 "가장 강한 합법 무리의 80%" 상한, `max_members = min(4, 2+depth/3)`. 3·6·9층은 보스 층(`boss_lair`, 계단 봉인).
 - **야영**: `can_camp()` — EXPLORE·안전·`식량 ≥ 인원`. 효과: 식량 −인원, HP +50%, 스트레스 −30, 쿨다운 초기화. **장비·파츠·주문 배우기·준비는 야영에서만.**
 - **종료**: 주인공 HP 0 → `DEFEAT` → 결과 카드(도달 층·점수·동료 이력 `companion_rows()`). 점수: 처치 +10, 하강 +20, 보스 +100, 조사 +5.
-- 파일: `expedition/run/session.gd`(822줄, 상태 보관 + 위임) — 동사는 `run/camp.gd`·`run/descent.gd`·`run/orders.gd`·`run/arena_test.gd`·`run/run_result.gd`·`run/autobattle.gd`(호환 오토배틀 격리)·`items/gear.gd`. 층은 `expedition/level/continuous_floor.gd`(층 적용·시야·계단), `level/floor_generator.gd`, `level/floor_templates.gd`, `data/content/floor_themes.json`(2테마, 80×80), `floor_templates.json`(7 템플릿).
+- 파일: `expedition/run/session.gd`(상태 보관 + 위임) — 동사는 `run/camp.gd`·`run/descent.gd`·`run/orders.gd`·`run/arena_test.gd`·`run/run_result.gd`·`run/autobattle.gd`·`items/gear.gd`·`items/consumables.gd`. 층은 `expedition/level/continuous_floor.gd`(층 적용·시야·계단), `level/floor_generator.gd`, `level/floor_templates.gd`, `data/content/floor_themes.json`(2테마, 80×80), `floor_templates.json`(7 템플릿).
 
 ## 2. 시간과 전투 (Model B 이식)
 
@@ -50,7 +50,7 @@
 
 - **주문**: `docs/spells.ko.md` 참조. 학파 5 × Lv10 = 50, 원시 8(`bolt/line/cone/burst/wall/self/mark/summon`), 상태 10, 소환수 4, 주문서 15권(초급 1~3 / 중급 4~6 / 고급 7~10). 배우기는 야영에서 `책 보유 + rank ≥ Lv−1`, 준비 5, MP `2+Lv`, 실패율 `8 + Lv·9 + 둔중·5 − rank·5 − INT`. 드롭: 중급서 3층~, 고급서 6층~. 파일 `expedition/spells/spells.gd`(400줄) + `spells/summons.gd`(소환 자리·목록·생성·만료).
 - **장비**: 슬롯 무기·방어구·방패·반지(`actor.gear`), 야영에서 교체, 양손/방패 금지. 시작 kit = 무기 + 로브(마법 kit은 지팡이 + 초급서 + Lv1 주문). 드롭은 조사물(`loot.gear_by_depth`).
-- **소모품** 5종(치유·안정제·활력·화염 두루마리·물 두루마리), 조사물에서만.
+- **소모품** `expedition/items/consumables.gd` + `data/content/consumables.json`: 물약 8종·두루마리 8종. Run마다 외관을 섞고, 사용하거나 감정 두루마리로 정체를 안다. 층당 바닥 드롭 4~6개와 조사물 보상은 공용 가방에 들어간다.
 - **파츠** `expedition/items/abilities.gd`: 17개(밀치기·엄호 기본, 종족 파츠 8 — 각각 패시브, 시험용 7). 슬롯 2, 야영 장착, 처치 시 50% 드롭, 몬스터도 자기 종족 파츠를 예고 시전.
 - **조사물** `expedition/items/curios.gd`: 보급 상자(식량 2~3)·버섯(식량 1~2, 독 30%)·죽은 모험가(식량 1, 파츠·소모품·주문서)·부서진 궤짝(파츠/소모품/장비/주문서). 짐승 처치 25% 식량.
 - **식량**: 야영에만 쓴다. 시작 2.
@@ -172,6 +172,7 @@
 | `expedition/run/camp.gd` | `session.gd`의 야영·주문 배우기·준비·책 | 4 |
 | `expedition/run/descent.gd` | `session.gd`의 하강·층 전환 | 4 |
 | `expedition/items/gear.gd` | `session.gd`의 장비 착·탈·슬롯 | 4 |
+| `expedition/items/consumables.gd` | 물약·두루마리, 감정, 가방과 바닥 줍기 | 소모품 |
 | `expedition/run/orders.gd` | `session.gd`의 옛 파티 명령 | 4 |
 | `expedition/run/arena_test.gd` | `session.gd`의 전투 시험 세션 구성 | 4 |
 | `expedition/run/run_result.gd` | `session.gd`의 `companion_rows` 등 결과 집계 | 4 |

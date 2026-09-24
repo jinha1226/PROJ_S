@@ -69,6 +69,7 @@ static func plan(s) -> void:
 		for cell in cells: s.intents.append({"id":enemy.id,"cell":cell,"damage":amount,"kind":id,"resolve_at":int(enemy.get("resolve_at",s.time+int(enemy.cast_left)*100))})
 
 static func turn(s, enemy: Dictionary) -> void:
+	if s.time < int(enemy.get("sleep_until",0)): return
 	# A dominated monster reads this list the other way round.
 	var targets: Array = s.hostiles_of(enemy)
 	if enemy.hp <= 0 or targets.is_empty(): return

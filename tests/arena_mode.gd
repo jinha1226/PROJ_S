@@ -31,7 +31,7 @@ func session() -> void:
 	check(rounds > 0 and rounds < 60,"the fight resolves")
 	var custom := {"members":[["dcss_rat","MELEE"],["goblin","CASTER"]]}
 	var c = Session.arena_test(7,1,custom,[{"stance":"CHARGER","parts":["PUSH",""]}])
-	check(c.enemies.size() == 2 and c.supplies.size() == 5 and c.party.size() == 1,"custom roster, light and party size")
+	check(c.enemies.size() == 2 and c.party.size() == 1,"custom roster, light and party size")
 	check(Session.arena_test(42,3,Session.ARENA_PRESETS.opt_archers,members).enemies[0].pos == t.enemies[0].pos,"same seed, same layout")
 	# Solo guardian is coerced to charger.
 	var g = Session.arena_test(1,1,Session.ARENA_PRESETS.early_hob,[{"stance":"GUARDIAN","parts":["",""]}])

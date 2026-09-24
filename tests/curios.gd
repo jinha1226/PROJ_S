@@ -6,6 +6,8 @@ const Fixture = preload("res://tests/floor_fixture.gd")
 const Curios = preload("res://expedition/items/curios.gd")
 const Generator = preload("res://expedition/level/floor_generator.gd")
 var failures := 0
+func bag_total(s) -> int:
+	return s.bag.values().reduce(func(a,b): return a+b,0)
 var checks := 0
 func check(ok: bool, reason: String) -> void:
 	checks += 1
@@ -64,10 +66,10 @@ func dead_adventurer() -> void:
 	for seed in range(40):
 		var f := setup(100+seed,"DEAD_ADVENTURER"); var s = f.s; var p: Vector2i = f.p
 		var bag: int = s.parts_bag.values().reduce(func(a,b): return a+b,0)
-		var items: int = s.supplies.reduce(func(a,b): return a+b,0)
+		var items: int = bag_total(s)
 		check(Curios.resolve(s,p,"SEARCH") and s.food == 3,"adventurer gives one food (seed %d)" % seed)
 		if s.parts_bag.values().reduce(func(a,b): return a+b,0) > bag: parts += 1
-		if s.supplies.reduce(func(a,b): return a+b,0) > items: supplies += 1
+		if bag_total(s) > items: supplies += 1
 	check(parts >= 4 and parts <= 20,"parts on some seeds (%d/40)" % parts)
 	check(supplies >= 4 and supplies <= 20,"supplies on some seeds (%d/40)" % supplies)
 
@@ -75,9 +77,9 @@ func dead_adventurer() -> void:
 func broken_chest() -> void:
 	for seed in range(10):
 		var f := setup(200+seed,"BROKEN_CHEST"); var s = f.s; var p: Vector2i = f.p
-		var before: int = s.parts_bag.values().reduce(func(a,b): return a+b,0)+s.supplies.reduce(func(a,b): return a+b,0)
+		var before: int = s.parts_bag.values().reduce(func(a,b): return a+b,0)+bag_total(s)
 		check(Curios.resolve(s,p,"SEARCH"),"chest searched (seed %d)" % seed)
-		check(s.parts_bag.values().reduce(func(a,b): return a+b,0)+s.supplies.reduce(func(a,b): return a+b,0) == before+1,"chest gives exactly one item (seed %d)" % seed)
+		check(s.parts_bag.values().reduce(func(a,b): return a+b,0)+bag_total(s) == before+1,"chest gives exactly one item (seed %d)" % seed)
 
 ## The three refusals the plan names: out of reach, a foe in sight, no action.
 func rules() -> void:

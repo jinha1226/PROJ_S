@@ -1,6 +1,6 @@
 # 물약·두루마리 소모품과 미감정 설계
 
-작성일: 2026-09-24 · 상태: 승인됨, 구현 전 · 구현 계획: (writing-plans로 작성)
+작성일: 2026-09-24 · 상태: 구현됨 · 구현 계획: [소모품 구현 계획](../plans/2026-09-24-consumables-identification.md)
 근거: [하강 Run 설계](2026-09-25-run-camp-npc-design.md) §2.3(물약·두루마리는 던전에서 줍는 소모품) · [층 생성기](2026-09-22-floor-generator-design.md) · `docs/inventory-ui.md`
 참고 게임: Shattered Pixel Dungeon(SPD)의 물약·두루마리 구성과 미감정 규칙, DCSS의 외관 셔플.
 
@@ -72,7 +72,7 @@
 | `pending_choice` | `Dictionary` | §1.2 선택 흐름. 비어 있으면 없음 |
 
 - `depart()`에서 `bag`·`known`을 비우고 `appearances`를 시드로 셔플한다. 셔플은 `Hexaco.sample(seed, i, "appearance_potion"/"appearance_scroll", n)`을 쓰는 Fisher–Yates로, 같은 시드는 같은 배정을 낸다.
-- 라벨 규칙 `Consumables.label(s, kind)`: 감정 전 외관 라벨, 감정 후 이름. 설명 규칙: 감정 전 "마셔 보거나 감정해야 정체를 안다", 감정 후 카탈로그 `description`.
+- 라벨 규칙 `Consumables.label(s, kind)`: 감정 전 외관 라벨, 감정 후 이름. 설명 규칙: 감정 전 "정체 불명", 감정 후 카탈로그 `description`.
 - 감정 메시지: "붉은 물약은 치유 물약이었다". 줍기 메시지: "붉은 물약 획득".
 - 시뮬·픽스처용 `grant_item(kind, count, known)`: `known=true`면 감정 상태로 지급한다. 바닥·조사물 지급은 항상 미감정이다(이미 감정된 종류면 당연히 이름으로 보인다).
 

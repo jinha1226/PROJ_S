@@ -297,9 +297,12 @@ static func gear_name(ui, item: Dictionary, slot: String) -> String:
 static func inventory_rows(ui) -> Array:
 	var session = ui.session
 	var rows: Array = []
-	var descriptions := ["HP +20","스트레스 -25","HP +5 · 스트레스 -10","목재 점화 · 사거리 4","물기 · 사거리 4"]
-	for i in range(5):
-		if session.supplies[i] > 0: rows.append({"id":"supply:%d"%i,"label":Session.SUPPLY_NAMES[i],"quantity":session.supplies[i],"category":"소모품","slot":i,"description":descriptions[i],"icon":Art.item(i)})
+	for kind in Session.Consumables.kinds():
+		var count: int = int(session.bag.get(kind,0))
+		if count <= 0: continue
+		var def: Dictionary = Session.Consumables.definition(kind)
+		var is_known: bool = session.known.has(kind)
+		rows.append({"id":"item:"+kind,"label":session.item_label(kind)+("" if is_known else " · 미감정"),"quantity":count,"category":"소모품","kind":kind,"class":str(def["class"]),"known":is_known,"area":bool(def.get("area",false)),"description":Session.Consumables.description(session,kind),"icon":Art.ui_icon(6 if str(def["class"]) == "potion" else 9)})
 	for i in range(session.gear_bag.size()):
 		var item: Dictionary = session.gear_bag[i]
 		var slot: String = session.gear_slot(item)
@@ -347,11 +350,14 @@ static func show_item_detail(ui, id: String) -> void:
 	ui.clear(ui.item_detail); ui.label(ui.item_detail,"%s × %d" % [row.label,row.quantity],18)
 	var info = ui.label(ui.item_detail,row.description,12); info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.custom_minimum_size.x = minf(290,ui.size.x-32)
 	if row.category == "소모품":
-		if row.slot in [3,4]:
-			ui.button(ui.item_detail,"사용 · 바닥 선택",func(): ui.item_popup.hide(); ui.details_popup.hide(); ui.choose_item(row.slot),session.on_floor())
-		else:
+		var usable: bool = session.phase in ["EXPLORE","BATTLE","CAMP"]
+		if row["class"] == "potion":
 			for i in range(session.party.size()):
-				ui.button(ui.item_detail,session.party[i].name+"에게 사용",func(): ui.item_popup.hide(); ui.details_popup.hide(); ui.run_action(func(): return session.use_supply(row.slot,Vector2i(-1,-1),i)),session.phase in ["EXPLORE","BATTLE","CAMP"] and session.party[i].hp > 0)
+				ui.button(ui.item_detail,session.party[i].name+" 마신다",func(): ui.item_popup.hide(); ui.details_popup.hide(); ui.run_action(func(): return session.use_item(row.kind,Vector2i(-1,-1),i)),usable and session.party[i].hp > 0)
+			if row.area or not row.known:
+				ui.button(ui.item_detail,"던진다 · 바닥 선택",func(): ui.item_popup.hide(); ui.details_popup.hide(); ui.choose_item(row.kind),session.on_floor())
+		else:
+			ui.button(ui.item_detail,"읽는다",func(): ui.item_popup.hide(); ui.details_popup.hide(); ui.run_action(func(): return session.use_item(row.kind)),usable)
 	elif row.category == "장비":
 		if row.has("equipped_member"):
 			var member: int = int(row.equipped_member)
@@ -377,3 +383,20 @@ static func popup_list(ui) -> VBoxContainer:
 
 static func equip_from_bag(ui, member: int, slot: int, id: String) -> void:
 	if ui.session.equip_part(member,slot,id): ui.item_popup.hide(); ui.refresh(); show_supplies(ui)
+
+static func show_choice(ui) -> void:
+	var session = ui.session
+	var choice: Dictionary = session.pending_choice
+	if choice.is_empty(): return
+	ui.stop_navigation(); ui.clear(ui.modal_content)
+	ui.label(ui.modal_content,"감정할 것" if choice.kind == "identify" else "강화할 장비",18)
+	for option in choice.options:
+		var caption: String = session.item_label(option) if choice.kind == "identify" else gear_name(ui,session.party[int(choice.actor)].gear[option],option)
+		ui.button(ui.modal_content,caption,func(): pick_choice(ui,option))
+	ui.details_popup.transient = true; ui.details_popup.exclusive = true
+	ui.details_popup.popup_centered()
+
+static func pick_choice(ui, option: String) -> void:
+	if ui.session.resolve_choice(option):
+		ui.details_popup.exclusive = false
+		ui.details_popup.hide(); ui.refresh()

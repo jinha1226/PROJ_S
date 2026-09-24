@@ -1347,6 +1347,7 @@
     }
   },
   "summons": {
+    "mirror": {"name":"거울상","hp":12,"power":6,"speed":100,"duration":300},
     "hound": {
       "name": "사냥개",
       "hp": 20,

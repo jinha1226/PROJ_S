@@ -7,7 +7,7 @@ static func step(s, policy: String) -> String:
 	var hero: Dictionary = s.party[s.selected]
 	if hero.hp <= 0 or hero.ap <= 0: return ""
 	if policy == "tactical":
-		if hero.hp < 14 and s.supplies[0] > 0 and s.use_supply(0): return "HEAL"
+		if hero.hp < 14 and int(s.bag.get("healing",0)) > 0 and s.use_item("healing"): return "HEAL"
 	if s.combat_enemies().is_empty() and approach(s,hero): return "MOVE"
 	if policy == "rules":
 		# The hero and the party read the same rule list the game runs; one call

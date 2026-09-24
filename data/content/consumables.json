@@ -1,0 +1,26 @@
+{
+  "content_schema_version": 1,
+  "content_type": "consumables",
+  "appearances": {
+    "potion": ["붉은", "푸른", "녹색", "호박색", "보라색", "은빛", "검은", "하얀", "탁한", "황금빛"],
+    "scroll": ["ZELGO MER", "KIRJE", "ANDOVA", "PRATYAV", "VENZAR", "NAFA", "TEMOV", "GARI", "LOMAS", "XIXAXA"]
+  },
+  "kinds": [
+    {"id":"healing","class":"potion","name":"치유 물약","description":"HP 20 회복, 출혈 해제","weight":15,"area":false},
+    {"id":"strength","class":"potion","name":"힘의 물약","description":"힘 +3, 최대 HP +5","weight":3,"area":false},
+    {"id":"haste","class":"potion","name":"가속 물약","description":"가속 300틱","weight":5,"area":false},
+    {"id":"liquid_flame","class":"potion","name":"액체 화염","description":"3×3 점화와 화상","weight":6,"area":true},
+    {"id":"frost","class":"potion","name":"냉기 물약","description":"3×3 빙결과 물기","weight":5,"area":true},
+    {"id":"toxic_gas","class":"potion","name":"독가스 물약","description":"3×3 중독","weight":6,"area":true},
+    {"id":"experience","class":"potion","name":"경험의 물약","description":"레벨 1 상승","weight":3,"area":false},
+    {"id":"calm","class":"potion","name":"정신 안정제","description":"스트레스 25 감소","weight":8,"area":false},
+    {"id":"identify","class":"scroll","name":"감정 두루마리","description":"가방의 미감정 소모품 한 종류 감정","weight":20},
+    {"id":"upgrade","class":"scroll","name":"강화 두루마리","description":"장착한 무기 또는 방어구 강화","weight":4},
+    {"id":"magic_mapping","class":"scroll","name":"마법 지도","description":"현재 층의 지형 발견","weight":6},
+    {"id":"teleportation","class":"scroll","name":"순간이동","description":"먼 빈 칸으로 이동","weight":6},
+    {"id":"mirror_image","class":"scroll","name":"거울상","description":"거울상 둘 소환","weight":5},
+    {"id":"lullaby","class":"scroll","name":"자장가","description":"시야 안 몬스터 잠재우기","weight":5},
+    {"id":"rage","class":"scroll","name":"분노","description":"층의 모든 몬스터 자극·가속","weight":4},
+    {"id":"recharging","class":"scroll","name":"재충전","description":"MP 완전 회복","weight":5}
+  ]
+}
