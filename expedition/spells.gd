@@ -15,6 +15,8 @@ const STATUSES := ["confuse", "slow", "freeze", "bind", "burn", "weak", "brittle
 ## The spec's seven artefact spells: still in the data, in no book, dropped by
 ## nothing. The five the port started with are now rows of the table instead.
 const RELICS := ["blast", "blink", "mend", "passwall", "ward", "turret", "ignite"]
+## The relics that have an effect today; the rest stay learnable data.
+const RELIC_CASTABLE := ["blast", "blink", "mend"]
 ## What a spell's own burn does per boundary tick, told apart from the single
 ## point the fire mastery's burn has always done.
 const BURN_DAMAGE := 4
@@ -149,7 +151,10 @@ static func refusal(s, caster: Dictionary, id: String, target: Vector2i) -> Stri
 	if id not in caster.get("prepared",[]): return "준비 안 됨"
 	if caster.mp < int(spell.mp): return "MP 부족"
 	var shape: String = shape_of(spell)
-	if shape.is_empty(): return "" if relic_can_cast(s,caster,id,target,spell) else "시전 불가"
+	if shape.is_empty():
+		# Relics without a cast branch are data only: no MP is ever spent on them.
+		if id not in RELIC_CASTABLE: return "아직 쓸 수 없는 유물"
+		return "" if relic_can_cast(s,caster,id,target,spell) else "시전 불가"
 	if shape == "self": return ""
 	if shape == "summon": return "" if not summon_cells(s,caster).is_empty() else "설 자리 없음"
 	if bool(spell.get("sacrifice",false)): return "" if not summons_of(s,caster).is_empty() else "소환수 없음"

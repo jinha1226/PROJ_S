@@ -62,6 +62,10 @@ func data() -> void:
 	for id in ["blast","blink","mend","passwall","ward","turret","ignite"]:
 		check(Stats.content.spells.has(id),"the relic %s is still in the table" % id)
 		check(str(Stats.content.spells[id].get("book","")).is_empty(),"no book holds the relic %s" % id)
+	# A relic with no cast branch refuses before spending MP.
+	var rs = Session.new(19,false,false,true,1); rs.depart(); Fixture.arena(rs,8)
+	var rh: Dictionary = rs.party[0]; rh.spells.append("ward"); rh.prepared = ["ward"]; rh.mp = rh.max_mp
+	check(Spells.refusal(rs,rh,"ward",rh.pos) == "아직 쓸 수 없는 유물" and not Spells.cast(rs,rh,"ward",rh.pos) and rh.mp == rh.max_mp,"an effect-less relic is refused and costs nothing")
 	check(Stats.content.summons.size() == 4,"four kinds of summon")
 	for kind in ["hound","imp","rat","wolf"]:
 		var row: Dictionary = Stats.content.summons[kind]
