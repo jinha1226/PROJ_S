@@ -68,7 +68,8 @@
           "chance": 100,
           "success": {
             "item": true,
-            "gear_chance": 50
+            "gear_chance": 50,
+            "spellbook_chance": 30
           }
         }
       }
