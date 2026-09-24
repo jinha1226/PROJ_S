@@ -77,7 +77,7 @@ func magic(id: String, spell: String) -> void:
 	for other in s.enemies:
 		if other.id != foe.id: other.hp = 0
 	s.floor_state.observe(s)
-	var target: Vector2i = foe.pos if spell != "hound" else hero.pos
+	var target: Vector2i = foe.pos if spell != "summon_1" else hero.pos
 	check(Spells.can_cast(s,hero,spell,target),"%s can cast %s" % [id,spell])
 	# The kit's own rank is enough to cast; a mastered caster never fumbles, so
 	# what the spell does is what the check below reads.
@@ -87,13 +87,13 @@ func magic(id: String, spell: String) -> void:
 	check(s.cast(spell,target),"%s casts %s" % [id,spell])
 	check(hero.mp < 18,"%s spends MP on %s" % [id,spell])
 	match spell:
-		"bolt", "cone", "cloud":
+		"fire_1", "ice_1", "air_1":
 			check(foe.hp < before,"%s wounds the foe" % spell)
-			if spell == "cone": check(foe.statuses.has("slow") or foe.hp <= 0,"서리 부채 slows what it hits")
-		"confuse":
+			if spell == "ice_1": check(foe.statuses.has("slow") or foe.hp <= 0,"서리창 slows what it hits")
+		"hex_1":
 			var resisted: bool = s.log_lines.slice(lines).any(func(line): return str(line).ends_with("저항"))
 			check(foe.statuses.has("confuse") or resisted,"혼란 lands or is resisted aloud")
-		"hound":
+		"summon_1":
 			var pets: Array = s.npcs.filter(func(n): return bool(n.get("summoned",false)))
 			check(pets.size() == 1,"one hound answers")
 			if not pets.is_empty():
@@ -111,7 +111,7 @@ func summoned_hound() -> void:
 	for enemy in s.enemies: enemy.hp = 0
 	s.floor_state.observe(s)
 	var born: int = s.time
-	check(s.cast("hound",hero.pos),"the hound is summoned")
+	check(s.cast("summon_1",hero.pos),"the hound is summoned")
 	var pets: Array = s.npcs.filter(func(n): return bool(n.get("summoned",false)))
 	check(pets.size() == 1,"exactly one hound")
 	if pets.is_empty(): return

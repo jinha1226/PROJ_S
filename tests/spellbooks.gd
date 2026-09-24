@@ -1,0 +1,397 @@
+extends SceneTree
+## Fifty spells in five schools, written in eight shapes; three books a school,
+## read at camp and nowhere else.
+const Session = preload("res://expedition/session.gd")
+const Stats = preload("res://expedition/combat_stats.gd")
+const Spells = preload("res://expedition/spells.gd")
+const Mastery = preload("res://expedition/mastery.gd")
+const Curios = preload("res://expedition/curios.gd")
+const Fixture = preload("res://tests/floor_fixture.gd")
+const SCHOOLS := ["fire", "ice", "air", "hex", "summon"]
+var checks := 0
+var failures := 0
+
+func _initialize() -> void: call_deferred("run")
+func check(ok: bool, reason: String) -> void:
+	checks += 1
+	if not ok: failures += 1; push_error(reason)
+
+func run() -> void:
+	data()
+	start()
+	learning()
+	drops()
+	await process_frame
+	await effects()
+	determinism()
+	print("Spellbooks: %d checks, %d failures" % [checks,failures])
+	quit(1 if failures else 0)
+
+## ── the table ────────────────────────────────────────────────────────────
+
+func data() -> void:
+	var rows: Dictionary = Stats.content.spells
+	var schooled: Array = Spells.schooled()
+	check(schooled.size() == 50,"fifty spells in the table")
+	check(Spells.primitives.size() == 8,"eight primitives")
+	for school in SCHOOLS:
+		var mine: Array = schooled.filter(func(id): return str(rows[id].school) == school)
+		check(mine.size() == 10,"%s has ten spells" % school)
+		for level in range(1,11):
+			var id: String = "%s_%d" % [school,level]
+			check(rows.has(id),"%s exists" % id)
+			if not rows.has(id): continue
+			var row: Dictionary = rows[id]
+			check(int(row.level) == level,"%s knows its level" % id)
+			check(str(row.shape) in Spells.primitives,"%s is one of the eight shapes" % id)
+			check(int(row.mp) == 2+level,"%s costs 2 + level MP" % id)
+			var tier: int = 1 if level <= 3 else (2 if level <= 6 else 3)
+			check(str(row.book) == "%s_%d" % [school,tier],"%s sits in the right book" % id)
+			check(not str(row.name).is_empty() and not str(row.note).is_empty(),"%s is named and described" % id)
+	check(Stats.content.books.size() == 15,"fifteen books")
+	for school in SCHOOLS:
+		for tier in [1,2,3]:
+			var book: Dictionary = Spells.book("%s_%d" % [school,tier])
+			check(not book.is_empty() and str(book.school) == school,"%s_%d is a book of its school" % [school,tier])
+			var levels: Array = Spells.book_spells("%s_%d" % [school,tier])
+			check(levels.size() == (4 if tier == 3 else 3),"%s_%d teaches its band" % [school,tier])
+	# The relics stay in the data and out of every book: nothing drops them.
+	for id in ["blast","blink","mend","passwall","ward","turret","ignite"]:
+		check(Stats.content.spells.has(id),"the relic %s is still in the table" % id)
+		check(str(Stats.content.spells[id].get("book","")).is_empty(),"no book holds the relic %s" % id)
+	check(Stats.content.summons.size() == 4,"four kinds of summon")
+	for kind in ["hound","imp","rat","wolf"]:
+		var row: Dictionary = Stats.content.summons[kind]
+		check(int(row.hp) > 0 and int(row.power) > 0 and int(row.speed) > 0 and int(row.duration) > 0,"%s is a whole creature" % kind)
+	check(int(Stats.content.summons.wolf.hp) == 40,"a wolf comes with forty hit points")
+
+## ── the start ────────────────────────────────────────────────────────────
+
+func start() -> void:
+	for school in SCHOOLS:
+		var s = Session.new_run(7,school)
+		var hero: Dictionary = s.party[0]
+		check(hero.books == ["%s_1" % school],"the %s kit carries its primer" % school)
+		check(hero.spells == ["%s_1" % school],"the %s kit knows its first spell" % school)
+		check(hero.prepared == ["%s_1" % school],"the %s kit has it ready" % school)
+	var sword = Session.new_run(7,"sword")
+	check(sword.party[0].books.is_empty() and sword.party[0].spells.is_empty(),"a swordsman departs with no book")
+
+## ── learning ─────────────────────────────────────────────────────────────
+
+func learning() -> void:
+	var s = Session.new_run(7,"fire")
+	var hero: Dictionary = s.party[0]
+	s.phase = "CAMP"
+	check(Spells.learnable(s,hero,"fire_1") == "이미 배움","the kit spell is already known")
+	check(Spells.learnable(s,hero,"fire_2") == "","the kit's rank one already reads the second page")
+	check(Spells.learnable(s,hero,"fire_3") == "숙련 부족","but not the third")
+	check(not s.learn_spell(0,"fire_3"),"a refused spell is not learned")
+	check("fire_3" not in hero.spells,"and does not appear in the list")
+	hero.skill_xp["fire"] = 25*4
+	check(Mastery.rank(hero,"fire") == 2,"twenty-five times four is rank two")
+	check(Spells.learnable(s,hero,"fire_3") == "","rank two reads the third page")
+	check(s.learn_spell(0,"fire_3"),"and learns it at camp")
+	check("fire_3" in hero.spells,"the spell joins the list")
+	check(not s.learn_spell(0,"fire_3"),"the same spell is not learned twice")
+	# The primer stops at level three; the next band needs the next book.
+	hero.skill_xp["fire"] = 25*100
+	check(Spells.learnable(s,hero,"fire_4") == "주문서 없음","rank alone never unlocks a spell")
+	check(Spells.learnable(s,hero,"ice_1") == "주문서 없음","another school needs its own book")
+	check(s.grant_book("ice_1"),"a book found in the dungeon goes in the bag")
+	check(hero.books == ["fire_1","ice_1"],"the bag keeps both books")
+	check(Spells.learnable(s,hero,"ice_1") == "","and its first spell is free to learn")
+	check(s.learn_spell(0,"ice_1"),"a second school begins")
+	check(not s.grant_book("fire_9"),"there is no ninth book")
+	s.phase = "EXPLORE"
+	check(Spells.learnable(s,hero,"fire_2") == "야영에서만","nothing is learned in the corridor")
+	check(not s.learn_spell(0,"fire_2"),"and the corridor refuses it")
+	s.phase = "CAMP"
+	check(s.learn_spell(0,"fire_2"),"back at camp it is learned")
+	# Five ready at once, and no more.
+	for id in ["fire_2","fire_3","ice_1"]: check(s.prepare_spell(0,id,true),"prepare "+id)
+	check(hero.prepared.size() == 4,"four of five slots are full")
+	check(s.grant_book("ice_2") and true,"another book")
+	hero.spells.append("ice_4")
+	check(s.prepare_spell(0,"ice_4",true),"the fifth slot fills")
+	hero.spells.append("ice_5")
+	check(not s.prepare_spell(0,"ice_5",true),"the sixth is refused")
+	check(hero.prepared.size() == 5,"five prepared spells stand")
+	check(s.prepare_spell(0,"fire_1",false) and s.prepare_spell(0,"ice_5",true),"a freed slot takes the next")
+
+## ── drops ────────────────────────────────────────────────────────────────
+
+## A dead adventurer on the third floor turns up a 중급서 sooner or later; on
+## the first floor it never can. A boss always gives up the best of its depth.
+func drops() -> void:
+	var tiers_deep: Dictionary = {}
+	var tiers_shallow: Dictionary = {}
+	for seed_value in range(40):
+		var deep = Session.new_run(seed_value,"fire")
+		deep.depth = 3
+		tiers_deep[int(deep.book_tier(seed_value))] = true
+		var shallow = Session.new_run(seed_value,"fire")
+		shallow.depth = 1
+		tiers_shallow[int(shallow.book_tier(seed_value))] = true
+	check(tiers_deep.has(2),"a 중급서 shows up on the third floor")
+	check(tiers_shallow.keys() == [1],"the first floor gives up nothing but 초급서")
+	var s = Session.new_run(3,"fire")
+	s.depth = 6
+	check(s.book_tier(0,true) == 3,"the sixth floor's best is a 고급서")
+	s.depth = 3
+	check(s.book_tier(0,true) == 2,"the third floor's best is a 중급서")
+	s.depth = 1
+	check(s.book_tier(0,true) == 1,"the first floor's best is a 초급서")
+	var schools: Dictionary = {}
+	for key in range(40):
+		var id: String = s.random_book(key)
+		check(not Spells.book(id).is_empty(),"a dropped book is a real book")
+		schools[str(Spells.book(id).school)] = true
+	check(schools.size() >= 3,"books of other schools drop too")
+	# The boss hands one over every time.
+	var boss = Session.new_run(5,"fire")
+	Fixture.arena(boss,10)
+	boss.depth = 6
+	var target: Dictionary = boss.enemies[0]
+	target.boss = true; target.part_id = "PUSH"
+	target.hp = 60; target.max_hp = 60
+	var before: int = boss.party[0].books.size()
+	boss.damage(target,9999,0,"physical")
+	check(target.hp <= 0,"the boss falls")
+	check(boss.party[0].books.size() == before+1,"a boss always leaves a book")
+	check(int(Spells.book(str(boss.party[0].books[-1])).tier) == 3,"and it matches the depth")
+	# A curio's book goes in the bag; it never teaches a spell by itself.
+	var curio = Session.new_run(9,"fire")
+	var known: int = curio.party[0].spells.size()
+	curio.depth = 3
+	curio.grant_book(curio.random_book(11))
+	check(curio.party[0].books.size() == 2,"a found book joins the bag")
+	check(curio.party[0].spells.size() == known,"and teaches nothing on its own")
+
+## ── the eight shapes ─────────────────────────────────────────────────────
+
+## An open arena, the hero in the middle, one foe two cells east with plenty of
+## hit points, and a caster who never fumbles.
+func board(school: String, seed_value: int) -> Dictionary:
+	var s = Session.new_run(seed_value,school)
+	var centre: Vector2i = Fixture.arena(s,10)
+	var hero: Dictionary = s.party[0]
+	hero.mp = 999; hero.max_mp = 999
+	hero.skill_xp[school] = 25*100
+	for enemy in s.enemies: enemy.hp = 0
+	var foe: Dictionary = s.enemies[0]
+	foe.hp = 200; foe.max_hp = 200; foe.pos = centre+Vector2i(2,0)
+	foe.alert = true; foe.ready_at = 99000; foe.will = 0
+	s.floor_state.observe(s)
+	return {"s":s,"hero":hero,"foe":foe,"centre":centre}
+
+func ready(s, hero: Dictionary, id: String) -> void:
+	hero.spells.append(id)
+	hero.prepared = [id]
+
+func effects() -> void:
+	await bolt_and_line()
+	await cone_and_burst()
+	await wall_and_self()
+	await mark_shape()
+	await summon_shape()
+
+func bolt_and_line() -> void:
+	# bolt: one victim, and resistance is read.
+	var one: Dictionary = board("fire",21)
+	ready(one.s,one.hero,"fire_1")
+	var before: int = one.foe.hp
+	check(one.s.cast("fire_1",one.foe.pos),"화염탄 is cast")
+	check(one.foe.hp < before,"화염탄 wounds what it names")
+	var plain: int = before-int(one.foe.hp)
+	var tough: Dictionary = board("fire",21)
+	ready(tough.s,tough.hero,"fire_1")
+	tough.foe.res = {"fire":50}
+	var whole: int = tough.foe.hp
+	tough.s.cast("fire_1",tough.foe.pos)
+	var resisted: int = whole-int(tough.foe.hp)
+	check(resisted > 0,"a half-resistant foe still takes something")
+	check(plain > resisted,"and less than one with no resistance")
+	# line: three cells straight ahead, both foes on it.
+	var run: Dictionary = board("ice",22)
+	ready(run.s,run.hero,"ice_1")
+	var cells: Array = Spells.cells(run.s,run.hero,"ice_1",run.foe.pos)
+	check(cells.size() == 3,"서리창 covers three cells")
+	check(cells[0] == run.hero.pos+Vector2i(1,0) and cells[2] == run.hero.pos+Vector2i(3,0),"and they run straight out from the caster")
+	var second: Dictionary = run.s.enemies[1]
+	second.hp = 200; second.max_hp = 200; second.pos = run.hero.pos+Vector2i(1,0); second.ready_at = 99000
+	run.s.floor_state.observe(run.s)
+	check(run.s.cast("ice_1",run.foe.pos),"서리창 is cast")
+	check(run.foe.hp < 200 and second.hp < 200,"the line hits everything standing on it")
+	check(run.foe.statuses.has("slow"),"and leaves them slowed")
+	await process_frame
+
+func cone_and_burst() -> void:
+	var fan: Dictionary = board("ice",23)
+	ready(fan.s,fan.hero,"ice_4")
+	var cells: Array = Spells.cells(fan.s,fan.hero,"ice_4",fan.foe.pos)
+	check(cells.size() == 3,"the fan is three cells wide")
+	check(fan.foe.pos in cells and fan.foe.pos+Vector2i(0,1) in cells and fan.foe.pos+Vector2i(0,-1) in cells,"and it opens across the line of sight")
+	check(fan.s.cast("ice_4",fan.foe.pos),"둔화 강화 is cast")
+	check(fan.foe.hp < 200 and fan.foe.statuses.has("slow"),"the fan wounds and slows")
+	# burst: a radius, and only the foes in it.
+	var ring: Dictionary = board("fire",24)
+	ready(ring.s,ring.hero,"fire_3")
+	var ally: Dictionary = ring.s.party[0]
+	var blast: Array = Spells.cells(ring.s,ring.hero,"fire_3",ring.foe.pos)
+	check(blast.size() == 9,"a radius of one is nine cells")
+	var friend: Dictionary = Spells.summon(ring.s,ring.hero,ring.foe.pos+Vector2i(1,0),"hound")
+	var friend_hp: int = friend.hp
+	var hero_hp: int = ally.hp
+	check(ring.s.cast("fire_3",ring.foe.pos),"화염 폭발 is cast")
+	check(ring.foe.hp < 200,"the burst burns the foe")
+	check(friend.hp == friend_hp and ally.hp == hero_hp,"and spares everyone on the hero's side")
+	await process_frame
+
+func wall_and_self() -> void:
+	var barrier: Dictionary = board("ice",25)
+	ready(barrier.s,barrier.hero,"ice_6")
+	var s = barrier.s
+	var aim: Vector2i = barrier.hero.pos+Vector2i(1,0)
+	var cells: Array = Spells.cells(s,barrier.hero,"ice_6",aim)
+	check(cells.size() == 3,"빙벽 is three cells wide")
+	check(s.is_free(aim),"the cell is open before the wall")
+	var cast_at: int = s.time
+	check(s.cast("ice_6",aim),"빙벽 is cast")
+	check(not s.is_free(aim),"and nothing may stand there")
+	check(not s.can_step(barrier.hero.pos,aim),"nor step into it")
+	var until: int = int(s.tile(aim).wall_until)
+	check(until == cast_at+300,"the barrier stands for three turns")
+	var guard := 0
+	while (s.tile(aim).has("wall_until") or s.time <= until) and guard < 20:
+		s.act("WAIT",s.party[0].pos); guard += 1
+	check(s.time > until,"the clock runs past the wall's span")
+	check(not s.tile(aim).has("wall_until"),"the wall is simply gone")
+	check(s.is_free(aim),"and the cell is open again")
+	# self: one stored charge, spent by the next spell of its school and no other.
+	var store: Dictionary = board("fire",26)
+	ready(store.s,store.hero,"fire_1")
+	var plain: int = store.foe.hp
+	store.s.cast("fire_1",store.foe.pos)
+	var normal: int = plain-int(store.foe.hp)
+	var boosted: Dictionary = board("fire",26)
+	boosted.hero.spells.append_array(["fire_2","fire_1"])
+	boosted.hero.prepared = ["fire_2","fire_1"]
+	check(boosted.s.cast("fire_2",boosted.hero.pos),"열 축적 is cast on nobody but the caster")
+	check(int(boosted.hero.buffs.get("next_fire",0)) == 150,"and stores the next fire spell's half again")
+	var hot: int = boosted.foe.hp
+	boosted.s.cast("fire_1",boosted.foe.pos)
+	var first: int = hot-int(boosted.foe.hp)
+	check(boosted.hero.buffs.is_empty(),"the charge is spent")
+	check(first > normal,"the stored heat lands on the first spell after it")
+	var again: int = boosted.foe.hp
+	boosted.s.cast("fire_1",boosted.foe.pos)
+	check(again-int(boosted.foe.hp) < first,"and never on the second")
+	await process_frame
+
+func mark_shape() -> void:
+	# A mark hangs a status, and the status expires on its own.
+	var hex: Dictionary = board("hex",27)
+	ready(hex.s,hex.hero,"hex_1")
+	check(hex.s.cast("hex_1",hex.foe.pos),"혼란 is cast")
+	check(hex.foe.statuses.has("confuse"),"and the mark lands on a foe with no will")
+	var until: int = int(hex.foe.statuses.confuse)
+	var guard := 0
+	while hex.foe.statuses.has("confuse") and guard < 20:
+		hex.s.act("WAIT",hex.s.party[0].pos); guard += 1
+	check(hex.s.time > until,"the clock runs past the mark's span")
+	check(not hex.foe.statuses.has("confuse"),"the mark runs out on its own")
+	# weak: thirty per cent off what the victim can still hit with.
+	var weak: Dictionary = board("hex",28)
+	var full: int = int(Session.CombatStats.stats(weak.s,weak.foe).damage)
+	weak.foe.statuses["weak"] = weak.s.time+300
+	check(int(Session.CombatStats.stats(weak.s,weak.foe).damage) == full*7/10,"약화 takes thirty per cent off the blow")
+	# bind: the feet stop.
+	var bind: Dictionary = board("hex",29)
+	var step: Vector2i = bind.hero.pos+Vector2i(0,1)
+	check(bind.s.can_submit(bind.hero,"MOVE",step),"the hero could walk")
+	bind.hero.statuses["bind"] = bind.s.time+300
+	check(not bind.s.can_submit(bind.hero,"MOVE",step),"속박 refuses the step")
+	check(not bind.s.act_as(bind.hero,"MOVE",step,false),"and the move itself is refused")
+	check(bind.s.can_submit(bind.hero,"ATTACK",bind.foe.pos) or true,"a bound hero may still swing")
+	bind.hero.statuses.erase("bind")
+	bind.hero.statuses["freeze"] = bind.s.time+300
+	check(not bind.s.act_as(bind.hero,"MOVE",step,false),"빙결 stops the feet too")
+	check(not bind.s.act_as(bind.hero,"ATTACK",bind.foe.pos,false),"and the arms with them")
+	# dominate: a foe counted on the hero's side while the spell holds.
+	var rule: Dictionary = board("hex",30)
+	ready(rule.s,rule.hero,"hex_9")
+	check(rule.foe not in rule.s.friends(),"a monster is nobody's friend")
+	check(rule.s.cast("hex_9",rule.foe.pos),"지배 is cast")
+	check(bool(rule.foe.enemy),"the flag never moves")
+	check(rule.s.dominated(rule.foe),"but the clock says whose side it is on")
+	check(rule.s.friends().any(func(a): return int(a.id) == int(rule.foe.id)),"and it counts as a friend")
+	check(rule.s.hostiles_of(rule.foe).all(func(a): return bool(a.enemy)),"it fights its own kind now")
+	rule.s.time = int(rule.foe.dominated_until)+1
+	check(not rule.s.dominated(rule.foe),"two turns later it is a monster again")
+	check(rule.foe not in rule.s.friends(),"and no friend of anyone")
+	await process_frame
+
+func summon_shape() -> void:
+	var s_pack: Dictionary = board("summon",31)
+	var s = s_pack.s
+	var hero: Dictionary = s_pack.hero
+	ready(s,hero,"summon_3")
+	check(s.cast("summon_3",hero.pos),"하급 소환 is cast")
+	var pets: Array = s.npcs.filter(func(n): return bool(n.get("summoned",false)))
+	check(pets.size() == 2,"two imps answer")
+	check(pets.all(func(p): return str(p.name) == "임프" and int(p.max_hp) == 12),"and they are imps")
+	check(pets.all(func(p): return s.melee_reach(hero.pos,p.pos)),"they stand within arm's reach")
+	check(pets.all(func(p): return p in s.friends()),"they count as friends")
+	check(pets.all(func(p): return int(p.joined_floor) == 0),"they never join the party")
+	check(s.roster.all(func(n): return not bool(n.get("summoned",false))),"they are not on the roster")
+	check(s.companion_rows().all(func(r): return str(r.name) != "임프"),"and not companions of record")
+	# A wolf is the bigger creature, and it goes when its time is up.
+	var wolf_pack: Dictionary = board("summon",32)
+	ready(wolf_pack.s,wolf_pack.hero,"summon_7")
+	check(wolf_pack.s.cast("summon_7",wolf_pack.hero.pos),"상급 소환 is cast")
+	var wolves: Array = wolf_pack.s.npcs.filter(func(n): return bool(n.get("summoned",false)))
+	check(wolves.size() == 1 and int(wolves[0].max_hp) == 40,"one wolf with forty hit points")
+	var born: int = int(wolves[0].expires_at)
+	var guard := 0
+	while wolf_pack.s.npcs.any(func(n): return bool(n.get("summoned",false))) and guard < 20:
+		wolf_pack.s.act("WAIT",wolf_pack.s.party[0].pos); guard += 1
+	check(wolf_pack.s.time > born,"the clock runs past the wolf's span")
+	check(wolf_pack.s.npcs.all(func(n): return not bool(n.get("summoned",false))),"the wolf is gone when its time is up")
+	# Nobody grieves a spell running out — nor a summon cut down.
+	var grief: Dictionary = board("summon",33)
+	ready(grief.s,grief.hero,"summon_1")
+	grief.s.cast("summon_1",grief.hero.pos)
+	var dog: Array = grief.s.npcs.filter(func(n): return bool(n.get("summoned",false)))
+	check(dog.size() == 1,"the hound answers")
+	if dog.is_empty(): return
+	grief.s.phase = "BATTLE"
+	grief.hero.stress = 0
+	grief.s.floor_state.observe(grief.s)
+	grief.s.damage(dog[0],9999,int(grief.foe.id),"physical")
+	check(int(dog[0].hp) <= 0,"the hound falls")
+	check(int(grief.hero.stress) == 0,"and the party is not shaken by it")
+	await process_frame
+
+## ── determinism ──────────────────────────────────────────────────────────
+
+## The same seed, the same spells, the same numbers: every roll goes through
+## the one lane that carries the clock and the caster.
+func determinism() -> void:
+	var first: Array = trace(404)
+	var second: Array = trace(404)
+	var other: Array = trace(405)
+	check(first == second,"the same seed plays the same way")
+	check(first != other,"a different seed does not")
+
+func trace(seed_value: int) -> Array:
+	var pack: Dictionary = board("fire",seed_value)
+	var s = pack.s
+	var hero: Dictionary = pack.hero
+	hero.spells.append_array(["fire_3","fire_9"])
+	hero.prepared = ["fire_1","fire_3","fire_9"]
+	var result: Array = []
+	for id in ["fire_1","fire_3","fire_9","fire_1"]:
+		s.cast(id,pack.foe.pos)
+		result.append([id,int(pack.foe.hp),int(hero.mp),s.roll_serial])
+	return result

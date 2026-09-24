@@ -13,10 +13,14 @@ func run() -> void:
 	var s = Session.new(901,false,false,true,1)
 	s.depart(); Fixture.arena(s,10); s.manual_mode = true
 	var hero: Dictionary = s.party[0]
-	for id in ["bolt","blast","blink","confuse","mend"]: check(s.learn_spell(0,id),"learn "+id)
+	# The port's own spells belong to no book: nothing teaches them any more.
+	for id in ["bolt","blast","blink","confuse","mend","cone"]:
+		check(not s.learn_spell(0,id),"no book teaches the relic "+id)
+		hero.spells.append(id)
 	s.phase = "CAMP"
 	check(s.prepare_spell(0,"bolt",true) and s.prepare_spell(0,"mend",true) and s.prepare_spell(0,"blink",true),"prepare three spells")
-	check(not s.prepare_spell(0,"blast",true),"fourth spell refused")
+	check(s.prepare_spell(0,"blast",true) and s.prepare_spell(0,"confuse",true),"prepare five spells")
+	check(not s.prepare_spell(0,"cone",true),"sixth spell refused")
 	s.phase = "EXPLORE"
 	var foe: Dictionary = s.enemies[0]
 	foe.hp = 100; foe.max_hp = 100; foe.pos = hero.pos+Vector2i(2,0); foe.alert = true; foe.ready_at = 1000
