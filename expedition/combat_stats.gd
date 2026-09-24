@@ -2,6 +2,15 @@ extends RefCounted
 const Mastery = preload("res://expedition/mastery.gd")
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/combat.json"))
 
+## The ten starting kits, in Mastery.AXES order: one weapon per mastery axis.
+static func kits() -> Array:
+	return content.get("kits", [])
+
+static func kit(id: String) -> Dictionary:
+	for row in kits():
+		if str(row.id) == id: return row
+	return {}
+
 static func species(actor: Dictionary) -> Dictionary:
 	return content.species.get(str(actor.get("species_id", "human")), content.species.human)
 

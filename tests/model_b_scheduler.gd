@@ -23,6 +23,9 @@ func field(seed: int) -> Dictionary:
 	foe.hp = 100; foe.max_hp = 100; foe.pos = hero.pos+Vector2i(1,0)
 	foe.alert = true; foe.role = "MELEE"; foe.part_id = ""
 	foe.ready_at = s.time+100
+	# The ticks below are catalog weapon delays: the starting kit's rank in the
+	# axis is set aside so this suite measures the scheduler, not the mastery.
+	hero.skill_xp = {}
 	s.floor_state.observe(s)
 	return {"s":s,"h":hero,"e":foe}
 

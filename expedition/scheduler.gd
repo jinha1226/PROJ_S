@@ -102,6 +102,10 @@ static func act(s, actor: Dictionary) -> void:
 	actor.ready_at = s.time + maxi(40, cost)
 
 static func environment_tick(s) -> void:
+	# A summon lasts the span its spell bought it and then simply is not there.
+	for pet in s.npcs.duplicate():
+		if bool(pet.get("summoned",false)) and int(pet.get("expires_at",0)) <= s.time:
+			pet.hp = 0; s.npcs.erase(pet)
 	for y in range(s.BOARD_SIDE):
 		for x in range(s.BOARD_SIDE):
 			var point := Vector2i(x, y)

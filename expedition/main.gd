@@ -17,6 +17,8 @@ var view_side := 17
 var log_popup: PopupPanel
 var auto_explore_button: Button
 var inventory_filter := "전체"
+## The starting kit the picker has on it, spent when a run departs.
+var kit_choice := "sword"
 var inventory_selected := ""
 var inventory_slots: Array = []
 var item_popup: PopupPanel
@@ -554,8 +556,44 @@ func show_manual_tactics() -> void:
 func build_start_screen() -> void:
 	var box := VBoxContainer.new(); box.name = "StartScreen"; box.size_flags_vertical = SIZE_EXPAND_FILL; root_layout.add_child(box)
 	label(box,"하강",26)
+	label(box,"시작 장비",15)
+	build_kit_picker(box)
 	var start := button(box,"새 탐험",new_run); start.name = "NewRun"
 	var arena := button(box,"전투 시험",show_arena_setup); arena.name = "ArenaButton"
+
+## Ten kits, one per mastery axis: five weapons on the first row, five staves
+## on the second. One is chosen at a time, and the chosen one wears the same
+## gold border a selected member card does.
+func build_kit_picker(parent: Node) -> void:
+	var picker := VBoxContainer.new(); picker.name = "KitPick"; parent.add_child(picker)
+	picker.add_theme_constant_override("separation",2)
+	var kits: Array = Session.CombatStats.kits()
+	for row in range(2):
+		var line := HBoxContainer.new(); line.name = "KitRow%d" % row
+		line.add_theme_constant_override("separation",2); picker.add_child(line)
+		for kit in kits.slice(row*5,row*5+5):
+			var id: String = str(kit.id)
+			var detail: String = kit_detail(kit)
+			var node := button(line,"%s\n%s" % [str(kit.name),detail],func(): choose_kit(id))
+			node.name = "Kit_"+id
+			node.custom_minimum_size = Vector2(0,48); node.clip_text = true
+			node.add_theme_font_size_override("font_size",11)
+			node.tooltip_text = "%s · %s\n%s" % [str(kit.name),str(kit.get("blurb","")),detail]
+			if id == kit_choice:
+				var gold := node.get_theme_stylebox("normal").duplicate(); gold.border_color = Color("e9c575")
+				gold.set_border_width_all(2); node.add_theme_stylebox_override("normal",gold)
+
+## What the kit is, in one line: a weapon's numbers, or the spell it comes with.
+func kit_detail(kit: Dictionary) -> String:
+	var content: Dictionary = Session.CombatStats.content
+	var spell_id: String = str(kit.get("spell",""))
+	if spell_id.is_empty():
+		var weapon: Dictionary = content.weapons.get(str(kit.weapon),{})
+		return "피해 %d · 속도 %d · 사거리 %d" % [int(weapon.get("damage",0)),int(weapon.get("delay",100)),int(weapon.get("range",1))]
+	return "%s · %s" % [str(content.spells.get(spell_id,{}).get("name","")),str(kit.get("blurb",""))]
+
+func choose_kit(id: String) -> void:
+	kit_choice = id; refresh()
 
 func build_camp_screen() -> void:
 	var box := VBoxContainer.new(); box.name = "CampScreen"; box.size_flags_vertical = SIZE_EXPAND_FILL; root_layout.add_child(box)
@@ -665,7 +703,7 @@ func build_stop_banner() -> void:
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; banner.clip_text = true
 
 func new_run() -> void:
-	session = Session.new_run(randi())
+	session = Session.new_run(randi(),kit_choice)
 	stop_text = ""; battle_reported = false
 	mode_arena_setup = false; mode_arena_active = false; mode = ""; pending_item = -1; pending_attack = {}; show_attack_range = false; action_effects = []; reset_effects = true
 	check_stop(); refresh()
@@ -931,8 +969,8 @@ func build_result_card() -> void:
 		label(card,"%s · %s" % [actor.name,"생존" if actor.hp > 0 else "%d층에서 전사" % session.depth],14)
 	label(card,"실수 %d" % int(session.run_stats.mistakes),14)
 	companion_history(card)
-	var start := button(card,"새 Run",new_run); start.name = "NewRun"
-	button(card,"시작 화면",func(): session = null; refresh())
+	# Another run means another kit: the result card hands the picker back.
+	var start := button(card,"새 Run",func(): session = null; refresh()); start.name = "NewRun"
 
 ## Who walked with the party this run, where they joined and whether they came
 ## back out (스펙 §1.2).

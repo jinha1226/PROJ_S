@@ -14,7 +14,7 @@ static func hero(s) -> int:
 
 static func can_aid(s, npc: Dictionary) -> String:
 	if s.phase != "EXPLORE": return "전투 중"
-	if npc.hp <= 0 or npc.state != "MET": return "대상 아님"
+	if npc.hp <= 0 or npc.state != "MET" or bool(npc.get("summoned",false)): return "대상 아님"
 	if not s.alive().any(func(a): return s.melee_reach(a.pos,npc.pos)): return "거리 초과"
 	if not (bool(npc.get("hungry",false)) or npc.hp*100 < npc.max_hp*50): return "도울 일이 없음"
 	if s.food < 1: return "식량 없음"
@@ -48,6 +48,7 @@ static func dialogue(s, npc: Dictionary) -> Dictionary:
 ## npc's own extraversion and warmth answer, once every twenty rounds.
 static func propose(s, npc: Dictionary) -> Dictionary:
 	if s.phase != "EXPLORE": return {"accepted":false,"line":"지금은 싸울 때다"}
+	if bool(npc.get("summoned",false)): return {"accepted":false,"line":"부름에 답한 것일 뿐이다"}
 	var d := dialogue(s,npc)
 	if not d.can_propose: return {"accepted":false,"line":d.line}
 	if not aided(s,npc):
@@ -62,7 +63,7 @@ static func propose(s, npc: Dictionary) -> Dictionary:
 
 ## The join itself, with the duo rules.
 static func recruit(s, npc: Dictionary) -> Dictionary:
-	if s.alive().size() >= MAX_PARTY or npc.state != "MET": return {"accepted":false,"line":"자리가 없군"}
+	if s.alive().size() >= MAX_PARTY or npc.state != "MET" or bool(npc.get("summoned",false)): return {"accepted":false,"line":"자리가 없군"}
 	var mate: Dictionary = {}
 	for n in s.npcs:
 		if n.id == int(npc.get("partner",-1)) and n.hp > 0: mate = n

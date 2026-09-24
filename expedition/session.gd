@@ -98,9 +98,15 @@ const SUPPLY_NAMES = ["치유 물약","정신 안정제","활력 물약","화염
 const DEFAULT_RULES := {"solo_actions":1,"solo_max_members":0}
 var rules_config: Dictionary = DEFAULT_RULES.duplicate()
 
-static func new_run(seed: int):
+## The kit the hero departs with: one of the ten in `combat.json.kits`, one per
+## mastery axis. An unknown id is refused rather than silently swapped.
+var kit_id := "sword"
+
+static func new_run(seed: int, p_kit_id: String = "sword"):
+	if CombatStats.kit(p_kit_id).is_empty(): return null
 	var run = new(seed,false,false,true,1)
-	run.depart()
+	run.kit_id = p_kit_id
+	if not run.depart(): return null
 	run.manual_mode = true
 	return run
 
@@ -234,6 +240,8 @@ func recruit(npc: Dictionary) -> bool:
 ## An NPC only speaks up while the party is exploring: never into a battle.
 func offer(npc: Dictionary) -> bool:
 	if phase != "EXPLORE" or pending_offer >= 0 or npc.state != "MET" or npc_clock() < int(npc.get("offered_until",-99)): return false
+	# A summoned creature never asks to come along: it is already the hero's.
+	if bool(npc.get("summoned",false)): return false
 	pending_offer = npc.id
 	return true
 
@@ -255,10 +263,17 @@ func answer_offer(accept: bool) -> bool:
 
 func depart() -> bool:
 	if phase != "IDLE" or alive().is_empty(): return false
+	var kit: Dictionary = CombatStats.kit(kit_id)
+	if kit.is_empty(): return false
 	depth = 1; score = 0; run_stats = {"mistakes":0,"kills":0}
 	time = 0; boundary = 100; turn_serial = 0; roll_serial = 0
-	party[0].gear.weapon = {"type":"sword","enchant":0}
+	party[0].gear.weapon = {"type":str(kit.weapon),"enchant":0}
 	party[0].gear.armour = {"type":"robe","enchant":0}
+	party[0].skill_xp[str(kit.axis)] = 25
+	var kit_spell: String = str(kit.get("spell",""))
+	if not kit_spell.is_empty():
+		party[0].spells = [kit_spell]
+		party[0].prepared = [kit_spell]
 	for actor in party:
 		# A debt owed or refused outlives the run it was made in.
 		actor.memory.records = actor.memory.records.filter(func(record): return int(record.salience) >= 700 or str(record.kind) in Memory.SOCIAL_KINDS)

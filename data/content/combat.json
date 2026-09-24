@@ -238,6 +238,88 @@
       "note": "HP 회복 · 3턴 느려짐"
     }
   },
+  "kits": [
+    {
+      "id": "sword",
+      "axis": "sword",
+      "name": "장검",
+      "weapon": "sword",
+      "spell": "",
+      "blurb": "균형 잡힌 근접 무기"
+    },
+    {
+      "id": "spear",
+      "axis": "spear",
+      "name": "창",
+      "weapon": "spear",
+      "spell": "",
+      "blurb": "두 칸 너머를 찌른다"
+    },
+    {
+      "id": "mace",
+      "axis": "mace",
+      "name": "철퇴",
+      "weapon": "mace",
+      "spell": "",
+      "blurb": "느리지만 갑옷을 뚫는다"
+    },
+    {
+      "id": "axe",
+      "axis": "axe",
+      "name": "도끼",
+      "weapon": "axe",
+      "spell": "",
+      "blurb": "휘둘러 옆의 적도 벤다"
+    },
+    {
+      "id": "bow",
+      "axis": "bow",
+      "name": "활",
+      "weapon": "bow",
+      "spell": "",
+      "blurb": "여섯 칸 밖에서 쏜다"
+    },
+    {
+      "id": "fire",
+      "axis": "fire",
+      "name": "화염 지팡이",
+      "weapon": "staff",
+      "spell": "bolt",
+      "blurb": "화염탄을 안다"
+    },
+    {
+      "id": "ice",
+      "axis": "ice",
+      "name": "서리 지팡이",
+      "weapon": "staff",
+      "spell": "cone",
+      "blurb": "서리창을 안다 · 적을 늦춘다"
+    },
+    {
+      "id": "air",
+      "axis": "air",
+      "name": "폭풍 지팡이",
+      "weapon": "staff",
+      "spell": "cloud",
+      "blurb": "번개 구름을 안다"
+    },
+    {
+      "id": "hex",
+      "axis": "hex",
+      "name": "주박 지팡이",
+      "weapon": "staff",
+      "spell": "confuse",
+      "blurb": "혼란을 안다"
+    },
+    {
+      "id": "summon",
+      "axis": "summon",
+      "name": "소환 지팡이",
+      "weapon": "staff",
+      "spell": "hound",
+      "blurb": "사냥개를 부른다"
+    }
+  ],
   "species": {
     "human": {
       "name": "인간",

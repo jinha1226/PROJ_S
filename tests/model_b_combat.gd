@@ -29,7 +29,8 @@ func run() -> void:
 	var s = case.s
 	var base: Dictionary = Stats.stats(s,hero)
 	check(hero.gear.weapon.type == "sword" and hero.gear.armour.type == "robe","the hero starts with Model B sword and robe")
-	check(base.damage == 12 and base.delay == 120 and base.ac == 1 and base.ev == 4,"starting equipment uses Model B numbers")
+	# The sword kit departs at rank 1 in 검술: one more damage, four less delay.
+	check(base.damage == 13 and base.delay == 116 and base.ac == 1 and base.ev == 4,"starting equipment uses Model B numbers")
 	check(Stats.stats(s,foe).ac == foe.ac and Stats.stats(s,foe).ev == foe.ev,"enemy stats use catalog values")
 	hero.gear.armour = {"type":"mail","enchant":0}
 	var mail: Dictionary = Stats.stats(s,hero)
