@@ -4,7 +4,8 @@ extends RefCounted
 const Session = preload("res://expedition/run/session.gd")
 const Popups = preload("res://expedition/ui/screens/popups.gd")
 const CharacterUI = preload("res://expedition/ui/screens/character_folio.gd")
-const CAMP_MOCKUP = preload("res://assets/ui/camp-background.png")
+const Art = preload("res://expedition/art/mobile_art.gd")
+const CAMP_BACKGROUND = preload("res://assets/8bit/camp-background.png")
 
 static func build_camp_screen(ui) -> void:
 	var session = ui.session
@@ -14,10 +15,7 @@ static func build_camp_screen(ui) -> void:
 	var title = ui.label(header,"야영",22); title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ui.label(header,"식량 %d" % session.food,15)
 	var scene_art := TextureRect.new(); scene_art.name = "CampArt"
-	# The mockup shows three illustrated people. Only reuse the fire so party
-	# portraits below always reflect the actual one-to-three member roster.
-	var scene_crop := AtlasTexture.new(); scene_crop.atlas = CAMP_MOCKUP; scene_crop.region = Rect2(349,410,168,226)
-	scene_art.texture = scene_crop; scene_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	scene_art.texture = CAMP_BACKGROUND; scene_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	scene_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	scene_art.custom_minimum_size.y = minf(175,ui.get_viewport_rect().size.y*0.21)
 	scene_art.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -65,6 +63,8 @@ static func show_gear(ui, index: int) -> void:
 		var next: Dictionary = Session.CombatStats.stats(session,probe)
 		var choice = ui.button(box,"%s  Δ피해 %+d  Δ시간 %+d  ΔAC %+d  ΔEV %+d" % [item.type,int(next.damage)-int(current.damage),int(next.delay)-int(current.delay),int(next.ac)-int(current.ac),int(next.ev)-int(current.ev)],func():
 			if session.equip_gear(index,item): ui.refresh(); show_gear(ui,index))
+		choice.icon = Art.equipment_icon(slot,str(item.get("type","")))
+		choice.add_theme_constant_override("icon_max_width",28)
 		choice.name = "GearOption%d" % i
 		choice.custom_minimum_size.y = 44
 	ui.button(box,"닫기",func(): ui.details_popup.hide())
@@ -79,8 +79,9 @@ static func show_prepare(ui, index: int) -> void:
 	ui.label(box,actor.name+" · 주문",20)
 	for id in actor.spells:
 		var spell: Dictionary = Session.CombatStats.content.spells[id]
-		ui.button(box,("✓ " if id in actor.prepared else "○ ")+str(spell.name),func():
+		var choice = ui.button(box,("✓ " if id in actor.prepared else "○ ")+str(spell.name),func():
 			if session.prepare_spell(index,id,id not in actor.prepared): show_prepare(ui,index))
+		choice.icon = Art.spell_icon(str(id)); choice.add_theme_constant_override("icon_max_width",28)
 	ui.button(box,"닫기",func(): ui.details_popup.hide())
 	ui.details_popup.popup_centered()
 
@@ -106,6 +107,7 @@ static func show_learn(ui, index: int) -> void:
 			if not reason.is_empty(): caption += "  (%s)" % reason
 			var choice = ui.button(box,caption,func():
 				if session.learn_spell(index,spell_id): show_learn(ui,index),reason.is_empty())
+			choice.icon = Art.spell_icon(spell_id); choice.add_theme_constant_override("icon_max_width",28)
 			choice.name = "Learn_"+spell_id
 			choice.custom_minimum_size.y = 44
 	ui.button(box,"닫기",func(): ui.details_popup.hide())

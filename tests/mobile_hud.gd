@@ -21,6 +21,8 @@ func run() -> void:
 	check(s.depth == 1 and s.food == 2 and s.party.size() == 1,"new run starts solo with food")
 	check(scene.find_child("FoodLabel",true,false).text == "식량 2","HUD displays food")
 	check(scene.find_child("Location",true,false).text == "1층","HUD displays depth")
+	check(scene.find_child("TurnCount",true,false).text == "0턴","HUD displays the current turn under the floor")
+	check(scene.find_child("TurnCount",true,false).position.y >= 24,"turn count sits below the floor label")
 	check(scene.find_child("BottomActions",true,false) != null,"HUD has direct action bar")
 	check(scene.find_child("TorchButton",true,false) == null and scene.find_child("Funds",true,false) == null,"removed resources stay out of HUD")
 	check(scene.find_child("ObjectiveChip",true,false) == null,"no relic objective chip")
@@ -121,6 +123,7 @@ func quiet_log(scene, s) -> void:
 	check(scene.notice.is_empty() and not scene.toast.visible,"a part drop produces no toast")
 	check(s.log_lines[-1] == Session.Abilities.DEFINITIONS.BOMB.item+" 획득","a part drop uses the concise log line")
 	check(scene.find_child("RecentLog",true,false).text.ends_with(s.log_lines[-1]),"the HUD shows the latest log line")
+	check(scene.find_child("RecentLog",true,false).get_theme_stylebox("normal") is StyleBoxEmpty,"recent log has no button border")
 
 ## Auto exploration stops on what the party can actually see (sight 5).
 func sight_stops(scene, s) -> void:
@@ -130,6 +133,12 @@ func sight_stops(scene, s) -> void:
 	enemy.hp = 20; enemy.max_hp = 20; enemy.pos = c+Vector2i(7,0); s.floor_state.observe(s)
 	check(s.party_enemies().is_empty(),"a foe seven tiles away is out of sight")
 	check(scene.navigation.explore(s),"and does not stop exploration")
+	scene.refresh(); await process_frame
+	var stop_button: Button = scene.auto_explore_button
+	check(stop_button.text == "중지" and stop_button.action_mode == BaseButton.ACTION_MODE_BUTTON_PRESS,"exploration can stop on touch-down")
+	stop_button.pressed.emit()
+	check(not scene.navigation.active,"stop button cancels exploration")
+	check(scene.navigation.explore(s),"exploration can start again")
 	enemy.pos = c+Vector2i(4,0); s.floor_state.observe(s)
 	check(not s.party_enemies().is_empty(),"a foe four tiles away is in sight")
 	check(scene.navigation.next_step(s).x < 0 and not scene.navigation.active,"and stops exploration")
@@ -147,6 +156,7 @@ func waiting_and_auto(scene, s) -> void:
 	for step in range(3): scene.run_action(func(): return s.act("WAIT",hero.pos))
 	await process_frame
 	check(s.round_number >= before_round+3 and s.food == food,"waiting advances rounds without spending food")
+	check(scene.find_child("TurnCount",true,false).text == "%d턴" % s.turn_serial,"turn counter follows player actions")
 	check(hero.hp == before_hp and hero.stress == 30,"waiting is not a rest: no health and no calm")
 	var saved: int = s.food; s.food = 0; scene.refresh(); await process_frame
 	before_round = s.round_number

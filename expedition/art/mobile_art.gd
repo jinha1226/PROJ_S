@@ -1,9 +1,18 @@
 extends RefCounted
 const SHEET = preload("res://assets/mobile/ui-atlas.png")
-const ACTORS = [preload("res://assets/mobile/human.png"),preload("res://assets/mobile/dwarf.png"),preload("res://assets/mobile/elf.png")]
-const InkTorso = preload("res://expedition/art/ink_torso_art.gd")
-const ENEMY = preload("res://assets/mobile/kobold.png")
-const BOSS = preload("res://assets/mobile/fire_lizard.png")
+const ACTOR_SHEET = preload("res://assets/8bit/actors.png")
+const MONSTER_SHEET = preload("res://assets/8bit/monsters.png")
+const MASTERY_SHEET = preload("res://assets/8bit/mastery-icons.png")
+const SPELL_SHEET = preload("res://assets/8bit/spell-icons.png")
+const TIER_SHEETS = [preload("res://assets/8bit/spells-fire.png"),preload("res://assets/8bit/spells-ice.png"),preload("res://assets/8bit/spells-air.png"),preload("res://assets/8bit/spells-hex.png"),preload("res://assets/8bit/spells-summon.png")]
+const MAGIC_SCHOOLS := ["fire","ice","air","hex","summon"]
+const EQUIPMENT_SHEET = preload("res://assets/8bit/equipment-icons.png")
+const BOSS = preload("res://assets/8bit/fire-lizard-boss.png")
+const ACTOR_IDS := ["human","dwarf","elf","orc","wolf","mage","merchant","wanderer"]
+const MONSTER_IDS := ["dcss_rat","dcss_frilled_lizard","kobold","goblin","dcss_hobgoblin","dcss_orc","dcss_gnoll","dcss_river_rat"]
+const MASTERY_IDS := ["sword","spear","mace","axe","bow","fire","ice","air","hex","summon"]
+const SPELL_IDS := ["bolt","blast","cone","cloud","confuse","blink","passwall","ward","hound","turret","ignite","mend"]
+const EQUIPMENT_IDS := ["sword","dagger","spear","mace","axe","bow","staff","armour","shield","ring","book","scroll"]
 const STONE = preload("res://assets/mobile/stone_floor_a.png")
 const WOOD = preload("res://assets/mobile/wood_floor.png")
 const WATER = preload("res://assets/mobile/water.png")
@@ -17,19 +26,60 @@ const UI_CELL := 256
 const UI_ROW_BOUNDS := [Vector2i(24,291),Vector2i(292,526),Vector2i(528,728),Vector2i(734,992)]
 static var terrain_cache: Dictionary = {}
 static var ui_frame_cache: Dictionary = {}
+static var pixel_cache: Dictionary = {}
+
+static func pixel_region(sheet: Texture2D, columns: int, rows: int, index: int, key: String) -> AtlasTexture:
+	if not pixel_cache.has(key):
+		var column := index % columns
+		var row := index / columns
+		var x0 := floori(float(column*sheet.get_width())/columns)
+		var x1 := floori(float((column+1)*sheet.get_width())/columns)
+		var y0 := floori(float(row*sheet.get_height())/rows)
+		var y1 := floori(float((row+1)*sheet.get_height())/rows)
+		var texture := AtlasTexture.new()
+		texture.atlas = sheet
+		texture.region = Rect2(x0,y0,x1-x0,y1-y0)
+		texture.filter_clip = true
+		pixel_cache[key] = texture
+	return pixel_cache[key]
+
+static func actor_texture(index: int) -> AtlasTexture:
+	index = posmod(index,ACTOR_IDS.size())
+	return pixel_region(ACTOR_SHEET,4,2,index,"actor/"+str(index))
+
+static func enemy_sprite(species_id: String) -> AtlasTexture:
+	var index := MONSTER_IDS.find(species_id)
+	if index < 0: index = MONSTER_IDS.find("kobold")
+	return pixel_region(MONSTER_SHEET,4,2,index,"monster/"+str(index))
+
+static func mastery_icon(axis: String) -> AtlasTexture:
+	var index := MASTERY_IDS.find(axis)
+	return pixel_region(MASTERY_SHEET,5,2,maxi(0,index),"mastery/"+str(index))
+
+static func spell_icon(id: String) -> AtlasTexture:
+	for school in range(MAGIC_SCHOOLS.size()):
+		if id.begins_with(MAGIC_SCHOOLS[school]+"_"):
+			var rank := int(id.get_slice("_",1))
+			if rank >= 1 and rank <= 10:
+				return pixel_region(TIER_SHEETS[school],5,2,rank-1,"spell/"+id)
+	var index := SPELL_IDS.find(id)
+	if index < 0:
+		index = 0
+	return pixel_region(SPELL_SHEET,4,3,index,"spell/"+str(index))
+
+static func equipment_icon(slot: String, kind: String = "") -> AtlasTexture:
+	var id: String = kind if slot == "weapon" else "armour" if slot == "armour" else slot
+	var index := EQUIPMENT_IDS.find(id)
+	return pixel_region(EQUIPMENT_SHEET,4,3,maxi(0,index),"equipment/"+str(index))
 
 static func paint_actor(canvas: CanvasItem, index: int, rect: Rect2, tint: Color = Color.WHITE) -> void:
-	# Keep the lower edge anchored while allowing the head above the movement cell.
-	# The layered human has more transparent canvas padding than the legacy pawns.
-	var extent := rect.size*(1.92 if index == 0 else 1.67)
+	# All eight sprites share a baseline; let the character rise above its cell.
+	var extent := rect.size*1.92
 	var display := Rect2(rect.position+Vector2((rect.size.x-extent.x)*0.5,rect.size.y-extent.y),extent)
-	if index == 0:
-		InkTorso.paint(canvas,display,tint)
-	else:
-		canvas.draw_texture_rect(ACTORS[index],display,false,tint)
+	canvas.draw_texture_rect(actor_texture(index),display,false,tint)
 
-static func terrain(cell: Dictionary, point: Vector2i = Vector2i.ZERO, first_floor: bool = false) -> AtlasTexture:
-	if first_floor: return FirstFloor.terrain(cell,point)
+static func terrain(cell: Dictionary, point: Vector2i = Vector2i.ZERO, theme_id: String = "") -> AtlasTexture:
+	if theme_id in ["F1_RUINS","F2_MINES"]: return FirstFloor.terrain(cell,point,theme_id)
 	if cell.terrain == "stone": return Masonry.floor_tile(point)
 	if cell.terrain == "wall": return Masonry.tile(4+posmod(point.x+point.y*3,4))
 	var palette: int = cell.get("palette",0)
@@ -47,12 +97,10 @@ static func region(rect: Rect2) -> AtlasTexture:
 	return texture
 
 static func portrait(index: int) -> AtlasTexture:
-	return region(Rect2([43,344,645][index],1254,245,88))
+	return actor_texture(index)
 
 static func portrait_face(index: int) -> AtlasTexture:
-	# The full atlas region includes a nameplate and gauges. Character cards
-	# draw only the face; their labels and bars come from the current session.
-	return region(Rect2([43,344,645][index]+50,1254,100,74))
+	return actor_texture(index)
 
 static func skill(index: int) -> AtlasTexture:
 	return region(Rect2([48,180,347,480,647,780][index],1156,105,78))

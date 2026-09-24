@@ -21,13 +21,20 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 	if ui.minimap.get_parent() != null: ui.minimap.get_parent().remove_child(ui.minimap)
 	ui.minimap.session = session; ui.minimap.visible = true; ui.minimap.queue_redraw(); header.add_child(ui.minimap)
 	var place = ui.label(header,"%d층" % session.depth,18); place.name = "Location"; place.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	place.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; place.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	place.custom_minimum_size.y = 52
+	place.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; place.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	var turns: Label = ui.label(place,"%d턴" % int(session.turn_serial if session.manual_mode else maxi(0,session.round_number-1)),11)
+	turns.name = "TurnCount"; turns.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	turns.add_theme_color_override("font_color",Color("aa9f8a"))
+	turns.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	turns.offset_top = -20; turns.offset_bottom = -3
 	var food_label = ui.label(header,"식량 %d" % session.food,14); food_label.name = "FoodLabel"
 	food_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var menu = ui.button(header,"☰",ui.show_menu); menu.name = "ExpeditionMenu"; menu.size_flags_horizontal = Control.SIZE_SHRINK_END
 	menu.custom_minimum_size.x = 44; menu.tooltip_text = "메뉴"
 	if not is_instance_valid(ui.board):
 		ui.board = Board.new(); ui.board.ui_font = FONT; ui.board.cell_pressed.connect(ui.on_cell)
+		ui.board.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		ui.board.cell_inspected.connect(ui.inspect_cell)
 		ui.board.zoom_changed.connect(func(value): ui.view_side = value)
 		ui.board.gesture_started.connect(ui.stop_navigation); ui.board.playback_finished.connect(ui.finish_presentation)
@@ -53,6 +60,8 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 	var recent: Array = session.log_lines.slice(maxi(0,session.log_lines.size()-(4 if session.manual_mode else 1)))
 	var log_button = ui.button(ui.root_layout,"\n".join(recent),ui.show_logs)
 	log_button.name = "RecentLog"; log_button.custom_minimum_size.y = 72 if session.manual_mode else 36
+	for state in ["normal","hover","pressed","focus","disabled"]:
+		log_button.add_theme_stylebox_override(state,StyleBoxEmpty.new())
 	if session.manual_mode:
 		log_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		log_button.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -88,6 +97,7 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 			var id: String = str(prepared[slot]) if slot < prepared.size() else ""
 			var caption: String = str(Session.CombatStats.content.spells[id].name) if not id.is_empty() else "—"
 			var spell = ui.button(spells,caption,func(): choose_spell(ui,id),not id.is_empty())
+			if not id.is_empty(): spell.icon = Art.spell_icon(id); spell.add_theme_constant_override("icon_max_width",22)
 			spell.name = "Spell%d" % slot; spell.custom_minimum_size.y = 44
 	var nav := GridContainer.new(); nav.name = "BottomActions"; nav.columns = 4; ui.root_layout.add_child(nav)
 	var attack = ui.action_button(nav,"공격",Art.ui_icon(0),func():
@@ -102,6 +112,7 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 		var speed = ui.button(nav,"%d×" % int(session.auto.speed),func(): AutoBattleHud.toggle_speed(ui)); speed.name = "SpeedToggle"
 		var retreat = ui.action_button(nav,"후퇴 해제" if session.party_command == "RETREAT" else "후퇴",Art.ui_icon(20),func(): AutoBattleHud.toggle_retreat(ui),session.in_combat()); retreat.name = "RetreatToggle"
 	ui.auto_explore_button = ui.action_button(nav,"중지" if ui.navigation.active else "자동탐험",Art.ui_icon(3),ui.toggle_explore,not session.in_combat() and not session.auto.running)
+	ui.auto_explore_button.action_mode = BaseButton.ACTION_MODE_BUTTON_PRESS
 	var camp = ui.action_button(nav,"야영",Art.ui_icon(19),func(): ui.run_action(session.camp),session.can_camp().is_empty() and not session.auto.running)
 	camp.name = "CampButton"; camp.tooltip_text = session.can_camp()
 	ui.action_button(nav,"가방",Art.ui_icon(5),func(): Popups.show_supplies(ui))
@@ -117,6 +128,7 @@ static func build_manual_controls(ui) -> void:
 			var id: String = str(prepared[slot]) if slot < prepared.size() else ""
 			var caption: String = str(Session.CombatStats.content.spells[id].name) if not id.is_empty() else "—"
 			var spell = ui.button(spells,caption,func(): choose_spell(ui,id),not id.is_empty())
+			if not id.is_empty(): spell.icon = Art.spell_icon(id); spell.add_theme_constant_override("icon_max_width",22)
 			spell.name = "Spell%d" % slot; spell.custom_minimum_size.y = 44
 			spell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var portraits := HBoxContainer.new(); portraits.name = "PortraitRow"
@@ -148,6 +160,7 @@ static func build_manual_controls(ui) -> void:
 	var attack = ui.action_button(nav,"공격",Art.ui_icon(0),func(): arm_attack(ui)); attack.name = "Attack"
 	var wait = ui.action_button(nav,"대기",Art.ui_icon(2),func(): ui.run_action(func(): return session.act("WAIT",session.party[0].pos))); wait.name = "Wait"; ui.wait_button = wait
 	ui.auto_explore_button = ui.action_button(nav,"중지" if ui.navigation.active else "탐색",Art.ui_icon(3),ui.toggle_explore,not session.in_combat())
+	ui.auto_explore_button.action_mode = BaseButton.ACTION_MODE_BUTTON_PRESS
 	var tactics = ui.action_button(nav,"전술",Art.ui_icon(4),func(): show_manual_tactics(ui)); tactics.name = "Tactics"
 	ui.action_button(nav,"가방",Art.ui_icon(5),func(): Popups.show_supplies(ui))
 	for action in nav.get_children(): action.custom_minimum_size.y = 48
@@ -214,6 +227,7 @@ static func show_manual_tactics(ui) -> void:
 		var spell_id: String = str(id)
 		var definition: Dictionary = Session.CombatStats.content.spells.get(spell_id,{})
 		var spell = ui.button(choices,"%s   ·   MP %d" % [str(definition.get("name",spell_id)),int(definition.get("mp",0))],func(): ui.details_popup.hide(); choose_spell(ui,spell_id),actor.mp >= int(definition.get("mp",0)))
+		spell.icon = Art.spell_icon(spell_id); spell.add_theme_constant_override("icon_max_width",28)
 		spell.name = "Spell_"+spell_id
 		spell.alignment = HORIZONTAL_ALIGNMENT_LEFT; spell.custom_minimum_size.y = 54
 	ui.label(choices,"장착 파츠",17)

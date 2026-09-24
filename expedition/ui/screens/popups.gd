@@ -308,14 +308,14 @@ static func inventory_rows(ui) -> Array:
 		var slot: String = session.gear_slot(item)
 		if slot.is_empty(): continue
 		var name: String = gear_name(ui,item,slot)
-		rows.append({"id":"gear:%d"%i,"label":name,"quantity":1,"category":"장비","gear_index":i,"gear_slot":slot,"description":name})
+		rows.append({"id":"gear:%d"%i,"label":name,"quantity":1,"category":"장비","gear_index":i,"gear_slot":slot,"description":name,"icon":Art.equipment_icon(slot,str(item.get("type","")))})
 	for i in range(session.party.size()):
 		var actor: Dictionary = session.party[i]
 		for slot in ["weapon","armour","shield","ring"]:
 			var equipped: Dictionary = actor.gear.get(slot,{})
 			if equipped.is_empty(): continue
 			var name: String = gear_name(ui,equipped,slot)
-			rows.append({"id":"equipped:%d:%s"%[i,slot],"label":name,"quantity":1,"category":"장비","equipped_member":i,"equipped_slot":slot,"gear_slot":slot,"description":actor.name+" · 장착 중"})
+			rows.append({"id":"equipped:%d:%s"%[i,slot],"label":name,"quantity":1,"category":"장비","equipped_member":i,"equipped_slot":slot,"gear_slot":slot,"description":actor.name+" · 장착 중","icon":Art.equipment_icon(slot,str(equipped.get("type","")))})
 	for id in Session.Abilities.DEFINITIONS:
 		if session.parts_bag.get(id,0) <= 0: continue
 		var def: Dictionary = Session.Abilities.DEFINITIONS[id]

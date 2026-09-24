@@ -1,5 +1,6 @@
 extends SceneTree
 const Session = preload("res://expedition/run/session.gd")
+const Art = preload("res://expedition/art/mobile_art.gd")
 var failures := 0
 var checks := 0
 
@@ -29,8 +30,8 @@ func run() -> void:
 			check(icon != null,"mastery icon "+axis)
 			check(bar != null and bar.size.y >= 8,"XP bar sits below icon: "+axis)
 			if icon != null:
-				var glyphs: Array = icon.find_children("*","Control",true,false).filter(func(child): return child.get_script() != null and str(child.get_script().resource_path).ends_with("mastery_glyph.gd"))
-				check(glyphs.size() == 1 and icon.get_global_rect().encloses(glyphs[0].get_global_rect()),"drawn glyph fits mastery icon: "+axis)
+				var glyphs: Array = icon.find_children("*","TextureRect",true,false)
+				check(glyphs.size() == 1 and glyphs[0].texture == Art.mastery_icon(axis) and icon.get_global_rect().encloses(glyphs[0].get_global_rect()),"bitmap glyph fits mastery icon: "+axis)
 				var physical_scale: float = float(root.size.x)/scene.get_viewport_rect().size.x
 				check(icon.size.x*physical_scale >= 44 and icon.get_global_rect().end.x <= scene.get_viewport_rect().size.x,"mastery icon fits a 320px touch screen: "+axis)
 	check(grid.find_child("MasteryXP_sword",true,false).value == 10,"XP bar reflects current sword progress")

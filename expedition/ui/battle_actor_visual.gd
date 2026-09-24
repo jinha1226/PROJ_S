@@ -14,6 +14,6 @@ func _init() -> void:
 func _draw() -> void:
 	if actor.is_empty(): return
 	if actor.enemy:
-		draw_texture_rect(Art.BOSS if boss else Art.ENEMY,rect,false,tint)
+		draw_texture_rect(Art.BOSS if boss else Art.enemy_sprite(str(actor.get("species_id","kobold"))),rect,false,tint)
 	else:
-		Art.paint_actor(self,int(actor.id) % Art.ACTORS.size() if actor.get("npc",false) else int(actor.id),rect,tint)
+		Art.paint_actor(self,int(actor.id) % Art.ACTOR_IDS.size() if actor.get("npc",false) else int(actor.id),rect,tint)

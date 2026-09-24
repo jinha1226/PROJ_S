@@ -5,7 +5,6 @@ const Mastery = preload("res://expedition/progression/mastery.gd")
 const CombatStats = preload("res://expedition/combat/combat_stats.gd")
 static var mastery_data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/mastery.json"))
 const Emblem = preload("res://expedition/art/growth_emblem.gd")
-const MasteryGlyph = preload("res://expedition/art/mastery_glyph.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const Memory = preload("res://sim/party_memory_state.gd")
@@ -141,7 +140,12 @@ static func mastery(ui, list: VBoxContainer, actor: Dictionary) -> void:
 			var tile = ui.button(cell,"",func(): ui.show_mastery_detail(ui.tactics_actor,axis))
 			tile.name = "MasteryIcon_"+axis; tile.custom_minimum_size = Vector2(60,52)
 			tile.tooltip_text = "%s · %s" % [Mastery.NAMES[axis],Mastery.bonus(axis,level)]
-			var glyph := MasteryGlyph.new(); glyph.axis = axis; glyph.custom_minimum_size = Vector2(30,30); glyph.size = Vector2(30,30); tile.add_child(glyph)
+			var glyph := TextureRect.new(); glyph.texture = Art.mastery_icon(axis)
+			glyph.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			glyph.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			glyph.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			glyph.custom_minimum_size = Vector2(30,30); glyph.size = Vector2(30,30); tile.add_child(glyph)
 			glyph.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 			glyph.offset_left = -15; glyph.offset_top = -15; glyph.offset_right = 15; glyph.offset_bottom = 15
 			var xp: int = int(actor.get("skill_xp",{}).get(axis,0))
@@ -176,7 +180,14 @@ static func mastery_detail(ui, list: VBoxContainer, actor: Dictionary, axis: Str
 	for level in range(1,11):
 		var state := "획득" if level <= current else "다음" if level == current+1 else "잠김"
 		var row := card(list,"Lv%d · %s" % [level,state]); row.get_parent().name = "MasteryLevel%d" % level
-		text(row,Mastery.bonus(axis,level))
+		var line := HBoxContainer.new(); row.add_child(line)
+		var icon := TextureRect.new()
+		icon.texture = Art.spell_icon(axis+"_"+str(level)) if axis in Mastery.AXES.slice(5) else Art.mastery_icon(axis)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		icon.custom_minimum_size = Vector2(30,30); line.add_child(icon)
+		text(line,Mastery.bonus(axis,level))
 		var reward: Dictionary = rewards.get(str(level),{})
 		if not str(reward.get("effect_id","")).is_empty(): text(row,str(reward.name))
 	var back = ui.button(list,"‹ 숙련 목록",func(): ui.show_character(ui.tactics_actor,"숙련")); back.name = "MasteryBack"

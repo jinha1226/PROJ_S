@@ -266,22 +266,22 @@ func paint_terrain() -> void:
 			var cell: Dictionary = session.tile(point)
 			var rect := Rect2(project(Vector2(point)),Vector2.ONE*half_width*2)
 			var tint := MEMORY_TINT if visibility == 1 else Color.WHITE
-			if visibility == 2 and uses_first_floor_art():
+			if visibility == 2 and uses_pixel_floor_art():
 				if cell.terrain == "wall": tint = Color(0.80,0.87,0.96)
-				elif cell.terrain == "stone": tint = Color(1.0,0.94,0.83)
+				elif cell.terrain == "stone" and session.floor_state.theme_id == "F1_RUINS": tint = Color(1.0,0.94,0.83)
 			if cell.terrain == "wall":
 				draw_rect(rect,Color("090c10"))
 				walls.append({"point":point,"rect":rect,"tint":tint})
 			else:
 				if visibility == 1: draw_rect(rect,Color("151b22"))
-				else: draw_texture_rect(Art.terrain(cell,point,uses_first_floor_art()),rect,false,tint)
+				else: draw_texture_rect(Art.terrain(cell,point,session.floor_state.theme_id if uses_pixel_floor_art() else ""),rect,false,tint)
 				Art.Masonry.paint_floor_shadow(self,rect,point,is_wall_tile)
 				# Keep movement cells readable without outlining the connected walls.
 				draw_rect(rect,Color(0,0,0,0.22 if visibility == 1 else 0.45),false,2.0)
-	Art.Masonry.paint_walls(self,walls,is_wall_tile,Art.FirstFloor.material() if uses_first_floor_art() else {})
+	Art.Masonry.paint_walls(self,walls,is_wall_tile,Art.FirstFloor.material(session.floor_state.theme_id) if uses_pixel_floor_art() else {})
 
-func uses_first_floor_art() -> bool:
-	return session.floor_state.theme_id == "F1_RUINS"
+func uses_pixel_floor_art() -> bool:
+	return session.floor_state.theme_id in ["F1_RUINS","F2_MINES"]
 
 func _draw() -> void:
 	for visual in actor_visuals.values():
@@ -334,7 +334,7 @@ func _draw() -> void:
 			if session.floor_state.features.has(point):
 				var feature: Dictionary = session.floor_state.features[point]
 				var icon: String = ("potion" if session.Consumables.definition(str(feature.get("item_id",""))).get("class","") == "potion" else "scroll") if feature.kind == "item" else session.Curios.definition(feature).get("icon",feature.kind)
-				var object_id: String = Art.FirstFloor.feature_id(feature) if uses_first_floor_art() else ""
+				var object_id: String = Art.FirstFloor.feature_id(feature) if uses_pixel_floor_art() else ""
 				if not object_id.is_empty():
 					Art.FirstFloor.paint_object(self,object_id,Rect2(center-Vector2.ONE*half_width,Vector2.ONE*half_width*2),Color("777777") if bool(feature.get("used",false)) else Color.WHITE)
 				else:
@@ -355,7 +355,6 @@ func _draw() -> void:
 				draw_set_transform(center*camera.zoom+camera.offset,0,Vector2(1,0.45)*camera.zoom)
 				draw_circle(Vector2.ZERO,half_width*0.6,Color(0,0,0,0.5))
 				draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
-				var sprite: Texture2D = Art.BOSS if actor.get("boss",false) else Art.ENEMY if actor.enemy else Art.ACTORS[actor_sprite(actor)]
 				var side := half_width*1.65
 				var flash := Color.WHITE
 				if actor.enemy:
@@ -372,7 +371,7 @@ func _draw() -> void:
 					actor_visuals[key] = ActorVisual.new(); add_child(actor_visuals[key])
 				var visual = actor_visuals[key]
 				visual.visible = true; visual.actor = actor; visual.rect = actor_rect
-				visual.tint = flash; visual.boss = sprite == Art.BOSS
+				visual.tint = flash; visual.boss = bool(actor.get("boss",false))
 				visual.position = camera.offset; visual.scale = Vector2.ONE*camera.zoom
 				visual.z_index = 1; move_child(visual,get_child_count()-1)
 				visual.queue_redraw()
@@ -385,7 +384,7 @@ func _draw() -> void:
 ## Which pawn stands in for an actor: party members own one each, an npc
 ## borrows one by its roster id.
 func actor_sprite(actor: Dictionary) -> int:
-	return int(actor.id) % Art.ACTORS.size() if actor.get("npc",false) else int(actor.id)
+	return int(actor.id) % Art.ACTOR_IDS.size() if actor.get("npc",false) else int(actor.id)
 
 ## An awake npc is drawn where it is now even outside the party's sight — the
 ## approach the player should see coming (설계 §5.3) — half faded. One asleep

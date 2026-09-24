@@ -5,15 +5,15 @@ const Session = preload("res://expedition/run/session.gd")
 const AutoBattleHud = preload("res://expedition/ui/screens/autobattle_hud.gd")
 const CharacterUI = preload("res://expedition/ui/screens/character_folio.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
-const START_MOCKUP = preload("res://assets/ui/start-background.png")
+const START_BACKGROUND = preload("res://assets/8bit/start-background.png")
 
 static func build_start_screen(ui) -> void:
 	var box := VBoxContainer.new(); box.name = "StartScreen"; box.size_flags_vertical = Control.SIZE_EXPAND_FILL; ui.root_layout.add_child(box)
 	box.add_theme_constant_override("separation",7)
 	var scene_art := TextureRect.new(); scene_art.name = "StartArt"
-	var scene_crop := AtlasTexture.new(); scene_crop.atlas = START_MOCKUP; scene_crop.region = Rect2(0,0,853,640)
-	scene_art.texture = scene_crop; scene_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	scene_art.texture = START_BACKGROUND; scene_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	scene_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	scene_art.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	scene_art.custom_minimum_size.y = minf(300,ui.get_viewport_rect().size.y*0.35)
 	box.add_child(scene_art)
 	var hero := PanelContainer.new(); hero.name = "StartHero"
@@ -51,8 +51,11 @@ static func build_kit_picker(ui, parent: Node) -> void:
 			node.custom_minimum_size = Vector2(0,70); node.clip_text = true
 			node.add_theme_font_size_override("font_size",11)
 			node.tooltip_text = "%s · %s\n%s" % [str(kit.name),str(kit.get("blurb","")),detail]
-			var glyph = preload("res://expedition/art/mastery_glyph.gd").new()
-			glyph.axis = str(kit.axis); glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			var glyph := TextureRect.new(); glyph.texture = Art.mastery_icon(str(kit.axis))
+			glyph.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			glyph.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			glyph.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			node.add_child(glyph); glyph.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 			glyph.offset_left = -16; glyph.offset_right = 16; glyph.offset_top = 5; glyph.offset_bottom = 37
 			if id == ui.kit_choice:
