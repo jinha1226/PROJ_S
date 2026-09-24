@@ -5,7 +5,7 @@ const Session = preload("res://expedition/run/session.gd")
 const Popups = preload("res://expedition/ui/screens/popups.gd")
 const CharacterUI = preload("res://expedition/ui/screens/character_folio.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
-const CAMP_BACKGROUND = preload("res://assets/8bit/camp-background.png")
+const CAMP_BACKGROUND = preload("res://assets/8bit/classic/camp-background.png")
 
 static func build_camp_screen(ui) -> void:
 	var session = ui.session

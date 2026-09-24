@@ -1,14 +1,17 @@
 extends RefCounted
 ## Pixel materials for the ruins and mines; gameplay still owns terrain rules.
-const RUINS = preload("res://assets/8bit/ruins-tiles.png")
-const MINES = preload("res://assets/8bit/mines-tiles.png")
-const PROPS = preload("res://assets/8bit/props.png")
+const RUINS = preload("res://assets/8bit/classic/ruins-tiles.png")
+const MINES = preload("res://assets/8bit/classic/mines-tiles.png")
+const PROPS = preload("res://assets/8bit/classic/props.png")
 const Regions = preload("res://expedition/art/environment_art.gd")
 static var catalog: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/topdown/floor1-ink-v2/catalog.json"))
 
 static func tile(id: String, theme_id: String = "F1_RUINS") -> AtlasTexture:
 	var sheet: Texture2D = MINES if theme_id == "F2_MINES" else RUINS
-	return Regions.region(sheet,catalog.materials[id],"8bit/"+theme_id+"/material/"+id)
+	var old_rect: Array = catalog.materials[id]
+	var column := floori((float(old_rect[0])+float(old_rect[2])*0.5)/313.5)
+	var row := floori((float(old_rect[1])+float(old_rect[3])*0.5)/313.5)
+	return Regions.region(sheet,[column*16,row*16,16,16],"classic/"+theme_id+"/material/"+id)
 
 static func material(theme_id: String = "F1_RUINS") -> Dictionary:
 	return {"front":tile("front",theme_id),"top":tile("top",theme_id)}
@@ -23,6 +26,8 @@ static func feature_id(feature: Dictionary) -> String:
 	return {"entry":"gate","altar":"altar","relic":"relic","camp":"campfire"}.get(feature.kind,"")
 
 static func paint_object(canvas: CanvasItem, id: String, cell: Rect2, tint: Color = Color.WHITE) -> void:
-	var texture := Regions.region(PROPS,catalog.objects[id].rect,"8bit/object/"+id)
-	var extent := texture.get_size()*cell.size.x/float(catalog.objects[id].source_cell_size)
-	canvas.draw_texture_rect(texture,Rect2(cell.position+Vector2((cell.size.x-extent.x)*0.5,cell.size.y-extent.y),extent),false,tint)
+	var old_rect: Array = catalog.objects[id].rect
+	var column := floori((float(old_rect[0])+float(old_rect[2])*0.5)/313.5)
+	var row := floori((float(old_rect[1])+float(old_rect[3])*0.5)/313.5)
+	var texture := Regions.region(PROPS,[column*24,row*24,24,24],"classic/object/"+id)
+	canvas.draw_texture_rect(texture,cell,false,tint)

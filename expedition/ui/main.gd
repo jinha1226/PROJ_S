@@ -86,6 +86,7 @@ var stop_text := ""
 var battle_reported := false
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var skin := Theme.new(); skin.default_font = FONT; skin.default_font_size = 12
 	for state in ["normal","hover","pressed","focus","disabled"]:
 		var frame_state: int = {"normal":0,"hover":1,"pressed":2,"focus":1,"disabled":3}[state]

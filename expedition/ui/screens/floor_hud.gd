@@ -163,7 +163,15 @@ static func build_manual_controls(ui) -> void:
 	ui.auto_explore_button.action_mode = BaseButton.ACTION_MODE_BUTTON_PRESS
 	var tactics = ui.action_button(nav,"전술",Art.ui_icon(4),func(): show_manual_tactics(ui)); tactics.name = "Tactics"
 	ui.action_button(nav,"가방",Art.ui_icon(5),func(): Popups.show_supplies(ui))
-	for action in nav.get_children(): action.custom_minimum_size.y = 48
+	for action in nav.get_children():
+		action.custom_minimum_size.y = 48
+		action.add_theme_font_size_override("font_size",11)
+		action.add_theme_constant_override("icon_max_width",16)
+		for state in ["normal","hover","pressed","focus","disabled"]:
+			var style: StyleBox = action.get_theme_stylebox(state).duplicate()
+			style.content_margin_left = 3
+			style.content_margin_right = 3
+			action.add_theme_stylebox_override(state,style)
 
 static func build_stop_banner(ui) -> void:
 	var banner = ui.label(ui.root_layout,ui.stop_text,15)

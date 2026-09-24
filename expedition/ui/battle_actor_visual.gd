@@ -1,15 +1,9 @@
 extends Node2D
 const Art = preload("res://expedition/art/mobile_art.gd")
-const OUTLINE = preload("res://expedition/art/actor_outline.gdshader")
 var actor: Dictionary = {}
 var rect := Rect2()
 var tint := Color.WHITE
 var boss := false
-
-func _init() -> void:
-	var shader_material := ShaderMaterial.new()
-	shader_material.shader = OUTLINE
-	material = shader_material
 
 func _draw() -> void:
 	if actor.is_empty(): return

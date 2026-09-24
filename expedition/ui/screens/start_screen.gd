@@ -5,7 +5,7 @@ const Session = preload("res://expedition/run/session.gd")
 const AutoBattleHud = preload("res://expedition/ui/screens/autobattle_hud.gd")
 const CharacterUI = preload("res://expedition/ui/screens/character_folio.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
-const START_BACKGROUND = preload("res://assets/8bit/start-background.png")
+const START_BACKGROUND = preload("res://assets/8bit/classic/start-background.png")
 
 static func build_start_screen(ui) -> void:
 	var box := VBoxContainer.new(); box.name = "StartScreen"; box.size_flags_vertical = Control.SIZE_EXPAND_FILL; ui.root_layout.add_child(box)

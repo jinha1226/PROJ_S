@@ -2,6 +2,7 @@ extends SceneTree
 ## Start, floor, camp and stair controls fit portrait screens.
 const Session = preload("res://expedition/run/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
+const Art = preload("res://expedition/art/mobile_art.gd")
 var checks := 0
 var failures := 0
 func check(ok: bool, reason: String) -> void:
@@ -10,12 +11,20 @@ func check(ok: bool, reason: String) -> void:
 func _initialize() -> void: call_deferred("run")
 
 func run() -> void:
+	check(Art.ACTOR_SHEET.get_size() == Vector2(96,48),"actor sheet uses genuine 24px logical sprites")
+	check(Art.enemy_sprite("kobold").get_size() == Vector2(24,24),"monster sprite uses a 24px cell")
+	check(Art.FirstFloor.tile("floor_a").get_size() == Vector2(16,16),"floor tiles use 16px logical cells")
 	root.size = Vector2i(390,844)
 	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	root.add_child(scene); scene.set_process(false); await process_frame
 	check(scene.find_child("StartScreen",true,false) != null,"start screen appears")
 	check(scene.portrait_buttons.is_empty() and scene.skill_buttons.is_empty(),"start has no battle cards")
 	check(scene.find_child("NewRun",true,false) != null and scene.find_child("ArenaButton",true,false) != null,"start has run and arena actions")
+	root.size = Vector2i(320,640)
+	for frame in range(3): await process_frame
+	check(Rect2(Vector2.ZERO,root.size).encloses(scene.get_global_rect()),"start screen fits a 320px phone")
+	root.size = Vector2i(390,844)
+	seed(731)
 	scene.find_child("NewRun",true,false).pressed.emit(); await process_frame
 	var s = scene.session
 	check(s.depth == 1 and s.food == 2 and s.party.size() == 1,"new run starts solo with food")
@@ -29,6 +38,7 @@ func run() -> void:
 	for viewport in [Vector2i(320,640),Vector2i(360,780),Vector2i(390,844),Vector2i(430,932)]:
 		root.size = viewport; scene.refresh()
 		for frame in range(3): await process_frame
+		check(Rect2(Vector2.ZERO,viewport).encloses(scene.get_global_rect()),"whole HUD fits the viewport at %s" % viewport)
 		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"layout fits %s" % viewport)
 		check(scene.minimap != null and scene.minimap.is_visible_in_tree(),"minimap visible at %s" % viewport)
 		for id in ["Location","FoodLabel","ExpeditionMenu","HeroStatus","Attack","Wait","Tactics","RecentLog"]:
