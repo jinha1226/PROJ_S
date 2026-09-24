@@ -36,7 +36,7 @@
 | `data/content/mastery.json` (신규) | 10축 보상·융합 (`progression_data.gd`에서), `effect_id` 있는 행만 활성 | 3 |
 | `expedition/mastery_effects.gd` (신규) | `sword`·`fire` 이정표 4+4, 융합 2 | 3 |
 | `expedition/scheduler.gd` (신규) | `advance(s, cost)`, `act(s, actor)`, 환경 tick | 2 |
-| `expedition/spells.gd` (신규) | 주문 5종 효과·실패율·MP | 4 |
+| `expedition/spells.gd` (신규) | 학파별 첫 주문 5종 효과·실패율·MP | 4 |
 | `expedition/session.gd` | `submit`, `time/turn_serial/ready_at`, 오토배틀 제거, `after_damage`, `on_kill`, 장비·주문 API | 1–4 |
 | `expedition/monster_ai.gd`, `boss_ai.gd` | 행동 비용, `resolve_at` 예고 | 2 |
 | `expedition/abilities.gd`, `parts_candidates.gd`, `floor_tactics_adapter.gd`, `character_ui.gd` | `Growth.power` → `CombatStats` | 1 |
@@ -304,6 +304,22 @@ static func move_time(s, actor: Dictionary, cell: Vector2i) -> int:
 
 ---
 
+### Task 1b: 모임 화면 · 종족 · 시작 장비 (명부 30명)
+
+**Files:**
+- Modify: `expedition/npc_roster.gd`(`COUNT := 30`, `DUOS := 6`, 종족·무기 배정), `expedition/session.gd`(`begin_run(species_id, kit_id)`; `depart()`는 그대로 1층 진입), `data/content/combat.json`(`kits` 표), `expedition/main.gd`(`GatherScreen`), `data/content/npc_names.json`(이름 40개로)
+- Test: `tests/gather.gd`(신규), `tests/npc_roster.gd`(30명·6쌍으로 갱신, 검사 수 유지)
+
+**Interfaces:**
+- Produces: `combat.json.kits`(스펙 §6 표: `{id, axis, weapon, spell}`), `Session.begin_run(species_id, kit_id) -> bool`(IDLE에서만; 주인공 `species_id`·`gear.weapon`·`gear.armour = robe`·(마법 kit이면) `spells/prepared`에 첫 주문·HP/MP를 종족값으로, 그 뒤 `depart()`), `NpcRoster.kit_for(profile, seed_lane) -> String`, 노드 `GatherScreen/GatherToken%d/SpeciesPick/KitPick/Descend`.
+- 판정: 종족 HP는 T1의 55 고정을 유지하되 종족 간 차이는 원본 비율로 스케일(인간 55, 드워프 66, 엘프 43; MP 18/12/26).
+
+- [ ] **Step 1: 실패하는 테스트 — `tests/gather.gd`**: `Session.new` 직후 `phase == "IDLE"`, `roster.size() == 30`, 2인 조 6쌍, 종족 3종 모두 등장, 무기 10종 모두 등장(시드 5개 합쳐서), 마법 무기 NPC는 `spells.size() == 1 and prepared == spells`; `begin_run("dwarf","axe")` → 주인공 `species_id dwarf`, `gear.weapon.type == "axe"`, `max_hp 66`, `depth == 1`, `phase == "EXPLORE"`; `begin_run("elf","fire")` → `spells == ["bolt"]`, `prepared == ["bolt"]`, `mp == 26`; 잘못된 id 거부; 씬: `GatherScreen`에 토큰 31개, `SpeciesPick`·`KitPick` 선택 후 `Descend` → HUD; 결과 화면 `NewRun` → 다시 `GatherScreen`.
+- [ ] **Step 2: 구현.** `npc_roster.generate`가 `species_id`(시드)·kit(성격 가중, 스펙 §6)을 배정하고 `gear/spells/prepared`를 채운다. `main.gd`: `new_run()` → 세션 생성만(IDLE) + `GatherScreen`; `Descend` 버튼이 `begin_run`. 토큰 탭 → 기존 NPC 팝업 재사용(영입 버튼 없이). 배치(`place`)는 30명 중 3~5명이므로 `UNMET` 우선 규칙 그대로.
+- [ ] **Step 3: 실행·커밋** `feat(run): the gathering — thirty on the roster, species and starting kit chosen before floor one`
+
+---
+
 ### Task 2: tick 스케줄러 · `Session.submit` · 오토배틀 제거 · 라운드 재정의
 
 **Files:**
@@ -515,9 +531,9 @@ static func double_movers(s, cost: int) -> Array:
 - Modify: `expedition/session.gd`(`cast`, `equip_gear/unequip_gear`, `prepare_spell`, `gear_bag`), `expedition/curios.gd`·`data/content/exploration_curios.json`(장비·주문서 결과), `expedition/boss_ai.gd`(보스 드롭에 주문서), `data/content/combat.json`(`loot`), `expedition/abilities.gd`(파츠와 주문의 HUD 구분은 Task 5)
 
 **Interfaces:**
-- Produces: `Spells.cast(s, caster, id, target) -> bool`, `Spells.failure(s, caster, id) -> int`, `Spells.cells(s, caster, id, target) -> Array`; `Session.cast(id, target)`(주인공, 비용 100), `Session.equip_gear(index, item) / unequip_gear(index, slot)`(CAMP에서만), `Session.prepare_spell(index, id, on: bool)`(CAMP, 최대 3), 액터 `spells/prepared/mp`.
+- Produces: `Spells.cast(s, caster, id, target) -> bool`, `Spells.failure(s, caster, id) -> int`, `Spells.cells(s, caster, id, target) -> Array`; 활성 주문은 학파별 하나 `bolt/cone/cloud/confuse/hound`(시작 장비가 요구); `Session.cast(id, target)`(주인공, 비용 100), `Session.equip_gear(index, item) / unequip_gear(index, slot)`(CAMP에서만), `Session.prepare_spell(index, id, on: bool)`(CAMP, 최대 3), 액터 `spells/prepared/mp`.
 
-- [ ] **Step 1: 실패하는 테스트 — `tests/spells.gd`**: `bolt`(단일, 사거리 6, 화염 16, MP 3), `blast`(범위 1), `blink`(무작위 3칸 탈출 — 시드 결정론), `confuse`(상태 `confuse` 부여, 저항 `will`), `mend`(HP +12); 실패율 공식(`8 + level·9 + enc·5 − rank·5 − INT`, 0~85)과 실패 시 MP만 소비; MP 부족 거부; 준비 3개 상한·야영에서만 변경; 주문서 획득(`DEAD_ADVENTURER` 20%, 보스 100%)으로 `spells` 증가; 장비 획득(`BROKEN_CHEST` 50% → `gear_bag`), 야영에서 장착·해제·양손/방패 금지; 몬스터 `res`로 저항.
+- [ ] **Step 1: 실패하는 테스트 — `tests/spells.gd`**: `bolt`(fire, 단일, 사거리 6, 화염 16, MP 3), `cone`(ice, 부채꼴 3칸 냉기 피해 + `slow`), `cloud`(air, 반경 1 구름 3턴, 전기 피해), `confuse`(hex, 상태 `confuse`, 저항 `will`), `hound`(summon, 아군 소환수 1, 300 tick 지속 — 소환수는 `s.npcs`가 아니라 `s.summons`에, `friends()`에 포함); 실패율 공식(`8 + level·9 + enc·5 − rank·5 − INT`, 0~85)과 실패 시 MP만 소비; MP 부족 거부; 준비 3개 상한·야영에서만 변경; 주문서 획득(`DEAD_ADVENTURER` 20%, 보스 100%)으로 `spells` 증가; 장비 획득(`BROKEN_CHEST` 50% → `gear_bag`), 야영에서 장착·해제·양손/방패 금지; 몬스터 `res`로 저항.
 
 - [ ] **Step 2: 구현.** 원본 `world.cast/spell_cells/failure` 복사 후 `DATA` → `combat.json`, `rng` → `Hexaco.sample`, 시전자 일반화(동료·NPC도 `prepared`가 있으면 `Tactics`의 파츠 후보처럼 — **이번 Task에서는 주인공만** 시전; 동료 시전은 범위 밖). 조사물 결과에 `gear`/`spellbook` 확률 필드. `equip_gear`는 `Stats.stats`의 양손/방패 규칙을 검증.
 
@@ -557,6 +573,6 @@ static func double_movers(s, cost: int) -> Array:
 
 ## 자기 검토
 
-- 스펙 커버리지: §0 결정(T1 수학·데이터, T2 오토배틀 제거·tick·구간, T3 숙련, T4 주문·드롭, T5 UI, T6 게이트) / §1 이식표(T1·T2·T3·T4) / §2 비용표(T2) / §3 접합(T2) / §4 재정의표(T2) / §5 숙련(T3·T5) / §6 장비·주문(T4·T5) / §7 검증(T1~T6) / §8 순서(그대로).
+- 스펙 커버리지: §0 결정(T1 수학·데이터, T1b 모임·종족·시작 장비, T2 오토배틀 제거·tick·구간, T3 숙련, T4 주문·드롭, T5 UI, T6 게이트) / §1.0 모임(T1b) / §1 이식표(T1·T2·T3·T4) / §2 비용표(T2) / §3 접합(T2) / §4 재정의표(T2) / §5 숙련(T3·T5) / §6 장비·주문(T4·T5) / §7 검증(T1~T6) / §8 순서(그대로).
 - 이름 일관성: `CombatStats.stats`, `CombatRules.attack/damage/move_time`, `Session.after_damage/on_kill/submit/action_cost/perform/start_route/route_step/route_active/cast/equip_gear/unequip_gear/prepare_spell`, `Scheduler.advance/act/environment_tick/double_movers/actors`, `Mastery.AXES/NAMES/weapon_axis/rank/next_xp/add_xp/record/award/unlocked/fusions/aptitude/catchup`, `MasteryEffects.on_attack/on_dodge/on_spell_hit/damage_bonus`, `Spells.cast/failure/cells`, 액터 `gear/species_id/mp/max_mp/skill_xp/statuses/spells/prepared/ready_at/level/level_xp`, `s.time/boundary/turn_serial/gear_bag`, `intents[].resolve_at`.
 - 위험: T2가 가장 크다(라운드 제거가 8개 스위트와 시뮬 봇에 닿음). T2 Step 5의 "삭제 목록"은 한 번에 지우지 말고 `submit` 경로가 초록이 된 뒤 지운다. T1에서 HP 55/종족 72 충돌은 55로 고정하고 T6이 비교한다. 동료 시전(주문)은 범위 밖으로 명시했다.

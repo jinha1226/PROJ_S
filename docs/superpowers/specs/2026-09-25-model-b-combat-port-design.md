@@ -18,6 +18,13 @@
 7. **유지**: 하강 Run·야영·계단·보스 층·조사물·식량·소모품 5종·파츠 2칸·성격·기억·스트레스·NPC 명부·영입·2인 조. 층 크기 80·시야 5 유지(Model B의 40×40·시야 6은 안 가져온다).
 8. **가져오지 않음**: Model B의 `World` 맵·층 분기·신앙·룬·오브·저장, `game.gd`/`board.gd` UI, 몬스터 `actor_turn`(우리 `MonsterAI`·`BossAI` 유지), 이름만 있고 효과 없는 숙련 보상.
 
+## 1.0 시작 화면 — 모임
+
+- 새 Run → **모임 화면**: 고정 주인공(아린)과 이번 Run의 NPC 명부 **30명**이 한 화면에 모여 있다(`npc_roster.COUNT` 10 → 30; 층당 배치 3~5명은 그대로라 한 Run에 다 만나지 못한다). 토큰을 탭하면 이름·종족·성격 한 줄·들고 있는 무기를 본다. 여기서 영입은 없다(영입은 던전 §5.5).
+- 주인공 카드에서 **종족**(인간/드워프/엘프 — HP·MP·STR/INT/DEX·적성 표시)과 **시작 장비 10개 중 하나**(§6 표)를 고르고 "1층으로". 종족과 시작 장비는 Run 동안 바꿀 수 없다.
+- NPC의 종족·무기도 같은 표에서 시드로 뽑는다(종족 3, 무기 10). 마법 무기를 든 NPC는 그 학파 첫 주문을 알고 준비한 채 나온다.
+- 화면 계약: `GatherScreen`(`GatherToken%d` ×31, `SpeciesPick`, `KitPick`, `Descend`). 결과 화면의 "새 Run"은 이 화면으로 온다. `IDLE` 단계가 이 화면이다.
+
 ## 1. 이식표
 
 | 원본 (47d46b8) | 대상 (`new`) | 옮기는 방식 |
@@ -32,7 +39,7 @@
 | `usage_world.gd` `USAGE_SKILLS/weapon_skill/aptitude_for/add_skill_xp/refresh_unlocks/record_usage/award_usage_xp/fusion_tier` | `expedition/mastery.gd` | 복사 후 **캐릭터별**: `skills` → `actor.skill_xp`, `combat_usage` → `actor.usage`(적 id → 축 → 횟수), `discovered_*` → `actor.unlocked`, `hero()` → 인자, 신앙 보정 삭제. `skill_rank`는 원본 공식 `min(12, sqrt(xp/25))`를 **Lv 1~10**으로: `rank = clampi(int(sqrt(xp/25.0)), 0, 10)`, 다음 rank XP = `25·(rank+1)²` |
 | `progression_data.gd` | `data/content/mastery.json` + `expedition/mastery.gd` 로더 | 복사. `LEVEL_REWARDS` 이름은 데이터로 두되 **`effect_id`가 있는 행만 화면·효과에 쓴다**(§5). `FUSIONS`는 `sword_fire`·`fire_sword`만 `effect_id`를 갖고 나머지는 잠김 |
 | `usage_world.stats/attack/damage/cast`의 융합 가지(`apply_weapon_fusions/apply_magic_progression/apply_reverse_fusions/chain_element/spawn_fusion_minion`) | `expedition/mastery_effects.gd` | `sword_fire`(공격에 화염 4 추가 피해, tier2 8)·`fire_sword`(화염 주문 명중 시 인접 적 검 피해 절반)의 두 효과만 옮긴다. 나머지 가지는 옮기지 않는다 |
-| `world.cast(id,target)`, `spell_cells`, `failure(id)` | `expedition/spells.gd` | 복사. 12주문 중 첫 단면은 `bolt`(단일)·`blast`(범위)·`blink`(탈출)·`confuse`(제어)·`mend`(회복) 5개만 `effect`를 연결하고 나머지는 데이터만. MP는 `actor.mp/max_mp`(종족 `mp`), 실패율 원본 공식 유지(`enc`는 `stats().enc`) |
+| `world.cast(id,target)`, `spell_cells`, `failure(id)` | `expedition/spells.gd` | 복사. 12주문 중 첫 단면은 **학파별 첫 주문 하나씩** `bolt`(fire, 단일)·`cone`(ice, 부채꼴 둔화)·`cloud`(air, 구름)·`confuse`(hex, 제어)·`hound`(summon, 소환수) 5개만 `effect`를 연결하고(§1.0 시작 장비가 이 다섯을 요구), `blink`·`mend`는 드롭 주문서로 다음 단면. 나머지는 데이터만. MP는 `actor.mp/max_mp`(종족 `mp`), 실패율 원본 공식 유지(`enc`는 `stats().enc`) |
 | `world.gain_xp` | `Session.on_kill(target, source)` | 처치 XP `18 + depth·8`을 교전 기여자에게 `Mastery.award_usage_xp`로 분배(§5.2). 레벨 XP는 HP/MP만 올린다 |
 
 옮기지 않는 원본 함수: `generate/enter_floor/spawn/trigger_trap/pickup/plan_route/start_rest/auto_step/save_data/restore/validation_error/leave_god/summon_guardian/actor_turn`.
@@ -122,9 +129,24 @@ Scheduler.act(s, actor):
 ## 6. 장비·주문·아이템
 
 - 장비 슬롯 `gear = {weapon, armour, shield, ring}`(아이템 dict 또는 `{}`). 양손 무기(`trait in [ranged, focus]`가 아닌 `bow/staff`)와 방패 동시 장착 금지(원본 `stats` 조건 그대로).
-- 시작: 주인공 `sword`(장검) + `robe`. NPC 명부 생성 시 무기 하나(종족 적성과 성격으로: X 높음 → 도끼/둔기, C 높음 → 창/활, 나머지 검).
+- 시작 장비는 모임 화면(§1.0)에서 고르는 **10개 중 하나**(숙련 10축에 하나씩). 방어구는 전원 `robe`.
+
+| 축 | 아이템 | 내용 |
+| --- | --- | --- |
+| sword | 장검 | `sword` |
+| spear | 창 | `spear`(사거리 2) |
+| mace | 철퇴 | `mace`(관통) |
+| axe | 도끼 | `axe`(휩쓸기) |
+| bow | 활 | `bow`(사거리 6) |
+| fire | 화염 지팡이 | `staff` + 주문 `bolt` 습득·준비 |
+| ice | 서리 지팡이 | `staff` + `cone` |
+| air | 폭풍 지팡이 | `staff` + `cloud` |
+| hex | 주박 지팡이 | `staff` + `confuse` |
+| summon | 소환 지팡이 | `staff` + `hound` |
+
+  NPC 명부 생성 시 같은 표에서 시드로 하나(성격 가중: X ≥ 600 → axe/mace, C ≥ 600 → spear/bow, O ≥ 600 → 마법 5, 나머지 sword).
 - 획득: 조사물 `BROKEN_CHEST`·`DEAD_ADVENTURER`가 파츠/소모품 외에 장비도 준다(깊이별 표는 `combat.json.loot`). 장착·해제는 야영에서만.
-- 주문: 배운 목록 `actor.spells`와 준비 `actor.prepared`(최대 3, 야영에서 변경). 시작 주문 없음; `DEAD_ADVENTURER`·보스 드롭에서 주문서. HUD에는 준비 주문 3개만.
+- 주문: 배운 목록 `actor.spells`와 준비 `actor.prepared`(최대 3, 야영에서 변경). 시작 주문은 시작 장비가 마법 지팡이일 때 그 학파의 첫 주문 하나; 그 외는 `DEAD_ADVENTURER`·보스 드롭 주문서. HUD에는 준비 주문 3개만.
 - 소모품 5종 유지. Model B `supplies`(heal/blink/haste/fog/wand)는 가져오지 않는다.
 - 몬스터: 8종에 `speed/ac/ev/res`. 역할(MELEE/RANGED/CASTER)과 파츠는 그대로. 보스 3종은 §7에서 재측정.
 
