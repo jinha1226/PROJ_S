@@ -90,6 +90,8 @@ func touch_targets(scene) -> void:
 		var control: Control = scene.find_child(id,true,false)
 		check(control != null and control.size.y >= 36,"%s is a touchable height" % id)
 		check(control != null and scene.get_global_rect().encloses(control.get_global_rect()),"%s stays on screen" % id)
+	var frame: StyleBox = scene.find_child("Attack",true,false).get_theme_stylebox("normal")
+	check(frame is StyleBoxTexture and frame.texture.get_size() == Vector2(24,24) and frame.texture_margin_top == 6,"nine-slice frame fits the action button")
 	check(scene.item_buttons.is_empty(),"supplies live in the bag")
 	var nav: Node = scene.find_child("BottomActions",true,false)
 	check(nav.get_children().map(func(c): return str(c.text)) == ["공격","대기","탐색","전술","가방"],"five direct actions share one row")

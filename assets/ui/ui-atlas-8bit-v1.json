@@ -10,6 +10,6 @@
   "source": "imagegen prompt recorded in docs/art/ui-atlas-8bit-v1.md",
   "usage": {
     "icons": "mobile_art.ui_icon(index)",
-    "button_frames": "mobile_art.ui_frame(state), state 0 normal, 1 hover, 2 pressed, 3 disabled"
+    "button_frames": "mobile_art.ui_frame(state) builds a 24px source for 6px nine-slice margins; atlas row 2 is reference only"
   }
 }

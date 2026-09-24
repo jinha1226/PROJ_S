@@ -90,8 +90,8 @@ func _ready() -> void:
 	for state in ["normal","hover","pressed","focus","disabled"]:
 		var frame_state: int = {"normal":0,"hover":1,"pressed":2,"focus":1,"disabled":3}[state]
 		var box := StyleBoxTexture.new(); box.texture = Art.ui_frame(frame_state)
-		box.texture_margin_left = 64; box.texture_margin_right = 64
-		box.texture_margin_top = 64; box.texture_margin_bottom = 64
+		box.texture_margin_left = 6; box.texture_margin_right = 6
+		box.texture_margin_top = 6; box.texture_margin_bottom = 6
 		box.content_margin_left = 8; box.content_margin_right = 8
 		box.content_margin_top = 5; box.content_margin_bottom = 5
 		skin.set_stylebox(state,"Button",box)
@@ -244,6 +244,7 @@ func label(parent: Node, text: String, font_size: int = 12) -> Label:
 
 func button(parent: Node, text: String, callback: Callable, enabled: bool = true) -> Button:
 	var node := Button.new(); node.text = text; node.disabled = not enabled
+	node.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	node.custom_minimum_size = Vector2(0,44); node.size_flags_horizontal = SIZE_EXPAND_FILL
 	node.pressed.connect(callback); parent.add_child(node); return node
 
