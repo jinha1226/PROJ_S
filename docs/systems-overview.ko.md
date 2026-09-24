@@ -96,3 +96,99 @@
 8. **테스트**: `combat_rules` 계획 검사(회피·방패 밴드, 휩쓸기, 브랜드+저항, 처치 경로)가 `model_b_combat`에 없음; UI 검사 일부 감소·이주 표 없음; `solo_balance` 항진식.
 9. `expedition/actors/floor_tactics_adapter.gd`는 레거시 선택기 브리지(몬스터 근접 경로 전용).
 10. 소환수 사망 시 파티 스트레스 없음(의도), 지배되지 않은 보스는 파티만 노림(기존).
+
+---
+
+## 부록 A. 코드 배치 이동 표 (2026-09-25, `refactor/layout`)
+
+`expedition/`의 평면 파일 전부가 도메인 폴더로 옮겨졌다. **동작 변경 없음** — 파일 이동, 함수 이전, `res://` 경로 갱신뿐이다. Task 1~2는 이동, Task 3~4는 `session.gd`·`main.gd` 분할, Task 5는 상태·소환 분리다.
+
+### A.1 옮긴 파일
+
+| 이전 | 이후 | Task |
+| --- | --- | --- |
+| `expedition/scheduler.gd` | `expedition/time/scheduler.gd` | 1 |
+| `expedition/combat_stats.gd` | `expedition/combat/combat_stats.gd` | 1 |
+| `expedition/combat_rules.gd` | `expedition/combat/combat_rules.gd` | 1 |
+| `expedition/passives.gd` | `expedition/combat/passives.gd` | 1 |
+| `expedition/spells.gd` | `expedition/spells/spells.gd` | 1 |
+| `expedition/monster_ai.gd` | `expedition/actors/monster_ai.gd` | 1 |
+| `expedition/boss_ai.gd` | `expedition/actors/boss_ai.gd` | 1 |
+| `expedition/floor_tactics_adapter.gd` | `expedition/actors/floor_tactics_adapter.gd` | 1 |
+| `expedition/npc_roster.gd` | `expedition/actors/npc_roster.gd` | 1 |
+| `expedition/npc_ai.gd` | `expedition/actors/npc_ai.gd` | 1 |
+| `expedition/npc_modes.gd` | `expedition/actors/npc_modes.gd` | 1 |
+| `expedition/npc_recruit.gd` | `expedition/actors/npc_recruit.gd` | 1 |
+| `expedition/tactical_action_selector.gd` | `expedition/ai/tactical_action_selector.gd` | 1 |
+| `expedition/stances.gd` | `expedition/ai/stances.gd` | 1 |
+| `expedition/utility.gd` | `expedition/ai/utility.gd` | 1 |
+| `expedition/lookahead.gd` | `expedition/ai/lookahead.gd` | 1 |
+| `expedition/parts_candidates.gd` | `expedition/ai/parts_candidates.gd` | 1 |
+| `expedition/tactic_rules.gd` | `expedition/ai/tactic_rules.gd` | 1 |
+| `expedition/knobs.gd` | `expedition/ai/knobs.gd` | 1 |
+| `expedition/abilities.gd` | `expedition/items/abilities.gd` | 1 |
+| `expedition/curios.gd` | `expedition/items/curios.gd` | 1 |
+| `expedition/inventory_slot.gd` | `expedition/items/inventory_slot.gd` | 1 |
+| `expedition/mastery.gd` | `expedition/progression/mastery.gd` | 1 |
+| `expedition/mastery_effects.gd` | `expedition/progression/mastery_effects.gd` | 1 |
+| `expedition/growth.gd` | `expedition/progression/growth.gd` | 1 |
+| `expedition/floor_generator.gd` | `expedition/level/floor_generator.gd` | 1 |
+| `expedition/floor_templates.gd` | `expedition/level/floor_templates.gd` | 1 |
+| `expedition/continuous_floor.gd` | `expedition/level/continuous_floor.gd` | 1 |
+| `expedition/encounter_builder.gd` | `expedition/level/encounter_builder.gd` | 1 |
+| `expedition/exploration_navigation.gd` | `expedition/level/exploration_navigation.gd` | 1 |
+| `expedition/mobile_art.gd` | `expedition/art/mobile_art.gd` | 2 |
+| `expedition/environment_art.gd` | `expedition/art/environment_art.gd` | 2 |
+| `expedition/floor1_art.gd` | `expedition/art/floor1_art.gd` | 2 |
+| `expedition/ink_torso_art.gd` | `expedition/art/ink_torso_art.gd` | 2 |
+| `expedition/masonry_tiles.gd` | `expedition/art/masonry_tiles.gd` | 2 |
+| `expedition/map_icons.gd` | `expedition/art/map_icons.gd` | 2 |
+| `expedition/mastery_glyph.gd` | `expedition/art/mastery_glyph.gd` | 2 |
+| `expedition/growth_emblem.gd` | `expedition/art/growth_emblem.gd` | 2 |
+| `expedition/radial_light.gd` | `expedition/art/radial_light.gd` | 2 |
+| `expedition/actor_outline.gdshader` | `expedition/art/actor_outline.gdshader` | 2 |
+| `expedition/main.tscn` | `expedition/ui/main.tscn` | 2 |
+| `expedition/main.gd` | `expedition/ui/main.gd` | 2 |
+| `expedition/board.gd` | `expedition/ui/board.gd` | 2 |
+| `expedition/battle_hud.gd` | `expedition/ui/battle_hud.gd` | 2 |
+| `expedition/map_view.gd` | `expedition/ui/map_view.gd` | 2 |
+| `expedition/companion_intent_ui.gd` | `expedition/ui/companion_intent_ui.gd` | 2 |
+| `expedition/companion_intent_overlay.gd` | `expedition/ui/companion_intent_overlay.gd` | 2 |
+| `expedition/battle_presentation.gd` | `expedition/ui/battle_presentation.gd` | 2 |
+| `expedition/battle_actor_visual.gd` | `expedition/ui/battle_actor_visual.gd` | 2 |
+| `expedition/body_presentation.gd` | `expedition/ui/body_presentation.gd` | 2 |
+| `expedition/body_status_silhouette.gd` | `expedition/ui/body_status_silhouette.gd` | 2 |
+| `expedition/character_ui.gd` | `expedition/ui/screens/character_folio.gd` | 2 |
+| `expedition/arena_setup.gd` | `expedition/ui/screens/arena_setup.gd` | 2 |
+| `expedition/session.gd` | `expedition/run/session.gd` | 3 |
+| `expedition/sim/*`, `expedition/legacy/*` | 그대로 | — |
+
+`project.godot`의 `run/main_scene`과 `main.tscn`의 `ext_resource path`도 새 경로를 가리킨다.
+
+### A.2 새로 생긴 파일 (Task 3~5의 분할)
+
+| 새 파일 | 어디서 왔나 | Task |
+| --- | --- | --- |
+| `expedition/run/camp.gd` | `session.gd`의 야영·주문 배우기·준비·책 | 4 |
+| `expedition/run/descent.gd` | `session.gd`의 하강·층 전환 | 4 |
+| `expedition/items/gear.gd` | `session.gd`의 장비 착·탈·슬롯 | 4 |
+| `expedition/run/orders.gd` | `session.gd`의 옛 파티 명령 | 4 |
+| `expedition/run/arena_test.gd` | `session.gd`의 전투 시험 세션 구성 | 4 |
+| `expedition/run/run_result.gd` | `session.gd`의 `companion_rows` 등 결과 집계 | 4 |
+| `expedition/run/autobattle.gd` | `session.gd`의 호환 오토배틀 경로(격리, 삭제 아님) | 4 |
+| `expedition/ui/screens/start_screen.gd` | `main.gd`의 시작 화면 | 4 |
+| `expedition/ui/screens/floor_hud.gd` | `main.gd`의 층 HUD | 4 |
+| `expedition/ui/screens/camp_screen.gd` | `main.gd`의 야영 화면 | 4 |
+| `expedition/ui/screens/popups.gd` | `main.gd`의 팝업들 | 4 |
+| `expedition/ui/screens/result_card.gd` | `main.gd`의 결과 카드 | 4 |
+| `expedition/ui/screens/autobattle_hud.gd` | `main.gd`의 호환 오토배틀 HUD | 4 |
+| `expedition/combat/statuses.gd` | `Session.status_blocks` → `blocks`, `Spells.apply_status` → `apply`, `Scheduler.environment_tick`의 상태 만료·tick 피해 블록 → `tick`, `BURN_DAMAGE` | 5 |
+| `expedition/spells/summons.gd` | `Spells.summon` · `summon_cells` · `summons_of`, `Scheduler.environment_tick`의 소환 만료 블록 → `expire` | 5 |
+
+세션과 `Spells`는 옮긴 함수마다 한 줄 위임을 남겼다 — 공개 이름과 호출부는 전과 같다.
+
+### A.3 검증
+
+- `grep -rn "res://expedition/[a-z_]*\.gd"` 중 도메인 폴더 밖 경로: **0건**.
+- `find expedition -maxdepth 1 -name "*.gd"`: **0건**.
+- 임포트 검사 0 오류, 전체 CI 47/47 · 0 실패, 계약 수치 전부 동일.
