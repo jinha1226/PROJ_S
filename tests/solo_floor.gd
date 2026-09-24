@@ -42,7 +42,7 @@ func run() -> void:
 	check(s.floor_state.layout.theme_id == "F2_MINES","second floor changes theme")
 	s.party[0].hp = 1; s.damage(s.party[0],50,100,"IMPACT")
 	check(s.phase == "DEFEAT" and not s.descend(),"solo death ends the run")
-	var scene = load("res://expedition/main.tscn").instantiate(); scene.session = s
+	var scene = load("res://expedition/ui/main.tscn").instantiate(); scene.session = s
 	root.size = Vector2i(390,844); root.add_child(scene); await process_frame
 	check(scene.find_child("ResultCard",true,false) != null,"death opens result card")
 	check(scene.portrait_buttons.is_empty() and scene.item_buttons.is_empty(),"result omits combat controls")
@@ -70,7 +70,7 @@ func stairs_discovery() -> void:
 	var stairs: Vector2i = s.floor_state.layout.stairs
 	check(not s.floor_state.explored.has(stairs),"the stairs start unseen")
 	check(s.floor_state.discoveries.all(func(row): return row.position != [stairs.x,stairs.y]),"and unmarked")
-	var scene = load("res://expedition/main.tscn").instantiate(); scene.session = s
+	var scene = load("res://expedition/ui/main.tscn").instantiate(); scene.session = s
 	root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
 	await process_frame
 	check(not scene.navigation.start(s,stairs),"unseen stairs are not a navigation target")
@@ -172,7 +172,7 @@ func hud_fit() -> void:
 	var s = Session.new_run(731)
 	for enemy in s.enemies: enemy.hp = 0
 	Fixture.arena(s,12)
-	var scene = load("res://expedition/main.tscn").instantiate(); scene.session = s
+	var scene = load("res://expedition/ui/main.tscn").instantiate(); scene.session = s
 	root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
 	await process_frame
 	for viewport in [Vector2i(320,640),Vector2i(390,844),Vector2i(430,932)]:
@@ -208,7 +208,7 @@ func duo_floor() -> void:
 	check(duo.can_camp() == "" or duo.can_camp() == "적이 보임","camping asks the same two questions")
 	duo.food = 1
 	check(duo.can_camp() in ["식량 2 필요","적이 보임"],"a duo camp costs two rations")
-	var scene = load("res://expedition/main.tscn").instantiate(); scene.session = duo
+	var scene = load("res://expedition/ui/main.tscn").instantiate(); scene.session = duo
 	root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
 	await process_frame
 	check(scene.portrait_buttons.size() == 2,"two member cards")

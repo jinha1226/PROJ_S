@@ -7,7 +7,7 @@ func check(ok: bool, reason: String) -> void:
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
 	root.size = Vector2i(390,915)
-	var scene = load("res://expedition/main.tscn").instantiate(); root.add_child(scene)
+	var scene = load("res://expedition/ui/main.tscn").instantiate(); root.add_child(scene)
 	await process_frame
 	check(scene.find_child("StartScreen",true,false) != null,"start screen")
 	check(scene.find_child("ArenaButton",true,false) != null,"arena entry")

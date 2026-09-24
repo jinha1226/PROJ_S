@@ -152,7 +152,7 @@ func exercise() -> void:
 	s.enemies[0].hp = 0
 	check(not s.companion_previews()[0].get("reserved",false),"dead target invalidates reservation")
 	# The live HUD exposes compact party state and the same prediction data.
-	var scene = load("res://expedition/main.tscn").instantiate()
+	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	scene.session = Session.new(731,true,true,true,2)
 	scene.session.depart()
 	root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)

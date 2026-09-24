@@ -1,6 +1,6 @@
 extends Control
-const Art = preload("res://expedition/environment_art.gd")
-const Walls = preload("res://expedition/masonry_tiles.gd")
+const Art = preload("res://expedition/art/environment_art.gd")
+const Walls = preload("res://expedition/art/masonry_tiles.gd")
 const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 const MAP = ["##########","#........#","#..##....#","#..##....#","#........#","#.....#..#","#........#","####..####"]
 const TITLES = ["침수 지하묘지","폐광","불탄 성채","얼어붙은 유적"]

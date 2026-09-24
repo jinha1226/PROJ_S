@@ -4,13 +4,13 @@ func check(value: bool, message: String) -> void:
 	if not value: failures += 1; push_error(message)
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
-	var scene = load("res://expedition/main.gd").new()
+	var scene = load("res://expedition/ui/main.gd").new()
 	# Default play is solo; this test covers the companion character sheets.
 	scene.session = scene.Session.new(731,true,true,true); root.add_child(scene)
 	await process_frame
 	scene.session.phase = "CAMP"
 	var actor: Dictionary = scene.session.party[0]
-	var presentation = preload("res://expedition/body_presentation.gd")
+	var presentation = preload("res://expedition/ui/body_presentation.gd")
 	var snapshot: Dictionary = actor.body.to_dict().duplicate(true)
 	check(presentation.summary(actor) == "건강 · 부위 이상 없음","healthy body has one plain summary")
 	var part: Dictionary = actor.body.parts[0].duplicate(true)

@@ -1,5 +1,5 @@
 extends Control
-const Tiles = preload("res://expedition/masonry_tiles.gd")
+const Tiles = preload("res://expedition/art/masonry_tiles.gd")
 const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 const MAPS = [
 	["##########","#........#","#........#","#........#","#........#","#........#","####..####","####..####"],

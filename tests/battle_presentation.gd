@@ -1,7 +1,7 @@
 extends SceneTree
 const Session = preload("res://expedition/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
-const Presentation = preload("res://expedition/battle_presentation.gd")
+const Presentation = preload("res://expedition/ui/battle_presentation.gd")
 var failures := 0
 
 func check(ok: bool, reason: String) -> void:
@@ -43,7 +43,7 @@ func run() -> void:
 	check(recorder.frames.any(func(frame): return not frame.get("executed_intent",{}).is_empty()),"successful companion actions carry their chosen DTO into presentation frames")
 	check(recorder.frames[0].effects[0].from == s.party[0].pos,"player impact precedes enemy")
 	check(recorder.frames[0].before.actors[1].hp == 200,"snapshot preserves pre-hit HP")
-	var scene = load("res://expedition/main.tscn").instantiate()
+	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	scene.session = setup()
 	root.size = Vector2i(390,844); root.add_child(scene)
 	await process_frame

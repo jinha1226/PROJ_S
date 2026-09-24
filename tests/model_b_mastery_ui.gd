@@ -11,7 +11,7 @@ func check(ok: bool, reason: String) -> void:
 	if not ok: failures += 1; push_error(reason)
 
 func run() -> void:
-	var scene = load("res://expedition/main.tscn").instantiate()
+	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	scene.session = Session.new_run(7701)
 	scene.session.party[0].skill_xp.sword = 10
 	root.size = Vector2i(320,640)

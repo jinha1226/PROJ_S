@@ -1,15 +1,15 @@
 extends RefCounted
 const SHEET = preload("res://assets/mobile/ui-atlas.png")
 const ACTORS = [preload("res://assets/mobile/human.png"),preload("res://assets/mobile/dwarf.png"),preload("res://assets/mobile/elf.png")]
-const InkTorso = preload("res://expedition/ink_torso_art.gd")
+const InkTorso = preload("res://expedition/art/ink_torso_art.gd")
 const ENEMY = preload("res://assets/mobile/kobold.png")
 const BOSS = preload("res://assets/mobile/fire_lizard.png")
 const STONE = preload("res://assets/mobile/stone_floor_a.png")
 const WOOD = preload("res://assets/mobile/wood_floor.png")
 const WATER = preload("res://assets/mobile/water.png")
 const TOPDOWN = [preload("res://assets/topdown/floor1_atlas_16x1_16.png"),preload("res://assets/topdown/floor2_atlas_16x1_16.png")]
-const Masonry = preload("res://expedition/masonry_tiles.gd")
-const FirstFloor = preload("res://expedition/floor1_art.gd")
+const Masonry = preload("res://expedition/art/masonry_tiles.gd")
+const FirstFloor = preload("res://expedition/art/floor1_art.gd")
 const FLAGSTONE = preload("res://assets/topdown/flagstone-floor-v1.png")
 static var terrain_cache: Dictionary = {}
 

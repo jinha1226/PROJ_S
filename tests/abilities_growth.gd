@@ -61,7 +61,7 @@ func exercise() -> void:
 	check(s.spend_growth(0,"MELEE") and s.Growth.power(s.party[0],"MELEE",18) > 18,"mastery affects power")
 	check(s.spend_growth(0,"DEFENSE") and s.Growth.incoming(s.party[0],100) == 96,"defense affects incoming damage")
 	check(not s.spend_growth(0,"INVALID") and not s.spend_growth(-1,"MELEE"),"invalid growth choices rejected")
-	var scene = load("res://expedition/main.tscn").instantiate(); root.size = Vector2i(390,844); root.add_child(scene)
+	var scene = load("res://expedition/ui/main.tscn").instantiate(); root.size = Vector2i(390,844); root.add_child(scene)
 	scene.session = s; scene.refresh()
 	for tab in ["파츠","숙련","상태"]:
 		scene.show_character(1,tab)

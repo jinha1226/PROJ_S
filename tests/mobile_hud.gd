@@ -11,7 +11,7 @@ func _initialize() -> void: call_deferred("run")
 
 func run() -> void:
 	root.size = Vector2i(390,844)
-	var scene = load("res://expedition/main.tscn").instantiate()
+	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	root.add_child(scene); scene.set_process(false); await process_frame
 	check(scene.find_child("StartScreen",true,false) != null,"start screen appears")
 	check(scene.portrait_buttons.is_empty() and scene.skill_buttons.is_empty(),"start has no battle cards")

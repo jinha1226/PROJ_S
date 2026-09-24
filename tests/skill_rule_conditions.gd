@@ -89,7 +89,7 @@ func catalog() -> void:
 ## 2. The rule editor offers exactly the advertised targets and conditions and
 ## every condition can be selected from the UI.
 func user_interface() -> void:
-	var scene = load("res://expedition/main.gd").new()
+	var scene = load("res://expedition/ui/main.gd").new()
 	scene.session = scene.Session.new(731,true,false,true,1)
 	root.add_child(scene)
 	await process_frame

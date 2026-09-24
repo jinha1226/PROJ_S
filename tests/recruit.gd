@@ -247,7 +247,7 @@ func history() -> void:
 ## The HUD side: a tap on an adjacent npc opens its popup, the aid button
 ## shares the food, and an offer on the table waits in its own popup.
 func scene() -> void:
-	var main = load("res://expedition/main.tscn").instantiate()
+	var main = load("res://expedition/ui/main.tscn").instantiate()
 	var s = Session.new(71,false,false,true,1)
 	main.session = s; root.size = Vector2i(390,844); root.add_child(main); main.set_process(false)
 	await process_frame

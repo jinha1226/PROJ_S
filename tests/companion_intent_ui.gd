@@ -1,8 +1,8 @@
 extends SceneTree
-const IntentUI = preload("res://expedition/companion_intent_ui.gd")
+const IntentUI = preload("res://expedition/ui/companion_intent_ui.gd")
 const Session = preload("res://expedition/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
-const Presentation = preload("res://expedition/battle_presentation.gd")
+const Presentation = preload("res://expedition/ui/battle_presentation.gd")
 var failures := 0
 
 func check(ok: bool, reason: String) -> void:

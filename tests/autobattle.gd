@@ -316,7 +316,7 @@ func formation() -> void:
 ## buttons, the auto toggle that runs one round per tick, the stop banner,
 ## the retreat toggle and the battle report.
 func ui() -> void:
-	var scene = load("res://expedition/main.tscn").instantiate()
+	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	var s = Session.new(731,true,true,true,3)
 	scene.session = s; root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
 	await process_frame

@@ -133,7 +133,7 @@ func summoned_hound() -> void:
 
 ## The picker on the start screen, and the run it starts.
 func start_screen() -> void:
-	var main = load("res://expedition/main.tscn").instantiate()
+	var main = load("res://expedition/ui/main.tscn").instantiate()
 	root.add_child(main); await process_frame
 	var picker: Node = main.find_child("KitPick",true,false)
 	check(picker != null,"start screen has a kit picker")

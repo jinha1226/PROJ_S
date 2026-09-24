@@ -6,7 +6,7 @@ const Stances = preload("res://expedition/ai/stances.gd")
 const Knobs = preload("res://expedition/ai/knobs.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
-const CharacterUI = preload("res://expedition/character_ui.gd")
+const CharacterUI = preload("res://expedition/ui/screens/character_folio.gd")
 var failures := 0
 var checks := 0
 func check(ok: bool, reason: String) -> void:
@@ -348,7 +348,7 @@ func defence() -> void:
 ## The character window's stance card after the diet, the member-card letter,
 ## the retreat toggle and the role line on the battle report.
 func ui() -> void:
-	var scene = load("res://expedition/main.tscn").instantiate()
+	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	var s = Session.new(731,true,true,true,3); s.depart(); s.phase = "CAMP"
 	scene.session = s; root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
 	await process_frame

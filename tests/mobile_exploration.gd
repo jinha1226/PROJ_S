@@ -9,7 +9,7 @@ func touch(board, index: int, position: Vector2, pressed: bool) -> void:
 	board._gui_input(event)
 func run() -> void:
 	root.size = Vector2i(390,844)
-	var scene = load("res://expedition/main.tscn").instantiate()
+	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	scene.session = Session.new(731,true,true,true); root.add_child(scene); scene.depart()
 	scene.set_process(false)
 	for frame in range(4): await process_frame

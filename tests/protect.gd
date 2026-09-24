@@ -156,7 +156,7 @@ func victory_clears() -> void:
 	check(ally.protected_by == -1 and not hero.guarded,"a cleared room does not carry 엄호 out of battle")
 
 func user_interface() -> void:
-	var scene = load("res://expedition/main.tscn").instantiate()
+	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	scene.session = Session.new(731,true,true,true,3)
 	scene.session.depart()
 	root.size = Vector2i(390,844); root.add_child(scene)
@@ -175,7 +175,7 @@ func user_interface() -> void:
 	check(ally.protected_by == hero.id and hero.guarded,"the session guard action works through the UI update path")
 	scene.queue_free()
 	await process_frame
-	var solo = load("res://expedition/main.tscn").instantiate()
+	var solo = load("res://expedition/ui/main.tscn").instantiate()
 	solo.session = Session.new(731,true,false,true,1)
 	solo.session.depart()
 	root.add_child(solo)

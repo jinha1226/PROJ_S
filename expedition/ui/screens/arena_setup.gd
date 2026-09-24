@@ -5,7 +5,7 @@ extends RefCounted
 const Session = preload("res://expedition/session.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
-const CharacterUI = preload("res://expedition/character_ui.gd")
+const CharacterUI = preload("res://expedition/ui/screens/character_folio.gd")
 const Builder = preload("res://expedition/level/encounter_builder.gd")
 const ROLES := ["MELEE","RANGED","CASTER"]
 const ROLE_NAMES := {"MELEE":"근접","RANGED":"원거리","CASTER":"마법"}

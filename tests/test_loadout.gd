@@ -39,7 +39,7 @@ func session_layer() -> void:
 	check(room_mode.grant_test_loadout(),"legacy constructor flag does not change the run helper")
 
 func scene_layer() -> void:
-	var scene = load("res://expedition/main.tscn").instantiate()
+	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	var s = Session.new_run(731)
 	scene.session = s; root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
 	await process_frame

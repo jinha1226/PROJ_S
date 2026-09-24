@@ -1,7 +1,7 @@
 extends Control
 signal room_pressed(id: int)
 signal expand_requested
-const Icons = preload("res://expedition/map_icons.gd")
+const Icons = preload("res://expedition/art/map_icons.gd")
 const KIND_COLORS = {"entry":Color("c0c8dc"),"battle":Color("da8178"),"boss":Color("d2a4ef"),"camp":Color("79c9a2"),"loot":Color("e8c779")}
 const KIND_NAMES = {"entry":"입구","battle":"전투","boss":"수문장","camp":"회복","loot":"전리품"}
 var session

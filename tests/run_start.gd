@@ -20,7 +20,7 @@ func run() -> void:
 	check(s.floor_state.layout.get("stairs",Vector2i(-1,-1)).x >= 0,"stairs")
 	check(s.floor_state.layout.get("npc_rooms",[]).size() >= 3,"NPC room reservations")
 	check(not s.has_method("return_home") and not s.has_method("use_torch"),"old lifecycle removed")
-	var main = load("res://expedition/main.tscn").instantiate()
+	var main = load("res://expedition/ui/main.tscn").instantiate()
 	root.add_child(main); await process_frame
 	check(main.find_child("StartScreen",true,false) != null,"start screen")
 	main.new_run(); await process_frame

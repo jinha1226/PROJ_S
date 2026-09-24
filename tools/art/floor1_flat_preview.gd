@@ -1,7 +1,7 @@
 extends Control
-const Art = preload("res://expedition/floor1_art.gd")
-const Actors = preload("res://expedition/mobile_art.gd")
-const Walls = preload("res://expedition/masonry_tiles.gd")
+const Art = preload("res://expedition/art/floor1_art.gd")
+const Actors = preload("res://expedition/art/mobile_art.gd")
+const Walls = preload("res://expedition/art/masonry_tiles.gd")
 const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 const MAP = ["############","#..........#","#...##.....#","#...##.....#","#..........#","#.......#..#","#..........#","#####..#####"]
 

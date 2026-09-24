@@ -19,7 +19,7 @@ func run() -> void:
 	foe.alert = true; foe.ready_at = 1000
 	s.phase = "BATTLE"
 	s.floor_state.observe(s)
-	var scene = load("res://expedition/main.tscn").instantiate()
+	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	scene.session = s
 	root.size = Vector2i(390,915)
 	root.add_child(scene)

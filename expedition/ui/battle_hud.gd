@@ -1,7 +1,7 @@
 extends RefCounted
 ## The one popup of the floor-mode auto-battle HUD: the battle report card.
 ## Kept out of main.gd, which owns the board, the rows and the timer.
-const CharacterUI = preload("res://expedition/character_ui.gd")
+const CharacterUI = preload("res://expedition/ui/screens/character_folio.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 
 ## One battle, as the tallies saw it: the header, a row per member, what the

@@ -29,7 +29,7 @@ func run() -> void:
 
 ## The parts tab, the equip chooser, the battle buttons and the bag detail.
 func ui() -> void:
-	var scene = load("res://expedition/main.tscn").instantiate()
+	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	# Solo floor run, the shipped configuration: one member, two part slots.
 	var s = Session.new_run(731)
 	scene.session = s; root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)

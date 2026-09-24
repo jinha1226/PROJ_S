@@ -38,7 +38,7 @@ func run() -> void:
 	check(s.unequip_gear(0,"weapon"),"unequip bow")
 	check(s.equip_gear(0,{"type":"shield"}),"equip shield after bow removed")
 	s.grant_gear({"type":"sword"})
-	var scene = load("res://expedition/main.tscn").instantiate()
+	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	scene.session = s; root.size = Vector2i(390,844); root.add_child(scene)
 	await process_frame
 	scene.inventory_filter = "장비"; scene.show_supplies(); await process_frame

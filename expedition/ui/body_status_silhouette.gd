@@ -1,5 +1,5 @@
 extends Control
-const Presentation = preload("res://expedition/body_presentation.gd")
+const Presentation = preload("res://expedition/ui/body_presentation.gd")
 var body:Dictionary={}
 func _ready()->void:
 	custom_minimum_size=Vector2(64,126);mouse_filter=Control.MOUSE_FILTER_IGNORE

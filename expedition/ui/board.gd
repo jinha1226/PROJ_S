@@ -12,11 +12,11 @@ var _pointer_down := false
 var _pointer_dragged := false
 var touch_start := Vector2.ZERO
 var suppress_mouse_until := 0
-const Art = preload("res://expedition/mobile_art.gd")
+const Art = preload("res://expedition/art/mobile_art.gd")
 const MEMORY_TINT := Color(0.18,0.20,0.23)
 ## A dungeon npc is neither the party's green nor the monsters' red.
 const NPC_COLOR := Color("d8c98a")
-const Icons = preload("res://expedition/map_icons.gd")
+const Icons = preload("res://expedition/art/map_icons.gd")
 var session
 var ui_font: Font
 var half_width := 22.0
@@ -30,7 +30,7 @@ var impact_time := 0.0
 var companion_previews: Array = []
 var touch_pressed_at := 0
 signal playback_finished
-const ActorVisual = preload("res://expedition/battle_actor_visual.gd")
+const ActorVisual = preload("res://expedition/ui/battle_actor_visual.gd")
 var playback: Array = []
 var playback_clock := 0.0
 var playback_speed := 1.0
@@ -38,8 +38,8 @@ var visual_state: Dictionary = {}
 var playback_focus := Vector2i.ZERO
 var actor_visuals: Dictionary = {}
 var foreground: Node2D
-const IntentUI = preload("res://expedition/companion_intent_ui.gd")
-const IntentOverlay = preload("res://expedition/companion_intent_overlay.gd")
+const IntentUI = preload("res://expedition/ui/companion_intent_ui.gd")
+const IntentOverlay = preload("res://expedition/ui/companion_intent_overlay.gd")
 var intent_ui = IntentUI.new()
 var intent_overlay: Node2D
 var companion_intents: Array = []
@@ -109,7 +109,7 @@ func _advance_playback(delta: float) -> void:
 			playback_decision_recorded = false
 	queue_redraw()
 
-var radial_light = preload("res://expedition/radial_light.gd").new()
+var radial_light = preload("res://expedition/art/radial_light.gd").new()
 
 func injury_focus() -> Dictionary:
 	for effect in effects:

@@ -44,7 +44,7 @@ func run() -> void:
 	foe.part_id = "" # Role behaviour only; the signature part would be announced first (tests/parts.gd).
 	s.floor_state.enemy_turn(s,foe)
 	check(s.party[0].hp < hp,"legacy tactical selector attacks adjacent enemy")
-	var scene = load("res://expedition/main.gd").new(); scene.session = s
+	var scene = load("res://expedition/ui/main.gd").new(); scene.session = s
 	root.size = Vector2i(390,844); root.add_child(scene)
 	for frame in range(3): await process_frame
 	var camera: Vector2i = scene.board.camera_cell()

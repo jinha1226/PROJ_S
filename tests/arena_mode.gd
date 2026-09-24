@@ -38,7 +38,7 @@ func session() -> void:
 	check(g.party[0].stance == "CHARGER","solo cannot test as a guardian")
 
 func scene() -> void:
-	var scene = load("res://expedition/main.tscn").instantiate()
+	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
 	await process_frame
 	for frame in range(3): await process_frame
@@ -91,7 +91,7 @@ func scene() -> void:
 ## The setup screen's own controls: party size, the hand-made roster, and a
 ## wipe that ends in the report card instead of the town.
 func custom() -> void:
-	var scene = load("res://expedition/main.tscn").instantiate()
+	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	root.size = Vector2i(390,844); root.add_child(scene); scene.set_process(false)
 	for frame in range(4): await process_frame
 	scene.find_child("ArenaButton",true,false).pressed.emit()

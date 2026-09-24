@@ -1,6 +1,6 @@
 extends Node2D
-const Art = preload("res://expedition/mobile_art.gd")
-const OUTLINE = preload("res://expedition/actor_outline.gdshader")
+const Art = preload("res://expedition/art/mobile_art.gd")
+const OUTLINE = preload("res://expedition/art/actor_outline.gdshader")
 var actor: Dictionary = {}
 var rect := Rect2()
 var tint := Color.WHITE
