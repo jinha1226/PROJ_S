@@ -80,7 +80,7 @@
 
 ## 11. 테스트·CI
 
-`.github/workflows/deploy-pages.yml`: 임포트 검사 + 스위트 **47개**, `SCRIPT ERROR`/`ERROR` 한 줄이면 실패. 계약 수치(줄이지 않는다): stances 113 · utility 154 · parts 338 · protect 38 · skill_rule_conditions 962 · npc_roster 83 · npc_sense 18 · npc_behaviour 57 · recruit 133 · mobile_hud 61 · solo_floor 1119 · start_kit 168 · spellbooks 564. CI 밖 수동 도구: `ranged_probe`, `party_guard_probe`, `skill_value`.
+`.github/workflows/deploy-pages.yml`: 임포트 검사 + 스위트 **47개**, `SCRIPT ERROR`/`ERROR` 한 줄이면 실패. 계약 수치(줄이지 않는다): stances 113 · utility 154 · parts 338 · protect 38 · skill_rule_conditions 962 · npc_roster 83 · npc_sense 18 · npc_behaviour 57 · recruit 133 · mobile_hud 134 · solo_floor 1119 · start_kit 168 · spellbooks 564. CI 밖 수동 도구: `ranged_probe`, `party_guard_probe`, `skill_value`.
 
 ## 12. 이중 경로와 부채 (다음 리팩터링 목록)
 
