@@ -9,12 +9,15 @@ const CharacterUI = preload("res://expedition/character_ui.gd")
 const BattleHud = preload("res://expedition/battle_hud.gd")
 const ArenaSetup = preload("res://expedition/arena_setup.gd")
 const Stances = preload("res://expedition/stances.gd")
+const START_MOCKUP = preload("res://assets/ui/start-background.png")
+const CAMP_MOCKUP = preload("res://assets/ui/camp-background.png")
 var portrait_gesture = preload("res://expedition/legacy/portrait_gesture.gd").new()
 var navigation = preload("res://expedition/exploration_navigation.gd").new()
 const NAVIGATION_STEP_SECONDS := 0.06
 var navigation_clock := 0.0
 var view_side := 17
 var log_popup: PopupPanel
+var log_filter := "전체"
 var auto_explore_button: Button
 var inventory_filter := "전체"
 ## The starting kit the picker has on it, spent when a run departs.
@@ -85,24 +88,28 @@ var battle_reported := false
 func _ready() -> void:
 	var skin := Theme.new(); skin.default_font = FONT; skin.default_font_size = 12
 	for state in ["normal","hover","pressed","focus","disabled"]:
-		var box := StyleBoxFlat.new(); box.bg_color = Color("151c24") if state != "pressed" else Color("433c2c")
-		box.border_color = Color("bba16b") if state in ["hover","pressed","focus"] else Color("50535a")
-		box.set_border_width_all(1); box.set_corner_radius_all(4)
-		box.content_margin_left = 3; box.content_margin_right = 3; skin.set_stylebox(state,"Button",box)
-	skin.set_stylebox("panel","PopupPanel",CharacterUI.surface(Color("101416")))
+		var box := StyleBoxFlat.new(); box.bg_color = Color("211f1c") if state != "pressed" else Color("493b27")
+		box.border_color = Color("c5a363") if state in ["hover","pressed","focus"] else Color("695b45")
+		box.set_border_width_all(1); box.set_corner_radius_all(2)
+		box.content_margin_left = 5; box.content_margin_right = 5; skin.set_stylebox(state,"Button",box)
+	skin.set_color("font_color","Button",Color("e0d3b9"))
+	skin.set_stylebox("panel","PopupPanel",CharacterUI.surface(Color("100f0d")))
 	theme = skin
 	var margin := MarginContainer.new(); margin.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	for side in ["left","right","top","bottom"]: margin.add_theme_constant_override("margin_"+side,0 if side in ["left","right"] else 8)
 	add_child(margin)
-	root_layout = VBoxContainer.new(); root_layout.add_theme_constant_override("separation",5); margin.add_child(root_layout)
+	root_layout = VBoxContainer.new(); root_layout.add_theme_constant_override("separation",4); margin.add_child(root_layout)
 	parked = Node.new(); parked.name = "Parked"; add_child(parked)
 	map_popup = PopupPanel.new(); add_child(map_popup)
 	var map_box := VBoxContainer.new(); map_box.custom_minimum_size = Vector2(300,360); map_popup.add_child(map_box)
 	map_view = MapView.new(); map_view.session = session; map_view.ui_font = FONT; map_view.minimum_side = 280
 	map_box.add_child(map_view)
+	var map_legend := label(map_box,"▲ 현재 위치     › 계단     ◆ 동료",12)
+	map_legend.name = "MapLegend"; map_legend.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	button(map_box,"닫기",func(): map_popup.hide())
 	details_popup = PopupPanel.new(); add_child(details_popup)
 	modal_content = VBoxContainer.new(); modal_content.custom_minimum_size = Vector2(popup_width(),210); details_popup.add_child(modal_content)
+	details_popup.popup_hide.connect(func(): clear(modal_content))
 	item_popup = PopupPanel.new(); details_popup.add_child(item_popup)
 	item_popup.transient = true; item_popup.exclusive = true
 	item_detail = VBoxContainer.new(); item_detail.custom_minimum_size = Vector2(300,200); item_popup.add_child(item_detail)
@@ -307,15 +314,26 @@ func toggle_explore() -> void:
 func show_logs() -> void:
 	stop_navigation(); clear(log_popup)
 	var skin: Theme = theme.duplicate()
-	var panel := CharacterUI.surface(Color("101416")); panel.set_content_margin_all(8); panel.shadow_size = 0
+	var panel := CharacterUI.surface(Color("100f0d")); panel.set_content_margin_all(8); panel.shadow_size = 0
 	skin.set_stylebox("panel","PopupPanel",panel); log_popup.theme = skin
-	var box := VBoxContainer.new(); box.custom_minimum_size = size-Vector2(16,16); log_popup.add_child(box)
-	label(box,"전체 기록",22)
+	var box := VBoxContainer.new(); box.custom_minimum_size = get_viewport_rect().size-Vector2(16,16)
+	box.add_theme_constant_override("separation",8); log_popup.add_child(box)
+	var header := HBoxContainer.new(); box.add_child(header)
+	var title := label(header,"기록",22); title.size_flags_horizontal = SIZE_EXPAND_FILL
+	button(header,"×",func(): log_popup.hide()).custom_minimum_size.x = 44
+	var tabs := HBoxContainer.new(); box.add_child(tabs)
+	for kind in ["전체","중요"]:
+		var tab := button(tabs,kind,func(): log_filter = kind; show_logs())
+		tab.toggle_mode = true; tab.button_pressed = log_filter == kind
 	var history := RichTextLabel.new(); history.name = "FullHistory"; history.size_flags_vertical = SIZE_EXPAND_FILL
-	history.add_theme_font_size_override("normal_font_size",18); history.text = "\n\n".join(session.log_lines)
+	history.add_theme_font_size_override("normal_font_size",15)
+	var entries: Array = session.log_lines
+	if log_filter == "중요":
+		entries = entries.filter(func(entry): return ["합류","보스","쓰러","내려","동행","전사"].any(func(term): return str(entry).contains(term)))
+	history.text = "\n\n".join(entries)
 	history.scroll_following = true; box.add_child(history)
 	button(box,"닫기",func(): log_popup.hide())
-	log_popup.popup_centered(Vector2i(size))
+	log_popup.popup_centered(Vector2i(get_viewport_rect().size))
 
 ## Popup content width. The window, not the HUD's own size, bounds a modal, and
 ## the cap leaves room for the panel's own margins on a 320px phone.
@@ -403,17 +421,19 @@ func refresh() -> void:
 	map_view.session = session; map_view.queue_redraw()
 	if session.phase == "CAMP": build_camp_screen(); return
 	if session.phase == "DEFEAT": build_result_card(); return
-	var header := HBoxContainer.new(); header.name = "TopHUD"; header.add_theme_constant_override("separation",3); root_layout.add_child(header)
+	var header := HBoxContainer.new(); header.name = "TopHUD"; header.add_theme_constant_override("separation",5)
+	header.custom_minimum_size.y = 52; root_layout.add_child(header)
 	if not is_instance_valid(minimap):
 		minimap = MapView.new(); minimap.compact = true; minimap.minimum_side = 44
 		minimap.ui_font = FONT; minimap.expand_requested.connect(show_map)
 	if minimap.get_parent() != null: minimap.get_parent().remove_child(minimap)
 	minimap.session = session; minimap.visible = true; minimap.queue_redraw(); header.add_child(minimap)
 	var place := label(header,"%d층" % session.depth,18); place.name = "Location"; place.size_flags_horizontal = SIZE_EXPAND_FILL
-	place.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	place.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; place.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var food_label := label(header,"식량 %d" % session.food,14); food_label.name = "FoodLabel"
 	food_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	var menu := button(header,"메뉴",show_menu); menu.name = "ExpeditionMenu"; menu.size_flags_horizontal = SIZE_SHRINK_END
+	var menu := button(header,"☰",show_menu); menu.name = "ExpeditionMenu"; menu.size_flags_horizontal = SIZE_SHRINK_END
+	menu.custom_minimum_size.x = 44; menu.tooltip_text = "메뉴"
 	if not is_instance_valid(board):
 		board = Board.new(); board.ui_font = FONT; board.cell_pressed.connect(on_cell)
 		board.cell_inspected.connect(inspect_cell)
@@ -445,6 +465,7 @@ func refresh() -> void:
 		log_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		log_button.autowrap_mode = TextServer.AUTOWRAP_OFF
 		log_button.clip_text = true
+		log_button.add_theme_font_size_override("font_size",12)
 	if session.manual_mode:
 		build_manual_controls()
 		return
@@ -500,21 +521,6 @@ func refresh() -> void:
 	if not session.manual_mode: build_stop_banner()
 
 func build_manual_controls() -> void:
-	var portraits := HBoxContainer.new(); portraits.name = "PortraitRow"
-	portraits.add_theme_constant_override("separation",4); root_layout.add_child(portraits)
-	for i in range(session.party.size()):
-		var actor: Dictionary = session.party[i]
-		var portrait := button(portraits,"",func(): show_character(i,"상태"))
-		portrait.name = "HeroStatus" if i == 0 else "MemberStatus%d" % i
-		portrait.custom_minimum_size.y = 68
-		var content := HBoxContainer.new(); content.mouse_filter = MOUSE_FILTER_IGNORE
-		portrait.add_child(content); content.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
-		var image := TextureRect.new(); image.texture = Art.portrait(i)
-		image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		image.custom_minimum_size.x = 56 if session.party.size() == 1 else 40
-		image.mouse_filter = MOUSE_FILTER_IGNORE; content.add_child(image)
-		var caption := label(content,"%s · Lv%d\nHP %d/%d · MP %d/%d\n스트레스 %d" % [actor.name,int(actor.level),int(actor.hp),int(actor.max_hp),int(actor.mp),int(actor.max_mp),int(actor.stress)],12 if session.party.size() == 1 else 10)
-		caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; caption.autowrap_mode = TextServer.AUTOWRAP_OFF
 	var prepared: Array = session.party[0].prepared
 	if not prepared.is_empty():
 		var spells := HBoxContainer.new(); spells.name = "SpellBar"
@@ -525,6 +531,29 @@ func build_manual_controls() -> void:
 			var spell := button(spells,caption,func(): choose_spell(id),not id.is_empty())
 			spell.name = "Spell%d" % slot; spell.custom_minimum_size.y = 44
 			spell.size_flags_horizontal = SIZE_EXPAND_FILL
+	var portraits := HBoxContainer.new(); portraits.name = "PortraitRow"
+	portraits.add_theme_constant_override("separation",4); root_layout.add_child(portraits)
+	for i in range(session.party.size()):
+		var actor: Dictionary = session.party[i]
+		var portrait := button(portraits,"",func(): show_character(i,"상태"))
+		portrait.name = "HeroStatus" if i == 0 else "MemberStatus%d" % i
+		portrait.custom_minimum_size.y = 78
+		var content := HBoxContainer.new(); content.mouse_filter = MOUSE_FILTER_IGNORE
+		content.add_theme_constant_override("separation",6)
+		portrait.add_child(content); content.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
+		var image := TextureRect.new(); image.texture = Art.portrait_face(i)
+		image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		image.custom_minimum_size.x = 66 if session.party.size() == 1 else 42
+		image.mouse_filter = MOUSE_FILTER_IGNORE; content.add_child(image)
+		var values := VBoxContainer.new(); values.size_flags_horizontal = SIZE_EXPAND_FILL
+		values.add_theme_constant_override("separation",2); content.add_child(values)
+		var name := label(values,"%s  Lv.%d" % [actor.name,int(actor.level)],13 if session.party.size() == 1 else 11)
+		name.add_theme_color_override("font_color",Color("e7d6b0"))
+		var hp := label(values,"HP %d/%d" % [actor.hp,actor.max_hp],11)
+		hp.name = "HeroHP" if i == 0 else "MemberHP%d" % i
+		gauge(values,actor.hp,actor.max_hp,Color("bf5450"))
+		label(values,"MP %d/%d · 스트레스 %d" % [actor.mp,actor.max_mp,actor.stress],10)
+		gauge(values,actor.mp,actor.max_mp,Color("507eb9"))
 	var nav := HBoxContainer.new(); nav.name = "BottomActions"
 	nav.add_theme_constant_override("separation",3); root_layout.add_child(nav)
 	var attack := button(nav,"공격",arm_attack); attack.name = "Attack"
@@ -544,32 +573,69 @@ func arm_attack() -> void:
 func show_manual_tactics() -> void:
 	if session == null or not session.manual_mode: return
 	clear(modal_content)
-	var box := VBoxContainer.new(); box.name = "ManualTactics"; modal_content.add_child(box)
-	label(box,"전술",20)
+	modal_content.custom_minimum_size = get_viewport_rect().size-Vector2(12,12)
+	var box := VBoxContainer.new(); box.name = "ManualTactics"; box.size_flags_vertical = SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation",8); modal_content.add_child(box)
+	var header := HBoxContainer.new(); box.add_child(header)
+	var title := label(header,"전술",22); title.size_flags_horizontal = SIZE_EXPAND_FILL
+	button(header,"×",func(): details_popup.hide()).custom_minimum_size.x = 44
 	var actor: Dictionary = session.party[0]
+	var hero := HBoxContainer.new(); box.add_child(hero)
+	var portrait := TextureRect.new(); portrait.texture = Art.portrait_face(0)
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.custom_minimum_size = Vector2(76,76); hero.add_child(portrait)
+	var vital := VBoxContainer.new(); vital.size_flags_horizontal = SIZE_EXPAND_FILL; hero.add_child(vital)
+	label(vital,"%s · Lv.%d" % [actor.name,actor.level],16)
+	label(vital,"HP %d/%d" % [actor.hp,actor.max_hp],12); gauge(vital,actor.hp,actor.max_hp,Color("bf5450"))
+	label(vital,"MP %d/%d" % [actor.mp,actor.max_mp],12); gauge(vital,actor.mp,actor.max_mp,Color("507eb9"))
+	label(box,"준비한 주문",17)
+	var scroll := ScrollContainer.new(); scroll.size_flags_vertical = SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; box.add_child(scroll)
+	var choices := VBoxContainer.new(); choices.size_flags_horizontal = SIZE_EXPAND_FILL; scroll.add_child(choices)
 	for id in actor.prepared:
 		var spell_id: String = str(id)
 		var definition: Dictionary = Session.CombatStats.content.spells.get(spell_id,{})
-		var spell := button(box,"%s · %d MP" % [str(definition.get("name",spell_id)),int(definition.get("mp",0))],func(): details_popup.hide(); choose_spell(spell_id),actor.mp >= int(definition.get("mp",0)))
+		var spell := button(choices,"%s   ·   MP %d" % [str(definition.get("name",spell_id)),int(definition.get("mp",0))],func(): details_popup.hide(); choose_spell(spell_id),actor.mp >= int(definition.get("mp",0)))
 		spell.name = "Spell_"+spell_id
+		spell.alignment = HORIZONTAL_ALIGNMENT_LEFT; spell.custom_minimum_size.y = 54
+	label(choices,"장착 파츠",17)
 	for id in actor.equipped_abilities:
 		var part_id: String = str(id)
 		if part_id.is_empty() or not Session.Abilities.DEFINITIONS.has(part_id): continue
 		var def: Dictionary = Session.Abilities.DEFINITIONS[part_id]
 		var available: bool = session.in_combat() and int(actor.cooldowns.get(part_id,0)) <= 0
 		if def.target == "SELF": available = available and Session.Abilities.legal(session,actor,part_id,actor.pos)
-		var part := button(box,str(def.name),choose_part.bind(part_id),available)
+		var part := button(choices,"%s   ·   %d턴" % [str(def.name),int(actor.cooldowns.get(part_id,0))],choose_part.bind(part_id),available)
 		part.name = "Part_"+part_id
+		part.alignment = HORIZONTAL_ALIGNMENT_LEFT; part.custom_minimum_size.y = 54
 	button(box,"닫기",func(): details_popup.hide())
-	details_popup.popup_centered()
+	details_popup.popup_centered(Vector2i(get_viewport_rect().size))
 
 func build_start_screen() -> void:
 	var box := VBoxContainer.new(); box.name = "StartScreen"; box.size_flags_vertical = SIZE_EXPAND_FILL; root_layout.add_child(box)
-	label(box,"하강",26)
-	label(box,"시작 장비",15)
+	box.add_theme_constant_override("separation",7)
+	var scene_art := TextureRect.new(); scene_art.name = "StartArt"
+	var scene_crop := AtlasTexture.new(); scene_crop.atlas = START_MOCKUP; scene_crop.region = Rect2(0,0,853,640)
+	scene_art.texture = scene_crop; scene_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	scene_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	scene_art.custom_minimum_size.y = minf(300,get_viewport_rect().size.y*0.35)
+	box.add_child(scene_art)
+	var hero := PanelContainer.new(); hero.name = "StartHero"
+	hero.add_theme_stylebox_override("panel",CharacterUI.surface(Color("1b1916"))); box.add_child(hero)
+	var hero_row := HBoxContainer.new(); hero.add_child(hero_row)
+	var portrait := TextureRect.new(); portrait.texture = Art.portrait_face(0)
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.custom_minimum_size = Vector2(72,72); hero_row.add_child(portrait)
+	var hero_name := label(hero_row,"아린",20); hero_name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var heading := label(box,"시작 장비",18); heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	build_kit_picker(box)
-	var start := button(box,"새 탐험",new_run); start.name = "NewRun"
-	var arena := button(box,"전투 시험",show_arena_setup); arena.name = "ArenaButton"
+	var chosen: Dictionary = Session.CombatStats.kits().filter(func(k): return str(k.id) == kit_choice)[0]
+	var detail := label(box,kit_detail(chosen),13); detail.name = "KitDetail"
+	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var spacer := Control.new(); spacer.size_flags_vertical = SIZE_EXPAND_FILL; box.add_child(spacer)
+	var actions := HBoxContainer.new(); box.add_child(actions)
+	var start := button(actions,"새 탐험",new_run); start.name = "NewRun"; start.custom_minimum_size.y = 56
+	var arena := button(actions,"전투 시험",show_arena_setup); arena.name = "ArenaButton"; arena.custom_minimum_size.y = 56
 
 ## Ten kits, one per mastery axis: five weapons on the first row, five staves
 ## on the second. One is chosen at a time, and the chosen one wears the same
@@ -580,15 +646,19 @@ func build_kit_picker(parent: Node) -> void:
 	var kits: Array = Session.CombatStats.kits()
 	for row in range(2):
 		var line := HBoxContainer.new(); line.name = "KitRow%d" % row
-		line.add_theme_constant_override("separation",2); picker.add_child(line)
+		line.add_theme_constant_override("separation",4); picker.add_child(line)
 		for kit in kits.slice(row*5,row*5+5):
 			var id: String = str(kit.id)
 			var detail: String = kit_detail(kit)
-			var node := button(line,"%s\n%s" % [str(kit.name),detail],func(): choose_kit(id))
+			var node := button(line,"\n\n"+str(kit.name),func(): choose_kit(id))
 			node.name = "Kit_"+id
-			node.custom_minimum_size = Vector2(0,48); node.clip_text = true
+			node.custom_minimum_size = Vector2(0,70); node.clip_text = true
 			node.add_theme_font_size_override("font_size",11)
 			node.tooltip_text = "%s · %s\n%s" % [str(kit.name),str(kit.get("blurb","")),detail]
+			var glyph := preload("res://expedition/mastery_glyph.gd").new()
+			glyph.axis = str(kit.axis); glyph.mouse_filter = MOUSE_FILTER_IGNORE
+			node.add_child(glyph); glyph.set_anchors_and_offsets_preset(PRESET_CENTER_TOP)
+			glyph.offset_left = -16; glyph.offset_right = 16; glyph.offset_top = 5; glyph.offset_bottom = 37
 			if id == kit_choice:
 				var gold := node.get_theme_stylebox("normal").duplicate(); gold.border_color = Color("e9c575")
 				gold.set_border_width_all(2); node.add_theme_stylebox_override("normal",gold)
@@ -607,23 +677,42 @@ func choose_kit(id: String) -> void:
 
 func build_camp_screen() -> void:
 	var box := VBoxContainer.new(); box.name = "CampScreen"; box.size_flags_vertical = SIZE_EXPAND_FILL; root_layout.add_child(box)
-	label(box,"야영 · 식량 %d" % session.food,22)
+	box.add_theme_constant_override("separation",5)
+	var header := HBoxContainer.new(); box.add_child(header)
+	var title := label(header,"야영",22); title.size_flags_horizontal = SIZE_EXPAND_FILL
+	label(header,"식량 %d" % session.food,15)
+	var scene_art := TextureRect.new(); scene_art.name = "CampArt"
+	# The mockup shows three illustrated people. Only reuse the fire so party
+	# portraits below always reflect the actual one-to-three member roster.
+	var scene_crop := AtlasTexture.new(); scene_crop.atlas = CAMP_MOCKUP; scene_crop.region = Rect2(349,410,168,226)
+	scene_art.texture = scene_crop; scene_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	scene_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	scene_art.custom_minimum_size.y = minf(175,get_viewport_rect().size.y*0.21)
+	scene_art.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	box.add_child(scene_art)
 	for i in range(session.party.size()):
 		var actor: Dictionary = session.party[i]
-		var card := VBoxContainer.new(); card.name = "CampMember%d" % i; box.add_child(card)
-		label(card,"%s  HP %d/%d  MP %d/%d" % [actor.name,actor.hp,actor.max_hp,actor.mp,actor.max_mp],15)
+		var frame := PanelContainer.new(); frame.add_theme_stylebox_override("panel",CharacterUI.surface(Color("211e1a")))
+		box.add_child(frame)
+		var card := VBoxContainer.new(); card.name = "CampMember%d" % i; frame.add_child(card)
+		var name := label(card,"%s  HP %d/%d  MP %d/%d  스트레스 %d" % [actor.name,actor.hp,actor.max_hp,actor.mp,actor.max_mp,actor.stress],13)
+		name.clip_text = true
+		gauge(card,actor.hp,actor.max_hp,Color("bf5450"))
+		var actions := HBoxContainer.new(); card.add_child(actions)
 		if not session.manual_mode:
-			button(card,"태세 · %s" % actor.stance,func(): show_character(i,"태세"))
-			button(card,"파츠",func(): show_character(i,"파츠"))
+			button(actions,"태세",func(): show_character(i,"성격"))
+			button(actions,"파츠",func(): show_character(i,"파츠"))
 		if session.manual_mode:
-			button(card,"장비",func(): show_gear(i))
-			button(card,"주문 준비",func(): show_prepare(i))
-			button(card,"주문 배우기",func(): show_learn(i))
+			button(actions,"장비",func(): show_gear(i))
+			button(actions,"주문 준비",func(): show_prepare(i))
+			button(actions,"주문 배우기",func(): show_learn(i))
+	var spacer := Control.new(); spacer.size_flags_vertical = SIZE_EXPAND_FILL; box.add_child(spacer)
 	button(box,"가방",show_supplies)
 	var end := button(box,"야영 끝",func(): run_action(session.end_camp)); end.name = "CampEnd"
 
 func show_menu() -> void:
 	clear(modal_content)
+	modal_content.custom_minimum_size = Vector2(148,0)
 	if session != null and session.manual_mode:
 		button(modal_content,"야영",func(): details_popup.hide(); run_action(session.camp),session.can_camp().is_empty())
 	button(modal_content,"기록",show_logs)
@@ -631,6 +720,7 @@ func show_menu() -> void:
 	if session != null and session.manual_mode: button(modal_content,"인물",func(): show_character(0,"상태"))
 	button(modal_content,"닫기",func(): details_popup.hide())
 	details_popup.popup_centered()
+	details_popup.position = Vector2i(get_viewport_rect().size.x-details_popup.size.x-8,58)
 
 func show_gear(index: int) -> void:
 	if session.phase != "CAMP" or index < 0 or index >= session.party.size(): return
@@ -924,18 +1014,21 @@ func npc_personality(npc: Dictionary) -> String:
 ## to offer — a share of the food and a place in the line.
 func show_npc(npc: Dictionary) -> void:
 	stop_navigation(); clear(modal_content)
-	modal_content.custom_minimum_size.y = 0
+	modal_content.custom_minimum_size = Vector2(popup_width(),0)
 	var page := VBoxContainer.new(); page.name = "NpcPopup"; modal_content.add_child(page)
+	page.add_theme_constant_override("separation",8)
 	var talk: Dictionary = Session.Recruit.dialogue(session,npc)
-	label(page,str(npc.name),20)
-	label(page,npc_personality(npc),14)
-	var doing: String = str(npc.get("activity",""))
-	if not doing.is_empty(): label(page,doing,14)
-	label(page,"HP %d/%d" % [npc.hp,npc.max_hp],14)
-	label(page,str(talk.line),15)
+	var heading := HBoxContainer.new(); page.add_child(heading)
+	var portrait := TextureRect.new(); portrait.texture = Art.portrait_face(posmod(int(npc.id),3))
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.custom_minimum_size = Vector2(64,64); heading.add_child(portrait)
+	var words := VBoxContainer.new(); heading.add_child(words)
+	label(words,str(npc.name),20)
+	var dialogue := label(words,str(talk.line),15)
+	dialogue.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var ask := button(page,"동행 제안",func(): propose_npc(npc),bool(talk.can_propose))
 	ask.name = "ProposeButton"
-	var share := button(page,"식량 1 나누기 · 보유 %d" % session.food,func(): details_popup.hide(); run_action(func(): return session.aid(npc)),bool(talk.can_aid))
+	var share := button(page,"식량 1 나누기",func(): details_popup.hide(); run_action(func(): return session.aid(npc)),bool(talk.can_aid))
 	share.name = "AidButton"
 	var close := button(page,"닫기",func(): details_popup.hide())
 	close.name = "CloseNpc"
@@ -962,8 +1055,14 @@ func update_offer_popup() -> void:
 	stop_navigation()
 	stop_text = "%s이(가) 말을 겁니다" % npc.name
 	clear(offer_content)
-	label(offer_content,str(npc.name),20)
-	label(offer_content,str(Session.Recruit.dialogue(session,npc).line),15)
+	var heading := HBoxContainer.new(); offer_content.add_child(heading)
+	var portrait := TextureRect.new(); portrait.texture = Art.portrait_face(posmod(int(npc.id),3))
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.custom_minimum_size = Vector2(64,64); heading.add_child(portrait)
+	var words := VBoxContainer.new(); heading.add_child(words)
+	label(words,str(npc.name),20)
+	var dialogue := label(words,str(Session.Recruit.dialogue(session,npc).line),15)
+	dialogue.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var accept := button(offer_content,"동행",func(): offer_popup.hide(); run_action(func(): return session.answer_offer(true)),session.alive().size() < Session.Recruit.MAX_PARTY)
 	accept.name = "OfferAccept"
 	var refuse := button(offer_content,"거절",func(): offer_popup.hide(); run_action(func(): return session.answer_offer(false)))
@@ -973,7 +1072,10 @@ func update_offer_popup() -> void:
 func show_map() -> void:
 	stop_navigation()
 	if session == null or not session.on_floor(): return
-	map_view.session = session; map_view.queue_redraw(); map_popup.popup_centered()
+	var map_box := map_view.get_parent() as VBoxContainer
+	map_box.custom_minimum_size = get_viewport_rect().size-Vector2(16,16)
+	map_view.session = session; map_view.queue_redraw()
+	map_popup.popup_centered(Vector2i(get_viewport_rect().size))
 
 func show_curio(point: Vector2i) -> void:
 	stop_navigation(); clear(modal_content)
@@ -1112,7 +1214,46 @@ func tactic_pick(parent: Node, title: String, values: Array, names: Dictionary, 
 
 func show_supplies() -> void:
 	stop_navigation()
-	clear(modal_content); label(modal_content,"공용 가방",18); build_inventory()
+	clear(modal_content)
+	if session.manual_mode: build_manual_inventory()
+	else: label(modal_content,"공용 가방",18); build_inventory()
+
+func build_manual_inventory() -> void:
+	modal_content.custom_minimum_size = get_viewport_rect().size-Vector2(12,12)
+	var box := VBoxContainer.new(); box.name = "ManualInventory"; box.size_flags_vertical = SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation",8); modal_content.add_child(box)
+	var header := HBoxContainer.new(); box.add_child(header)
+	var title := label(header,"가방",22); title.size_flags_horizontal = SIZE_EXPAND_FILL
+	button(header,"×",func(): details_popup.hide()).custom_minimum_size.x = 44
+	var filters := HBoxContainer.new(); filters.name = "InventoryTabs"; filters.add_theme_constant_override("separation",2); box.add_child(filters)
+	for category in ["전체","소모품","장비","파츠","자원"]:
+		var pick := button(filters,category,func(): inventory_filter = category; show_supplies())
+		pick.toggle_mode = true; pick.button_pressed = category == inventory_filter
+		pick.add_theme_font_size_override("font_size",11)
+	var rows: Array = inventory_rows().filter(func(r): return inventory_filter == "전체" or r.category == inventory_filter)
+	if not rows.any(func(r): return r.id == inventory_selected):
+		inventory_selected = str(rows[0].id) if not rows.is_empty() else ""
+	label(box,"%s · %d종" % [inventory_filter,rows.size()],13)
+	var scroll := ScrollContainer.new(); scroll.size_flags_vertical = SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; box.add_child(scroll)
+	var grid := GridContainer.new(); grid.columns = 4; grid.size_flags_horizontal = SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation",6); grid.add_theme_constant_override("v_separation",6); scroll.add_child(grid)
+	inventory_slots.clear()
+	for i in range(maxi(16,int(ceil(rows.size()/4.0))*4)):
+		var slot = InventorySlot.new(); grid.add_child(slot)
+		var row: Dictionary = rows[i] if i < rows.size() else {}
+		slot.configure(row,row.get("id","") == inventory_selected); inventory_slots.append(slot)
+		if not row.is_empty(): slot.pressed.connect(func(): show_item_detail(row.id))
+	var selected: Array = inventory_rows().filter(func(r): return r.id == inventory_selected)
+	var detail := PanelContainer.new(); detail.name = "InventorySelection"
+	detail.custom_minimum_size.y = 72
+	detail.add_theme_stylebox_override("panel",CharacterUI.surface(Color("211e1a"))); box.add_child(detail)
+	var details := VBoxContainer.new(); detail.add_child(details)
+	if not selected.is_empty():
+		label(details,str(selected[0].label),16)
+		label(details,str(selected[0].description),12)
+	button(box,"닫기",func(): details_popup.hide())
+	details_popup.popup_centered(Vector2i(get_viewport_rect().size))
 
 func gear_name(item: Dictionary, slot: String) -> String:
 	if slot == "shield": return "방패"

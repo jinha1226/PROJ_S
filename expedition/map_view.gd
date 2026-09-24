@@ -56,10 +56,11 @@ func draw_floor() -> void:
 	var side := minf(size.x,size.y)
 	var step := side/float(session.BOARD_SIDE)
 	var offset := (size-Vector2.ONE*side)/2
-	draw_rect(Rect2(offset,Vector2.ONE*side),Color("101416"))
+	draw_rect(Rect2(offset,Vector2.ONE*side),Color("0d0b09"))
 	for point in session.floor_state.explored:
 		var spec: Dictionary = floor_minimap.cell_draw_spec(point)
-		draw_rect(Rect2(offset+Vector2(point)*step,Vector2.ONE*step),spec.color.darkened(0.35))
+		var shade := 0.18 if session.floor_state.visible.has(point) else 0.68
+		draw_rect(Rect2(offset+Vector2(point)*step,Vector2.ONE*step),spec.color.darkened(shade))
 		if spec.marker != "":
-			var color := Color("e6c776") if spec.marker == "HERO" else Color("e36762") if spec.marker == "ENEMY" else Color("7fe0ff") if spec.marker == "STAIRS" else Color("5ccfc1")
+			var color := Color("e6c776") if spec.marker == "HERO" else Color("e36762") if spec.marker == "ENEMY" else Color("d8b36c") if spec.marker == "STAIRS" else Color("86b0a3")
 			draw_circle(offset+(Vector2(point)+Vector2.ONE*0.5)*step,maxf(2,step*0.65),color)
