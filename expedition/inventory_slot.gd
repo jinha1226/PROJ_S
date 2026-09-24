@@ -35,6 +35,22 @@ func _draw() -> void:
 	if icon != null:
 		var side := minf(plate.size.x,plate.size.y)-12
 		draw_texture_rect(icon,Rect2(plate.get_center()-Vector2.ONE*side/2,Vector2.ONE*side),false)
+	elif row.category == "장비":
+		var center := plate.get_center()
+		var ink := Color("d1b16d")
+		match str(row.get("gear_slot","")):
+			"weapon":
+				draw_line(center+Vector2(-15,15),center+Vector2(13,-13),Color("d0c8b4"),4)
+				draw_line(center+Vector2(-12,5),center+Vector2(-3,14),ink,4)
+			"armour":
+				draw_colored_polygon(PackedVector2Array([center+Vector2(-12,-15),center+Vector2(12,-15),center+Vector2(16,0),center+Vector2(10,16),center+Vector2(-10,16),center+Vector2(-16,0)]),Color("657c86"))
+				draw_line(center+Vector2(-8,-8),center+Vector2(8,-8),ink,2)
+			"shield":
+				draw_colored_polygon(PackedVector2Array([center+Vector2(0,-17),center+Vector2(15,-11),center+Vector2(12,8),center+Vector2(0,17),center+Vector2(-12,8),center+Vector2(-15,-11)]),Color("657c86"))
+				draw_line(center+Vector2(0,-13),center+Vector2(0,11),ink,2)
+			"ring":
+				draw_arc(center,12,0,TAU,24,ink,5)
+				draw_circle(center+Vector2(0,-12),4,Color("69cfc2"))
 	var font := get_theme_default_font()
 	var count := "×%d" % row.quantity
 	var extent := font.get_string_size(count,HORIZONTAL_ALIGNMENT_LEFT,-1,11)

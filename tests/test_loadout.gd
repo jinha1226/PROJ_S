@@ -46,7 +46,7 @@ func scene_layer() -> void:
 	for frame in range(4): await process_frame
 	var loadout: Button = scene.find_child("TownTestLoadout",true,false)
 	check(loadout == null,"run HUD has no test loadout button")
-	check(scene.find_child("CampButton",true,false) != null,"run HUD offers camp")
+	check(scene.find_child("BottomActions",true,false) != null,"run HUD offers direct actions")
 	check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"run HUD fits viewport")
 	check(s.grant_test_loadout(),"test fixture grants parts through session API")
 	for frame in range(4): await process_frame

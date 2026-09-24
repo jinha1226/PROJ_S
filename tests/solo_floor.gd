@@ -187,7 +187,7 @@ func hud_fit() -> void:
 		var footer: Node = scene.find_child("BottomActions",true,false)
 		var texts: Array = footer.get_children().map(func(c): return str(c.text))
 		check(footer.find_child("RetreatToggle",true,false) == null and footer.find_child("AutoToggle",true,false) == null,"the manual footer has no autobattle controls at %s" % viewport)
-		check("야영" in texts and "가방" in texts,"and the camp and bag actions at %s" % viewport)
+		check(texts == ["공격","대기","탐색","전술","가방"],"five direct actions stay in one row at %s" % viewport)
 		check("원정" not in texts and "귀환" not in texts,"and nothing that returns home at %s" % viewport)
 		for node in footer.get_children():
 			check(node.size.y >= 44,"every solo control is a 44px target at %s" % viewport)

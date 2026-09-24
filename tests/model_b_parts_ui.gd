@@ -25,12 +25,12 @@ func run() -> void:
 	root.add_child(scene)
 	scene.set_process(false)
 	await process_frame
-	var entry: Button = scene.find_child("PartActions",true,false)
-	check(entry != null and not entry.disabled,"manual combat shows usable part entry")
+	var entry: Button = scene.find_child("Tactics",true,false)
+	check(entry != null and not entry.disabled,"manual combat shows tactics entry")
 	if entry != null: entry.pressed.emit()
 	await process_frame
-	var menu: Node = scene.find_child("PartActionMenu",true,false)
-	check(menu != null,"part action menu opens")
+	var menu: Node = scene.find_child("ManualTactics",true,false)
+	check(menu != null,"tactics menu opens")
 	var push_button: Button = null
 	if menu != null:
 		for candidate in menu.find_children("*","Button",true,false):

@@ -66,7 +66,7 @@ func run() -> void:
 	for i in range(60): s.message("기록 %d" % i)
 	scene.refresh(); await process_frame
 	var recent: Button = scene.find_child("RecentLog",true,false)
-	check(recent != null and recent.text == "기록 59","latest event remains a concise log button")
+	check(recent != null and recent.text == "기록 56\n기록 57\n기록 58\n기록 59","HUD shows the latest four log lines")
 	var log_rect: Rect2 = scene.find_child("RecentLog",true,false).get_global_rect()
 	var field_rect: Rect2 = scene.board.get_global_rect()
 	check(log_rect.position.y >= field_rect.end.y and log_rect.size.y >= 36,"log button sits below the field")

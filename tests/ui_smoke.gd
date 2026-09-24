@@ -13,7 +13,7 @@ func run() -> void:
 	check(scene.find_child("ArenaButton",true,false) != null,"arena entry")
 	scene.new_run(); await process_frame
 	check(scene.session.depth == 1 and scene.session.party.size() == 1,"solo floor")
-	check(scene.find_child("FoodLabel",true,false) != null and scene.find_child("CampButton",true,false) != null,"floor controls")
+	check(scene.find_child("FoodLabel",true,false) != null and scene.find_child("BottomActions",true,false) != null,"floor controls")
 	check(scene.find_child("TorchButton",true,false) == null and scene.find_child("Funds",true,false) == null,"retired resources absent")
 	check(scene.minimap.size.x <= 100 and scene.board.size.x >= 340,"compact map and wide board")
 	var event := InputEventMouseButton.new(); event.pressed = true; event.button_index = MOUSE_BUTTON_LEFT
@@ -31,7 +31,7 @@ func run() -> void:
 	check(scene.find_child("SpellBar",true,false) == null,"empty prepared spells do not occupy the HUD")
 	var duel: Vector2i = preload("res://tests/floor_fixture.gd").arena(scene.session,8)
 	var foe: Dictionary = scene.session.enemies[0]
-	foe.hp = 40; foe.max_hp = 40; foe.pos = duel+Vector2i(1,0); foe.alert = true; foe.ready_at = 1000
+	foe.hp = 100; foe.max_hp = 100; foe.pos = duel+Vector2i(1,0); foe.alert = true; foe.ready_at = 1000
 	scene.session.phase = "BATTLE"; scene.session.floor_state.observe(scene.session); scene.refresh(); await process_frame
 	var inspect := InputEventMouseButton.new(); inspect.pressed = true; inspect.button_index = MOUSE_BUTTON_RIGHT
 	inspect.position = scene.board.cell_center(foe.pos); scene.board._gui_input(inspect); await process_frame
@@ -49,14 +49,19 @@ func run() -> void:
 	var key := InputEventKey.new(); key.pressed = true; key.keycode = KEY_RIGHT
 	scene._unhandled_key_input(key); await process_frame
 	check(scene.session.time > before_time,"direction key attacks the adjacent enemy")
+	scene.find_child("Attack",true,false).pressed.emit(); await process_frame
+	check(scene.mode == "ATTACK" and scene.find_child("Attack",true,false).button_pressed,"attack button arms target selection")
+	before_time = scene.session.time
+	scene.on_cell(foe.pos); await process_frame
+	check(scene.session.time > before_time and scene.mode.is_empty(),"armed attack fires and clears selection")
 	var hero: Dictionary = scene.session.party[0]
 	hero.spells = ["bolt"]; hero.prepared = ["bolt"]
 	scene.refresh(); await process_frame
-	var spell_bar: Node = scene.find_child("SpellBar",true,false)
-	check(spell_bar != null and spell_bar.get_child_count() == 1,"only prepared spells appear in the action bar")
+	scene.find_child("Tactics",true,false).pressed.emit(); await process_frame
+	check(scene.find_child("Spell_bolt",true,false) != null,"prepared spell appears in tactics")
 	var before_mp: int = hero.mp
 	before_time = scene.session.time
-	scene.find_child("Spell0",true,false).pressed.emit(); scene.on_cell(foe.pos); await process_frame
+	scene.find_child("Spell_bolt",true,false).pressed.emit(); scene.on_cell(foe.pos); await process_frame
 	check(hero.mp < before_mp and scene.session.time > before_time,"prepared spell casts with one target tap")
 	var old_depth: int = scene.session.depth
 	var stairs: Vector2i = scene.session.floor_state.layout.stairs

@@ -24,11 +24,12 @@ func run() -> void:
 	root.add_child(main); await process_frame
 	check(main.find_child("StartScreen",true,false) != null,"start screen")
 	main.new_run(); await process_frame
-	check(main.find_child("FoodLabel",true,false) != null and main.find_child("CampButton",true,false) != null,"floor HUD")
+	check(main.find_child("FoodLabel",true,false) != null and main.find_child("BottomActions",true,false) != null,"floor HUD")
 	main.session.food = 2
 	for enemy in main.session.enemies: enemy.hp = 0
 	main.session.floor_state.observe(main.session); main.refresh(); await process_frame
-	var camp: Button = main.find_child("CampButton",true,false)
+	main.show_menu(); await process_frame
+	var camp: Button = main.modal_content.get_child(0)
 	check(camp != null and not camp.disabled,"camp available")
 	camp.pressed.emit(); await process_frame
 	check(main.find_child("CampScreen",true,false) != null,"camp screen")

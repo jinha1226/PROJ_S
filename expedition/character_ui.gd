@@ -5,6 +5,7 @@ const Mastery = preload("res://expedition/mastery.gd")
 const CombatStats = preload("res://expedition/combat_stats.gd")
 static var mastery_data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/mastery.json"))
 const Emblem = preload("res://expedition/growth_emblem.gd")
+const MasteryGlyph = preload("res://expedition/mastery_glyph.gd")
 const Art = preload("res://expedition/mobile_art.gd")
 const Stances = preload("res://expedition/stances.gd")
 const Memory = preload("res://sim/party_memory_state.gd")
@@ -120,16 +121,23 @@ static func can_invest(ui, actor: Dictionary) -> bool:
 
 static func mastery(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	if ui.session.manual_mode:
-		var summary := card(list,"Lv.%d · 사용으로 성장" % int(actor.get("level",1)))
-		text(summary,"전투에서 사용한 무기와 주문이 숙련됩니다.")
 		var cards := grid(list,5); cards.name = "MasteryGrid"
-		var short_names := {"sword":"검", "spear":"창", "mace":"둔", "axe":"도", "bow":"궁", "fire":"화", "ice":"냉", "air":"기", "hex":"변", "summon":"소"}
 		for axis in Mastery.AXES:
 			var level := Mastery.rank(actor,axis)
-			var tile = ui.button(cards,"%s\n%d/10" % [short_names[axis],level],func(): ui.show_mastery_detail(ui.tactics_actor,axis))
-			tile.name = "MasteryIcon_"+axis
-			tile.custom_minimum_size = Vector2(52,64)
+			var cell := VBoxContainer.new(); cell.name = "MasteryCell_"+axis
+			cell.add_theme_constant_override("separation",2); cards.add_child(cell)
+			var tile = ui.button(cell,"",func(): ui.show_mastery_detail(ui.tactics_actor,axis))
+			tile.name = "MasteryIcon_"+axis; tile.custom_minimum_size = Vector2(60,52)
 			tile.tooltip_text = "%s · %s" % [Mastery.NAMES[axis],Mastery.bonus(axis,level)]
+			var glyph := MasteryGlyph.new(); glyph.axis = axis; glyph.custom_minimum_size = Vector2(30,30); glyph.size = Vector2(30,30); tile.add_child(glyph)
+			glyph.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+			glyph.offset_left = -15; glyph.offset_top = -15; glyph.offset_right = 15; glyph.offset_bottom = 15
+			var xp: int = int(actor.get("skill_xp",{}).get(axis,0))
+			var floor_xp: int = 0 if level == 0 else Mastery.required_xp(actor,axis,level)
+			var next_xp: int = Mastery.required_xp(actor,axis,mini(10,level+1))
+			var bar := gauge(cell,1 if level == 10 else float(xp-floor_xp),1 if level == 10 else float(next_xp-floor_xp),Color("c6a34c") if axis in Mastery.AXES.slice(0,5) else Color("69cfc2"))
+			bar.name = "MasteryXP_"+axis
+			text(cell,"%s %d" % [Mastery.NAMES[axis],level],10).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		return
 	var summary := card(list,"Lv.%d · 숙련 포인트 %d" % [actor.growth.level,actor.growth.points])
 	summary.get_parent().custom_minimum_size.y = 86

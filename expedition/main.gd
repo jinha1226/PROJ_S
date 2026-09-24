@@ -120,7 +120,7 @@ func _ready() -> void:
 
 func stop_navigation() -> void:
 	navigation.stop(); navigation_clock = 0
-	if is_instance_valid(auto_explore_button): auto_explore_button.text = "자동탐험"
+	if is_instance_valid(auto_explore_button): auto_explore_button.text = "탐색" if session != null and session.manual_mode else "자동탐험"
 
 func popup_open() -> bool:
 	return details_popup.visible or map_popup.visible or log_popup.visible or item_popup.visible or is_instance_valid(offer_popup) and offer_popup.visible
@@ -412,12 +412,6 @@ func refresh() -> void:
 	var food_label := label(header,"식량 %d" % session.food,14); food_label.name = "FoodLabel"
 	food_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var menu := button(header,"메뉴",show_menu); menu.name = "ExpeditionMenu"; menu.size_flags_horizontal = SIZE_SHRINK_END
-	if session.manual_mode:
-		var hero: Dictionary = session.party[0]
-		var values: Dictionary = Session.CombatStats.stats(session,hero)
-		var status := button(root_layout,"%s · Lv%d     HP %d/%d     MP %d/%d\nAC %d   EV %d   SH %d%%   스트레스 %d" % [hero.name,int(hero.level),int(hero.hp),int(hero.max_hp),int(hero.mp),int(hero.max_mp),int(values.ac),int(values.ev),int(values.sh),int(hero.stress)],func(): show_character(0,"상태"))
-		status.name = "HeroStatus"; status.custom_minimum_size.y = 64
-		status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if not is_instance_valid(board):
 		board = Board.new(); board.ui_font = FONT; board.cell_pressed.connect(on_cell)
 		board.cell_inspected.connect(inspect_cell)
@@ -442,8 +436,13 @@ func refresh() -> void:
 		attack_button.name = "ConfirmAttack"
 		attack_button.set_anchors_and_offsets_preset(PRESET_BOTTOM_LEFT)
 		attack_button.offset_left = 8; attack_button.offset_top = -56; attack_button.offset_right = 210; attack_button.offset_bottom = -8
-	var log_button := button(root_layout,session.log_lines[-1] if not session.log_lines.is_empty() else "",show_logs)
-	log_button.name = "RecentLog"; log_button.custom_minimum_size.y = 36
+	var recent: Array = session.log_lines.slice(maxi(0,session.log_lines.size()-(4 if session.manual_mode else 1)))
+	var log_button := button(root_layout,"\n".join(recent),show_logs)
+	log_button.name = "RecentLog"; log_button.custom_minimum_size.y = 72 if session.manual_mode else 36
+	if session.manual_mode:
+		log_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		log_button.autowrap_mode = TextServer.AUTOWRAP_OFF
+		log_button.clip_text = true
 	if session.manual_mode:
 		build_manual_controls()
 		return
@@ -499,22 +498,58 @@ func refresh() -> void:
 	if not session.manual_mode: build_stop_banner()
 
 func build_manual_controls() -> void:
-	var hero: Dictionary = session.party[0]
-	if not hero.prepared.is_empty():
-		var spells := GridContainer.new(); spells.name = "SpellBar"; spells.columns = 3; root_layout.add_child(spells)
-		for slot in range(hero.prepared.size()):
-			var id: String = str(hero.prepared[slot])
-			var definition: Dictionary = Session.CombatStats.content.spells.get(id,{})
-			var spell := button(spells,"%s · %dMP" % [str(definition.get("name",id)),int(definition.get("mp",0))],choose_spell.bind(id),hero.mp >= int(definition.get("mp",0)))
-			spell.name = "Spell%d" % slot
-	var nav := GridContainer.new(); nav.name = "BottomActions"; nav.columns = 4; root_layout.add_child(nav)
-	var wait := button(nav,"대기",func(): run_action(func(): return session.act("WAIT",hero.pos))); wait.name = "Wait"; wait_button = wait
+	var portraits := HBoxContainer.new(); portraits.name = "PortraitRow"
+	portraits.add_theme_constant_override("separation",4); root_layout.add_child(portraits)
+	for i in range(session.party.size()):
+		var actor: Dictionary = session.party[i]
+		var portrait := button(portraits,"",func(): show_character(i,"상태"))
+		portrait.name = "HeroStatus" if i == 0 else "MemberStatus%d" % i
+		portrait.custom_minimum_size.y = 68
+		var content := HBoxContainer.new(); content.mouse_filter = MOUSE_FILTER_IGNORE
+		portrait.add_child(content); content.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
+		var image := TextureRect.new(); image.texture = Art.portrait(i)
+		image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		image.custom_minimum_size.x = 56 if session.party.size() == 1 else 40
+		image.mouse_filter = MOUSE_FILTER_IGNORE; content.add_child(image)
+		var caption := label(content,"%s · Lv%d\nHP %d/%d · MP %d/%d\n스트레스 %d" % [actor.name,int(actor.level),int(actor.hp),int(actor.max_hp),int(actor.mp),int(actor.max_mp),int(actor.stress)],12 if session.party.size() == 1 else 10)
+		caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; caption.autowrap_mode = TextServer.AUTOWRAP_OFF
+	var nav := HBoxContainer.new(); nav.name = "BottomActions"
+	nav.add_theme_constant_override("separation",3); root_layout.add_child(nav)
+	var attack := button(nav,"공격",arm_attack); attack.name = "Attack"
+	attack.toggle_mode = true; attack.button_pressed = mode == "ATTACK"
+	var wait := button(nav,"대기",func(): run_action(func(): return session.act("WAIT",session.party[0].pos))); wait.name = "Wait"; wait_button = wait
 	auto_explore_button = button(nav,"중지" if navigation.active else "탐색",toggle_explore,not session.in_combat())
-	var camp := button(nav,"야영",func(): run_action(session.camp),session.can_camp().is_empty()); camp.name = "CampButton"
+	var tactics := button(nav,"전술",show_manual_tactics); tactics.name = "Tactics"
 	button(nav,"가방",show_supplies)
-	button(nav,"인물",func(): show_character(0,"상태"))
-	if session.in_combat() and hero.equipped_abilities.any(func(id): return not str(id).is_empty()):
-		var parts_button := button(nav,"파츠",show_part_actions); parts_button.name = "PartActions"
+	for action in nav.get_children(): action.custom_minimum_size.y = 48
+
+func arm_attack() -> void:
+	if session == null or not session.manual_mode: return
+	mode = "" if mode == "ATTACK" else "ATTACK"
+	show_attack_range = mode == "ATTACK"
+	refresh()
+
+func show_manual_tactics() -> void:
+	if session == null or not session.manual_mode: return
+	clear(modal_content)
+	var box := VBoxContainer.new(); box.name = "ManualTactics"; modal_content.add_child(box)
+	label(box,"전술",20)
+	var actor: Dictionary = session.party[0]
+	for id in actor.prepared:
+		var spell_id: String = str(id)
+		var definition: Dictionary = Session.CombatStats.content.spells.get(spell_id,{})
+		var spell := button(box,"%s · %d MP" % [str(definition.get("name",spell_id)),int(definition.get("mp",0))],func(): details_popup.hide(); choose_spell(spell_id),actor.mp >= int(definition.get("mp",0)))
+		spell.name = "Spell_"+spell_id
+	for id in actor.equipped_abilities:
+		var part_id: String = str(id)
+		if part_id.is_empty() or not Session.Abilities.DEFINITIONS.has(part_id): continue
+		var def: Dictionary = Session.Abilities.DEFINITIONS[part_id]
+		var available: bool = session.in_combat() and int(actor.cooldowns.get(part_id,0)) <= 0
+		if def.target == "SELF": available = available and Session.Abilities.legal(session,actor,part_id,actor.pos)
+		var part := button(box,str(def.name),choose_part.bind(part_id),available)
+		part.name = "Part_"+part_id
+	button(box,"닫기",func(): details_popup.hide())
+	details_popup.popup_centered()
 
 func build_start_screen() -> void:
 	var box := VBoxContainer.new(); box.name = "StartScreen"; box.size_flags_vertical = SIZE_EXPAND_FILL; root_layout.add_child(box)
@@ -540,6 +575,8 @@ func build_camp_screen() -> void:
 
 func show_menu() -> void:
 	clear(modal_content)
+	if session != null and session.manual_mode:
+		button(modal_content,"야영",func(): details_popup.hide(); run_action(session.camp),session.can_camp().is_empty())
 	button(modal_content,"기록",show_logs)
 	button(modal_content,"가방",show_supplies)
 	if session != null and session.manual_mode: button(modal_content,"인물",func(): show_character(0,"상태"))
@@ -671,6 +708,7 @@ func run_action(callback: Callable, navigating: bool = false) -> void:
 	notice = "" if accepted else "사용 불가"
 	if accepted:
 		mode = ""; pending_item = -1; reservation_actor = -1
+		if session.manual_mode: show_attack_range = false
 		# In floor mode auto_step ends the round itself.
 	if show_battle: recorder.finish(session)
 	session.presentation = null
@@ -723,6 +761,14 @@ func queue_action(kind: String, point: Vector2i) -> void:
 func on_cell(point: Vector2i) -> void:
 	if session == null or not session.on_floor(): return
 	stop_navigation()
+	if session.manual_mode and mode == "ATTACK":
+		var target: Dictionary = session.at(point)
+		if not target.is_empty() and target.enemy and not session.attack_preview(point).is_empty():
+			run_action(func(): return session.act("ATTACK",point))
+		else:
+			notice = "공격 대상 없음"
+			refresh()
+		return
 	var feature: Dictionary = session.floor_state.features.get(point,{})
 	if feature.get("kind","") == "pylon" and session.floor_state.visible.has(point):
 		run_action(func(): return session.act("PYLON",point)); return
@@ -989,11 +1035,30 @@ func show_supplies() -> void:
 	stop_navigation()
 	clear(modal_content); label(modal_content,"공용 가방",18); build_inventory()
 
+func gear_name(item: Dictionary, slot: String) -> String:
+	if slot == "shield": return "방패"
+	var catalog: Dictionary = Session.CombatStats.content.weapons if slot == "weapon" else Session.CombatStats.content.armours if slot == "armour" else Session.CombatStats.content.rings if slot == "ring" else {}
+	var id: String = str(item.get("type",""))
+	return str(catalog.get(id,{}).get("name",id))
+
 func inventory_rows() -> Array:
 	var rows: Array = []
 	var descriptions := ["HP +20","스트레스 -25","HP +5 · 스트레스 -10","목재 점화 · 사거리 4","물기 · 사거리 4"]
 	for i in range(5):
 		if session.supplies[i] > 0: rows.append({"id":"supply:%d"%i,"label":Session.SUPPLY_NAMES[i],"quantity":session.supplies[i],"category":"소모품","slot":i,"description":descriptions[i],"icon":Art.item(i)})
+	for i in range(session.gear_bag.size()):
+		var item: Dictionary = session.gear_bag[i]
+		var slot: String = session.gear_slot(item)
+		if slot.is_empty(): continue
+		var name: String = gear_name(item,slot)
+		rows.append({"id":"gear:%d"%i,"label":name,"quantity":1,"category":"장비","gear_index":i,"gear_slot":slot,"description":name})
+	for i in range(session.party.size()):
+		var actor: Dictionary = session.party[i]
+		for slot in ["weapon","armour","shield","ring"]:
+			var equipped: Dictionary = actor.gear.get(slot,{})
+			if equipped.is_empty(): continue
+			var name: String = gear_name(equipped,slot)
+			rows.append({"id":"equipped:%d:%s"%[i,slot],"label":name,"quantity":1,"category":"장비","equipped_member":i,"equipped_slot":slot,"gear_slot":slot,"description":actor.name+" · 장착 중"})
 	for id in Session.Abilities.DEFINITIONS:
 		if session.parts_bag.get(id,0) <= 0: continue
 		var def: Dictionary = Session.Abilities.DEFINITIONS[id]
@@ -1003,7 +1068,7 @@ func inventory_rows() -> Array:
 
 func build_inventory() -> void:
 	var filters := HBoxContainer.new(); modal_content.add_child(filters)
-	for category in ["전체","소모품","파츠","자원"]:
+	for category in ["전체","소모품","장비","파츠","자원"]:
 		var pick := button(filters,category,func(): inventory_filter = category; show_supplies())
 		pick.toggle_mode = true; pick.button_pressed = category == inventory_filter
 	var rows: Array = inventory_rows().filter(func(r): return inventory_filter == "전체" or r.category == inventory_filter)
@@ -1032,6 +1097,17 @@ func show_item_detail(id: String) -> void:
 		else:
 			for i in range(session.party.size()):
 				button(item_detail,session.party[i].name+"에게 사용",func(): item_popup.hide(); details_popup.hide(); run_action(func(): return session.use_supply(row.slot,Vector2i(-1,-1),i)),session.phase in ["EXPLORE","BATTLE","CAMP"] and session.party[i].hp > 0)
+	elif row.category == "장비":
+		if row.has("equipped_member"):
+			var member: int = int(row.equipped_member)
+			button(item_detail,"해제",func():
+				if session.unequip_gear(member,str(row.equipped_slot)): item_popup.hide(); refresh(); show_supplies(),session.phase == "CAMP")
+		else:
+			var gear: Dictionary = session.gear_bag[int(row.gear_index)]
+			for i in range(session.party.size()):
+				var actor: Dictionary = session.party[i]
+				button(item_detail,actor.name+" 장착",func():
+					if session.equip_gear(i,gear): item_popup.hide(); refresh(); show_supplies(),session.phase == "CAMP" and actor.hp > 0)
 	elif row.category == "파츠":
 		for i in range(session.party.size()):
 			var member: Dictionary = session.party[i]

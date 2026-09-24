@@ -21,7 +21,7 @@ func run() -> void:
 	check(s.depth == 1 and s.food == 2 and s.party.size() == 1,"new run starts solo with food")
 	check(scene.find_child("FoodLabel",true,false).text == "식량 2","HUD displays food")
 	check(scene.find_child("Location",true,false).text == "1층","HUD displays depth")
-	check(scene.find_child("CampButton",true,false) != null,"HUD has camp button")
+	check(scene.find_child("BottomActions",true,false) != null,"HUD has direct action bar")
 	check(scene.find_child("TorchButton",true,false) == null and scene.find_child("Funds",true,false) == null,"removed resources stay out of HUD")
 	check(scene.find_child("ObjectiveChip",true,false) == null,"no relic objective chip")
 	for viewport in [Vector2i(320,640),Vector2i(360,780),Vector2i(390,844),Vector2i(430,932)]:
@@ -29,18 +29,23 @@ func run() -> void:
 		for frame in range(3): await process_frame
 		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"layout fits %s" % viewport)
 		check(scene.minimap != null and scene.minimap.is_visible_in_tree(),"minimap visible at %s" % viewport)
-		for id in ["Location","FoodLabel","ExpeditionMenu","HeroStatus","CampButton","Wait"]:
+		for id in ["Location","FoodLabel","ExpeditionMenu","HeroStatus","Attack","Wait","Tactics","RecentLog"]:
 			var control: Control = scene.find_child(id,true,false)
 			check(control != null and scene.get_global_rect().encloses(control.get_global_rect()),"%s fits %s" % [id,viewport])
+		var log_rect: Rect2 = scene.find_child("RecentLog",true,false).get_global_rect()
+		var portrait_rect: Rect2 = scene.find_child("PortraitRow",true,false).get_global_rect()
+		var actions_rect: Rect2 = scene.find_child("BottomActions",true,false).get_global_rect()
+		check(log_rect.end.y <= portrait_rect.position.y and portrait_rect.end.y <= actions_rect.position.y,"log, portrait, actions stay stacked at %s" % viewport)
 		check(scene.portrait_buttons.is_empty() and scene.item_buttons.is_empty(),"manual HUD has no party card or supply strip")
 		check(scene.find_child("SpellBar",true,false) == null,"unprepared spells take no HUD space")
 	var header: Node = scene.find_child("TopHUD",true,false)
 	check(header.get_children().slice(1).map(func(c): return str(c.name)) == ["Location","FoodLabel","ExpeditionMenu"],"floor header order")
 	scene.show_menu(); await process_frame
-	check(scene.modal_content.get_children().map(func(c): return c.text) == ["기록","가방","인물","닫기"],"menu keeps only direct actions")
+	check(scene.modal_content.get_children().map(func(c): return c.text) == ["야영","기록","가방","인물","닫기"],"menu keeps only direct actions")
 	scene.details_popup.hide()
 	Fixture.arena(s,12); s.floor_state.observe(s); scene.refresh(); await process_frame
-	var camp_button: Button = scene.find_child("CampButton",true,false)
+	scene.show_menu(); await process_frame
+	var camp_button: Button = scene.modal_content.get_child(0)
 	check(not camp_button.disabled,"safe floor enables camp")
 	camp_button.pressed.emit(); await process_frame
 	check(s.phase == "CAMP" and scene.find_child("CampScreen",true,false) != null,"camp screen opens")
@@ -81,16 +86,17 @@ func run() -> void:
 func touch_targets(scene) -> void:
 	root.size = Vector2i(390,844); scene.refresh()
 	for frame in range(3): await process_frame
-	for id in ["ExpeditionMenu","HeroStatus","CampButton","Wait","RecentLog"]:
+	for id in ["ExpeditionMenu","HeroStatus","Attack","Wait","Tactics","RecentLog"]:
 		var control: Control = scene.find_child(id,true,false)
 		check(control != null and control.size.y >= 36,"%s is a touchable height" % id)
 		check(control != null and scene.get_global_rect().encloses(control.get_global_rect()),"%s stays on screen" % id)
 	check(scene.item_buttons.is_empty(),"supplies live in the bag")
 	var nav: Node = scene.find_child("BottomActions",true,false)
-	check(nav.get_children().map(func(c): return str(c.name)).has("CampButton"),"camp sits in the footer")
+	check(nav.get_children().map(func(c): return str(c.text)) == ["공격","대기","탐색","전술","가방"],"five direct actions share one row")
 	check(scene.find_child("PartyRow",true,false) == null,"manual play has no auto-battle party row")
 	var status: Button = scene.find_child("HeroStatus",true,false)
-	check(status != null and status.text.contains("HP") and status.text.contains("MP") and status.text.contains("AC"),"hero status reports combat values")
+	check(status != null and status.find_children("*","TextureRect",true,false).size() == 1,"hero portrait appears above actions")
+	check(scene.find_child("RecentLog",true,false).get_global_rect().end.y <= status.get_global_rect().position.y,"four-line log sits above portrait")
 
 ## The board frames seventeen tiles with the hero in the middle.
 func framing(scene, s) -> void:
@@ -112,7 +118,7 @@ func quiet_log(scene, s) -> void:
 	await process_frame
 	check(scene.notice.is_empty() and not scene.toast.visible,"a part drop produces no toast")
 	check(s.log_lines[-1] == Session.Abilities.DEFINITIONS.BOMB.item+" 획득","a part drop uses the concise log line")
-	check(scene.find_child("RecentLog",true,false).text == s.log_lines[-1],"the HUD shows the latest log line")
+	check(scene.find_child("RecentLog",true,false).text.ends_with(s.log_lines[-1]),"the HUD shows the latest log line")
 
 ## Auto exploration stops on what the party can actually see (sight 5).
 func sight_stops(scene, s) -> void:
@@ -144,7 +150,9 @@ func waiting_and_auto(scene, s) -> void:
 	before_round = s.round_number
 	scene.run_action(func(): return s.act("WAIT",hero.pos)); await process_frame
 	check(s.round_number >= before_round+1 and s.food == 0,"waiting stays available with an empty larder")
-	check(scene.find_child("CampButton",true,false).disabled,"but camping does not")
+	scene.show_menu(); await process_frame
+	check((scene.modal_content.get_child(0) as Button).disabled,"but camping does not")
+	scene.details_popup.hide(); await process_frame
 	s.food = saved
 	var foe: Dictionary = s.enemies[0]
 	foe.hp = 20; foe.max_hp = 20; foe.pos = hero.pos+Vector2i.RIGHT; s.floor_state.observe(s)
