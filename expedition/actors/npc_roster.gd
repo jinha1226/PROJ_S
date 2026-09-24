@@ -1,10 +1,10 @@
 extends RefCounted
 ## The run's NPC roster and its placement on each floor.
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
-const Stances = preload("res://expedition/stances.gd")
-const Abilities = preload("res://expedition/abilities.gd")
-const Generator = preload("res://expedition/floor_generator.gd")
-const Encounters = preload("res://expedition/encounter_builder.gd")
+const Stances = preload("res://expedition/ai/stances.gd")
+const Abilities = preload("res://expedition/items/abilities.gd")
+const Generator = preload("res://expedition/level/floor_generator.gd")
+const Encounters = preload("res://expedition/level/encounter_builder.gd")
 static var names: Array = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/npc_names.json")).names
 const COUNT := 10
 const DUOS := 2

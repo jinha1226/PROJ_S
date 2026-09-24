@@ -4,7 +4,7 @@ extends RefCounted
 ## makes the member likelier to get a round wrong.
 const DEFAULT := {"posture":0,"cohesion":0,"retreat_hp":25}
 const RANGE := {"posture":[-100,100],"cohesion":[-100,100],"retreat_hp":[0,60]}
-const Stances = preload("res://expedition/stances.gd")
+const Stances = preload("res://expedition/ai/stances.gd")
 
 static func defaults(profile) -> Dictionary:
 	return {"posture":clampi((profile.value("X")-profile.value("E"))/10,-100,100),

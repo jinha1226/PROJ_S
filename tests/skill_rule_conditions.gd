@@ -4,9 +4,9 @@ extends SceneTree
 ## condition it advertises.
 const Session = preload("res://expedition/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
-const Abilities = preload("res://expedition/abilities.gd")
-const Rules = preload("res://expedition/tactic_rules.gd")
-const Tactics = preload("res://expedition/tactical_action_selector.gd")
+const Abilities = preload("res://expedition/items/abilities.gd")
+const Rules = preload("res://expedition/ai/tactic_rules.gd")
+const Tactics = preload("res://expedition/ai/tactical_action_selector.gd")
 ## Distance to place the foe at; parts not listed are exercised at their own range.
 const REACH = {"PUSH":1,"HEAVY_STRIKE":1,"THROWING_KNIFE":4,"LUNGE":3,"BOMB":3}
 var failures := 0

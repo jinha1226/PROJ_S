@@ -1,10 +1,10 @@
 extends SceneTree
 ## The run's first choice: one of ten kits, one per mastery axis.
 const Session = preload("res://expedition/session.gd")
-const Stats = preload("res://expedition/combat_stats.gd")
-const Mastery = preload("res://expedition/mastery.gd")
-const Spells = preload("res://expedition/spells.gd")
-const Recruit = preload("res://expedition/npc_recruit.gd")
+const Stats = preload("res://expedition/combat/combat_stats.gd")
+const Mastery = preload("res://expedition/progression/mastery.gd")
+const Spells = preload("res://expedition/spells/spells.gd")
+const Recruit = preload("res://expedition/actors/npc_recruit.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 var checks := 0
 var failures := 0

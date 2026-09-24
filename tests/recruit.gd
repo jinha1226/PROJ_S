@@ -1,8 +1,8 @@
 extends SceneTree
 const Session = preload("res://expedition/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
-const Recruit = preload("res://expedition/npc_recruit.gd")
-const NpcAI = preload("res://expedition/npc_ai.gd")
+const Recruit = preload("res://expedition/actors/npc_recruit.gd")
+const NpcAI = preload("res://expedition/actors/npc_ai.gd")
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
 var failures := 0
 var checks := 0

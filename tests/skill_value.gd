@@ -4,9 +4,9 @@ extends SceneTree
 ##   godot --headless --path . --script res://tests/skill_value.gd -- [--quick]
 const Runner = preload("res://expedition/sim/encounter_runner.gd")
 const Arena = preload("res://expedition/sim/encounter_arena.gd")
-const Abilities = preload("res://expedition/abilities.gd")
-const Floor = preload("res://expedition/continuous_floor.gd")
-const Stances = preload("res://expedition/stances.gd")
+const Abilities = preload("res://expedition/items/abilities.gd")
+const Floor = preload("res://expedition/level/continuous_floor.gd")
+const Stances = preload("res://expedition/ai/stances.gd")
 const DOMINANT_PP := 0.20
 const DOMINANT_ARENAS := 4
 const USE_FLOOR := 0.2
@@ -237,7 +237,7 @@ func write_report(table: Array, verdicts: Dictionary, diagnoses: Dictionary, abs
 	lines.append("")
 	lines.append("- 시드 묶음: `%s` %d개 (%d~%d)" % [ex.seed_set.id,seeds.size(),int(seeds[0]),int(seeds[seeds.size()-1])])
 	lines.append("- 규칙: `%s` (`solo_actions %d` / `solo_max_members %d`) 하나만 쓴다 — 이번 실험의 축은 빌드다." % [ex.rules.keys()[0],int(ex.rules[ex.rules.keys()[0]].solo_actions),int(ex.rules[ex.rules.keys()[0]].solo_max_members)])
-	lines.append("- 봇 정책: `%s` — 영웅이 동료와 같은 규칙 목록(`expedition/tactic_rules.gd`)을 읽고 `Tactics.choose`가 고른 행동을 그대로 누른다." % ex.policies[0])
+	lines.append("- 봇 정책: `%s` — 영웅이 동료와 같은 규칙 목록(`expedition/ai/tactic_rules.gd`)을 읽고 `Tactics.choose`가 고른 행동을 그대로 누른다." % ex.policies[0])
 	lines.append("- **물자 0**: `supplies %s`. 회복품이 없으므로 스킬의 값이 물약에 가려지지 않는다." % str(ex.supplies.map(func(v): return int(v))))
 	lines.append("- 솔로 HP 스케일: `SOLO_HP_PERCENT %d` / `SOLO_HP_MIN %d` / `SOLO_HP_MAX %d` (파티 인원 1일 때만 적용, 실험 조건의 일부)" % [Floor.SOLO_HP_PERCENT,Floor.SOLO_HP_MIN,Floor.SOLO_HP_MAX])
 	lines.append("- 아레나 공통 spec: %s" % spec_line(ex))

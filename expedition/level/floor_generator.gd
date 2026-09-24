@@ -2,8 +2,8 @@ extends RefCounted
 ## Procedural floor: DCSS layout_rooms variant (scatter rooms, MST + loops,
 ## noisy-Dijkstra corridors, ASCII vault templates) with DD-style room-bound
 ## encounters. Pure static functions; output contract in the spec §7.
-const Templates = preload("res://expedition/floor_templates.gd")
-const Encounters = preload("res://expedition/encounter_builder.gd")
+const Templates = preload("res://expedition/level/floor_templates.gd")
+const Encounters = preload("res://expedition/level/encounter_builder.gd")
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/floor_themes.json"))
 const PLACE_TRIES := 200
 const MAX_REGENERATIONS := 5

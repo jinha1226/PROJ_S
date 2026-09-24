@@ -4,7 +4,7 @@ extends RefCounted
 ## parts, monsters the passive of their species part: a passive belongs to the
 ## species, so a monster whose `part_id` is not its own species part (a boss
 ## trial boss carries one for drops only) has no passive at all.
-const Abilities = preload("res://expedition/abilities.gd")
+const Abilities = preload("res://expedition/items/abilities.gd")
 const KINDS := ["PACK","RETALIATE","DIRTY","AMBUSHER","THICK_HIDE","BLOODLUST","REGEN","AMPHIBIOUS"]
 
 static func of(actor: Dictionary) -> Array:

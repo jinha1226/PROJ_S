@@ -38,7 +38,7 @@ static func feature_for(glyph: String) -> Dictionary:
 	var feature: Dictionary = GLYPH_FEATURE[glyph].duplicate(true)
 	feature.used = false
 	if feature.kind == "curio":
-		var curios: Dictionary = preload("res://expedition/curios.gd").content.curios
+		var curios: Dictionary = preload("res://expedition/items/curios.gd").content.curios
 		feature.label = curios[feature.curio_id].name
 	return feature
 

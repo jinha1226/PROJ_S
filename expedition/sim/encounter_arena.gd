@@ -1,6 +1,6 @@
 extends RefCounted
 ## Fixed fight room as a §7 layout so the real floor/session code runs unchanged.
-const Builder = preload("res://expedition/encounter_builder.gd")
+const Builder = preload("res://expedition/level/encounter_builder.gd")
 const DEFAULT_SPEC := {"size":20,"room":[5,5,9,9],"door":[9,4],"pillars":[[8,8],[10,10]],"party_entry":[9,5],"members":[]}
 
 ## `max_members > 0` keeps only the first N of the given roster — the

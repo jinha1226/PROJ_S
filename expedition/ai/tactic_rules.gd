@@ -17,7 +17,7 @@ const STATUS_NAMES = {"WET":"젖음","FIRE":"불 위에 있음"}
 ## Rule catalog: {id: {name, description, targets, conditions}} for every part.
 static func catalog() -> Dictionary:
 	if _catalog.is_empty():
-		var definitions: Dictionary = load("res://expedition/abilities.gd").DEFINITIONS
+		var definitions: Dictionary = load("res://expedition/items/abilities.gd").DEFINITIONS
 		for id in definitions:
 			var def: Dictionary = definitions[id]
 			_catalog[id] = {"name":str(def.name),"description":str(def.description),

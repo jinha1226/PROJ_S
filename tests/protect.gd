@@ -4,9 +4,9 @@ extends SceneTree
 ## the round reset and the two UI paths (party and solo).
 const Session = preload("res://expedition/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
-const Rules = preload("res://expedition/tactic_rules.gd")
-const Tactics = preload("res://expedition/tactical_action_selector.gd")
-const MonsterAI = preload("res://expedition/monster_ai.gd")
+const Rules = preload("res://expedition/ai/tactic_rules.gd")
+const Tactics = preload("res://expedition/ai/tactical_action_selector.gd")
+const MonsterAI = preload("res://expedition/actors/monster_ai.gd")
 var failures := 0
 var checks := 0
 

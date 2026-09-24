@@ -2,10 +2,10 @@ extends SceneTree
 ## Fifty spells in five schools, written in eight shapes; three books a school,
 ## read at camp and nowhere else.
 const Session = preload("res://expedition/session.gd")
-const Stats = preload("res://expedition/combat_stats.gd")
-const Spells = preload("res://expedition/spells.gd")
-const Mastery = preload("res://expedition/mastery.gd")
-const Curios = preload("res://expedition/curios.gd")
+const Stats = preload("res://expedition/combat/combat_stats.gd")
+const Spells = preload("res://expedition/spells/spells.gd")
+const Mastery = preload("res://expedition/progression/mastery.gd")
+const Curios = preload("res://expedition/items/curios.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const SCHOOLS := ["fire", "ice", "air", "hex", "summon"]
 var checks := 0

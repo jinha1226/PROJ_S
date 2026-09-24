@@ -1,10 +1,10 @@
 extends RefCounted
 ## Dungeon NPCs: their senses, their round, and their manners toward the party.
-const MonsterAI = preload("res://expedition/monster_ai.gd")
-const Tactics = preload("res://expedition/tactical_action_selector.gd")
-const Stances = preload("res://expedition/stances.gd")
-const Knobs = preload("res://expedition/knobs.gd")
-const Modes = preload("res://expedition/npc_modes.gd")
+const MonsterAI = preload("res://expedition/actors/monster_ai.gd")
+const Tactics = preload("res://expedition/ai/tactical_action_selector.gd")
+const Stances = preload("res://expedition/ai/stances.gd")
+const Knobs = preload("res://expedition/ai/knobs.gd")
+const Modes = preload("res://expedition/actors/npc_modes.gd")
 const NOISE_RADIUS := 10
 const SLEEP_AFTER := 5
 const MATE_LABEL := "동료에게 이동 중"

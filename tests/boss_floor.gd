@@ -1,7 +1,7 @@
 extends SceneTree
 const Session = preload("res://expedition/session.gd")
-const Floor = preload("res://expedition/continuous_floor.gd")
-const Generator = preload("res://expedition/floor_generator.gd")
+const Floor = preload("res://expedition/level/continuous_floor.gd")
+const Generator = preload("res://expedition/level/floor_generator.gd")
 var failures := 0
 var checks := 0
 func check(ok: bool, reason: String) -> void:

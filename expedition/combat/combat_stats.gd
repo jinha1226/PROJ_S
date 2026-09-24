@@ -1,5 +1,5 @@
 extends RefCounted
-const Mastery = preload("res://expedition/mastery.gd")
+const Mastery = preload("res://expedition/progression/mastery.gd")
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/combat.json"))
 
 ## The ten starting kits, in Mastery.AXES order: one weapon per mastery axis.

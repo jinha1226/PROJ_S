@@ -1,6 +1,6 @@
 extends RefCounted
-const Mastery = preload("res://expedition/mastery.gd")
-const Stats = preload("res://expedition/combat_stats.gd")
+const Mastery = preload("res://expedition/progression/mastery.gd")
+const Stats = preload("res://expedition/combat/combat_stats.gd")
 
 static func sword_level(actor: Dictionary) -> int:
 	if str(actor.get("gear",{}).get("weapon",{}).get("type","")) not in ["sword","dagger"]: return 0

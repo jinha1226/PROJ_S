@@ -1,9 +1,9 @@
 extends SceneTree
 const Session = preload("res://expedition/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
-const Abilities = preload("res://expedition/abilities.gd")
-const Rules = preload("res://expedition/tactic_rules.gd")
-const Tactics = preload("res://expedition/tactical_action_selector.gd")
+const Abilities = preload("res://expedition/items/abilities.gd")
+const Rules = preload("res://expedition/ai/tactic_rules.gd")
+const Tactics = preload("res://expedition/ai/tactical_action_selector.gd")
 var failures := 0
 func check(ok: bool, reason: String) -> void:
 	if not ok: failures += 1; push_error(reason)

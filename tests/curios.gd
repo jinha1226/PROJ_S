@@ -3,8 +3,8 @@ extends SceneTree
 ## refusal reasons, and the beast meat a kill drops (스펙 §2.1).
 const Session = preload("res://expedition/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
-const Curios = preload("res://expedition/curios.gd")
-const Generator = preload("res://expedition/floor_generator.gd")
+const Curios = preload("res://expedition/items/curios.gd")
+const Generator = preload("res://expedition/level/floor_generator.gd")
 var failures := 0
 var checks := 0
 func check(ok: bool, reason: String) -> void:

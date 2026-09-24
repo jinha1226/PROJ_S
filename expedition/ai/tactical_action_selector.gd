@@ -8,10 +8,10 @@ extends RefCounted
 ## against the stance's profile, and the knobs shift those weights (§4). Only the
 ## retreat line keeps hand numbers — it is the stage above the utility pool.
 ##   hp% <= retreat_hp    태세를 건너뛰고 거리를 벌리는 MOVE 150, 회복 파츠 190
-const Knobs = preload("res://expedition/knobs.gd")
-const Stances = preload("res://expedition/stances.gd")
-const Utility = preload("res://expedition/utility.gd")
-const PartsCandidates = preload("res://expedition/parts_candidates.gd")
+const Knobs = preload("res://expedition/ai/knobs.gd")
+const Stances = preload("res://expedition/ai/stances.gd")
+const Utility = preload("res://expedition/ai/utility.gd")
+const PartsCandidates = preload("res://expedition/ai/parts_candidates.gd")
 const RETREAT := {"score":150}
 
 static func danger(s, point: Vector2i) -> int:

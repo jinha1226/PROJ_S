@@ -1,7 +1,7 @@
 extends SceneTree
 const Session = preload("res://expedition/session.gd")
-const Mastery = preload("res://expedition/mastery.gd")
-const Effects = preload("res://expedition/mastery_effects.gd")
+const Mastery = preload("res://expedition/progression/mastery.gd")
+const Effects = preload("res://expedition/progression/mastery_effects.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 var checks := 0
 var failures := 0

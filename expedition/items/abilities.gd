@@ -46,7 +46,7 @@ static func badge(kind: String) -> String:
 static func default_rule(id: String) -> Dictionary:
 	var def: Dictionary = DEFINITIONS[id]
 	var target: String = {"SELF":"SELF","ALLY":"ALLY"}.get(def.target,"NEAREST")
-	return preload("res://expedition/tactic_rules.gd").make_rule(id,target,def.rule_when)
+	return preload("res://expedition/ai/tactic_rules.gd").make_rule(id,target,def.rule_when)
 
 ## Nearest free cell adjacent to the target that the actor can reach within the part's range.
 static func lunge_cell(s, actor: Dictionary, id: String, target: Vector2i) -> Vector2i:

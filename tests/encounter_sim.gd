@@ -1,10 +1,10 @@
 extends SceneTree
 const Session = preload("res://expedition/session.gd")
-const Builder = preload("res://expedition/encounter_builder.gd")
+const Builder = preload("res://expedition/level/encounter_builder.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Arena = preload("res://expedition/sim/encounter_arena.gd")
-const Floor = preload("res://expedition/continuous_floor.gd")
-const Generator = preload("res://expedition/floor_generator.gd")
+const Floor = preload("res://expedition/level/continuous_floor.gd")
+const Generator = preload("res://expedition/level/floor_generator.gd")
 const Runner = preload("res://expedition/sim/encounter_runner.gd")
 const Policy = preload("res://expedition/sim/bot_policy.gd")
 var failures := 0

@@ -1,8 +1,8 @@
 extends SceneTree
 const Session = preload("res://expedition/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
-const NpcAI = preload("res://expedition/npc_ai.gd")
-const Modes = preload("res://expedition/npc_modes.gd")
+const NpcAI = preload("res://expedition/actors/npc_ai.gd")
+const Modes = preload("res://expedition/actors/npc_modes.gd")
 var failures := 0
 var checks := 0
 func check(ok: bool, reason: String) -> void:

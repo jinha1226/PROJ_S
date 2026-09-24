@@ -1,7 +1,7 @@
 extends SceneTree
 ## Run roster: ten NPCs, two duos, three to five placed per floor with a situation.
 const Session = preload("res://expedition/session.gd")
-const Roster = preload("res://expedition/npc_roster.gd")
+const Roster = preload("res://expedition/actors/npc_roster.gd")
 var failures := 0
 var checks := 0
 func check(ok: bool, reason: String) -> void:

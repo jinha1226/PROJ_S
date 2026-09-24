@@ -2,10 +2,10 @@ extends RefCounted
 ## Utility selector: every candidate action is scored as Σ weight × curve(input)
 ## over a closed catalogue of considerations; the stance picks the weights,
 ## personality knobs shift them, and the top three terms explain the choice.
-const Stances = preload("res://expedition/stances.gd")
-const Rules = preload("res://expedition/tactic_rules.gd")
-const Abilities = preload("res://expedition/abilities.gd")
-const Lookahead = preload("res://expedition/lookahead.gd")
+const Stances = preload("res://expedition/ai/stances.gd")
+const Rules = preload("res://expedition/ai/tactic_rules.gd")
+const Abilities = preload("res://expedition/items/abilities.gd")
+const Lookahead = preload("res://expedition/ai/lookahead.gd")
 ## The considerations that cost a prediction. A profile column with none of them
 ## skips `Lookahead.predict` entirely and reads the disabled-lookahead values.
 const LOOKAHEAD_IDS := ["la_self_hit","la_ally_hit","la_enemy_hit","la_lethal_saved"]

@@ -6,7 +6,7 @@ extends RefCounted
 ##
 ## Each candidate: `kind` = 파츠 id, `tag` "PART", `cell` = 대상 칸,
 ## `damage` = 이 행동이 줄 피해, `target_id` = 대상 id, `reason` = 파츠 이름.
-const Abilities = preload("res://expedition/abilities.gd")
+const Abilities = preload("res://expedition/items/abilities.gd")
 
 static func candidates(s, actor: Dictionary) -> Array:
 	var options: Array = []

@@ -2,9 +2,9 @@ extends RefCounted
 ## Hero actions open a half-open tick interval. Every other actor takes any
 ## turns whose ready_at lies inside it; a turn exactly at the end waits.
 const Kernel = preload("res://sim/combat_kernel.gd")
-const Tactics = preload("res://expedition/tactical_action_selector.gd")
-const NpcAI = preload("res://expedition/npc_ai.gd")
-const Rules = preload("res://expedition/combat_rules.gd")
+const Tactics = preload("res://expedition/ai/tactical_action_selector.gd")
+const NpcAI = preload("res://expedition/actors/npc_ai.gd")
+const Rules = preload("res://expedition/combat/combat_rules.gd")
 const ElementRules = preload("res://sim/environment_rules.gd")
 
 static func actors(s) -> Array:

@@ -1,7 +1,7 @@
 extends SceneTree
 ## Public run flow: start, gather food, camp, descend, and end on death.
 const Session = preload("res://expedition/session.gd")
-const Curios = preload("res://expedition/curios.gd")
+const Curios = preload("res://expedition/items/curios.gd")
 var failures := 0
 var checks := 0
 func check(ok: bool, reason: String) -> void:

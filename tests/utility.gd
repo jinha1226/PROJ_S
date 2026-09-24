@@ -1,12 +1,12 @@
 extends SceneTree
 ## Utility selector: curves, profiles, inputs, scoring and explanations.
 const Session = preload("res://expedition/session.gd")
-const Utility = preload("res://expedition/utility.gd")
-const Stances = preload("res://expedition/stances.gd")
-const Knobs = preload("res://expedition/knobs.gd")
+const Utility = preload("res://expedition/ai/utility.gd")
+const Stances = preload("res://expedition/ai/stances.gd")
+const Knobs = preload("res://expedition/ai/knobs.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
-const Parts = preload("res://expedition/parts_candidates.gd")
-const Lookahead = preload("res://expedition/lookahead.gd")
+const Parts = preload("res://expedition/ai/parts_candidates.gd")
+const Lookahead = preload("res://expedition/ai/lookahead.gd")
 ## Every (stance, tag) pair the candidate generators in stances.gd can emit.
 ## 호위형 runs the charger programme whenever it has no living protectee, so it
 ## needs the charger's columns as well as its own.

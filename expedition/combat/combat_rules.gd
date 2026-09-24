@@ -1,8 +1,8 @@
 extends RefCounted
-const Stats = preload("res://expedition/combat_stats.gd")
+const Stats = preload("res://expedition/combat/combat_stats.gd")
 const Turns = preload("res://sim/turn_engine.gd")
-const Mastery = preload("res://expedition/mastery.gd")
-const Effects = preload("res://expedition/mastery_effects.gd")
+const Mastery = preload("res://expedition/progression/mastery.gd")
+const Effects = preload("res://expedition/progression/mastery_effects.gd")
 
 static func roll(s, source: Dictionary, target: Dictionary, lane: String, modulus: int) -> int:
 	if modulus <= 1: return 0

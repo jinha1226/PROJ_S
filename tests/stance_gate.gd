@@ -4,8 +4,8 @@ extends SceneTree
 ##   godot --headless --path . --script res://tests/stance_gate.gd -- [--quick]
 const Runner = preload("res://expedition/sim/encounter_runner.gd")
 const Arena = preload("res://expedition/sim/encounter_arena.gd")
-const Stances = preload("res://expedition/stances.gd")
-const Floor = preload("res://expedition/continuous_floor.gd")
+const Stances = preload("res://expedition/ai/stances.gd")
+const Floor = preload("res://expedition/level/continuous_floor.gd")
 ## 게이트 G7 (스펙 §4): 혼합 파티는 전 아레나에서, 단일 태세는 6아레나 중 4개 이상에서.
 const MIXED_FLOOR := 0.85
 const SINGLE_FLOOR := 0.60

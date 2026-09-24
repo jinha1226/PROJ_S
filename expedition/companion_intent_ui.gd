@@ -1,6 +1,6 @@
 extends RefCounted
 ## Presentation-only adapter and speech state for companion decisions.
-const Abilities = preload("res://expedition/abilities.gd")
+const Abilities = preload("res://expedition/items/abilities.gd")
 
 var next_decision_id := 1
 var previous_execution: Dictionary = {}

@@ -5,7 +5,7 @@ extends RefCounted
 const IDS := ["CHARGER","SKIRMISHER","GUARDIAN"]
 const NAMES := {"CHARGER":"돌격형","SKIRMISHER":"거리형","GUARDIAN":"호위형"}
 const SHORT := {"CHARGER":"돌","SKIRMISHER":"거","GUARDIAN":"호"}
-const Abilities = preload("res://expedition/abilities.gd")
+const Abilities = preload("res://expedition/items/abilities.gd")
 ## Mistakes: the floor every member has, and the ceiling no forcing passes.
 const MISTAKE_BASE := 4
 const MISTAKE_CAP := 40

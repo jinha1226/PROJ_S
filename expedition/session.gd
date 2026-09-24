@@ -5,26 +5,26 @@ const Memory = preload("res://sim/party_memory_state.gd")
 const Body = preload("res://game/rebuilt/body_bridge.gd")
 const TurnCore = preload("res://sim/turn_engine.gd")
 const ElementRules = preload("res://sim/environment_rules.gd")
-const NpcRoster = preload("res://expedition/npc_roster.gd")
-const NpcAI = preload("res://expedition/npc_ai.gd")
-const Recruit = preload("res://expedition/npc_recruit.gd")
+const NpcRoster = preload("res://expedition/actors/npc_roster.gd")
+const NpcAI = preload("res://expedition/actors/npc_ai.gd")
+const Recruit = preload("res://expedition/actors/npc_recruit.gd")
 var BOARD_SIDE := 64
-const Floor = preload("res://expedition/continuous_floor.gd")
-const Encounters = preload("res://expedition/encounter_builder.gd")
+const Floor = preload("res://expedition/level/continuous_floor.gd")
+const Encounters = preload("res://expedition/level/encounter_builder.gd")
 var floor_state
-const Tactics = preload("res://expedition/tactical_action_selector.gd")
-const Knobs = preload("res://expedition/knobs.gd")
-const Stances = preload("res://expedition/stances.gd")
-const Rules = preload("res://expedition/tactic_rules.gd")
-const Abilities = preload("res://expedition/abilities.gd")
+const Tactics = preload("res://expedition/ai/tactical_action_selector.gd")
+const Knobs = preload("res://expedition/ai/knobs.gd")
+const Stances = preload("res://expedition/ai/stances.gd")
+const Rules = preload("res://expedition/ai/tactic_rules.gd")
+const Abilities = preload("res://expedition/items/abilities.gd")
 const IntentUI = preload("res://expedition/companion_intent_ui.gd")
-const Growth = preload("res://expedition/growth.gd")
-const Mastery = preload("res://expedition/mastery.gd")
-const CombatStats = preload("res://expedition/combat_stats.gd")
-const CombatRules = preload("res://expedition/combat_rules.gd")
-const Scheduler = preload("res://expedition/scheduler.gd")
-const Spells = preload("res://expedition/spells.gd")
-const Passives = preload("res://expedition/passives.gd")
+const Growth = preload("res://expedition/progression/growth.gd")
+const Mastery = preload("res://expedition/progression/mastery.gd")
+const CombatStats = preload("res://expedition/combat/combat_stats.gd")
+const CombatRules = preload("res://expedition/combat/combat_rules.gd")
+const Scheduler = preload("res://expedition/time/scheduler.gd")
+const Spells = preload("res://expedition/spells/spells.gd")
+const Passives = preload("res://expedition/combat/passives.gd")
 var parts_bag: Dictionary = {}
 ## How many spells a caster may hold ready at once, chosen at camp.
 const PREPARED_SLOTS := 5
@@ -92,8 +92,8 @@ var effects: Array = []
 ## considerations. On by default; a simulation tool can turn it off to compare.
 var lookahead_enabled := true
 var supplies: Array = [0,0,0,0,0]
-const Curios = preload("res://expedition/curios.gd")
-const BossAI = preload("res://expedition/boss_ai.gd")
+const Curios = preload("res://expedition/items/curios.gd")
+const BossAI = preload("res://expedition/actors/boss_ai.gd")
 const SUPPLY_NAMES = ["치유 물약","정신 안정제","활력 물약","화염 두루마리","물 두루마리"]
 
 ## Experiment rules: the defaults reproduce shipped behaviour byte for byte.
@@ -1204,7 +1204,7 @@ static func arena_test(p_seed: int, party_size: int, arena: Dictionary, members:
 				actor.equipped_abilities[slot] = id; actor.rules.append(Abilities.default_rule(id))
 	var spec: Dictionary = preload("res://expedition/sim/encounter_arena.gd").DEFAULT_SPEC.duplicate(true)
 	spec.members = arena.members.map(func(m): return {"species_id":m[0],"role":m[1]})
-	var theme: Dictionary = preload("res://expedition/floor_generator.gd").theme("F1_RUINS")
+	var theme: Dictionary = preload("res://expedition/level/floor_generator.gd").theme("F1_RUINS")
 	s.simulation_arena = true
 	Floor.apply(s,theme,preload("res://expedition/sim/encounter_arena.gd").layout(spec,theme,p_seed))
 	arena_contact(s)

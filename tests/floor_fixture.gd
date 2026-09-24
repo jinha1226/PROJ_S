@@ -23,7 +23,7 @@ static func beside(s, p: Vector2i) -> Vector2i:
 ## Equips the two basics on every member with their default rules, the
 ## pre-parts starting state most suites assume.
 static func equip_basics(s) -> void:
-	var abilities = load("res://expedition/abilities.gd")
+	var abilities = load("res://expedition/items/abilities.gd")
 	for actor in s.party:
 		actor.equipped_abilities = ["PUSH","GUARD"]
 		actor.rules = [abilities.default_rule("PUSH"),abilities.default_rule("GUARD")]

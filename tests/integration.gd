@@ -1,8 +1,8 @@
 extends SceneTree
 ## End-to-end floor contract and persistent run state across descent.
 const Session = preload("res://expedition/session.gd")
-const Floor = preload("res://expedition/continuous_floor.gd")
-const Generator = preload("res://expedition/floor_generator.gd")
+const Floor = preload("res://expedition/level/continuous_floor.gd")
+const Generator = preload("res://expedition/level/floor_generator.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 var checks := 0
 var failures := 0

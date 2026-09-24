@@ -1,8 +1,8 @@
 extends RefCounted
-const Generator = preload("res://expedition/floor_generator.gd")
-const MonsterAI = preload("res://expedition/monster_ai.gd")
-const BossAI = preload("res://expedition/boss_ai.gd")
-const Abilities = preload("res://expedition/abilities.gd")
+const Generator = preload("res://expedition/level/floor_generator.gd")
+const MonsterAI = preload("res://expedition/actors/monster_ai.gd")
+const BossAI = preload("res://expedition/actors/boss_ai.gd")
+const Abilities = preload("res://expedition/items/abilities.gd")
 const THEME_ID := "F1_RUINS"
 ## Roster health was tuned for a pair; a lone hero meets the same groups at
 ## reduced health so each fight is decided in a few exchanges.

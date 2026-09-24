@@ -1,5 +1,5 @@
 extends SceneTree
-const Templates = preload("res://expedition/floor_templates.gd")
+const Templates = preload("res://expedition/level/floor_templates.gd")
 var failures := 0
 func check(ok: bool, reason: String) -> void:
 	if not ok: failures += 1; push_error(reason)

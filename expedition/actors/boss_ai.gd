@@ -1,5 +1,5 @@
 extends RefCounted
-const Abilities = preload("res://expedition/abilities.gd")
+const Abilities = preload("res://expedition/items/abilities.gd")
 ## Simplified SPD-inspired patterns, implemented independently for an 10x10 arena.
 const NAMES = ["수렁 포식자", "폭탄 암살자", "과부하 거인"]
 const HINTS = ["폭발 후 탈진 틈에 공격 · 물에서 회복", "폭탄 예고 회피 · 순간이동한 보스 추격", "보호막 가동 시 전력탑 옆에서 탑 터치"]

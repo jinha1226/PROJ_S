@@ -3,8 +3,8 @@ extends RefCounted
 ## immediate effect to a scratch view of positions/HP/intents, then estimate
 ## what every party member would take this round the way `lethal_threat` does.
 ## Pure and deterministic — the session is never mutated, only read.
-const Rules = preload("res://expedition/tactic_rules.gd")
-const Abilities = preload("res://expedition/abilities.gd")
+const Rules = preload("res://expedition/ai/tactic_rules.gd")
+const Abilities = preload("res://expedition/items/abilities.gd")
 
 ## `baseline` is the candidate-independent half of the answer: {member id ->
 ## whether that member is already in lethal danger}. It costs one

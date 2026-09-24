@@ -1,12 +1,12 @@
 extends RefCounted
 ## Fixed-arena encounter runs and their statistics. Public session API only.
 const Session = preload("res://expedition/session.gd")
-const Floor = preload("res://expedition/continuous_floor.gd")
-const Generator = preload("res://expedition/floor_generator.gd")
+const Floor = preload("res://expedition/level/continuous_floor.gd")
+const Generator = preload("res://expedition/level/floor_generator.gd")
 const Arena = preload("res://expedition/sim/encounter_arena.gd")
 const Policy = preload("res://expedition/sim/bot_policy.gd")
-const Rules = preload("res://expedition/tactic_rules.gd")
-const Knobs = preload("res://expedition/knobs.gd")
+const Rules = preload("res://expedition/ai/tactic_rules.gd")
+const Knobs = preload("res://expedition/ai/knobs.gd")
 static var builds: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/reference_builds.json"))
 
 static func build(id: String) -> Dictionary:

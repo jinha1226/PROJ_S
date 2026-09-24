@@ -3,9 +3,9 @@ extends RefCounted
 ## search adapts ../sim/stage_enemy_rules.gd. A monster that can use its part
 ## announces it (`prep` rounds) and resolves it on the announced cell; the
 ## caster role's own spell uses the same charging state with an empty cast_id.
-const Melee = preload("res://expedition/floor_tactics_adapter.gd")
-const Abilities = preload("res://expedition/abilities.gd")
-const BossAI = preload("res://expedition/boss_ai.gd")
+const Melee = preload("res://expedition/actors/floor_tactics_adapter.gd")
+const Abilities = preload("res://expedition/items/abilities.gd")
+const BossAI = preload("res://expedition/actors/boss_ai.gd")
 const ROLES := {
 	"MELEE":{"label":"추격병","range":1,"damage":7},
 	"RANGED":{"label":"궁수","range":5,"damage":6},

@@ -1,5 +1,5 @@
 extends SceneTree
-const Builder = preload("res://expedition/encounter_builder.gd")
+const Builder = preload("res://expedition/level/encounter_builder.gd")
 var failures := 0
 func check(ok: bool, reason: String) -> void:
 	if not ok: failures += 1; push_error(reason)

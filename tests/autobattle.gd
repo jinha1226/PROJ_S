@@ -3,9 +3,9 @@ extends SceneTree
 ## commands, knobs from personality, battle stats and the marching order.
 const Session = preload("res://expedition/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
-const Rules = preload("res://expedition/tactic_rules.gd")
-const Knobs = preload("res://expedition/knobs.gd")
-const Stances = preload("res://expedition/stances.gd")
+const Rules = preload("res://expedition/ai/tactic_rules.gd")
+const Knobs = preload("res://expedition/ai/knobs.gd")
+const Stances = preload("res://expedition/ai/stances.gd")
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const Runner = preload("res://expedition/sim/encounter_runner.gd")
 const Policy = preload("res://expedition/sim/bot_policy.gd")

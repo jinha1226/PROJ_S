@@ -1,13 +1,13 @@
 extends RefCounted
 ## Adapted from ../playtest status folio and mastery cards, using expedition data.
-const Growth = preload("res://expedition/growth.gd")
-const Mastery = preload("res://expedition/mastery.gd")
-const CombatStats = preload("res://expedition/combat_stats.gd")
+const Growth = preload("res://expedition/progression/growth.gd")
+const Mastery = preload("res://expedition/progression/mastery.gd")
+const CombatStats = preload("res://expedition/combat/combat_stats.gd")
 static var mastery_data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/mastery.json"))
 const Emblem = preload("res://expedition/growth_emblem.gd")
 const MasteryGlyph = preload("res://expedition/mastery_glyph.gd")
 const Art = preload("res://expedition/mobile_art.gd")
-const Stances = preload("res://expedition/stances.gd")
+const Stances = preload("res://expedition/ai/stances.gd")
 const Memory = preload("res://sim/party_memory_state.gd")
 
 static func surface(color: Color, border: Color = Color("65522a")) -> StyleBoxFlat:

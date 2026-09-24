@@ -3,10 +3,10 @@ extends RefCounted
 ## member a stance and two freely chosen parts. It only reads and writes
 ## `ui.arena_config` — the session is built when 시작 is pressed. The hero is manual.
 const Session = preload("res://expedition/session.gd")
-const Abilities = preload("res://expedition/abilities.gd")
-const Stances = preload("res://expedition/stances.gd")
+const Abilities = preload("res://expedition/items/abilities.gd")
+const Stances = preload("res://expedition/ai/stances.gd")
 const CharacterUI = preload("res://expedition/character_ui.gd")
-const Builder = preload("res://expedition/encounter_builder.gd")
+const Builder = preload("res://expedition/level/encounter_builder.gd")
 const ROLES := ["MELEE","RANGED","CASTER"]
 const ROLE_NAMES := {"MELEE":"근접","RANGED":"원거리","CASTER":"마법"}
 const MEMBER_NAMES := ["아린","브란","세라"]

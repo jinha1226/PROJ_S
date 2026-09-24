@@ -2,10 +2,10 @@ extends RefCounted
 ## Fifty spells in five schools, all of them built from eight shapes. A row in
 ## `combat.json.spells` says which shape a spell is and what it carries; the
 ## code below knows the shapes, not the spells.
-const Stats = preload("res://expedition/combat_stats.gd")
-const Rules = preload("res://expedition/combat_rules.gd")
-const Mastery = preload("res://expedition/mastery.gd")
-const Effects = preload("res://expedition/mastery_effects.gd")
+const Stats = preload("res://expedition/combat/combat_stats.gd")
+const Rules = preload("res://expedition/combat/combat_rules.gd")
+const Mastery = preload("res://expedition/progression/mastery.gd")
+const Effects = preload("res://expedition/progression/mastery_effects.gd")
 const Kernel = preload("res://sim/combat_kernel.gd")
 
 ## The eight effect primitives every school is written in.
