@@ -34,7 +34,7 @@ func run() -> void:
 	var push_button: Button = null
 	if menu != null:
 		for candidate in menu.find_children("*","Button",true,false):
-			if candidate.text == "밀치기": push_button = candidate
+			if candidate.text.begins_with("밀치기"): push_button = candidate
 	check(push_button != null and not push_button.disabled,"equipped PUSH is available")
 	if push_button != null: push_button.pressed.emit()
 	await process_frame

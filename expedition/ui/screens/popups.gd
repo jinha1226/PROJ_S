@@ -245,6 +245,7 @@ static func tactic_pick(ui, parent: Node, title: String, values: Array, names: D
 	pick.item_selected.connect(func(index): changed.call(values[index]))
 
 static func show_supplies(ui) -> void:
+	if ui.session == null: return
 	ui.stop_navigation()
 	ui.clear(ui.modal_content)
 	if ui.session.manual_mode: build_manual_inventory(ui)

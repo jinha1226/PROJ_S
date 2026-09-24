@@ -364,7 +364,7 @@ func ui() -> void:
 	check(mistake.size() == 1,"mistake chance line")
 	check(mistake[0].text == "실수 확률 %d%% · %s" % [Stances.mistake_chance(s.party[0]),cause(s.party[0])],"the line quotes the chance and the largest reason for it")
 	var badge = scene.modal_content.find_child("StanceSuggestion",true,false)
-	check(badge != null and badge.text.begins_with("빌드 추천"),"build suggestion badge")
+	check(badge != null and badge.text in Stances.NAMES.values(),"build suggestion badge names a stance")
 	var guardian: Button = scene.modal_content.find_child("Stance_GUARDIAN",true,false)
 	guardian.pressed.emit(); await process_frame
 	check(s.party[0].stance == "GUARDIAN","button sets the stance")

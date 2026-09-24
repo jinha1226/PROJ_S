@@ -108,7 +108,7 @@ func _ready() -> void:
 	button(map_box,"닫기",func(): map_popup.hide())
 	details_popup = PopupPanel.new(); add_child(details_popup)
 	modal_content = VBoxContainer.new(); modal_content.custom_minimum_size = Vector2(popup_width(),210); details_popup.add_child(modal_content)
-	details_popup.popup_hide.connect(func(): clear(modal_content))
+	# Popup content is rebuilt by every show_* on open; clearing on hide raced with a same-frame rebuild.
 	item_popup = PopupPanel.new(); details_popup.add_child(item_popup)
 	item_popup.transient = true; item_popup.exclusive = true
 	item_detail = VBoxContainer.new(); item_detail.custom_minimum_size = Vector2(300,200); item_popup.add_child(item_detail)
