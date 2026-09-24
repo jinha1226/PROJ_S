@@ -148,9 +148,33 @@ Scheduler.act(s, actor):
 
   NPC 명부 생성 시 같은 표에서 시드로 하나(성격 가중: X ≥ 600 → axe/mace, C ≥ 600 → spear/bow, O ≥ 600 → 마법 5, 나머지 sword).
 - 획득: 조사물 `BROKEN_CHEST`·`DEAD_ADVENTURER`가 파츠/소모품 외에 장비도 준다(깊이별 표는 `combat.json.loot`). 장착·해제는 야영에서만.
-- 주문: 배운 목록 `actor.spells`와 준비 `actor.prepared`(최대 3, 야영에서 변경). 시작 주문은 시작 장비가 마법 지팡이일 때 그 학파의 첫 주문 하나; 그 외는 `DEAD_ADVENTURER`·보스 드롭 주문서. HUD에는 준비 주문 3개만.
+- 주문: §6.1. 배운 목록 `actor.spells`, 준비 `actor.prepared`(최대 5), 가방의 주문서 `actor.books`.
 - 소모품 5종 유지. Model B `supplies`(heal/blink/haste/fog/wand)는 가져오지 않는다.
 - 몬스터: 8종에 `speed/ac/ev/res`. 역할(MELEE/RANGED/CASTER)과 파츠는 그대로. 보스 3종은 §7에서 재측정.
+
+## 6.1 주문 — 학파별 10개, 주문서로 배운다 (DCSS)
+
+- 학파 5 × Lv1~10 = 주문 50개. 코드는 **효과 원시 8개**(`bolt` 단일 · `line` 직선 n칸 · `cone` 부채꼴 · `burst` 반경 r · `wall` 장벽 n칸·지속 · `self` 자기 버프 · `mark` 대상 상태 · `summon` 소환수)와 **상태 10개**(`confuse slow freeze bind burn weak brittle distort vulnerable dominate`), **소환수 4종**(사냥개·임프·쥐·늑대)이고, 주문은 `combat.json.spells` 50행 `{school, level, name, shape, element, power, status, ticks, mp, range, book, note}`다. MP = `2 + level`, 실패율은 원본 공식.
+- **주문서**: 학파마다 3권 — 초급서(Lv1~3), 중급서(Lv4~6), 고급서(Lv7~10). 책은 가방에 남고 여러 번 읽을 수 있다.
+- **배우기**: 야영에서만. 조건 `Mastery.rank(school) ≥ level − 1`이고 그 책을 갖고 있을 것. 자동 습득은 없다(rank가 올라도 책이 없으면 못 배운다). 숙련 rank는 시전으로만 오른다.
+- **시작**: 마법 kit = 그 학파 초급서 + Lv1 주문 습득·준비(§6 표의 첫 주문). 초급서의 Lv2·Lv3은 rank가 되면 야영에서 배운다.
+- **드롭**: 중급서는 3층부터, 고급서는 6층부터. 죽은 모험가 20%(무작위 학파), 부서진 궤짝 30%, 보스 100%(깊이에 맞는 등급). 다른 학파의 책도 나온다 → 다학파 빌드.
+- 준비 슬롯 5(야영에서 변경), HUD에는 준비 주문 5 버튼.
+
+| Lv | 화염 | 냉기 | 기류 | 변이·제어 | 소환 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 화염탄 bolt 16 | 서리창 line3 12+slow | 번개 bolt 14, 사선 무시 | 혼란 mark confuse | 사냥개 summon 300t |
+| 2 | 열 축적 self: 다음 화염 +50% | 한기 축적 self: 다음 냉기 slow 2배 | 전하 축적 self: 다음 번개 연쇄 1 | 약화 mark weak(피해 −30%) | 결속 self: 소환수 HP +50% |
+| 3 | 화염 폭발 burst r1 14 | 빙결 mark freeze 1턴 | 돌풍 line3 밀치기 1 | 속박 mark bind 2턴 | 하급 소환 summon 임프 ×2 |
+| 4 | 연소 지속 mark burn 4×3턴 | 둔화 강화 cone slow 3턴 | 전도 강화 burst r1 8, 젖은 칸 ×2 | 상태 연장 mark: 걸린 상태 +2턴 | 지속 강화 self: 소환 +200t |
+| 5 | 고열 self: 화염 저항 관통 20 | 취성 mark brittle(AC −4) | 연쇄 방전 bolt 12, 인접 적 2회 연쇄 | 왜곡 mark distort(명중 −30%) | 희생 명령 소환수 폭발 burst r1 |
+| 6 | 화염 장벽 wall 3칸 3턴 burn | 빙벽 wall 3칸 3턴 통행 불가 | 폭풍장 burst r2 6 + 밀치기 | 취약화 mark vulnerable(받는 피해 +30%) | 군집 summon 쥐 ×3 |
+| 7 | 연소 전파 mark: burn이 인접 적으로 | 냉기 전파 cone 12 + slow | 과전압 line4 18 | 변이 파동 burst r1 confuse | 상급 소환 summon 늑대(HP 40) |
+| 8 | 백열 bolt 28 | 절대영도 burst r1 20 + freeze | 폭풍의 눈 self: EV +20, 3턴 | 상태 전염 mark: 상태가 인접 적에 복사 | 공명 self: 소환수 피해 +50% |
+| 9 | 화염 폭풍 burst r2 18 + burn | 빙하 line5 22 | 낙뢰 bolt 30, 저항 관통 | 지배 mark dominate 2턴 | 군단 summon 늑대 ×2 |
+| 10 | 화염 지배 self: 화염 위력 ×1.5, 5턴 | 냉기 지배 self: 냉기에 freeze 30% | 기류 지배 self: 연쇄 +1 | 변이 지배 self: mark 지속 ×2 | 소환 지배 self: 소환수 회복·지속 갱신 |
+
+책: `fire_1`(Lv1~3) `fire_2`(4~6) `fire_3`(7~10), 다른 학파도 같은 규칙. 지금 있는 `blast/blink/mend/passwall/ward/turret/ignite`는 학파 밖 "유물 주문"으로 남겨 두되 첫 단면에서는 드롭하지 않는다.
 
 ## 7. 검증·게이트
 

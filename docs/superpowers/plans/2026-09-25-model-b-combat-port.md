@@ -36,7 +36,7 @@
 | `data/content/mastery.json` (신규) | 10축 보상·융합 (`progression_data.gd`에서), `effect_id` 있는 행만 활성 | 3 |
 | `expedition/mastery_effects.gd` (신규) | `sword`·`fire` 이정표 4+4, 융합 2 | 3 |
 | `expedition/scheduler.gd` (신규) | `advance(s, cost)`, `act(s, actor)`, 환경 tick | 2 |
-| `expedition/spells.gd` (신규) | 학파별 첫 주문 5종 효과·실패율·MP | 4 |
+| `expedition/spells.gd` | 원시 8개로 50주문, 주문서 학습 | 4 |
 | `expedition/session.gd` | `submit`, `time/turn_serial/ready_at`, 오토배틀 제거, `after_damage`, `on_kill`, 장비·주문 API | 1–4 |
 | `expedition/monster_ai.gd`, `boss_ai.gd` | 행동 비용, `resolve_at` 예고 | 2 |
 | `expedition/abilities.gd`, `parts_candidates.gd`, `floor_tactics_adapter.gd`, `character_ui.gd` | `Growth.power` → `CombatStats` | 1 |
@@ -525,22 +525,19 @@ static func double_movers(s, cost: int) -> Array:
 
 ---
 
-### Task 4: 주문 · 장비 드롭 · 야영 장착
+### Task 4: 주문 50개 · 주문서 · 야영 학습
 
 **Files:**
-- Create: `expedition/spells.gd`, `tests/spells.gd`
-- Modify: `expedition/session.gd`(`cast`, `equip_gear/unequip_gear`, `prepare_spell`, `gear_bag`), `expedition/curios.gd`·`data/content/exploration_curios.json`(장비·주문서 결과), `expedition/boss_ai.gd`(보스 드롭에 주문서), `data/content/combat.json`(`loot`), `expedition/abilities.gd`(파츠와 주문의 HUD 구분은 Task 5)
+- Create: `tests/spellbooks.gd`, 소환수 정의 `data/content/combat.json.summons`(사냥개·임프·쥐·늑대: hp/power/speed/duration)
+- Modify: `data/content/combat.json`(`spells` 50행 — 스펙 §6.1 표를 `{school, level, name, shape, element, power, status, ticks, mp, range, book, note}`로; `books` 15권 `{id, school, levels}`; `loot`에 책 드롭 확률·깊이), `expedition/spells.gd`(원시 8개 `bolt/line/cone/burst/wall/self/mark/summon`, 상태 10개 적용, 기존 `cone/cloud/hound`를 표의 행으로 흡수), `expedition/scheduler.gd`(상태 만료·벽 지속·소환 만료·`self` 버프 소진), `expedition/combat_stats.gd`·`combat_rules.gd`(`weak/brittle/distort/vulnerable/burn/slow/freeze/bind/dominate` 반영 — 피해·AC·명중·이동 불가·아군 판정), `expedition/session.gd`(`learn_spell(index, id)`: CAMP·책 보유·`rank ≥ level − 1`; `prepare_spell` 상한 5; `books`), `expedition/curios.gd`·`boss_ai.gd`(책 드롭), `expedition/main.gd`(야영 화면 "주문 배우기" 목록, `SpellBar` 5)
 
 **Interfaces:**
-- Produces: `Spells.cast(s, caster, id, target) -> bool`, `Spells.failure(s, caster, id) -> int`, `Spells.cells(s, caster, id, target) -> Array`; 활성 주문은 학파별 하나 `bolt/cone/cloud/confuse/hound`(시작 장비가 요구); `Session.cast(id, target)`(주인공, 비용 100), `Session.equip_gear(index, item) / unequip_gear(index, slot)`(CAMP에서만), `Session.prepare_spell(index, id, on: bool)`(CAMP, 최대 3), 액터 `spells/prepared/mp`.
+- Produces: `Spells.primitives`(8), `Spells.learnable(s, actor, id) -> String`(빈 문자열이면 가능), `Session.learn_spell(index, id) -> bool`, `Session.grant_book(book_id)`, 액터 `books: Array[String]`, `statuses[id] = expires_at`, `buffs`(`self` 주문의 "다음 X" 효과 1회분), 노드 `LearnList/Learn_<id>`, `SpellBar/Spell%d` ×5.
+- 판정: 시작 kit은 초급서 + Lv1만; 초급서의 Lv2·3은 야영에서 rank 조건으로. `blast/blink/mend/passwall/ward/turret/ignite`는 데이터에 남기되 책에 넣지 않는다(드롭 없음). 소환수는 `s.npcs`의 `summoned` 액터(사냥개 구현을 일반화), 명령 없음, 영입·명부·이력 제외, 만료 시 사라짐, 죽어도 파티 스트레스 없음(낯선 이 규칙 예외).
 
-- [ ] **Step 1: 실패하는 테스트 — `tests/spells.gd`**: `bolt`(fire, 단일, 사거리 6, 화염 16, MP 3), `cone`(ice, 부채꼴 3칸 냉기 피해 + `slow`), `cloud`(air, 반경 1 구름 3턴, 전기 피해), `confuse`(hex, 상태 `confuse`, 저항 `will`), `hound`(summon, 아군 소환수 1, 300 tick 지속 — 소환수는 `s.npcs`가 아니라 `s.summons`에, `friends()`에 포함); 실패율 공식(`8 + level·9 + enc·5 − rank·5 − INT`, 0~85)과 실패 시 MP만 소비; MP 부족 거부; 준비 3개 상한·야영에서만 변경; 주문서 획득(`DEAD_ADVENTURER` 20%, 보스 100%)으로 `spells` 증가; 장비 획득(`BROKEN_CHEST` 50% → `gear_bag`), 야영에서 장착·해제·양손/방패 금지; 몬스터 `res`로 저항.
-
-- [ ] **Step 2: 구현.** 원본 `world.cast/spell_cells/failure` 복사 후 `DATA` → `combat.json`, `rng` → `Hexaco.sample`, 시전자 일반화(동료·NPC도 `prepared`가 있으면 `Tactics`의 파츠 후보처럼 — **이번 Task에서는 주인공만** 시전; 동료 시전은 범위 밖). 조사물 결과에 `gear`/`spellbook` 확률 필드. `equip_gear`는 `Stats.stats`의 양손/방패 규칙을 검증.
-
-- [ ] **Step 3: 실행·커밋** `feat(spells): five spells with mp and failure; gear and spellbooks drop; equipment changes at camp`
-
----
+- [ ] **Step 1: 실패하는 테스트 — `tests/spellbooks.gd`**: 데이터 — 학파 5 × Lv1~10 = 50행, 각 행의 `shape`가 원시 8개 중 하나, `book`이 `<school>_<1|2|3>`이고 Lv 구간이 맞음, MP = 2+level; 책 15권. 시작 — 화염 kit → `books == ["fire_1"]`, `spells == ["fire_1_1"]`(id 규칙 `<school>_<level>` 로 통일해도 됨), `prepared` 1개; Lv2는 `learnable` 거부("숙련 부족"), `skill_xp.fire = 25` 뒤 야영에서 `learn_spell` 성공, EXPLORE에서는 거부, 책 없는 학파 거부, 준비 5 상한. 드롭 — 3층 죽은 모험가 40시드 중 중급서 등장·1층은 초급서만, 보스는 100%. 효과 — 원시 8개 각 1개 이상 검사: `bolt`(단일 피해·저항), `line`(3칸 직선), `cone`(부채꼴), `burst`(반경, 적만), `wall`(장벽 칸 3턴 통행 불가 후 사라짐), `self`(다음 화염 +50%가 한 번만), `mark`(상태 부여·만료·`weak` 피해 −30%·`bind` 이동 거부·`dominate` 2턴 아군 판정), `summon`(임프 ×2, 늑대 HP 40, 만료, 명령 없음, 죽어도 파티 스트레스 0). 결정론 — 같은 시드 같은 결과.
+- [ ] **Step 2: 구현.** `Spells.cast`를 `shape` 디스패치로 재구성(기존 `bolt/cone/cloud/confuse/hound` 분기는 원시로 흡수). 상태는 `statuses[id] = expires_at`이고 `combat_stats/rules`가 읽는다(`slow/haste`는 이미 `move_time`에 있음). `wall`은 층 타일에 `wall_until`을 두고 `is_free/can_step`이 본다. `self` 버프는 `actor.buffs = {"next_fire": 150}`처럼 한 번 쓰고 지운다. `dominate`는 `friends()`·몬스터 표적에서 그 적을 2턴 동안 아군으로(`enemy` 플래그는 그대로, `dominated_until`로 판정).
+- [ ] **Step 3: 실행·커밋** `feat(spells): fifty spells in five schools from eight primitives; spellbooks learned at camp; summons`
 
 ### Task 5: 모바일 UI — 행동 미리보기 · 준비 주문 · 숙련 5×2 · 장비 창
 
