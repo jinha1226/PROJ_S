@@ -66,7 +66,7 @@ func walls() -> void:
 	check(s.party[0].hp == hp,"a wall between them blocks the attack")
 	check(enemy.pos.x > wall_x,"the chase never crosses the wall")
 
-## An enemy that has not been roused stays where it was put.
+## An enemy outside the hero's sight patrols without attacking or leaving its spawn.
 func unseen() -> void:
 	var f: Dictionary = setup("MELEE",Vector2i(6,0))
 	var s = f.s; var enemy: Dictionary = f.enemy
@@ -75,7 +75,13 @@ func unseen() -> void:
 	var was: Vector2i = enemy.pos; var hp: int = s.party[0].hp
 	s.enemy_attack_turn(enemy)
 	check(s.party[0].hp == hp,"an enemy that cannot see the party lands nothing")
-	check(MonsterAI.distance(enemy.pos,was) <= 1,"it holds its ground instead of charging across the floor")
+	check(MonsterAI.distance(enemy.pos,was) == 1 and not enemy.alert,"unseen enemy patrols one cell without becoming alert")
+	for i in range(12): s.enemy_attack_turn(enemy)
+	check(MonsterAI.distance(enemy.pos,enemy.home) <= 3,"patrol remains near its encounter")
+	enemy.pos = was; enemy.alert = false; enemy.ready_at = s.time
+	s.phase = "EXPLORE"; s.floor_state.observe(s)
+	check(s.act("WAIT",s.party[0].pos),"hero waits on an otherwise quiet floor")
+	check(enemy.pos != was,"scheduled unseen enemy acts during exploration")
 
 ## A telegraphed spell dies with its caster: the marked cell goes with it.
 func dead_caster() -> void:

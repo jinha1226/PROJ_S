@@ -307,5 +307,5 @@ static func enemy_attack_turn(s, enemy: Dictionary) -> void:
 	if s.presentation != null: s.presentation.capture(s,enemy.id)
 
 static func _enemy_attack_turn(s, enemy: Dictionary) -> void:
-	if s.phase != "BATTLE" or enemy.hp <= 0 or s.alive().is_empty(): return
+	if not s.on_floor() or enemy.hp <= 0 or s.alive().is_empty(): return
 	s.floor_state.enemy_turn(s,enemy)

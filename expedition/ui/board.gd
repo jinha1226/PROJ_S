@@ -225,6 +225,7 @@ func movement_previews() -> Array:
 	if session == null or not session.on_floor(): return result
 	for preview in companion_previews:
 		if preview.kind != "MOVE": continue
+		if preview.actor == session.party[0].id: continue
 		var member: Array = session.party.filter(func(a): return a.id == preview.actor)
 		if member.is_empty(): continue
 		var actor: Dictionary = member[0]
@@ -305,9 +306,10 @@ func _draw() -> void:
 	var camera := impact_transform()
 	draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
 	paint_terrain()
-	# Basic melee reach is implicit; only an explicitly selected skill shows range.
 	var attacks: Array = []
-	if session.Abilities.DEFINITIONS.has(targeting_skill) and session.Abilities.DEFINITIONS[targeting_skill].target == "ENEMY" and session.Abilities.DEFINITIONS[targeting_skill].range > 0:
+	if show_attack_range and targeting_skill == "ATTACK":
+		attacks = session.attack_cells()
+	elif session.Abilities.DEFINITIONS.has(targeting_skill) and session.Abilities.DEFINITIONS[targeting_skill].target == "ENEMY" and session.Abilities.DEFINITIONS[targeting_skill].range > 0:
 		attacks.clear()
 		var caster: Dictionary = session.party[session.selected if input_actor < 0 else input_actor]
 		for y in range(camera_cell().y,camera_cell().y+visible_side()):
@@ -583,10 +585,10 @@ func _label_visible(actor: Dictionary) -> bool:
 ## Keep the action being replayed readable through its entire frame, even
 ## after its AP was spent. Other members use only this frame's snapshot.
 func displayed_companion_intents() -> Array:
-	if not is_presenting(): return companion_intents
-	var rows: Array = visual_state.get("companion_intents",[]).duplicate(true)
+	var rows: Array = companion_intents if not is_presenting() else visual_state.get("companion_intents",[]).duplicate(true)
+	if not is_presenting(): return rows.filter(func(row): return int(row.get("actor_id",-1)) != int(session.party[0].id))
 	var executed: Dictionary = playback[0].get("executed_intent",{})
 	if not executed.is_empty():
 		rows = rows.filter(func(row): return int(row.get("actor_id",-1)) != int(executed.actor_id))
 		rows.append(executed.duplicate(true))
-	return rows
+	return rows.filter(func(row): return int(row.get("actor_id",-1)) != int(session.party[0].id))

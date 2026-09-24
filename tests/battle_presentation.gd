@@ -49,6 +49,7 @@ func run() -> void:
 	await process_frame
 	var expected: Array = scene.session.companion_intent_snapshot()
 	check(scene.board.companion_intents == expected and expected.size() == scene.session.party.size(),"pause view exposes every actionable companion preview")
+	check(scene.board.displayed_companion_intents().all(func(row): return int(row.actor_id) != int(scene.session.party[0].id)),"hero route is hidden while waiting for input")
 	var before := Presentation.snapshot(scene.session)
 	scene.run_action(scene.session.auto_step)
 	check(scene.board.is_presenting(),"UI starts presentation")
@@ -71,7 +72,7 @@ func run() -> void:
 	state.companion_intents = []
 	scene.board.play_frames([{"before":state,"after":state,"effects":[],"actor":actor.id,"executed_intent":move}])
 	scene.board._advance_playback(0.20)
-	check(scene.board.displayed_companion_intents() == [move],"executed route remains visible after the impact point")
+	check(scene.board.displayed_companion_intents().is_empty(),"hero route is hidden during playback")
 	scene.board._advance_playback(1.0)
 
 	await process_frame

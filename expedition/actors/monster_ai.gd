@@ -78,10 +78,14 @@ static func turn(s, enemy: Dictionary) -> void:
 	if s.status_blocks(enemy,"ATTACK"): return
 	var seen: int = sight(s)
 	if targets.any(func(a): return line(s,enemy.pos,a.pos,seen)): enemy.alert = true
-	if not enemy.get("alert",false): return
+	if not enemy.get("alert",false):
+		patrol(s,enemy)
+		return
 	if enemy.get("boss",false): BossAI.turn(s,enemy); return
 	if targets.all(func(a): return distance(enemy.pos,a.pos) > 15):
-		enemy.alert = false; enemy.charging = false; enemy.cast_id = ""; enemy.cast_left = 0; plan(s); return
+		enemy.alert = false; enemy.charging = false; enemy.cast_id = ""; enemy.cast_left = 0; plan(s)
+		patrol(s,enemy)
+		return
 	if enemy.get("cast_recovery",0) > 0:
 		enemy.cast_recovery -= 1; return
 	var part: String = str(enemy.get("part_id",""))
@@ -111,6 +115,20 @@ static func turn(s, enemy: Dictionary) -> void:
 			plan(s); s.message("%s · %s 준비" % [enemy.name,Abilities.DEFINITIONS[part].name])
 			return
 	role_turn(s,enemy,targets,s.status_blocks(enemy,"MOVE"))
+
+## An unalerted pack still takes its scheduled turns. Patrol stays near its
+## encounter spawn, so distant enemies do not silently cross the whole floor.
+static func patrol(s, enemy: Dictionary) -> void:
+	if enemy.get("boss",false) or s.status_blocks(enemy,"MOVE"): return
+	var home: Vector2i = enemy.get("home",enemy.pos)
+	var heading: int = posmod(int(enemy.get("patrol_heading",int(enemy.id)+s.seed_value)),s.DIRECTIONS.size())
+	for offset in range(s.DIRECTIONS.size()):
+		var next_heading: int = (heading+offset)%s.DIRECTIONS.size()
+		var cell: Vector2i = enemy.pos+s.DIRECTIONS[next_heading]
+		if distance(home,cell) > 3 or not s.can_step(enemy.pos,cell): continue
+		enemy.pos = cell
+		enemy.patrol_heading = next_heading
+		return
 
 ## The caster's own spell, cell-locked at SPELL_DAMAGE.
 static func resolve_spell(s, enemy: Dictionary, cell: Vector2i) -> void:

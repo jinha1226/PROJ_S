@@ -49,9 +49,14 @@ func run() -> void:
 	var key := InputEventKey.new(); key.pressed = true; key.keycode = KEY_RIGHT
 	scene._unhandled_key_input(key); await process_frame
 	check(scene.session.time > before_time,"direction key attacks the adjacent enemy")
-	scene.find_child("Attack",true,false).pressed.emit(); await process_frame
-	check(scene.mode == "ATTACK" and scene.find_child("Attack",true,false).button_pressed,"attack button arms target selection")
 	before_time = scene.session.time
+	scene.find_child("Attack",true,false).pressed.emit(); await process_frame
+	check(scene.session.time > before_time and scene.mode.is_empty(),"attack button strikes an in-range enemy immediately")
+	foe.pos = duel+Vector2i(3,0); scene.session.floor_state.observe(scene.session); scene.refresh(); await process_frame
+	before_time = scene.session.time
+	scene.find_child("Attack",true,false).pressed.emit(); await process_frame
+	check(scene.session.time == before_time and scene.mode == "ATTACK" and scene.board.show_attack_range,"attack button exposes target selection when no enemy is in range")
+	foe.pos = duel+Vector2i(1,0); scene.session.floor_state.observe(scene.session)
 	scene.on_cell(foe.pos); await process_frame
 	check(scene.session.time > before_time and scene.mode.is_empty(),"armed attack fires and clears selection")
 	var hero: Dictionary = scene.session.party[0]

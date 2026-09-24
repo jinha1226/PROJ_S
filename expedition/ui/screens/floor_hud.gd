@@ -166,6 +166,17 @@ static func build_stop_banner(ui) -> void:
 
 static func arm_attack(ui) -> void:
 	if ui.session == null or not ui.session.manual_mode: return
+	var session = ui.session
+	var hero: Dictionary = session.party[0]
+	var targets: Array = session.enemies.filter(func(enemy): return enemy.hp > 0 and session.floor_state.visible.has(enemy.pos) and not session.attack_preview(enemy.pos).is_empty())
+	if not targets.is_empty() and not session.status_blocks(hero,"ATTACK"):
+		targets.sort_custom(func(a,b):
+			var a_distance: int = session.distance(hero.pos,a.pos)
+			var b_distance: int = session.distance(hero.pos,b.pos)
+			return a_distance < b_distance if a_distance != b_distance else a.id < b.id)
+		var cell: Vector2i = targets[0].pos
+		ui.run_action(func(): return session.act("ATTACK",cell))
+		return
 	ui.mode = "" if ui.mode == "ATTACK" else "ATTACK"
 	ui.show_attack_range = ui.mode == "ATTACK"
 	ui.refresh()
