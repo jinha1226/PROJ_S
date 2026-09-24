@@ -71,7 +71,8 @@ static func blink_cells(s, caster: Dictionary) -> Array:
 ## npc branch every wanderer uses, and fades when its time runs out. It never
 ## joins, is never placed by the roster and never shows in the run's history.
 static func summon(s, caster: Dictionary, cell: Vector2i) -> Dictionary:
-	var pet: Dictionary = s.make_actor(2000+s.time%1000,"사냥개",false)
+	s.serial += 1
+	var pet: Dictionary = s.make_actor(2000+s.serial,"사냥개",false)
 	pet.merge({"npc":true,"awake":true,"summoned":true,"expires_at":s.time+300,
 		"mode":"","mode_until":0,"hungry":false,"partner":-1,"bond":"","situation":"RESTING",
 		"state":"MET","floor_seen":int(s.depth),"joined_floor":0,"activity":"","explains":[],
