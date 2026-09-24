@@ -304,19 +304,20 @@ static func move_time(s, actor: Dictionary, cell: Vector2i) -> int:
 
 ---
 
-### Task 1b: 모임 화면 · 종족 · 시작 장비 (명부 30명)
+### Task 1b: 포탈 앞 광장 · 종족 · 시작 장비 (명부 30명)
 
 **Files:**
-- Modify: `expedition/npc_roster.gd`(`COUNT := 30`, `DUOS := 6`, 종족·무기 배정), `expedition/session.gd`(`begin_run(species_id, kit_id)`; `depart()`는 그대로 1층 진입), `data/content/combat.json`(`kits` 표), `expedition/main.gd`(`GatherScreen`), `data/content/npc_names.json`(이름 40개로)
-- Test: `tests/gather.gd`(신규), `tests/npc_roster.gd`(30명·6쌍으로 갱신, 검사 수 유지)
+- Create: `tests/plaza.gd`; 템플릿 `portal_plaza`를 `data/content/floor_templates.json`에(글리프 `O` 포탈, `F` 모닥불, `T` 천막 — `floor_templates.gd GLYPH_FEATURE`에 `{"kind":"portal"}`, `{"kind":"fire_pit"}`, `{"kind":"tent"}` 추가)
+- Modify: `expedition/npc_roster.gd`(`COUNT := 30`, `DUOS := 6`, 종족·kit 배정, `place_plaza(s)`), `expedition/npc_modes.gd`·`npc_ai.gd`(`MINGLE` 모드: 광장에서만, 모닥불/천막/파트너 2칸 안 시드 걸음), `expedition/session.gd`(`open_plaza()`, `begin_run(species_id, kit_id)`, IDLE에서 `submit("MOVE")` 허용·전투 없음), `expedition/continuous_floor.gd`(`apply_plaza`: 템플릿 하나를 층처럼 적용, 시야 전부), `data/content/combat.json`(`kits`), `expedition/main.gd`(`PlazaHud/HeroCard/SpeciesPick/KitPick`, `PortalPopup/Descend`), `data/content/npc_names.json`(40개)
+- Test: `tests/npc_roster.gd`(30명·6쌍, 검사 수 유지)
 
 **Interfaces:**
-- Produces: `combat.json.kits`(스펙 §6 표: `{id, axis, weapon, spell}`), `Session.begin_run(species_id, kit_id) -> bool`(IDLE에서만; 주인공 `species_id`·`gear.weapon`·`gear.armour = robe`·(마법 kit이면) `spells/prepared`에 첫 주문·HP/MP를 종족값으로, 그 뒤 `depart()`), `NpcRoster.kit_for(profile, seed_lane) -> String`, 노드 `GatherScreen/GatherToken%d/SpeciesPick/KitPick/Descend`.
-- 판정: 종족 HP는 T1의 55 고정을 유지하되 종족 간 차이는 원본 비율로 스케일(인간 55, 드워프 66, 엘프 43; MP 18/12/26).
+- Produces: `combat.json.kits`(스펙 §6 표 `{id, axis, weapon, spell}`), `Session.open_plaza()`(새 세션 → 명부 생성 → 광장 적용 → 주인공을 포탈 아래 3칸에, NPC 30명을 모닥불·천막 주변에 시드 배치 → `phase = "IDLE"`), `Session.begin_run(species_id, kit_id) -> bool`(IDLE·주인공이 포탈 인접·둘 다 선택됐을 때만; 종족 HP/MP·`gear.weapon`·`gear.armour = robe`·마법 kit이면 `spells/prepared`; 그 뒤 `depart()`), `NpcRoster.kit_for(profile, lane) -> String`, `NpcAI` `MINGLE`(IDLE에서만 선택되는 모드; 비용 100), 노드 `PlazaHud/HeroCard/SpeciesPick/KitPick`, `PortalPopup/Descend`.
+- 판정: 종족 HP는 T1의 55 기준 비율(인간 55, 드워프 66, 엘프 43; MP 18/12/26). 광장에서는 `combat_enemies()`가 빈 배열, 소음·잠듦·영입 비활성, 시간은 흐른다(NPC가 움직이려면).
 
-- [ ] **Step 1: 실패하는 테스트 — `tests/gather.gd`**: `Session.new` 직후 `phase == "IDLE"`, `roster.size() == 30`, 2인 조 6쌍, 종족 3종 모두 등장, 무기 10종 모두 등장(시드 5개 합쳐서), 마법 무기 NPC는 `spells.size() == 1 and prepared == spells`; `begin_run("dwarf","axe")` → 주인공 `species_id dwarf`, `gear.weapon.type == "axe"`, `max_hp 66`, `depth == 1`, `phase == "EXPLORE"`; `begin_run("elf","fire")` → `spells == ["bolt"]`, `prepared == ["bolt"]`, `mp == 26`; 잘못된 id 거부; 씬: `GatherScreen`에 토큰 31개, `SpeciesPick`·`KitPick` 선택 후 `Descend` → HUD; 결과 화면 `NewRun` → 다시 `GatherScreen`.
-- [ ] **Step 2: 구현.** `npc_roster.generate`가 `species_id`(시드)·kit(성격 가중, 스펙 §6)을 배정하고 `gear/spells/prepared`를 채운다. `main.gd`: `new_run()` → 세션 생성만(IDLE) + `GatherScreen`; `Descend` 버튼이 `begin_run`. 토큰 탭 → 기존 NPC 팝업 재사용(영입 버튼 없이). 배치(`place`)는 30명 중 3~5명이므로 `UNMET` 우선 규칙 그대로.
-- [ ] **Step 3: 실행·커밋** `feat(run): the gathering — thirty on the roster, species and starting kit chosen before floor one`
+- [ ] **Step 1: 실패하는 테스트 — `tests/plaza.gd`**: `Session.open_plaza()` 뒤 `phase == "IDLE"`, `roster.size() == 30`, 2인 조 6쌍, `npcs.size() == 30`(전원 광장에), 전원 바닥 칸·겹침 없음, 포탈 특징 존재·주인공은 포탈 3칸 아래; 종족 3종·무기 10종 모두 등장(시드 5개 합쳐서); 마법 무기 NPC는 `spells.size() == 1 and prepared == spells`; `submit("MOVE")` 6번 뒤 NPC 중 절반 이상이 위치를 바꿨고 모두 모닥불/천막/파트너 2칸 안(`MINGLE`), 2인 조는 인접 유지; `begin_run` 거부(포탈 비인접 / 미선택 / 잘못된 id) → 포탈 인접 + `("dwarf","axe")` → `species_id dwarf`, `gear.weapon.type axe`, `max_hp 66`, `depth 1`, `phase EXPLORE`, `npcs.size()` 3(1층 배치); `("elf","fire")` → `spells == ["bolt"]`, `mp 26`; 씬: `PlazaHud`에 `HeroCard`, 선택 후 포탈 탭 → `PortalPopup` → `Descend` → HUD; 결과 화면 `NewRun` → 새 광장(명부가 새로 생성됨).
+- [ ] **Step 2: 구현.** `portal_plaza` 템플릿(24×16, `O` 위 가운데, `F` 2, `T` 3, 나머지 `.`/`,`); `continuous_floor.apply_plaza(s)`는 `apply()`의 타일·특징 부분만(적 없음, `visible`을 전부 채움, 계단 없음); `NpcRoster.place_plaza`는 30명을 `F/T` 주변 반경 3 안 빈 칸에 시드로(파트너는 인접); `npc_modes.MINGLE`은 IDLE일 때 `choose`가 유일하게 반환하는 모드이고 `npc_ai.turn`은 앵커(`npc.anchor` = 배치 시 가장 가까운 F/T 칸) 2칸 안 빈 이웃 칸으로 시드 걸음(4번 중 1번은 대기); `Session.open_plaza()`·`begin_run()`; `main.gd new_run()` → `open_plaza()` + `PlazaHud`; 포탈 탭은 `on_cell`의 특징 분기(`portal`)에서 `PortalPopup`. `begin_run` 뒤 `depart()`가 1층을 만들고 `NpcRoster.place`가 광장 NPC를 걷어내고 3~5명만 층에 놓는다(`s.npcs` 초기화는 `place()`가 이미 함).
+- [ ] **Step 3: 실행·커밋** `feat(run): the plaza before the portal — thirty mingle by the fires; species and kit chosen, then floor one`
 
 ---
 
@@ -573,6 +574,6 @@ static func double_movers(s, cost: int) -> Array:
 
 ## 자기 검토
 
-- 스펙 커버리지: §0 결정(T1 수학·데이터, T1b 모임·종족·시작 장비, T2 오토배틀 제거·tick·구간, T3 숙련, T4 주문·드롭, T5 UI, T6 게이트) / §1.0 모임(T1b) / §1 이식표(T1·T2·T3·T4) / §2 비용표(T2) / §3 접합(T2) / §4 재정의표(T2) / §5 숙련(T3·T5) / §6 장비·주문(T4·T5) / §7 검증(T1~T6) / §8 순서(그대로).
+- 스펙 커버리지: §0 결정(T1 수학·데이터, T1b 광장·종족·시작 장비, T2 오토배틀 제거·tick·구간, T3 숙련, T4 주문·드롭, T5 UI, T6 게이트) / §1.0 광장(T1b) / §1 이식표(T1·T2·T3·T4) / §2 비용표(T2) / §3 접합(T2) / §4 재정의표(T2) / §5 숙련(T3·T5) / §6 장비·주문(T4·T5) / §7 검증(T1~T6) / §8 순서(그대로).
 - 이름 일관성: `CombatStats.stats`, `CombatRules.attack/damage/move_time`, `Session.after_damage/on_kill/submit/action_cost/perform/start_route/route_step/route_active/cast/equip_gear/unequip_gear/prepare_spell`, `Scheduler.advance/act/environment_tick/double_movers/actors`, `Mastery.AXES/NAMES/weapon_axis/rank/next_xp/add_xp/record/award/unlocked/fusions/aptitude/catchup`, `MasteryEffects.on_attack/on_dodge/on_spell_hit/damage_bonus`, `Spells.cast/failure/cells`, 액터 `gear/species_id/mp/max_mp/skill_xp/statuses/spells/prepared/ready_at/level/level_xp`, `s.time/boundary/turn_serial/gear_bag`, `intents[].resolve_at`.
 - 위험: T2가 가장 크다(라운드 제거가 8개 스위트와 시뮬 봇에 닿음). T2 Step 5의 "삭제 목록"은 한 번에 지우지 말고 `submit` 경로가 초록이 된 뒤 지운다. T1에서 HP 55/종족 72 충돌은 55로 고정하고 T6이 비교한다. 동료 시전(주문)은 범위 밖으로 명시했다.
