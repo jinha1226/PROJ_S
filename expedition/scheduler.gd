@@ -110,6 +110,13 @@ static func environment_tick(s) -> void:
 		for x in range(s.BOARD_SIDE):
 			var point := Vector2i(x, y)
 			var cell: Dictionary = s.tile(point)
+			# A conjured barrier holds its cells for the span the spell bought,
+			# then is simply gone; a wall of fire burns whoever stands in it.
+			if int(cell.get("wall_until",0)) > 0:
+				if int(cell.wall_until) <= s.time: cell.erase("wall_until"); cell.erase("wall_burn")
+				elif bool(cell.get("wall_burn",false)):
+					var standing: Dictionary = s.at(point)
+					if not standing.is_empty(): Rules.damage(s,{},standing,4,"fire")
 			if cell.fire <= 0 and cell.wet <= 0: continue
 			var result: Dictionary = ElementRules.project_existing_fire_tick(cell.fire, cell.wet, 0, s.time)
 			cell.fire = result.fire_after_decay
@@ -128,7 +135,7 @@ static func environment_tick(s) -> void:
 			if until < s.time:
 				actor.statuses.erase(status); continue
 			if status == "bleed": Rules.damage(s,{},actor,2,"physical")
-			elif status == "burn": Rules.damage(s,{},actor,1,"fire")
+			elif status == "burn": Rules.damage(s,{},actor,4,"fire")
 			elif status == "poison": Rules.damage(s,{},actor,2,"poison")
 			if until <= s.time: actor.statuses.erase(status)
 	for actor in s.alive():

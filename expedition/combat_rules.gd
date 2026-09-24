@@ -17,7 +17,10 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 		Mastery.record(source,int(target.id),Mastery.weapon_axis(str(source.get("gear",{}).get("weapon",{}).get("type","sword"))))
 	var offense: Dictionary = Stats.stats(s, source)
 	var defense: Dictionary = Stats.stats(s, target)
-	if roll(s, source, target, "dodge", 100) < clampi(int(defense.ev) * 2, 5, 45):
+	# 왜곡 takes thirty points off whatever the attacker can still aim.
+	var dodge := clampi(int(defense.ev) * 2, 5, 45)
+	if source.get("statuses", {}).has("distort"): dodge = mini(95, dodge + 30)
+	if roll(s, source, target, "dodge", 100) < dodge:
 		out.evaded = true; s.message(str(target.name) + " 회피")
 		Effects.on_dodge(s,target,source)
 		return out
@@ -49,6 +52,8 @@ static func damage(s, source: Dictionary, target: Dictionary, raw: int, element:
 	if element not in ["physical", "SLASH", "IMPACT", "RETALIATE"]:
 		var resistance: int = maxi(0,int(Stats.stats(s, target).res.get(element.to_lower(), 0))-penetration)
 		amount = maxi(0, raw * (100 - resistance) / 100)
+	# 취약화 is read after resistance: everything that still lands lands harder.
+	if target.get("statuses", {}).has("vulnerable"): amount = amount * 13 / 10
 	return s.after_damage(target, amount, int(source.get("id", 999)), element)
 
 static func move_time(s, actor: Dictionary, cell: Vector2i) -> int:

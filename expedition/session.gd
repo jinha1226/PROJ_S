@@ -26,6 +26,8 @@ const Scheduler = preload("res://expedition/scheduler.gd")
 const Spells = preload("res://expedition/spells.gd")
 const Passives = preload("res://expedition/passives.gd")
 var parts_bag: Dictionary = {}
+## How many spells a caster may hold ready at once, chosen at camp.
+const PREPARED_SLOTS := 5
 const STARTING_PARTS := {"PUSH":1,"GUARD":1}
 var party_command := "FOLLOW"
 ## Marching order: party indices in the order they follow the leader. The
@@ -130,6 +132,7 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"growth":Growth.create(),"protected_by":-1,
 		"gear":{"weapon":{},"armour":{},"shield":{},"ring":{}},
 		"mp":18,"max_mp":18,"skill_xp":{},"usage":{},"statuses":{},"spells":[],"prepared":[],
+		"books":[],"buffs":{},
 		"level":1,"level_xp":0,"ready_at":0,
 		"pos":Vector2i.ZERO, "hp":28 if enemy else 55, "max_hp":28 if enemy else 55,
 		"stress":0, "condition":"평온", "ap":2,
@@ -217,7 +220,17 @@ func npc_cooldown() -> int:
 ## living dungeon NPC. `alive()` stays the party alone — defeat, stress and the
 ## battle's end are the party's own business.
 func friends() -> Array:
-	return alive()+npcs.filter(func(n): return n.hp > 0 and n.awake)
+	return alive()+npcs.filter(func(n): return n.hp > 0 and n.awake)+enemies.filter(func(e): return e.hp > 0 and dominated(e))
+
+## A dominated monster fights for the party while the spell holds. The `enemy`
+## flag never moves: only this clock decides which side it is counted on.
+func dominated(actor: Dictionary) -> bool:
+	return int(actor.get("dominated_until",0)) > time
+
+## Whom this actor fights. A dominated monster turns on its own kind.
+func hostiles_of(actor: Dictionary) -> Array:
+	if dominated(actor): return enemies.filter(func(e): return e.hp > 0 and int(e.id) != int(actor.id) and not dominated(e))
+	return friends().filter(func(a): return int(a.id) != int(actor.id))
 
 ## Who walked with the party this run: only those who actually joined, in
 ## roster order, each with the floor it joined on and whether it is still up.
@@ -271,9 +284,13 @@ func depart() -> bool:
 	party[0].gear.armour = {"type":"robe","enchant":0}
 	party[0].skill_xp[str(kit.axis)] = 25
 	var kit_spell: String = str(kit.get("spell",""))
+	party[0].books = []; party[0].buffs = {}
+	party[0].spells = []; party[0].prepared = []
 	if not kit_spell.is_empty():
+		# A magic kit leaves with its school's primer and the first spell in it.
 		party[0].spells = [kit_spell]
 		party[0].prepared = [kit_spell]
+		party[0].books = [str(Spells.definition(kit_spell).get("book",""))]
 	for actor in party:
 		# A debt owed or refused outlives the run it was made in.
 		actor.memory.records = actor.memory.records.filter(func(record): return int(record.salience) >= 700 or str(record.kind) in Memory.SOCIAL_KINDS)
@@ -375,7 +392,7 @@ func at(point: Vector2i) -> Dictionary:
 	return {}
 
 func is_free(point: Vector2i) -> bool:
-	return inside(point) and tile(point).terrain != "wall" and at(point).is_empty()
+	return inside(point) and tile(point).terrain != "wall" and at(point).is_empty() and int(tile(point).get("wall_until",0)) <= time
 
 func distance(a: Vector2i, b: Vector2i) -> int:
 	return absi(a.x - b.x) + absi(a.y - b.y)
@@ -560,8 +577,8 @@ func can_submit(actor: Dictionary, kind: String, target: Vector2i, value: String
 	if Abilities.DEFINITIONS.has(kind): return Abilities.legal(self,actor,kind,target)
 	match kind:
 		"WAIT": return target == actor.pos
-		"MOVE": return target in movement_cells(0)
-		"ATTACK": return not attack_preview(target,0).is_empty()
+		"MOVE": return not status_blocks(actor,kind) and target in movement_cells(0)
+		"ATTACK": return not status_blocks(actor,kind) and not attack_preview(target,0).is_empty()
 		"PYLON": return true
 		"FIRE", "WATER", "ELECTRIC": return distance(actor.pos,target) <= 4 and tile(target).terrain != "wall"
 	return false
@@ -569,25 +586,60 @@ func can_submit(actor: Dictionary, kind: String, target: Vector2i, value: String
 func cast(id: String, target: Vector2i) -> bool:
 	return submit("CAST",target,id)
 
+## 빙결 and 속박 stop the feet; only 빙결 also stops the arms.
+func status_blocks(actor: Dictionary, kind: String) -> bool:
+	var statuses: Dictionary = actor.get("statuses",{})
+	if kind == "MOVE": return statuses.has("freeze") or statuses.has("bind")
+	if kind == "ATTACK": return statuses.has("freeze")
+	return false
+
 func prepare_spell(index: int, id: String, on: bool) -> bool:
 	if phase != "CAMP" or index < 0 or index >= party.size(): return false
 	var actor: Dictionary = party[index]
 	if id not in actor.spells or Spells.definition(id).is_empty(): return false
 	if on:
 		if id in actor.prepared: return true
-		if actor.prepared.size() >= 3: return false
+		if actor.prepared.size() >= PREPARED_SLOTS: return false
 		actor.prepared.append(id)
 	else:
 		actor.prepared.erase(id)
 	return true
 
+## Learning is a camp's work and nothing else's: the book has to be in the bag
+## and the school one rank short of the spell's level. Rank rises by casting,
+## so nothing is ever unlocked on its own.
 func learn_spell(index: int, id: String) -> bool:
-	if index < 0 or index >= party.size() or Spells.definition(id).is_empty(): return false
+	if index < 0 or index >= party.size(): return false
 	var actor: Dictionary = party[index]
-	if id in actor.spells: return false
+	if not Spells.learnable(self,actor,id).is_empty(): return false
 	actor.spells.append(id)
 	message(str(CombatStats.content.spells[id].name)+" 획득")
 	return true
+
+## A book found in the dungeon. It stays in the bag and can be read again.
+func grant_book(book_id: String) -> bool:
+	var row: Dictionary = Spells.book(book_id)
+	if row.is_empty() or party.is_empty(): return false
+	if book_id not in party[0].books: party[0].books.append(book_id)
+	message(str(row.name)+" 획득")
+	return true
+
+## Which grade a floor gives up: 중급서 from the third floor down, 고급서 from
+## the sixth. `top` takes the best the depth allows — what a boss carries.
+func book_tier(key: int, top: bool = false) -> int:
+	var depths: Dictionary = CombatStats.content.loot.books.tier_depth
+	var allowed: Array = []
+	for tier in depths:
+		if depth >= int(depths[tier]): allowed.append(int(tier))
+	if allowed.is_empty(): allowed = [1]
+	allowed.sort()
+	if top: return int(allowed[allowed.size()-1])
+	return int(allowed[Hexaco.sample(seed_value,key,"book_tier",allowed.size())])
+
+## Any school's book, not only the hero's: this is how a run goes multi-school.
+func random_book(key: int, top: bool = false) -> String:
+	var schools: Array = Mastery.AXES.slice(5)
+	return "%s_%d" % [str(schools[Hexaco.sample(seed_value,key,"book_school",schools.size())]),book_tier(key,top)]
 
 func gear_slot(item: Dictionary) -> String:
 	var id: String = str(item.get("type",""))
@@ -649,7 +701,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 		if presentation != null: presentation.capture(self,actor.id,display_event)
 		if chain: finish_player_action()
 		return true
-	if actor.hp <= 0 or actor.ap <= 0: return false
+	if actor.hp <= 0 or actor.ap <= 0 or status_blocks(actor,kind): return false
 	var was: Vector2i = actor.pos
 	if Abilities.DEFINITIONS.has(kind):
 		if not Abilities.execute(self,actor,kind,target): return false
@@ -1262,7 +1314,9 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 			if pending_offer == int(target.id): pending_offer = -1
 			# A stranger's death is not a comrade's: whoever watched it happen is
 			# shaken, and someone the npc owed a debt to feels it twice.
-			var watched: bool = floor_state.visible.has(target.pos)
+			# A summoned creature is a spell ending, not a stranger dying: the
+			# party grieves nobody for it.
+			var watched: bool = floor_state.visible.has(target.pos) and not bool(target.get("summoned",false))
 			for ally in alive():
 				if not watched: continue
 				stress(ally,5)
@@ -1285,8 +1339,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 			food += 1; message("고기 획득 · 식량 +1")
 		if target.get("boss",false):
 			grant_part(str(target.part_id)); score += 100
-			var books: Array = Spells.IMPLEMENTED.filter(func(id): return id not in party[0].spells)
-			if not books.is_empty(): learn_spell(0,str(books[Hexaco.sample(seed_value,depth*1000+target.id,"boss_book",books.size())]))
+			grant_book(random_book(depth*1000+int(target.id),true))
 		else: roll_part(target)
 	if not target.enemy and target.id == 0 and target.hp <= 0: check_battle_end()
 	return lost

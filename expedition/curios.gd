@@ -43,8 +43,7 @@ static func resolve(s, point: Vector2i, option: String) -> bool:
 		if bonus < 50 and not part_ids.is_empty(): s.grant_part(part_ids[s.Hexaco.sample(s.seed_value,key,"curio_part",part_ids.size())])
 		else: s.grant_supply(s.Hexaco.sample(s.seed_value,key,"curio_supply",s.supplies.size()))
 	if int(outcome.get("spellbook_chance",0)) > 0 and s.Hexaco.sample(s.seed_value,key,"spellbook",100) < int(outcome.spellbook_chance):
-		var books: Array = s.Spells.IMPLEMENTED
-		s.learn_spell(0,str(books[s.Hexaco.sample(s.seed_value,key,"spellbook_id",books.size())]))
+		s.grant_book(s.random_book(key))
 	if int(outcome.get("gear_chance",0)) > 0 and s.Hexaco.sample(s.seed_value,key,"gear",100) < int(outcome.gear_chance):
 		var by_depth: Dictionary = s.CombatStats.content.loot.gear_by_depth
 		var tier := 1

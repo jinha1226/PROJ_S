@@ -48,4 +48,9 @@ static func stats(_session, actor: Dictionary) -> Dictionary:
 	if statuses.has("ward"): result.ac += 6
 	if statuses.has("rage"): result.damage += 8
 	if statuses.has("corrode"): result.ac = maxi(0, int(result.ac) - 4)
+	# 취성 eats armour the way corrosion does; 약화 takes the strength out of a
+	# blow; 폭풍의 눈 is the air school's own coat of wind.
+	if statuses.has("brittle"): result.ac = maxi(0, int(result.ac) - 4)
+	if statuses.has("weak"): result.damage = int(result.damage) * 7 / 10
+	if statuses.has("stormeye"): result.ev += 20
 	return result
