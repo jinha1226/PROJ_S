@@ -23,8 +23,6 @@ static func shell(ui, tab: String) -> VBoxContainer:
 	# Design coordinates match the approved 390 x 844 portrait folio.
 	var screen: Vector2 = ui.get_viewport_rect().size
 	var skin: Theme = ui.theme.duplicate()
-	for state in ["normal","hover","pressed","focus","disabled"]:
-		skin.set_stylebox(state,"Button",surface(Color("201d19"),Color("c3a366") if state in ["pressed","focus"] else Color("6d5b3f")))
 	skin.set_color("font_color","Button",Color("e0d4bc"))
 	skin.set_color("font_pressed_color","Button",Color("ffe0a3"))
 	var opaque := surface(Color("0e0d0c")); opaque.set_content_margin_all(0)

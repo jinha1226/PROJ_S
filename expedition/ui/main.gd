@@ -90,8 +90,8 @@ func _ready() -> void:
 	for state in ["normal","hover","pressed","focus","disabled"]:
 		var frame_state: int = {"normal":0,"hover":1,"pressed":2,"focus":1,"disabled":3}[state]
 		var box := StyleBoxTexture.new(); box.texture = Art.ui_frame(frame_state)
-		box.texture_margin_left = 6; box.texture_margin_right = 6
-		box.texture_margin_top = 6; box.texture_margin_bottom = 6
+		box.texture_margin_left = 10; box.texture_margin_right = 10
+		box.texture_margin_top = 10; box.texture_margin_bottom = 10
 		box.content_margin_left = 8; box.content_margin_right = 8
 		box.content_margin_top = 5; box.content_margin_bottom = 5
 		skin.set_stylebox(state,"Button",box)

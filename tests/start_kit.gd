@@ -144,7 +144,7 @@ func start_screen() -> void:
 	check(main.kit_choice == "sword","sword is the default kit")
 	var sword: Button = main.find_child("Kit_sword",true,false)
 	var selected_style: StyleBox = sword.get_theme_stylebox("normal")
-	check(selected_style is StyleBoxTexture and selected_style.texture == Art.ui_frame(5) and selected_style.texture_margin_top == 6,"the chosen kit wears the compact gold frame")
+	check(selected_style is StyleBoxTexture and selected_style.texture == Art.ui_frame(5) and selected_style.texture_margin_top == 10,"the chosen kit wears the gold image frame")
 	var bow: Button = main.find_child("Kit_bow",true,false)
 	check(bow.custom_minimum_size.y >= 44,"kit buttons stay thumb-sized")
 	bow.pressed.emit(); await process_frame

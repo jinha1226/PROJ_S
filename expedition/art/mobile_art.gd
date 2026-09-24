@@ -12,6 +12,7 @@ const Masonry = preload("res://expedition/art/masonry_tiles.gd")
 const FirstFloor = preload("res://expedition/art/floor1_art.gd")
 const FLAGSTONE = preload("res://assets/topdown/flagstone-floor-v1.png")
 const UI_ATLAS_8BIT = preload("res://assets/ui/ui-atlas-8bit-v1.png")
+const UI_BUTTON_FRAMES = preload("res://assets/ui/button-frames-8bit-v1.png")
 const UI_CELL := 256
 const UI_ROW_BOUNDS := [Vector2i(24,291),Vector2i(292,526),Vector2i(528,728),Vector2i(734,992)]
 static var terrain_cache: Dictionary = {}
@@ -74,26 +75,13 @@ static func ui_region(column: int, row: int) -> AtlasTexture:
 static func ui_icon(index: int) -> AtlasTexture:
 	return ui_region(posmod(index,6),index/6)
 
-## Small, clean source for nine-slice buttons. The atlas's large frame samples
-## overlap their cell edges, so using them on 44px buttons clips the corners.
+## Frames extracted from row 3 of the 8-bit UI artwork and sized for 9-slice.
 static func ui_frame(state: int) -> Texture2D:
 	state = clampi(state,0,5)
 	if ui_frame_cache.has(state): return ui_frame_cache[state]
-	var borders := [Color("ad8e58"),Color("dcc17e"),Color("7d6848"),Color("595d60"),Color("9e8150"),Color("f0c765")]
-	var fills := [Color("1b2530"),Color("263441"),Color("101820"),Color("1b2025"),Color("19222b"),Color("263039")]
-	var image := Image.create(24,24,false,Image.FORMAT_RGBA8)
-	for y in range(24):
-		for x in range(24):
-			var edge: int = mini(mini(x,23-x),mini(y,23-y))
-			if x < 2 and y < 2 or x > 21 and y < 2 or x < 2 and y > 21 or x > 21 and y > 21:
-				image.set_pixel(x,y,Color.TRANSPARENT)
-			elif edge == 0:
-				image.set_pixel(x,y,Color("080c11"))
-			elif edge == 1:
-				image.set_pixel(x,y,borders[state])
-			elif edge == 2:
-				image.set_pixel(x,y,borders[state].lightened(0.2) if x == 2 or y == 2 else borders[state].darkened(0.2))
-			else:
-				image.set_pixel(x,y,fills[state])
-	ui_frame_cache[state] = ImageTexture.create_from_image(image)
+	var texture := AtlasTexture.new()
+	texture.atlas = UI_BUTTON_FRAMES
+	texture.region = Rect2(state*48,0,48,48)
+	texture.filter_clip = true
+	ui_frame_cache[state] = texture
 	return ui_frame_cache[state]
