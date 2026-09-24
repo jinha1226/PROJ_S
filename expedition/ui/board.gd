@@ -46,6 +46,30 @@ var companion_intents: Array = []
 var playback_decision_recorded := false
 var ui_elapsed := 0.0
 var skill_badges: Dictionary = {}
+var walk_actor_id := -1
+var walk_from := Vector2i.ZERO
+var walk_to := Vector2i.ZERO
+var walk_elapsed := 0.0
+var walk_duration := 0.11
+
+func animate_walk(actor_id: int, from: Vector2i, to: Vector2i, duration: float = 0.11) -> void:
+	walk_actor_id = actor_id
+	walk_from = from
+	walk_to = to
+	walk_elapsed = 0.0
+	walk_duration = maxf(0.01,duration)
+	queue_redraw()
+
+func display_center(actor: Dictionary) -> Vector2:
+	var center := cell_center(actor.pos)
+	if not is_presenting() and walk_actor_id == int(actor.id) and actor.pos == walk_to:
+		var t := clampf(walk_elapsed/walk_duration,0.0,1.0)
+		center = cell_center(walk_from).lerp(center,1.0-pow(1.0-t,2.0))
+	for effect in effects:
+		if effect.get("kind","") == "ATTACK_SWING" and effect.from == actor.pos and effect_time < 0.2:
+			var progress := clampf(effect_time/0.2,0.0,1.0)
+			center += (cell_center(effect.cell)-cell_center(effect.from)).normalized()*half_width*0.48*sin(progress*PI)
+	return center
 
 func is_presenting() -> bool:
 	return not playback.is_empty()
@@ -62,6 +86,7 @@ func reset_intent_ui() -> void:
 
 func play_frames(frames: Array) -> void:
 	if frames.is_empty(): return
+	walk_actor_id = -1
 	playback_focus = frames[0].before.focus
 	playback = frames.duplicate(true)
 	playback_clock = 0.0
@@ -129,6 +154,10 @@ func preview_rect(actor: Dictionary) -> Rect2:
 
 func _process(delta: float) -> void:
 	var had_labels: bool = not skill_badges.is_empty() or not intent_ui.speech.is_empty()
+	if walk_actor_id >= 0:
+		walk_elapsed += delta
+		if walk_elapsed >= walk_duration: walk_actor_id = -1
+		queue_redraw()
 	if not is_presenting() and session != null and bool(session.auto.get("running",false)):
 		ui_elapsed += delta
 		intent_ui.tick(delta,false)
@@ -351,6 +380,7 @@ func _draw() -> void:
 				draw_circle(center,half_width*0.4,Color("a74b24")); draw_circle(center-Vector2(0,4),half_width*0.2,Color("ffc675"))
 			var actor: Dictionary = display_at(point)
 			if not actor.is_empty():
+				center = display_center(actor)
 				if not actor.enemy and session.party.find(actor) == session.selected: outline(polygon,Color("e8c276"),2)
 				draw_set_transform(center*camera.zoom+camera.offset,0,Vector2(1,0.45)*camera.zoom)
 				draw_circle(Vector2.ZERO,half_width*0.6,Color(0,0,0,0.5))
@@ -427,7 +457,7 @@ func _draw_foreground(canvas: Node2D) -> void:
 		# An awake npc keeps its tag out of sight; anyone else is only drawn in the light.
 		if not seen and not (npc and actor.get("awake",false)): continue
 		var fade: float = 1.0 if seen else 0.5
-		var center := cell_center(actor.pos)
+		var center := display_center(actor)
 		if actor.enemy:
 			var role: String = "준비!" if actor.get("charging",false) else {"MELEE":"근접","RANGED":"사격","CASTER":"마법"}.get(actor.get("role","MELEE"),"")
 			canvas.draw_string(ui_font,center+Vector2(-20,-half_width*0.7),role,HORIZONTAL_ALIGNMENT_CENTER,40,11,Color("ffe2a0"))
@@ -475,6 +505,15 @@ func _draw_foreground(canvas: Node2D) -> void:
 	for effect in effects:
 		if effect.get("kind","") == "ENEMY_ATTACK":
 			draw_enemy_attack(effect,canvas); continue
+		if effect.get("kind","") == "ATTACK_SWING":
+			if effect_time < 0.2:
+				var progress := clampf(effect_time/0.2,0.0,1.0)
+				var start := cell_center(effect.from)
+				var target := cell_center(effect.cell)
+				var center := start.lerp(target,0.55+0.45*progress)
+				var tangent := (target-start).normalized().rotated(PI/2)*half_width*0.42
+				canvas.draw_line(center-tangent,center+tangent,Color(1.0,0.9,0.67,1.0-progress),2.0,true)
+			continue
 		if effect_time >= 0.75: continue
 		var center := cell_center(effect.cell)-Vector2(0,half_width*0.65)
 		var fade := 1.0-effect_time/0.75

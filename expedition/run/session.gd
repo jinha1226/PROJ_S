@@ -338,8 +338,6 @@ func distance(a: Vector2i, b: Vector2i) -> int:
 func melee_reach(a: Vector2i, b: Vector2i) -> bool:
 	if not inside(a) or not inside(b) or a == b or maxi(absi(a.x-b.x),absi(a.y-b.y)) != 1: return false
 	if tile(b).terrain == "wall": return false
-	if a.x != b.x and a.y != b.y:
-		if tile(Vector2i(a.x,b.y)).terrain == "wall" or tile(Vector2i(b.x,a.y)).terrain == "wall": return false
 	return true
 
 func walk_reach(a: Vector2i, b: Vector2i) -> bool:
@@ -566,6 +564,8 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 			actor.hit_and_run = false
 		"ATTACK":
 			if victim.is_empty() or not victim.enemy or not attack_reach(actor,target,int(CombatStats.stats(self,actor).range)): return false
+			if manual_mode and melee_reach(was,target):
+				effects.append({"kind":"ATTACK_SWING","from":was,"cell":target,"amount":0,"form":"SLASH"})
 			if manual_mode: CombatRules.attack(self,actor,victim)
 			else:
 				var hit := TurnCore.physical(Growth.power(actor,"MELEE",18) * actor.attack_factor / 100, 1000, 0, 2)

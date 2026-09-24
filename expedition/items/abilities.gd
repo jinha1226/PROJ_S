@@ -103,7 +103,7 @@ static func legal(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 	# distance() is Manhattan, so a range-1 skill would miss the diagonals a
 	# basic attack reaches; "adjacent" means melee_reach everywhere else.
 	var in_range: bool = s.melee_reach(actor.pos,target) if int(def.range) == 1 else s.distance(actor.pos,target) <= int(def.range)
-	if not in_range or not s.TurnCore.Geometry.sees(actor.pos,target,func(p): return s.tile(p).terrain == "wall"): return false
+	if not in_range or (int(def.range) > 1 and not s.TurnCore.Geometry.sees(actor.pos,target,func(p): return s.tile(p).terrain == "wall")): return false
 	if def.effect == "LUNGE": return lunge_cell(s,actor,id,target) != Vector2i(-1,-1)
 	return true
 

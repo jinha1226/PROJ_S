@@ -13,7 +13,7 @@ const AutoBattleHud = preload("res://expedition/ui/screens/autobattle_hud.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
 var portrait_gesture = preload("res://expedition/legacy/portrait_gesture.gd").new()
 var navigation = preload("res://expedition/level/exploration_navigation.gd").new()
-const NAVIGATION_STEP_SECONDS := 0.06
+const NAVIGATION_STEP_SECONDS := 0.11
 var navigation_clock := 0.0
 var view_side := 17
 var log_popup: PopupPanel
@@ -362,6 +362,7 @@ func finish_presentation() -> void:
 func run_action(callback: Callable, navigating: bool = false) -> void:
 	if is_instance_valid(board) and board.is_presenting(): return
 	if not navigating: stop_navigation()
+	var hero_before: Vector2i = session.party[0].pos if session != null and not session.party.is_empty() else Vector2i(-1,-1)
 	session.effects.clear()
 	var recorder = Presentation.new()
 	var show_battle: bool = not session.manual_mode and is_processing() and session.phase == "BATTLE" and not session.party_enemies().is_empty()
@@ -385,6 +386,8 @@ func run_action(callback: Callable, navigating: bool = false) -> void:
 	reset_effects = accepted
 	check_stop()
 	refresh()
+	if accepted and is_instance_valid(board) and session.on_floor() and not session.party.is_empty() and hero_before != session.party[0].pos:
+		board.animate_walk(int(session.party[0].id),hero_before,session.party[0].pos,NAVIGATION_STEP_SECONDS)
 
 func queue_action(kind: String, point: Vector2i) -> void:
 	if session.reserve_action(reservation_actor,kind,point):

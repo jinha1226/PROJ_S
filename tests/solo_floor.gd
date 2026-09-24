@@ -24,7 +24,7 @@ func run() -> void:
 		check(s.floor_state.features.values().all(func(f): return f.get("kind","") != "relic"),"seed %d has no mission relic" % seed)
 		check(s.enemies.all(func(e): return e.pos != stairs and e.pos != layout.entry),"seed %d endpoints have no enemy" % seed)
 		check(Generator.validate(layout,Floor.theme_for(1)).is_empty(),"seed %d floor validates" % seed)
-		check(s.floor_state.sight_radius() == 5.0 and s.floor_state.visible.has(layout.entry),"seed %d fixed sight sees entry" % seed)
+		check(s.floor_state.sight_radius() == 6.0 and s.floor_state.visible.has(layout.entry),"seed %d six-tile sight sees entry" % seed)
 		check(not s.descend(),"seed %d cannot descend remotely" % seed)
 	var s = Session.new_run(731)
 	check(s.companion_previews().is_empty() and not s.reserve_action(0,"WAIT",s.party[0].pos),"solo has no companion reservation")

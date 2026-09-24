@@ -19,7 +19,7 @@ var discoveries: Array = []
 var epoch := ""
 var discovered_curios := 0
 var seen_enemies: Dictionary = {}
-const SIGHT_RADIUS := 5.0
+const SIGHT_RADIUS := 6.0
 
 func sight_radius() -> float:
 	return SIGHT_RADIUS
@@ -129,13 +129,25 @@ func observe(s) -> void:
 				if Vector2(actor.pos).distance_to(Vector2(p)) > radius: continue
 				# Adjacent tiles stay readable so legal diagonal steps can be tapped at corners.
 				var adjacent: bool = maxi(absi(p.x-actor.pos.x),absi(p.y-actor.pos.y)) <= 1
-				if not adjacent and not s.TurnCore.Geometry.sees(actor.pos,p,func(c): return s.tile(c).terrain == "wall",before): continue
+				if not adjacent and not s.TurnCore.Geometry.sees(actor.pos,p,
+					func(c): return s.tile(c).terrain == "wall",before): continue
 				visible[p] = true
 				if not explored.has(p):
 					explored[p] = true
 					var feature: Dictionary = features.get(p,{})
 					if feature.get("kind","") == "curio": discovered_curios += 1
 					discoveries.append({"position":[x,y],"terrain_id":s.tile(p).terrain,"visibility_state":"MEMORY","marker":"EXIT" if feature.get("kind","") == "entry" else "STAIRS" if feature.get("kind","") == "stairs" else ""})
+		# Show the outline of the visible room without revealing actors beyond it.
+		for floor_cell in visible.keys():
+			if s.tile(floor_cell).terrain == "wall": continue
+			for direction in s.DIRECTIONS:
+				var edge: Vector2i = floor_cell+direction
+				if not s.inside(edge) or maxi(absi(edge.x-actor.pos.x),absi(edge.y-actor.pos.y)) > before: continue
+				if s.tile(edge).terrain != "wall": continue
+				visible[edge] = true
+				if not explored.has(edge):
+					explored[edge] = true
+					discoveries.append({"position":[edge.x,edge.y],"terrain_id":"wall","visibility_state":"MEMORY","marker":""})
 	if not s.simulation_arena and s.phase in ["EXPLORE","BATTLE"]:
 		s.phase = "EXPLORE" if safe(s) else "BATTLE"
 

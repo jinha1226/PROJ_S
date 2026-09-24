@@ -22,6 +22,8 @@ func run() -> void:
 	var turns: int = s.round_number
 	scene.on_cell(target)
 	check(s.party[0].pos != start and s.party[0].pos != target and s.round_number == turns+1,"distant tap advances one step, not teleport")
+	check(scene.board.walk_actor_id == int(s.party[0].id) and scene.board.walk_from == start and scene.board.walk_to == s.party[0].pos,
+		"travel step animates from the previous tile")
 	for i in range(10):
 		if scene.navigation.active: scene.navigation_tick()
 	check(s.party[0].pos == target and s.round_number == turns+4 and not scene.navigation.active,"queued movement arrives using four turns")
@@ -73,7 +75,7 @@ func run() -> void:
 	scene.show_logs(); await process_frame
 	var history: RichTextLabel = scene.log_popup.find_child("FullHistory",true,false)
 	check(history.text.contains("기록 0") and history.text.contains("기록 59"),"full log retains more than forty entries")
-	check(scene.log_popup.size == root.size,"full-screen log fits viewport")
+	check(scene.log_popup.size == Vector2i(scene.get_viewport_rect().size),"full-screen log fits viewport")
 	scene.log_popup.hide()
 	for viewport in [Vector2i(390,844),Vector2i(430,844),Vector2i(412,915)]:
 		root.size = viewport

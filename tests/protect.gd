@@ -121,7 +121,7 @@ func mutual_guard() -> void:
 ## ALLY_LETHAL reads the announced damage with the fixed-sight combat rules.
 func fixed_intent() -> void:
 	var f := arena(3,1)
-	check(f.s.floor_state.sight_radius() == 5.0,"the arena uses fixed sight")
+	check(f.s.floor_state.sight_radius() == 6.0,"the arena uses six-tile sight")
 	f.ally.hp = 14
 	f.s.intents = [{"id":f.foes[0].id,"cell":f.ally.pos,"damage":14}]
 	f.foes[0].hp = 0

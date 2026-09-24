@@ -14,10 +14,10 @@ const ROLES := {
 const SPELL_DAMAGE := 14
 ## Outside the floor (room mode, boss trial) monsters keep the old fixed reach.
 
-## What a monster can see is what the party can see: the floor's light sets
-## one radius for both sides, so nothing shoots from beyond the torchlight.
-static func sight(s) -> int:
-	return ceili(s.Floor.SIGHT_RADIUS)
+## Exploration visibility may be generous without waking monsters early.
+const ALERT_SIGHT_RADIUS := 5
+static func sight(_s) -> int:
+	return ALERT_SIGHT_RADIUS
 
 static func configure(enemy: Dictionary, role: String) -> void:
 	enemy.role = role if ROLES.has(role) else "MELEE"

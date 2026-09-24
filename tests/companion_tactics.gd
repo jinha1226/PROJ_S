@@ -286,10 +286,15 @@ func eight_way_checks() -> void:
 	hero.pos = Vector2i(2,2); boss.pos = Vector2i(3,3)
 	s.tile(Vector2i(3,2)).terrain = "wall"
 	turn = s.round_number
-	check(Vector2i(3,3) not in s.attack_cells() and not s.act("ATTACK",boss.pos),"diagonal attack cannot cut wall corner")
+	check(Vector2i(3,3) in s.attack_cells() and not s.attack_preview(boss.pos).is_empty(),"diagonal attack passes one-wall corner")
+	s.tile(Vector2i(2,3)).terrain = "wall"
+	turn = s.round_number
+	check(Vector2i(3,3) in s.attack_cells() and not s.attack_preview(boss.pos).is_empty(),"two-wall corner also permits diagonal attack")
 	check(not s.can_step(Vector2i(2,2),Vector2i(3,3)),"occupied diagonal destination stays blocked")
-	check(s.round_number == turn,"invalid diagonal action is free")
+	check(s.round_number == turn,"attack previews do not consume a turn")
 	s.tile(Vector2i(3,2)).terrain = "stone"
+	s.tile(Vector2i(2,3)).terrain = "stone"
+	boss.pos = Vector2i(3,3); boss.hp = 100
 	hero.ap = 1; s.floor_state.observe(s)
 	check(s.act("PUSH",boss.pos) and boss.pos == Vector2i(4,4),"diagonal push uses matching diagonal displacement")
 	hero.pos = Vector2i(1,1); boss.pos = Vector2i(6,6)

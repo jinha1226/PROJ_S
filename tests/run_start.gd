@@ -13,7 +13,7 @@ func run() -> void:
 	check(s.phase == "EXPLORE" and s.depth == 1 and s.food == 2,"floor 1 state")
 	check(s.party[0].equipped_abilities == ["",""],"empty ability slots")
 	check(s.bag.is_empty() and s.known.is_empty() and s.appearances.size() == 16,"empty bag and shuffled appearances")
-	check(s.floor_state.sight_radius() == 5.0,"fixed sight")
+	check(s.floor_state.sight_radius() == 6.0,"six-tile sight")
 	var body_before: Dictionary = s.party[0].body.to_dict()
 	s.damage(s.party[0],10,999,"IMPACT")
 	check(s.party[0].body.to_dict() == body_before,"run damage changes HP without a lasting injury")

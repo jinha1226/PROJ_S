@@ -26,7 +26,7 @@ func run() -> void:
 	check(s.enemies.all(func(e): return e.part_id == Session.Abilities.species_part(e.species_id)),"floor monsters carry their species part")
 	check(s.floor_state.explored.size() < s.BOARD_SIDE*s.BOARD_SIDE,"unexplored fog retained")
 	check(s.safe_management(),"safe exploration permits management")
-	check(s.floor_state.sight_radius() == 5.0 and not ("light" in s),"fixed sight with no torch")
+	check(s.floor_state.sight_radius() == 6.0 and not ("light" in s),"six-tile sight with no torch")
 	var enemy_positions: Array = s.enemies.map(func(e): return e.pos)
 	check(not s.auto_attack(),"auto attack cannot target unseen enemies")
 	for i in range(3): check(s.act("WAIT",s.party[0].pos),"waiting advances the floor")

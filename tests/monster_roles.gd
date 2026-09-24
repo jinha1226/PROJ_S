@@ -36,18 +36,19 @@ func _initialize() -> void:
 	check(s.party[0].hp == hp and e.pos == c+Vector2i(4,0) and s.log_lines[-1].ends_with("재장전"),"reloading archer neither shoots nor shuffles")
 	hp = s.party[0].hp; AI.turn(s,e)
 	check(s.party[0].hp < hp,"shoots again after reloading")
-	# Sight is symmetric: what the party cannot see cannot see the party.
+	# The hero can spot a monster one tile before that monster notices the hero.
 	f = fixture("RANGED"); s = f.s; c = f.c; e = s.enemies[0]
 	e.alert = false; e.pos = c+Vector2i(8,0); hp = s.party[0].hp
 	AI.turn(s,e)
 	check(not e.alert and s.party[0].hp == hp,"eight cells away beyond fixed sight: unseen and silent")
-	e.pos = c+Vector2i(6,0); AI.turn(s,e)
-	check(not e.alert and s.party[0].hp == hp,"six cells away: still unseen")
+	e.pos = c+Vector2i(6,0); s.floor_state.observe(s); AI.turn(s,e)
+	check(s.floor_state.visible.has(e.pos) and not e.alert and s.party[0].hp == hp,
+		"six cells away: visible to hero, outside monster awareness")
 	e.pos = c+Vector2i(5,0); AI.turn(s,e)
 	check(e.alert and s.party[0].hp < hp,"five cells away: seen, and the arrow flies")
 	f = fixture("RANGED"); s = f.s; c = f.c; e = s.enemies[0]; hp = s.party[0].hp
 	e.pos = c+Vector2i(6,0); e.alert = true; AI.turn(s,e)
-	check(s.party[0].hp == hp,"an alert archer still cannot shoot beyond the shared sight radius")
+	check(s.party[0].hp == hp,"an alert archer cannot shoot from six tiles away")
 	f = fixture("RANGED"); s = f.s; c = f.c; e = s.enemies[0]; hp = s.party[0].hp
 	s.tile(c+Vector2i(2,0)).terrain = "wall"; AI.turn(s,e)
 	check(s.party[0].hp == hp and e.pos != c+Vector2i(4,0),"blocked shooter repositions without shooting through wall")

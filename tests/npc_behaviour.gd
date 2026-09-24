@@ -100,7 +100,7 @@ func bold(npc: Dictionary, facet: String, value: int) -> void:
 	npc.profile = load("res://sim/dungeon_population/hexaco_profile.gd").new(v)
 
 func modes_approach() -> void:
-	# Five tiles: the fixed descent sight radius (Floor.SIGHT_RADIUS) is five.
+	# Five tiles: NPC awareness remains shorter than the hero's six-tile sight.
 	var f := field(Vector2i(5,0)); var s = f.s; var npc: Dictionary = f.npc
 	bold(npc,"X",900); bold(npc,"O",100)
 	var pick: Dictionary = Modes.choose(s,npc)

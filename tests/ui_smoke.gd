@@ -15,7 +15,7 @@ func run() -> void:
 	check(scene.session.depth == 1 and scene.session.party.size() == 1,"solo floor")
 	check(scene.find_child("FoodLabel",true,false) != null and scene.find_child("BottomActions",true,false) != null,"floor controls")
 	check(scene.find_child("TorchButton",true,false) == null and scene.find_child("Funds",true,false) == null,"retired resources absent")
-	check(scene.minimap.size.x <= 100 and scene.board.size.x >= 340,"compact map and wide board")
+	check(scene.minimap.size.x <= 100 and scene.board.size.x == scene.get_viewport_rect().size.x,"compact map and full-width board")
 	var event := InputEventMouseButton.new(); event.pressed = true; event.button_index = MOUSE_BUTTON_LEFT
 	event.position = scene.minimap.size/2; scene.minimap._gui_input(event); await process_frame
 	check(scene.map_popup.visible,"minimap expands")
@@ -50,6 +50,7 @@ func run() -> void:
 	var before_time: int = scene.session.time
 	scene.on_cell(foe.pos); await process_frame
 	check(scene.session.time > before_time and not scene.details_popup.visible,"one enemy tap attacks and advances one hero action")
+	check(scene.board.effects.any(func(effect): return effect.get("kind","") == "ATTACK_SWING"),"melee attack shows a swing even if it misses")
 	before_time = scene.session.time
 	var key := InputEventKey.new(); key.pressed = true; key.keycode = KEY_RIGHT
 	scene._unhandled_key_input(key); await process_frame
