@@ -266,6 +266,15 @@ func action_button(parent: Node, text: String, texture: Texture2D, callback: Cal
 	node.add_theme_constant_override("icon_max_width",22)
 	return node
 
+func mark_selected(button_node: Button) -> void:
+	var style := button_node.get_theme_stylebox("normal").duplicate()
+	if style is StyleBoxTexture:
+		style.texture = Art.ui_frame(5)
+	elif style is StyleBoxFlat:
+		style.border_color = Color("e9c575")
+		style.set_border_width_all(2)
+	button_node.add_theme_stylebox_override("normal",style)
+
 func gauge(parent: Node, value: int, maximum: int, color: Color) -> void:
 	var bar := ProgressBar.new(); bar.max_value = maximum; bar.value = value; bar.show_percentage = false
 	bar.custom_minimum_size.y = 4; bar.mouse_filter = MOUSE_FILTER_IGNORE

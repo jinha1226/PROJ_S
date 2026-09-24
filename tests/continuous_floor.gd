@@ -29,8 +29,9 @@ func run() -> void:
 	check(s.floor_state.sight_radius() == 5.0 and not ("light" in s),"fixed sight with no torch")
 	var enemy_positions: Array = s.enemies.map(func(e): return e.pos)
 	check(not s.auto_attack(),"auto attack cannot target unseen enemies")
-	s.act("WAIT",s.party[0].pos)
-	check(s.enemies.map(func(e): return e.pos) == enemy_positions,"distant enemies remain asleep")
+	for i in range(3): check(s.act("WAIT",s.party[0].pos),"waiting advances the floor")
+	check(s.enemies.any(func(e): return e.pos != enemy_positions[s.enemies.find(e)]),"distant enemies patrol during exploration")
+	check(s.enemies.all(func(e): return not e.alert and maxi(absi(e.pos.x-e.home.x),absi(e.pos.y-e.home.y)) <= 3),"unalerted patrols stay near their encounter")
 	var before: Vector2i = s.party[1].pos
 	for i in range(3): check(s.act("MOVE",s.party[0].pos+Vector2i.RIGHT),"walk consumes one action")
 	check(s.party[1].pos != before and s.distance(s.party[0].pos,s.party[1].pos) <= 3,"companion follows during exploration")

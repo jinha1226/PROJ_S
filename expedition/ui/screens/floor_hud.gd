@@ -79,10 +79,7 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 		stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; stats.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		if i == session.selected:
-			var gold = portrait.get_theme_stylebox("normal").duplicate()
-			if gold is StyleBoxFlat:
-				gold.border_color = Color("e9c575"); gold.set_border_width_all(2)
-			portrait.add_theme_stylebox_override("normal",gold)
+			ui.mark_selected(portrait)
 		if actor.hp <= 0: portrait.modulate = Color("636369")
 	var shared := HBoxContainer.new(); ui.root_layout.add_child(shared)
 	for slot in range(5):

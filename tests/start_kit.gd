@@ -142,7 +142,8 @@ func start_screen() -> void:
 		check(main.find_child("Kit_"+str(kit.id),true,false) != null,"picker offers "+str(kit.id))
 	check(main.kit_choice == "sword","sword is the default kit")
 	var sword: Button = main.find_child("Kit_sword",true,false)
-	check(sword.get_theme_stylebox("normal").border_color == Color("e9c575"),"the chosen kit wears the gold border")
+	var selected_style: StyleBox = sword.get_theme_stylebox("normal")
+	check(selected_style is StyleBoxTexture and selected_style.texture is AtlasTexture and selected_style.texture.region == Rect2(5*256,2*256,256,256),"the chosen kit wears the gold atlas frame")
 	var bow: Button = main.find_child("Kit_bow",true,false)
 	check(bow.custom_minimum_size.y >= 44,"kit buttons stay thumb-sized")
 	bow.pressed.emit(); await process_frame
