@@ -39,4 +39,12 @@
 python3 tools/art/build_monsters.py
 ```
 
-게임 코드에는 아직 연결하지 않았다. 연결할 때는 `expedition/art/mobile_art.gd`의 `MONSTER_IDS` 순서를 이 파일 이름으로 바꾸면 된다.
+## 게임 적용
+
+게임은 정면(`south`)만 쓴다. `tools/art/build_game_sprites.py`가 정면 그림을 192px로 뽑아 `assets/sprites-v1/`에 둔다.
+
+- `actors/`: 파티·NPC 모습 8종. `mobile_art.gd`의 `ACTOR_IDS` 순서(인간, 드워프, 엘프, 오크, 늑대 수인, 마법사, 상인, 방랑자)이며, 기본 인형 체형에 종족 특징을 붙였다.
+- `monsters/`: `MONSTER_IDS` 순서의 몬스터 8종.
+- `bosses/`: 보스의 `pattern` 순서(수렁 포식자, 폭탄 암살자, 과부하 거인).
+
+`mobile_art.gd`는 이 PNG를 통째로 쓰고, 발이 칸 아래쪽에 닿게 칸 폭의 2.2배(보스 3배)로 그린다. 초상화는 같은 그림의 머리와 어깨 부분을 잘라 쓴다.

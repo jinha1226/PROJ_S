@@ -12,13 +12,15 @@ func check(ok: bool, reason: String) -> void:
 func _initialize() -> void: call_deferred("run")
 
 func run() -> void:
-	check(Art.ACTOR_SHEET.resource_path.ends_with("flat-v1/actors.png") and Art.actor_texture(0).get_width() > 300,"flat actor atlas is active")
+	check(Art.ACTOR_SPRITES.size() == Art.ACTOR_IDS.size() and Art.ACTOR_SPRITES.all(func(t): return t.resource_path.begins_with("res://assets/sprites-v1/actors/")),"one paper-doll sprite per actor look")
+	check(Art.actor_texture(0).atlas.resource_path.ends_with("actors/human.png") and Art.actor_texture(0).get_width() >= 128,"the hero wears the paper-doll sprite")
 	check(Art.actor_portrait({"id":1000,"npc":true}).atlas == Art.actor_texture(1).atlas and Art.actor_portrait({"id":1000,"npc":true}).region.position.x > Art.actor_texture(1).region.position.x,"NPC portrait is a larger crop of the map sprite")
-	check(Art.MONSTER_SHEET.resource_path.ends_with("flat-v1/monsters.png") and Art.enemy_sprite("kobold").get_width() > 300,"flat monster atlas is active")
+	check(Art.MONSTER_SPRITES.size() == Art.MONSTER_IDS.size() and range(Art.MONSTER_IDS.size()).all(func(i): return Art.MONSTER_SPRITES[i].resource_path.ends_with("/"+Art.MONSTER_IDS[i]+".png")),"monster sprites follow MONSTER_IDS")
+	check(Art.enemy_sprite("kobold").atlas.resource_path.ends_with("monsters/kobold.png") and Art.enemy_sprite("unknown").atlas == Art.enemy_sprite("kobold").atlas,"unknown species fall back to the kobold")
 	check(Art.FirstFloor.tile("floor_a").get_width() > 250 and Art.FirstFloor.tile("front").get_width() > 250,"flat floor and wall tiles are active")
 	check(Art.FirstFloor.tile("floor_a","F2_MINES").atlas != Art.FirstFloor.tile("floor_a","F1_RUINS").atlas,"mines have their own floor slabs")
 	check(Art.FirstFloor.tile("front","F2_MINES").atlas != Art.FirstFloor.tile("front","F1_RUINS").atlas,"mines have their own wall blocks")
-	check(Art.BOSS.resource_path.ends_with("flat-v1/fire-lizard-boss.png"),"the boss matches the flat actors")
+	check(["boss_mire","boss_bomber","boss_giant"].all(func(n): return Art.boss_sprite(["boss_mire","boss_bomber","boss_giant"].find(n)).atlas.resource_path.ends_with(n+".png")),"each boss pattern has its own sprite")
 	root.size = Vector2i(390,844)
 	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	root.add_child(scene); scene.set_process(false); await process_frame

@@ -62,7 +62,7 @@ def wrap(body):
 # --- humanoids -------------------------------------------------------------
 
 def humanoid(uid, facing, frame, skin, cloth, ears=None, snout=None, tusks=False, horns=False,
-             spots=None, brows=False, eye=INK, mark=""):
+             spots=None, brows=False, eye=INK, mark="", ear_scale=1.0, beard=None):
     s, h, b, top, r = frame
     turn = {"east": 1, "west": -1}.get(facing, 0)
     side = turn != 0
@@ -74,7 +74,8 @@ def humanoid(uid, facing, frame, skin, cloth, ears=None, snout=None, tusks=False
     parts.append(mark)
     behind, front = [], []
     if ears == "pointy":
-        left = [(hx - r * 0.75, hy - r * 0.35), (hx - r * 2.0, hy - r * 1.05), (hx - r * 0.55, hy + r * 0.35)]
+        tip = 0.75 + 1.25 * ear_scale
+        left = [(hx - r * 0.75, hy - r * 0.35), (hx - r * tip, hy - r * (0.35 + 0.7 * ear_scale)), (hx - r * 0.55, hy + r * 0.35)]
         right = [(2 * hx - x, y) for x, y in left]
         chosen = {"south": [left, right], "north": [left, right], "east": [left], "west": [right]}[facing]
         for i, ear in enumerate(chosen):
@@ -94,7 +95,12 @@ def humanoid(uid, facing, frame, skin, cloth, ears=None, snout=None, tusks=False
         for i, (dx, dy, rr) in enumerate(spots):
             if facing == "north" or abs(dx) < r * 0.9:
                 front.append(f'<circle cx="{hx + dx * (1 if turn >= 0 else -1)}" cy="{hy + dy}" r="{rr}" fill="{skin[1]}"/>')
-    eye_y = hy - (1.4 if snout else 0)
+    eye_y = hy - (2.4 if beard else 1.4 if snout else 0)
+    if beard and facing != "north":
+        bx = hx + turn * r * 0.25
+        front.append(shaded(uid + "d", f"M{bx - r * 0.78} {hy + r * 0.32} Q{bx} {hy + r * 0.62} {bx + r * 0.78} {hy + r * 0.32} "
+                                        f"Q{bx + r * 0.85} {hy + r * 1.3} {bx} {hy + r * 1.42} Q{bx - r * 0.85} {hy + r * 1.3} {bx - r * 0.78} {hy + r * 0.32} Z",
+                            *beard, 1.4, 1.2))
     if snout and facing != "north":
         if side:
             front.append(shaded(uid + "s", ellipse(hx + turn * r * 0.85, hy + r * 0.3, r * 0.58, r * 0.4), *snout, 1.4, 1.2))

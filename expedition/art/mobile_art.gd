@@ -1,13 +1,27 @@
 extends RefCounted
 const SHEET = preload("res://assets/mobile/ui-atlas.png")
-const ACTOR_SHEET = preload("res://assets/topdown/flat-v1/actors.png")
-const MONSTER_SHEET = preload("res://assets/topdown/flat-v1/monsters.png")
+## Paper-doll sprites, south facing, one PNG per look (tools/art/build_game_sprites.py).
+## ACTOR_SPRITES follows ACTOR_IDS, MONSTER_SPRITES follows MONSTER_IDS, and
+## BOSS_SPRITES follows a boss's `pattern`: mire, bomber, giant.
+const ACTOR_SPRITES := [preload("res://assets/sprites-v1/actors/human.png"),preload("res://assets/sprites-v1/actors/dwarf.png"),
+	preload("res://assets/sprites-v1/actors/elf.png"),preload("res://assets/sprites-v1/actors/orc.png"),
+	preload("res://assets/sprites-v1/actors/wolf.png"),preload("res://assets/sprites-v1/actors/mage.png"),
+	preload("res://assets/sprites-v1/actors/merchant.png"),preload("res://assets/sprites-v1/actors/wanderer.png")]
+const MONSTER_SPRITES := [preload("res://assets/sprites-v1/monsters/dcss_rat.png"),preload("res://assets/sprites-v1/monsters/dcss_frilled_lizard.png"),
+	preload("res://assets/sprites-v1/monsters/kobold.png"),preload("res://assets/sprites-v1/monsters/goblin.png"),
+	preload("res://assets/sprites-v1/monsters/dcss_hobgoblin.png"),preload("res://assets/sprites-v1/monsters/dcss_orc.png"),
+	preload("res://assets/sprites-v1/monsters/dcss_gnoll.png"),preload("res://assets/sprites-v1/monsters/dcss_river_rat.png")]
+const BOSS_SPRITES := [preload("res://assets/sprites-v1/bosses/boss_mire.png"),preload("res://assets/sprites-v1/bosses/boss_bomber.png"),
+	preload("res://assets/sprites-v1/bosses/boss_giant.png")]
+## Where the figure stands inside a paper-doll PNG, as fractions of its side:
+## feet on FEET_Y, and the head and shoulders inside PORTRAIT for cards.
+const FEET_Y := 55.0/64.0
+const PORTRAIT := Rect2(0.2,0.1,0.6,0.62)
 const MASTERY_SHEET = preload("res://assets/8bit/classic/mastery-icons.png")
 const SPELL_SHEET = preload("res://assets/8bit/classic/spell-icons.png")
 const TIER_SHEETS = [preload("res://assets/8bit/classic/spells-fire.png"),preload("res://assets/8bit/classic/spells-ice.png"),preload("res://assets/8bit/classic/spells-air.png"),preload("res://assets/8bit/classic/spells-hex.png"),preload("res://assets/8bit/classic/spells-summon.png")]
 const MAGIC_SCHOOLS := ["fire","ice","air","hex","summon"]
 const ITEM_SHEET = preload("res://assets/topdown/flat-v1/items.png")
-const BOSS = preload("res://assets/topdown/flat-v1/fire-lizard-boss.png")
 const ACTOR_IDS := ["human","dwarf","elf","orc","wolf","mage","merchant","wanderer"]
 const MONSTER_IDS := ["dcss_rat","dcss_frilled_lizard","kobold","goblin","dcss_hobgoblin","dcss_orc","dcss_gnoll","dcss_river_rat"]
 const MASTERY_IDS := ["sword","spear","mace","axe","bow","fire","ice","air","hex","summon"]
@@ -44,9 +58,19 @@ static func pixel_region(sheet: Texture2D, columns: int, rows: int, index: int, 
 		pixel_cache[key] = texture
 	return pixel_cache[key]
 
+## A whole sprite as an AtlasTexture, so callers keep one texture type.
+static func whole(sheet: Texture2D, key: String) -> AtlasTexture:
+	if not pixel_cache.has(key):
+		var texture := AtlasTexture.new()
+		texture.atlas = sheet
+		texture.region = Rect2(Vector2.ZERO,sheet.get_size())
+		texture.filter_clip = true
+		pixel_cache[key] = texture
+	return pixel_cache[key]
+
 static func actor_texture(index: int) -> AtlasTexture:
 	index = posmod(index,ACTOR_IDS.size())
-	return pixel_region(ACTOR_SHEET,4,2,index,"actor/"+str(index))
+	return whole(ACTOR_SPRITES[index],"actor/"+str(index))
 
 static func actor_index(actor: Dictionary) -> int:
 	var id := int(actor.get("id",0))
@@ -56,11 +80,11 @@ static func actor_portrait(actor: Dictionary) -> AtlasTexture:
 	var index := actor_index(actor)
 	var key := "actor/portrait/"+str(index)
 	if not pixel_cache.has(key):
-		var source := actor_texture(index)
-		var region: Rect2 = source.region
+		var sheet: Texture2D = ACTOR_SPRITES[index]
+		var size := Vector2(sheet.get_size())
 		var texture := AtlasTexture.new()
-		texture.atlas = ACTOR_SHEET
-		texture.region = Rect2(region.position+region.size*Vector2(0.08,0.10),region.size*Vector2(0.84,0.85))
+		texture.atlas = sheet
+		texture.region = Rect2(PORTRAIT.position*size,PORTRAIT.size*size)
 		texture.filter_clip = true
 		pixel_cache[key] = texture
 	return pixel_cache[key]
@@ -68,7 +92,19 @@ static func actor_portrait(actor: Dictionary) -> AtlasTexture:
 static func enemy_sprite(species_id: String) -> AtlasTexture:
 	var index := MONSTER_IDS.find(species_id)
 	if index < 0: index = MONSTER_IDS.find("kobold")
-	return pixel_region(MONSTER_SHEET,4,2,index,"monster/"+str(index))
+	return whole(MONSTER_SPRITES[index],"monster/"+str(index))
+
+static func boss_sprite(pattern: int) -> AtlasTexture:
+	var index := posmod(pattern,BOSS_SPRITES.size())
+	return whole(BOSS_SPRITES[index],"boss/"+str(index))
+
+## A paper-doll sprite drawn `scale` tiles wide, centred on the tile, feet on
+## the tile's lower edge so a figure stands in its cell and rises above it.
+static func paint_standing(canvas: CanvasItem, texture: Texture2D, rect: Rect2, scale: float, tint: Color) -> void:
+	var extent := rect.size*scale
+	var feet := rect.end.y-rect.size.y*0.08
+	var display := Rect2(Vector2(rect.get_center().x-extent.x*0.5,feet-extent.y*FEET_Y),extent)
+	canvas.draw_texture_rect(texture,display,false,tint)
 
 static func mastery_icon(axis: String) -> AtlasTexture:
 	var index := MASTERY_IDS.find(axis)
@@ -97,20 +133,13 @@ static func food_icon() -> AtlasTexture:
 	return pixel_region(ITEM_SHEET,4,4,13,"flat/item/food")
 
 static func paint_actor(canvas: CanvasItem, index: int, rect: Rect2, tint: Color = Color.WHITE) -> void:
-	# The transparent source cells share a baseline; let the figure rise above its tile.
-	var extent := rect.size*1.92
-	var display := Rect2(rect.position+Vector2((rect.size.x-extent.x)*0.5,rect.size.y-extent.y),extent)
-	canvas.draw_texture_rect(actor_texture(index),display,false,tint)
+	paint_standing(canvas,actor_texture(index),rect,2.2,tint)
 
 static func paint_monster(canvas: CanvasItem, species_id: String, rect: Rect2, tint: Color = Color.WHITE) -> void:
-	var extent := rect.size*1.62
-	var display := Rect2(rect.position+Vector2((rect.size.x-extent.x)*0.5,rect.size.y-extent.y),extent)
-	canvas.draw_texture_rect(enemy_sprite(species_id),display,false,tint)
+	paint_standing(canvas,enemy_sprite(species_id),rect,2.2,tint)
 
-static func paint_boss(canvas: CanvasItem, rect: Rect2, tint: Color = Color.WHITE) -> void:
-	var extent := rect.size*2.5
-	var display := Rect2(rect.position+Vector2((rect.size.x-extent.x)*0.5,rect.size.y-extent.y),extent)
-	canvas.draw_texture_rect(BOSS,display,false,tint)
+static func paint_boss(canvas: CanvasItem, rect: Rect2, tint: Color = Color.WHITE, pattern: int = 0) -> void:
+	paint_standing(canvas,boss_sprite(pattern),rect,3.0,tint)
 
 static func terrain(cell: Dictionary, point: Vector2i = Vector2i.ZERO, theme_id: String = "") -> AtlasTexture:
 	if theme_id in ["F1_RUINS","F2_MINES"]: return FirstFloor.terrain(cell,point,theme_id)
