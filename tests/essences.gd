@@ -166,7 +166,7 @@ func actives() -> void:
 	check(s.hunt_recipients(foe,{}).has(hero),"and the hunt counts them")
 	hero.essences = {"FIRE_CALLER":1}; hero.equipped_abilities = ["FIRE_CALLER"]
 	var enc: int = int(Stats.stats(s,hero).enc)
-	check(Spells.failure(s,hero,"fire_4") == clampi(8+4*9+enc*5-StatSheet.value(s,hero,"int")-10,0,85),"failure reads mind and ten for a slotted stone of the school")
+	check(Spells.failure(s,hero,"fire_4") == clampi(8+4*9+enc*5-StatSheet.value(s,hero,"int")-10-4*int(hero.level),0,85),"failure reads mind, ten for a slotted stone of the school and four a level")
 	s.manual_mode = false
 	hero.essences = {"ORC_CLEAVER":1}; hero.equipped_abilities = ["ORC_CLEAVER"]
 	check(StatSheet.legacy_power(hero,"MELEE",18) == 18,"the old auto path reads attribute points, which a stone no longer gives")

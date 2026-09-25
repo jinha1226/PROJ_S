@@ -47,14 +47,19 @@ static func definition(id: String) -> Dictionary:
 static func shape_of(spell: Dictionary) -> String:
 	return str(spell.get("shape", ""))
 
+## Percent of spell failure a character level takes off.
+const FAILURE_PER_LEVEL := 4
+
 static func failure(s, caster: Dictionary, id: String) -> int:
 	var spell: Dictionary = definition(id)
 	if spell.is_empty(): return 100
 	if StoneEffects.sure_casting(caster): return 0
 	var mind: int = StatSheet.value(s,caster,"int")
-	# A slotted stone of the spell's school steadies it by ten.
+	# A slotted stone of the spell's school steadies it by ten; experience
+	# steadies it four a level, so a spell of one's own level stays castable.
 	var school: int = 10 if Essences.school_slotted(caster,str(spell.school)) else 0
-	return clampi(8 + int(spell.level) * 9 + int(Stats.stats(s,caster).enc) * 5 - mind - school, 0, 85)
+	var practice: int = FAILURE_PER_LEVEL*int(caster.get("level",1))
+	return clampi(8 + int(spell.level) * 9 + int(Stats.stats(s,caster).enc) * 5 - mind - school - practice, 0, 85)
 
 static func mind_bonus(s, caster: Dictionary) -> int:
 	return maxi(0,StatSheet.value(s,caster,"int")-10)/2

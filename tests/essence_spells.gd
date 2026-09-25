@@ -61,13 +61,15 @@ func tiers() -> void:
 func failure() -> void:
 	var s = Session.new_run(7,"fire"); var hero: Dictionary = s.party[0]
 	hero.essences = {"FIRE_CALLER":1}; hero.equipped_abilities = ["FIRE_CALLER"]
-	check(Spells.failure(s,hero,"fire_6") == 8+54-12-10,"level six with a slotted fire stone and twelve mind")
+	check(Spells.failure(s,hero,"fire_6") == 8+54-12-10-4,"level six at level one with a slotted fire stone and twelve mind")
 	hero.level = 3; hero.essences = {"FIRE_CALLER":1,"FROST_IMP":1,"GOBLIN_HEXER":1}
 	hero.equipped_abilities = ["FIRE_CALLER","FROST_IMP","GOBLIN_HEXER"]
-	check(Spells.failure(s,hero,"fire_6") == 8+54-12-10,"three caster stones are the two bracket: nothing more off")
+	check(Spells.failure(s,hero,"fire_6") == 8+54-12-10-12,"three caster stones are the two bracket: only the level takes more off")
 	hero.equipped_abilities = ["FIRE_CALLER","",""]
 	check(Spells.failure(s,hero,"fire_1") == 0,"a slotted stone makes an easy spell sure")
-	check(Spells.failure(s,hero,"ice_1") == clampi(8+9-12,0,85),"another school has no stone to lean on")
+	check(Spells.failure(s,hero,"ice_4") == clampi(8+36-12-12,0,85),"another school has no stone to lean on")
+	hero.level = 9; hero.essences = {"FIRE_CALLER":1}; hero.equipped_abilities = ["FIRE_CALLER","","","","","","","",""]
+	check(Spells.failure(s,hero,"fire_9") == 8+81-12-10-36,"a spell of one's own level stays castable (four off a level)")
 
 func casting() -> void:
 	var s = Session.new_run(7,"fire"); var hero: Dictionary = s.party[0]
