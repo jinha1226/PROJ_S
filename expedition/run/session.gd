@@ -27,6 +27,9 @@ const Scheduler = preload("res://expedition/time/scheduler.gd")
 const Spells = preload("res://expedition/spells/spells.gd")
 const Passives = preload("res://expedition/combat/passives.gd")
 const Statuses = preload("res://expedition/combat/statuses.gd")
+const Essences = preload("res://expedition/progression/essences.gd")
+const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
+const TagSets = preload("res://expedition/progression/tag_sets.gd")
 ## Run modules: the session keeps the state and hands each group of verbs to
 ## its own file. Every public name here stays on the session as a delegate.
 const Camp = preload("res://expedition/run/camp.gd")
@@ -479,7 +482,7 @@ func action_cost(actor: Dictionary, kind: String, target: Vector2i, _value: Stri
 			if inside(target): cost = CombatRules.move_time(self,actor,target)
 		"ATTACK":
 			cost = int(CombatStats.stats(self,actor).delay)
-			if manual_mode and actor.get("last_action_kind","") == "ATTACK" and str(actor.get("gear",{}).get("weapon",{}).get("type","")) in ["sword","dagger"] and Mastery.rank(actor,"sword") >= 7: cost = maxi(60,cost-20)
+			cost = TagSets.attack_delay(actor,cost,str(CombatStats.stats(self,actor).trait) == "ranged")
 		_:
 			if Abilities.DEFINITIONS.has(kind): cost = int(Abilities.DEFINITIONS[kind].get("delay",100))
 	var statuses: Dictionary = actor.get("statuses",{})
@@ -872,6 +875,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 		var hunters: Array = hunt_recipients(target,attacker)
 		var party_hunted: bool = hunters.any(func(a): return a in party)
 		Mastery.award(hunters,int(target.id),18+depth*8)
+		if not attacker.is_empty(): TagSets.on_kill(self,attacker)
 		for actor in party+npcs: actor.get("usage",{}).erase(int(target.id))
 		if party_hunted:
 			battle_stats.kills = int(battle_stats.get("kills",0))+1

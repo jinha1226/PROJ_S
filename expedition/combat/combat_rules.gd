@@ -1,4 +1,5 @@
 extends RefCounted
+const TagSets = preload("res://expedition/progression/tag_sets.gd")
 const Stats = preload("res://expedition/combat/combat_stats.gd")
 const Turns = preload("res://sim/turn_engine.gd")
 const Mastery = preload("res://expedition/progression/mastery.gd")
@@ -18,14 +19,15 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 	var offense: Dictionary = Stats.stats(s, source)
 	var defense: Dictionary = Stats.stats(s, target)
 	# 왜곡 takes thirty points off whatever the attacker can still aim.
+	var sure: bool = TagSets.sure_hit(source,target)
 	var dodge := clampi(int(defense.ev) * 2, 5, 45)
 	if source.get("statuses", {}).has("distort"): dodge = mini(95, dodge + 30)
-	if roll(s, source, target, "dodge", 100) < dodge:
+	if not sure and roll(s, source, target, "dodge", 100) < dodge:
 		out.evaded = true; s.message(str(target.name) + " 회피")
 		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"회피","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
 		Effects.on_dodge(s,target,source)
 		return out
-	if roll(s, source, target, "block", 100) < int(defense.sh):
+	if not sure and roll(s, source, target, "block", 100) < int(defense.sh):
 		out.blocked = true; s.message(str(target.name) + " 방패 방어")
 		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"막음","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
 		return out
@@ -37,6 +39,7 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 	out.hit = true
 	out.damage = damage(s, source, target, int(physical.damage), "physical")
 	Effects.on_attack(s,source,target,out)
+	TagSets.on_hit(s,source,target)
 	if target.hp <= 0: return out
 	match str(offense.brand):
 		"fire", "ice": out.damage += damage(s, source, target, 4, str(offense.brand))
@@ -51,10 +54,10 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 
 static func damage(s, source: Dictionary, target: Dictionary, raw: int, element: String, penetration: int = 0) -> int:
 	if target.hp <= 0 or raw <= 0: return 0
-	var amount := raw
+	var amount: int = TagSets.element_damage(source,element,raw)
 	if element not in ["physical", "SLASH", "IMPACT", "RETALIATE"]:
 		var resistance: int = maxi(0,int(Stats.stats(s, target).res.get(element.to_lower(), 0))-penetration)
-		amount = maxi(0, raw * (100 - resistance) / 100)
+		amount = maxi(0, amount * (100 - resistance) / 100)
 	# 취약화 is read after resistance: everything that still lands lands harder.
 	if target.get("statuses", {}).has("vulnerable"): amount = amount * 13 / 10
 	return s.after_damage(target, amount, int(source.get("id", 999)), element)

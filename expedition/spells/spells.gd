@@ -1,4 +1,5 @@
 extends RefCounted
+const TagSets = preload("res://expedition/progression/tag_sets.gd")
 ## Fifty spells in five schools, all of them built from eight shapes. A row in
 ## `combat.json.spells` says which shape a spell is and what it carries; the
 ## code below knows the shapes, not the spells.
@@ -269,6 +270,7 @@ static func strike(s, caster: Dictionary, victim: Dictionary, spell: Dictionary,
 	if power > 0: Rules.damage(s,caster,victim,power,str(spell.get("element","physical")),penetration)
 	if victim.hp <= 0: return
 	var status: String = str(spell.get("status",""))
+	ticks = TagSets.status_ticks(caster,status,ticks)
 	if status in STATUSES and ticks > 0: apply_status(s,victim,status,ticks)
 	if status == "dominate" and ticks > 0: victim["dominated_until"] = s.time+Statuses.resisted_ticks(s,victim,"dominate",ticks)
 	if school == "ice" and caster.get("statuses",{}).has("ice_freeze") and Rules.roll(s,caster,victim,"ice_freeze",100) < 30:
@@ -288,6 +290,7 @@ static func mark(s, caster: Dictionary, victim: Dictionary, spell: Dictionary, p
 		s.message(str(victim.name)+" 저항"); return
 	if bool(victim.enemy): Mastery.record(caster,int(victim.id),school)
 	var status: String = str(spell.get("status",""))
+	ticks = TagSets.status_ticks(caster,status,ticks)
 	match status:
 		"extend":
 			for id in victim.statuses: victim.statuses[id] = int(victim.statuses[id])+ticks

@@ -43,6 +43,7 @@ static func sheet(s, actor: Dictionary) -> Dictionary:
 	var sets: Dictionary = TagSets.stat_bonus(actor)
 	for key in sets:
 		if key in KEYS: add(result,key,"세트",int(sets[key]))
+	add(result,"ac","수호 세트",TagSets.ally_guard(s,actor))
 	# Dexterity lends evasion: one point for every three.
 	add(result,"ev","민첩",total_of(result,"dex")/3)
 	finish(result)

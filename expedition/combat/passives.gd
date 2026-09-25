@@ -5,6 +5,7 @@ extends RefCounted
 ## species, so a monster whose `part_id` is not its own species part (a boss
 ## trial boss carries one for drops only) has no passive at all.
 const Abilities = preload("res://expedition/items/abilities.gd")
+const TagSets = preload("res://expedition/progression/tag_sets.gd")
 const KINDS := ["PACK","RETALIATE","DIRTY","AMBUSHER","THICK_HIDE","BLOODLUST","REGEN","AMPHIBIOUS"]
 
 static func of(actor: Dictionary) -> Array:
@@ -39,14 +40,14 @@ static func outgoing(s, attacker: Dictionary, target: Dictionary, amount: int) -
 			"AMPHIBIOUS":
 				var tile: Dictionary = s.tile(attacker.pos)
 				if tile.terrain == "water" or int(tile.wet) > 0: amount += value
-	return amount
+	return TagSets.outgoing(s,attacker,target,amount)
 
 ## Damage `target` finally takes, after guards and defence.
 static func incoming(s, target: Dictionary, amount: int) -> int:
 	for passive in of(target):
 		match passive.kind:
 			"THICK_HIDE": amount = maxi(1,amount-int(passive.value))
-	return amount
+	return TagSets.incoming(s,target,amount)
 
 ## After the hit landed. Retaliation is plain damage with its own form so it
 ## never triggers passives again, and only a defender who survived the hit
