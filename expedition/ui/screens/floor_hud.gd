@@ -11,6 +11,14 @@ const Popups = preload("res://expedition/ui/screens/popups.gd")
 const AutoBattleHud = preload("res://expedition/ui/screens/autobattle_hud.gd")
 const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 
+static func portrait_state(actor: Dictionary) -> String:
+	var details: Array[String] = ["스트레스 %d" % int(actor.stress)]
+	var names := {"burn":"화상","poison":"중독","bleed":"출혈","freeze":"빙결","bind":"속박","slow":"둔화","haste":"가속","stun":"기절","silence":"침묵"}
+	for status in actor.get("statuses",{}): details.append(str(names.get(status,status)))
+	var condition: String = str(actor.get("condition",""))
+	if not condition.is_empty() and condition != "평온": details.append(condition)
+	return " · ".join(details)
+
 static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 	var session = ui.session
 	var header := HBoxContainer.new(); header.name = "TopHUD"; header.add_theme_constant_override("separation",5)
@@ -154,11 +162,12 @@ static func build_manual_controls(ui) -> void:
 			icon.custom_minimum_size = Vector2(40,40); icon.mouse_filter = Control.MOUSE_FILTER_IGNORE; heading.add_child(icon)
 			var name: Label = ui.label(heading,str(actor.name),11); name.clip_text = true
 			name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			var hp: Label = ui.label(compact,"HP %d/%d" % [actor.hp,actor.max_hp],10)
+			var hp: Label = ui.label(compact,"HP%d/%d  MP%d/%d" % [actor.hp,actor.max_hp,actor.mp,actor.max_mp],9)
 			hp.name = "HeroHP" if i == 0 else "MemberHP%d" % i
-			ui.gauge(compact,actor.hp,actor.max_hp,Color("bf5450"))
-			ui.label(compact,"MP %d/%d · S %d" % [actor.mp,actor.max_mp,actor.stress],9)
-			ui.gauge(compact,actor.mp,actor.max_mp,Color("507eb9"))
+			hp.clip_text = true
+			var state: Label = ui.label(compact,portrait_state(actor),9)
+			state.name = "HeroState" if i == 0 else "MemberState%d" % i
+			state.clip_text = true; state.tooltip_text = state.text
 			continue
 		var content := HBoxContainer.new(); content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		content.add_theme_constant_override("separation",6)
@@ -173,11 +182,12 @@ static func build_manual_controls(ui) -> void:
 		values.add_theme_constant_override("separation",2); content.add_child(values)
 		var name = ui.label(values,"%s  Lv.%d" % [actor.name,int(actor.level)],13 if session.party.size() == 1 else 11)
 		name.add_theme_color_override("font_color",Color("e7d6b0"))
-		var hp = ui.label(values,"HP %d/%d" % [actor.hp,actor.max_hp],11)
+		var hp = ui.label(values,"HP %d/%d  ·  MP %d/%d" % [actor.hp,actor.max_hp,actor.mp,actor.max_mp],11)
 		hp.name = "HeroHP" if i == 0 else "MemberHP%d" % i
-		ui.gauge(values,actor.hp,actor.max_hp,Color("bf5450"))
-		ui.label(values,"MP %d/%d · 스트레스 %d" % [actor.mp,actor.max_mp,actor.stress],10)
-		ui.gauge(values,actor.mp,actor.max_mp,Color("507eb9"))
+		hp.clip_text = true
+		var state = ui.label(values,portrait_state(actor),10)
+		state.name = "HeroState" if i == 0 else "MemberState%d" % i
+		state.clip_text = true; state.tooltip_text = state.text
 	var nav := HBoxContainer.new(); nav.name = "BottomActions"
 	nav.add_theme_constant_override("separation",3); ui.root_layout.add_child(nav)
 	var attack = ui.action_button(nav,"공격",Art.ui_icon(0),func(): arm_attack(ui)); attack.name = "Attack"

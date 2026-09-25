@@ -460,7 +460,7 @@ func act(kind: String, target: Vector2i) -> bool:
 func action_cost(actor: Dictionary, kind: String, target: Vector2i, _value: String = "") -> int:
 	var cost := 100
 	match kind:
-		"MOVE":
+		"MOVE", "SWAP":
 			if inside(target): cost = CombatRules.move_time(self,actor,target)
 		"ATTACK":
 			cost = int(CombatStats.stats(self,actor).delay)
@@ -480,6 +480,15 @@ func submit(kind: String, target: Vector2i, value: String = "") -> bool:
 	var actor: Dictionary = party[0]
 	actor.ap = 1
 	if not can_submit(actor,kind,target,value): return false
+	if kind == "SWAP":
+		# Keep the tapped ally in place until the exchange; a due companion turn
+		# in flush_ready could otherwise move it before this action resolves.
+		var swapped_ally: Dictionary = at(target)
+		var swap_cost := action_cost(actor,kind,target)
+		if not act_as(actor,kind,target,false): return false
+		swapped_ally.ready_at = maxi(int(swapped_ally.ready_at),time+swap_cost)
+		actor.ap = 1
+		return Scheduler.advance(self,swap_cost)
 	if not Scheduler.flush_ready(self) or actor.hp <= 0: return false
 	var cost := action_cost(actor,kind,target,value)
 	if kind == "CAST":
@@ -496,6 +505,9 @@ func can_submit(actor: Dictionary, kind: String, target: Vector2i, value: String
 	match kind:
 		"WAIT": return target == actor.pos
 		"MOVE": return not status_blocks(actor,kind) and target in movement_cells(0)
+		"SWAP":
+			var ally: Dictionary = at(target)
+			return not status_blocks(actor,"MOVE") and walk_reach(actor.pos,target) and ally in party and ally != actor
 		"ATTACK": return not status_blocks(actor,kind) and not attack_preview(target,0).is_empty()
 		"PYLON": return true
 		"FIRE", "WATER", "ELECTRIC": return distance(actor.pos,target) <= 4 and tile(target).terrain != "wall"
@@ -574,6 +586,12 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 			actor.pos = target
 			if actor in party: Consumables.pickup(self,actor)
 			actor.hit_and_run = false
+		"SWAP":
+			if status_blocks(actor,"MOVE") or actor not in party or victim not in party or victim == actor or not walk_reach(was,target): return false
+			victim.pos = was
+			actor.pos = target
+			actor.hit_and_run = false
+			victim.hit_and_run = false
 		"ATTACK":
 			if victim.is_empty() or not victim.enemy or not attack_reach(actor,target,int(CombatStats.stats(self,actor).range)): return false
 			if manual_mode and melee_reach(was,target):
@@ -605,7 +623,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 ## member that kept walking the same way is nudged to keep going.
 func record_action(actor: Dictionary, kind: String, target: Vector2i, was: Vector2i) -> void:
 	actor.last_action_kind = kind
-	actor.last_action_dir = Vector2i(signi(target.x-was.x),signi(target.y-was.y)) if kind == "MOVE" else Vector2i.ZERO
+	actor.last_action_dir = Vector2i(signi(target.x-was.x),signi(target.y-was.y)) if kind in ["MOVE","SWAP"] else Vector2i.ZERO
 
 func finish_player_action() -> void:
 	if not on_floor() or resolving_companions: return

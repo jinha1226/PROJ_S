@@ -297,6 +297,13 @@ static func build_manual_inventory(ui) -> void:
 	ui.details_popup.popup_centered(popup_size)
 	ui.details_popup.size = popup_size
 	ui.details_popup.position = (Vector2i(ui.size)-popup_size)/2
+	# Switching tabs can briefly keep the previous content's minimum width.
+	# Reapply the phone-sized rectangle once the new controls have laid out.
+	ui.get_tree().process_frame.connect(func():
+		if is_instance_valid(ui.details_popup) and ui.details_popup.visible:
+			ui.details_popup.size = popup_size
+			ui.details_popup.position = (Vector2i(ui.size)-popup_size)/2
+	,CONNECT_ONE_SHOT)
 
 static func gear_name(ui, item: Dictionary, slot: String) -> String:
 	if slot == "shield": return "방패"

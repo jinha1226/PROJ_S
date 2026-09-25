@@ -29,6 +29,18 @@ func run() -> void:
 	check(weapon.get_global_rect().size.x > 40,"equipped slots remain readable on a narrow screen")
 	check(scene.get_global_rect().encloses(Rect2(scene.details_popup.position,scene.details_popup.size)),"bag fits a short phone")
 	check(Rect2(Vector2.ZERO,scene.details_popup.size).encloses(scene.find_child("InventorySelection",true,false).get_global_rect()),"item details remain inside the bag")
+	scene.inventory_filter = "파츠"
+	scene.show_supplies()
+	for frame in range(3): await process_frame
+	var popup_bounds := Rect2(Vector2.ZERO,scene.details_popup.size)
+	check(Rect2(Vector2.ZERO,scene.get_viewport_rect().size).encloses(Rect2(scene.details_popup.position,scene.details_popup.size)),"parts tab popup stays within the viewport")
+	for id in ["ManualInventory","InventoryTabs","InventorySelection","EquippedSlots"]:
+		var control: Control = scene.find_child(id,true,false)
+		check(popup_bounds.encloses(control.get_global_rect()),"parts "+id+" fits the popup")
+	scene.inventory_filter = "전체"
+	scene.show_supplies()
+	await process_frame
+	weapon = scene.find_child("Equipped_weapon",true,false)
 	weapon.pressed.emit()
 	await process_frame
 	check(scene.item_popup.visible,"tapping an equipped item opens its detail")

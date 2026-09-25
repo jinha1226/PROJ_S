@@ -134,7 +134,7 @@ func _ready() -> void:
 
 func stop_navigation() -> void:
 	navigation.stop(); navigation_clock = 0
-	if is_instance_valid(auto_explore_button): auto_explore_button.text = "탐색" if session != null and session.manual_mode else "자동탐험"
+	set_action_button_text(auto_explore_button,"탐색" if session != null and session.manual_mode else "자동탐험")
 
 func popup_open() -> bool:
 	return details_popup.visible or map_popup.visible or log_popup.visible or item_popup.visible or is_instance_valid(offer_popup) and offer_popup.visible
@@ -226,7 +226,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 func toggle_explore() -> void:
 	if navigation.active: stop_navigation(); return
 	mode = ""; pending_item = ""; reservation_actor = -1
-	if navigation.explore(session): auto_explore_button.text = "탐험 중지"
+	if navigation.explore(session): set_action_button_text(auto_explore_button,"중지")
 	else: notice = "주변에 적 있음"; refresh()
 
 ## Popup content width. The window, not the HUD's own size, bounds a modal, and
@@ -282,12 +282,19 @@ func action_button(parent: Node, text: String, texture: Texture2D, callback: Cal
 	picture.offset_left = 5; picture.offset_right = -5
 	picture.offset_top = 3; picture.offset_bottom = 31
 	var caption := label(node,text,12)
+	caption.name = "ActionCaption"
 	caption.set_anchors_and_offsets_preset(PRESET_BOTTOM_WIDE)
 	caption.offset_left = 2; caption.offset_right = -2
 	caption.offset_top = -20; caption.offset_bottom = -4
 	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	caption.add_theme_color_override("font_color",Color("e5e7e8") if enabled else Color("80888c"))
 	return node
+
+func set_action_button_text(action: Button, value: String) -> void:
+	if not is_instance_valid(action): return
+	action.text = value
+	var caption: Label = action.get_node_or_null("ActionCaption")
+	if caption != null: caption.text = value
 
 func mark_selected(button_node: Button) -> void:
 	var style := button_node.get_theme_stylebox("normal").duplicate()
@@ -463,10 +470,10 @@ func on_cell(point: Vector2i) -> void:
 				else: run_action(func(): return session.act("ATTACK",point))
 			else: run_action(func(): return session.act("ATTACK",point))
 		else:
-			# `selected` is a party index, and a recruit's id is its roster id: the
-			# two only look alike for the three the run started with.
 			var index: int = session.party.find(actor)
-			if index >= 0: select_actor(index)
+			if index >= 0 and actor != session.party[session.selected] and session.walk_reach(session.party[session.selected].pos,point):
+				run_action(func(): return session.act("SWAP",point))
+			elif index >= 0 and not session.manual_mode: select_actor(index)
 		return
 	if maxi(absi(point.x-session.party[session.selected].pos.x),absi(point.y-session.party[session.selected].pos.y)) > 1:
 		if navigation.start(session,point): navigation_tick()
