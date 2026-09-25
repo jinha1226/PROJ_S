@@ -1,6 +1,7 @@
 extends SceneTree
-## Spells come from caster essences: the tier sets the reach, the mind and the
-## tier set the failure, and no book is left anywhere.
+## Spells come from caster essences: the character's level sets the reach, the
+## mind and a slotted stone of the school set the failure, and no book is left
+## anywhere.
 const Session = preload("res://expedition/run/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
@@ -29,17 +30,19 @@ func kits() -> void:
 	var sword = Session.new_run(7,"sword")
 	check(sword.party[0].essences.is_empty() and sword.party[0].prepared.is_empty(),"a swordsman starts with no essence and no spell")
 	var fire = Session.new_run(7,"fire")
-	check(int(fire.party[0].max_mp) == 18+2,"the fire kit's essence lends two MP")
+	check(int(fire.party[0].max_mp) == 18+8,"the fire kit's essence lends eight MP")
 
 func tiers() -> void:
 	var s = Session.new_run(7,"fire"); var hero: Dictionary = s.party[0]
 	s.phase = "CAMP"
-	check(Essences.spell_choices(hero,"FIRE_CALLER") == ["fire_1","fire_2","fire_3"],"tier one reaches the third level")
+	check(Essences.spell_choices(hero,"FIRE_CALLER") == ["fire_1"],"a first-level hero reaches the first level")
 	check(not s.choose_essence_spell(0,"FIRE_CALLER","fire_4"),"the fourth is out of reach")
-	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_3") and hero.prepared == ["fire_3"],"a chosen spell is the one ready")
+	hero.level = 3
+	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_3") and hero.prepared == ["fire_3"],"at level three a chosen third-level spell is the one ready")
 	s.parts_bag["FIRE_CALLER"] = 1
-	check(s.absorb_essence(0,"FIRE_CALLER") == "" and Essences.spell_choices(hero,"FIRE_CALLER").size() == 6,"tier two reaches the sixth")
-	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_6") and hero.prepared == ["fire_6"],"and takes it")
+	check(s.absorb_essence(0,"FIRE_CALLER") == "이미 흡수함" and Essences.spell_choices(hero,"FIRE_CALLER").size() == 3,"a second copy is refused: the level alone sets the reach")
+	hero.level = 6
+	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_6") and hero.prepared == ["fire_6"],"at level six it reaches the sixth and takes it")
 	s.parts_bag["GOBLIN_HEXER"] = 1
 	check(s.absorb_essence(0,"GOBLIN_HEXER") == "" and hero.essence_spells.GOBLIN_HEXER == "hex_1","a new caster essence picks its first spell")
 	check("hex_1" in hero.spells and "hex_1" not in hero.prepared,"known, but not ready until it is slotted")
@@ -57,14 +60,14 @@ func tiers() -> void:
 
 func failure() -> void:
 	var s = Session.new_run(7,"fire"); var hero: Dictionary = s.party[0]
-	hero.essences = {"FIRE_CALLER":2}; hero.equipped_abilities = ["FIRE_CALLER"]
-	check(Spells.failure(s,hero,"fire_6") == 8+54-16-20,"level six at tier two with sixteen mind")
-	hero.level = 3; hero.essences = {"FIRE_CALLER":2,"FROST_IMP":1,"GOBLIN_HEXER":1}
+	hero.essences = {"FIRE_CALLER":1}; hero.equipped_abilities = ["FIRE_CALLER"]
+	check(Spells.failure(s,hero,"fire_6") == 8+54-12-10,"level six with a slotted fire stone and twelve mind")
+	hero.level = 3; hero.essences = {"FIRE_CALLER":1,"FROST_IMP":1,"GOBLIN_HEXER":1}
 	hero.equipped_abilities = ["FIRE_CALLER","FROST_IMP","GOBLIN_HEXER"]
-	check(Spells.failure(s,hero,"fire_6") == 8+54-20-20-10,"술사 3 takes ten more off")
-	hero.essences = {"FIRE_CALLER":3}; hero.equipped_abilities = ["FIRE_CALLER","",""]
-	check(Spells.failure(s,hero,"fire_1") == 0,"a mastered caster never fumbles an easy spell")
-	check(Spells.failure(s,hero,"ice_1") == clampi(8+9-18,0,85),"another school has no tier to lean on")
+	check(Spells.failure(s,hero,"fire_6") == 8+54-12-10,"three caster stones are the two bracket: nothing more off")
+	hero.equipped_abilities = ["FIRE_CALLER","",""]
+	check(Spells.failure(s,hero,"fire_1") == 0,"a slotted stone makes an easy spell sure")
+	check(Spells.failure(s,hero,"ice_1") == clampi(8+9-12,0,85),"another school has no stone to lean on")
 
 func casting() -> void:
 	var s = Session.new_run(7,"fire"); var hero: Dictionary = s.party[0]
@@ -72,7 +75,7 @@ func casting() -> void:
 	var foe: Dictionary = s.enemies[0]
 	foe.hp = 30; foe.max_hp = 30; foe.pos = c+Vector2i(2,0)
 	s.floor_state.observe(s)
-	hero.essences.FIRE_CALLER = 3
+	hero.essences.FIRE_CALLER = 1
 	check(Spells.can_cast(s,hero,"fire_1",foe.pos),"the kit spell casts with no book")
 	check(s.cast("fire_1",foe.pos) and int(foe.hp) < 30,"and burns the foe")
 

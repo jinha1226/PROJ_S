@@ -39,14 +39,13 @@ func run() -> void:
 	check(grid != null and grid.columns == 5 and grid.get_child_count() == 10,"ten slot cells in two rows of five")
 	check(not button(scene,"EssenceSlot0").disabled and button(scene,"EssenceSlot1").disabled,"only the level's slots open")
 	check(button(scene,"EssenceSlot1").text == "Lv.2","a locked slot names the level that opens it")
-	# 흡수: a new essence, then a tier up.
+	# 흡수: a new essence, once; a second copy is for somebody else.
 	var absorb: Button = button(scene,"EssenceAbsorb_RAT_GNAW")
 	check(absorb != null and not absorb.disabled,"the bag offers 흡수 in camp")
 	absorb.pressed.emit(); await frames(3)
-	check(Essences.tier(hero,"RAT_GNAW") == 1 and int(s.parts_bag.RAT_GNAW) == 1,"흡수 takes one copy and learns the essence")
-	check(scene.modal_content.find_children("*","Label",true,false).any(func(l): return l.text.begins_with("단계 1 → 2")),"the bag row now offers the next tier")
-	button(scene,"EssenceAbsorb_RAT_GNAW").pressed.emit(); await frames(3)
-	check(Essences.tier(hero,"RAT_GNAW") == 2,"a second copy raises the tier")
+	check(Essences.absorbed(hero,"RAT_GNAW") and int(s.parts_bag.RAT_GNAW) == 1,"흡수 takes one copy and learns the essence")
+	check(scene.modal_content.find_children("*","Label",true,false).any(func(l): return l.text.begins_with("이미 흡수함")),"the bag row now says it is absorbed")
+	check(button(scene,"EssenceAbsorb_RAT_GNAW").disabled and s.absorb_essence(0,"RAT_GNAW") == "이미 흡수함" and int(s.parts_bag.RAT_GNAW) == 1,"a second copy is not for the same member")
 	check(scene.modal_content.find_child("EssenceOwned",true,false) != null,"owned essences are listed")
 	# Equip through the slot chooser.
 	button(scene,"EssenceSlot0").pressed.emit(); await frames(3)

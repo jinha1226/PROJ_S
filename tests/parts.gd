@@ -4,7 +4,7 @@ extends SceneTree
 const Session = preload("res://expedition/run/session.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
-const Families = preload("res://expedition/combat/families.gd")
+const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
 const Rules = preload("res://expedition/ai/tactic_rules.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Passives = preload("res://expedition/combat/passives.gd")
@@ -182,7 +182,7 @@ func species() -> void:
 		var owners: Array = Abilities.DEFINITIONS.keys().filter(func(k): return Abilities.DEFINITIONS[k].species == row.species_id)
 		check(owners.size() == 1,"%s has exactly one part" % row.species_id)
 		var def: Dictionary = Abilities.DEFINITIONS[id]
-		check(str(row.get("family","")) in Families.PASSIVES,"%s family passive known" % id)
+		check(StoneEffects.species_effect(str(row.species_id)) == id,"%s's monsters carry its headline effect" % id)
 		check(int(def.enemy.prep) in [0,1,2],"%s prep is bounded" % id)
 		check(int(def.damage) <= 24,"%s damage stays within the active cap" % id)
 		check(Abilities.has(id),"%s signature ability exists" % id)

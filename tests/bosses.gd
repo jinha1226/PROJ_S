@@ -228,18 +228,18 @@ func eater() -> void:
 	d = arena(9,3); s = d.s; boss = d.boss; hero = d.hero
 	hero.hp = 999; hero.max_hp = 999
 	hero.level = 2; Essences.sync_slots(hero)
-	hero.essences = {"ORC_CLEAVER":1,"GOBLIN_SHIV":2}; hero.equipped_abilities = ["ORC_CLEAVER","GOBLIN_SHIV"]
+	hero.essences = {"ORC_CLEAVER":1,"GOBLIN_SHIV":1}; hero.equipped_abilities = ["ORC_CLEAVER","GOBLIN_SHIV"]
 	StatSheet.refresh_pools(s,hero)
-	var dex: int = StatSheet.value(s,hero,"dex")
+	var attack: int = StatSheet.value(s,hero,"atk")
 	boss.turns = 3
 	BossAI.turn(s,boss)
 	check(str(boss.telegraph.get("kind","")) == "SEAL" and hero.pos in boss.telegraph.cells,"the fourth turn announces a seal")
 	BossAI.turn(s,boss)
-	check(hero.get("sealed",{}).has("GOBLIN_SHIV"),"the highest tier is sealed")
-	check("GOBLIN_SHIV" not in Essences.equipped(hero) and StatSheet.value(s,hero,"dex") < dex,"a sealed essence leaves the stat sheet")
-	check(not Abilities.holds(hero,"GOBLIN_SHIV"),"and its technique")
+	check(hero.get("sealed",{}).has("ORC_CLEAVER"),"the first slotted stone is sealed (no tiers to rank)")
+	check("ORC_CLEAVER" not in Essences.equipped(hero) and StatSheet.value(s,hero,"atk") < attack,"a sealed essence leaves the stat sheet")
+	check(not Abilities.holds(hero,"ORC_CLEAVER"),"and its technique")
 	for turn in range(3): BossAI.turn(s,boss)
-	check(not hero.get("sealed",{}).has("GOBLIN_SHIV") and "GOBLIN_SHIV" in Essences.equipped(hero),"three turns later it is free")
+	check(not hero.get("sealed",{}).has("ORC_CLEAVER") and "ORC_CLEAVER" in Essences.equipped(hero),"three turns later it is free")
 	boss.turns = 7; BossAI.turn(s,boss); BossAI.turn(s,boss)
 	check(not hero.get("sealed",{}).is_empty(),"sealed again")
 	boss.hp = 1; s.damage(boss,999,int(hero.id),"physical")
@@ -271,19 +271,17 @@ func fallen() -> void:
 	BossAI.turn(s,boss)
 	check(int(ally.stress) >= mini(200,stress+40),"a friend of the fallen is shaken")
 	check(s.log_lines.any(func(l): return str(l).begins_with(str(boss.name)+": ")),"it speaks when the fight begins")
-	check(TagSets.level({"equipped_abilities":["GOBLIN_SHIV","GOBLIN_SHIV@fire"],"essences":{},"set_boost":true},"AMBUSH") == 3,"a boosted two-set reads as three")
-	check(TagSets.level({"equipped_abilities":["GOBLIN_SHIV","GOBLIN_SHIV@fire"],"essences":{}},"AMBUSH") == 2,"an ordinary two-set stays two")
+	check(TagSets.level({"equipped_abilities":["GOBLIN_SHIV","GOBLIN_SHIV@fire"],"essences":{},"set_boost":true},"AMBUSH") == 4,"a boosted two-combo reads as four")
+	check(TagSets.level({"equipped_abilities":["GOBLIN_SHIV","GOBLIN_SHIV@fire"],"essences":{}},"AMBUSH") == 2,"an ordinary two-combo stays two")
 	boss.hp = int(boss.max_hp)/2-1
 	BossAI.turn(s,boss)
 	check(bool(boss.set_boost),"below half its sets rise a step")
-	var best := ""; var tier := 0
-	for id in boss.essences:
-		if int(boss.essences[id]) > tier: best = str(id); tier = int(boss.essences[id])
+	var best: String = str(Essences.equipped(boss)[0])
 	var count: int = int(s.parts_bag.get(best,0))
 	boss.hp = 1
 	s.damage(boss,99999,int(d.hero.id),"physical")
 	if boss.hp > 0: s.damage(boss,99999,int(d.hero.id),"physical")
-	check(int(s.parts_bag.get(best,0)) == count+1,"it leaves its highest-tier essence")
+	check(int(s.parts_bag.get(best,0)) == count+1,"it leaves its first slotted essence")
 	check(s.phase == "VICTORY","its fall wins the run")
 
 func boss_actives() -> void:

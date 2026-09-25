@@ -1,6 +1,6 @@
 extends SceneTree
-## Essences: the catalog every monster and caster leaves behind, the tiers a
-## member absorbs, the slots a level opens, and the drops a hunt yields.
+## Essences: the catalog every monster and caster leaves behind, absorbed once
+## each (no tiers), the slots a level opens, and the drops a hunt yields.
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const Stats = preload("res://expedition/combat/combat_stats.gd")
 const Spells = preload("res://expedition/spells/spells.gd")
@@ -42,19 +42,20 @@ func catalog() -> void:
 		check(not Essences.title(id).is_empty(),"%s is named" % id)
 	check(Essences.element("FIRE_CALLER") == "fire" and Essences.element("GOBLIN_HEXER") == "will","caster element tags follow the school")
 	var variant: Dictionary = Essences.row("GOBLIN_SHIV@fire")
-	check(variant.element == "fire" and int(variant.stats.res_fire) == 10 and int(variant.stats.dex) == 2,"a variant is the base plus its element")
+	check(variant.element == "fire" and int(variant.stats.res_fire) == 10 and int(variant.stats.atk) == 3,"a variant is the base plus its element")
 	check(variant.role == "AMBUSH","a variant keeps the base role")
 	check(Essences.title("GOBLIN_SHIV@fire").begins_with("화염"),"a variant's title names its element")
 	check(not Essences.has("GOBLIN_SHIV@lava") and not Essences.has("NOPE") and not Essences.has(""),"unknown ids are not essences")
-	check(int(Essences.stats("ORC_CLEAVER",1).str) == 2 and int(Essences.stats("ORC_CLEAVER",3).str) == 6,"base stats scale with the tier")
-	check(int(Essences.stats("ORC_CLEAVER",9).str) == 6,"the tier stops at three")
-	check(Essences.spell_cap(1) == 3 and Essences.spell_cap(2) == 6 and Essences.spell_cap(3) == 10,"spell level caps by tier")
-	check(Essences.active_power(1,20) == 20 and Essences.active_power(2,20) == 25 and Essences.active_power(3,20) == 30,"active power +25% a tier")
+	check(Essences.stats("ORC_CLEAVER") == {"atk":4,"hp":8},"base stats are the role's, fixed")
+	check(Essences.MAX_TIER == 1,"a stone has no tiers")
+	check(Essences.spell_cap({"level":1}) == 1 and Essences.spell_cap({"level":6}) == 6 and Essences.spell_cap({"level":15}) == 10,"spell levels open up to the character's level")
+	var source: String = FileAccess.get_file_as_string("res://expedition/progression/essences.gd")
+	check(not ["func active_power","func tier(","func caster_tier"].any(func(word): return source.contains(word)),"no tier scaling is left")
 	var actor := {"level":4,"equipped_abilities":["RAT_GNAW","",""],"essences":{}}
-	check(Essences.tier(actor,"RAT_GNAW") == 1,"a slotted essence nobody absorbed counts as tier one")
-	check(Essences.tier(actor,"ORC_CLEAVER") == 0,"an unknown essence has no tier")
-	actor.essences = {"RAT_GNAW":3}
-	check(Essences.tier(actor,"RAT_GNAW") == 3,"an absorbed essence has its own tier")
+	check(Essences.absorbed(actor,"RAT_GNAW"),"a slotted essence nobody absorbed counts as held")
+	check(not Essences.absorbed(actor,"ORC_CLEAVER"),"an unknown essence is not held")
+	actor.essences = {"RAT_GNAW":1}
+	check(Essences.absorbed(actor,"RAT_GNAW"),"an absorbed essence is held")
 	check(Essences.equipped(actor) == ["RAT_GNAW"],"empty slots are not essences")
 	check(Essences.slot_count(actor) == 4 and Essences.slot_count({"level":15}) == 10 and Essences.slot_count({}) == 1,"slots follow the level, one to ten")
 
@@ -62,22 +63,23 @@ func sets() -> void:
 	var actor := {"level":5,"essences":{},"equipped_abilities":["RAT_GNAW","RIVER_RAT_SPLASH","FIRE_CALLER","",""]}
 	var counts: Dictionary = TagSets.counts(actor)
 	check(int(counts.PACK) == 2 and int(counts.CASTER) == 1 and int(counts.fire) == 1,"roles and elements are counted apart")
-	check(TagSets.level(actor,"PACK") == 2 and TagSets.level(actor,"CASTER") == 0,"two of a tag switch a set on")
+	check(TagSets.level(actor,"PACK") == 2 and TagSets.level(actor,"CASTER") == 0,"two of a role reach the first bracket")
 	actor.equipped_abilities[3] = "RAT_GNAW@ice"
-	check(TagSets.level(actor,"PACK") == 3,"three of a tag is the second step")
+	check(TagSets.level(actor,"PACK") == 2,"three of a role are still the two bracket")
 	var active: Array = TagSets.active(actor)
-	check(active.size() == 1 and active[0].tag == "PACK" and int(active[0].level) == 3 and str(active[0].text).contains("반응"),"active sets carry their text")
+	var pack: Array = active.filter(func(r): return r.tag == "PACK")
+	check(pack.size() == 1 and int(pack[0].level) == 2 and int(pack[0].count) == 3 and int(pack[0].next) == 4 and str(pack[0].text).contains("공격력"),"the combo list carries count, next bracket and text")
 	var guard := {"level":3,"essences":{},"equipped_abilities":["HOB_TAUNT","SHIELD_STANCE",""]}
 	var bonus: Dictionary = TagSets.stat_bonus(guard)
-	check(int(bonus.ac) == 2 and int(bonus.sh) == 5,"수호 2 gives armour and block")
+	check(int(bonus.ac) == 3 and not bonus.has("sh"),"수호 2 gives armour three, block only from four")
 	var burning := {"level":3,"essences":{},"equipped_abilities":["HOB_TAUNT@fire","SHIELD_STANCE@fire",""]}
 	check(int(TagSets.stat_bonus(burning).res_fire) == 20,"화염 2 gives fire resistance")
 	var casters := {"level":2,"essences":{},"equipped_abilities":["FIRE_CALLER","FROST_IMP"]}
-	check(int(TagSets.stat_bonus(casters).mp) == 5,"술사 2 gives MP")
+	check(not TagSets.stat_bonus(casters).has("mp"),"술사 2 gives spell power, not MP")
 	var hexers := {"level":2,"essences":{},"equipped_abilities":["GOBLIN_HEXER","GNOLL_SUMMONER"]}
 	check(int(TagSets.stat_bonus(hexers).res_will) == 20,"의지 2 gives will")
 	var ambush := {"level":3,"essences":{},"equipped_abilities":["GOBLIN_SHIV","GOBLIN_SHIV@fire","GOBLIN_SHIV@ice"]}
-	check(TagSets.level(ambush,"AMBUSH") == 3 and not TagSets.stat_bonus(ambush).has("ev"),"기습 3 now rewards dodging with a critical")
+	check(TagSets.level(ambush,"AMBUSH") == 2 and not TagSets.stat_bonus(ambush).has("ev"),"기습 3 is the two bracket and lends no evasion")
 
 func levels() -> void:
 	var s = Session.new_run(731,"sword"); var hero: Dictionary = s.party[0]
@@ -95,15 +97,15 @@ func absorbing() -> void:
 	s.parts_bag = {"ORC_CLEAVER":4}
 	var hp: int = hero.max_hp
 	check(s.absorb_essence(0,"ORC_CLEAVER") == "" and int(hero.essences.ORC_CLEAVER) == 1 and int(s.parts_bag.ORC_CLEAVER) == 3,"absorbing takes one from the bag")
-	check(s.absorb_essence(0,"ORC_CLEAVER") == "" and s.absorb_essence(0,"ORC_CLEAVER") == "" and int(hero.essences.ORC_CLEAVER) == 3,"absorbing again raises the tier")
-	check(s.absorb_essence(0,"ORC_CLEAVER") == "최고 단계" and int(s.parts_bag.ORC_CLEAVER) == 1,"the fourth is refused and stays in the bag")
+	check(s.absorb_essence(0,"ORC_CLEAVER") == "이미 흡수함" and int(hero.essences.ORC_CLEAVER) == 1,"absorbing again is refused: no tiers")
+	check(s.absorb_essence(0,"ORC_CLEAVER") == "이미 흡수함" and int(s.parts_bag.ORC_CLEAVER) == 3,"the copy stays in the bag for somebody else")
 	check(s.absorb_essence(0,"GOBLIN_SHIV") == "가방에 없음","nothing absorbed from an empty bag")
 	check(int(hero.max_hp) == hp,"absorbing alone changes no pool")
 	check(s.equip_part(0,0,"ORC_CLEAVER") and hero.equipped_abilities == ["ORC_CLEAVER"],"an absorbed essence fills a slot")
-	check(int(hero.max_hp) == hp+9,"a tier-three orc is three constitution")
+	check(int(hero.max_hp) == hp+8,"an orc stone is eight HP")
 	check(not s.equip_part(0,1,"GOBLIN_SHIV"),"no second slot at level one")
-	check(s.unequip_part(0,0) and hero.equipped_abilities == [""] and int(s.parts_bag.ORC_CLEAVER) == 1,"taking it off keeps it absorbed, not bagged")
-	check(int(hero.max_hp) == hp and int(hero.essences.ORC_CLEAVER) == 3,"the pools drop, the tier stays")
+	check(s.unequip_part(0,0) and hero.equipped_abilities == [""] and int(s.parts_bag.ORC_CLEAVER) == 3,"taking it off keeps it absorbed, not bagged")
+	check(int(hero.max_hp) == hp and int(hero.essences.ORC_CLEAVER) == 1,"the pools drop, the stone stays absorbed")
 	s.parts_bag["GOBLIN_SHIV"] = 1
 	check(s.equip_part(0,0,"GOBLIN_SHIV") and int(hero.essences.GOBLIN_SHIV) == 1 and int(s.parts_bag.GOBLIN_SHIV) == 0,"equipping from the bag absorbs on the way")
 	check(hero.rules.any(func(r): return r.skill == "GOBLIN_SHIV"),"a part essence brings its rule")
@@ -148,13 +150,12 @@ func actives() -> void:
 	hero.level = 1; hero.equipped_abilities = ["ORE_SLAM"]; hero.essences = {"ORE_SLAM":1}
 	var base: int = int(club.damage)+maxi(0,StatSheet.value(s,hero,"str")-10)/2
 	check(Abilities.power(s,hero,club,"ORE_SLAM") == base,"a part reads the current strength")
-	hero.essences.ORE_SLAM = 3
-	base = int(club.damage)+maxi(0,StatSheet.value(s,hero,"str")-10)/2
-	check(Abilities.power(s,hero,club,"ORE_SLAM") == Essences.active_power(3,base),"tier three hits half again as hard")
-	check(Abilities.power(s,hero,club) == base,"without an id the part counts as tier one")
+	hero.level = 5
+	check(Abilities.power(s,hero,club,"ORE_SLAM") == base,"no tier: the stone hits as hard however long it is worn")
+	check(Abilities.power(s,hero,club) == base,"without an id the part hits the same")
 	var sling: Dictionary = Abilities.DEFINITIONS.KOBOLD_SLING
-	hero.equipped_abilities = ["GOBLIN_SHIV"]; hero.essences = {"GOBLIN_SHIV":3}
-	check(Abilities.power(s,hero,sling,"KOBOLD_SLING") == int(sling.damage)+(18-10)/2,"a ranged part reads dexterity")
+	hero.equipped_abilities = ["GOBLIN_SHIV"]; hero.essences = {"GOBLIN_SHIV":1}
+	check(Abilities.power(s,hero,sling,"KOBOLD_SLING") == int(sling.damage)+maxi(0,StatSheet.value(s,hero,"dex")-10)/2,"a ranged part reads dexterity")
 	var foe: Dictionary = s.enemies[0]
 	check(Abilities.power(s,foe,club,"ORE_SLAM") == int(club.damage),"a monster hits for the listed damage")
 	hero.skill_xp = {"sword":2500}
@@ -163,9 +164,9 @@ func actives() -> void:
 	Hunt.record(hero,int(foe.id))
 	check(hero.usage.has(int(foe.id)),"a strike marks the member as a hunter")
 	check(s.hunt_recipients(foe,{}).has(hero),"and the hunt counts them")
-	hero.essences = {"FIRE_CALLER":2}; hero.equipped_abilities = ["FIRE_CALLER"]
+	hero.essences = {"FIRE_CALLER":1}; hero.equipped_abilities = ["FIRE_CALLER"]
 	var enc: int = int(Stats.stats(s,hero).enc)
-	check(Spells.failure(s,hero,"fire_4") == clampi(8+4*9+enc*5-(12+4)-20,0,85),"failure reads mind and the caster tier")
+	check(Spells.failure(s,hero,"fire_4") == clampi(8+4*9+enc*5-StatSheet.value(s,hero,"int")-10,0,85),"failure reads mind and ten for a slotted stone of the school")
 	s.manual_mode = false
 	hero.essences = {"ORC_CLEAVER":1}; hero.equipped_abilities = ["ORC_CLEAVER"]
-	check(StatSheet.legacy_power(hero,"MELEE",18) == 22,"the old auto path reads essence strength")
+	check(StatSheet.legacy_power(hero,"MELEE",18) == 18,"the old auto path reads attribute points, which a stone no longer gives")

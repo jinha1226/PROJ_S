@@ -8,7 +8,7 @@ const Floor = preload("res://expedition/level/continuous_floor.gd")
 const BossAI = preload("res://expedition/actors/boss_ai.gd")
 const Zones = preload("res://expedition/level/zones.gd")
 const Bestiary = preload("res://expedition/progression/bestiary.gd")
-const Families = preload("res://expedition/combat/families.gd")
+const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
 ## species: [part, element, min depth, max depth]
 const CASTERS := {
 	"kobold_firecaller":["FIRE_CALLER","fire",4,6],
@@ -44,7 +44,7 @@ func casters() -> void:
 		var def: Dictionary = Abilities.definition(part)
 		check(bool(def.get("monster_only",false)),"%s is a monster-only attack" % part)
 		check(str(def.get("element","")) == str(entry[1]),"%s carries %s" % [part,entry[1]])
-		check(str(row.get("family","")) in Families.PASSIVES,"%s has a known family passive" % part)
+		check(StoneEffects.species_effect(species_id) == part and StoneEffects.EFFECTS.has(part),"%s's monsters carry their stone's headline effect" % part)
 		check(int(def.damage) <= 14 and int(def.enemy.prep) == 1,"%s stays within floor-1 numbers" % part)
 		check(Essences.has(part) and str(Essences.row(part).get("species","")) == species_id,"%s is the essence of %s" % [part,species_id])
 	var s = Session.new_run(731)

@@ -48,16 +48,15 @@ func data() -> void:
 			check(int(row.level) == level,"%s knows its level" % id)
 			check(str(row.shape) in Spells.primitives,"%s is one of the eight shapes" % id)
 			check(int(row.mp) == 2+level,"%s costs 2 + level MP" % id)
-			var tier: int = 1 if level <= 3 else (2 if level <= 6 else 3)
-			check(Essences.spell_cap(tier) >= level and (tier == 1 or Essences.spell_cap(tier-1) < level),"%s needs a tier-%d caster essence" % [id,tier])
+			check(Essences.spell_cap({"level":level}) >= level and (level == 1 or Essences.spell_cap({"level":level-1}) < level),"%s opens at character level %d" % [id,level])
 			check(not str(row.name).is_empty() and not str(row.note).is_empty(),"%s is named and described" % id)
 	check(not Stats.content.has("books"),"no books any more")
 	for school in SCHOOLS:
 		var caster: String = str(Essences.CASTER_BY_SCHOOL[school])
-		for tier in [1,2,3]:
-			var reach: Array = Essences.spell_choices({"essences":{caster:tier}},caster)
-			check(not reach.is_empty() and reach.all(func(id): return str(rows[id].school) == school),"%s tier %d reaches only its school" % [school,tier])
-			check(reach.size() == Essences.spell_cap(tier),"%s tier %d reaches its band" % [school,tier])
+		for level in [1,5,10]:
+			var reach: Array = Essences.spell_choices({"level":level,"essences":{caster:1}},caster)
+			check(not reach.is_empty() and reach.all(func(id): return str(rows[id].school) == school),"%s at level %d reaches only its school" % [school,level])
+			check(reach.size() == Essences.spell_cap({"level":level}),"%s at level %d reaches up to its level" % [school,level])
 	# The relics stay in the data and out of every book: nothing drops them.
 	for id in ["blast","blink","mend","passwall","ward","turret","ignite"]:
 		check(Stats.content.spells.has(id),"the relic %s is still in the table" % id)
@@ -88,6 +87,7 @@ func learning() -> void:
 	var s = Session.new_run(7,"fire")
 	var hero: Dictionary = s.party[0]
 	s.phase = "CAMP"
+	hero.level = 3
 	check("fire_1" in Essences.spell_choices(hero,"FIRE_CALLER"),"the kit spell is in reach")
 	check("fire_2" in Essences.spell_choices(hero,"FIRE_CALLER"),"so is the second")
 	check("fire_3" in Essences.spell_choices(hero,"FIRE_CALLER"),"and the third")
@@ -98,13 +98,15 @@ func learning() -> void:
 	check(hero.prepared == ["fire_3"],"and is the one ready")
 	check(hero.spells == ["fire_3"],"one essence, one spell")
 	s.parts_bag["FIRE_CALLER"] = 2
-	check(s.absorb_essence(0,"FIRE_CALLER") == "","a second copy raises the tier")
-	check(Essences.tier(hero,"FIRE_CALLER") == 2,"to two")
-	check("fire_6" in Essences.spell_choices(hero,"FIRE_CALLER"),"tier two reaches the sixth")
+	check(s.absorb_essence(0,"FIRE_CALLER") == "이미 흡수함","a second copy is refused")
+	check(int(s.parts_bag.FIRE_CALLER) == 2,"and stays in the bag for somebody else")
+	hero.level = 6
+	check("fire_6" in Essences.spell_choices(hero,"FIRE_CALLER"),"level six reaches the sixth")
 	check("fire_7" not in Essences.spell_choices(hero,"FIRE_CALLER"),"not the seventh")
-	check(s.absorb_essence(0,"FIRE_CALLER") == "","a third copy")
-	check("fire_10" in Essences.spell_choices(hero,"FIRE_CALLER"),"tier three reaches the tenth")
-	check(s.absorb_essence(0,"FIRE_CALLER") != "","and there is no fourth tier")
+	check(s.absorb_essence(0,"FIRE_CALLER") == "이미 흡수함","a third copy is refused too")
+	hero.level = 10
+	check("fire_10" in Essences.spell_choices(hero,"FIRE_CALLER"),"level ten reaches the tenth")
+	check(Essences.MAX_TIER == 1,"and there are no tiers at all")
 	check(not s.choose_essence_spell(0,"FROST_IMP","ice_1"),"another school needs its own essence")
 	s.parts_bag["FROST_IMP"] = 1
 	check(s.absorb_essence(0,"FROST_IMP") == "","found in the dungeon, it is absorbed")
@@ -156,7 +158,7 @@ func board(school: String, seed_value: int) -> Dictionary:
 	var centre: Vector2i = Fixture.arena(s,10)
 	var hero: Dictionary = s.party[0]
 	hero.mp = 999; hero.max_mp = 999
-	hero.essences[str(Essences.CASTER_BY_SCHOOL[school])] = 3
+	hero.essences[str(Essences.CASTER_BY_SCHOOL[school])] = 1
 	for enemy in s.enemies: enemy.hp = 0
 	var foe: Dictionary = s.enemies[0]
 	foe.hp = 200; foe.max_hp = 200; foe.pos = centre+Vector2i(2,0)
@@ -167,6 +169,12 @@ func board(school: String, seed_value: int) -> Dictionary:
 func ready(s, hero: Dictionary, id: String) -> void:
 	hero.spells.append(id)
 	hero.prepared = [id]
+
+## 술사 6: a high spell never fails. Without it a first-level mind now fumbles
+## a ninth-level spell more often than not, with no tier to steady it.
+func steady(hero: Dictionary, base: String) -> void:
+	hero.level = maxi(int(hero.level),6)
+	hero.equipped_abilities = [base]+["fire","ice","air","poison","bleed"].map(func(e): return base+"@"+e)
 
 func effects() -> void:
 	await bolt_and_line()
@@ -303,6 +311,7 @@ func mark_shape() -> void:
 	# dominate: a foe counted on the hero's side while the spell holds.
 	var rule: Dictionary = board("hex",30)
 	ready(rule.s,rule.hero,"hex_9")
+	steady(rule.hero,"GOBLIN_HEXER")
 	check(rule.foe not in rule.s.friends(),"a monster is nobody's friend")
 	check(rule.s.cast("hex_9",rule.foe.pos),"지배 is cast")
 	check(bool(rule.foe.enemy),"the flag never moves")
@@ -321,7 +330,7 @@ func summon_shape() -> void:
 	ready(s,hero,"summon_3")
 	check(s.cast("summon_3",hero.pos),"하급 소환 is cast")
 	var pets: Array = s.npcs.filter(func(n): return bool(n.get("summoned",false)))
-	check(pets.size() == 2,"two imps answer")
+	check(pets.size() == 3,"two imps answer, and the summoner stone's extra one")
 	check(pets.all(func(p): return str(p.name) == "임프" and int(p.max_hp) == 12),"and they are imps")
 	check(pets.all(func(p): return s.melee_reach(hero.pos,p.pos)),"they stand within arm's reach")
 	check(pets.all(func(p): return p in s.friends()),"they count as friends")
@@ -332,9 +341,10 @@ func summon_shape() -> void:
 	# A wolf is the bigger creature, and it goes when its time is up.
 	var wolf_pack: Dictionary = board("summon",32)
 	ready(wolf_pack.s,wolf_pack.hero,"summon_7")
+	steady(wolf_pack.hero,"GNOLL_SUMMONER")
 	check(wolf_pack.s.cast("summon_7",wolf_pack.hero.pos),"상급 소환 is cast")
 	var wolves: Array = wolf_pack.s.npcs.filter(func(n): return bool(n.get("summoned",false)))
-	check(wolves.size() == 1 and int(wolves[0].max_hp) == 40,"one wolf with forty hit points")
+	check(wolves.size() == 2 and wolves.all(func(w): return int(w.max_hp) == 40),"one wolf and the stone's extra one, forty hit points each")
 	var born: int = int(wolves[0].expires_at)
 	var guard := 0
 	while wolf_pack.s.npcs.any(func(n): return bool(n.get("summoned",false))) and guard < 20:
@@ -361,7 +371,7 @@ func summon_shape() -> void:
 	ready(grief.s,grief.hero,"summon_1")
 	grief.s.cast("summon_1",grief.hero.pos)
 	var dog: Array = grief.s.npcs.filter(func(n): return bool(n.get("summoned",false)))
-	check(dog.size() == 1,"the hound answers")
+	check(dog.size() == 2,"the hound answers, with the summoner stone's extra one")
 	if dog.is_empty(): return
 	grief.s.phase = "BATTLE"
 	grief.hero.stress = 0
@@ -415,6 +425,7 @@ func turned() -> void:
 	var s = pack.s
 	var foe: Dictionary = pack.foe
 	ready(s,pack.hero,"hex_9")
+	steady(pack.hero,"GOBLIN_HEXER")
 	check(not s.party_enemies().is_empty(),"a monster is a threat to begin with")
 	check(s.cast("hex_9",foe.pos),"지배 is cast")
 	check(s.dominated(foe),"the foe is dominated")
@@ -447,7 +458,7 @@ func turned() -> void:
 	var spare: Dictionary = board("hex",45)
 	spare.hero.spells.append_array(["hex_9","fire_3"])
 	spare.hero.prepared = ["hex_9","fire_3"]
-	spare.hero.essences.FIRE_CALLER = 3
+	spare.hero.essences.FIRE_CALLER = 1
 	check(spare.s.cast("hex_9",spare.foe.pos),"지배 again")
 	check(spare.s.dominated(spare.foe),"and it holds")
 	var untouched: int = spare.foe.hp

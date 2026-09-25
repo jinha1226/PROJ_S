@@ -1,7 +1,7 @@
 extends SceneTree
-## The three build axes: weapon × role set × element set. Element sets ride on
-## every hit, bleeding is an element tag, and step three of a role set is a
-## trigger.
+## The three build axes: weapon × role combo × element set. Element sets ride
+## on every hit, bleeding is an element tag, and the old role set triggers
+## are replaced by the 2·4·6 role combos.
 const Session = preload("res://expedition/run/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
@@ -12,6 +12,8 @@ const Rules = preload("res://expedition/combat/combat_rules.gd")
 const Statuses = preload("res://expedition/combat/statuses.gd")
 const Stats = preload("res://expedition/combat/combat_stats.gd")
 const Spells = preload("res://expedition/spells/spells.gd")
+const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
+const Passives = preload("res://expedition/combat/passives.gd")
 var failures := 0
 var checks := 0
 
@@ -126,77 +128,72 @@ func procs() -> void:
 	check(TagSets.outgoing(s,d.hero,d.foe,10) == 13,"전기 3: a wet target takes thirty percent more")
 
 func roles() -> void:
-	# 기습 3: a dodge makes the next blow a sure critical.
+	StoneEffects.force = 99
+	# 기습: a critical chance now; a dodge readies nothing.
 	var d := duo(); var s = d.s
-	slot(d.hero,["GOBLIN_SHIV","GOBLIN_SHIV@fire","GOBLIN_SHIV@ice"])
+	slot(d.hero,["SPIDER_WEB","SPIDER_WEB@fire","SPIDER_WEB@ice"])
 	check(not TagSets.stat_bonus(d.hero).has("ev"),"기습 3 lends no evasion any more")
-	Reactions.begin_action(s)
-	TagSets.on_dodge(s,d.hero,d.foe)
-	check(d.hero.statuses.has("poised"),"a dodge readies a critical")
-	d.foe.hp = 30
-	check(TagSets.outgoing(s,d.hero,d.foe,10) == 15 and not d.hero.statuses.has("poised"),"the next blow is half again and spends it")
 	var dodged := false
 	for attempt in range(80):
 		d.hero.hp = int(d.hero.max_hp); d.hero.statuses = {}
 		Reactions.begin_action(s)
 		var out: Dictionary = Rules.attack(s,d.foe,d.hero)
-		if bool(out.evaded): dodged = d.hero.statuses.has("poised"); break
-	check(dodged,"a real dodge readies it too")
-	# 수호 3: a block strikes back with half the weapon and the element extras.
+		if bool(out.evaded): dodged = not d.hero.statuses.has("poised"); break
+	check(dodged,"a real dodge readies nothing any more")
+	d.foe.hp = 30
+	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 10,"기습 3 is the two bracket: ten percent critical")
+	check(Passives.outgoing(s,d.hero,d.foe,10) == 10,"and the next blow carries no stored critical")
+	slot(d.hero,["SPIDER_WEB","SPIDER_WEB@fire","SPIDER_WEB@ice","SPIDER_WEB@air"])
+	check(StoneEffects.crit_percent(d.hero) == 200,"기습 4: critical damage +50%p")
+	# 수호: armour and block by bracket; a block strikes nothing back.
 	d = duo(); s = d.s
 	slot(d.hero,["HOB_TAUNT","HOB_TAUNT@fire","HOB_TAUNT@ice"])
-	var counter: int = maxi(1,int(Stats.stats(s,d.hero).damage)/2)
-	Reactions.begin_action(s)
-	TagSets.on_block(s,d.hero,d.foe)
-	check(int(d.foe.hp) == 40-counter,"a block strikes back for half the weapon")
-	TagSets.on_block(s,d.hero,d.foe)
-	check(int(d.foe.hp) == 40-counter,"once in an action")
-	check(StatSheet.sheet(s,d.ally).ac.parts.all(func(p): return p.from != "수호 세트"),"수호 3 no longer lends the ally armour")
-	slot(d.hero,["HOB_TAUNT","HOB_TAUNT@fire","HOB_TAUNT@ice","LIZARD_TAIL@fire"])
-	d.foe.hp = 40
-	Reactions.begin_action(s)
-	TagSets.on_block(s,d.hero,d.foe)
-	check(int(d.foe.hp) == 40-counter-3,"the counter carries the fire set's extra")
 	d.hero.gear.shield = {"type":"shield"}
-	d.foe.hp = 40
 	var blocked := false
 	for attempt in range(80):
 		d.hero.hp = int(d.hero.max_hp)
 		Reactions.begin_action(s)
 		var out: Dictionary = Rules.attack(s,d.foe,d.hero)
-		if bool(out.blocked): blocked = int(d.foe.hp) < 40; break
-	check(blocked,"a real block strikes back")
-	# 광폭 3: a kill heals five and takes a round off every cooldown.
+		if bool(out.blocked): blocked = int(d.foe.hp) == 40; break
+	check(blocked,"a real block no longer strikes back")
+	check(int(TagSets.stat_bonus(d.hero).ac) == 3,"수호 3 is the two bracket: armour three")
+	check(StatSheet.sheet(s,d.ally).ac.parts.all(func(p): return p.from != "수호 세트" and p.from != "세트"),"수호 lends the ally no armour")
+	slot(d.hero,["HOB_TAUNT","HOB_TAUNT@fire","HOB_TAUNT@ice","HOB_TAUNT@air"])
+	check(int(TagSets.stat_bonus(d.hero).ac) == 6 and int(TagSets.stat_bonus(d.hero).sh) == 10,"수호 4: armour six, block ten")
+	slot(d.hero,["HOB_TAUNT","HOB_TAUNT@fire","HOB_TAUNT@ice","HOB_TAUNT@air","HOB_TAUNT@poison","HOB_TAUNT@bleed"])
+	check(Passives.incoming(s,d.ally,20) == 17,"수호 6: the ally beside takes fifteen percent less")
+	# 광폭 3: no heal on a kill, and no family takes a cooldown off.
 	d = duo(); s = d.s
 	slot(d.hero,["ORC_CLEAVER","GNOLL_SPEAR","ORC_CLEAVER@fire"])
 	d.hero.hp = 20; d.hero.cooldowns = {"X":3}; d.foe.hp = 1
 	s.damage(d.foe,5,int(d.hero.id),"SLASH")
-	check(int(d.hero.hp) == 25 and int(d.hero.cooldowns.X) == 1,"광폭 3 stacks with the orc family's cooldown reduction")
-	# 사수 3: a statused target takes a fifth more from range.
+	check(int(d.hero.hp) == 20 and int(d.hero.cooldowns.X) == 3,"광폭 3 heals nothing on a kill and cuts no cooldown")
+	# 사수 3: no bonus for a statused target; only 코볼트's own +25% at range.
 	d = duo(); s = d.s
 	d.hero.gear.weapon = {"type":"bow","enchant":0}
 	slot(d.hero,["KOBOLD_SLING","KOBOLD_SLING@ice","KOBOLD_SLING@fire"])
 	d.foe.pos = d.c+Vector2i(3,0); d.foe.hp = 30
-	check(TagSets.outgoing(s,d.hero,d.foe,10) == 10,"사수 3 needs a status on the target")
+	check(Passives.outgoing(s,d.hero,d.foe,20) == 25,"사수 3 adds nothing at range: only 코볼트's +25%")
 	d.foe.statuses["wet"] = s.time+200
-	check(TagSets.outgoing(s,d.hero,d.foe,10) == 10,"being wet is no status for it")
+	check(Passives.outgoing(s,d.hero,d.foe,20) == 25,"being wet changes nothing")
 	d.foe.statuses["slow"] = s.time+200
-	check(TagSets.outgoing(s,d.hero,d.foe,10) == 12,"사수 3: a slowed target takes a fifth more from range")
+	check(Passives.outgoing(s,d.hero,d.foe,20) == 25,"nor does a slowed target")
 	d.foe.pos = d.c+Vector2i(1,0)
-	check(TagSets.outgoing(s,d.hero,d.foe,10) == 10,"but not point-blank")
-	# 술사 3: reactions bite harder.
+	check(Passives.outgoing(s,d.hero,d.foe,20) == 20,"and point-blank it is plain")
+	# 술사 3: reactions bite as hard as ever.
 	d = duo(); s = d.s
 	slot(d.hero,["GOBLIN_HEXER","GNOLL_SUMMONER","FIRE_CALLER"])
-	check(Reactions.reaction_damage(d.hero,10) == 13 and Reactions.reaction_damage(d.ally,10) == 10,"술사 3: reaction damage +30%")
-	# 무리 3: a reaction rallies the allies around.
+	check(Reactions.reaction_damage(d.hero,10) == 10 and Reactions.reaction_damage(d.ally,10) == 10,"술사 3 no longer strengthens reactions")
+	# 무리 3: no rally; the whole party hits a tenth harder instead.
 	d = duo(); s = d.s
 	slot(d.hero,["RAT_GNAW","RIVER_RAT_SPLASH","RAT_GNAW@ice"])
 	check(TagSets.incoming(s,d.hero,5) == 5,"무리 3 no longer takes one less")
 	s.tile(d.foe.pos).wet = 50
 	Reactions.begin_action(s)
 	Reactions.tile_react(s,d.foe.pos,"ice",5,d.hero)
-	check(d.ally.statuses.has("rally") and not d.hero.statuses.has("rally"),"a reaction rallies the allies around, not the wearer")
+	check(not d.ally.statuses.has("rally") and not d.hero.statuses.has("rally"),"a reaction rallies nobody any more")
 	d.foe.hp = 30
-	check(TagSets.outgoing(s,d.ally,d.foe,10) == 12 and not d.ally.statuses.has("rally"),"the rallied blow is a fifth stronger, once")
+	check(Passives.outgoing(s,d.ally,d.foe,10) == 11,"무리 2's party-wide attack replaces the rally")
 	var source: String = FileAccess.get_file_as_string("res://expedition/progression/tag_sets.gd")
-	check(not source.contains("func sure_hit") and not source.contains("func ally_guard"),"the old step-three effects are gone")
+	check(not ["func on_dodge","func on_block","func on_reaction","func on_kill","func attack_delay","poised","rally"].any(func(word): return source.contains(word)),"the old role triggers are gone")
+	StoneEffects.force = -1

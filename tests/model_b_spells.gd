@@ -16,7 +16,7 @@ func run() -> void:
 	var hero: Dictionary = s.party[0]
 	# Relics belong to no caster essence.
 	for id in ["blast","blink","mend","passwall","ward","turret"]:
-		check(Essences.CASTER_BY_SCHOOL.values().all(func(e): return id not in Essences.spell_choices({"essences":{e:3}},e)),"no essence offers the relic "+id)
+		check(Essences.CASTER_BY_SCHOOL.values().all(func(e): return id not in Essences.spell_choices({"level":10,"essences":{e:1}},e)),"no essence offers the relic "+id)
 		hero.spells.append(id)
 	s.phase = "CAMP"
 	hero.prepared = ["blast","mend","blink"]

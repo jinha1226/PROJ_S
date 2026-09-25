@@ -26,11 +26,11 @@ func hero_run():
 	var s = Session.new_run(731,"sword")
 	return s
 
-func slot(actor: Dictionary, ids: Array, tier: int = 1) -> void:
+func slot(actor: Dictionary, ids: Array) -> void:
 	actor.level = maxi(int(actor.level),ids.size())
 	actor.equipped_abilities = ids.duplicate()
 	actor.essences = {}
-	for id in ids: actor.essences[id] = tier
+	for id in ids: actor.essences[id] = 1
 
 func attributes() -> void:
 	var s = hero_run(); var hero: Dictionary = s.party[0]
@@ -44,28 +44,28 @@ func attributes() -> void:
 	var hp: int = hero.max_hp; var mp: int = hero.max_mp
 	slot(hero,["ORC_CLEAVER"]); StatSheet.refresh_pools(s,hero)
 	sheet = StatSheet.sheet(s,hero)
-	check(int(sheet.str.total) == 14 and sheet.str.parts.any(func(p): return p.from == Essences.title("ORC_CLEAVER") and int(p.value) == 2),"an essence adds strength under its own name")
-	check(int(hero.max_hp) == hp+3 and int(hero.hp) == hp+3,"one constitution is three more HP")
-	check(int(Stats.stats(s,hero).damage) == int(sword.damage)+14/6,"strength feeds the sword")
-	slot(hero,["ORC_CLEAVER"],3); StatSheet.refresh_pools(s,hero)
-	check(int(StatSheet.value(s,hero,"str")) == 18 and int(hero.max_hp) == hp+9,"tier three triples the essence")
+	check(int(sheet.atk.total) == 4 and int(sheet.str.total) == 12 and sheet.atk.parts.any(func(p): return p.from == Essences.title("ORC_CLEAVER") and int(p.value) == 4),"an essence adds attack under its own name, no strength")
+	check(int(hero.max_hp) == hp+8 and int(hero.hp) == hp+8,"a berserk stone is eight more HP")
+	check(int(Stats.stats(s,hero).damage) == int(sword.damage)+12/6+4,"attack adds to the sword")
+	slot(hero,["ORC_CLEAVER","LIZARD_TAIL"]); StatSheet.refresh_pools(s,hero)
+	check(int(StatSheet.value(s,hero,"atk")) == 8 and int(hero.max_hp) == hp+16,"two stones add up")
 	slot(hero,[""]); StatSheet.refresh_pools(s,hero)
 	check(int(hero.max_hp) == hp and int(hero.hp) <= hp,"taking it off returns the HP")
 	slot(hero,["FIRE_CALLER"]); StatSheet.refresh_pools(s,hero)
-	check(int(hero.max_mp) == mp+2,"two mind is two more MP")
-	check(int(hero.pool_bonus.mp) == 2 and int(hero.pool_bonus.hp) == 0,"the pools remember what they were given")
-	slot(hero,["GOBLIN_SHIV"],3)
-	check(int(StatSheet.value(s,hero,"ev")) == 18/3+3,"evasion is one per three dexterity plus the stone's own")
-	check(StatSheet.legacy_power(hero,"RANGED",10) == 10+2*6,"the old auto path reads essence dexterity")
+	check(int(hero.max_mp) == mp+8,"a caster stone is eight more MP")
+	check(int(hero.pool_bonus.mp) == 8 and int(hero.pool_bonus.hp) == 0,"the pools remember what they were given")
+	slot(hero,["GOBLIN_SHIV"])
+	check(int(StatSheet.value(s,hero,"ev")) == int(StatSheet.value(s,hero,"dex"))/3 and int(StatSheet.value(s,hero,"dodge")) == 5,"evasion is one per three dexterity; the stone adds 회피 % instead")
+	check(StatSheet.legacy_power(hero,"RANGED",10) == 10,"the old auto path reads attribute points, which a stone no longer gives")
 
 func defence() -> void:
 	var s = hero_run(); var hero: Dictionary = s.party[0]
 	check(int(Stats.stats(s,hero).ac) == int(Stats.content.armours.robe.ac),"the robe's armour")
-	slot(hero,["HOB_TAUNT"])
-	check(int(Stats.stats(s,hero).sh) == 2,"block without a shield is halved")
+	slot(hero,["SHIELD_STANCE"])
+	check(int(Stats.stats(s,hero).sh) == 10,"block without a shield is halved")
 	hero.gear.shield = {"type":"shield"}
-	check(int(Stats.stats(s,hero).sh) == StatSheet.SHIELD_BLOCK+5,"a shield adds its fifteen")
-	slot(hero,["HOB_TAUNT","HOB_TAUNT@fire","HOB_TAUNT@ice"],3)
+	check(int(Stats.stats(s,hero).sh) == StatSheet.SHIELD_BLOCK+20,"a shield adds its fifteen")
+	slot(hero,["SHIELD_STANCE","HOB_TAUNT","HOB_TAUNT@fire","HOB_TAUNT@ice","HOB_TAUNT@air","HOB_TAUNT@poison"])
 	check(int(Stats.stats(s,hero).sh) == StatSheet.BLOCK_CAP,"block stops at fifty")
 
 func resistance() -> void:
@@ -73,12 +73,12 @@ func resistance() -> void:
 	check(Stats.stats(s,hero).res.has("will"),"the will is a resistance")
 	check(int(Stats.content.rings.poison.value) == 80,"the poison ring stops at eighty")
 	hero.gear.ring = {"type":"fire"}
-	slot(hero,["FIRE_CALLER"],3)
-	check(int(Stats.stats(s,hero).res.fire) == StatSheet.RES_CAP,"sixty and thirty stop at eighty")
+	slot(hero,["FIRE_CALLER","HOB_TAUNT@fire","LIZARD_TAIL@fire"])
+	check(int(Stats.stats(s,hero).res.fire) == StatSheet.RES_CAP,"the ring's sixty, two variants' ten each and the set's twenty stop at eighty")
 	var hp: int = hero.hp
 	Rules.damage(s,{},hero,100,"fire")
 	check(int(hero.hp) == hp-20,"eighty percent of a fire hit is turned")
-	slot(hero,["GOBLIN_HEXER"],3)
+	slot(hero,["GOBLIN_HEXER","HOB_TAUNT@will"])
 	Statuses.apply(s,hero,"confuse",1000)
 	check(int(hero.statuses.confuse) == int(s.time)+700,"thirty will shortens confusion by thirty percent")
 	Statuses.apply(s,hero,"burn",1000)

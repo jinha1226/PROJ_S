@@ -34,7 +34,7 @@ func run() -> void:
 		check(str(hero.gear.armour.type) == "robe","%s wears a robe" % id)
 		var caster: String = str(Essences.CASTER_BY_SCHOOL.get(str(kit.axis),""))
 		check(caster.is_empty() == str(kit.spell).is_empty(),"%s has a caster essence exactly when it has a spell" % id)
-		check(caster.is_empty() or int(hero.essences.get(caster,0)) == 1,"%s starts its caster essence at tier one" % id)
+		check(caster.is_empty() or int(hero.essences.get(caster,0)) == 1,"%s starts with its caster essence absorbed" % id)
 		var spell: String = str(kit.spell)
 		if spell.is_empty():
 			check(hero.spells.is_empty() and hero.prepared.is_empty(),"%s knows no spell" % id)
@@ -81,9 +81,9 @@ func magic(id: String, spell: String) -> void:
 	s.floor_state.observe(s)
 	var target: Vector2i = foe.pos if spell != "summon_1" else hero.pos
 	check(Spells.can_cast(s,hero,spell,target),"%s can cast %s" % [id,spell])
-	# The kit's own rank is enough to cast; a mastered caster never fumbles, so
+	# The kit's own stone is enough to cast; a slotted stone makes a first-level spell sure, so
 	# what the spell does is what the check below reads.
-	hero.essences[str(Essences.CASTER_BY_SCHOOL[str(Stats.content.spells[spell].school)])] = 3
+	hero.essences[str(Essences.CASTER_BY_SCHOOL[str(Stats.content.spells[spell].school)])] = 1
 	var before: int = foe.hp
 	var lines: int = s.log_lines.size()
 	check(s.cast(spell,target),"%s casts %s" % [id,spell])
@@ -97,7 +97,7 @@ func magic(id: String, spell: String) -> void:
 			check(foe.statuses.has("confuse") or resisted,"혼란 lands or is resisted aloud")
 		"summon_1":
 			var pets: Array = s.npcs.filter(func(n): return bool(n.get("summoned",false)))
-			check(pets.size() == 1,"one hound answers")
+			check(pets.size() == 2,"one hound answers, and the summoner stone calls one more")
 			if not pets.is_empty():
 				check(s.melee_reach(hero.pos,pets[0].pos),"the hound stands beside the hero")
 				check(bool(pets[0].awake) and bool(pets[0].npc),"the hound is an awake npc")
@@ -115,7 +115,7 @@ func summoned_hound() -> void:
 	var born: int = s.time
 	check(s.cast("summon_1",hero.pos),"the hound is summoned")
 	var pets: Array = s.npcs.filter(func(n): return bool(n.get("summoned",false)))
-	check(pets.size() == 1,"exactly one hound")
+	check(pets.size() == 2,"exactly one hound and the stone's extra one")
 	if pets.is_empty(): return
 	var pet: Dictionary = pets[0]
 	check(int(pet.expires_at) == born+300,"the hound lasts three hundred ticks")

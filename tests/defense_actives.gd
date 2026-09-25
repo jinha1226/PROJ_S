@@ -76,7 +76,7 @@ func curl() -> void:
 	check(Abilities.reduction(d.hero) == 75,"the largest cut wins, not the sum")
 	var hp: int = d.hero.hp
 	s.damage(d.hero,40,int(d.foe.id),"IMPACT")
-	check(d.hero.hp == hp-10,"forty becomes ten")
+	check(d.hero.hp == hp-8,"forty becomes ten, and the stone's 껍질 takes fifteen percent more off")
 	d.hero.iron_guard = false
 	check(Abilities.reduction(d.hero) == 50,"엄호 alone halves")
 	d.hero.damage_cut = 40
@@ -100,7 +100,7 @@ func thorns() -> void:
 	check(Abilities.execute(s,d.hero,"THORN_ARMOUR",d.hero.pos) and d.hero.statuses.has("thorns"),"가시 갑옷 goes on")
 	var foe_hp: int = d.foe.hp; var hp: int = d.hero.hp
 	s.damage(d.hero,20,int(d.foe.id),"IMPACT")
-	check(d.foe.hp == foe_hp-6 and d.hero.hp < hp,"an adjacent attacker takes thirty percent back")
+	check(d.foe.hp == foe_hp-12 and d.hero.hp < hp,"an adjacent attacker takes thirty percent back from the active and thirty from the stone")
 	d.foe.pos = d.c+Vector2i(3,0); foe_hp = d.foe.hp
 	s.damage(d.hero,20,int(d.foe.id),"IMPACT")
 	check(d.foe.hp == foe_hp,"a distant attacker takes nothing back")

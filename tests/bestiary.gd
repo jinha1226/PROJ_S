@@ -62,17 +62,15 @@ func formulas() -> void:
 	check(int(archer.range) == 4 and int(archer.attack_percent) == 390,"deep archers reach four; actives scale by 26×1.2/8")
 	var ambush: Dictionary = Bestiary.monster_stats("goblin",1)
 	check(int(ambush.ev) == 7,"an ambusher dodges four more")
-	check(Bestiary.essence_stats("BERSERK","") == {"str":2,"con":1},"광폭: 근력 2, 체력 1")
-	check(Bestiary.essence_stats("GUARD","") == {"con":1,"ac":1,"sh":5},"수호: 체력 1, 방어 1, 막기 5")
-	check(Bestiary.essence_stats("CASTER","fire") == {"int":2,"res_fire":10},"술사: 정신 2와 계열 저항 10")
-	check(Bestiary.essence_stats("CASTER","hex") == {"int":2,"res_will":10},"변이 계열의 저항은 의지")
-	check(Bestiary.essence_stats("CASTER","") == {"int":2},"a caster with no school has no resistance")
+	check(Bestiary.essence_stats("BERSERK","") == {"atk":4,"hp":8},"광폭: 공격력 4, 최대 HP 8")
+	check(Bestiary.essence_stats("GUARD","") == {"hp":20,"ac":3},"수호: 최대 HP 20, 방어 3")
+	check(Bestiary.essence_stats("CASTER","fire") == {"spell":4,"mp":8},"술사: 주문력 4, 최대 MP 8")
+	check(Bestiary.essence_stats("CASTER","hex") == Bestiary.essence_stats("CASTER","fire"),"every caster stone is the same, whatever its school")
+	check(Bestiary.essence_stats("CASTER","") == {"spell":4,"mp":8},"a caster with no school too")
 	var total := 0
 	for role in Bestiary.ROLE_POINTS:
-		var points := 0
-		for key in Bestiary.ROLE_POINTS[role]: points += int(Bestiary.ROLE_POINTS[role][key])/(5 if key == "sh" else 1)
-		if role == "CASTER": points += 1 # its school's resistance 10
-		check(points == 3,"%s stones are three points" % role)
+		var keys: Array = (Bestiary.ROLE_POINTS[role] as Dictionary).keys()
+		check(keys.size() == 2 and keys.all(func(k): return str(k) in ["atk","hp","spell","mp","speed","dodge","ac"]),"%s stones give two fight numbers, no attribute points" % role)
 		total += 1
 	check(total == 6,"six roles priced")
 
@@ -124,7 +122,7 @@ func actives() -> void:
 	f = arena(["VAMPIRE_BITE"]); s = f.s; f.foe.pos = f.c+Vector2i(2,0); f.hero.hp = 20; s.floor_state.observe(s)
 	foe_hp = f.foe.hp
 	check(Abilities.execute(s,f.hero,"VAMPIRE_BITE",f.foe.pos) and s.melee_reach(f.hero.pos,f.foe.pos),"흡혈 물기 closes in")
-	check(f.hero.hp == 20+(foe_hp-f.foe.hp)/2,"and drinks half")
+	check(f.hero.hp == 20+(foe_hp-f.foe.hp)/2+(foe_hp-f.foe.hp)*15/100,"and drinks half, and the stone's own fifteen percent")
 	f = arena(["ORE_SLAM@bleed"]); s = f.s
 	check(Abilities.execute(s,f.hero,"ORE_SLAM@bleed",f.foe.pos) and f.foe.statuses.has("bleed") and f.foe.statuses.has("slow"),"a bleed variant bleeds on top of its own status")
 	var w := arena(["WATER_WAVE"]); s = w.s

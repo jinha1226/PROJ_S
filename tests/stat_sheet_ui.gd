@@ -23,21 +23,21 @@ func run() -> void:
 	check(s.absorb_essence(0,"ORC_CLEAVER").is_empty() and s.equip_part(0,0,"ORC_CLEAVER"),"an orc essence is worn")
 	scene.show_character(0,"상태")
 	for _i in range(4): await process_frame
-	for group in ["능력치","방어 수치","속성 저항"]:
+	for group in ["능력치","영혼석 보정","방어 수치","속성 저항"]:
 		check(scene.modal_content.find_child("StatGroup_"+group,true,false) != null,"the status tab has the %s card" % group)
 	var sheet: Dictionary = StatSheet.sheet(s,hero)
 	for key in StatSheet.KEYS:
 		var cell: Button = scene.modal_content.find_child("Stat_"+key,true,false)
 		check(cell != null,"a button for "+key)
 		if cell == null: continue
-		var shown: String = ("%d%%" if key.begins_with("res_") else "%d") % int(sheet[key].total)
+		var shown: String = ("%d%%" if key.begins_with("res_") or key in ["speed","dodge"] else "%d") % int(sheet[key].total)
 		check(cell.text.ends_with(shown),"%s shows its total %s" % [key,shown])
-	var strength: Button = scene.modal_content.find_child("Stat_str",true,false)
-	strength.pressed.emit()
+	var attack: Button = scene.modal_content.find_child("Stat_atk",true,false)
+	attack.pressed.emit()
 	for _i in range(3): await process_frame
 	var lines: Array = scene.item_detail.find_children("*","Label",true,false).map(func(l): return l.text)
-	check(lines.any(func(t): return t.contains("합계  %d" % int(sheet.str.total))),"the breakdown ends in the total")
-	check(lines.any(func(t): return t.contains("+2")),"the orc essence's +2 is listed as its own line")
+	check(lines.any(func(t): return t.contains("합계  %d" % int(sheet.atk.total))),"the breakdown ends in the total")
+	check(lines.any(func(t): return t.contains("+4")),"the orc essence's +4 attack is listed as its own line")
 	check(CharacterUI.breakdown({"total":0,"parts":[]},"res_fire") == "기본값 없음\n합계  0%","an empty resistance still says its total")
 	check(not scene.modal_content.find_children("*","Label",true,false).any(func(l): return l.text.contains("숙련")),"no mastery on the status tab")
 	scene.item_popup.hide(); scene.queue_free(); await process_frame

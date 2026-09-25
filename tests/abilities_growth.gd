@@ -57,8 +57,10 @@ func exercise() -> void:
 	check(int(s.party[0].level) == 3 and s.party[0].equipped_abilities.size() == 3,"three levels, three slots")
 	check(not s.has_method("spend_growth"),"no points to spend any more")
 	s.parts_bag["ORC_CLEAVER"] = 1
-	check(s.equip_part(0,2,"ORC_CLEAVER") and int(s.StatSheet.value(s,s.party[0],"str")) == 14,"an essence raises strength")
-	check(s.Abilities.power(s,s.party[0],s.Abilities.definition("ORE_SLAM"),"ORE_SLAM") == int(s.Abilities.definition("ORE_SLAM").damage)+2,"strength raises a part's blow")
+	var strength: int = int(s.StatSheet.value(s,s.party[0],"str"))
+	var attack: int = int(s.StatSheet.value(s,s.party[0],"atk"))
+	check(s.equip_part(0,2,"ORC_CLEAVER") and int(s.StatSheet.value(s,s.party[0],"atk")) == attack+4 and int(s.StatSheet.value(s,s.party[0],"str")) == strength,"an essence raises attack, not strength")
+	check(s.Abilities.power(s,s.party[0],s.Abilities.definition("ORE_SLAM"),"ORE_SLAM") == int(s.Abilities.definition("ORE_SLAM").damage)+maxi(0,strength-10)/2,"a part's blow still reads strength")
 	check(not s.equip_part(0,5,"ORC_CLEAVER") and not s.equip_part(-1,0,"ORC_CLEAVER"),"invalid slots and members rejected")
 	var scene = load("res://expedition/ui/main.tscn").instantiate(); root.size = Vector2i(390,844); root.add_child(scene)
 	scene.session = s; scene.refresh()

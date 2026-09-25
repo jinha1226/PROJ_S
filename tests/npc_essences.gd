@@ -45,14 +45,14 @@ func run() -> void:
 	var foe: Dictionary = s.enemies.filter(func(e): return Essences.has(str(e.get("part_id",""))))[0]
 	var bag: Dictionary = s.parts_bag.duplicate(true)
 	NpcEssences.on_hunt(s,foe,[hunter])
-	check(Essences.tier(hunter,str(foe.part_id)) == 1,"the first kill of a species gives the npc its essence")
+	check(Essences.absorbed(hunter,str(foe.part_id)),"the first kill of a species gives the npc its essence")
 	check(hunter.equipped_abilities[0] == str(foe.part_id),"and it wears it at once")
 	check(hunter.essence_seen.has(str(foe.species_id)),"the species is remembered")
 	check(s.parts_bag == bag,"the party bag is untouched")
 	var variant: Dictionary = foe.duplicate(true)
 	variant.variant_element = "fire"; variant.part_id = str(foe.part_id)+"@fire"
 	NpcEssences.on_hunt(s,variant,[hunter])
-	check(Essences.tier(hunter,str(variant.part_id)) == 1 and hunter.essence_seen.has(str(foe.species_id)+"@fire"),"the variant has its own first kill")
+	check(Essences.absorbed(hunter,str(variant.part_id)) and hunter.essence_seen.has(str(foe.species_id)+"@fire"),"the variant has its own first kill")
 	var hero_before: Dictionary = s.party[0].get("essences",{}).duplicate()
 	NpcEssences.on_hunt(s,foe,[s.party[0]])
 	check(s.party[0].get("essences",{}) == hero_before,"party members take nothing through this path")
@@ -62,7 +62,7 @@ func run() -> void:
 	other.hp = other.max_hp; other.state = "MET"; other.pos = second.pos+Vector2i(1,0)
 	s.npcs.append(other)
 	s.damage(second,9999,int(other.id),"SLASH")
-	check(second.hp <= 0 and Essences.tier(other,str(second.part_id)) == 1,"an npc's own kill in play gives it the essence")
+	check(second.hp <= 0 and Essences.absorbed(other,str(second.part_id)),"an npc's own kill in play gives it the essence")
 	check(s.parts_bag == bag,"still nothing for the party")
 	# Recruited, it keeps them.
 	var kept: Dictionary = other.essences.duplicate(); var worn: Array = other.equipped_abilities.duplicate()
