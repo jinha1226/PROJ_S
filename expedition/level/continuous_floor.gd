@@ -198,25 +198,32 @@ func interact(s, p: Vector2i) -> bool:
 func enemy_turn(s, enemy: Dictionary) -> void:
 	MonsterAI.turn(s,enemy)
 
-## Everyone trails the leader in a single column, one cell per rank in the
-## marching order. The leader itself waits; a blocked slot falls back to any
-## free cell adjacent to the leader.
+## Each member trails the preceding rank. This keeps the third member moving
+## through a one-cell corridor even when the second occupies the only cell
+## beside the leader.
 func follow(s, actor: Dictionary) -> Dictionary:
 	var leader: Dictionary = s.leader()
 	if actor.id == leader.id: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}
-	# `formation` holds party indices, not ids: a recruited member keeps its own
-	# 1000+ id and would otherwise rank zeroth, on top of the leader.
-	var order: Array = s.formation.filter(func(i): return i < s.party.size() and s.party[i].id != leader.id).map(func(i): return s.party[i].id)
-	var rank: int = order.find(actor.id)+1
-	var destination: Vector2i = leader.pos+Vector2i(0,rank)
+	var order: Array = s.formation.filter(func(i): return i < s.party.size() and s.party[i].hp > 0)
+	var rank: int = order.find(s.party.find(actor))
+	if rank < 1: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}
+	var anchor: Dictionary = s.party[order[rank-1]]
+	if maxi(absi(actor.pos.x-anchor.pos.x),absi(actor.pos.y-anchor.pos.y)) <= 1 and maxi(absi(actor.pos.x-leader.pos.x),absi(actor.pos.y-leader.pos.y)) > 2:
+		var leader_goals: Array = []
+		for d in s.DIRECTIONS:
+			if s.is_free(leader.pos+d): leader_goals.append(leader.pos+d)
+		if not leader_goals.is_empty():
+			var catch_up: Dictionary = s.TurnCore.path(size,size,actor.pos,leader_goals,func(a,b): return s.can_step(a,b),func(_p): return 100)
+			if catch_up.found and catch_up.path.size() > 1: return {"kind":"MOVE","cell":catch_up.path[1],"reason":"동료 따라가기"}
+	var destination: Vector2i = anchor.pos+Vector2i.DOWN
 	if actor.pos == destination: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}
 	if s.is_free(destination):
 		var route: Dictionary = s.TurnCore.path(size,size,actor.pos,[destination],func(a,b): return s.can_step(a,b),func(_p): return 100)
 		if route.found and route.path.size() > 1: return {"kind":"MOVE","cell":route.path[1],"reason":"대형 이동"}
-	if maxi(absi(actor.pos.x-leader.pos.x),absi(actor.pos.y-leader.pos.y)) <= 1: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}
+	if maxi(absi(actor.pos.x-anchor.pos.x),absi(actor.pos.y-anchor.pos.y)) <= 1: return {"kind":"WAIT","cell":actor.pos,"reason":"대형 유지"}
 	var goals: Array = []
 	for d in s.DIRECTIONS:
-		if s.is_free(leader.pos+d): goals.append(leader.pos+d)
+		if s.is_free(anchor.pos+d): goals.append(anchor.pos+d)
 	if not goals.is_empty():
 		var route: Dictionary = s.TurnCore.path(size,size,actor.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100)
 		if route.found and route.path.size() > 1: return {"kind":"MOVE","cell":route.path[1],"reason":"동료 따라가기"}

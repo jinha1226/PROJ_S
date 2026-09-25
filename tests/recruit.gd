@@ -193,6 +193,15 @@ func marching_order() -> void:
 	check(s.floor_state.follow(s,s.party[1]).kind == "WAIT" and s.floor_state.follow(s,s.party[2]).kind == "WAIT","each recruit holds its own rank behind the leader")
 	s.party[1].pos = leader.pos+Vector2i(0,2); s.party[2].pos = leader.pos+Vector2i(0,1); s.floor_state.observe(s)
 	check(s.floor_state.follow(s,s.party[1]).kind == "MOVE","out of place, it walks to its own rank")
+	# The third rank trails the second through a one-cell corridor.
+	for x in range(f.c.x-4,f.c.x+5):
+		s.tile(Vector2i(x,f.c.y-1)).terrain = "wall"
+		s.tile(Vector2i(x,f.c.y+1)).terrain = "wall"
+	leader.pos = f.c; s.party[1].pos = f.c+Vector2i.LEFT; s.party[2].pos = f.c+Vector2i(-2,0)
+	s.floor_state.observe(s)
+	check(s.submit("MOVE",f.c+Vector2i.RIGHT),"leader enters the corridor")
+	check(s.submit("MOVE",f.c+Vector2i(2,0)),"leader advances through the corridor")
+	check(s.party[1].pos == f.c and s.party[2].pos == f.c+Vector2i.LEFT,"both recruits follow one rank forward")
 
 ## Once recruited it is a comrade: its death is the party's loss, not a
 ## stranger's.

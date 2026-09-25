@@ -79,8 +79,12 @@ static func command_choice(s, actor: Dictionary) -> Dictionary:
 		var destination: Vector2i = s.rally_point()
 		if actor.pos == destination or maxi(absi(actor.pos.x-destination.x),absi(actor.pos.y-destination.y)) <= 1:
 			return {"kind":"WAIT","cell":actor.pos,"reason":"공격 중지"}
-		var route: Dictionary = TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,actor.pos,[destination],func(a,b): return s.can_step(a,b),func(_p): return 100)
-		return {"kind":"MOVE","cell":route.path[1],"reason":"공격 중지"} if route.found and route.path.size() > 1 else {"kind":"WAIT","cell":actor.pos,"reason":"공격 중지"}
+		var goals: Array = []
+		for direction in s.DIRECTIONS:
+			var point: Vector2i = destination+direction
+			if s.is_free(point): goals.append(point)
+		var route: Dictionary = TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,actor.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100) if not goals.is_empty() else {}
+		return {"kind":"MOVE","cell":route.path[1],"reason":"집합"} if not route.is_empty() and route.found and route.path.size() > 1 else {"kind":"WAIT","cell":actor.pos,"reason":"집합 대기"}
 	if s.party_command == "RETREAT":
 		var best: Vector2i = Tactics.retreat_cell(s,actor)
 		return {"kind":"WAIT" if best == actor.pos else "MOVE","cell":best,"reason":"후퇴"}

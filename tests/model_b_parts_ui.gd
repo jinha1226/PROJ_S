@@ -25,15 +25,22 @@ func run() -> void:
 	root.add_child(scene)
 	scene.set_process(false)
 	await process_frame
+	scene.find_child("HeroStatus",true,false).pressed.emit()
+	await process_frame
+	scene.details_popup.hide()
 	var entry: Button = scene.find_child("Tactics",true,false)
 	check(entry != null and not entry.disabled,"manual combat shows tactics entry")
 	if entry != null: entry.pressed.emit()
 	await process_frame
 	var menu: Node = scene.find_child("ManualTactics",true,false)
 	check(menu != null,"tactics menu opens")
+	check(scene.details_popup.size.x < root.size.x and menu.find_child("TacticSkills",true,false) != null,"tactics is a compact command menu")
+	menu.find_child("TacticSkills",true,false).pressed.emit()
+	await process_frame
 	var push_button: Button = null
-	if menu != null:
-		for candidate in menu.find_children("*","Button",true,false):
+	var skills: Node = scene.find_child("ManualSkills",true,false)
+	if skills != null:
+		for candidate in skills.find_children("*","Button",true,false):
 			if candidate.text.begins_with("밀치기"): push_button = candidate
 	check(push_button != null and not push_button.disabled,"equipped PUSH is available")
 	if push_button != null: push_button.pressed.emit()

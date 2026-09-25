@@ -109,7 +109,7 @@ static func show_npc(ui, npc: Dictionary) -> void:
 	page.add_theme_constant_override("separation",8)
 	var talk: Dictionary = Session.Recruit.dialogue(session,npc)
 	var heading := HBoxContainer.new(); page.add_child(heading)
-	var portrait := TextureRect.new(); portrait.texture = Art.portrait_face(posmod(int(npc.id),3))
+	var portrait := TextureRect.new(); portrait.texture = Art.actor_portrait(npc)
 	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	portrait.custom_minimum_size = Vector2(64,64); heading.add_child(portrait)
 	var words := VBoxContainer.new(); heading.add_child(words)
@@ -148,7 +148,7 @@ static func update_offer_popup(ui) -> void:
 	ui.stop_text = "%s이(가) 말을 겁니다" % npc.name
 	ui.clear(ui.offer_content)
 	var heading := HBoxContainer.new(); ui.offer_content.add_child(heading)
-	var portrait := TextureRect.new(); portrait.texture = Art.portrait_face(posmod(int(npc.id),3))
+	var portrait := TextureRect.new(); portrait.texture = Art.actor_portrait(npc)
 	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	portrait.custom_minimum_size = Vector2(64,64); heading.add_child(portrait)
 	var words := VBoxContainer.new(); heading.add_child(words)
@@ -252,8 +252,11 @@ static func show_supplies(ui) -> void:
 	else: ui.label(ui.modal_content,"공용 가방",18); build_inventory(ui)
 
 static func build_manual_inventory(ui) -> void:
-	ui.modal_content.custom_minimum_size = ui.get_viewport_rect().size-Vector2(12,12)
+	var available_width: float = minf(360,ui.get_viewport_rect().size.x-32)
+	var columns := 4 if available_width >= 4*68+3*6 else 3
+	ui.modal_content.custom_minimum_size = Vector2(available_width,ui.get_viewport_rect().size.y-32)
 	var box := VBoxContainer.new(); box.name = "ManualInventory"; box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.custom_minimum_size.x = available_width
 	box.add_theme_constant_override("separation",8); ui.modal_content.add_child(box)
 	var header := HBoxContainer.new(); box.add_child(header)
 	var title = ui.label(header,"가방",22); title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -262,17 +265,17 @@ static func build_manual_inventory(ui) -> void:
 	for category in ["전체","소모품","장비","파츠","자원"]:
 		var pick = ui.button(filters,category,func(): ui.inventory_filter = category; show_supplies(ui))
 		pick.toggle_mode = true; pick.button_pressed = category == ui.inventory_filter
-		pick.add_theme_font_size_override("font_size",11)
+		pick.add_theme_font_size_override("font_size",10)
 	var rows: Array = inventory_rows(ui).filter(func(r): return ui.inventory_filter == "전체" or r.category == ui.inventory_filter)
 	if not rows.any(func(r): return r.id == ui.inventory_selected):
 		ui.inventory_selected = str(rows[0].id) if not rows.is_empty() else ""
 	ui.label(box,"%s · %d종" % [ui.inventory_filter,rows.size()],13)
 	var scroll := ScrollContainer.new(); scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; box.add_child(scroll)
-	var grid := GridContainer.new(); grid.columns = 4; grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var grid := GridContainer.new(); grid.columns = columns; grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	grid.add_theme_constant_override("h_separation",6); grid.add_theme_constant_override("v_separation",6); scroll.add_child(grid)
 	ui.inventory_slots.clear()
-	for i in range(maxi(16,int(ceil(rows.size()/4.0))*4)):
+	for i in range(maxi(columns*4,int(ceil(rows.size()/float(columns)))*columns)):
 		var slot = InventorySlot.new(); grid.add_child(slot)
 		var row: Dictionary = rows[i] if i < rows.size() else {}
 		slot.configure(row,row.get("id","") == ui.inventory_selected); ui.inventory_slots.append(slot)
@@ -283,10 +286,15 @@ static func build_manual_inventory(ui) -> void:
 	detail.add_theme_stylebox_override("panel",CharacterUI.surface(Color("211e1a"))); box.add_child(detail)
 	var details := VBoxContainer.new(); detail.add_child(details)
 	if not selected.is_empty():
-		ui.label(details,str(selected[0].label),16)
-		ui.label(details,str(selected[0].description),12)
+		var item_name = ui.label(details,str(selected[0].label),16)
+		item_name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var description = ui.label(details,str(selected[0].description),12)
+		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	ui.button(box,"닫기",func(): ui.details_popup.hide())
-	ui.details_popup.popup_centered(Vector2i(ui.get_viewport_rect().size))
+	var popup_size := Vector2i(roundi(available_width)+16,roundi(ui.get_viewport_rect().size.y)-16)
+	ui.details_popup.popup_centered(popup_size)
+	ui.details_popup.size = popup_size
+	ui.details_popup.position = (Vector2i(ui.get_viewport_rect().size)-popup_size)/2
 
 static func gear_name(ui, item: Dictionary, slot: String) -> String:
 	if slot == "shield": return "방패"
@@ -302,7 +310,7 @@ static func inventory_rows(ui) -> Array:
 		if count <= 0: continue
 		var def: Dictionary = Session.Consumables.definition(kind)
 		var is_known: bool = session.known.has(kind)
-		rows.append({"id":"item:"+kind,"label":session.item_label(kind)+("" if is_known else " · 미감정"),"quantity":count,"category":"소모품","kind":kind,"class":str(def["class"]),"known":is_known,"area":bool(def.get("area",false)),"description":Session.Consumables.description(session,kind),"icon":Art.ui_icon(6 if str(def["class"]) == "potion" else 9)})
+		rows.append({"id":"item:"+kind,"label":session.item_label(kind)+("" if is_known else " · 미감정"),"quantity":count,"category":"소모품","kind":kind,"class":str(def["class"]),"known":is_known,"area":bool(def.get("area",false)),"description":Session.Consumables.description(session,kind),"icon":Art.consumable_icon(str(def["class"]))})
 	for i in range(session.gear_bag.size()):
 		var item: Dictionary = session.gear_bag[i]
 		var slot: String = session.gear_slot(item)
@@ -319,8 +327,8 @@ static func inventory_rows(ui) -> Array:
 	for id in Session.Abilities.DEFINITIONS:
 		if session.parts_bag.get(id,0) <= 0: continue
 		var def: Dictionary = Session.Abilities.DEFINITIONS[id]
-		rows.append({"id":id,"label":def.item,"quantity":session.parts_bag[id],"category":"파츠","description":def.description,"icon":Art.item(int(def.icon))})
-	rows.append({"id":"food","label":"식량","quantity":session.food,"category":"자원","description":"야영","icon":Art.navigation(3)})
+		rows.append({"id":id,"label":def.item,"quantity":session.parts_bag[id],"category":"파츠","description":def.description,"icon":Art.part_icon(id)})
+	rows.append({"id":"food","label":"식량","quantity":session.food,"category":"자원","description":"야영","icon":Art.food_icon()})
 	return rows
 
 static func build_inventory(ui) -> void:
@@ -328,6 +336,7 @@ static func build_inventory(ui) -> void:
 	for category in ["전체","소모품","장비","파츠","자원"]:
 		var pick = ui.button(filters,category,func(): ui.inventory_filter = category; show_supplies(ui))
 		pick.toggle_mode = true; pick.button_pressed = category == ui.inventory_filter
+		pick.add_theme_font_size_override("font_size",10)
 	var rows: Array = inventory_rows(ui).filter(func(r): return ui.inventory_filter == "전체" or r.category == ui.inventory_filter)
 	ui.label(ui.modal_content,"%s · %d종 보유" % [ui.inventory_filter,rows.size()],12)
 	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(ui.popup_width(),minf(300,ui.size.y-310)); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; ui.modal_content.add_child(scroll)

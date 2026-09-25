@@ -39,7 +39,7 @@ static func shell(ui, tab: String) -> VBoxContainer:
 	place(header_panel,design,Rect2(8,8,374,150))
 	var header := HBoxContainer.new(); header.name = "CharacterHeader"; header.add_theme_constant_override("separation",12)
 	place(header,design,Rect2(16,16,358,134))
-	var portrait := TextureRect.new(); portrait.texture = Art.portrait_face(ui.tactics_actor)
+	var portrait := TextureRect.new(); portrait.texture = Art.actor_portrait(ui.session.party[ui.tactics_actor])
 	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	portrait.custom_minimum_size = Vector2(128,128); header.add_child(portrait)
 	var info := VBoxContainer.new(); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL; header.add_child(info)

@@ -6,7 +6,7 @@ const MASTERY_SHEET = preload("res://assets/8bit/classic/mastery-icons.png")
 const SPELL_SHEET = preload("res://assets/8bit/classic/spell-icons.png")
 const TIER_SHEETS = [preload("res://assets/8bit/classic/spells-fire.png"),preload("res://assets/8bit/classic/spells-ice.png"),preload("res://assets/8bit/classic/spells-air.png"),preload("res://assets/8bit/classic/spells-hex.png"),preload("res://assets/8bit/classic/spells-summon.png")]
 const MAGIC_SCHOOLS := ["fire","ice","air","hex","summon"]
-const EQUIPMENT_SHEET = preload("res://assets/8bit/classic/equipment-icons.png")
+const ITEM_SHEET = preload("res://assets/topdown/flat-v1/items.png")
 const BOSS = preload("res://assets/topdown/flat-v1/fire-lizard-boss.png")
 const ACTOR_IDS := ["human","dwarf","elf","orc","wolf","mage","merchant","wanderer"]
 const MONSTER_IDS := ["dcss_rat","dcss_frilled_lizard","kobold","goblin","dcss_hobgoblin","dcss_orc","dcss_gnoll","dcss_river_rat"]
@@ -48,6 +48,13 @@ static func actor_texture(index: int) -> AtlasTexture:
 	index = posmod(index,ACTOR_IDS.size())
 	return pixel_region(ACTOR_SHEET,4,2,index,"actor/"+str(index))
 
+static func actor_index(actor: Dictionary) -> int:
+	var id := int(actor.get("id",0))
+	return 1+posmod(id-1000,ACTOR_IDS.size()-1) if bool(actor.get("npc",false)) and id >= 1000 else posmod(id,ACTOR_IDS.size())
+
+static func actor_portrait(actor: Dictionary) -> AtlasTexture:
+	return actor_texture(actor_index(actor))
+
 static func enemy_sprite(species_id: String) -> AtlasTexture:
 	var index := MONSTER_IDS.find(species_id)
 	if index < 0: index = MONSTER_IDS.find("kobold")
@@ -71,7 +78,13 @@ static func spell_icon(id: String) -> AtlasTexture:
 static func equipment_icon(slot: String, kind: String = "") -> AtlasTexture:
 	var id: String = kind if slot == "weapon" else "armour" if slot == "armour" else slot
 	var index := EQUIPMENT_IDS.find(id)
-	return pixel_region(EQUIPMENT_SHEET,4,3,maxi(0,index),"equipment/"+str(index))
+	return pixel_region(ITEM_SHEET,4,4,maxi(0,index),"flat/item/"+str(index))
+
+static func consumable_icon(kind: String) -> AtlasTexture:
+	return pixel_region(ITEM_SHEET,4,4,11 if kind == "scroll" else 12,"flat/consumable/"+kind)
+
+static func food_icon() -> AtlasTexture:
+	return pixel_region(ITEM_SHEET,4,4,13,"flat/item/food")
 
 static func paint_actor(canvas: CanvasItem, index: int, rect: Rect2, tint: Color = Color.WHITE) -> void:
 	# The transparent source cells share a baseline; let the figure rise above its tile.
@@ -116,8 +129,12 @@ static func portrait_face(index: int) -> AtlasTexture:
 static func skill(index: int) -> AtlasTexture:
 	return region(Rect2([48,180,347,480,647,780][index],1156,105,78))
 
-static func item(index: int) -> AtlasTexture:
-	return region(Rect2([43,187,333,478,624,771][index],1424,109,78))
+static func part_icon(id: String) -> AtlasTexture:
+	var icons := {"PUSH":10,"GUARD":10,"BOMB":12,"IRON_HIDE":8,
+		"THROWING_KNIFE":1,"KOBOLD_SLING":5,"GOBLIN_SHIV":1,
+		"HOB_CLUB":3,"ORC_CLEAVER":4,"GNOLL_SPEAR":2}
+	var index: int = int(icons.get(id,14))
+	return pixel_region(ITEM_SHEET,4,4,index,"flat/part/"+id)
 
 static func navigation(index: int) -> AtlasTexture:
 	return region(Rect2([93,315,546,777][index],1560,60,49))

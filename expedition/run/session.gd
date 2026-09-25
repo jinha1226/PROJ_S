@@ -374,7 +374,7 @@ func issue_party_command(command: String, target_id: int = -1) -> bool:
 	if command == "ATTACK_TARGET":
 		if not in_combat() or not combat_enemies().any(func(enemy): return enemy.id == target_id and floor_state.visible.has(enemy.pos)): return false
 	elif target_id != -1: return false
-	elif command in ["RETREAT","STOP_ATTACK"] and not in_combat(): return false
+	elif command == "RETREAT" and not in_combat(): return false
 	party_command = command
 	command_target = target_id if command == "ATTACK_TARGET" else -1
 	return true

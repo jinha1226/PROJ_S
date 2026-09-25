@@ -422,7 +422,7 @@ func _draw() -> void:
 ## Which pawn stands in for an actor: party members own one each, an npc
 ## borrows one by its roster id.
 func actor_sprite(actor: Dictionary) -> int:
-	return int(actor.id) % Art.ACTOR_IDS.size() if actor.get("npc",false) else int(actor.id)
+	return Art.actor_index(actor)
 
 ## An awake npc is drawn where it is now even outside the party's sight — the
 ## approach the player should see coming (설계 §5.3) — half faded. One asleep

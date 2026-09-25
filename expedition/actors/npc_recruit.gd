@@ -83,9 +83,10 @@ static func join(s, npc: Dictionary) -> void:
 	# and a stranger that dies nearby is "DEAD" without ever having joined.
 	npc.joined_floor = s.NpcRoster.depth(s)
 	npc.state = "PARTY"; npc.awake = false; npc.mode = ""; npc.activity = ""
-	npc.ap = 0; npc.reservation = {}; npc.hit_and_run = false
+	npc.ap = 0; npc.ready_at = s.time; npc.reservation = {}; npc.hit_and_run = false
 	var subject: int = hero(s)
 	s.party.append(npc); s.formation.append(s.party.size()-1)
+	s.companions = true
 	s.serial += 1
 	s.remember_plain(npc,"RECRUITED",subject,subject,500)
 	s.remember_plain(s.party[0],"RECRUITED",npc.id+1,npc.id+1,500)

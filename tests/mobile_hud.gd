@@ -3,6 +3,7 @@ extends SceneTree
 const Session = preload("res://expedition/run/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
+const Popups = preload("res://expedition/ui/screens/popups.gd")
 var checks := 0
 var failures := 0
 func check(ok: bool, reason: String) -> void:
@@ -94,6 +95,7 @@ func run() -> void:
 	await companion_orders()
 	await blocked_steps(scene)
 	scene.queue_free(); await process_frame
+	await recruited_ui()
 	print("Mobile HUD: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 ## Every control the run needs is a 44px target and none of them hangs off the
@@ -207,6 +209,49 @@ func companion_orders() -> void:
 	duo.party_command = "FOLLOW"; duo.formation = [0,1]
 	check(duo.floor_state.follow(duo,duo.party[1]).kind == "WAIT","the column formation holds its assigned place")
 	await process_frame
+
+func recruited_ui() -> void:
+	root.size = Vector2i(390,844)
+	var s = Session.new_run(921)
+	var center: Vector2i = Fixture.arena(s,8)
+	s.npcs = s.npcs.slice(0,2)
+	for foe in s.enemies: foe.hp = 0
+	var npc: Dictionary = s.npcs[0]
+	npc.partner = -1; npc.bond = ""; npc.state = "MET"; npc.pos = center+Vector2i.LEFT
+	s.floor_state.observe(s)
+	var scene = load("res://expedition/ui/main.tscn").instantiate()
+	scene.session = s; root.add_child(scene); scene.set_process(false)
+	for frame in range(3): await process_frame
+	Popups.show_npc(scene,npc); await process_frame
+	var popup_icon: TextureRect = scene.find_child("NpcPopup",true,false).find_children("*","TextureRect",true,false)[0]
+	var sprite_texture: Texture2D = popup_icon.texture
+	check(sprite_texture == Art.actor_portrait(npc),"NPC dialogue and map use one sprite")
+	scene.details_popup.hide()
+	check(s.recruit(npc) and s.companions,"recruitment enables companion orders")
+	scene.refresh(); await process_frame
+	var card: Button = scene.find_child("MemberStatus1",true,false)
+	var card_icon: TextureRect = card.find_children("*","TextureRect",true,false)[0]
+	check(card_icon.texture == sprite_texture and scene.board.actor_sprite(npc) == Art.actor_index(npc),"recruited portrait keeps the NPC's map sprite")
+	check(s.submit("MOVE",center+Vector2i.RIGHT),"hero can move after recruiting")
+	check(npc.pos != center+Vector2i.LEFT and s.distance(npc.pos,s.party[0].pos) <= 2,"recruited NPC follows on the hero's next turn")
+	var second: Dictionary = s.npcs[0]
+	second.partner = -1; second.bond = ""; second.state = "MET"; second.pos = center+Vector2i(-1,1)
+	check(s.recruit(second) and s.party.size() == 3,"party can fill all three slots")
+	check(Popups.inventory_rows(scene).all(func(row): return row.icon.atlas == Art.ITEM_SHEET),"all item categories share one flat atlas")
+	for viewport in [Vector2i(390,844),Vector2i(320,640)]:
+		root.size = viewport; scene.refresh(); await process_frame
+		for index in range(3):
+			var member: Button = scene.find_child("HeroStatus" if index == 0 else "MemberStatus%d" % index,true,false)
+			check(scene.get_global_rect().encloses(member.get_global_rect()),"member card stays on %s" % viewport)
+			for bar in member.find_children("*","ProgressBar",true,false):
+				check(member.get_global_rect().encloses(bar.get_global_rect()),"HP/MP bar stays inside its card at %s" % viewport)
+		scene.inventory_filter = "파츠"; scene.show_supplies()
+		for frame in range(3): await process_frame
+		var popup_rect := Rect2(Vector2(scene.details_popup.position),Vector2(scene.details_popup.size))
+		check(Rect2(Vector2.ZERO,viewport).encloses(popup_rect),"parts bag fits %s" % viewport)
+		check(scene.inventory_slots.all(func(slot): return slot.row.is_empty() or slot.row.icon.atlas == Art.ITEM_SHEET),"all bag categories use the flat item sheet")
+		scene.details_popup.hide()
+	scene.queue_free(); await process_frame
 
 ## A wall or a body is a wall or a body, diagonal or not.
 func blocked_steps(scene) -> void:

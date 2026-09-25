@@ -12,7 +12,7 @@ func configure(value: Dictionary, chosen: bool = false) -> void:
 	set_meta("inventory_slot",true); set_meta("item_id",row.get("id","")); queue_redraw()
 
 func _ready() -> void:
-	clip_contents = true; texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	clip_contents = true; texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	for state in ["normal","hover","pressed","focus","disabled"]: add_theme_stylebox_override(state,StyleBoxEmpty.new())
 	mouse_entered.connect(queue_redraw); mouse_exited.connect(queue_redraw)
 	button_down.connect(queue_redraw); button_up.connect(queue_redraw)

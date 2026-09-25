@@ -137,12 +137,34 @@ static func build_manual_controls(ui) -> void:
 		var actor: Dictionary = session.party[i]
 		var portrait = ui.button(portraits,"",func(): Popups.show_character(ui,i,"상태"))
 		portrait.name = "HeroStatus" if i == 0 else "MemberStatus%d" % i
-		portrait.custom_minimum_size.y = 78
+		portrait.custom_minimum_size.y = 82 if session.party.size() > 1 else 78
+		portrait.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		portrait.size_flags_stretch_ratio = 1
+		portrait.clip_contents = true
+		if session.party.size() > 1:
+			var compact := VBoxContainer.new(); compact.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			compact.add_theme_constant_override("separation",1)
+			portrait.add_child(compact); compact.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			compact.offset_left = 5; compact.offset_right = -5; compact.offset_top = 3; compact.offset_bottom = -3
+			var heading := HBoxContainer.new(); heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			compact.add_child(heading)
+			var icon := TextureRect.new(); icon.texture = Art.actor_portrait(actor)
+			icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			icon.custom_minimum_size = Vector2(30,30); icon.mouse_filter = Control.MOUSE_FILTER_IGNORE; heading.add_child(icon)
+			var name: Label = ui.label(heading,str(actor.name),11); name.clip_text = true
+			name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var hp: Label = ui.label(compact,"HP %d/%d" % [actor.hp,actor.max_hp],10)
+			hp.name = "HeroHP" if i == 0 else "MemberHP%d" % i
+			ui.gauge(compact,actor.hp,actor.max_hp,Color("bf5450"))
+			ui.label(compact,"MP %d/%d · S %d" % [actor.mp,actor.max_mp,actor.stress],9)
+			ui.gauge(compact,actor.mp,actor.max_mp,Color("507eb9"))
+			continue
 		var content := HBoxContainer.new(); content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		content.add_theme_constant_override("separation",6)
 		portrait.add_child(content); content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		content.offset_left = 6; content.offset_right = -6; content.offset_top = 7; content.offset_bottom = -5
-		var image := TextureRect.new(); image.texture = Art.portrait_face(i)
+		var image := TextureRect.new(); image.texture = Art.actor_portrait(actor)
 		image.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		image.custom_minimum_size.x = 66 if session.party.size() == 1 else 42
@@ -216,21 +238,13 @@ static func show_manual_tactics(ui) -> void:
 	var session = ui.session
 	if session == null or not session.manual_mode: return
 	ui.clear(ui.modal_content)
-	ui.modal_content.custom_minimum_size = ui.get_viewport_rect().size-Vector2(12,12)
-	var box := VBoxContainer.new(); box.name = "ManualTactics"; box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_theme_constant_override("separation",8); ui.modal_content.add_child(box)
+	ui.modal_content.custom_minimum_size = Vector2(ui.popup_width(),0)
+	var box := VBoxContainer.new(); box.name = "ManualTactics"
+	box.add_theme_constant_override("separation",4); ui.modal_content.add_child(box)
 	var header := HBoxContainer.new(); box.add_child(header)
-	var title = ui.label(header,"전술",22); title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var title = ui.label(header,"전술",18); title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ui.button(header,"×",func(): ui.details_popup.hide()).custom_minimum_size.x = 44
 	var actor: Dictionary = session.party[0]
-	var hero := HBoxContainer.new(); box.add_child(hero)
-	var portrait := TextureRect.new(); portrait.texture = Art.portrait_face(0)
-	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	portrait.custom_minimum_size = Vector2(76,76); hero.add_child(portrait)
-	var vital := VBoxContainer.new(); vital.size_flags_horizontal = Control.SIZE_EXPAND_FILL; hero.add_child(vital)
-	ui.label(vital,"%s · Lv.%d" % [actor.name,actor.level],16)
-	ui.label(vital,"HP %d/%d" % [actor.hp,actor.max_hp],12); ui.gauge(vital,actor.hp,actor.max_hp,Color("bf5450"))
-	ui.label(vital,"MP %d/%d" % [actor.mp,actor.max_mp],12); ui.gauge(vital,actor.mp,actor.max_mp,Color("507eb9"))
 	var targets: Array = session.combat_enemies().filter(func(enemy): return session.floor_state.visible.has(enemy.pos))
 	var focus = ui.button(box,"집중 공격",func():
 		ui.details_popup.hide(); ui.mode = "COMMAND_TARGET"; ui.refresh(),not targets.is_empty())
@@ -240,16 +254,30 @@ static func show_manual_tactics(ui) -> void:
 			ui.details_popup.hide(); ui.run_action(func(): return session.act("WAIT",actor.pos)))
 		hold.name = "TacticHold"
 	else:
-		for row in [["HOLD_POSITION","자리 지키기"],["RETREAT","후퇴"],["STOP_ATTACK","공격 중지"],["FOLLOW","따라오기"]]:
+		for row in [["STOP_ATTACK","집합"],["HOLD_POSITION","자리 지키기"],["RETREAT","후퇴"],["FOLLOW","따라오기"]]:
 			var command: String = row[0]
 			var pick = ui.button(box,str(row[1]),func(): choose_party_command(ui,command),
-				session.in_combat() or command in ["HOLD_POSITION","FOLLOW"])
+				session.in_combat() or command in ["HOLD_POSITION","FOLLOW","STOP_ATTACK"])
 			pick.name = "Tactic_"+command
 			pick.toggle_mode = true; pick.button_pressed = session.party_command == command
-	ui.label(box,"준비한 주문",17)
-	var scroll := ScrollContainer.new(); scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var skills = ui.button(box,"기술",func(): show_manual_skills(ui),not actor.prepared.is_empty() or actor.equipped_abilities.any(func(id): return not str(id).is_empty()))
+	skills.name = "TacticSkills"
+	center_tactics_popup(ui,204 if session.party.size() == 1 else 348)
+
+static func show_manual_skills(ui) -> void:
+	var session = ui.session
+	if session == null or not session.manual_mode: return
+	ui.clear(ui.modal_content)
+	ui.modal_content.custom_minimum_size = Vector2(ui.popup_width(),0)
+	var box := VBoxContainer.new(); box.name = "ManualSkills"; ui.modal_content.add_child(box)
+	var header := HBoxContainer.new(); box.add_child(header)
+	var title = ui.label(header,"기술",18); title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ui.button(header,"×",func(): ui.details_popup.hide()).custom_minimum_size.x = 44
+	var scroll := ScrollContainer.new(); scroll.custom_minimum_size.y = minf(330,ui.size.y-220)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; box.add_child(scroll)
 	var choices := VBoxContainer.new(); choices.size_flags_horizontal = Control.SIZE_EXPAND_FILL; scroll.add_child(choices)
+	var actor: Dictionary = session.party[0]
+	if not actor.prepared.is_empty(): ui.label(choices,"주문",15)
 	for id in actor.prepared:
 		var spell_id: String = str(id)
 		var definition: Dictionary = Session.CombatStats.content.spells.get(spell_id,{})
@@ -257,7 +285,7 @@ static func show_manual_tactics(ui) -> void:
 		spell.icon = Art.spell_icon(spell_id); spell.add_theme_constant_override("icon_max_width",28)
 		spell.name = "Spell_"+spell_id
 		spell.alignment = HORIZONTAL_ALIGNMENT_LEFT; spell.custom_minimum_size.y = 54
-	ui.label(choices,"장착 파츠",17)
+	if actor.equipped_abilities.any(func(id): return not str(id).is_empty()): ui.label(choices,"파츠",15)
 	for id in actor.equipped_abilities:
 		var part_id: String = str(id)
 		if part_id.is_empty() or not Session.Abilities.DEFINITIONS.has(part_id): continue
@@ -267,8 +295,15 @@ static func show_manual_tactics(ui) -> void:
 		var part = ui.button(choices,"%s   ·   %d턴" % [str(def.name),int(actor.cooldowns.get(part_id,0))],func(): choose_part(ui,part_id),available)
 		part.name = "Part_"+part_id
 		part.alignment = HORIZONTAL_ALIGNMENT_LEFT; part.custom_minimum_size.y = 54
-	ui.button(box,"닫기",func(): ui.details_popup.hide())
-	ui.details_popup.popup_centered(Vector2i(ui.get_viewport_rect().size))
+	ui.button(box,"전술",func(): show_manual_tactics(ui))
+	center_tactics_popup(ui,roundi(scroll.custom_minimum_size.y)+112)
+
+static func center_tactics_popup(ui, height: int) -> void:
+	var screen: Vector2i = Vector2i(ui.get_viewport_rect().size)
+	var popup_size := Vector2i(roundi(ui.popup_width())+16,mini(height,screen.y-16))
+	ui.details_popup.popup_centered(popup_size)
+	ui.details_popup.size = popup_size
+	ui.details_popup.position = (screen-popup_size)/2
 
 static func choose_party_command(ui, command: String) -> void:
 	if not ui.session.issue_party_command(command): return

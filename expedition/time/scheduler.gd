@@ -12,6 +12,18 @@ const Summons = preload("res://expedition/spells/summons.gd")
 static func actors(s) -> Array:
 	return s.party.slice(1).filter(func(a): return a.hp > 0) + s.npcs.filter(func(n): return n.hp > 0 and n.awake) + s.enemies.filter(func(e): return e.hp > 0)
 
+## On a safe floor, process party members in marching order at equal ticks so
+## each preceding rank can vacate its corridor cell before the next one follows.
+static func earlier_actor(best: Dictionary, at: int, actor: Dictionary, s, limit: int) -> Dictionary:
+	if at >= limit: return best
+	var order: int = int(actor.id)
+	if s.floor_state.safe(s) and actor in s.party:
+		order = s.formation.find(s.party.find(actor))
+	var previous_order: int = int(best.get("order",best.get("id",2147483647)))
+	if best.is_empty() or at < int(best.at) or at == int(best.at) and order < previous_order:
+		return {"at":at,"id":int(actor.id),"order":order}
+	return best
+
 static func awaken(s) -> void:
 	for npc in s.npcs:
 		if npc.hp <= 0: continue
@@ -32,7 +44,7 @@ static func flush_ready(s) -> bool:
 			if s.boundary < limit: best = {"at":s.boundary,"id":-1}
 			for actor in actors(s):
 				var ready: int = maxi(now,int(actor.get("ready_at",now)))
-				if ready < limit: best = Kernel.earlier(best,ready,int(actor.id),limit)
+				best = earlier_actor(best,ready,actor,s,limit)
 			return best,
 		func(event: Dictionary) -> bool:
 			s.time = int(event.at)
@@ -57,8 +69,7 @@ static func advance(s, cost: int) -> bool:
 			if s.boundary < limit: best = {"at":s.boundary, "id":-1}
 			for actor in actors(s):
 				var ready: int = maxi(s.time, int(actor.get("ready_at", s.time)))
-				if ready >= limit: continue
-				best = Kernel.earlier(best, ready, int(actor.id), limit)
+				best = earlier_actor(best,ready,actor,s,limit)
 			return best,
 		func(event: Dictionary) -> bool:
 			s.time = int(event.at)
@@ -91,7 +102,7 @@ static func act(s, actor: Dictionary) -> void:
 		if actor.pos != was: cost = Rules.move_time(s, actor, actor.pos)
 	else:
 		actor.ap = 1
-		var choice: Dictionary = Tactics.choose(s, actor)
+		var choice: Dictionary = s.AutoBattle.companion_choice(s, actor)
 		var kind: String = str(choice.get("kind", "WAIT"))
 		var cell: Vector2i = choice.get("cell", actor.pos)
 		cost = s.action_cost(actor, kind, cell)
