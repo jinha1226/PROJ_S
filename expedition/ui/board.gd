@@ -606,6 +606,13 @@ func _draw_foreground(canvas: Node2D) -> void:
 				canvas.draw_string(ui_font,center+Vector2(-45,half_width+10),doing,HORIZONTAL_ALIGNMENT_CENTER,90,9,Color("cfc6ab",fade))
 		canvas.draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24,3)),Color(Color("191d24"),fade))
 		canvas.draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24*float(actor.hp)/actor.max_hp,3)),Color(HOSTILE_NPC_COLOR if actor.get("hostile",false) else NPC_COLOR,fade) if npc else Color("ce7770") if actor.enemy else Color("9ec987"))
+	if not is_presenting():
+		for actor in session.party:
+			if not session.Downed.is_downed(actor) or not session.floor_state.visible.has(actor.pos): continue
+			var center := cell_center(actor.pos)
+			canvas.draw_circle(center,half_width*0.45,Color(0.38,0.07,0.07,0.9))
+			canvas.draw_arc(center,half_width*0.45,0,TAU,24,Color("ffad91"),2.0,true)
+			canvas.draw_string(ui_font,center+Vector2(-15,5),"%d" % int(actor.bleedout_turns),HORIZONTAL_ALIGNMENT_CENTER,30,15,Color("fff0dd"))
 	if is_presenting():
 		var frame: Dictionary = playback[0]
 		for actor in actors:

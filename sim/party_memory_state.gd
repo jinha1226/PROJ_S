@@ -3,7 +3,7 @@ extends RefCounted
 
 const SCHEMA_VERSION := 1
 const MAX_RECORDS := 8
-const KINDS := ["SELF_HARM", "ALLY_DOWNED", "ALLY_LOST", "AID_RECEIVED",
+const KINDS := ["SELF_HARM", "ALLY_DOWNED", "ALLY_LOST", "RESCUED", "ALLY_RESCUED", "AID_RECEIVED",
 	"COMMAND_CONFLICT", "RECRUITED", "DECLINED_BY_PLAYER", "DECLINED_PLAYER",
 	"LEFT_BY_PARTNER", "ATTACKED_BY_PLAYER"]
 ## What the party owes and is owed. These are cheap next to a death, so every

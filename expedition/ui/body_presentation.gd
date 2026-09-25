@@ -14,6 +14,7 @@ static func color(part: Dictionary) -> Color:
 		_: return Color("c36560")
 
 static func summary(actor: Dictionary) -> String:
+	if actor.get("downed",false): return "빈사 · %d턴" % int(actor.get("bleedout_turns",0))
 	if actor.hp <= 0: return "사망"
 	if actor.blood < 30: return "위험 · 혈액 부족"
 	if actor.body.parts.any(func(p): return p.condition != "FUNCTIONAL"): return "중상 · 부위 손상"

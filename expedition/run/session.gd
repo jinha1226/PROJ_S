@@ -32,6 +32,7 @@ const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const TagSets = preload("res://expedition/progression/tag_sets.gd")
 const Reactions = preload("res://expedition/combat/reactions.gd")
+const Downed = preload("res://expedition/combat/downed.gd")
 const Hunt = preload("res://expedition/progression/hunt.gd")
 ## Run modules: the session keeps the state and hands each group of verbs to
 ## its own file. Every public name here stays on the session as a delegate.
@@ -352,8 +353,11 @@ func at(point: Vector2i) -> Dictionary:
 		if actor.hp > 0 and actor.pos == point: return actor
 	return {}
 
+func downed_at(point: Vector2i) -> Dictionary:
+	return Downed.at(self,point)
+
 func is_free(point: Vector2i) -> bool:
-	return inside(point) and tile(point).terrain != "wall" and at(point).is_empty() and int(tile(point).get("wall_until",0)) <= time
+	return inside(point) and tile(point).terrain != "wall" and at(point).is_empty() and downed_at(point).is_empty() and int(tile(point).get("wall_until",0)) <= time
 
 func distance(a: Vector2i, b: Vector2i) -> int:
 	return absi(a.x - b.x) + absi(a.y - b.y)
@@ -531,6 +535,7 @@ func can_submit(actor: Dictionary, kind: String, target: Vector2i, value: String
 		"SWAP":
 			var ally: Dictionary = at(target)
 			return not status_blocks(actor,"MOVE") and walk_reach(actor.pos,target) and ally in party and ally != actor
+		"RESCUE": return Downed.can_rescue(self,actor,downed_at(target))
 		"ATTACK": return not status_blocks(actor,kind) and not attack_preview(target,0).is_empty()
 		"LEVER": return BossAI.lever_ready(self,actor,target)
 		"FIRE", "WATER", "ELECTRIC": return distance(actor.pos,target) <= 4 and tile(target).terrain != "wall"
@@ -569,7 +574,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 	# still checks adjacency, terrain and occupancy. Attacks keep their gate.
 	# A recruited npc is a party member: only one still standing in the dungeon
 	# on its own walks outside the party's sight.
-	var following: bool = (resolving_companions and kind == "MOVE") or wanderer(actor)
+	var following: bool = (resolving_companions and kind in ["MOVE","RESCUE"]) or wanderer(actor)
 	if not floor_state.visible.has(target) and not following: return false
 	var display_event := _presentation_action(actor,kind,target) if presentation != null else {}
 	if kind == "LEVER":
@@ -606,6 +611,8 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 			actor.pos = target
 			actor.hit_and_run = false
 			victim.hit_and_run = false
+		"RESCUE":
+			if not Downed.rescue(self,actor,downed_at(target)): return false
 		"ATTACK":
 			if victim.is_empty() or victim.hp <= 0 or not attack_reach(actor,target,int(CombatStats.stats(self,actor).range)): return false
 			var assault: bool = actor in party and wanderer(victim) and not victim.get("summoned",false)
@@ -863,14 +870,13 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 				if not watched: continue
 				stress(ally,5)
 				if int(target.memory.salience_for_subject(ally.id+1,["AID_RECEIVED"])) > 0: stress(ally,10)
-		elif target.hp <= 0:
-			# A recruited member falls as a comrade; the roster still records it.
-			if target.get("npc",false): target.state = "DEAD"; target.awake = false; target.activity = ""
+		elif target.hp <= 0 and target in party and target != party[0] and not Downed.is_downed(target):
 			if not taken_row.is_empty(): taken_row.downed = true
-			for ally in alive():
-				remember_important(ally,"ALLY_LOST",target.id+1,source+1,900)
-				stress(ally, 22)
-	message("%s %s에게 %d의 피해를 주었습니다.%s" % [subject_name(source_name),target.name,lost," "+subject_name(target.name)+" 쓰러졌습니다." if target.hp <= 0 else ""])
+			Downed.enter(self,target,source)
+	var fall_text := ""
+	if Downed.is_downed(target): fall_text = " %s 빈사 · %d턴" % [target.name,int(target.bleedout_turns)]
+	elif target.hp <= 0: fall_text = " "+subject_name(target.name)+" 쓰러졌습니다."
+	message("%s %s에게 %d의 피해를 주었습니다.%s" % [subject_name(source_name),target.name,lost,fall_text])
 	if passive_hit: Passives.after_hit(self,target,attacker,form,lost)
 	if target.enemy and target.hp <= 0:
 		BossAI.on_monster_death(self,target,attacker)

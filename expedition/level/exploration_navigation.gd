@@ -35,7 +35,7 @@ func start(s, target: Vector2i) -> bool:
 
 func explore(s) -> bool:
 	stop(); plan_builds = 0
-	if s.phase != "EXPLORE" or not s.party_enemies().is_empty(): return false
+	if s.phase != "EXPLORE" or not s.party_enemies().is_empty() or s.party.any(func(a): return s.Downed.is_downed(a)): return false
 	automatic = true; active = true; return true
 
 func frontier_path(s) -> Array:
@@ -51,6 +51,7 @@ func frontier_path(s) -> Array:
 
 func next_step(s) -> Vector2i:
 	if not active: return Vector2i(-1,-1)
+	if automatic and s.party.any(func(a): return s.Downed.is_downed(a)): stop(); return Vector2i(-1,-1)
 	if s.phase != "EXPLORE" or not s.party_enemies().is_empty(): stop(); return Vector2i(-1,-1)
 	var current: Vector2i = s.party[s.selected].pos
 	exhausted["%d:%d" % [current.x,current.y]] = true

@@ -226,8 +226,10 @@ func comrade_dies() -> void:
 	npc.hungry = true; set_facets(npc,1000,1000)
 	check(s.aid(npc) and s.propose(npc).accepted,"joined")
 	s.damage(npc,999,999,"IMPACT")
-	check(npc.hp <= 0 and s.party[0].memory.salience_for_subject(npc.id+1,["ALLY_LOST"]) > 0,"the party mourns a comrade lost")
+	check(s.Downed.is_downed(npc) and s.party[0].memory.salience_for_subject(npc.id+1,["ALLY_DOWNED"]) > 0,"the party notices a comrade fall")
 	check(bool(s.member_stats(npc.id).get("downed",false)),"the battle report marks it downed")
+	for _turn in range(s.Downed.TURNS): s.Downed.tick(s)
+	check(s.party[0].memory.salience_for_subject(npc.id+1,["ALLY_LOST"]) > 0,"the party mourns only after the countdown")
 	check(npc.state == "DEAD","the roster row is dead too")
 
 ## An offer nobody can answer never blocks the next one.
@@ -267,7 +269,10 @@ func history() -> void:
 	check(int(rows[0].joined_floor) == s.NpcRoster.depth(s),"with the floor it joined on")
 	s.damage(a,999,999,"IMPACT")
 	rows = s.companion_rows()
-	check(rows.size() == 1 and not rows[0].alive and int(rows[0].joined_floor) == s.NpcRoster.depth(s),"a fallen comrade keeps its join floor")
+	check(rows.size() == 1 and rows[0].alive and int(rows[0].joined_floor) == s.NpcRoster.depth(s),"a downed comrade remains recoverable")
+	for _turn in range(s.Downed.TURNS): s.Downed.tick(s)
+	rows = s.companion_rows()
+	check(rows.size() == 1 and not rows[0].alive,"the roster records death after the countdown")
 
 ## The HUD side: a tap on an adjacent npc opens its popup, the aid button
 ## shares the food, and an offer on the table waits in its own popup.

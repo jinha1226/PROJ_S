@@ -19,7 +19,7 @@ static func blocks(actor: Dictionary, kind: String) -> bool:
 	var statuses: Dictionary = actor.get("statuses",{})
 	if statuses.has("stun"): return true
 	if kind == "MOVE": return statuses.has("freeze") or statuses.has("bind") or statuses.has("shield_stance")
-	if kind == "ATTACK": return statuses.has("freeze")
+	if kind in ["ATTACK","RESCUE"]: return statuses.has("freeze")
 	return false
 
 ## A status a spell hangs on somebody. `statuses` keeps the clock; anything the

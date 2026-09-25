@@ -85,6 +85,7 @@ static func advance(s, cost: int) -> bool:
 	s.turn_serial += 1
 	s.round_number = s.turn_serial + 1
 	s.battle_stats.rounds = s.turn_serial
+	if s.on_floor(): s.Downed.tick(s)
 	s.floor_state.observe(s)
 	awaken(s)
 	s.noise.clear()

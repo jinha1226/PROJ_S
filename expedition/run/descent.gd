@@ -48,6 +48,7 @@ static func stairs_sealed(s) -> bool:
 static func descend(s) -> bool:
 	if s.depth >= Zones.FINAL_DEPTH: return false
 	if s.phase != "EXPLORE" or not s.floor_state.safe(s) or s.stairs_sealed(): return false
+	if s.party.any(func(actor): return s.Downed.is_downed(actor)): return false
 	var stairs: Vector2i = s.floor_state.layout.get("stairs",Vector2i(-1,-1))
 	if stairs.x < 0 or not s.alive().any(func(a): return s.distance(a.pos,stairs) <= 1): return false
 	s.depth += 1; s.score += 20

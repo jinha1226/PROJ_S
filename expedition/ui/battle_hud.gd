@@ -14,8 +14,9 @@ static func report(ui) -> void:
 	ui.modal_content.add_child(card)
 	var list := VBoxContainer.new(); list.add_theme_constant_override("separation",4); card.add_child(list)
 	var stats: Dictionary = s.battle_stats
-	var downed: int = s.party.filter(func(a): return a.hp <= 0).size()
-	line(ui,list,"전투 종료 · %d라운드 · 적 %d 처치 · 아군 사망 %d" % [int(stats.get("rounds",0)),int(stats.get("kills",0)),downed],17)
+	var downed: int = s.party.filter(func(a): return s.Downed.is_downed(a)).size()
+	var dead: int = s.party.filter(func(a): return a.hp <= 0 and not s.Downed.is_downed(a)).size()
+	line(ui,list,"전투 종료 · %d라운드 · 적 %d 처치 · 빈사 %d · 사망 %d" % [int(stats.get("rounds",0)),int(stats.get("kills",0)),downed,dead],17)
 	for actor in s.party:
 		var row: Dictionary = s.member_stats(actor.id)
 		if row.is_empty(): continue
@@ -26,7 +27,7 @@ static func report(ui) -> void:
 		if bool(row.downed) or actor.hp <= 0: entry.add_theme_color_override("font_color",Color("d1685f"))
 	line(ui,list,"적 파츠: %s · 끊김 %d" % [used(ui,stats.get("enemy_parts",{})),int(stats.get("interrupts",0))],12)
 	line(ui,list,"획득: %s" % used(ui,stats.get("drops",{})),12)
-	if downed > 0:
+	if downed+dead > 0:
 		for entry in s.log_lines.slice(maxi(0,s.log_lines.size()-3)): line(ui,list,entry,11)
 	ui.button(list,"파츠·규칙 보기",func(): ui.show_character(0,"파츠"))
 	# A battle test ends where it began: back to the setup screen, or straight

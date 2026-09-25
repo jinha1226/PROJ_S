@@ -101,6 +101,8 @@ static func command_choice(s, actor: Dictionary) -> Dictionary:
 	return {}
 
 static func companion_choice(s, actor: Dictionary) -> Dictionary:
+	var rescue: Dictionary = s.Downed.choice(s,actor)
+	if not rescue.is_empty(): return rescue
 	var reserved: Dictionary = s.reservation_choice(actor)
 	if not reserved.is_empty(): return reserved
 	if s.companions:
@@ -155,7 +157,8 @@ static func auto_step(s) -> bool:
 		var noted := false
 		while actor.hp > 0 and actor.ap > 0 and s.phase == "BATTLE" and guard < 4:
 			guard += 1
-			var choice: Dictionary = s.command_choice(actor)
+			var choice: Dictionary = s.Downed.choice(s,actor)
+			if choice.is_empty(): choice = s.command_choice(actor)
 			if choice.is_empty(): choice = Tactics.choose(s,actor)
 			if not noted and str(choice.get("mistake","")) != "":
 				s.note_mistake(actor,str(choice.mistake)); noted = true
@@ -300,6 +303,7 @@ static func end_round(s) -> bool:
 	for actor in s.alive():
 		if not s.floor_state.safe(s): s.stress(actor,2)
 		actor.ap = s.action_budget(actor)
+	s.Downed.tick(s)
 	s.round_number += 1
 	s.floor_state.observe(s)
 	if s.companions and s.party[s.selected].hp <= 0: s.selected = s.party.find(s.alive()[0])

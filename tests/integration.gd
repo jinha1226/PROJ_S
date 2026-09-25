@@ -141,7 +141,9 @@ func memories() -> void:
 	s.damage(member,2,100,"IMPACT")
 	check(member.memory.records.size() == 1,"and it is not written twice on the same floor")
 	s.damage(s.party[1],999,100,"IMPACT")
-	check(member.memory.records.any(func(record): return record.kind == "ALLY_LOST"),"losing a companion is remembered")
+	check(member.memory.records.any(func(record): return record.kind == "ALLY_DOWNED") and not member.memory.records.any(func(record): return record.kind == "ALLY_LOST"),"a companion's fall is remembered before death")
+	for _turn in range(s.Downed.TURNS): s.Downed.tick(s)
+	check(member.memory.records.any(func(record): return record.kind == "ALLY_LOST"),"losing a companion after the countdown is remembered")
 
 ## A wiped party ends the run, and a finished run accepts nothing more.
 func wipe() -> void:

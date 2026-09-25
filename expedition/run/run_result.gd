@@ -14,7 +14,7 @@ const MISTAKE_NAMES := {"HESITATE":"머뭇거림","RECKLESS":"무모함","REVERT
 ## roster order, each with the floor it joined on and whether it is still up.
 static func companion_rows(s) -> Array:
 	return s.roster.filter(func(r): return int(r.get("joined_floor",0)) > 0).map(
-		func(r): return {"name":str(r.name),"joined_floor":int(r.joined_floor),"alive":r.hp > 0 and r.state != "DEAD"})
+		func(r): return {"name":str(r.name),"joined_floor":int(r.joined_floor),"alive":(r.hp > 0 or bool(r.get("downed",false))) and r.state != "DEAD"})
 
 ## Clears the report and opens one row per member. The simulator calls this
 ## itself at the arena, where no BATTLE_START stop event runs.
