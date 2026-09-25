@@ -12,8 +12,6 @@ const AutoBattleHud = preload("res://expedition/ui/screens/autobattle_hud.gd")
 const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 
 static func portrait_state(actor: Dictionary) -> String:
-	if bool(actor.get("downed",false)): return "빈사 · %d턴" % int(actor.get("bleedout_turns",0))
-	if int(actor.hp) <= 0: return "사망"
 	var details: Array[String] = ["스트레스 %d" % int(actor.stress)]
 	var names := {"burn":"화상","poison":"중독","bleed":"출혈","freeze":"빙결","bind":"속박","slow":"둔화","haste":"가속","stun":"기절","silence":"침묵"}
 	for status in actor.get("statuses",{}): details.append(str(names.get(status,status)))
@@ -90,7 +88,7 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 		var portrait = ui.button(column,"",func(): select_actor(ui,i)); portrait.name = "MemberCard%d" % i
 		portrait.tooltip_text = "길게 누르기: 상태"; portrait.custom_minimum_size.y = 62
 		ui.portrait_buttons.append(portrait)
-		var caption := "%s [%s] · HP %d/%d\n%s\n%s" % [actor.name,Stances.SHORT[Stances.effective(actor)],actor.hp,actor.max_hp,portrait_state(actor),actor.last_action]
+		var caption := "%s [%s] · HP %d/%d\n스트레스 %d · %s\n%s" % [actor.name,Stances.SHORT[Stances.effective(actor)],actor.hp,actor.max_hp,actor.stress,actor.condition,actor.last_action]
 		if bool(actor.get("conflicted",false)): caption += " ⚠ 갈등"
 		var stats = ui.label(portrait,caption,12 if session.party.size() == 1 else 10)
 		stats.name = "MemberCaption%d" % i
@@ -99,7 +97,7 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 		stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		if i == session.selected:
 			ui.mark_selected(portrait)
-		if actor.hp <= 0: portrait.modulate = Color("a96d65") if actor.get("downed",false) else Color("636369")
+		if actor.hp <= 0: portrait.modulate = Color("636369")
 	if session.manual_mode:
 		var spells := HBoxContainer.new(); spells.name = "SpellBar"; ui.root_layout.add_child(spells)
 		for slot in range(Session.PREPARED_SLOTS):
