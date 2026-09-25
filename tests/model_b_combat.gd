@@ -56,5 +56,17 @@ func run() -> void:
 	check(Rules.move_time(s,hero,wet) > Rules.move_time(s,hero,hero.pos+Vector2i(0,-1)),"water movement costs more ticks")
 	var preview: Dictionary = same.s.attack_preview(same.foe.pos)
 	check(preview.time == Stats.stats(same.s,same.hero).delay and preview.chance < 100,"attack preview uses tick delay and evasion")
+	# Hit feedback: a landed blow says who took it, a dodge leaves a MISS.
+	var struck := duel(311)
+	struck.s.effects.clear()
+	Rules.attack(struck.s,struck.hero,struck.foe)
+	var landed: Array = struck.s.effects.filter(func(e): return int(e.get("amount",0)) > 0)
+	check(not landed.is_empty() and landed.all(func(e): return e.enemy == true),"a blow on a monster is marked as landing on the enemy side")
+	var dodger := duel(312)
+	dodger.foe.ev = 60; dodger.s.effects.clear()
+	var dodged := false
+	for i in range(30):
+		if Rules.attack(dodger.s,dodger.hero,dodger.foe).evaded: dodged = true; break
+	check(dodged and dodger.s.effects.any(func(e): return e.get("kind","") == "MISS" and e.text == "회피" and e.cell == dodger.foe.pos),"a dodge leaves a MISS effect on the target")
 	print("Model B combat: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)

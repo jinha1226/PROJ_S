@@ -800,7 +800,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 	var source_cell: Vector2i = target.pos
 	var source_name: String = {"FIRE":"불길","ELECTRIC":"방전","POISON":"독"}.get(form,"함정")
 	if not attacker.is_empty(): source_cell = attacker.pos; source_name = attacker.name
-	var effect := {"from":source_cell,"cell":target.pos,"amount":lost,"form":form}
+	var effect := {"from":source_cell,"cell":target.pos,"amount":lost,"form":form,"enemy":bool(target.get("enemy",false))}
 	effects.append(effect)
 	if presentation == null and effects.size() > 32: effects.pop_front()
 	var dealt_row: Dictionary = member_stats(source) if not attacker.is_empty() and not attacker.enemy else {}

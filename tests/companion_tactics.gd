@@ -203,9 +203,25 @@ func exercise() -> void:
 	await portrait_hold(scene,ui_s)
 	await rule_editor(scene,ui_s)
 	await preview_markers(scene,ui_s)
+	recruited_preview()
 	scene.queue_free(); await process_frame
 	print("Companion tactics: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
+
+## A solo run that recruits someone still telegraphs that companion's next
+## action, even in manual play where its AP is spent between its turns.
+func recruited_preview() -> void:
+	var s = Session.new_run(64)
+	var c: Vector2i = Fixture.arena(s,6)
+	var ally: Dictionary = s.make_actor(1001,"동료",false)
+	ally.pos = c+Vector2i(2,1); ally.ap = 0; s.party.append(ally)
+	var foe: Dictionary = s.enemies[0]
+	foe.hp = 30; foe.max_hp = 30; foe.pos = c+Vector2i(1,0); foe.alert = true
+	s.floor_state.observe(s)
+	check(not s.companions and s.manual_mode,"the run started solo and is played by hand")
+	var previews: Array = s.companion_previews()
+	check(previews.size() == 1 and previews[0].actor == ally.id,"the recruit's next action is previewed")
+	check(s.companion_previews() == previews,"the preview is read-only")
 
 ## The portrait is a two-gesture control: a tap selects, a hold opens the sheet.
 func portrait_hold(scene, ui_s) -> void:

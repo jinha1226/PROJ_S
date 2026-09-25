@@ -26,6 +26,13 @@ var show_attack_range := false
 var target_cell := Vector2i(-1,-1)
 var effects: Array = []
 var effect_time := 0.0
+## Hit feel: a turn's blows land one after another STAGGER apart; the
+## attacker lunges for LUNGE seconds, the one struck reels for KNOCK.
+const STAGGER := 0.12
+const LUNGE := 0.2
+const KNOCK := 0.3
+const INK := Color("1c1b22")
+const ALLY_INTENT := Color("7fe0c8")
 var impact_time := 0.0
 var companion_previews: Array = []
 var touch_pressed_at := 0
@@ -70,10 +77,7 @@ func display_center(actor: Dictionary) -> Vector2:
 	if not is_presenting() and walk_actor_id == int(actor.id) and actor.pos == walk_to:
 		var t := clampf(walk_elapsed/walk_duration,0.0,1.0)
 		center = project(walk_visual_from+Vector2.ONE*0.5).lerp(center,t)
-	for effect in effects:
-		if effect.get("kind","") == "ATTACK_SWING" and effect.from == actor.pos and effect_time < 0.2:
-			var progress := clampf(effect_time/0.2,0.0,1.0)
-			center += (cell_center(effect.cell)-cell_center(effect.from)).normalized()*half_width*0.48*sin(progress*PI)
+	# The lunge and the recoil of a blow are applied where the sprite is drawn (hit_offset).
 	return center
 
 func is_presenting() -> bool:
@@ -147,11 +151,66 @@ func injury_focus() -> Dictionary:
 	return {}
 
 func impact_transform() -> Dictionary:
-	if injury_focus().is_empty() or impact_time >= 0.45: return {"zoom":1.0,"offset":Vector2.ZERO}
+	var shake := hit_shake()
+	if injury_focus().is_empty() or impact_time >= 0.45: return {"zoom":1.0,"offset":shake}
 	var strength := sin(clampf(impact_time/0.45,0,1)*PI)
 	var zoom := 1.0+0.18*strength
 	var focus := cell_center(injury_focus().cell)
-	return {"zoom":zoom,"offset":focus*(1.0-zoom)+Vector2(sin(impact_time*110),cos(impact_time*93))*4*strength}
+	return {"zoom":zoom,"offset":focus*(1.0-zoom)+Vector2(sin(impact_time*110),cos(impact_time*93))*4*strength+shake}
+
+## How far into its own animation an effect is: in manual play a turn's blows
+## are staggered so each lands on its own beat.
+func clock_of(effect: Dictionary) -> float:
+	if is_presenting(): return effect_time
+	return effect_time-minf(effects.find(effect),6)*STAGGER
+
+## A blow that took HP from somebody, and whether that somebody is ours.
+func is_hit(effect: Dictionary) -> bool:
+	return str(effect.get("kind","")) == "" and int(effect.get("amount",0)) > 0
+
+func hits_party(effect: Dictionary) -> bool:
+	return is_hit(effect) and not bool(effect.get("enemy",true))
+
+## The board trembles when a blow lands: hard when it lands on the party.
+func hit_shake() -> Vector2:
+	var strength := 0.0
+	for effect in effects:
+		if not is_hit(effect): continue
+		var t := clock_of(effect)
+		if t < 0 or t >= 0.24: continue
+		strength = maxf(strength,(1.0-t/0.24)*(7.0 if hits_party(effect) else 2.5))
+	return Vector2(sin(effect_time*97),cos(effect_time*83))*strength
+
+## The pose an actor strikes this instant: an attacker lunges at its target,
+## the one struck is knocked back and trembles, the one missed sidesteps.
+func hit_offset(point: Vector2i) -> Vector2:
+	var offset := Vector2.ZERO
+	var lunged := false
+	for effect in effects:
+		var kind := str(effect.get("kind",""))
+		if kind == "ENEMY_ATTACK": continue
+		var t := clock_of(effect)
+		if t < 0: continue
+		var direction := Vector2(effect.cell-effect.from).normalized()
+		if effect.from == point and effect.cell != point and t < LUNGE and not lunged:
+			offset += direction*half_width*0.55*sin(PI*t/LUNGE); lunged = true
+		if effect.cell != point: continue
+		if kind == "MISS" and t < 0.25:
+			offset += Vector2(-direction.y,direction.x)*half_width*0.35*sin(PI*t/0.25)
+		elif is_hit(effect) and t < KNOCK:
+			var left := 1.0-t/KNOCK
+			offset += direction*half_width*0.32*left*left+Vector2(sin(t*90),cos(t*77))*3.5*left
+	return offset
+
+## The tint of someone just struck: white-hot for a blink, then hurt red.
+func hit_flash(point: Vector2i) -> Color:
+	for effect in effects:
+		if effect.cell != point or not is_hit(effect): continue
+		var t := clock_of(effect)
+		if t < 0: continue
+		if t < 0.07: return Color(4,4,4)
+		if t < KNOCK: return Color(1,1,1).lerp(Color(2.4,0.5,0.45),1.0-(t-0.07)/(KNOCK-0.07))
+	return Color(0,0,0,0)
 
 func preview_rect(actor: Dictionary) -> Rect2:
 	var center := cell_center(actor.pos)
@@ -177,8 +236,10 @@ func _process(delta: float) -> void:
 		return
 	var slow_delta := minf(delta,maxf(0,0.3-impact_time)) if not injury_focus().is_empty() else 0.0
 	impact_time += delta
-	effect_time += slow_delta*0.25+(delta-slow_delta)
-	if effect_time > 1.0: effects.clear()
+	# Hit-stop: time crawls for the first instant of every blow.
+	var stopping := effects.any(func(e): return is_hit(e) and clock_of(e) >= 0 and clock_of(e) < 0.06)
+	effect_time += (slow_delta*0.25+(delta-slow_delta))*(0.3 if stopping else 1.0)
+	if effect_time > 1.0+minf(effects.size()-1,6)*STAGGER: effects.clear()
 	queue_redraw()
 
 func _ready() -> void:
@@ -274,6 +335,54 @@ func movement_previews() -> Array:
 		if actor.hp <= 0 or preview.cell == actor.pos or not session.inside(preview.cell): continue
 		result.append({"actor":actor.id,"sprite":actor_sprite(actor),"from":actor.pos,"cell":preview.cell,"reserved":preview.get("reserved",false)})
 	return result
+
+## A companion's planned attack or skill, telegraphed on the floor the way
+## enemy intents are but in the allies' teal: the target tile, a reticle, a
+## dotted line from the companion and the action's name.
+func action_previews() -> Array:
+	var result: Array = []
+	if session == null or not session.on_floor(): return result
+	for preview in companion_previews:
+		var kind := str(preview.get("kind",""))
+		if kind in ["","MOVE","WAIT"] or preview.actor == session.party[0].id: continue
+		var member: Array = session.party.filter(func(a): return a.id == preview.actor)
+		if member.is_empty() or member[0].hp <= 0 or not session.inside(preview.cell): continue
+		var title := "공격" if kind == "ATTACK" else str(session.Abilities.DEFINITIONS.get(kind,{}).get("name",kind))
+		result.append({"actor":member[0].id,"from":member[0].pos,"cell":preview.cell,"title":title,"reserved":preview.get("reserved",false)})
+	return result
+
+func draw_action_previews() -> void:
+	var pulse := 0.75+0.25*sin(Time.get_ticks_msec()*0.006)
+	for preview in action_previews():
+		var color := Color("f1ca79") if preview.reserved else ALLY_INTENT
+		var polygon := tile_polygon(Vector2(preview.cell))
+		var target := cell_center(preview.cell)
+		draw_colored_polygon(polygon,Color(color,0.2*pulse))
+		outline(polygon,Color(color,0.9),2.5)
+		var start := cell_center(preview.from)
+		if preview.from != preview.cell:
+			var direction := (target-start).normalized()
+			draw_dashed_line(start+direction*half_width*0.55,target-direction*half_width*0.6,Color(INK,0.7),4,7,true)
+			draw_dashed_line(start+direction*half_width*0.55,target-direction*half_width*0.6,color,2,7,true)
+
+## The reticle and the action's name go over the sprites, so the target
+## standing on the tile never hides them.
+func draw_action_overlay(canvas: Node2D) -> void:
+	for preview in action_previews():
+		var color := Color("f1ca79") if preview.reserved else ALLY_INTENT
+		var target := cell_center(preview.cell)-Vector2(0,half_width*0.55)
+		var ring := half_width*0.5
+		canvas.draw_arc(target,ring,0,TAU,24,Color(INK,0.8),5,true)
+		canvas.draw_arc(target,ring,0,TAU,24,color,2.5,true)
+		for direction in [Vector2.UP,Vector2.RIGHT,Vector2.DOWN,Vector2.LEFT]:
+			canvas.draw_line(target+direction*ring*0.55,target+direction*ring*1.4,Color(INK,0.8),5,true)
+			canvas.draw_line(target+direction*ring*0.55,target+direction*ring*1.4,color,2.5,true)
+		if ui_font != null:
+			var text: String = preview.title
+			var width := ui_font.get_string_size(text,HORIZONTAL_ALIGNMENT_LEFT,-1,11).x+10
+			var box := Rect2(cell_center(preview.cell)+Vector2(-width/2,half_width*0.95),Vector2(width,16))
+			canvas.draw_rect(box,Color(0.03,0.06,0.07,0.9)); canvas.draw_rect(box,color,false,1.5)
+			canvas.draw_string(ui_font,box.position+Vector2(5,12),text,HORIZONTAL_ALIGNMENT_LEFT,-1,11,Color("eafff9"))
 
 ## A companion's planned step, drawn ahead of it: the destination tile, a ghost
 ## of the pawn standing on it and an arrow from where it stands now.
@@ -397,7 +506,6 @@ func _draw() -> void:
 			var actor: Dictionary = display_at(point)
 			if not actor.is_empty():
 				center = display_center(actor)
-				if not actor.enemy and session.party.find(actor) == session.selected: outline(polygon,Color("e8c276"),2)
 				draw_set_transform(center*camera.zoom+camera.offset,0,Vector2(1,0.45)*camera.zoom)
 				draw_circle(Vector2.ZERO,half_width*0.6,Color(0,0,0,0.5))
 				draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
@@ -405,11 +513,9 @@ func _draw() -> void:
 				var flash := Color.WHITE
 				if actor.enemy:
 					flash = {"MELEE":Color.WHITE,"RANGED":Color("b8d9a2"),"CASTER":Color("c5a5ef")}.get(actor.get("role","MELEE"),Color.WHITE)
-				for effect in effects:
-					if effect.get("kind","") == "ENEMY_ATTACK": continue
-					if effect.cell == point and effect_time < 0.35:
-						center.x += sin(effect_time*65)*4*(1-effect_time/0.35)
-						flash = Color(2,0.6,0.6)
+				center += hit_offset(point)
+				var struck := hit_flash(point)
+				if struck.a > 0: flash = struck
 				var actor_rect := Rect2(center-Vector2.ONE*side/2,Vector2.ONE*side)
 				# Separate sprite canvas permits an alpha-based one-screen-pixel rim.
 				var key: String = str(actor.enemy)+"/"+str(actor.id)
@@ -425,6 +531,7 @@ func _draw() -> void:
 
 	draw_distant_npcs()
 	draw_movement_previews()
+	draw_action_previews()
 	draw_set_transform(Vector2.ZERO)
 
 ## Which pawn stands in for an actor: party members own one each, an npc
@@ -515,28 +622,25 @@ func _draw_foreground(canvas: Node2D) -> void:
 		canvas.draw_rect(box,Color(0.03,0.05,0.07,0.85))
 		canvas.draw_rect(box,Color("e5dfcf",0.68),false,1)
 		canvas.draw_string(ui_font,box.position+Vector2(2,13),str(row.text),HORIZONTAL_ALIGNMENT_CENTER,66,11,Color("fff6e1"))
+	if not is_presenting(): draw_action_overlay(canvas)
 	for effect in effects:
-		if effect.get("kind","") == "ENEMY_ATTACK":
-			draw_enemy_attack(effect,canvas); continue
-		if effect.get("kind","") == "ATTACK_SWING":
-			if effect_time < 0.2:
-				var progress := clampf(effect_time/0.2,0.0,1.0)
-				var start := cell_center(effect.from)
-				var target := cell_center(effect.cell)
-				var center := start.lerp(target,0.55+0.45*progress)
-				var tangent := (target-start).normalized().rotated(PI/2)*half_width*0.42
-				canvas.draw_line(center-tangent,center+tangent,Color(1.0,0.9,0.67,1.0-progress),2.0,true)
-			continue
-		if effect_time >= 0.75: continue
-		var center := cell_center(effect.cell)-Vector2(0,half_width*0.65)
-		var fade := 1.0-effect_time/0.75
-		var color := Color(1,0.85,0.5,fade) if effect.form != "ELECTRIC" else Color(0.4,0.8,1,fade)
-		if effect_time < 0.28:
-			canvas.draw_line(cell_center(effect.from)-Vector2(0,half_width*0.65),center,color,3,true)
-			canvas.draw_line(center-Vector2(15,-12),center+Vector2(15,-12),color,5,true)
-			canvas.draw_arc(center,8+effect_time*45,0,TAU,20,color,2,true)
-		canvas.draw_string(ui_font,center+Vector2(-12,-14-effect_time*30),"-%d" % effect.amount,HORIZONTAL_ALIGNMENT_LEFT,-1,20,color)
+		var kind := str(effect.get("kind",""))
+		if kind == "ENEMY_ATTACK": draw_enemy_attack(effect,canvas)
+		elif kind == "ATTACK_SWING": draw_swing(effect,canvas)
+		elif kind == "MISS": draw_miss(effect,canvas)
+		elif effect.has("amount"): draw_hit(effect,canvas)
 	canvas.draw_set_transform(Vector2.ZERO)
+	# The edges of the screen flare red while the party is being hurt.
+	for effect in effects:
+		if not hits_party(effect): continue
+		var t := clock_of(effect)
+		if t < 0 or t >= 0.32: continue
+		var alpha := 0.22*(1.0-t/0.32)
+		var edge := minf(size.x,size.y)*0.08
+		for band in [Rect2(0,0,size.x,edge),Rect2(0,size.y-edge,size.x,edge),Rect2(0,0,edge,size.y),Rect2(size.x-edge,0,edge,size.y)]:
+			canvas.draw_rect(band,Color(0.85,0.05,0.02,alpha))
+		canvas.draw_rect(Rect2(Vector2.ZERO,size),Color(0.7,0.04,0.02,alpha*0.45))
+		break
 	var injury := injury_focus()
 	if not injury.is_empty() and impact_time < 0.45:
 		var fade := 1.0-impact_time/0.45
@@ -548,25 +652,116 @@ func _draw_foreground(canvas: Node2D) -> void:
 			canvas.draw_line(point+direction*(12+impact_time*35),point+direction*(28+impact_time*80),Color(1,0.7,0.45,fade),3,true)
 		canvas.draw_string(ui_font,Vector2(clampf(point.x-65,2,maxf(2,size.x-132)),maxf(20,point.y-30)),str(injury.get("part","신체"))+" 손상!",HORIZONTAL_ALIGNMENT_CENTER,130,16,Color(1,0.85,0.7,fade))
 
+## The colours of a blow: hot red when the party is hurt, gold otherwise,
+## and the element's own colour for fire, frost, lightning and poison.
+func hit_colors(effect: Dictionary) -> Array:
+	match str(effect.get("form","")).to_upper():
+		"FIRE": return [Color("ff7a2a"),Color("ffe07a")]
+		"ICE": return [Color("6fc8ff"),Color("e8f8ff")]
+		"ELECTRIC": return [Color("5fd8ff"),Color("f0ffff")]
+		"POISON": return [Color("7cd04a"),Color("e0ffb0")]
+	return [Color("ff3a26"),Color("ffd0a0")] if hits_party(effect) else [Color("ffb02e"),Color("fff4c8")]
+
+## Outlined text, the Forge Master way: an ink rim under a bright fill.
+func draw_outlined(canvas: Node2D, position: Vector2, text: String, font_size: int, color: Color) -> void:
+	if ui_font == null: return
+	var width := ui_font.get_string_size(text,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x
+	var at := position-Vector2(width/2,0)
+	canvas.draw_string_outline(ui_font,at,text,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size,maxi(4,font_size/4),Color(INK,color.a))
+	canvas.draw_string(ui_font,at,text,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size,color)
+
+func star_points(center: Vector2, outer: float, inner: float, points: int, turn: float) -> PackedVector2Array:
+	var result := PackedVector2Array()
+	for i in range(points*2):
+		var radius := outer if i % 2 == 0 else inner
+		result.append(center+Vector2.RIGHT.rotated(turn+i*PI/points)*radius)
+	return result
+
+## A blow that lands: a white-cored burst, sparks, a slash across the target,
+## debris that falls, and the damage popping out and floating up.
+func draw_hit(effect: Dictionary, canvas: Node2D) -> void:
+	var t := clock_of(effect)
+	if t < 0 or t >= 0.95: return
+	var colors := hit_colors(effect)
+	var outer: Color = colors[0]
+	var core: Color = colors[1]
+	var party := hits_party(effect)
+	var center := cell_center(effect.cell)-Vector2(0,half_width*0.7)
+	var direction := Vector2(effect.cell-effect.from).normalized()
+	if direction == Vector2.ZERO: direction = Vector2.RIGHT
+	var seed := float((int(effect.cell.x)*73+int(effect.cell.y)*151+int(effect.get("amount",0))*17)%360)
+	if t < 0.26:
+		var grow := 1.0-pow(1.0-t/0.26,3)
+		var fade := 1.0-t/0.26
+		var radius := half_width*(0.45+(1.25 if party else 1.0)*grow)
+		var burst := star_points(center,radius,radius*0.48,8,deg_to_rad(seed))
+		canvas.draw_colored_polygon(burst,Color(outer,fade))
+		canvas.draw_polyline(burst+PackedVector2Array([burst[0]]),Color(INK,fade*0.9),2.5,true)
+		canvas.draw_circle(center,radius*0.36*fade+2,Color(core,fade))
+		for i in range(8):
+			var ray := Vector2.RIGHT.rotated(deg_to_rad(seed)+i*TAU/8+0.2)
+			var reach := radius*(0.9+0.6*grow)
+			canvas.draw_line(center+ray*radius*0.7,center+ray*reach,Color(core,fade),3,true)
+	if t < 0.17:
+		var slash := direction.rotated(PI/2+0.5)*half_width*0.95
+		var fade := 1.0-t/0.17
+		canvas.draw_line(center-slash,center+slash,Color(INK,fade),10,true)
+		canvas.draw_line(center-slash,center+slash,Color(1,1,1,fade),5,true)
+	if t < 0.55:
+		for i in range(6):
+			var angle := deg_to_rad(seed*1.7+i*61.0)
+			var velocity := Vector2(cos(angle),-absf(sin(angle))-0.4)*(90+i*14)+direction*40
+			var point := center+velocity*t+Vector2(0,260)*t*t
+			canvas.draw_circle(point,3.2-t*3,Color(outer.darkened(0.2),1.0-t/0.55))
+	var amount := int(effect.get("amount",0))
+	var pop := 1.0+0.7*maxf(0,1.0-t/0.1)
+	var font_size := int((26 if party else 22)*pop)
+	var alpha := clampf((0.95-t)/0.35,0,1)
+	var drift := Vector2(sin(deg_to_rad(seed))*10,-half_width*0.5-t*42)
+	draw_outlined(canvas,center+drift,"-%d" % amount,font_size,Color(Color("ff5a48") if party else Color("fff4c8"),alpha))
+
+## A melee swing: a bright crescent sweeping across the target.
+func draw_swing(effect: Dictionary, canvas: Node2D) -> void:
+	var t := clock_of(effect)
+	if t < 0 or t >= 0.22: return
+	var progress := t/0.22
+	var target := cell_center(effect.cell)-Vector2(0,half_width*0.6)
+	var heading := Vector2(effect.cell-effect.from).angle()
+	var start := heading-PI*0.6+PI*1.2*maxf(0,progress-0.35)
+	var end := heading-PI*0.6+PI*1.2*minf(1,progress*1.6)
+	if end <= start: return
+	var radius := half_width*0.95
+	canvas.draw_arc(target,radius,start,end,16,Color(INK,1.0-progress),9,true)
+	canvas.draw_arc(target,radius,start,end,16,Color(1,0.96,0.85,1.0-progress),4.5,true)
+
+## A blow that found nothing: the word floats off the target, pale.
+func draw_miss(effect: Dictionary, canvas: Node2D) -> void:
+	var t := clock_of(effect)
+	if t < 0 or t >= 0.8: return
+	var center := cell_center(effect.cell)-Vector2(0,half_width*(1.2+t*0.8))
+	draw_outlined(canvas,center,str(effect.get("text","회피")),int(18*(1.0+0.4*maxf(0,1.0-t/0.1))),Color(0.8,0.9,1.0,clampf((0.8-t)/0.3,0,1)))
+
 func draw_enemy_attack(effect: Dictionary, canvas: Node2D) -> void:
-	var fade := clampf(1.0-effect_time,0,1)
+	var clock := clock_of(effect)
+	if clock < 0: return
+	var fade := clampf(1.0-clock,0,1)
 	var impact := Color(1,0.25,0.12,fade)
 	var center := Vector2.ZERO
 	for cell in effect.cells:
 		var point := cell_center(cell)
 		center += point
 		var polygon := tile_polygon(Vector2(cell))
-		canvas.draw_colored_polygon(polygon,Color(1,0.12,0.04,fade*(0.55 if effect_time < 0.2 else 0.22)))
+		canvas.draw_colored_polygon(polygon,Color(1,0.12,0.04,fade*(0.55 if clock < 0.2 else 0.22)))
 		canvas.draw_polyline(PackedVector2Array([polygon[0],polygon[1],polygon[2],polygon[3],polygon[0]]),impact,3,true)
-		var radius := half_width*(0.25+minf(effect_time*3,0.7))
+		var radius := half_width*(0.25+minf(clock*3,0.7))
 		canvas.draw_arc(point,radius,0,TAU,20,Color(1,0.8,0.4,fade),2,true)
-		if effect_time < 0.4:
+		if clock < 0.4:
 			for direction in [Vector2.UP,Vector2.RIGHT,Vector2.DOWN,Vector2.LEFT]:
 				canvas.draw_line(point+direction*radius*0.45,point+direction*radius,impact,3,true)
 	center /= maxf(1,effect.cells.size())
 	if not effect.area:
 		var start := cell_center(effect.from)
-		var tip := start.lerp(center,clampf(effect_time*8,0,1))
+		var tip := start.lerp(center,clampf(clock*8,0,1))
 		canvas.draw_line(start,tip,impact,5,true)
 		var slash := Vector2(half_width*0.5,-half_width*0.5)
 		canvas.draw_line(center-slash,center+slash,Color(1,0.85,0.65,fade),4,true)

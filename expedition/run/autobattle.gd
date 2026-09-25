@@ -241,11 +241,13 @@ static func auto_stop_reason(s) -> String:
 
 static func companion_previews(s) -> Array:
 	var previews: Array = []
-	if not s.companions or not s.on_floor(): return previews
+	# A solo run that has recruited someone has companions too, and in manual
+	# play a companion's AP is only refilled on its own turn.
+	if s.party.size() < 2 or not s.on_floor(): return previews
 	# `selected` is an index into the party, not an actor id.
 	for index in range(s.party.size()):
 		var actor: Dictionary = s.party[index]
-		if index == s.selected or actor.hp <= 0 or actor.ap <= 0: continue
+		if index == s.selected or actor.hp <= 0 or (actor.ap <= 0 and not s.manual_mode): continue
 		var choice: Dictionary = s.companion_choice(actor).duplicate(true)
 		choice.actor = actor.id
 		previews.append(choice)
