@@ -108,99 +108,110 @@ SPRITES = {
         mark=STITCH, head_r=16, body_r=14),
 }
 
+GROUND = '<ellipse cx="32" cy="{cy}" rx="{rx}" ry="3.6" fill="#000" fill-opacity="0.16"/>'
+
+
+def banded(uid, shape, fill, shade, split):
+    """Forge Master's prop shading, read off its barrel: the flat fill, a
+    darker vertical band on the right from `split` onward, then the outline."""
+    return (f'<clipPath id="{uid}">{shape.format(fill="#000", line="")}</clipPath>'
+            + shape.format(fill=fill, line="")
+            + f'<rect x="{split}" y="0" width="64" height="64" fill="{shade}" clip-path="url(#{uid})"/>'
+            + shape.format(fill="none", line=LINE))
+
+
 PROPS = {
-    "chest": '<ellipse cx="32" cy="55" rx="20" ry="4" fill="#000" fill-opacity="0.22"/>'
-    + f'<rect x="12" y="30" width="40" height="24" rx="3" fill="#b0703a" {LINE}/>'
-    + '<rect x="38" y="31.5" width="12.5" height="21" fill="#94592c"/>'
-    + f'<rect x="12" y="30" width="40" height="24" rx="3" fill="none" {LINE}/>'
-    + f'<path d="M12 30 Q12 18 32 18 Q52 18 52 30 Z" fill="#c8844a" {LINE}/>'
-    + f'<rect x="12" y="29" width="40" height="5" fill="#f2c64b" {LINE}/>'
-    + f'<rect x="28" y="31" width="8" height="9" rx="2" fill="#f2c64b" {LINE}/>',
-    "barrel": '<ellipse cx="32" cy="56" rx="14" ry="4" fill="#000" fill-opacity="0.22"/>'
-    + f'<path d="M20 22 Q17 38 20 54 L44 54 Q47 38 44 22 Z" fill="#4a8fd6" {LINE}/>'
-    + f'<path d="M19 33 L45 33 M19 44 L45 44" {LINE}/>'
-    + f'<ellipse cx="32" cy="22" rx="12" ry="4" fill="#78b2ec" {LINE}/>',
-    "torch": f'<rect x="29" y="30" width="6" height="22" rx="2" fill="#8a5a33" {LINE}/>'
-    + f'<path d="M22 28 L42 28 L38 34 L26 34 Z" fill="#9aa3b3" {LINE}/>'
-    + f'<path d="M32 6 Q42 16 40 24 Q38 30 32 30 Q26 30 24 24 Q22 16 32 6 Z" fill="#ff8a2a" {LINE}/>'
-    + '<path d="M32 14 Q37 20 36 25 Q34 28 32 28 Q30 28 28 25 Q27 20 32 14 Z" fill="#ffd84a"/>',
-    "potion": '<ellipse cx="32" cy="56" rx="12" ry="3.5" fill="#000" fill-opacity="0.22"/>'
-    + f'<rect x="27" y="14" width="10" height="12" rx="2" fill="#dbe7f2" {LINE}/>'
-    + f'<rect x="26" y="10" width="12" height="6" rx="2" fill="#a0683a" {LINE}/>'
-    + f'<circle cx="32" cy="40" r="15" fill="#e8413a" {LINE}/>'
-    + '<path d="M38 27 A15 15 0 0 1 44 49 L32 45 Z" fill="#c12f2a"/>'
-    + f'<circle cx="32" cy="40" r="15" fill="none" {LINE}/>'
-    + '<ellipse cx="26" cy="34" rx="3" ry="4.5" fill="#fff" fill-opacity="0.75"/>',
-    "scroll": '<ellipse cx="32" cy="55" rx="18" ry="3.5" fill="#000" fill-opacity="0.22"/>'
-    + f'<rect x="15" y="18" width="34" height="32" rx="2" fill="#f4e6c2" {LINE}/>'
-    + f'<path d="M21 27 L43 27 M21 34 L39 34 M21 41 L41 41" stroke="#b39a6a" stroke-width="3" stroke-linecap="round"/>'
-    + f'<rect x="11" y="13" width="42" height="8" rx="4" fill="#d9c08a" {LINE}/>'
-    + f'<rect x="11" y="47" width="42" height="8" rx="4" fill="#d9c08a" {LINE}/>',
+    "chest": GROUND.format(cy=56, rx=20)
+    + banded("chb", '<rect x="12" y="31" width="40" height="23" rx="3" fill="{fill}" {line}/>', "#c47d40", "#a7652f", 41)
+    + banded("chl", '<rect x="10" y="20" width="44" height="13" rx="5" fill="{fill}" {line}/>', "#d68f4e", "#b8743a", 42)
+    + f'<path d="M20 20 L20 54 M44 20 L44 54" stroke="{INK}" stroke-width="3"/>'
+    + f'<rect x="27.5" y="28" width="9" height="10" rx="2.5" fill="#f5c84a" {LINE}/>',
+    "barrel": GROUND.format(cy=56, rx=14)
+    + banded("bab", '<path d="M19 20 L19 52 Q19 56 32 56 Q45 56 45 52 L45 20 Z" fill="{fill}" {line}/>', "#3f9ad8", "#2f82bf", 34)
+    + f'<path d="M19 31 Q32 35 45 31 M19 42 Q32 46 45 42" fill="none" {LINE}/>'
+    + banded("bat", '<ellipse cx="32" cy="20" rx="13" ry="4.5" fill="{fill}" {line}/>', "#5bb1e8", "#4a9fd8", 34),
+    "torch": banded("tos", '<rect x="28.5" y="30" width="7" height="24" rx="2" fill="{fill}" {line}/>', "#a8703e", "#8a5a30", 32)
+    + banded("toc", '<path d="M21 27 L43 27 L39 34 L25 34 Z" fill="{fill}" {line}/>', "#b8c2cf", "#98a3b2", 34)
+    + f'<path d="M32 4 Q43 15 41 23 Q39 30 32 30 Q25 30 23 23 Q21 15 32 4 Z" fill="#ff8a2a" {LINE}/>'
+    + '<path d="M32 13 Q37 19 36.5 24 Q35 28 32 28 Q29 28 27.5 24 Q27 19 32 13 Z" fill="#ffd84a"/>',
+    "potion": GROUND.format(cy=57, rx=12)
+    + banded("pon", '<rect x="27" y="13" width="10" height="13" rx="2" fill="{fill}" {line}/>', "#e4eef7", "#c9d6e3", 33)
+    + f'<rect x="25.5" y="8" width="13" height="7" rx="2.5" fill="#a8703e" {LINE}/>'
+    + banded("pob", '<circle cx="32" cy="40" r="15" fill="{fill}" {line}/>', "#ec4a3f", "#c9352c", 36)
+    + '<ellipse cx="25.5" cy="35" rx="2.6" ry="4.4" fill="#fff" fill-opacity="0.8"/>',
+    "scroll": GROUND.format(cy=57, rx=18)
+    + banded("scp", '<rect x="15" y="17" width="34" height="33" rx="2" fill="{fill}" {line}/>', "#f6e8c4", "#e5d2a6", 38)
+    + '<path d="M21 26 L41 26 M21 33 L37 33 M21 40 L39 40" stroke="#b39a6a" stroke-width="3" stroke-linecap="round"/>'
+    + banded("sct", '<rect x="11" y="12" width="42" height="8" rx="4" fill="{fill}" {line}/>', "#dcc28a", "#c4a76e", 40)
+    + banded("scb", '<rect x="11" y="47" width="42" height="8" rx="4" fill="{fill}" {line}/>', "#dcc28a", "#c4a76e", 40),
 }
 
 ICONS = {
-    "attack": f'<g transform="rotate(45 32 32)"><rect x="29" y="6" width="6" height="36" rx="2" fill="#e6ecf3" {LINE}/>'
-    + f'<rect x="21" y="40" width="22" height="6" rx="3" fill="#f2c64b" {LINE}/><rect x="29" y="46" width="6" height="11" rx="2" fill="#6b4524" {LINE}/></g>'
-    + f'<g transform="rotate(-45 32 32)"><rect x="29" y="6" width="6" height="36" rx="2" fill="#e6ecf3" {LINE}/>'
-    + f'<rect x="21" y="40" width="22" height="6" rx="3" fill="#f2c64b" {LINE}/><rect x="29" y="46" width="6" height="11" rx="2" fill="#6b4524" {LINE}/></g>',
-    "wait": f'<rect x="16" y="8" width="32" height="6" rx="3" fill="#8a5a33" {LINE}/><rect x="16" y="50" width="32" height="6" rx="3" fill="#8a5a33" {LINE}/>'
-    + f'<path d="M20 14 L44 14 Q44 26 32 32 Q44 38 44 50 L20 50 Q20 38 32 32 Q20 26 20 14 Z" fill="#dff1ff" {LINE}/>'
-    + '<path d="M25 20 L39 20 Q36 27 32 29 Q28 27 25 20 Z M24 48 Q24 41 32 38 Q40 41 40 48 Z" fill="#f2c64b"/>',
-    "search": f'<rect x="38" y="36" width="8" height="22" rx="3" transform="rotate(-45 42 47)" fill="#8a5a33" {LINE}/>'
-    + f'<circle cx="27" cy="27" r="16" fill="#9fd8ff" {LINE}/>'
-    + '<path d="M19 21 A10 10 0 0 1 27 15" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>',
-    "tactics": f'<rect x="14" y="8" width="5" height="50" rx="2" fill="#8a5a33" {LINE}/>'
-    + f'<path d="M19 10 L52 14 L44 23 L52 32 L19 30 Z" fill="#e8413a" {LINE}/>',
-    "bag": f'<path d="M22 20 Q22 8 32 8 Q42 8 42 20" fill="none" stroke="{INK}" stroke-width="7" stroke-linecap="round"/>'
-    + '<path d="M22 20 Q22 8 32 8 Q42 8 42 20" fill="none" stroke="#8a5a33" stroke-width="3" stroke-linecap="round"/>'
-    + f'<rect x="12" y="18" width="40" height="38" rx="9" fill="#b0703a" {LINE}/>'
-    + f'<rect x="20" y="32" width="24" height="15" rx="4" fill="#94592c" {LINE}/>'
-    + f'<rect x="29" y="28" width="6" height="8" rx="2" fill="#f2c64b" {LINE}/>',
-    "food": f'<path d="M18 46 Q8 40 14 28 Q22 14 38 16 Q54 20 50 36 Q46 48 30 48 Z" fill="#c8633a" {LINE}/>'
-    + f'<rect x="40" y="40" width="7" height="18" rx="3" transform="rotate(-40 44 48)" fill="#f3ead6" {LINE}/>',
-    "gold": f'<circle cx="32" cy="32" r="20" fill="#f2c64b" {LINE}/><circle cx="32" cy="32" r="12" fill="none" stroke="#d19a25" stroke-width="4"/>',
+    "attack": '<g transform="rotate(45 32 32)">'
+    + banded("at1", '<rect x="28.5" y="5" width="7" height="37" rx="2" fill="{fill}" {line}/>', "#eef3f8", "#c9d3de", 32)
+    + f'<rect x="20" y="40" width="24" height="6.5" rx="3" fill="#f5c84a" {LINE}/><rect x="28.5" y="46" width="7" height="12" rx="2.5" fill="#8a5a30" {LINE}/></g>'
+    + '<g transform="rotate(-45 32 32)">'
+    + banded("at2", '<rect x="28.5" y="5" width="7" height="37" rx="2" fill="{fill}" {line}/>', "#eef3f8", "#c9d3de", 32)
+    + f'<rect x="20" y="40" width="24" height="6.5" rx="3" fill="#f5c84a" {LINE}/><rect x="28.5" y="46" width="7" height="12" rx="2.5" fill="#8a5a30" {LINE}/></g>',
+    "wait": f'<rect x="15" y="6" width="34" height="7" rx="3.5" fill="#a8703e" {LINE}/><rect x="15" y="51" width="34" height="7" rx="3.5" fill="#a8703e" {LINE}/>'
+    + banded("wag", '<path d="M19 13 L45 13 Q45 26 32 32 Q45 38 45 51 L19 51 Q19 38 32 32 Q19 26 19 13 Z" fill="{fill}" {line}/>', "#e6f5ff", "#c6e2f5", 36)
+    + '<path d="M24.5 19 L39.5 19 Q36.5 26.5 32 28.5 Q27.5 26.5 24.5 19 Z M23.5 49 Q23.5 41 32 38.5 Q40.5 41 40.5 49 Z" fill="#f5c84a"/>',
+    "search": f'<rect x="38" y="35" width="9" height="23" rx="3.5" transform="rotate(-45 42.5 46.5)" fill="#a8703e" {LINE}/>'
+    + banded("seg", '<circle cx="26" cy="26" r="17" fill="{fill}" {line}/>', "#a8ddff", "#86c6ef", 31)
+    + '<path d="M17 21 A10 10 0 0 1 25 14" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/>',
+    "tactics": banded("tap", '<rect x="13" y="6" width="6" height="52" rx="2.5" fill="{fill}" {line}/>', "#a8703e", "#8a5a30", 16)
+    + banded("taf", '<path d="M19 9 L53 13 L45 23 L53 33 L19 30 Z" fill="{fill}" {line}/>', "#ec4a3f", "#c9352c", 40),
+    "bag": f'<path d="M22 20 Q22 7 32 7 Q42 7 42 20" fill="none" stroke="{INK}" stroke-width="7.5" stroke-linecap="round"/>'
+    + '<path d="M22 20 Q22 7 32 7 Q42 7 42 20" fill="none" stroke="#a8703e" stroke-width="3" stroke-linecap="round"/>'
+    + banded("bgb", '<rect x="11" y="17" width="42" height="40" rx="10" fill="{fill}" {line}/>', "#c47d40", "#a7652f", 40)
+    + f'<rect x="19" y="32" width="26" height="16" rx="4.5" fill="#a7652f" {LINE}/>'
+    + f'<rect x="28.5" y="27" width="7" height="9" rx="2.5" fill="#f5c84a" {LINE}/>',
+    "food": banded("fom", '<path d="M18 47 Q7 41 13 28 Q21 13 38 15 Q55 19 51 36 Q47 49 30 49 Z" fill="{fill}" {line}/>', "#d56e3f", "#b85a30", 38)
+    + f'<rect x="40" y="40" width="8" height="19" rx="3.5" transform="rotate(-40 44 48)" fill="#f6eedc" {LINE}/>',
+    "gold": banded("gog", '<circle cx="32" cy="32" r="21" fill="{fill}" {line}/>', "#f5c84a", "#dca832", 38)
+    + '<circle cx="32" cy="32" r="12.5" fill="none" stroke="#c9922a" stroke-width="4"/>',
 }
 
 
 def room_svg(width: int, height: int, cols: int, rows: int) -> str:
-    """The room: stone wall band with an arched stair, a flat floor with soft
-    tile seams, side walls, and a few ink doodles for texture."""
+    """The room the Forge Master way: one flat floor colour with no grid, a
+    darker splat or two, ink grass marks and pebbles; a flat back wall with a
+    few big blocks drawn as thin darker lines; bold ink only on the big edges."""
     tile = width / cols
     wall_h = tile * 1.6
-    parts = [f'<rect width="{width}" height="{height}" fill="#2a2b36"/>']
-    parts.append(f'<rect x="{tile * 0.5}" y="{wall_h}" width="{width - tile}" height="{height - wall_h - tile * 0.5}" fill="#cdb68a"/>')
-    for c in range(1, cols):
-        x = tile * 0.5 + (c - 0.5) * tile
-        parts.append(f'<path d="M{x} {wall_h} L{x} {height - tile * 0.5}" stroke="#bea77b" stroke-width="3"/>')
-    for r in range(1, rows):
-        y = wall_h + r * tile - tile * 0.35
-        if y < height - tile * 0.5:
-            parts.append(f'<path d="M{tile * 0.5} {y} L{width - tile * 0.5} {y}" stroke="#bea77b" stroke-width="3"/>')
-    parts.append(f'<rect x="{tile * 0.5}" y="{wall_h}" width="{width - tile}" height="{height - wall_h - tile * 0.5}" fill="none" {LINE}/>')
-    # Back wall: two courses of big flat blocks.
-    parts.append(f'<rect x="{tile * 0.5}" y="{tile * 0.2}" width="{width - tile}" height="{wall_h - tile * 0.2}" fill="#7d8394" {LINE}/>')
-    for course in range(2):
-        y = tile * 0.2 + course * (wall_h - tile * 0.2) / 2
-        h = (wall_h - tile * 0.2) / 2
-        offset = 0 if course == 0 else tile * 0.6
-        x = tile * 0.5 - offset
-        while x < width - tile * 0.5:
-            x0, x1 = max(x, tile * 0.5), min(x + tile * 1.2, width - tile * 0.5)
-            parts.append(f'<rect x="{x0 + 3}" y="{y + 3}" width="{x1 - x0 - 6}" height="{h - 6}" rx="4" fill="#8e94a4" stroke="#686d7d" stroke-width="3"/>')
-            x += tile * 1.2
-    parts.append(f'<rect x="{tile * 0.5}" y="{tile * 0.2}" width="{width - tile}" height="{wall_h - tile * 0.2}" fill="none" {LINE}/>')
-    # Arched stairwell in the middle of the back wall.
+    x0, x1 = tile * 0.5, width - tile * 0.5
+    floor_bottom = height - tile * 0.5
+    parts = [f'<rect width="{width}" height="{height}" fill="#2a2b36"/>',
+             f'<rect x="{x0}" y="{wall_h}" width="{x1 - x0}" height="{floor_bottom - wall_h}" fill="#d8b98a"/>']
+    for cx, cy, r in ((0.3, 0.55, 26), (0.66, 0.78, 22), (0.5, 0.36, 18)):
+        px, py = width * cx, height * cy
+        parts.append(f'<ellipse cx="{px}" cy="{py}" rx="{r * 1.9}" ry="{r * 0.8}" fill="#c4a372"/>')
+        for dx, dy, rr in ((-r * 2.4, -2, 5), (r * 2.3, 3, 4), (r * 1.2, -r * 0.9, 3.5), (-r * 1.1, r * 0.95, 3)):
+            parts.append(f'<ellipse cx="{px + dx}" cy="{py + dy}" rx="{rr * 1.5}" ry="{rr}" fill="#c4a372"/>')
+    for fx, fy in ((0.24, 0.42), (0.74, 0.5), (0.44, 0.84), (0.16, 0.7), (0.84, 0.3), (0.58, 0.62)):
+        px, py = width * fx, height * fy
+        parts.append(f'<path d="M{px} {py} l0 -14 l8 10 l4 -9 l-6 16" fill="none" stroke="{INK}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>')
+    for fx, fy, r in ((0.36, 0.3, 7), (0.62, 0.7, 6), (0.2, 0.52, 5), (0.8, 0.86, 6)):
+        px, py = width * fx, height * fy
+        parts.append(f'<ellipse cx="{px}" cy="{py}" rx="{r * 1.4}" ry="{r}" fill="#b0a08a" {LINE}/>')
+    parts.append(f'<rect x="{x0}" y="{wall_h}" width="{x1 - x0}" height="{floor_bottom - wall_h}" fill="none" stroke="{INK}" stroke-width="5"/>')
+    # Back wall: flat slate, a lighter cap, big blocks as thin darker lines.
+    top = tile * 0.2
+    parts.append(f'<rect x="{x0}" y="{top}" width="{x1 - x0}" height="{wall_h - top}" fill="#6c7288"/>')
+    parts.append(f'<rect x="{x0}" y="{top}" width="{x1 - x0}" height="{tile * 0.28}" fill="#858ba0"/>')
+    mid = top + (wall_h - top) * 0.55
+    parts.append(f'<path d="M{x0} {mid} L{x1} {mid}" stroke="#595e72" stroke-width="4"/>')
+    for i, x in enumerate(range(int(x0 + tile * 1.1), int(x1), int(tile * 1.4))):
+        y_a, y_b = (top + tile * 0.28, mid) if i % 2 == 0 else (mid, wall_h)
+        parts.append(f'<path d="M{x} {y_a} L{x} {y_b}" stroke="#595e72" stroke-width="4"/>')
+        xb = x + tile * 0.7
+        parts.append(f'<path d="M{xb} {mid if i % 2 == 0 else top + tile * 0.28} L{xb} {wall_h if i % 2 == 0 else mid}" stroke="#595e72" stroke-width="4"/>')
+    parts.append(f'<rect x="{x0}" y="{top}" width="{x1 - x0}" height="{wall_h - top}" fill="none" stroke="{INK}" stroke-width="5"/>')
     cx = width / 2
-    parts.append(f'<path d="M{cx - tile * 0.7} {wall_h} L{cx - tile * 0.7} {tile * 0.9} Q{cx - tile * 0.7} {tile * 0.35} {cx} {tile * 0.35} Q{cx + tile * 0.7} {tile * 0.35} {cx + tile * 0.7} {tile * 0.9} L{cx + tile * 0.7} {wall_h} Z" fill="#1f2029" {LINE}/>')
+    parts.append(f'<path d="M{cx - tile * 0.72} {wall_h} L{cx - tile * 0.72} {tile * 0.95} Q{cx - tile * 0.72} {tile * 0.42} {cx} {tile * 0.42} Q{cx + tile * 0.72} {tile * 0.42} {cx + tile * 0.72} {tile * 0.95} L{cx + tile * 0.72} {wall_h} Z" fill="#23242e" stroke="{INK}" stroke-width="5" stroke-linejoin="round"/>')
     for i in range(3):
-        y = tile * 0.95 + i * tile * 0.2
-        parts.append(f'<rect x="{cx - tile * 0.5 + i * 4}" y="{y}" width="{tile - i * 8}" height="{tile * 0.12}" rx="2" fill="#5c6070"/>')
-    # Ink doodles and pebbles, the Forge Master way of texturing a flat plane.
-    for x, y in ((0.28, 0.42), (0.7, 0.55), (0.45, 0.8), (0.18, 0.7), (0.82, 0.3)):
-        px, py = width * x, height * y
-        parts.append(f'<path d="M{px} {py} l4 -9 l4 9 l4 -12 l3 12" fill="none" stroke="{INK}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>')
-    for x, y, r in ((0.35, 0.33, 6), (0.62, 0.72, 5), (0.22, 0.52, 4)):
-        parts.append(f'<ellipse cx="{width * x}" cy="{height * y}" rx="{r * 1.5}" ry="{r}" fill="#a8946c" {LINE}/>')
+        y = tile * 1.0 + i * tile * 0.19
+        parts.append(f'<rect x="{cx - tile * 0.5 + i * 5}" y="{y}" width="{tile - i * 10}" height="{tile * 0.11}" rx="3" fill="#6c7288"/>')
     return svg("".join(parts)).replace('width="64" height="64" viewBox="0 0 64 64"', f'width="{width}" height="{height}" viewBox="0 0 {width} {height}"')
 
 
@@ -318,7 +329,7 @@ def main() -> None:
     foes = [("orc", 5.3, 0.8, 9, 14), ("goblin", 6.1, 2.6, 6, 10), ("skeleton", 4.6, 3.4, 4, 10), ("rat", 1.4, 2.6, 5, 8)]
     for name, col, row, hp, maximum in foes:
         x, y = place(name, col, row)
-        bar(draw, (x + 38, y + 20, x + 112, y + 38), hp, maximum, "#e8413a")
+        bar(draw, (x + 42, y - 4, x + 108, y + 12), hp, maximum, "#e8413a")
     place("hero", 3.2, 2.6, 160)
 
     # Log card.
@@ -346,7 +357,7 @@ def main() -> None:
         screen.alpha_composite(art[icon].resize((88, 88)), (x0 + 27, button_top + 10))
         outlined(draw, (x0 + 71, height - 60), label, 32, anchor="mm")
 
-    screen.convert("RGB").save(REVIEW / "gameplay-780x1688.png")
+    screen.convert("RGB").save(REVIEW / "gameplay-v2-780x1688.png")
     board = Image.new("RGBA", (7 * 170 + 20, 3 * 180 + 20), "#e9ecf2")
     for r, group in enumerate((SPRITES, PROPS, ICONS)):
         for c, name in enumerate(group):
