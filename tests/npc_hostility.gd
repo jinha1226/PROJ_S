@@ -46,15 +46,24 @@ func run() -> void:
 
 func personality_and_situation() -> void:
 	var f := field(Vector2i(2,0)); var s = f.s; var npc: Dictionary = f.npc
+	check(npc.opinions.has(int(s.party[0].id)) and absi(int(npc.opinions[int(s.party[0].id)])) <= 30,"new NPC begins with an A/H-based opinion")
 	traits(npc,0,0,1000)
+	npc.opinions[int(s.party[0].id)] = 0
 	check(not Hostility.may_start(s,npc),"healthy party deters even aggressive NPC")
 	s.party[0].hp = 2
 	check(Hostility.may_start(s,npc),"low H/A NPC sees an injured hero as an opening")
+	npc.opinions[int(s.party[0].id)] = 100
+	check(not Hostility.may_start(s,npc),"positive opinion can deter an opportunistic attack")
+	npc.opinions[int(s.party[0].id)] = 0
 	npc.hp = maxi(1,npc.max_hp/5)
 	check(not Hostility.may_start(s,npc),"wounded NPC is less willing to start a fight")
 	npc.hp = npc.max_hp
 	traits(npc,1000,1000,500)
 	check(not Hostility.may_start(s,npc),"warm, honest NPC does not prey on weakness")
+	var neutral_score: int = Hostility.score(s,npc)
+	npc.opinions[int(s.party[0].id)] = -100
+	check(Hostility.score(s,npc) == neutral_score+200,"negative opinion raises hostility independently of HEXACO")
+	npc.opinions[int(s.party[0].id)] = 0
 	traits(npc,0,0,1000)
 	s.serial += 1
 	s.remember_plain(npc,"AID_RECEIVED",s.party[0].id+1,s.party[0].id+1,500)
@@ -79,9 +88,11 @@ func first_strike_and_pursuit() -> void:
 func player_assault() -> void:
 	var f := field(Vector2i(1,0)); var s = f.s; var npc: Dictionary = f.npc
 	traits(npc,1000,1000,500)
+	var opinion_before: int = int(npc.opinions[int(s.party[0].id)])
 	check(not s.attack_preview(npc.pos).is_empty(),"neutral NPC is a valid player attack target")
 	check(s.act("ATTACK",npc.pos),"player may attack a neutral NPC")
 	check(npc.hostile,"attacked NPC stays hostile even if the attack misses")
+	check(int(npc.opinions[int(s.party[0].id)]) == clampi(opinion_before-60,-100,100),"assault lowers the NPC's opinion")
 	check(npc.memory.salience_for_subject(s.party[0].id+1,["ATTACKED_BY_PLAYER"]) > 0,"NPC remembers the player's attack")
 	check(not s.recruit(npc) and not s.aid(npc),"hostility blocks social actions")
 

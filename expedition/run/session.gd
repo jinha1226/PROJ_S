@@ -147,7 +147,7 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"growth":Growth.create(),"protected_by":-1,
 		"gear":{"weapon":{},"armour":{},"shield":{},"ring":{}},
 		"mp":18,"max_mp":18,"skill_xp":{},"usage":{},"statuses":{},"spells":[],"prepared":[],
-		"books":[],"buffs":{},
+		"books":[],"buffs":{},"opinions":{},
 		"level":1,"level_xp":0,"str_bonus":0,"sleep_until":0,"ready_at":0,
 		"pos":Vector2i.ZERO, "hp":28 if enemy else 55, "max_hp":28 if enemy else 55,
 		"stress":0, "condition":"평온", "ap":2,
@@ -606,6 +606,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 				effects.append({"kind":"ATTACK_SWING","from":was,"cell":target,"amount":0,"form":"SLASH"})
 			if manual_mode: CombatRules.attack(self,actor,victim)
 			else:
+				if not actor.enemy and victim.enemy: Mastery.record(actor,int(victim.id),Mastery.weapon_axis(str(actor.get("gear",{}).get("weapon",{}).get("type","sword"))))
 				var hit := TurnCore.physical(Growth.power(actor,"MELEE",18) * actor.attack_factor / 100, 1000, 0, 2)
 				damage(victim,int(hit.damage),actor.id,"SLASH")
 			# A skirmisher with nothing to shoot strikes once, then breaks away.
@@ -716,7 +717,17 @@ func discharge(origin: Vector2i, source: int) -> void:
 func conductive(point: Vector2i) -> bool:
 	return tile(point).terrain in ["metal", "water"] or tile(point).wet >= 25
 
-func roll_part(enemy: Dictionary) -> void: Gear.roll_part(self,enemy)
+func roll_part(enemy: Dictionary, reward_actors: Variant = null) -> void: Gear.roll_part(self,enemy,reward_actors)
+
+## The party shares a hunt it joined; independent NPCs earn only from fights
+## they actually joined. A monster killing another monster rewards neither.
+func hunt_recipients(enemy: Dictionary, killer: Dictionary) -> Array:
+	var participants: Array = (party+npcs).filter(func(a):
+		return a.hp > 0 and not a.get("summoned",false) and (a.get("usage",{}).has(int(enemy.id)) or not killer.is_empty() and int(a.id) == int(killer.id)))
+	var result: Array = []
+	if participants.any(func(a): return a in party): result.append_array(alive())
+	result.append_array(participants.filter(func(a): return a not in party))
+	return result
 
 func gain_level_xp(actor: Dictionary, amount: int) -> int: return Descent.gain_level_xp(self,actor,amount)
 
@@ -847,16 +858,21 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 	message("%s %s에게 %d의 피해를 주었습니다.%s" % [subject_name(source_name),target.name,lost," "+subject_name(target.name)+" 쓰러졌습니다." if target.hp <= 0 else ""])
 	if passive_hit: Passives.after_hit(self,target,attacker,form)
 	if target.enemy and target.hp <= 0:
-		Mastery.award(party+npcs,int(target.id),18+depth*8)
-		battle_stats.kills = int(battle_stats.get("kills",0))+1
-		run_stats.kills = int(run_stats.kills)+1
-		score += 10
-		if bool(Encounters.species(str(target.get("species_id",""))).get("beast",false)) and Hexaco.sample(seed_value,depth*1000+target.id,"beast_food",100) < 25:
+		var hunters: Array = hunt_recipients(target,attacker)
+		var party_hunted: bool = hunters.any(func(a): return a in party)
+		Mastery.award(hunters,int(target.id),18+depth*8)
+		for actor in party+npcs: actor.get("usage",{}).erase(int(target.id))
+		if party_hunted:
+			battle_stats.kills = int(battle_stats.get("kills",0))+1
+			run_stats.kills = int(run_stats.kills)+1
+			score += 10
+		if party_hunted and bool(Encounters.species(str(target.get("species_id",""))).get("beast",false)) and Hexaco.sample(seed_value,depth*1000+target.id,"beast_food",100) < 25:
 			food += 1; message("고기 획득 · 식량 +1")
 		if target.get("boss",false):
-			grant_part(str(target.part_id)); score += 100
-			grant_book(random_book(depth*1000+int(target.id),true))
-		else: roll_part(target)
+			if party_hunted:
+				grant_part(str(target.part_id)); score += 100
+				grant_book(random_book(depth*1000+int(target.id),true))
+		else: roll_part(target,hunters)
 	if not target.enemy and target.id == 0 and target.hp <= 0: check_battle_end()
 	return lost
 

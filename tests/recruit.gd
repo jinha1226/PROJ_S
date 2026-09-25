@@ -15,6 +15,7 @@ func solo(seed: int = 71, party_size: int = 1) -> Dictionary:
 	var s = Session.new(seed,party_size > 1,party_size > 1,true,party_size); s.depart(); var c := Fixture.arena(s,12)
 	var npc: Dictionary = s.npcs[0]
 	s.npcs = [npc]; npc.pos = c+Vector2i(1,0); npc.awake = true; npc.hp = npc.max_hp; npc.hungry = false; npc.stress = 0; npc.partner = -1; npc.bond = ""
+	npc.opinions[int(s.party[0].id)] = 0 # Isolate the base recruitment odds in these fixtures.
 	s.floor_state.observe(s); s.food = 3
 	return {"s":s,"c":c,"npc":npc}
 
@@ -43,9 +44,11 @@ func battle_gate() -> void:
 func aid() -> void:
 	var f := solo(); var s = f.s; var npc: Dictionary = f.npc
 	var hero: int = s.party[0].id+1
+	var opinion_before: int = int(npc.opinions[int(s.party[0].id)])
 	check(Recruit.can_aid(s,npc) == "도울 일이 없음","healthy, fed npc needs no aid")
 	npc.hungry = true
 	check(Recruit.can_aid(s,npc).is_empty() and s.aid(npc) and s.food == 2 and not npc.hungry,"food shared: -1 food, hunger gone")
+	check(int(npc.opinions[int(s.party[0].id)]) == opinion_before+25,"aid raises the NPC's opinion of the hero")
 	check(npc.memory.salience_for_subject(hero,["AID_RECEIVED"]) == 500,"npc remembers the aid")
 	check(not s.aid(npc),"no second helping")
 	npc.hp = npc.max_hp/3; npc.hungry = false
@@ -96,6 +99,9 @@ func memory_survives() -> void:
 func chance() -> void:
 	var f := solo(); var s = f.s; var npc: Dictionary = f.npc
 	set_facets(npc,500,500); check(Recruit.chance(s,npc) == 60,"base 60")
+	npc.opinions[int(s.party[0].id)] = 40
+	check(Recruit.chance(s,npc) == 70,"positive opinion raises recruitment odds")
+	npc.opinions[int(s.party[0].id)] = 0
 	set_facets(npc,1000,1000); check(Recruit.chance(s,npc) == 95,"capped at 95 (60+40)")
 	set_facets(npc,0,0); check(Recruit.chance(s,npc) == 20,"60-40")
 	npc.hp = npc.max_hp/3; check(Recruit.chance(s,npc) == 35,"+15 wounded")

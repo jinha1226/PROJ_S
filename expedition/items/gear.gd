@@ -77,13 +77,16 @@ static func grant_part(s, id: String) -> void:
 	s.parts_bag[id] = int(s.parts_bag.get(id,0))+1
 	s.message(Abilities.DEFINITIONS[id].item+" 획득")
 
-static func roll_part(s, enemy: Dictionary) -> void:
+static func roll_part(s, enemy: Dictionary, reward_actors: Variant = null) -> void:
 	if not enemy.enemy or enemy.hp > 0 or enemy.get("part_rolled",false): return
 	enemy.part_rolled = true
-	for actor in s.alive():
+	var recipients: Array = s.alive() if reward_actors == null else reward_actors
+	for actor in recipients:
 		if s.manual_mode:
-			if s.gain_level_xp(actor,18+s.depth*8) > 0: s.message(actor.name+" · 레벨 %d" % actor.level)
-		elif Growth.gain(actor,25) > 0: s.message(actor.name+" · 레벨 %d" % actor.growth.level)
+			if s.gain_level_xp(actor,18+s.depth*8) > 0 and (actor in s.party or s.floor_state.visible.has(actor.pos)): s.message(actor.name+" · 레벨 %d" % actor.level)
+		elif Growth.gain(actor,25) > 0 and (actor in s.party or s.floor_state.visible.has(actor.pos)): s.message(actor.name+" · 레벨 %d" % actor.growth.level)
+	# Only a party hunt puts a part into the party's shared bag.
+	if not recipients.any(func(a): return a in s.party): return
 	var id: String = str(enemy.get("part_id",""))
 	if not Abilities.DEFINITIONS.has(id): return
 	var chance: int = Abilities.DROP_PERCENT

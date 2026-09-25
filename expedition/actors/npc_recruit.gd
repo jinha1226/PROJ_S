@@ -27,6 +27,9 @@ static func aid(s, npc: Dictionary) -> bool:
 	if bool(npc.get("hungry",false)): npc.hungry = false
 	else: npc.hp = mini(npc.max_hp,npc.hp+10)
 	s.serial += 1; s.remember_plain(npc,"AID_RECEIVED",hero(s),hero(s),500)
+	var opinions: Dictionary = npc.get("opinions",{})
+	opinions[int(s.party[0].id)] = clampi(int(opinions.get(int(s.party[0].id),0))+25,-100,100)
+	npc.opinions = opinions
 	s.message("%s에게 식량을 나눴습니다." % npc.name); return true
 
 static func aided(s, npc: Dictionary) -> bool:
@@ -34,6 +37,7 @@ static func aided(s, npc: Dictionary) -> bool:
 
 static func chance(s, npc: Dictionary) -> int:
 	var c: int = 60+(npc.profile.value("X")+npc.profile.value("A")-1000)/25
+	c += int(npc.get("opinions",{}).get(int(s.party[0].id),0))/4
 	if npc.hp*100 < npc.max_hp*50: c += 15
 	if npc.memory.salience_for_subject(hero(s),["DECLINED_BY_PLAYER"]) > 0: c -= 25
 	if npc.memory.salience_for_subject(hero(s),["DECLINED_PLAYER"]) > 0: c -= 10

@@ -114,6 +114,8 @@ static func show_npc(ui, npc: Dictionary) -> void:
 	portrait.custom_minimum_size = Vector2(64,64); heading.add_child(portrait)
 	var words := VBoxContainer.new(); heading.add_child(words)
 	ui.label(words,str(npc.name),20)
+	var axis: String = Session.Mastery.weapon_axis(str(npc.get("gear",{}).get("weapon",{}).get("type","sword")))
+	ui.label(words,"Lv.%d · %s %d" % [int(npc.get("level",1)),Session.Mastery.NAMES[axis],Session.Mastery.rank(npc,axis)],13)
 	var dialogue = ui.label(words,str(talk.line),15)
 	dialogue.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var ask = ui.button(page,"동행 제안",func(): propose_npc(ui,npc),bool(talk.can_propose))

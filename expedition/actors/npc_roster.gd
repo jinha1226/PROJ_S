@@ -25,6 +25,10 @@ static func generate(s) -> Array:
 		var pick: int = Hexaco.sample(s.seed_value,id,"npc_name",pool.size())
 		var actor: Dictionary = s.make_actor(id,pool.pop_at(pick),false)
 		actor.profile = Hexaco.generated(s.seed_value,id)
+		# A stranger's first opinion uses the same A/H relation that the living
+		# world will update through later events. It stays on the roster row.
+		var hero: Dictionary = s.party[0]
+		actor.opinions[int(hero.id)] = clampi((actor.profile.value("A")+hero.profile.value("A"))/40-absi(actor.profile.value("H")-hero.profile.value("H"))/40,-30,30)
 		var weapon := "sword"
 		if actor.profile.value("X") >= 600: weapon = "axe" if i % 2 == 0 else "mace"
 		elif actor.profile.value("C") >= 600: weapon = "spear" if i % 2 == 0 else "bow"

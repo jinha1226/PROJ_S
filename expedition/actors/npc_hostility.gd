@@ -17,6 +17,7 @@ static func score(s, npc: Dictionary) -> int:
 	value += (0.5-weakest)*300.0
 	value += (health-0.5)*150.0
 	value -= maxi(0,s.alive().size()-1)*130.0
+	value -= int(npc.get("opinions",{}).get(int(s.party[0].id),0))*2.0
 	if npc.memory.salience_for_subject(s.party[0].id+1,["AID_RECEIVED"]) > 0: value -= 300.0
 	return roundi(value)
 
@@ -31,6 +32,11 @@ static func provoke(s, npc: Dictionary, source: Dictionary) -> void:
 	npc.mode = ""
 	npc.noise_seen = s.npc_clock()
 	if s.pending_offer == int(npc.id): s.pending_offer = -1
+	var hero_id: int = int(s.party[0].id)
+	var opinions: Dictionary = npc.get("opinions",{})
+	if source.is_empty(): opinions[hero_id] = mini(-60,int(opinions.get(hero_id,0)))
+	else: opinions[hero_id] = clampi(int(opinions.get(hero_id,0))-60,-100,100)
+	npc.opinions = opinions
 	if not source.is_empty():
 		s.serial += 1
 		s.remember_plain(npc,"ATTACKED_BY_PLAYER",int(source.id)+1,int(source.id)+1,800)
