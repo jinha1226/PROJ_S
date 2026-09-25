@@ -451,7 +451,7 @@ func on_cell(point: Vector2i) -> void:
 	if session.floor_state.visible.has(point):
 		# A tap only reaches an npc the party can see, and only an adjacent one talks.
 		var wanderer: Dictionary = session.at(point)
-		if session.wanderer(wanderer):
+		if session.wanderer(wanderer) and not wanderer.get("summoned",false):
 			if wanderer.get("hostile",false):
 				if session.attack_preview(point).is_empty(): Popups.show_enemy_info(self,wanderer)
 				else: run_action(func(): return session.act("ATTACK",point))

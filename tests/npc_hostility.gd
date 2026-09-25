@@ -4,6 +4,7 @@ const Fixture = preload("res://tests/floor_fixture.gd")
 const NpcAI = preload("res://expedition/actors/npc_ai.gd")
 const Hostility = preload("res://expedition/actors/npc_hostility.gd")
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
+const Summons = preload("res://expedition/spells/summons.gd")
 var failures := 0
 var checks := 0
 
@@ -39,6 +40,7 @@ func run() -> void:
 	first_strike_and_pursuit()
 	player_assault()
 	defense_and_death()
+	summon_sides()
 	print("NPC hostility: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 
@@ -104,3 +106,15 @@ func defense_and_death() -> void:
 		s.act_as(s.party[0],"ATTACK",npc.pos,false)
 	check(npc.state == "DEAD","player can finish a weak NPC")
 	check(int(s.run_stats.kills) == kills and s.party[0].stress == stress,"hostile NPC death grants no monster kill or grief")
+
+func summon_sides() -> void:
+	var f := field(Vector2i(2,0)); var s = f.s
+	var ally: Dictionary = Summons.summon(s,s.party[0],f.c+Vector2i(0,1))
+	var enemy_caster: Dictionary = s.enemies[0]
+	enemy_caster.hp = 20
+	enemy_caster.pos = f.c+Vector2i(4,4)
+	var enemy_pet: Dictionary = Summons.summon(s,enemy_caster,f.c+Vector2i(4,3))
+	s.floor_state.observe(s)
+	check(s.side_of(ally) == 0 and s.side_of(enemy_pet) == 1,"summons retain their caster's side")
+	check(ally in s.friends() and enemy_pet not in s.friends(),"enemy summon is not a party friend")
+	check(s.attack_preview(ally.pos).is_empty(),"player cannot assault an allied summon")

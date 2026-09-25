@@ -218,7 +218,7 @@ func npc_cooldown() -> int:
 ## living dungeon NPC. `alive()` stays the party alone — defeat, stress and the
 ## battle's end are the party's own business.
 func friends() -> Array:
-	return alive()+npcs.filter(func(n): return n.hp > 0 and n.awake and not n.get("hostile",false))+enemies.filter(func(e): return e.hp > 0 and dominated(e))
+	return alive()+npcs.filter(func(n): return n.hp > 0 and n.awake and side_of(n) == 0)+enemies.filter(func(e): return e.hp > 0 and dominated(e))
 
 ## A dominated monster fights for the party while the spell holds. The `enemy`
 ## flag never moves: only this clock decides which side it is counted on.
@@ -229,7 +229,7 @@ func dominated(actor: Dictionary) -> bool:
 ## Domination moves a monster across without touching its `enemy` flag, so
 ## everything that used to read `enemy` to tell friend from foe reads this.
 func side_of(actor: Dictionary) -> int:
-	if wanderer(actor): return 1 if actor.get("hostile",false) else 0
+	if wanderer(actor) and not actor.get("summoned",false): return 1 if actor.get("hostile",false) else 0
 	return 1 if bool(actor.get("enemy",false)) != dominated(actor) else 0
 
 ## Whom this actor fights. A dominated monster turns on its own kind.
@@ -430,7 +430,7 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 	if not manual_mode:
 		if target not in attack_cells(actor_index): return {}
 		var old_victim := at(target)
-		if old_victim.is_empty() or not (old_victim.enemy or wanderer(old_victim)): return {}
+		if old_victim.is_empty() or not (old_victim.enemy or wanderer(old_victim) and not old_victim.get("summoned",false)): return {}
 		var old_actor: Dictionary = party[selected] if actor_index < 0 else (party[actor_index] if actor_index < party.size() else actor_by_id(actor_index))
 		if old_actor.is_empty(): return {}
 		var old_hit := TurnCore.physical(Growth.power(old_actor,"MELEE",18) * old_actor.attack_factor / 100, 1000, 0, 2)
@@ -439,7 +439,7 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 		if old_victim.get("shield",false): old_amount = 0
 		return {"actor":old_actor.id,"target":old_victim.id,"cell":target,"name":old_victim.name,"chance":100,"damage":old_amount,"damage_min":old_amount,"damage_max":old_amount,"time":100}
 	var victim := at(target)
-	if victim.is_empty() or not (victim.enemy or wanderer(victim)): return {}
+	if victim.is_empty() or not (victim.enemy or wanderer(victim) and not victim.get("summoned",false)): return {}
 	var actor: Dictionary = party[selected] if actor_index < 0 else (party[actor_index] if actor_index < party.size() else actor_by_id(actor_index))
 	if actor.is_empty(): return {}
 	var offense: Dictionary = CombatStats.stats(self,actor)
@@ -598,7 +598,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 			victim.hit_and_run = false
 		"ATTACK":
 			if victim.is_empty() or victim.hp <= 0 or not attack_reach(actor,target,int(CombatStats.stats(self,actor).range)): return false
-			var assault: bool = actor in party and wanderer(victim)
+			var assault: bool = actor in party and wanderer(victim) and not victim.get("summoned",false)
 			var npc_self_defense: bool = wanderer(actor) and victim.enemy
 			if not assault and not npc_self_defense and side_of(actor) == side_of(victim): return false
 			if assault: NpcHostility.provoke(self,victim,actor)
