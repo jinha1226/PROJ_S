@@ -37,11 +37,18 @@ Forge Master: Idle RPG의 앱스토어 스크린샷을 보고 그림 문법을 �
 | `docs/art/flat-cartoon-v1/forge-layout-780x1688.png` | Forge Master 구도로 조립한 390×844 화면(2배) |
 | `docs/art/flat-cartoon-v1/gameplay-v2-780x1688.png` | 격자 로그라이크 구성으로 조립한 390×844 화면(2배) |
 
+## 게임용 스프라이트
+
+![스프라이트 2x](flat-cartoon-v1/sprites-2x.png)
+
+`assets/flat-cartoon-v1/sprites/{1x,2x,3x}/{character,prop,item,icon,scenery}/`에 투명 PNG로 있다. 1x는 48px, 2x는 96px, 3x는 144px이고, 모두 SVG에서 그 크기로 직접 래스터화했다. 캐릭터는 방향별로 두 장이다. `_r`은 오른쪽을 보고(길 위의 주인공), `_l`은 왼쪽을 본다(주인공을 마주 보는 적). 배경 소품(`scenery`)은 잔디색 바닥 그림자를 포함한다.
+
 다시 만들기:
 
 ```bash
 python3 tools/art/build_flat_cartoon.py
 python3 tools/art/build_forge_layout.py
+python3 tools/art/export_flat_sprites.py
 ```
 
 ## 주의
