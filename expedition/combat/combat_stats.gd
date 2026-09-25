@@ -1,5 +1,6 @@
 extends RefCounted
-const Mastery = preload("res://expedition/progression/mastery.gd")
+const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
+const TagSets = preload("res://expedition/progression/tag_sets.gd")
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/combat.json"))
 
 ## The ten starting kits, in Mastery.AXES order: one weapon per mastery axis.
@@ -14,22 +15,23 @@ static func kit(id: String) -> Dictionary:
 static func species(actor: Dictionary) -> Dictionary:
 	return content.species.get(str(actor.get("species_id", "human")), content.species.human)
 
-static func stats(_session, actor: Dictionary) -> Dictionary:
-	var result := {"damage":int(actor.get("power", 7)), "delay":100, "ac":int(actor.get("ac", 0)), "ev":int(actor.get("ev", 3)), "sh":int(actor.get("sh", 0)), "enc":0, "range":1, "brand":"", "trait":"", "res":actor.get("res", {}).duplicate(), "power":0}
+static func stats(session, actor: Dictionary) -> Dictionary:
+	var sheet: Dictionary = StatSheet.sheet(session,actor)
+	var result := {"damage":int(actor.get("power", 7)), "delay":100, "ac":int(sheet.ac.total), "ev":int(sheet.ev.total), "sh":mini(StatSheet.BLOCK_CAP,int(sheet.sh.total)), "enc":0, "range":1, "brand":"", "trait":"", "res":{}, "power":0}
+	for element in StatSheet.RES: result.res[element] = int(sheet["res_"+element].total)
 	if not bool(actor.get("enemy", false)):
-		var spec: Dictionary = species(actor)
-		var strength: int = int(spec.str)+int(actor.get("str_bonus",0))
+		var strength: int = int(sheet.str.total)
+		var dexterity: int = int(sheet.dex.total)
 		var gear: Dictionary = actor.get("gear", {})
 		var weapon: Dictionary = gear.get("weapon", {})
 		var weapon_def: Dictionary = content.weapons.get(str(weapon.get("type", "")), {})
 		result.damage = 4 + strength / 6
-		result.ac = 0; result.ev = int(spec.dex) / 3
 		if not weapon_def.is_empty():
-			var level := Mastery.rank(actor, Mastery.weapon_axis(str(weapon.type)))
-			result.damage = int(weapon_def.damage) + int(weapon.get("enchant", 0)) + level + strength / 6
-			result.delay = maxi(60, int(weapon_def.delay) - level * 4)
-			result.range = int(weapon_def.range)
 			result.trait = str(weapon_def.trait)
+			var drive: int = dexterity if result.trait == "ranged" else strength
+			result.damage = int(weapon_def.damage) + int(weapon.get("enchant", 0)) + drive / 6
+			result.delay = int(weapon_def.delay)
+			result.range = int(weapon_def.range) + (TagSets.range_bonus(actor) if result.trait == "ranged" else 0)
 			result.brand = str(weapon.get("brand", ""))
 			if result.trait == "focus": result.power += 4
 		# A summoned creature carries no gear at all: it fights with the power
@@ -37,17 +39,13 @@ static func stats(_session, actor: Dictionary) -> Dictionary:
 		if bool(actor.get("summoned", false)) and weapon_def.is_empty(): result.damage = int(actor.get("power", 7))
 		var armour: Dictionary = gear.get("armour", {})
 		var armour_def: Dictionary = content.armours.get(str(armour.get("type", "")), {})
-		if not armour_def.is_empty():
-			result.ac += int(armour_def.ac) + int(armour.get("enchant", 0))
-			result.enc = maxi(0, int(armour_def.enc) - strength / 5)
-			result.ev -= int(armour_def.ev_penalty)
-		if not gear.get("shield", {}).is_empty() and result.trait not in ["ranged", "focus"]:
-			result.sh = 15; result.enc += 2
+		if not armour_def.is_empty(): result.enc = maxi(0, int(armour_def.enc) - strength / 5)
+		var shield: bool = not gear.get("shield", {}).is_empty() and result.trait not in ["ranged", "focus"]
+		if shield: result.enc += 2
+		result.sh = mini(StatSheet.BLOCK_CAP,int(sheet.sh.total) if shield else int(sheet.sh.total)/2)
 		var ring: Dictionary = gear.get("ring", {})
 		var ring_def: Dictionary = content.rings.get(str(ring.get("type", "")), {})
-		if not ring_def.is_empty():
-			if ring_def.stat in ["ev", "power"]: result[ring_def.stat] += int(ring_def.value)
-			else: result.res[ring_def.stat] = int(ring_def.value)
+		if not ring_def.is_empty() and str(ring_def.stat) == "power": result.power += int(ring_def.value)
 	var statuses: Dictionary = actor.get("statuses", {})
 	if statuses.has("ward"): result.ac += 6
 	if statuses.has("rage"): result.damage += 8

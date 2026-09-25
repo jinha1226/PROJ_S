@@ -270,7 +270,7 @@ static func strike(s, caster: Dictionary, victim: Dictionary, spell: Dictionary,
 	if victim.hp <= 0: return
 	var status: String = str(spell.get("status",""))
 	if status in STATUSES and ticks > 0: apply_status(s,victim,status,ticks)
-	if status == "dominate" and ticks > 0: victim["dominated_until"] = s.time+ticks
+	if status == "dominate" and ticks > 0: victim["dominated_until"] = s.time+Statuses.resisted_ticks(s,victim,"dominate",ticks)
 	if school == "ice" and caster.get("statuses",{}).has("ice_freeze") and Rules.roll(s,caster,victim,"ice_freeze",100) < 30:
 		victim.statuses["freeze"] = s.time+100
 	if school == "fire": Effects.on_spell_hit(s,caster,victim,school)

@@ -4,6 +4,8 @@ extends RefCounted
 ## `statuses` keeps the clock; anything a status needs beyond that lives in
 ## `status_power`, which this file writes and clears together with the clock.
 const Rules = preload("res://expedition/combat/combat_rules.gd")
+const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
+const TagSets = preload("res://expedition/progression/tag_sets.gd")
 
 ## What a spell's own burn does per boundary tick, told apart from the single
 ## point the fire mastery's burn has always done.
@@ -19,7 +21,14 @@ static func blocks(actor: Dictionary, kind: String) -> bool:
 ## A status a spell hangs on somebody. `statuses` keeps the clock; anything the
 ## status needs to know beyond that goes in `status_power`, which the scheduler
 ## reads and drops when the status runs out.
+static func resisted_ticks(s, victim: Dictionary, status: String, ticks: int) -> int:
+	if status not in TagSets.WILL_STATUSES: return ticks
+	var will: int = maxi(0,StatSheet.value(s,victim,"res_will"))
+	return ticks*(100-will)/100
+
 static func apply(s, victim: Dictionary, status: String, ticks: int) -> void:
+	ticks = resisted_ticks(s,victim,status,ticks)
+	if ticks <= 0: return
 	victim.statuses[status] = s.time+ticks
 	if status == "burn": victim.get_or_add("status_power",{})["burn"] = BURN_DAMAGE
 

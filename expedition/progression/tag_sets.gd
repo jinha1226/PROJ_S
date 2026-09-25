@@ -51,3 +51,6 @@ static func stat_bonus(actor: Dictionary) -> Dictionary:
 	for element in Essences.ELEMENTS:
 		if level(actor,element) >= 2: result["res_"+element] = 20
 	return result
+
+static func range_bonus(actor: Dictionary) -> int:
+	return 1 if level(actor,"ARCHER") >= 2 else 0

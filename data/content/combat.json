@@ -98,7 +98,7 @@
     "poison": {
       "name": "독 저항 반지",
       "stat": "poison",
-      "value": 100
+      "value": 80
     },
     "air": {
       "name": "전기 저항 반지",
