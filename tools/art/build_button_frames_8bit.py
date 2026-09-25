@@ -93,7 +93,7 @@ def main() -> None:
         preview.alpha_composite(nine_slice(frames[0], 74, 44), (x, 144))
         draw.text((x + 20, 156), label, font=font, fill="#e9d3aa")
     enlarged = preview.resize((preview.width * 2, preview.height * 2), Image.Resampling.NEAREST)
-    enlarged.save(ROOT / "docs/mockups/button-frames-8bit-v2-preview.png")
+    enlarged.save(ROOT / "docs/art/button-frames-8bit-v2-preview.png")
 
 
 if __name__ == "__main__":

@@ -1,11 +1,11 @@
 # 1층 캐릭터 그래픽 파일럿
 
-기준 화면은 [첫 평면 시안](../mockups/forge-master-flat-gameplay-v1.png)이다. `Forge Master` 참고 시안 v3·v4의 작은 옆모습 캐릭터 대신, 첫 시안의 파란 후드 주인공·고블린·해골처럼 약간 위에서 본 짧고 굵은 실루엣을 기준으로 삼는다. 기존 `floor1-flat-v1`의 판석·석벽·소품과 검은 외곽선, 큰 색면, 낮은 질감 밀도를 맞춘다.
+기준 화면은 첫 평면 시안(`forge-master-flat-gameplay-v1.png`, 2026-09-25 git에서 삭제)이다. `Forge Master` 참고 시안 v3·v4의 작은 옆모습 캐릭터 대신, 첫 시안의 파란 후드 주인공·고블린·해골처럼 약간 위에서 본 짧고 굵은 실루엣을 기준으로 삼는다. 기존 `floor1-flat-v1`의 판석·석벽·소품과 검은 외곽선, 큰 색면, 낮은 질감 밀도를 맞춘다.
 
 ## 검토용 원본
 
-- [기본 캐릭터 8종](../mockups/flat-v1-actor-prototypes.png): 파란 후드 주인공, 고블린, 해골, 쥐 / 코볼트, 홉고블린 궁수, 술사, 오크.
-- [현행 몬스터 8종](../mockups/flat-v1-monster-prototypes.png): `floor_monsters.json` 순서대로 쥐, 목도리 도마뱀, 코볼트, 고블린 / 홉고블린, 오크, 놀, 강쥐.
+- 기본 캐릭터 8종(`flat-v1-actor-prototypes.png`, git에서 삭제): 파란 후드 주인공, 고블린, 해골, 쥐 / 코볼트, 홉고블린 궁수, 술사, 오크.
+- 현행 몬스터 8종(`flat-v1-monster-prototypes.png`, git에서 삭제): `floor_monsters.json` 순서대로 쥐, 목도리 도마뱀, 코볼트, 고블린 / 홉고블린, 오크, 놀, 강쥐.
 
 두 원본은 imagegen으로 제작한 투명 PNG(각 1774×887)이며, 첫 시안의 화면과 기존 `floor1-flat-v1/props.png`를 그림체 참조로 사용했다. 각 시트는 4열×2행의 후보 배치다. 현재 게임 그래픽에는 연결하지 않았다.
 
