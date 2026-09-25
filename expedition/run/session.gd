@@ -6,6 +6,7 @@ const Body = preload("res://game/rebuilt/body_bridge.gd")
 const TurnCore = preload("res://sim/turn_engine.gd")
 const ElementRules = preload("res://sim/environment_rules.gd")
 const NpcRoster = preload("res://expedition/actors/npc_roster.gd")
+const NpcEssences = preload("res://expedition/actors/npc_essences.gd")
 const NpcAI = preload("res://expedition/actors/npc_ai.gd")
 const NpcHostility = preload("res://expedition/actors/npc_hostility.gd")
 const Recruit = preload("res://expedition/actors/npc_recruit.gd")
@@ -19,8 +20,6 @@ const Stances = preload("res://expedition/ai/stances.gd")
 const Rules = preload("res://expedition/ai/tactic_rules.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
 const IntentUI = preload("res://expedition/ui/companion_intent_ui.gd")
-const Growth = preload("res://expedition/progression/growth.gd")
-const Mastery = preload("res://expedition/progression/mastery.gd")
 const CombatStats = preload("res://expedition/combat/combat_stats.gd")
 const CombatRules = preload("res://expedition/combat/combat_rules.gd")
 const Scheduler = preload("res://expedition/time/scheduler.gd")
@@ -151,9 +150,9 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"reservation":{},
 		"equipped_abilities":[""],"cooldowns":{},"iron_guard":false,
 		"essences":{},"essence_spells":{},"pool_bonus":{"hp":0,"mp":0},
-		"growth":Growth.create(),"protected_by":-1,
+		"protected_by":-1,
 		"gear":{"weapon":{},"armour":{},"shield":{},"ring":{}},
-		"mp":18,"max_mp":18,"skill_xp":{},"usage":{},"statuses":{},"spells":[],"prepared":[],
+		"mp":18,"max_mp":18,"usage":{},"statuses":{},"spells":[],"prepared":[],
 		"buffs":{},"opinions":{},
 		"level":1,"level_xp":0,"str_bonus":0,"sleep_until":0,"ready_at":0,
 		"pos":Vector2i.ZERO, "hp":28 if enemy else 55, "max_hp":28 if enemy else 55,
@@ -485,7 +484,7 @@ func action_cost(actor: Dictionary, kind: String, target: Vector2i, _value: Stri
 			cost = int(CombatStats.stats(self,actor).delay)
 			cost = TagSets.attack_delay(actor,cost,str(CombatStats.stats(self,actor).trait) == "ranged")
 		_:
-			if Abilities.DEFINITIONS.has(kind): cost = int(Abilities.DEFINITIONS[kind].get("delay",100))
+			if Abilities.has(kind): cost = int(Abilities.definition(kind).get("delay",100))
 	var statuses: Dictionary = actor.get("statuses",{})
 	if kind != "MOVE":
 		if statuses.has("slow"): cost = cost*3/2
@@ -520,7 +519,7 @@ func submit(kind: String, target: Vector2i, value: String = "") -> bool:
 func can_submit(actor: Dictionary, kind: String, target: Vector2i, value: String = "") -> bool:
 	if kind == "CAST": return Spells.can_cast(self,actor,value,target)
 	if not inside(target): return false
-	if Abilities.DEFINITIONS.has(kind): return Abilities.legal(self,actor,kind,target)
+	if Abilities.has(kind): return Abilities.legal(self,actor,kind,target)
 	match kind:
 		"WAIT": return target == actor.pos
 		"MOVE": return not status_blocks(actor,kind) and target in movement_cells(0)
@@ -574,7 +573,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 		return true
 	if actor.hp <= 0 or actor.ap <= 0 or status_blocks(actor,kind): return false
 	var was: Vector2i = actor.pos
-	if Abilities.DEFINITIONS.has(kind):
+	if Abilities.has(kind):
 		if not Abilities.execute(self,actor,kind,target): return false
 		record_action(actor,kind,target,was)
 		actor.ap -= 1; check_battle_end()
@@ -738,7 +737,6 @@ func gain_level_xp(actor: Dictionary, amount: int) -> int: return Descent.gain_l
 
 func grant_gear(item: Dictionary) -> void: Gear.grant_gear(self,item)
 
-func spend_growth(index: int, id: String, stat: bool = false) -> bool: return Gear.spend_growth(self,index,id,stat)
 
 func reset_rules(index: int) -> void: Gear.reset_rules(self,index)
 
@@ -876,6 +874,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 			if party_hunted:
 				grant_part(str(target.part_id)); score += 100
 		else: roll_part(target,hunters)
+		NpcEssences.on_hunt(self,target,hunters)
 	if not target.enemy and target.id == 0 and target.hp <= 0: check_battle_end()
 	return lost
 

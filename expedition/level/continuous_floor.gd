@@ -3,12 +3,15 @@ const Generator = preload("res://expedition/level/floor_generator.gd")
 const MonsterAI = preload("res://expedition/actors/monster_ai.gd")
 const BossAI = preload("res://expedition/actors/boss_ai.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
+const Variants = preload("res://expedition/level/variants.gd")
 const THEME_ID := "F1_RUINS"
 ## Roster health was tuned for a pair; a lone hero meets the same groups at
 ## reduced health so each fight is decided in a few exchanges.
 const SOLO_HP_PERCENT := 45
 const SOLO_HP_MIN := 20
 const SOLO_HP_MAX := 32
+const DEEP_HP_STEP := 12
+const DEEP_ATTACK_STEP := 8
 var size := 64
 var theme_id := THEME_ID
 var layout: Dictionary
@@ -19,6 +22,7 @@ var discoveries: Array = []
 var epoch := ""
 var discovered_curios := 0
 var seen_enemies: Dictionary = {}
+var element := ""
 const SIGHT_RADIUS := 6.0
 
 func sight_radius() -> float:
@@ -39,9 +43,19 @@ static func theme_for(depth: int) -> Dictionary:
 		var cap: int = strongest_pack(6,int(theme.monsters.max_members))*4/5
 		for key in theme.monsters.budget: theme.monsters.budget[key] = mini(roundi(theme.monsters.budget[key]*scale),cap)
 	theme.depth = depth
+	theme.deep = deep_scale(depth)
 	theme.boss = depth % 3 == 0
 	if theme.boss: theme.templates.required = ["entry_camp","boss_lair","sealed_treasury"]
 	return theme
+
+static func last_catalog_depth() -> int:
+	var deepest := 1
+	for row in Generator.Encounters.table(): deepest = maxi(deepest,int(row.max_depth))
+	return deepest
+
+static func deep_scale(depth: int) -> Dictionary:
+	var past: int = maxi(0,depth-last_catalog_depth())
+	return {"hp":100+DEEP_HP_STEP*past,"attack":100+DEEP_ATTACK_STEP*past}
 
 ## Threat total of the strongest pack the builder could legally assemble at
 ## `depth`: strongest rows first, at most two of one species/role, `max_members` units.
@@ -85,6 +99,8 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 		var encounter: Dictionary = layout.encounters[e]
 		for member in encounter.members:
 			mint_enemy(s,member,"F%d_E%02d" % [int(theme.depth),e+1],encounter.tier,encounter.mandatory)
+	state.element = Variants.assign(s,s.enemies)
+	if not state.element.is_empty(): s.message("이 층의 기운 · "+str(Abilities.ELEMENT_NAMES[state.element]))
 	for p in layout.features: state.features[p] = layout.features[p].duplicate(true)
 	for i in range(s.party.size()):
 		s.party[i].pos = layout.entry+Vector2i(0,i); s.party[i].ap = 1
@@ -99,12 +115,15 @@ static func mint_enemy(s, member: Dictionary, group: String, tier: String, manda
 	var enemy: Dictionary = s.make_actor(100+s.enemies.size(),member.display_name,true)
 	enemy.pos = member.pos; enemy.hp = int(member.max_health)
 	if s.party.size() == 1: enemy.hp = clampi(enemy.hp*SOLO_HP_PERCENT/100,SOLO_HP_MIN,SOLO_HP_MAX)
+	var deep: Dictionary = deep_scale(int(s.depth))
+	enemy.hp = enemy.hp*int(deep.hp)/100
 	enemy.max_hp = enemy.hp
+	enemy.attack_percent = int(deep.attack)
 	enemy.group = group; enemy.home = enemy.pos; enemy.alert = false
 	enemy.species_id = member.species_id; enemy.tier = tier; enemy.mandatory = mandatory
 	var species: Dictionary = s.Encounters.species(str(member.species_id))
 	enemy.speed = int(species.get("speed",100))
-	enemy.ac = int(species.get("ac",0)); enemy.ev = int(species.get("ev",3))
+	enemy.ac = int(species.get("ac",0)); enemy.ev = int(species.get("ev",3)); enemy.sh = int(species.get("sh",0))
 	enemy.res = species.get("res",{}).duplicate(true)
 	enemy.ready_at = int(s.time)+int(enemy.speed)
 	MonsterAI.configure(enemy,member.role)

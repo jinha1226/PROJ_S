@@ -38,24 +38,23 @@ func ui() -> void:
 	s.phase = "CAMP"
 	scene.show_character(0,"파츠")
 	for frame in range(4): await process_frame
-	var heading: Array = scene.modal_content.find_children("*","Label",true,false).filter(func(l): return l.text.begins_with("파츠 슬롯"))
-	check(not heading.is_empty() and heading[0].text == "파츠 슬롯 0 / 2","empty slots heading")
-	var cards: Array = scene.modal_content.find_children("PartSlot*","PanelContainer",true,false)
-	check(cards.size() == 2,"two slot cards")
-	var buttons: Array = scene.modal_content.find_children("*","Button",true,false)
-	check(buttons.filter(func(b): return b.text == "장착").size() == 2,"empty slots offer 장착")
-	scene.CharacterUI.replace(scene,0)
+	var heading: Array = scene.modal_content.find_children("*","Label",true,false).filter(func(l): return l.text.begins_with("이능 슬롯"))
+	check(not heading.is_empty() and heading[0].text == "이능 슬롯 0 / 1","empty slots heading")
+	var cards: Array = scene.modal_content.find_children("EssenceSlot*","Button",true,false)
+	check(cards.size() == 10,"ten essence slot cells")
+	scene.find_child("EssenceSlot0",true,false).pressed.emit()
 	for frame in range(3): await process_frame
-	var picks: Array = scene.item_detail.find_children("*","Button",true,false).map(func(b): return b.text)
-	check("밀치기 ×1" in picks and "엄호 ×1" in picks,"chooser lists the bag with counts")
+	check(scene.item_detail.find_children("*","Label",true,false).any(func(l): return l.text == "흡수한 이능 없음"),"chooser only lists absorbed essences")
+	check(scene.modal_content.find_children("EssenceAbsorb_*","Button",true,false).size() >= 2,"the tab offers bag absorption")
 	scene.item_popup.hide()
 	check(s.equip_part(0,0,"PUSH"),"equip through the session")
 	scene.show_character(0,"파츠")
 	for frame in range(4): await process_frame
-	heading = scene.modal_content.find_children("*","Label",true,false).filter(func(l): return l.text.begins_with("파츠 슬롯"))
-	check(heading[0].text == "파츠 슬롯 1 / 2","heading counts equipped parts")
-	buttons = scene.modal_content.find_children("*","Button",true,false)
-	check(buttons.any(func(b): return b.text == "해제") and buttons.any(func(b): return b.text == "교체"),"equipped slot offers 해제 and 교체")
+	heading = scene.modal_content.find_children("*","Label",true,false).filter(func(l): return l.text.begins_with("이능 슬롯"))
+	check(heading[0].text == "이능 슬롯 1 / 1","heading counts equipped essences")
+	scene.find_child("EssenceSlot0",true,false).pressed.emit()
+	await process_frame
+	check(scene.item_detail.find_child("EssenceUnequip",true,false) != null,"equipped slot offers removal")
 	scene.details_popup.hide()
 	# The floor battle is automatic, so an empty slot no longer shows as a
 	# battle button: the parts tab above is where it reads 빈 슬롯.
@@ -68,7 +67,7 @@ func ui() -> void:
 	check(scene.inventory_slots.all(func(slot): return slot.row.is_empty() or slot.row.category == "파츠"),"parts filter")
 	scene.show_item_detail("GUARD"); await process_frame
 	var detail: Array = scene.item_detail.find_children("*","Button",true,false)
-	check(detail.any(func(b): return b.text.ends_with("1번 장착") and b.disabled),"equip buttons are disabled outside camp")
+	check(detail.any(func(b): return b.text.contains("흡수") and b.disabled),"absorption is disabled outside camp")
 	scene.item_popup.hide(); scene.details_popup.hide()
 	scene.queue_free(); await process_frame
 
@@ -105,7 +104,7 @@ func basic_parts() -> void:
 	# Companions keep no actions so their turns cannot disturb the case.
 	for actor in s.party: actor.ap = 0
 	hero.ap = 3
-	check(hero.equipped_abilities == ["",""] and hero.rules.is_empty(),"floor party starts with empty slots and no rules")
+	check(hero.equipped_abilities == [""] and hero.rules.is_empty(),"floor party starts with empty slots and no rules")
 	check(not s.act("PUSH",foe.pos),"push needs a slot")
 	check(not s.act("GUARD",ally.pos),"guard needs a slot")
 	check(not s.Tactics.choose(s,hero).kind in ["PUSH","GUARD"],"tactics offer no unequipped basics")
@@ -116,7 +115,7 @@ func basic_parts() -> void:
 	check(s.act("GUARD",ally.pos) and hero.guarded and ally.protected_by == hero.id,"guard covers the adjacent ally")
 	check(not s.act("GUARD",foe.pos) and not s.act("GUARD",hero.pos),"guard rejects foes and self")
 	var legacy = Session.new(731,true,true)
-	check(legacy.party[0].equipped_abilities == ["",""] and legacy.parts_bag.has("PUSH"),"legacy constructor still starts with empty slots and bagged basics")
+	check(legacy.party[0].equipped_abilities == [""] and legacy.parts_bag.has("PUSH"),"legacy constructor still starts with empty slots and bagged basics")
 
 ## Parts are items: camp-only slots, one bag for the party, persistent through descent.
 func bag() -> void:
@@ -130,20 +129,21 @@ func bag() -> void:
 	s.parts_bag.erase("BOMB")
 	check(s.parts_bag.get("BOMB",0) == 0,"unowned parts stay absent")
 	s.phase = "CAMP"
-	check(not s.equip_part(0,2,"PUSH") and not s.equip_part(0,0,"BOMB") and not s.equip_part(0,0,"NOPE"),"bad slot, empty bag and unknown id refused")
-	check(s.equip_part(0,0,"PUSH") and s.party[0].equipped_abilities[0] == "PUSH" and s.parts_bag.PUSH == 0,"equip takes the part from the bag")
+	check(not s.equip_part(0,1,"PUSH") and not s.equip_part(0,0,"BOMB") and not s.equip_part(0,0,"NOPE"),"closed slot, empty bag and unknown id refused")
+	check(s.equip_part(0,0,"PUSH") and s.party[0].equipped_abilities[0] == "PUSH" and s.parts_bag.PUSH == 0,"equip absorbs the part from the bag")
 	check(s.party[0].rules.size() == 1 and s.party[0].rules[0].skill == "PUSH","equip adds the default rule")
+	s.gain_level_xp(s.party[0],65)
 	check(not s.equip_part(0,1,"PUSH"),"same part twice on one member refused")
 	check(not s.equip_part(1,0,"PUSH"),"bag empty for the second member")
 	s.parts_bag.PUSH = 1
 	check(s.equip_part(1,0,"PUSH"),"another member may hold the same part")
-	check(s.equip_part(0,0,"GUARD") and s.parts_bag.PUSH == 1 and s.party[0].equipped_abilities[0] == "GUARD","replacing returns the old part")
+	check(s.equip_part(0,0,"GUARD") and s.parts_bag.get("PUSH",0) == 0 and int(s.party[0].essences.PUSH) == 1 and s.party[0].equipped_abilities[0] == "GUARD","replacing keeps the old part absorbed")
 	check(s.party[0].rules.size() == 1 and s.party[0].rules[0].skill == "GUARD","replacing swaps the rule")
-	check(s.unequip_part(0,0) and s.party[0].equipped_abilities[0] == "" and s.parts_bag.GUARD == 1 and s.party[0].rules.is_empty(),"unequip empties the slot and the rule")
+	check(s.unequip_part(0,0) and s.party[0].equipped_abilities[0] == "" and s.parts_bag.get("GUARD",0) == 0 and s.party[0].rules.is_empty(),"unequip empties the slot without returning a part")
 	check(not s.unequip_part(0,0),"empty slot cannot be unequipped")
-	check(s.equip_part(0,0,"PUSH") and s.equip_part(0,1,"GUARD"),"both slots")
+	check(s.equip_part(0,0,"PUSH") and s.equip_part(0,1,"GUARD"),"both slots use absorbed essences")
 	s.phase = "BATTLE"
-	check(not s.equip_part(0,0,"PUSH") and not s.unequip_part(0,1),"slots are locked outside camp")
+	check(not s.equip_part(0,0,"PUSH") and not s.unequip_part(0,1),"slots are locked in a fight")
 	# Drops stay with the run across floors and after defeat.
 	Fixture.arena(s,8)
 	var foe: Dictionary = s.enemies[0]
@@ -165,7 +165,7 @@ func bag() -> void:
 	check(s.phase == "DEFEAT" and s.parts_bag == fallen_bag,"defeat ends the run without rolling back the bag")
 	# Test loadout.
 	var t = Session.new(731,false,false,true)
-	check(t.grant_test_loadout() and t.log_lines[-1].begins_with("시험 로드아웃 · 파츠"),"test loadout grants parts")
+	check(t.grant_test_loadout() and t.log_lines[-1].begins_with("시험 로드아웃 · 이능"),"test loadout grants essences")
 	for id in Abilities.DEFINITIONS: check(t.parts_bag.get(id,0) >= 1,"loadout has "+id)
 	var snapshot: Dictionary = t.parts_bag.duplicate(true)
 	check(t.grant_test_loadout() and t.parts_bag == snapshot,"loadout is idempotent")

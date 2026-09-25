@@ -19,7 +19,18 @@
       "speed": 110,
       "ac": 0,
       "ev": 3,
-      "res": {}
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "sh": 0,
+      "variants": [
+        "poison",
+        "ice"
+      ]
     },
     {
       "species_id": "dcss_frilled_lizard",
@@ -38,7 +49,18 @@
       "speed": 110,
       "ac": 0,
       "ev": 3,
-      "res": {}
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 25,
+        "will": 0
+      },
+      "sh": 0,
+      "variants": [
+        "poison",
+        "fire"
+      ]
     },
     {
       "species_id": "kobold",
@@ -57,7 +79,18 @@
       "speed": 105,
       "ac": 0,
       "ev": 5,
-      "res": {}
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "sh": 0,
+      "variants": [
+        "fire",
+        "air"
+      ]
     },
     {
       "species_id": "goblin",
@@ -77,7 +110,18 @@
       "speed": 100,
       "ac": 1,
       "ev": 4,
-      "res": {}
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "sh": 0,
+      "variants": [
+        "fire",
+        "poison"
+      ]
     },
     {
       "species_id": "dcss_hobgoblin",
@@ -95,7 +139,18 @@
       "speed": 100,
       "ac": 2,
       "ev": 3,
-      "res": {}
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "sh": 10,
+      "variants": [
+        "ice",
+        "will"
+      ]
     },
     {
       "species_id": "dcss_orc",
@@ -115,7 +170,18 @@
       "speed": 120,
       "ac": 4,
       "ev": 2,
-      "res": {}
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "sh": 0,
+      "variants": [
+        "fire",
+        "ice"
+      ]
     },
     {
       "species_id": "dcss_gnoll",
@@ -142,7 +208,18 @@
       "speed": 110,
       "ac": 2,
       "ev": 3,
-      "res": {}
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 10
+      },
+      "sh": 0,
+      "variants": [
+        "poison",
+        "air"
+      ]
     },
     {
       "species_id": "dcss_river_rat",
@@ -161,7 +238,154 @@
       "speed": 100,
       "ac": 0,
       "ev": 3,
-      "res": {}
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 25,
+        "poison": 0,
+        "will": 0
+      },
+      "sh": 0,
+      "variants": [
+        "air",
+        "ice"
+      ]
+    },
+    {
+      "species_id": "kobold_firecaller",
+      "display_name": "코볼트 화염술사",
+      "max_health": 26,
+      "min_depth": 1,
+      "max_depth": 4,
+      "rarity": 500,
+      "curve": "FLAT",
+      "threat": 2,
+      "roles": [
+        "RANGED",
+        "CASTER"
+      ],
+      "band": null,
+      "speed": 100,
+      "ac": 0,
+      "ev": 5,
+      "sh": 0,
+      "res": {
+        "fire": 50,
+        "ice": -25,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "variants": []
+    },
+    {
+      "species_id": "frost_imp",
+      "display_name": "서리 도깨비",
+      "max_health": 30,
+      "min_depth": 2,
+      "max_depth": 5,
+      "rarity": 400,
+      "curve": "PEAK",
+      "threat": 3,
+      "roles": [
+        "RANGED",
+        "CASTER"
+      ],
+      "band": null,
+      "speed": 105,
+      "ac": 1,
+      "ev": 4,
+      "sh": 0,
+      "res": {
+        "fire": -25,
+        "ice": 50,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "variants": []
+    },
+    {
+      "species_id": "storm_bat",
+      "display_name": "폭풍 박쥐",
+      "max_health": 24,
+      "min_depth": 2,
+      "max_depth": 6,
+      "rarity": 400,
+      "curve": "PEAK",
+      "threat": 3,
+      "roles": [
+        "RANGED",
+        "CASTER"
+      ],
+      "band": null,
+      "beast": true,
+      "speed": 120,
+      "ac": 0,
+      "ev": 7,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 50,
+        "poison": 0,
+        "will": 0
+      },
+      "variants": []
+    },
+    {
+      "species_id": "goblin_hexer",
+      "display_name": "고블린 주술사",
+      "max_health": 30,
+      "min_depth": 1,
+      "max_depth": 5,
+      "rarity": 500,
+      "curve": "FLAT",
+      "threat": 3,
+      "roles": [
+        "RANGED",
+        "CASTER"
+      ],
+      "band": null,
+      "speed": 100,
+      "ac": 1,
+      "ev": 4,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 50
+      },
+      "variants": []
+    },
+    {
+      "species_id": "gnoll_summoner",
+      "display_name": "놀 소환사",
+      "max_health": 90,
+      "min_depth": 3,
+      "max_depth": 8,
+      "rarity": 200,
+      "curve": "RISE",
+      "threat": 5,
+      "roles": [
+        "RANGED",
+        "CASTER"
+      ],
+      "band": null,
+      "speed": 105,
+      "ac": 2,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 25
+      },
+      "variants": []
     }
   ]
 }

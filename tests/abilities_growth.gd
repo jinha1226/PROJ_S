@@ -18,13 +18,14 @@ func exercise() -> void:
 		check(s.log_lines[0].contains("쓰러졌습니다"),"lethal damage and defeat are logged before XP and drops")
 		var count: int = s.parts_bag.get(enemy.part_id,0)
 		dropped += count
-		check(s.party[0].growth.xp == 25 and s.party[1].growth.xp == 25,"shared XP without last-hit competition")
-		check(s.party[0].growth.level == 1 and s.party[0].max_hp == 55,"one floor kill does not skip a level")
+		check(int(s.party[0].level_xp) == 18+s.depth*8 and int(s.party[1].level_xp) == 18+s.depth*8,"shared XP without last-hit competition")
+		check(int(s.party[0].level) == 1 and s.party[0].max_hp == 55,"one floor kill does not skip a level")
 		s.roll_part(enemy); s.damage(enemy,999,0,"SLASH")
-		check(s.parts_bag.get(enemy.part_id,0) == count and s.party[0].growth.xp == 25,"death cannot reward twice")
-	check(dropped > 0 and dropped < 30,"drops are seeded, not certain (%d of 30)" % dropped)
+		check(s.parts_bag.get(enemy.part_id,0) == count and int(s.party[0].level_xp) == 18+s.depth*8,"death cannot reward twice")
+	check(dropped == 30,"the first of a species always drops (%d of 30)" % dropped)
 	var s = arena()
 	s.phase = "CAMP"
+	s.gain_level_xp(s.party[1],65)
 	s.parts_bag = {"SHOCKWAVE":2,"BOMB":1,"IRON_HIDE":1}
 	check(s.equip_part(1,0,"SHOCKWAVE") and s.parts_bag.SHOCKWAVE == 1,"equipping takes exactly one part from the bag")
 	check(not s.equip_part(1,1,"SHOCKWAVE"),"the same part cannot fill both slots")
@@ -55,21 +56,22 @@ func exercise() -> void:
 	hp = s.party[1].hp; s.damage(s.party[1],16,100,"IMPACT")
 	check(s.party[1].hp == hp-4,"iron hide mitigates real damage")
 	s.phase = "CAMP"
-	s.Growth.gain(s.party[0],400)
-	check(s.party[0].growth.level == 3 and s.party[0].growth.stat_points == 1,"stat point every three levels")
-	check(s.spend_growth(0,"STR",true) and not s.spend_growth(0,"STR",true),"stat budget enforced")
-	check(s.spend_growth(0,"MELEE") and s.Growth.power(s.party[0],"MELEE",18) > 18,"mastery affects power")
-	check(s.spend_growth(0,"DEFENSE") and s.Growth.incoming(s.party[0],100) == 96,"defense affects incoming damage")
-	check(not s.spend_growth(0,"INVALID") and not s.spend_growth(-1,"MELEE"),"invalid growth choices rejected")
+	s.gain_level_xp(s.party[0],65*1+65*4)
+	check(int(s.party[0].level) == 3 and s.party[0].equipped_abilities.size() == 3,"three levels, three slots")
+	check(not s.has_method("spend_growth"),"no points to spend any more")
+	s.parts_bag["ORC_CLEAVER"] = 1
+	check(s.equip_part(0,2,"ORC_CLEAVER") and int(s.StatSheet.value(s,s.party[0],"str")) == 14,"an essence raises strength")
+	check(s.Abilities.power(s,s.party[0],s.Abilities.definition("HEAVY_STRIKE"),"HEAVY_STRIKE") == int(s.Abilities.definition("HEAVY_STRIKE").damage)+2,"strength raises a part's blow")
+	check(not s.equip_part(0,5,"ORC_CLEAVER") and not s.equip_part(-1,0,"ORC_CLEAVER"),"invalid slots and members rejected")
 	var scene = load("res://expedition/ui/main.tscn").instantiate(); root.size = Vector2i(390,844); root.add_child(scene)
 	scene.session = s; scene.refresh()
-	for tab in ["파츠","숙련","상태"]:
+	for tab in ["이능","상태"]:
 		scene.show_character(1,tab)
 		for frame in range(3): await process_frame
 		check(scene.details_popup.size.y <= root.size.y and scene.details_popup.size.x <= root.size.x,"character tab fits mobile: "+tab)
 		var labels: Array = scene.modal_content.find_children("*","Label",true,false)
-		if tab == "숙련": check(not labels.any(func(l): return l.text == "스킬 사용 순서"),"mastery has no ability ordering")
-		if tab == "파츠": check(scene.modal_content.find_children("PartSlot*","PanelContainer",true,false).size() == 2,"parts tab shows both slot cards")
+		if tab == "이능": check(not labels.any(func(l): return l.text == "스킬 사용 순서"),"essence tab has no ability ordering")
+		if tab == "이능": check(scene.modal_content.find_child("EssenceSlots",true,false).get_child_count() == 10,"essence tab shows ten slot cells")
 		check(not scene.modal_content.find_children("*","Button",true,false).any(func(b): return b.text == "가방"),"character window has no bag tab")
 	scene.inventory_filter = "전체"; scene.show_supplies()
 	s.grant_item("healing",1,true); scene.show_supplies()

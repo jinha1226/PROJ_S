@@ -35,7 +35,7 @@ static func curve(name: String, x: float) -> float:
 ## the candidate generator put on it, else the part catalogue, else the kind.
 static func tag(action: Dictionary) -> String:
 	if action.has("tag"): return str(action.tag)
-	return "PART" if Abilities.DEFINITIONS.has(str(action.kind)) else str(action.kind)
+	return "PART" if Abilities.has(str(action.kind)) else str(action.kind)
 
 ## Per-actor facts every candidate shares. Everything that depends on the
 ## protectee alone — whether it is about to die, and the cell that bodies the
@@ -115,7 +115,7 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, we
 		# The band is measured the way the skirmisher's own generator builds it:
 		# `s.distance`, not the eight-way step count, and the part's raw range —
 		# shrinking it at a bold posture is that generator's own preference.
-		var reach: int = int(Abilities.DEFINITIONS[ctx.ranged].range)
+		var reach: int = int(Abilities.definition(ctx.ranged).range)
 		var band: int = s.distance(dest,target.pos)
 		result.in_band = 1.0 if band >= 2 and band <= reach else 0.0
 	var p: Dictionary = ctx.protectee
@@ -123,8 +123,8 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, we
 		result.protectee_near = 1.0 if Stances.steps_between(dest,p.pos) <= 1 else 0.0
 		result.protectee_lethal = 1.0 if bool(ctx.protectee_lethal) else 0.0
 		result.protectee_gap = 1.0 if dest == ctx.gap else 0.0
-	if Abilities.DEFINITIONS.has(kind):
-		var def: Dictionary = Abilities.DEFINITIONS[kind]
+	if Abilities.has(kind):
+		var def: Dictionary = Abilities.definition(kind)
 		result.rule_ready = rule_grade(s,actor,action,ctx)
 		# Only a genuinely ranged part is holstered in contact: a MELEE dash part
 		# (돌진·기습) reaches three cells precisely in order to close.

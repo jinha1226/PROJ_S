@@ -41,7 +41,7 @@ static func reservation_choice(s, actor: Dictionary) -> Dictionary:
 	var order: Dictionary = actor.reservation
 	if order.is_empty() or actor.hp <= 0 or actor.ap <= 0 or not s.on_floor(): return {}
 	var cell: Vector2i = order.cell
-	var def: Dictionary = Abilities.DEFINITIONS.get(order.kind,{})
+	var def: Dictionary = Abilities.definition(order.kind)
 	if order.kind == "ATTACK" or def.get("target","") == "ENEMY":
 		var target: Dictionary = {}
 		for enemy in s.enemies:
@@ -124,7 +124,7 @@ static func companion_intent_snapshot(s) -> Array:
 		var choice: Dictionary = s.command_choice(actor)
 		if choice.is_empty(): choice = Tactics.choose(s,actor)
 		var target_id := -1
-		if choice.get("kind", "") in ["ATTACK", "PUSH"] or Abilities.DEFINITIONS.has(str(choice.get("kind", ""))):
+		if choice.get("kind", "") in ["ATTACK", "PUSH"] or Abilities.has(str(choice.get("kind", ""))):
 			var target: Dictionary = s.at(choice.get("cell", actor.pos))
 			target_id = int(target.get("id", -1)) if not target.is_empty() else -1
 		var dto := IntentUI.adapt(actor,choice,target_id,_intent_id(s,actor,choice,target_id))

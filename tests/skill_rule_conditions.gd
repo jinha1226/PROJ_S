@@ -17,7 +17,7 @@ func check(ok: bool, reason: String) -> void:
 func _initialize() -> void: call_deferred("run")
 
 func configurable() -> Array:
-	return Abilities.DEFINITIONS.keys()
+	return Abilities.DEFINITIONS.keys().filter(func(id): return not bool(Abilities.definition(str(id)).get("monster_only",false)))
 
 ## Arena with one hero carrying `skill` and up to two revived foes.
 func arena(skill: String, distance: int, second: int = 0) -> Dictionary:
@@ -129,7 +129,7 @@ func user_interface() -> void:
 
 ## 3. The rule engine honours each condition in a live arena.
 func semantics() -> void:
-	for id in Abilities.DEFINITIONS:
+	for id in configurable():
 		var def: Dictionary = Abilities.DEFINITIONS[id]
 		# 엄호 is the only ALLY part and has its own section below.
 		if def.target == "ALLY": continue

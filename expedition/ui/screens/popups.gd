@@ -6,6 +6,9 @@ const Session = preload("res://expedition/run/session.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
 const InventorySlot = preload("res://expedition/items/inventory_slot.gd")
 const CharacterUI = preload("res://expedition/ui/screens/character_folio.gd")
+const Essences = preload("res://expedition/progression/essences.gd")
+const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
+const EssenceTab = preload("res://expedition/ui/screens/essence_tab.gd")
 
 static func show_menu(ui) -> void:
 	var session = ui.session
@@ -78,6 +81,22 @@ static func show_enemy_info(ui, enemy: Dictionary) -> void:
 	var values: Dictionary = Session.CombatStats.stats(session,enemy)
 	var title = ui.label(ui.modal_content,str(enemy.name),20); title.name = "EnemyInfo"
 	ui.label(ui.modal_content,"HP %d/%d   AC %d   EV %d   속도 %d" % [int(enemy.hp),int(enemy.max_hp),int(values.ac),int(values.ev),int(values.delay)],14)
+	var sheet: Dictionary = StatSheet.sheet(session,enemy)
+	var defence = ui.label(ui.modal_content,"방어 %d   회피 %d   막기 %d" % [int(sheet.ac.total),int(sheet.ev.total),int(sheet.sh.total)],14)
+	defence.name = "EnemyDefence"
+	var resists: Array = []
+	for key in ["res_fire","res_ice","res_air","res_poison","res_will"]:
+		if int(sheet[key].total) != 0: resists.append("%s %d%%" % [StatSheet.NAMES[key],int(sheet[key].total)])
+	if not resists.is_empty():
+		var resist = ui.label(ui.modal_content,"저항  "+"  ".join(resists),13)
+		resist.name = "EnemyResist"
+	var essence: String = str(enemy.get("part_id",""))
+	if Essences.has(essence):
+		var named = ui.label(ui.modal_content,"이능 · "+Essences.title(essence),15)
+		named.name = "EnemyEssence"
+		if not EssenceTab.tag_line(essence).is_empty(): ui.label(ui.modal_content,EssenceTab.tag_line(essence),13)
+		var words = ui.label(ui.modal_content,EssenceTab.active_line(essence),13)
+		words.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; words.custom_minimum_size.x = ui.popup_width()
 	var preview: Dictionary = session.attack_preview(enemy.pos)
 	if not preview.is_empty():
 		ui.label(ui.modal_content,"명중 %d%%   피해 %d–%d   %d tick" % [int(preview.chance),int(preview.damage_min),int(preview.damage_max),int(preview.time)],14)
@@ -114,8 +133,9 @@ static func show_npc(ui, npc: Dictionary) -> void:
 	portrait.custom_minimum_size = Vector2(64,64); heading.add_child(portrait)
 	var words := VBoxContainer.new(); heading.add_child(words)
 	ui.label(words,str(npc.name),20)
-	var axis: String = Session.Mastery.weapon_axis(str(npc.get("gear",{}).get("weapon",{}).get("type","sword")))
-	ui.label(words,"Lv.%d · %s %d" % [int(npc.get("level",1)),Session.Mastery.NAMES[axis],Session.Mastery.rank(npc,axis)],13)
+	var worn: Array = Essences.equipped(npc).map(func(id): return Essences.title(str(id)))
+	var level_line = ui.label(words,"Lv.%d · 이능 %s" % [int(npc.get("level",1)),", ".join(worn) if not worn.is_empty() else "없음"],13)
+	level_line.name = "NpcLevel"
 	var dialogue = ui.label(words,str(talk.line),15)
 	dialogue.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var ask = ui.button(page,"동행 제안",func(): propose_npc(ui,npc),bool(talk.can_propose))
@@ -166,6 +186,7 @@ static func update_offer_popup(ui) -> void:
 	ui.offer_popup.popup_centered()
 
 static func show_character(ui, index: int, tab: String = "상태") -> void:
+	if tab == "파츠": tab = "이능"
 	var session = ui.session
 	ui.stop_navigation()
 	ui.tactics_actor = clampi(index,0,session.party.size()-1); ui.character_tab = tab
@@ -174,22 +195,13 @@ static func show_character(ui, index: int, tab: String = "상태") -> void:
 	var actor: Dictionary = session.party[ui.tactics_actor]
 	match tab:
 		"상태": CharacterUI.status(ui,list,actor)
-		"숙련": CharacterUI.mastery(ui,list,actor)
-		"파츠": CharacterUI.parts(ui,list,actor)
+		"이능": EssenceTab.build(ui,list,actor)
 		"성격": CharacterUI.personality(ui,list,actor)
 		"기억": CharacterUI.memories(ui,list,actor)
 	ui.details_popup.popup_centered(Vector2i(ui.get_viewport_rect().size))
 
-static func show_mastery_detail(ui, index: int, axis: String) -> void:
-	if axis not in CharacterUI.Mastery.AXES: return
-	ui.tactics_actor = clampi(index,0,ui.session.party.size()-1); ui.character_tab = "숙련"
-	ui.clear(ui.modal_content)
-	var list: VBoxContainer = CharacterUI.shell(ui,"숙련")
-	CharacterUI.mastery_detail(ui,list,ui.session.party[ui.tactics_actor],axis)
-	ui.details_popup.popup_centered(Vector2i(ui.get_viewport_rect().size))
-
 static func show_tactics(ui) -> void:
-	show_character(ui,ui.tactics_actor,"파츠")
+	show_character(ui,ui.tactics_actor,"이능")
 
 static func open_rule(ui, index: int) -> void:
 	ui.tactics_expanded = index
@@ -393,7 +405,7 @@ static func inventory_rows(ui) -> Array:
 			rows.append({"id":"equipped:%d:%s"%[i,slot],"label":name,"quantity":1,"category":"장비","equipped_member":i,"equipped_slot":slot,"gear_slot":slot,"description":actor.name+" · 장착 중","icon":Art.equipment_icon(slot,str(equipped.get("type","")))})
 	for id in Session.Abilities.DEFINITIONS:
 		if session.parts_bag.get(id,0) <= 0: continue
-		var def: Dictionary = Session.Abilities.DEFINITIONS[id]
+		var def: Dictionary = Session.Abilities.definition(id)
 		rows.append({"id":id,"label":def.item,"quantity":session.parts_bag[id],"category":"파츠","description":def.description,"icon":Art.part_icon(id)})
 	rows.append({"id":"food","label":"식량","quantity":session.food,"category":"자원","description":"야영","icon":Art.food_icon()})
 	return rows
@@ -449,8 +461,10 @@ static func show_item_detail(ui, id: String) -> void:
 	elif row.category == "파츠":
 		for i in range(session.party.size()):
 			var member: Dictionary = session.party[i]
-			for slot in range(2):
-				ui.button(ui.item_detail,"%s %d번 장착" % [member.name,slot+1],func(): equip_from_bag(ui,i,slot,id),session.phase == "CAMP" and member.hp > 0 and id not in member.equipped_abilities)
+			var tier: int = Essences.tier(member,id)
+			var caption: String = "%s 흡수" % member.name if tier == 0 else "%s 흡수 (%d→%d단계)" % [member.name,tier,tier+1]
+			var absorb = ui.button(ui.item_detail,caption,func(): absorb_from_bag(ui,i,id),Essences.can_manage(session) and member.hp > 0 and Essences.has(id) and tier < Essences.MAX_TIER)
+			absorb.name = "BagAbsorb%d" % i
 	ui.button(ui.item_detail,"닫기",func(): ui.item_popup.hide()); ui.item_popup.popup_centered(); ui.item_popup.grab_focus()
 
 static func popup_list(ui) -> VBoxContainer:
@@ -458,8 +472,11 @@ static func popup_list(ui) -> VBoxContainer:
 	var list := VBoxContainer.new(); list.size_flags_horizontal = Control.SIZE_EXPAND_FILL; scroll.add_child(list)
 	return list
 
-static func equip_from_bag(ui, member: int, slot: int, id: String) -> void:
-	if ui.session.equip_part(member,slot,id): ui.item_popup.hide(); ui.refresh(); show_supplies(ui)
+static func absorb_from_bag(ui, member: int, id: String) -> void:
+	var reason: String = ui.session.absorb_essence(member,id)
+	if not reason.is_empty():
+		ui.notice = reason; return
+	ui.item_popup.hide(); ui.refresh(); show_supplies(ui)
 
 static func show_choice(ui) -> void:
 	var session = ui.session

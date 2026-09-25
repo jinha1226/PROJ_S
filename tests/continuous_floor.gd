@@ -64,7 +64,7 @@ func run() -> void:
 		for x in range(10):
 			var p := camera+Vector2i(x,y)
 			check(scene.board.cell_at(scene.board.cell_center(p)) == p,"camera-aware input")
-	for tab in ["상태","파츠","숙련"]:
+	for tab in ["상태","이능"]:
 		scene.show_character(0,tab); await process_frame
 		var panel = scene.details_popup.get_theme_stylebox("panel","PopupPanel")
 		check(panel is StyleBoxFlat and panel.bg_color.a == 1,"character popup opaque")

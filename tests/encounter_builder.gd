@@ -9,7 +9,7 @@ func rng(seed_value: int) -> RandomNumberGenerator:
 func row(id: String) -> Dictionary:
 	return Builder.species(id)
 func run() -> void:
-	check(Builder.table().size() == 8,"eight species loaded")
+	check(Builder.table().size() == 13,"thirteen species loaded")
 	check(is_equal_approx(Builder.curve(row("kobold"),1),1.0) and is_equal_approx(Builder.curve(row("kobold"),4),1.0),"FLAT is one across range")
 	check(is_equal_approx(Builder.curve(row("dcss_orc"),1),0.15) and is_equal_approx(Builder.curve(row("dcss_orc"),6),1.0),"RISE ramps 0.15 to 1")
 	check(is_equal_approx(Builder.curve(row("dcss_rat"),1),1.0) and is_equal_approx(Builder.curve(row("dcss_rat"),3),0.15),"FALL ramps 1 to 0.15")
@@ -44,6 +44,8 @@ func run() -> void:
 			check(capped.size() <= 2 and Builder.valid(capped,budget,2).is_empty(),"F1 count cap and threat budget both hold")
 	var trio := [Builder.member(row("kobold"),"MELEE"),Builder.member(row("dcss_rat"),"MELEE"),Builder.member(row("goblin"),"RANGED")]
 	check(Builder.valid(trio,6).is_empty() and Builder.valid(trio,6,2) == "too many","count cap rejects an otherwise legal budget-six trio")
+	var band := [Builder.member(row("dcss_gnoll"),"MELEE"),Builder.member(row("dcss_rat"),"MELEE"),Builder.member(row("dcss_frilled_lizard"),"MELEE")]
+	check(Builder.valid(band,7).is_empty(),"gnoll band is the deliberate all-melee exception")
 	check(seen_backline and seen_gnoll_band,"large encounters and gnoll bands both occur")
 	check(Builder.valid([{"species_id":"kobold","role":"MELEE","threat":2},{"species_id":"kobold","role":"MELEE","threat":2},{"species_id":"dcss_rat","role":"MELEE","threat":1}],5) != "","three melee without backline is rejected")
 	check(Builder.valid([{"species_id":"goblin","role":"CASTER","threat":4},{"species_id":"goblin","role":"CASTER","threat":4}],9) != "","two casters rejected")
@@ -76,5 +78,5 @@ func run() -> void:
 	var starved: Array = Builder.fill(rng(1),1,9,false)
 	Builder.content.species = original_table
 	check(starved.size() >= 1 and starved.size() <= 4,"a saturated single-role table still returns a bounded group")
-	check(Builder.table().size() == 8,"the species table is restored")
+	check(Builder.table().size() == 13,"the species table is restored")
 	print("Encounter builder: %d failures" % failures); quit(1 if failures else 0)

@@ -79,7 +79,8 @@ static func valid(members: Array, budget: int, max_members: int = MAX_MEMBERS) -
 	if total < budget-1: return "too weak (%d < %d)" % [total,budget-1]
 	if total > budget+1: return "too strong (%d > %d)" % [total,budget+1]
 	if members.filter(func(m): return m.role == "CASTER").size() > 1: return "two casters"
-	if members.size() >= 3 and members.all(func(m): return m.role == "MELEE"): return "no backline"
+	var gnoll_band: bool = members.any(func(m): return m.species_id == "dcss_gnoll") and members.filter(func(m): return m.species_id in ["dcss_rat","dcss_frilled_lizard"]).size() >= 2
+	if members.size() >= 3 and members.all(func(m): return m.role == "MELEE") and not gnoll_band: return "no backline"
 	var pairs: Dictionary = {}
 	for m in members:
 		var key: String = m.species_id+"/"+m.role

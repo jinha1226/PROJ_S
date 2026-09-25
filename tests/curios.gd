@@ -73,13 +73,13 @@ func dead_adventurer() -> void:
 	check(parts >= 4 and parts <= 20,"parts on some seeds (%d/40)" % parts)
 	check(supplies >= 4 and supplies <= 20,"supplies on some seeds (%d/40)" % supplies)
 
-## A part or a supply, never nothing and never two.
+## A part or a supply is guaranteed; gear and caster essence are bonus finds.
 func broken_chest() -> void:
 	for seed in range(10):
 		var f := setup(200+seed,"BROKEN_CHEST"); var s = f.s; var p: Vector2i = f.p
 		var before: int = s.parts_bag.values().reduce(func(a,b): return a+b,0)+bag_total(s)
 		check(Curios.resolve(s,p,"SEARCH"),"chest searched (seed %d)" % seed)
-		check(s.parts_bag.values().reduce(func(a,b): return a+b,0)+bag_total(s) == before+1,"chest gives exactly one item (seed %d)" % seed)
+		check(s.parts_bag.values().reduce(func(a,b): return a+b,0)+bag_total(s) >= before+1,"chest gives at least one item (seed %d)" % seed)
 
 ## The three refusals the plan names: out of reach, a foe in sight, no action.
 func rules() -> void:

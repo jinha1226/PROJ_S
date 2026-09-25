@@ -1,4 +1,5 @@
 extends SceneTree
+const Essences = preload("res://expedition/progression/essences.gd")
 const Session = preload("res://expedition/run/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 var checks := 0
@@ -13,14 +14,16 @@ func run() -> void:
 	var s = Session.new(901,false,false,true,1)
 	s.depart(); Fixture.arena(s,10); s.manual_mode = true
 	var hero: Dictionary = s.party[0]
-	# The port's own spells belong to no book: nothing teaches them any more.
+	# Relics belong to no caster essence.
 	for id in ["blast","blink","mend","passwall","ward","turret"]:
-		check(not s.learn_spell(0,id),"no book teaches the relic "+id)
+		check(Essences.CASTER_BY_SCHOOL.values().all(func(e): return id not in Essences.spell_choices({"essences":{e:3}},e)),"no essence offers the relic "+id)
 		hero.spells.append(id)
 	s.phase = "CAMP"
-	check(s.prepare_spell(0,"blast",true) and s.prepare_spell(0,"mend",true) and s.prepare_spell(0,"blink",true),"prepare three spells")
-	check(s.prepare_spell(0,"passwall",true) and s.prepare_spell(0,"ward",true),"prepare five spells")
-	check(not s.prepare_spell(0,"turret",true),"sixth spell refused")
+	hero.prepared = ["blast","mend","blink"]
+	check(hero.prepared.size() == 3 and "blink" in hero.prepared,"three relics stand ready")
+	hero.prepared.append_array(["passwall","ward"])
+	check(hero.prepared.size() == s.PREPARED_SLOTS,"five relics fill the ready row")
+	check(not s.has_method("prepare_spell"),"readying is the essences' business now")
 	s.phase = "EXPLORE"
 	var foe: Dictionary = s.enemies[0]
 	foe.hp = 100; foe.max_hp = 100; foe.pos = hero.pos+Vector2i(2,0); foe.alert = true; foe.ready_at = 1000

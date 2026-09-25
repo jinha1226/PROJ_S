@@ -22,7 +22,7 @@ func run() -> void:
 		if bosses.is_empty(): continue
 		var boss: Dictionary = bosses[0]
 		check(boss.pattern == (depth/3-1)%3,"pattern %d" % depth)
-		check(boss.hp == 64+8*(depth/3-1),"boss health scales with depth")
+		check(boss.hp == (64+8*(depth/3-1))*int(s.Floor.deep_scale(depth).hp)/100,"boss health scales with depth")
 		check(s.enemies.filter(func(e): return not e.get("boss",false)).all(func(e): return e.pos != boss.pos),"boss spawn does not overlap the ordinary roster")
 		check(s.enemies.size() > 1,"boss floor keeps ordinary encounters")
 		check(s.stairs_sealed(),"stairs sealed")

@@ -2,7 +2,7 @@ extends SceneTree
 ## The run's first choice: one of ten kits, one per mastery axis.
 const Session = preload("res://expedition/run/session.gd")
 const Stats = preload("res://expedition/combat/combat_stats.gd")
-const Mastery = preload("res://expedition/progression/mastery.gd")
+const Essences = preload("res://expedition/progression/essences.gd")
 const Spells = preload("res://expedition/spells/spells.gd")
 const Recruit = preload("res://expedition/actors/npc_recruit.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
@@ -18,7 +18,7 @@ func check(ok: bool, reason: String) -> void:
 func run() -> void:
 	var kits: Array = Stats.kits()
 	check(kits.size() == 10,"ten kits")
-	check(kits.map(func(k): return str(k.id)) == Mastery.AXES,"kit ids are the mastery axes in order")
+	check(kits.map(func(k): return str(k.id)) == ["sword","spear","mace","axe","bow","fire","ice","air","hex","summon"],"ten kits in their old order")
 	for kit in kits:
 		check(Stats.content.weapons.has(str(kit.weapon)),"kit %s carries a real weapon" % kit.id)
 		check(str(kit.spell).is_empty() or Stats.content.spells.has(str(kit.spell)),"kit %s knows a real spell" % kit.id)
@@ -32,8 +32,9 @@ func run() -> void:
 		check(s.kit_id == id,"session remembers kit "+id)
 		check(str(hero.gear.weapon.type) == str(kit.weapon),"%s holds %s" % [id,kit.weapon])
 		check(str(hero.gear.armour.type) == "robe","%s wears a robe" % id)
-		check(int(hero.skill_xp.get(str(kit.axis),0)) == 25,"%s starts with 25 xp in %s" % [id,kit.axis])
-		check(Mastery.rank(hero,str(kit.axis)) == 1,"%s starts at rank 1" % id)
+		var caster: String = str(Essences.CASTER_BY_SCHOOL.get(str(kit.axis),""))
+		check(caster.is_empty() == str(kit.spell).is_empty(),"%s has a caster essence exactly when it has a spell" % id)
+		check(caster.is_empty() or int(hero.essences.get(caster,0)) == 1,"%s starts its caster essence at tier one" % id)
 		var spell: String = str(kit.spell)
 		if spell.is_empty():
 			check(hero.spells.is_empty() and hero.prepared.is_empty(),"%s knows no spell" % id)
@@ -43,7 +44,7 @@ func run() -> void:
 		check(int(stats.range) == int(Stats.content.weapons[str(kit.weapon)].range),"%s reaches as far as its weapon" % id)
 	# The weapon really is behind the numbers.
 	var mace = Session.new_run(7,"mace")
-	check(int(Stats.stats(mace,mace.party[0]).delay) == 145-4,"mace swings at its own delay, rank 1 faster")
+	check(int(Stats.stats(mace,mace.party[0]).delay) == 145,"mace swings at its own delay")
 	var bow = Session.new_run(7,"bow")
 	check(int(Stats.stats(bow,bow.party[0]).range) == 6,"bow reaches six cells")
 	var fire = Session.new_run(7,"fire")
@@ -82,7 +83,7 @@ func magic(id: String, spell: String) -> void:
 	check(Spells.can_cast(s,hero,spell,target),"%s can cast %s" % [id,spell])
 	# The kit's own rank is enough to cast; a mastered caster never fumbles, so
 	# what the spell does is what the check below reads.
-	hero.skill_xp[str(Stats.content.spells[spell].school)] = 2500
+	hero.essences[str(Essences.CASTER_BY_SCHOOL[str(Stats.content.spells[spell].school)])] = 3
 	var before: int = foe.hp
 	var lines: int = s.log_lines.size()
 	check(s.cast(spell,target),"%s casts %s" % [id,spell])

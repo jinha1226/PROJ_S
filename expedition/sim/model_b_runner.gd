@@ -17,27 +17,30 @@ static func run_one(arena_id: String, party_size: int, seed: int, limit: int = 8
 	for _turn in range(limit):
 		if s.party[0].hp <= 0 or s.phase == "DEFEAT": result = "DEFEAT"; break
 		if s.enemies.all(func(e): return e.hp <= 0): result = "WIN"; break
-		var hero: Dictionary = s.party[0]
-		hero.ap = 1
-		var choice: Dictionary = Tactics.choose(s,hero)
-		var kind: String = str(choice.get("kind","WAIT"))
-		var target: Vector2i = choice.get("cell",hero.pos)
-		if kind == "WAIT" and s.party_enemies().is_empty():
-			var goals: Array = []
-			for enemy in s.enemies:
-				if enemy.hp <= 0: continue
-				for direction in s.DIRECTIONS:
-					var cell: Vector2i = enemy.pos+direction
-					if s.is_free(cell) and s.melee_reach(cell,enemy.pos): goals.append(cell)
-			if not goals.is_empty():
-				var route: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,hero.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100)
-				if route.found and route.path.size() > 1: kind = "MOVE"; target = route.path[1]
-		if not s.submit(kind,target): s.submit("WAIT",hero.pos)
+		hero_turn(s)
 	if result == "TIMEOUT" and s.enemies.all(func(e): return e.hp <= 0): result = "WIN"
 	elif result == "TIMEOUT" and s.party[0].hp <= 0: result = "DEFEAT"
 	return {"result":result,"time":s.time,"hero_actions":s.turn_serial,"initial_enemies":initial,
 		"remaining_hp":s.party[0].hp,"remaining_enemies":s.enemies.filter(func(e): return e.hp > 0).size(),
-		"skills":s.party[0].skill_xp.duplicate(true)}
+		"essences":s.party[0].essences.duplicate(true)}
+
+static func hero_turn(s) -> void:
+	var hero: Dictionary = s.party[0]
+	hero.ap = 1
+	var choice: Dictionary = Tactics.choose(s,hero)
+	var kind: String = str(choice.get("kind","WAIT"))
+	var target: Vector2i = choice.get("cell",hero.pos)
+	if kind == "WAIT" and s.party_enemies().is_empty():
+		var goals: Array = []
+		for enemy in s.enemies:
+			if enemy.hp <= 0: continue
+			for direction in s.DIRECTIONS:
+				var cell: Vector2i = enemy.pos+direction
+				if s.is_free(cell) and s.melee_reach(cell,enemy.pos): goals.append(cell)
+		if not goals.is_empty():
+			var route: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,hero.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100)
+			if route.found and route.path.size() > 1: kind = "MOVE"; target = route.path[1]
+	if not s.submit(kind,target): s.submit("WAIT",hero.pos)
 
 static func run_many(arena_id: String, party_size: int, seeds: Array, hero_hp: int = 55) -> Dictionary:
 	var results := {"WIN":0,"DEFEAT":0,"TIMEOUT":0,"INVALID":0}

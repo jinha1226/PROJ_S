@@ -52,7 +52,8 @@ static func damage(s, source: Dictionary, target: Dictionary, raw: int, element:
 	if target.hp <= 0 or raw <= 0: return 0
 	var amount: int = TagSets.element_damage(source,element,raw)
 	if element not in ["physical", "SLASH", "IMPACT", "RETALIATE"]:
-		var resistance: int = maxi(0,int(Stats.stats(s, target).res.get(element.to_lower(), 0))-penetration)
+		var listed: int = int(Stats.stats(s,target).res.get(element.to_lower(),0))
+		var resistance: int = listed if listed <= 0 else maxi(0,listed-penetration)
 		amount = maxi(0, amount * (100 - resistance) / 100)
 	# 취약화 is read after resistance: everything that still lands lands harder.
 	if target.get("statuses", {}).has("vulnerable"): amount = amount * 13 / 10

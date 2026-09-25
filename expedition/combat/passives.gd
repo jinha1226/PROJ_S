@@ -11,10 +11,16 @@ const KINDS := ["PACK","RETALIATE","DIRTY","AMBUSHER","THICK_HIDE","BLOODLUST","
 static func of(actor: Dictionary) -> Array:
 	var ids: Array = [actor.get("part_id","")] if actor.enemy else actor.equipped_abilities
 	var result: Array = []
+	var seen_base: Dictionary = {}
 	for id in ids:
-		var def: Dictionary = Abilities.DEFINITIONS.get(id,{})
+		var base: String = str(id).split("@")[0]
+		# A base essence and its variants are separate slots for stats and sets,
+		# but their inherited species passive fires only once.
+		if not actor.enemy and seen_base.has(base): continue
+		var def: Dictionary = Abilities.definition(id)
 		if def.is_empty() or def.passive.is_empty(): continue
 		if actor.enemy and str(def.species) != str(actor.get("species_id","")): continue
+		seen_base[base] = true
 		result.append(def.passive)
 	return result
 

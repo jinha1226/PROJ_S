@@ -25,7 +25,7 @@ func session_layer() -> void:
 		if int(bag_before.get(id,0)) <= 0: newly.append(id)
 	check(not newly.is_empty(),"the grant adds the parts the bag lacked")
 	check(hero.equipped_abilities == equipped_before and hero.rules.size() == rules_before,"equipment and rules untouched")
-	check(s.log_lines[-1] == "시험 로드아웃 · 파츠 %d종 지급 — 파츠 탭에서 장착하세요." % newly.size(),"grant reports the granted count")
+	check(s.log_lines[-1] == "시험 로드아웃 · 이능 %d종" % newly.size(),"grant reports the granted count")
 
 	var bag: Dictionary = s.parts_bag.duplicate(true)
 	check(s.grant_test_loadout(),"second call still succeeds")
@@ -55,16 +55,15 @@ func scene_layer() -> void:
 	s.phase = "CAMP"; scene.refresh()
 	s.gain_level_xp(s.party[0],65)
 	check(s.equip_part(0,0,"PUSH") and s.equip_part(0,1,"GUARD"),"granted parts can be equipped")
-	scene.show_character(0,"파츠")
+	scene.show_character(0,"이능")
 	for frame in range(4): await process_frame
-	var cards: Array = scene.modal_content.find_children("PartSlot*","PanelContainer",true,false)
-	check(cards.size() == 2,"the parts tab renders the equipped cards")
-	scene.CharacterUI.replace(scene,0)
+	var cards: Array = scene.modal_content.find_children("EssenceSlot*","Button",true,false)
+	check(cards.size() == 10,"the essence tab renders ten slot cells")
+	scene.find_child("EssenceSlot0",true,false).pressed.emit()
 	for frame in range(3): await process_frame
-	var offered: Array = scene.item_detail.find_children("*","Button",true,false).map(func(b): return b.text)
 	for id in Session.Abilities.DEFINITIONS:
 		if id in s.party[0].equipped_abilities: continue
-		check(Session.Rules.skill(id).name+" ×1" in offered,"the granted bag is offered for the slot: "+id)
+		check(scene.modal_content.find_child("EssenceAbsorb_"+id,true,false) != null,"the granted bag offers absorption: "+id)
 	scene.item_popup.hide()
 	scene.details_popup.hide()
 	s.phase = "BATTLE"

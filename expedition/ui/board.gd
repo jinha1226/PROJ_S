@@ -348,7 +348,7 @@ func action_previews() -> Array:
 		if kind in ["","MOVE","WAIT"] or preview.actor == session.party[0].id: continue
 		var member: Array = session.party.filter(func(a): return a.id == preview.actor)
 		if member.is_empty() or member[0].hp <= 0 or not session.inside(preview.cell): continue
-		var title := "공격" if kind == "ATTACK" else str(session.Abilities.DEFINITIONS.get(kind,{}).get("name",kind))
+		var title := "공격" if kind == "ATTACK" else str(session.Abilities.definition(kind).get("name",kind))
 		result.append({"actor":member[0].id,"from":member[0].pos,"cell":preview.cell,"title":title,"reserved":preview.get("reserved",false)})
 	return result
 
@@ -458,14 +458,14 @@ func _draw() -> void:
 	var attacks: Array = []
 	if show_attack_range and targeting_skill == "ATTACK":
 		attacks = session.attack_cells()
-	elif session.Abilities.DEFINITIONS.has(targeting_skill) and session.Abilities.DEFINITIONS[targeting_skill].target == "ENEMY" and session.Abilities.DEFINITIONS[targeting_skill].range > 0:
+	elif session.Abilities.has(targeting_skill) and session.Abilities.definition(targeting_skill).target == "ENEMY" and session.Abilities.definition(targeting_skill).range > 0:
 		attacks.clear()
 		var caster: Dictionary = session.party[session.selected if input_actor < 0 else input_actor]
 		for y in range(camera_cell().y,camera_cell().y+visible_side()+2):
 			for x in range(camera_cell().x,camera_cell().x+visible_side()+2):
 				if x < 0 or y < 0 or x >= session.BOARD_SIDE or y >= session.BOARD_SIDE: continue
 				var cell := Vector2i(x,y)
-				if session.distance(caster.pos,cell) <= int(session.Abilities.DEFINITIONS[targeting_skill].range) and session.tile(cell).terrain != "wall" and session.TurnCore.Geometry.sees(caster.pos,cell,func(p): return session.tile(p).terrain == "wall"): attacks.append(cell)
+				if session.distance(caster.pos,cell) <= int(session.Abilities.definition(targeting_skill).range) and session.tile(cell).terrain != "wall" and session.TurnCore.Geometry.sees(caster.pos,cell,func(p): return session.tile(p).terrain == "wall"): attacks.append(cell)
 	for depth in range((visible_side()+2)*2-1):
 		for local_x in range(visible_side()+2):
 			var local_y := depth-local_x
@@ -607,7 +607,7 @@ func _draw_foreground(canvas: Node2D) -> void:
 		var skill_id := str(skill_badges[actor_id].skill_id)
 		var actor := _actor_for_id(actors,int(actor_id))
 		if not _label_visible(actor): continue
-		var definition: Dictionary = session.Abilities.DEFINITIONS.get(skill_id,{})
+		var definition: Dictionary = session.Abilities.definition(skill_id)
 		var title := str(definition.get("name",skill_id))
 		if title.length() > 8: title = title.left(7)+"…"
 		var center := cell_center(actor.pos)-Vector2(0,half_width*2.6)

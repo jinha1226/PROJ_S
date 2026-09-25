@@ -3,7 +3,7 @@ const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const TagSets = preload("res://expedition/progression/tag_sets.gd")
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/combat.json"))
 
-## The ten starting kits, in Mastery.AXES order: one weapon per mastery axis.
+## The ten starting kits: five weapons and five spell schools.
 static func kits() -> Array:
 	return content.get("kits", [])
 
@@ -40,9 +40,11 @@ static func stats(session, actor: Dictionary) -> Dictionary:
 		var armour: Dictionary = gear.get("armour", {})
 		var armour_def: Dictionary = content.armours.get(str(armour.get("type", "")), {})
 		if not armour_def.is_empty(): result.enc = maxi(0, int(armour_def.enc) - strength / 5)
-		var shield: bool = not gear.get("shield", {}).is_empty() and result.trait not in ["ranged", "focus"]
+		var shield_worn: bool = not gear.get("shield", {}).is_empty()
+		var shield: bool = shield_worn and result.trait not in ["ranged", "focus"]
 		if shield: result.enc += 2
-		result.sh = mini(StatSheet.BLOCK_CAP,int(sheet.sh.total) if shield else int(sheet.sh.total)/2)
+		var natural_block: int = maxi(0,int(sheet.sh.total)-(StatSheet.SHIELD_BLOCK if shield_worn else 0))
+		result.sh = mini(StatSheet.BLOCK_CAP,natural_block+StatSheet.SHIELD_BLOCK if shield else natural_block/2)
 		var ring: Dictionary = gear.get("ring", {})
 		var ring_def: Dictionary = content.rings.get(str(ring.get("type", "")), {})
 		if not ring_def.is_empty() and str(ring_def.stat) == "power": result.power += int(ring_def.value)

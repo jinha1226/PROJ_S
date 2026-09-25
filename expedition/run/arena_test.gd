@@ -33,7 +33,7 @@ static func arena_test(s, p_seed: int, party_size: int, arena: Dictionary, membe
 		var parts: Array = setup.get("parts",["",""])
 		for slot in range(2):
 			var id: String = str(parts[slot]) if slot < parts.size() else ""
-			if Abilities.DEFINITIONS.has(id) and id not in actor.equipped_abilities:
+			if Abilities.has(id) and id not in actor.equipped_abilities:
 				actor.equipped_abilities[slot] = id; actor.rules.append(Abilities.default_rule(id))
 	var spec: Dictionary = preload("res://expedition/sim/encounter_arena.gd").DEFAULT_SPEC.duplicate(true)
 	spec.members = arena.members.map(func(m): return {"species_id":m[0],"role":m[1]})

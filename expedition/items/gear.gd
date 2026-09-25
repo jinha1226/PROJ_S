@@ -3,11 +3,9 @@ extends RefCounted
 const Abilities = preload("res://expedition/items/abilities.gd")
 const Body = preload("res://game/rebuilt/body_bridge.gd")
 const CombatStats = preload("res://expedition/combat/combat_stats.gd")
-const Growth = preload("res://expedition/progression/growth.gd")
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
-const Mastery = preload("res://expedition/progression/mastery.gd")
 const Rules = preload("res://expedition/ai/tactic_rules.gd")
 
 static func gear_slot(s, item: Dictionary) -> String:
@@ -93,7 +91,7 @@ static func roll_part(s, enemy: Dictionary, reward_actors: Variant = null) -> vo
 	if not recipients.any(func(a): return a in s.party): return
 	var id: String = str(enemy.get("part_id",""))
 	if not Essences.has(id): return
-	var species: String = str(enemy.get("species_id",""))
+	var species: String = Abilities.kind_key(enemy)
 	var chance: int = Essences.drop_chance(s,species)
 	s.essence_seen[species] = true
 	if Hexaco.sample(s.seed_value,s.depth*10000+enemy.id,"essence",100) >= chance: return
@@ -110,15 +108,11 @@ static func grant_test_loadout(s) -> bool:
 	for id in Abilities.DEFINITIONS:
 		if int(s.parts_bag.get(id,0)) > 0: continue
 		s.parts_bag[id] = 1; added += 1
-	s.message("시험 로드아웃 · 이미 전부 보유" if added == 0 else "시험 로드아웃 · 파츠 %d종 지급 — 파츠 탭에서 장착하세요." % added)
+	s.message("시험 로드아웃 · 이미 전부 보유" if added == 0 else "시험 로드아웃 · 이능 %d종" % added)
 	return true
-
-static func spend_growth(s, index: int, id: String, stat: bool = false) -> bool:
-	if not s.safe_management() or index < 0 or index >= s.party.size() or s.party[index].hp <= 0: return false
-	return Growth.spend(s.party[index],id,stat)
 
 static func reset_rules(s, index: int) -> void:
 	var actor: Dictionary = s.party[index]
 	actor.rules = Rules.defaults(); actor.basic_target = Rules.BASIC_TARGET_DEFAULT
 	for id in actor.equipped_abilities:
-		if Abilities.DEFINITIONS.has(id): actor.rules.append(Abilities.default_rule(id))
+		if Abilities.has(id): actor.rules.append(Abilities.default_rule(id))

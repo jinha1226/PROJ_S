@@ -30,7 +30,8 @@ ACTORS = {
     "merchant": lambda: mon.humanoid("amerchant", "south", STANDARD, SKIN["tan"], ("#b04a3e", "#903a30")),
     "wanderer": lambda: mon.humanoid("awanderer", "south", THIN, SKIN["dark"], ("#8a8f9c", "#707584")),
 }
-MONSTERS = ["dcss_rat", "dcss_frilled_lizard", "kobold", "goblin", "dcss_hobgoblin", "dcss_orc", "dcss_gnoll", "dcss_river_rat"]
+MONSTERS = ["dcss_rat", "dcss_frilled_lizard", "kobold", "goblin", "dcss_hobgoblin", "dcss_orc", "dcss_gnoll", "dcss_river_rat",
+            "kobold_firecaller", "frost_imp", "storm_bat", "goblin_hexer", "gnoll_summoner"]
 BOSSES = ["boss_mire", "boss_bomber", "boss_giant"]
 
 

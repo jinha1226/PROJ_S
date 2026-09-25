@@ -2,6 +2,8 @@ extends RefCounted
 const Abilities = preload("res://expedition/items/abilities.gd")
 ## Simplified SPD-inspired patterns, implemented independently for an 10x10 arena.
 const NAMES = ["수렁 포식자", "폭탄 암살자", "과부하 거인"]
+const BOSS_PARTS := ["SHOCKWAVE","BOMB","IRON_HIDE"]
+const BOSS_SPECIES := ["boss_mire","boss_bomber","boss_giant"]
 const HINTS = ["폭발 후 탈진 틈에 공격 · 물에서 회복", "폭탄 예고 회피 · 순간이동한 보스 추격", "보호막 가동 시 전력탑 옆에서 탑 터치"]
 
 ## Whom the boss is coming for. A dominated boss comes for its own kind.
@@ -22,7 +24,9 @@ static func spawn(s, layout: Dictionary, depth: int) -> void:
 	for room in layout.rooms:
 		if room.template_id == "boss_lair": lair = room; break
 	boss.pos = s.Floor.Generator.room_anchor(lair)
-	boss.hp = 64+8*(int(depth/3)-1); boss.max_hp = boss.hp
+	var deep: Dictionary = s.Floor.deep_scale(depth)
+	boss.hp = (64+8*(int(depth/3)-1))*int(deep.hp)/100; boss.max_hp = boss.hp
+	boss.attack_percent = int(deep.attack)
 	boss.speed = 100; boss.ready_at = int(s.time)+int(boss.speed)
 	boss.boss = true; boss.pattern = pattern
 	boss.cooldown = 4; boss.recovery = 0; boss.shield = false; boss.overloaded = false; boss.fuse = 0
@@ -30,14 +34,14 @@ static func spawn(s, layout: Dictionary, depth: int) -> void:
 	boss.pylon = Vector2i(-1,-1)
 	for point in layout.features:
 		if layout.features[point].kind == "pylon": boss.pylon = point; break
-	var drops: Array = Abilities.droppable()
-	boss.part_id = drops[pattern % drops.size()] if not drops.is_empty() else ""
+	boss.part_id = BOSS_PARTS[pattern]
+	boss.species_id = BOSS_SPECIES[pattern]
 	s.enemies.append(boss)
 
 static func plan(s, boss: Dictionary) -> void:
 	if s.alive().is_empty(): return
 	if boss.get("fuse",0) > 0:
-		for cell in boss.get("intent_cells",[]): s.intents.append({"id":boss.id,"cell":cell,"damage":16,"kind":"BOSS","resolve_at":int(boss.get("resolve_at",s.time+int(boss.fuse)*100))})
+		for cell in boss.get("intent_cells",[]): s.intents.append({"id":boss.id,"cell":cell,"damage":Abilities.scaled(boss,16),"kind":"BOSS","resolve_at":int(boss.get("resolve_at",s.time+int(boss.fuse)*100))})
 		return
 	boss.charging = false
 	if boss.pattern == 2:
@@ -57,7 +61,7 @@ static func plan(s, boss: Dictionary) -> void:
 			var marked: bool = s.distance(center,cell) <= 2 if boss.pattern == 0 else absi(center.x-x) <= 1 and absi(center.y-y) <= 1
 			if marked:
 				boss.intent_cells.append(cell)
-				s.intents.append({"id":boss.id,"cell":cell,"damage":16,"kind":"BOSS","resolve_at":int(boss.resolve_at)})
+				s.intents.append({"id":boss.id,"cell":cell,"damage":Abilities.scaled(boss,16),"kind":"BOSS","resolve_at":int(boss.resolve_at)})
 
 static func turn(s, boss: Dictionary) -> void:
 	# A frozen boss spends its turn where it stands; a bound one still swings.
@@ -90,8 +94,8 @@ static func turn(s, boss: Dictionary) -> void:
 	if s.melee_reach(boss.pos,hero.pos):
 		s.enemy_attack_effect(boss,[hero.pos])
 		if s.manual_mode:
-			boss.power = 8; s.CombatRules.attack(s,boss,hero)
-		else: s.damage(hero,8,boss.id,"IMPACT")
+			boss.power = Abilities.scaled(boss,8); s.CombatRules.attack(s,boss,hero)
+		else: s.damage(hero,Abilities.scaled(boss,8),boss.id,"IMPACT")
 		return
 	if held: return
 	var goals: Array = []
@@ -102,8 +106,8 @@ static func turn(s, boss: Dictionary) -> void:
 	if s.melee_reach(boss.pos,hero.pos):
 		s.enemy_attack_effect(boss,[hero.pos])
 		if s.manual_mode:
-			boss.power = 8; s.CombatRules.attack(s,boss,hero)
-		else: s.damage(hero,8,boss.id,"IMPACT")
+			boss.power = Abilities.scaled(boss,8); s.CombatRules.attack(s,boss,hero)
+		else: s.damage(hero,Abilities.scaled(boss,8),boss.id,"IMPACT")
 
 static func disable_pylon(s, point: Vector2i) -> bool:
 	var hero: Dictionary = s.party[s.selected]

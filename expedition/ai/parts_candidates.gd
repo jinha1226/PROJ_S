@@ -17,7 +17,7 @@ static func candidates(s, actor: Dictionary) -> Array:
 
 static func part(id: String, cell: Vector2i, damage: int, target_id: int) -> Dictionary:
 	return {"kind":id,"tag":"PART","cell":cell,"damage":damage,"target_id":target_id,
-		"reason":str(Abilities.DEFINITIONS[id].name)}
+		"reason":str(Abilities.definition(id).name)}
 
 ## 밀치기: only foes in reach, and only where the shove is safe. The gain used
 ## to be a hand-written `benefit` bonus; the lookahead considerations
@@ -57,8 +57,8 @@ static func guard_options(s, actor: Dictionary, options: Array) -> void:
 ## an ally or nobody at all.
 static func part_options(s, actor: Dictionary, options: Array) -> void:
 	for id in actor.equipped_abilities:
-		if not Abilities.DEFINITIONS.has(id) or Abilities.DEFINITIONS[id].effect in ["PUSH","GUARD"]: continue
-		var def: Dictionary = Abilities.DEFINITIONS[id]
+		if not Abilities.usable_by(actor,id) or Abilities.definition(id).effect in ["PUSH","GUARD"]: continue
+		var def: Dictionary = Abilities.definition(id)
 		var targets: Array = [actor] if def.target == "SELF" else s.combat_enemies()
 		for target in targets:
 			if not Abilities.legal(s,actor,id,target.pos): continue

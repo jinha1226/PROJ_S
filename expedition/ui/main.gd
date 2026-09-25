@@ -11,6 +11,7 @@ const ResultCard = preload("res://expedition/ui/screens/result_card.gd")
 const Popups = preload("res://expedition/ui/screens/popups.gd")
 const AutoBattleHud = preload("res://expedition/ui/screens/autobattle_hud.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
+const Banners = preload("res://expedition/ui/screens/banners.gd")
 var portrait_gesture = preload("res://expedition/legacy/portrait_gesture.gd").new()
 var navigation = preload("res://expedition/level/exploration_navigation.gd").new()
 const NAVIGATION_STEP_SECONDS := 0.11
@@ -343,6 +344,7 @@ func modal(title: String, body: String) -> void:
 ## that are parked between screens. The screens themselves are in ui/screens/.
 func refresh() -> void:
 	if is_instance_valid(board) and board.is_presenting(): return
+	call_deferred("show_banners")
 	Popups.update_offer_popup(self)
 	var elapsed := 0.0
 	var impact_elapsed := 0.0
@@ -509,7 +511,6 @@ func show_supplies() -> void: Popups.show_supplies(self)
 func show_item_detail(id: String) -> void: Popups.show_item_detail(self,id)
 func inventory_rows() -> Array: return Popups.inventory_rows(self)
 func show_character(index: int, tab: String = "상태") -> void: Popups.show_character(self,index,tab)
-func show_mastery_detail(index: int, axis: String) -> void: Popups.show_mastery_detail(self,index,axis)
 func show_tactics() -> void: Popups.show_tactics(self)
 func open_rule(index: int) -> void: Popups.open_rule(self,index)
 func change_basic_target(value: String) -> void: Popups.change_basic_target(self,value)
@@ -520,3 +521,5 @@ func auto_tick() -> void: AutoBattleHud.auto_tick(self)
 func check_stop() -> void: AutoBattleHud.check_stop(self)
 func report_battle() -> void: AutoBattleHud.report_battle(self)
 func show_battle_report() -> void: AutoBattleHud.show_battle_report(self)
+
+func show_banners() -> void: Banners.show_next(self)

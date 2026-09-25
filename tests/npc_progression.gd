@@ -1,7 +1,6 @@
 extends SceneTree
 const Session = preload("res://expedition/run/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
-const Mastery = preload("res://expedition/progression/mastery.gd")
 var checks := 0
 var failures := 0
 
@@ -37,7 +36,6 @@ func run() -> void:
 
 func solo_hunts() -> void:
 	var f := field(); var s = f.s; var npc: Dictionary = f.npc
-	var axis: String = Mastery.weapon_axis(str(npc.gear.weapon.type))
 	var bag: Dictionary = s.parts_bag.duplicate(true)
 	var score: int = s.score
 	check(s.enemies.size() >= 3,"arena has three monsters for a level-up")
@@ -52,7 +50,7 @@ func solo_hunts() -> void:
 			check(s.act_as(npc,"ATTACK",foe.pos,false),"NPC can make its own attack")
 		check(foe.hp <= 0,"NPC kills monster %d" % i)
 	check(int(npc.level_xp) == 3*(18+s.depth*8) and int(npc.level) == 2,"roster NPC gains the same level XP and HP/MP level-up as a hero")
-	check(int(npc.skill_xp.get(axis,0)) == 3*(18+s.depth*8),"NPC gains weapon mastery from its hunts")
+	check(npc.equipped_abilities.size() >= int(npc.level),"NPC essence slots grow with level")
 	check(s.roster.any(func(r): return r.id == npc.id and int(r.level) == 2),"progression persists in the roster")
 	check(s.party.all(func(a): return int(a.level_xp) == 0) and s.parts_bag == bag and s.score == score,"unwitnessed NPC hunts grant no party XP, loot or score")
 
@@ -71,7 +69,7 @@ func shared_hunt() -> void:
 	if foe.hp > 0: s.damage(foe,999,npc.id,"SLASH")
 	check(foe.hp <= 0 and s.party.all(func(a): return int(a.level_xp) == 18+s.depth*8),"party shares XP when it joined the fight")
 	check(int(npc.level_xp) == 18+s.depth*8 and int(bystander.level_xp) == 0,"participating NPC gains XP; bystander does not")
-	check(int(npc.skill_xp.get(Mastery.weapon_axis(str(npc.gear.weapon.type)),0)) > 0,"shared kill grants NPC mastery by contribution")
+	check(npc.usage.is_empty() or not npc.usage.has(int(foe.id)),"the finished hunt is cleared from NPC usage")
 
 func legacy_hunt() -> void:
 	var f := field(); var s = f.s; var npc: Dictionary = f.npc
@@ -82,8 +80,8 @@ func legacy_hunt() -> void:
 	s.floor_state.observe(s)
 	npc.ap = 1
 	check(s.act_as(npc,"ATTACK",foe.pos,false) and foe.hp <= 0,"NPC hunts in legacy turn mode")
-	check(int(npc.growth.xp) == 25 and int(npc.skill_xp.get(Mastery.weapon_axis(str(npc.gear.weapon.type)),0)) == 18+s.depth*8,"legacy hunt also grants NPC growth and mastery")
-	check(s.party.all(func(a): return int(a.growth.xp) == 0),"legacy NPC hunt gives no party XP")
+	check(int(npc.level_xp) == 18+s.depth*8,"legacy hunt grants NPC level XP")
+	check(s.party.all(func(a): return int(a.level_xp) == 0),"legacy NPC hunt gives no party XP")
 
 func monster_kill() -> void:
 	var f := field(); var s = f.s

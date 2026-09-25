@@ -44,7 +44,7 @@ static func interrupt(s, enemy: Dictionary) -> void:
 	enemy.cast_recovery = 1
 	if id.is_empty(): enemy.cast_cooldown = 3
 	else:
-		enemy.cooldowns[id] = int(Abilities.DEFINITIONS[id].cooldown)
+		enemy.cooldowns[id] = int(Abilities.definition(id).cooldown)
 		s.battle_stats.interrupts = int(s.battle_stats.get("interrupts",0))+1
 	enemy.cast_id = ""; enemy.cast_left = 0
 	s.intents = s.intents.filter(func(i): return i.id != enemy.id)
@@ -62,10 +62,10 @@ static func plan(s) -> void:
 		if enemy.hp > 0 and enemy.get("boss",false): BossAI.plan(s,enemy); continue
 		if enemy.hp <= 0 or not enemy.get("charging",false): continue
 		var id: String = str(enemy.get("cast_id",""))
-		var amount: int = int(Abilities.DEFINITIONS[id].damage) if Abilities.DEFINITIONS.has(id) else SPELL_DAMAGE
+		var amount: int = Abilities.scaled(enemy,int(Abilities.definition(id).damage) if Abilities.has(id) else SPELL_DAMAGE)
 		# An area part announces every cell it will hit, so threat assessment and
 		# the board see the whole ring, not just its centre.
-		var cells: Array = Abilities.cells(s,enemy,id,enemy.cast_cell) if Abilities.DEFINITIONS.has(id) else [enemy.cast_cell]
+		var cells: Array = Abilities.cells(s,enemy,id,enemy.cast_cell) if Abilities.has(id) else [enemy.cast_cell]
 		for cell in cells: s.intents.append({"id":enemy.id,"cell":cell,"damage":amount,"kind":id,"resolve_at":int(enemy.get("resolve_at",s.time+int(enemy.cast_left)*100))})
 
 static func turn(s, enemy: Dictionary) -> void:
@@ -86,7 +86,7 @@ static func turn(s, enemy: Dictionary) -> void:
 	if enemy.get("cast_recovery",0) > 0:
 		enemy.cast_recovery -= 1; return
 	var part: String = str(enemy.get("part_id",""))
-	if Abilities.DEFINITIONS.has(part): enemy.cooldowns[part] = maxi(0,int(enemy.cooldowns.get(part,0))-1)
+	if Abilities.has(part): enemy.cooldowns[part] = maxi(0,int(enemy.cooldowns.get(part,0))-1)
 	if enemy.get("charging",false):
 		if s.manual_mode:
 			if s.time < int(enemy.get("resolve_at",s.time)): return
@@ -101,15 +101,15 @@ static func turn(s, enemy: Dictionary) -> void:
 		return
 	# A bound monster cannot work a manoeuvre that carries it anywhere; it is
 	# left with whatever it can already reach.
-	if Abilities.DEFINITIONS.has(part) and int(enemy.cooldowns.get(part,0)) <= 0 and not s.status_blocks(enemy,"MOVE"):
+	if Abilities.has(part) and int(enemy.cooldowns.get(part,0)) <= 0 and not s.status_blocks(enemy,"MOVE"):
 		targets.sort_custom(func(a,b): return distance(enemy.pos,a.pos) < distance(enemy.pos,b.pos))
 		for target in targets:
 			if not line(s,enemy.pos,target.pos,seen) or not Abilities.legal(s,enemy,part,target.pos): continue
-			var prep: int = int(Abilities.DEFINITIONS[part].enemy.prep)
+			var prep: int = int(Abilities.definition(part).enemy.prep)
 			if prep <= 0: Abilities.execute(s,enemy,part,target.pos); return
 			enemy.charging = true; enemy.cast_id = part; enemy.cast_cell = target.pos; enemy.cast_left = prep
 			enemy.resolve_at = s.time+prep*100
-			plan(s); s.message("%s · %s 준비" % [enemy.name,Abilities.DEFINITIONS[part].name])
+			plan(s); s.message("%s · %s 준비" % [enemy.name,Abilities.definition(part).name])
 			return
 	role_turn(s,enemy,targets,s.status_blocks(enemy,"MOVE"))
 
@@ -133,7 +133,7 @@ static func resolve_spell(s, enemy: Dictionary, cell: Vector2i) -> void:
 	if not line(s,enemy.pos,cell,4): return
 	s.enemy_attack_effect(enemy,[cell],true)
 	var victim: Dictionary = s.at(cell)
-	if not victim.is_empty() and (s.side_of(victim) != s.side_of(enemy) or s.wanderer(victim) and not s.dominated(enemy)): s.damage(victim,SPELL_DAMAGE,enemy.id,"ELECTRIC")
+	if not victim.is_empty() and (s.side_of(victim) != s.side_of(enemy) or s.wanderer(victim) and not s.dominated(enemy)): s.damage(victim,Abilities.scaled(enemy,SPELL_DAMAGE),enemy.id,"ELECTRIC")
 	s.message(enemy.name+"의 마법이 예고한 지점에 떨어졌습니다.")
 
 static func role_turn(s, enemy: Dictionary, targets: Array, held: bool = false) -> void:
@@ -182,6 +182,7 @@ static func role_turn(s, enemy: Dictionary, targets: Array, held: bool = false) 
 	if route.found and route.path.size() > 1: enemy.pos = route.path[1]
 
 static func strike(s, enemy: Dictionary, target: Dictionary, amount: int) -> void:
+	amount = Abilities.scaled(enemy,amount)
 	if target.is_empty() or s.side_of(target) == s.side_of(enemy) and not (s.wanderer(target) and not s.dominated(enemy)): return
 	s.enemy_attack_effect(enemy,[target.pos])
 	if s.manual_mode:

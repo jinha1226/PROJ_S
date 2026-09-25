@@ -128,7 +128,7 @@ static func put(actor: Dictionary, slot: int, id: String) -> bool:
 	if not str(actor.equipped_abilities[slot]).is_empty(): take(actor,slot)
 	actor.equipped_abilities[slot] = id
 	actor.reservation = {}
-	if Abilities.DEFINITIONS.has(id) and not actor.get("rules",[]).any(func(r): return r.skill == id):
+	if Abilities.has(id) and not actor.get("rules",[]).any(func(r): return r.skill == id):
 		actor.get_or_add("rules",[]).append(Abilities.default_rule(id))
 	sync_spells(actor)
 	return true

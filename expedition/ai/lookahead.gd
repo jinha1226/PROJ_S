@@ -33,8 +33,8 @@ static func predict(s, actor: Dictionary, action: Dictionary, before: Dictionary
 		"GUARD":
 			if not victim.is_empty(): protected[victim.id] = actor.id
 		_:
-			if Abilities.DEFINITIONS.has(kind):
-				var def: Dictionary = Abilities.DEFINITIONS[kind]
+			if Abilities.has(kind):
+				var def: Dictionary = Abilities.definition(kind)
 				if def.effect == "PUSH" and not victim.is_empty():
 					var landing: Vector2i = action.cell+(action.cell-actor.pos)
 					if s.can_step(action.cell,landing): pos_override[victim.id] = landing

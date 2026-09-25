@@ -17,9 +17,9 @@ static func adapt(actor: Dictionary, choice: Dictionary, target_id: int = -1, de
 	if kind in ["ATTACK"]: intent = "ATTACK"
 	elif kind == "MOVE": intent = "RETREAT" if str(choice.get("reason", "")) == "후퇴" else "APPROACH"
 	elif kind == "WAIT": intent = "HOLD"
-	elif kind == "GUARD" or Abilities.DEFINITIONS.get(kind,{}).get("effect","") == "GUARD": intent = "PROTECT"
-	elif Abilities.DEFINITIONS.has(kind):
-		var definition: Dictionary = Abilities.DEFINITIONS[kind]
+	elif kind == "GUARD" or Abilities.definition(kind).get("effect","") == "GUARD": intent = "PROTECT"
+	elif Abilities.has(kind):
+		var definition: Dictionary = Abilities.definition(kind)
 		intent = "ATTACK" if definition.target == "ENEMY" and definition.effect in ["DAMAGE","LUNGE","PUSH"] else "SKILL"
 	# Explicit semantic data takes precedence over the legacy display fallback.
 	var tag := str(choice.get("tag", ""))
@@ -37,7 +37,7 @@ static func adapt(actor: Dictionary, choice: Dictionary, target_id: int = -1, de
 	return {"actor_id":int(actor.get("id", -1)), "decision_id":decision_id, "kind":kind,
 		"from":actor.get("pos", Vector2i.ZERO), "cell":cell, "target_id":resolved_target,
 		"path":path, "intent":intent, "reason_code":str(choice.get("reason_code", "")),
-		"skill_id":kind if Abilities.DEFINITIONS.has(kind) else "", "explain":choice.get("explain",[]).duplicate(true)}
+		"skill_id":kind if Abilities.has(kind) else "", "explain":choice.get("explain",[]).duplicate(true)}
 
 func preview(actor: Dictionary, choice: Dictionary, target_id: int = -1) -> Dictionary:
 	if actor.is_empty() or choice.is_empty(): return {}

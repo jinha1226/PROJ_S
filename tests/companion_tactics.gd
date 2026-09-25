@@ -68,7 +68,7 @@ func exercise() -> void:
 	ally.priority = "GUARD"
 	# 엄호 needs a covered ally: the leader steps in beside the boss and is one
 	# hit from death, which is the rule's only condition.
-	s.party[0].pos = Vector2i(4,3); s.party[0].hp = 5
+	s.party[0].pos = Vector2i(4,3); s.party[0].hp = 4
 	check(s.Tactics.choose(s,ally).kind == "GUARD","guard condition and priority")
 	s.party[0].hp = 55
 	check(s.Tactics.choose(s,ally).kind != "GUARD","a healthy leader needs no cover")
@@ -85,7 +85,7 @@ func exercise() -> void:
 	# 엄호's only condition: the leader beside the ally must be about to die.
 	s.party[0].pos = Vector2i(4,3)
 	check(s.Tactics.choose(s,ally).kind == "ATTACK","unmet ally condition skips rule")
-	s.party[0].hp = 5
+	s.party[0].hp = 4
 	check(s.Tactics.choose(s,ally).kind == "GUARD","lethal condition applies to the ally target")
 	check(ally.rules.size() == 2 and not s.Rules.catalog().has("ATTACK"),"basic attack removed from skill rules")
 	check(not s.reorder_rule(1,2,-1),"basic attack cannot be reordered ahead of skills")
@@ -94,7 +94,7 @@ func exercise() -> void:
 	# `rule_ready` 등급(순위마다 −2%)으로만 남고 한 라운드 룩어헤드가 그 위에 얹히므로,
 	# "먼저 맞는 규칙"은 무엇을 눌렀는지가 아니라 어느 쪽 등급이 높은지로 확인한다.
 	check(grade(s,ally,"PUSH") > grade(s,ally,"GUARD"),"first matching skill grades highest")
-	# 그리고 그 등급 위에서 룩어헤드가 결정한다: 엄호는 7 피해를 3으로 줄여 5 HP
+	# 그리고 그 등급 위에서 룩어헤드가 결정한다: 엄호는 4 피해를 대신 받아 4 HP
 	# 리더를 실제로 살리고(`la_lethal_saved`), 밀치기는 보스를 여전히 리더에게 닿는
 	# 칸으로 밀 뿐이다 — 살린 목숨이 규칙 순위를 이긴다.
 	check(s.Tactics.choose(s,ally).kind == "GUARD","a life the lookahead saves outranks the rule order")
@@ -191,7 +191,7 @@ func exercise() -> void:
 	scene.show_character(1,"상태")
 	check(scene.tactics_actor == 1 and scene.details_popup.visible,"companion sheet opens")
 	scene.show_character(1,"파츠")
-	check(scene.modal_content.find_children("PartSlot*","PanelContainer",true,false).size() == 2,"companion has two part slots")
+	check(scene.modal_content.find_child("EssenceSlots",true,false).get_child_count() == 10,"companion has an essence grid")
 	scene.details_popup.hide()
 	for viewport in [Vector2i(390,844),Vector2i(430,844),Vector2i(412,915)]:
 		root.size = viewport; scene.refresh()
@@ -243,7 +243,7 @@ func portrait_hold(scene, ui_s) -> void:
 func rule_editor(scene, ui_s) -> void:
 	scene.show_character(0,"파츠")
 	await process_frame
-	check(scene.details_popup.visible and scene.character_tab == "파츠","the rule editor lives in the parts tab")
+	check(scene.details_popup.visible and scene.character_tab == "이능","the rule editor lives in the essence tab")
 	check(scene.details_popup.size.y <= root.size.y,"and fits the viewport")
 	scene.change_basic_target("LOWEST_HP")
 	await process_frame
@@ -256,9 +256,9 @@ func rule_editor(scene, ui_s) -> void:
 	scene.change_tactic_rule(0,"when","STATUS")
 	await process_frame
 	check(ui_s.party[0].rules[0].when == "STATUS","and changes it back")
-	scene.show_character(1,"숙련")
+	scene.show_character(1,"이능")
 	await process_frame
-	check(scene.tactics_actor == 1 and scene.character_tab == "숙련","the companion has its own mastery tab")
+	check(scene.tactics_actor == 1 and scene.character_tab == "이능","the companion has its own essence tab")
 	check(scene.details_popup.size.y <= root.size.y,"which fits the viewport too")
 	scene.details_popup.hide(); await process_frame
 

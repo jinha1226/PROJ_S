@@ -298,8 +298,8 @@ static func show_manual_skills(ui) -> void:
 	if actor.equipped_abilities.any(func(id): return not str(id).is_empty()): ui.label(choices,"파츠",15)
 	for id in actor.equipped_abilities:
 		var part_id: String = str(id)
-		if part_id.is_empty() or not Session.Abilities.DEFINITIONS.has(part_id): continue
-		var def: Dictionary = Session.Abilities.DEFINITIONS[part_id]
+		if part_id.is_empty() or not Session.Abilities.usable_by(actor,part_id): continue
+		var def: Dictionary = Session.Abilities.definition(part_id)
 		var available: bool = session.in_combat() and int(actor.cooldowns.get(part_id,0)) <= 0
 		if def.target == "SELF": available = available and Session.Abilities.legal(session,actor,part_id,actor.pos)
 		var part = ui.button(choices,"%s   ·   %d턴" % [str(def.name),int(actor.cooldowns.get(part_id,0))],func(): choose_part(ui,part_id),available)
@@ -327,8 +327,8 @@ static func show_part_actions(ui) -> void:
 	ui.label(box,"파츠",20)
 	var actor: Dictionary = session.party[0]
 	for id in actor.equipped_abilities:
-		if str(id).is_empty() or not Session.Abilities.DEFINITIONS.has(id): continue
-		var def: Dictionary = Session.Abilities.DEFINITIONS[id]
+		if str(id).is_empty() or not Session.Abilities.usable_by(actor,str(id)): continue
+		var def: Dictionary = Session.Abilities.definition(id)
 		var available: bool = int(actor.cooldowns.get(id,0)) <= 0
 		if def.target == "SELF": available = Session.Abilities.legal(session,actor,str(id),actor.pos)
 		var choice = ui.button(box,str(def.name),func(): choose_part(ui,str(id)),available)
@@ -338,10 +338,10 @@ static func show_part_actions(ui) -> void:
 
 static func choose_part(ui, id: String) -> void:
 	var session = ui.session
-	if session == null or not Session.Abilities.DEFINITIONS.has(id): return
+	if session == null or not Session.Abilities.has(id): return
 	ui.details_popup.hide()
 	var actor: Dictionary = session.party[0]
-	if Session.Abilities.DEFINITIONS[id].target == "SELF":
+	if Session.Abilities.definition(id).target == "SELF":
 		ui.run_action(func(): return session.act(id,actor.pos))
 	else:
 		ui.mode = id

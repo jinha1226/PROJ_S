@@ -30,15 +30,15 @@ static func comfortable(profile, stance: String) -> bool:
 ## The equipped part with reach, if any: what a skirmisher keeps its distance with.
 static func ranged_part(actor: Dictionary) -> String:
 	for id in actor.equipped_abilities:
-		var def: Dictionary = Abilities.DEFINITIONS.get(id,{})
-		if def.is_empty(): continue
+		var def: Dictionary = Abilities.definition(id)
+		if def.is_empty() or bool(def.get("monster_only",false)): continue
 		if def.effect in ["DAMAGE","LUNGE"] and int(def.range) >= 3: return id
 	return ""
 
 ## What the build hints at; a badge, never a rule.
 static func suggested(actor: Dictionary) -> String:
 	if not ranged_part(actor).is_empty(): return "SKIRMISHER"
-	if actor.equipped_abilities.any(func(id): return Abilities.DEFINITIONS.get(id,{}).get("effect","") == "GUARD"): return "GUARDIAN"
+	if actor.equipped_abilities.any(func(id): return Abilities.definition(id).get("effect","") == "GUARD"): return "GUARDIAN"
 	return "CHARGER"
 
 ## The stance the member actually fights in: always the one it was given.
@@ -260,7 +260,7 @@ static func skirmisher(s, actor: Dictionary, target: Dictionary, knobs: Dictiona
 	# target — a diagonal attacker must trigger the opening step just the same.
 	var in_contact: bool = s.combat_enemies().any(func(e): return s.melee_reach(actor.pos,e.pos))
 	if not part.is_empty():
-		var reach: int = int(Abilities.DEFINITIONS[part].range)-(1 if int(knobs.posture) > 50 else 0)
+		var reach: int = int(Abilities.definition(part).range)-(1 if int(knobs.posture) > 50 else 0)
 		if in_contact:
 			var away: Vector2i = s.Tactics.retreat_cell(s,actor)
 			if away != actor.pos: options.append(move(actor,away,"MOVE:disengage","거리 · 이탈"))
@@ -334,7 +334,7 @@ static func in_role(s, actor: Dictionary) -> bool:
 			if part.is_empty(): return bool(actor.get("hit_and_run",false)) or s.melee_reach(actor.pos,target.pos)
 			if s.combat_enemies().any(func(e): return s.melee_reach(actor.pos,e.pos)): return false
 			var d: int = s.distance(actor.pos,target.pos)
-			return d >= 2 and d <= int(Abilities.DEFINITIONS[part].range)
+			return d >= 2 and d <= int(Abilities.definition(part).range)
 		_:
 			var target := party_target(s)
 			return not target.is_empty() and s.melee_reach(actor.pos,target.pos)

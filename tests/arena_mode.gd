@@ -103,7 +103,7 @@ func custom() -> void:
 	scene.find_child("ArenaPick",true,false).item_selected.emit(Session.ARENA_PRESETS.keys().find("custom"))
 	for frame in range(3): await process_frame
 	var foes: Array = scene.find_children("ArenaFoe*","Control",true,false)
-	check(foes.size() == 3 and foes[0].item_count == 25,"three foe slots, none plus eight species by three roles")
+	check(foes.size() == 3 and foes[0].item_count == 1+Session.Encounters.table().size()*3,"three foe slots cover the full species catalog")
 	check(scene.find_child("ArenaStart",true,false).disabled,"an empty hand-made roster is not a fight")
 	foes[0].item_selected.emit(1)
 	for frame in range(3): await process_frame

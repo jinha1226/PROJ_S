@@ -4,7 +4,7 @@ extends SceneTree
 const Session = preload("res://expedition/run/session.gd")
 const Stats = preload("res://expedition/combat/combat_stats.gd")
 const Spells = preload("res://expedition/spells/spells.gd")
-const Mastery = preload("res://expedition/progression/mastery.gd")
+const Essences = preload("res://expedition/progression/essences.gd")
 const Curios = preload("res://expedition/items/curios.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const SCHOOLS := ["fire", "ice", "air", "hex", "summon"]
@@ -49,15 +49,15 @@ func data() -> void:
 			check(str(row.shape) in Spells.primitives,"%s is one of the eight shapes" % id)
 			check(int(row.mp) == 2+level,"%s costs 2 + level MP" % id)
 			var tier: int = 1 if level <= 3 else (2 if level <= 6 else 3)
-			check(str(row.book) == "%s_%d" % [school,tier],"%s sits in the right book" % id)
+			check(Essences.spell_cap(tier) >= level and (tier == 1 or Essences.spell_cap(tier-1) < level),"%s needs a tier-%d caster essence" % [id,tier])
 			check(not str(row.name).is_empty() and not str(row.note).is_empty(),"%s is named and described" % id)
-	check(Stats.content.books.size() == 15,"fifteen books")
+	check(not Stats.content.has("books"),"no books any more")
 	for school in SCHOOLS:
+		var caster: String = str(Essences.CASTER_BY_SCHOOL[school])
 		for tier in [1,2,3]:
-			var book: Dictionary = Spells.book("%s_%d" % [school,tier])
-			check(not book.is_empty() and str(book.school) == school,"%s_%d is a book of its school" % [school,tier])
-			var levels: Array = Spells.book_spells("%s_%d" % [school,tier])
-			check(levels.size() == (4 if tier == 3 else 3),"%s_%d teaches its band" % [school,tier])
+			var reach: Array = Essences.spell_choices({"essences":{caster:tier}},caster)
+			check(not reach.is_empty() and reach.all(func(id): return str(rows[id].school) == school),"%s tier %d reaches only its school" % [school,tier])
+			check(reach.size() == Essences.spell_cap(tier),"%s tier %d reaches its band" % [school,tier])
 	# The relics stay in the data and out of every book: nothing drops them.
 	for id in ["blast","blink","mend","passwall","ward","turret","ignite"]:
 		check(Stats.content.spells.has(id),"the relic %s is still in the table" % id)
@@ -78,113 +78,85 @@ func start() -> void:
 	for school in SCHOOLS:
 		var s = Session.new_run(7,school)
 		var hero: Dictionary = s.party[0]
-		check(hero.books == ["%s_1" % school],"the %s kit carries its primer" % school)
+		check(hero.equipped_abilities[0] == Essences.CASTER_BY_SCHOOL[school],"the %s kit wears its caster essence" % school)
 		check(hero.spells == ["%s_1" % school],"the %s kit knows its first spell" % school)
 		check(hero.prepared == ["%s_1" % school],"the %s kit has it ready" % school)
 	var sword = Session.new_run(7,"sword")
-	check(sword.party[0].books.is_empty() and sword.party[0].spells.is_empty(),"a swordsman departs with no book")
-
-## ── learning ─────────────────────────────────────────────────────────────
+	check(sword.party[0].essences.is_empty() and sword.party[0].spells.is_empty(),"a swordsman departs with no spell")
 
 func learning() -> void:
 	var s = Session.new_run(7,"fire")
 	var hero: Dictionary = s.party[0]
 	s.phase = "CAMP"
-	check(Spells.learnable(s,hero,"fire_1") == "이미 배움","the kit spell is already known")
-	check(Spells.learnable(s,hero,"fire_2") == "","the kit's rank one already reads the second page")
-	check(Spells.learnable(s,hero,"fire_3") == "숙련 부족","but not the third")
-	check(not s.learn_spell(0,"fire_3"),"a refused spell is not learned")
-	check("fire_3" not in hero.spells,"and does not appear in the list")
-	hero.skill_xp["fire"] = 25*4
-	check(Mastery.rank(hero,"fire") == 2,"twenty-five times four is rank two")
-	check(Spells.learnable(s,hero,"fire_3") == "","rank two reads the third page")
-	check(s.learn_spell(0,"fire_3"),"and learns it at camp")
-	check("fire_3" in hero.spells,"the spell joins the list")
-	check(not s.learn_spell(0,"fire_3"),"the same spell is not learned twice")
-	# The primer stops at level three; the next band needs the next book.
-	hero.skill_xp["fire"] = 25*100
-	check(Spells.learnable(s,hero,"fire_4") == "주문서 없음","rank alone never unlocks a spell")
-	check(Spells.learnable(s,hero,"ice_1") == "주문서 없음","another school needs its own book")
-	check(s.grant_book("ice_1"),"a book found in the dungeon goes in the bag")
-	check(hero.books == ["fire_1","ice_1"],"the bag keeps both books")
-	check(Spells.learnable(s,hero,"ice_1") == "","and its first spell is free to learn")
-	check(s.learn_spell(0,"ice_1"),"a second school begins")
-	check(not s.grant_book("fire_9"),"there is no ninth book")
-	s.phase = "EXPLORE"
-	check(Spells.learnable(s,hero,"fire_2") == "야영에서만","nothing is learned in the corridor")
-	check(not s.learn_spell(0,"fire_2"),"and the corridor refuses it")
+	check("fire_1" in Essences.spell_choices(hero,"FIRE_CALLER"),"the kit spell is in reach")
+	check("fire_2" in Essences.spell_choices(hero,"FIRE_CALLER"),"so is the second")
+	check("fire_3" in Essences.spell_choices(hero,"FIRE_CALLER"),"and the third")
+	check("fire_4" not in Essences.spell_choices(hero,"FIRE_CALLER"),"but not the fourth")
+	check(not s.choose_essence_spell(0,"FIRE_CALLER","fire_4"),"a spell out of reach is refused")
+	check(hero.essence_spells.FIRE_CALLER == "fire_1","and the choice stands")
+	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_3"),"a spell in reach is chosen at camp")
+	check(hero.prepared == ["fire_3"],"and is the one ready")
+	check(hero.spells == ["fire_3"],"one essence, one spell")
+	s.parts_bag["FIRE_CALLER"] = 2
+	check(s.absorb_essence(0,"FIRE_CALLER") == "","a second copy raises the tier")
+	check(Essences.tier(hero,"FIRE_CALLER") == 2,"to two")
+	check("fire_6" in Essences.spell_choices(hero,"FIRE_CALLER"),"tier two reaches the sixth")
+	check("fire_7" not in Essences.spell_choices(hero,"FIRE_CALLER"),"not the seventh")
+	check(s.absorb_essence(0,"FIRE_CALLER") == "","a third copy")
+	check("fire_10" in Essences.spell_choices(hero,"FIRE_CALLER"),"tier three reaches the tenth")
+	check(s.absorb_essence(0,"FIRE_CALLER") != "","and there is no fourth tier")
+	check(not s.choose_essence_spell(0,"FROST_IMP","ice_1"),"another school needs its own essence")
+	s.parts_bag["FROST_IMP"] = 1
+	check(s.absorb_essence(0,"FROST_IMP") == "","found in the dungeon, it is absorbed")
+	check(hero.essence_spells.FROST_IMP == "ice_1","its first spell is chosen")
+	check("ice_1" in hero.spells,"a second school begins")
+	check("ice_1" not in hero.prepared,"but only a slotted essence readies its spell")
+	s.phase = "BATTLE"
+	check(not s.choose_essence_spell(0,"FIRE_CALLER","fire_2"),"nothing is chosen in a fight")
+	check(hero.essence_spells.FIRE_CALLER == "fire_3","the choice stands")
 	s.phase = "CAMP"
-	check(s.learn_spell(0,"fire_2"),"back at camp it is learned")
-	# Five ready at once, and no more.
-	for id in ["fire_2","fire_3","ice_1"]: check(s.prepare_spell(0,id,true),"prepare "+id)
-	check(hero.prepared.size() == 4,"four of five slots are full")
-	check(s.grant_book("ice_2"),"another book")
-	hero.spells.append("ice_4")
-	check(s.prepare_spell(0,"ice_4",true),"the fifth slot fills")
-	hero.spells.append("ice_5")
-	check(not s.prepare_spell(0,"ice_5",true),"the sixth is refused")
-	check(hero.prepared.size() == 5,"five prepared spells stand")
-	check(s.prepare_spell(0,"fire_1",false) and s.prepare_spell(0,"ice_5",true),"a freed slot takes the next")
+	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_2"),"back at camp it is chosen")
+	s.gain_level_xp(hero,65)
+	check(s.equip_part(0,1,"FROST_IMP"),"the second slot takes the frost essence")
+	check(hero.prepared == ["fire_2","ice_1"],"two spells ready, in slot order")
+	check(s.unequip_part(0,1),"unslotted")
+	check(hero.prepared == ["fire_2"],"its spell goes")
+	check(hero.spells.has("ice_1"),"but it is still known")
+	check(s.PREPARED_SLOTS == 5,"five stand ready at most")
+	check(Essences.READY_SPELLS == 5,"the essences agree")
 
-## ── drops ────────────────────────────────────────────────────────────────
-
-## A dead adventurer on the third floor turns up a 중급서 sooner or later; on
-## the first floor it never can. A boss always gives up the best of its depth.
 func drops() -> void:
-	var tiers_deep: Dictionary = {}
-	var tiers_shallow: Dictionary = {}
-	for seed_value in range(40):
-		var deep = Session.new_run(seed_value,"fire")
-		deep.depth = 3
-		tiers_deep[int(deep.book_tier(seed_value))] = true
-		var shallow = Session.new_run(seed_value,"fire")
-		shallow.depth = 1
-		tiers_shallow[int(shallow.book_tier(seed_value))] = true
-	check(tiers_deep.has(2),"a 중급서 shows up on the third floor")
-	check(tiers_shallow.keys() == [1],"the first floor gives up nothing but 초급서")
-	var s = Session.new_run(3,"fire")
-	s.depth = 6
-	check(s.book_tier(0,true) == 3,"the sixth floor's best is a 고급서")
-	s.depth = 3
-	check(s.book_tier(0,true) == 2,"the third floor's best is a 중급서")
-	s.depth = 1
-	check(s.book_tier(0,true) == 1,"the first floor's best is a 초급서")
-	var schools: Dictionary = {}
-	for key in range(40):
-		var id: String = s.random_book(key)
-		check(not Spells.book(id).is_empty(),"a dropped book is a real book")
-		schools[str(Spells.book(id).school)] = true
-	check(schools.size() >= 3,"books of other schools drop too")
-	# The boss hands one over every time.
 	var boss = Session.new_run(5,"fire")
 	Fixture.arena(boss,10)
 	boss.depth = 6
 	var target: Dictionary = boss.enemies[0]
 	target.boss = true; target.part_id = "PUSH"
 	target.hp = 60; target.max_hp = 60
-	var before: int = boss.party[0].books.size()
+	boss.parts_bag.clear()
 	boss.damage(target,9999,0,"physical")
 	check(target.hp <= 0,"the boss falls")
-	check(boss.party[0].books.size() == before+1,"a boss always leaves a book")
-	check(int(Spells.book(str(boss.party[0].books[-1])).tier) == 3,"and it matches the depth")
-	# A curio's book goes in the bag; it never teaches a spell by itself.
+	check(int(boss.parts_bag.get("PUSH",0)) == 1,"a boss always leaves its essence")
+	check(not boss.party[0].has("books"),"and never a book")
+	var found: Dictionary = {}
+	for key in range(40):
+		var curio = Session.new_run(key,"fire")
+		curio.parts_bag.clear()
+		var casters: Array = Essences.CASTER_BY_SCHOOL.values()
+		curio.grant_part(str(casters[key % casters.size()]))
+		for id in curio.parts_bag: found[id] = true
+	check(found.size() == 5,"every school's caster essence can be found")
 	var curio = Session.new_run(9,"fire")
 	var known: int = curio.party[0].spells.size()
-	curio.depth = 3
-	curio.grant_book(curio.random_book(11))
-	check(curio.party[0].books.size() == 2,"a found book joins the bag")
+	curio.grant_part("GOBLIN_HEXER")
+	check(int(curio.parts_bag.GOBLIN_HEXER) == 1,"a found essence joins the bag")
 	check(curio.party[0].spells.size() == known,"and teaches nothing on its own")
 
-## ── the eight shapes ─────────────────────────────────────────────────────
-
-## An open arena, the hero in the middle, one foe two cells east with plenty of
-## hit points, and a caster who never fumbles.
 func board(school: String, seed_value: int) -> Dictionary:
 	var s = Session.new_run(seed_value,school)
 	var centre: Vector2i = Fixture.arena(s,10)
 	var hero: Dictionary = s.party[0]
 	hero.mp = 999; hero.max_mp = 999
-	hero.skill_xp[school] = 25*100
+	hero.essences[str(Essences.CASTER_BY_SCHOOL[school])] = 3
 	for enemy in s.enemies: enemy.hp = 0
 	var foe: Dictionary = s.enemies[0]
 	foe.hp = 200; foe.max_hp = 200; foe.pos = centre+Vector2i(2,0)
@@ -475,7 +447,7 @@ func turned() -> void:
 	var spare: Dictionary = board("hex",45)
 	spare.hero.spells.append_array(["hex_9","fire_3"])
 	spare.hero.prepared = ["hex_9","fire_3"]
-	spare.hero.skill_xp["fire"] = 25*100
+	spare.hero.essences.FIRE_CALLER = 3
 	check(spare.s.cast("hex_9",spare.foe.pos),"지배 again")
 	check(spare.s.dominated(spare.foe),"and it holds")
 	var untouched: int = spare.foe.hp

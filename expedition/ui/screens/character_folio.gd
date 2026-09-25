@@ -1,10 +1,9 @@
 extends RefCounted
 ## Adapted from ../playtest status folio and mastery cards, using expedition data.
-const Growth = preload("res://expedition/progression/growth.gd")
-const Mastery = preload("res://expedition/progression/mastery.gd")
+const Essences = preload("res://expedition/progression/essences.gd")
+const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
+const STAT_GROUPS := [["능력치",["str","dex","int","con"]],["방어 수치",["ac","ev","sh"]],["속성 저항",["res_fire","res_ice","res_air","res_poison","res_will"]]]
 const CombatStats = preload("res://expedition/combat/combat_stats.gd")
-static var mastery_data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/mastery.json"))
-const Emblem = preload("res://expedition/art/growth_emblem.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const Memory = preload("res://sim/party_memory_state.gd")
@@ -52,11 +51,12 @@ static func shell(ui, tab: String) -> VBoxContainer:
 		member.toggle_mode = true; member.button_pressed = index == ui.tactics_actor
 	var tabs := HBoxContainer.new(); tabs.name = "CharacterTabs"; tabs.add_theme_constant_override("separation",0)
 	place(tabs,design,Rect2(0,168,390,46))
-	for name in ["상태","성격","기억","숙련","파츠"]:
+	for name in ["상태","성격","기억","이능"]:
 		var button = ui.button(tabs,name,func(): ui.show_character(ui.tactics_actor,name))
 		button.toggle_mode = true; button.button_pressed = tab == name; button.custom_minimum_size.y = 46
 		button.size_flags_stretch_ratio = 1
-	var heading := Label.new(); heading.text = "파츠 슬롯 %d / 2" % ui.session.party[ui.tactics_actor].equipped_abilities.filter(func(id): return not str(id).is_empty()).size() if tab == "파츠" else "현재 상태" if tab == "상태" else tab
+	var member: Dictionary = ui.session.party[ui.tactics_actor]
+	var heading := Label.new(); heading.text = heading_text(ui,tab)
 	heading.add_theme_font_size_override("font_size",19); heading.add_theme_color_override("font_color",Color("d0c8b4"))
 	place(heading,design,Rect2(22,220,346,28))
 	var scroll := ScrollContainer.new(); scroll.name = "CharacterScroll"; scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -67,6 +67,11 @@ static func shell(ui, tab: String) -> VBoxContainer:
 	close_button.pressed.connect(func(): ui.details_popup.hide())
 	place(close_button,design,Rect2(12,768,366,56)); close_button.name = "CharacterClose"
 	return list
+
+static func heading_text(ui, tab: String) -> String:
+	var actor: Dictionary = ui.session.party[ui.tactics_actor]
+	if tab == "이능": return "이능 슬롯 %d / %d" % [Essences.equipped(actor).size(),Essences.slot_count(actor)]
+	return "현재 상태" if tab == "상태" else tab
 
 static func card(parent: Node, title: String) -> VBoxContainer:
 	var panel := PanelContainer.new(); panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -94,103 +99,50 @@ static func grid(parent: Node, columns: int) -> GridContainer:
 	parent.add_child(result); return result
 
 static func status(ui, list: VBoxContainer, actor: Dictionary) -> void:
-	if ui.session.manual_mode:
-		var vitals := card(list,"Lv.%d · %s" % [int(actor.get("level",1)),actor.name])
-		text(vitals,"HP  %d / %d" % [actor.hp,actor.max_hp]); gauge(vitals,actor.hp,actor.max_hp,Color("bf5450"))
-		text(vitals,"MP  %d / %d" % [actor.mp,actor.max_mp]); gauge(vitals,actor.mp,actor.max_mp,Color("507eb9"))
-		text(vitals,"스트레스  %d / 200" % actor.stress); gauge(vitals,actor.stress,200,Color("c9a251"))
-		var values: Dictionary = CombatStats.stats(ui.session,actor)
-		var combat := card(list,"전투")
-		var stats := grid(combat,2)
-		for entry in [["피해",values.damage],["공격 시간",values.delay],["방어",values.ac],["회피",values.ev]]:
-			var stat := card(stats,str(entry[0])); text(stat,str(entry[1]),20)
-		var equipped := card(list,"장비")
-		var gear: Dictionary = actor.get("gear",{})
-		var slot_names := {"weapon":"무기","armour":"갑옷","shield":"방패","ring":"반지"}
-		for slot in ["weapon","armour","shield","ring"]:
-			var item: Dictionary = gear.get(slot,{})
-			var catalogue: Dictionary = CombatStats.content.weapons if slot == "weapon" else CombatStats.content.armours if slot == "armour" else CombatStats.content.rings if slot == "ring" else {}
-			var item_id: String = str(item.get("type",""))
-			var item_name: String = "—" if item.is_empty() else "방패" if slot == "shield" else str(catalogue.get(item_id,{}).get("name",item_id))
-			text(equipped,"%s   %s" % [slot_names[slot],item_name],13)
-		return
-	var vitals := card(list,"Lv.%d · %s" % [actor.growth.level,actor.name])
-	vitals.get_parent().custom_minimum_size.y = 130
-	text(vitals,"체력 %d / %d" % [actor.hp,actor.max_hp]); gauge(vitals,actor.hp,actor.max_hp,Color("9f4544"))
-	text(vitals,"정신 상태 · "+actor.condition); gauge(vitals,actor.stress,200,Color("c6a34c"))
-	if ui.session.party.size() == 1:
-		text(vitals,"스트레스 150 이상: 받는 피해 +1 · 정신 안정제로 완화",12)
-	var stats := card(list,"능력치 · 남은 포인트 %d" % actor.growth.stat_points)
-	var attributes := grid(stats,3)
-	for id in Growth.STATS:
-		var box := card(attributes,Growth.STATS[id]); text(box,str(actor.growth.stats[id]),20)
-		ui.button(box,"+",func(): preview(ui,id,true),can_invest(ui,actor) and actor.growth.stat_points > 0)
-	text(stats,"일반 공격 %d · 피해 감소 %d%%" % [Growth.power(actor,"MELEE",18),actor.growth.ranks.DEFENSE*4])
+	var vitals := card(list,"Lv.%d · %s" % [int(actor.get("level",1)),actor.name])
+	text(vitals,"HP  %d / %d" % [actor.hp,actor.max_hp]); gauge(vitals,actor.hp,actor.max_hp,Color("bf5450"))
+	text(vitals,"MP  %d / %d" % [actor.mp,actor.max_mp]); gauge(vitals,actor.mp,actor.max_mp,Color("507eb9"))
+	text(vitals,"스트레스  %d / 200" % actor.stress); gauge(vitals,actor.stress,200,Color("c9a251"))
+	var values: Dictionary = CombatStats.stats(ui.session,actor)
+	var combat := card(list,"전투")
+	var stats := grid(combat,2)
+	for entry in [["피해",values.damage],["공격 시간",values.delay]]:
+		var stat := card(stats,str(entry[0])); text(stat,str(entry[1]),20)
+	sheet_cards(ui,list,actor)
+	var equipped := card(list,"장비")
+	var gear: Dictionary = actor.get("gear",{})
+	var slot_names := {"weapon":"무기","armour":"갑옷","shield":"방패","ring":"반지"}
+	for slot in ["weapon","armour","shield","ring"]:
+		var item: Dictionary = gear.get(slot,{})
+		var catalogue: Dictionary = CombatStats.content.weapons if slot == "weapon" else CombatStats.content.armours if slot == "armour" else CombatStats.content.rings if slot == "ring" else {}
+		var item_id: String = str(item.get("type",""))
+		var item_name: String = "—" if item.is_empty() else "방패" if slot == "shield" else str(catalogue.get(item_id,{}).get("name",item_id))
+		text(equipped,"%s   %s" % [slot_names[slot],item_name],13)
 
-static func can_invest(ui, actor: Dictionary) -> bool:
-	return ui.session.safe_management() and actor.hp > 0
+## The twelve numbers of §2, grouped; a tap opens where each one came from.
+static func sheet_cards(ui, list: VBoxContainer, actor: Dictionary) -> void:
+	var sheet: Dictionary = StatSheet.sheet(ui.session,actor)
+	for group in STAT_GROUPS:
+		var keys: Array = group[1]
+		var box := card(list,str(group[0])); box.get_parent().name = "StatGroup_"+str(group[0])
+		var cells := grid(box,keys.size())
+		for key in keys:
+			var entry: Dictionary = sheet.get(key,{"total":0,"parts":[]})
+			var shown: String = ("%d%%" if str(key).begins_with("res_") else "%d") % int(entry.total)
+			var cell = ui.button(cells,"%s\n%s" % [StatSheet.NAMES[key],shown],func(): detail(ui,str(StatSheet.NAMES[key]),breakdown(entry,str(key))))
+			cell.name = "Stat_"+str(key); cell.custom_minimum_size = Vector2(0,52)
+			cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			cell.add_theme_font_size_override("font_size",12)
 
-static func mastery(ui, list: VBoxContainer, actor: Dictionary) -> void:
-	if ui.session.manual_mode:
-		var cards := grid(list,5); cards.name = "MasteryGrid"
-		for axis in Mastery.AXES:
-			var level := Mastery.rank(actor,axis)
-			var cell := VBoxContainer.new(); cell.name = "MasteryCell_"+axis
-			cell.add_theme_constant_override("separation",2); cards.add_child(cell)
-			var tile = ui.button(cell,"",func(): ui.show_mastery_detail(ui.tactics_actor,axis))
-			tile.name = "MasteryIcon_"+axis; tile.custom_minimum_size = Vector2(60,52)
-			tile.tooltip_text = "%s · %s" % [Mastery.NAMES[axis],Mastery.bonus(axis,level)]
-			var glyph := TextureRect.new(); glyph.texture = Art.mastery_icon(axis)
-			glyph.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			glyph.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			glyph.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-			glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			glyph.custom_minimum_size = Vector2(30,30); glyph.size = Vector2(30,30); tile.add_child(glyph)
-			glyph.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-			glyph.offset_left = -15; glyph.offset_top = -15; glyph.offset_right = 15; glyph.offset_bottom = 15
-			var xp: int = int(actor.get("skill_xp",{}).get(axis,0))
-			var floor_xp: int = 0 if level == 0 else Mastery.required_xp(actor,axis,level)
-			var next_xp: int = Mastery.required_xp(actor,axis,mini(10,level+1))
-			var bar := gauge(cell,1 if level == 10 else float(xp-floor_xp),1 if level == 10 else float(next_xp-floor_xp),Color("c6a34c") if axis in Mastery.AXES.slice(0,5) else Color("69cfc2"))
-			bar.name = "MasteryXP_"+axis
-			text(cell,"%s %d" % [Mastery.NAMES[axis],level],10).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		return
-	var summary := card(list,"Lv.%d · 숙련 포인트 %d" % [actor.growth.level,actor.growth.points])
-	summary.get_parent().custom_minimum_size.y = 86
-	var floor_xp := Growth.threshold(actor.growth.level)
-	var next_xp := Growth.threshold(mini(Growth.MAX_LEVEL,actor.growth.level+1))
-	text(summary,"최고 레벨" if actor.growth.level == Growth.MAX_LEVEL else "경험치 %d / %d" % [actor.growth.xp,next_xp])
-	gauge(summary,actor.growth.xp-floor_xp,maxi(1,next_xp-floor_xp),Color("4d8f98"))
-	var cards := grid(list,2); cards.name = "MasteryGrid"
-	for axis in Growth.AXES:
-		var box := card(cards,""); var heading := HBoxContainer.new(); box.add_child(heading)
-		box.get_parent().custom_minimum_size = Vector2(0,130)
-		var emblem := Emblem.new(); emblem.symbol = axis; heading.add_child(emblem)
-		text(heading,"%s %d/10" % [Growth.AXES[axis],actor.growth.ranks[axis]],14)
-		text(box,"피해 감소 %d%%" % (actor.growth.ranks[axis]*4) if axis == "DEFENSE" else "위력 +%d%%" % (actor.growth.ranks[axis]*8))
-		ui.button(box,"+ 1점 투자",func(): preview(ui,axis),can_invest(ui,actor) and actor.growth.points > 0 and actor.growth.ranks[axis] < Growth.MAX_RANK)
-	text(list,"전투 밖에서 투자 · 레벨업마다 1점 · 재분배 불가")
-
-static func mastery_detail(ui, list: VBoxContainer, actor: Dictionary, axis: String) -> void:
-	var current := Mastery.rank(actor,axis)
-	var header := card(list,"%s · %d/10" % [Mastery.NAMES[axis],current])
-	text(header,"현재: %s" % Mastery.bonus(axis,current))
-	if current < 10: text(header,"다음 숙련까지 %d XP" % maxi(0,Mastery.required_xp(actor,axis,current+1)-int(actor.get("skill_xp",{}).get(axis,0))))
-	var rewards: Dictionary = mastery_data.milestones.get(axis,{})
-	for level in range(1,11):
-		var state := "획득" if level <= current else "다음" if level == current+1 else "잠김"
-		var row := card(list,"Lv%d · %s" % [level,state]); row.get_parent().name = "MasteryLevel%d" % level
-		var line := HBoxContainer.new(); row.add_child(line)
-		var icon := TextureRect.new()
-		icon.texture = Art.spell_icon(axis+"_"+str(level)) if axis in Mastery.AXES.slice(5) else Art.mastery_icon(axis)
-		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-		icon.custom_minimum_size = Vector2(30,30); line.add_child(icon)
-		text(line,Mastery.bonus(axis,level))
-		var reward: Dictionary = rewards.get(str(level),{})
-		if not str(reward.get("effect_id","")).is_empty(): text(row,str(reward.name))
-	var back = ui.button(list,"‹ 숙련 목록",func(): ui.show_character(ui.tactics_actor,"숙련")); back.name = "MasteryBack"
+## "종족  +12 / 이능 오크  +2 / 합계  14": one line per non-zero source.
+static func breakdown(entry: Dictionary, key: String) -> String:
+	var unit: String = "%" if key.begins_with("res_") else ""
+	var lines: Array = []
+	for part in entry.get("parts",[]):
+		if int(part.value) != 0: lines.append("%s  %+d%s" % [str(part.from),int(part.value),unit])
+	if lines.is_empty(): lines.append("기본값 없음")
+	lines.append("합계  %d%s" % [int(entry.get("total",0)),unit])
+	return "\n".join(lines)
 
 static func detail(ui, title: String, message: String) -> void:
 	ui.clear(ui.item_detail); text(ui.item_detail,title,20); text(ui.item_detail,message)
@@ -270,60 +222,3 @@ static func memories(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		var box := card(list,entry[0]); box.get_parent().custom_minimum_size.y = 90
 		text(box,entry[1])
 		ui.button(box,"›",func(): detail(ui,entry[0],entry[1]+"\n%d턴" % copy.observed_time))
-
-## Two part slots: what is equipped and how to swap it. How the part is used
-## is the rules' business, and the rules are no longer the player's.
-static func parts(ui, list: VBoxContainer, actor: Dictionary) -> void:
-	var town: bool = ui.session.phase == "CAMP" and actor.hp > 0
-	for slot in range(2):
-		var id: String = str(actor.equipped_abilities[slot])
-		var box := card(list,""); box.get_parent().name = "PartSlot"+str(slot)
-		box.get_parent().custom_minimum_size.y = 132
-		var row := HBoxContainer.new(); box.add_child(row)
-		var info := VBoxContainer.new(); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(info)
-		var actions := VBoxContainer.new(); row.add_child(actions)
-		if id.is_empty():
-			text(info,"빈 슬롯",20)
-			ui.button(actions,"장착",func(): replace(ui,slot),town)
-			continue
-		var def: Dictionary = ui.Session.Abilities.DEFINITIONS[id]
-		text(info,str(def.name),20)
-		text(info,str(def.description),13)
-		ui.button(actions,"교체",func(): replace(ui,slot),town)
-		ui.button(actions,"해제",func(): ui.session.unequip_part(ui.tactics_actor,slot); ui.refresh(); ui.show_character(ui.tactics_actor,"파츠"),town)
-
-## The bag, minus what this member already carries, as one tap per part.
-static func replace(ui, slot: int) -> void:
-	var index: int = ui.tactics_actor
-	var actor: Dictionary = ui.session.party[index]
-	ui.clear(ui.item_detail); text(ui.item_detail,"파츠 장착",20)
-	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(300,260); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; ui.item_detail.add_child(scroll)
-	var list := VBoxContainer.new(); list.size_flags_horizontal = Control.SIZE_EXPAND_FILL; scroll.add_child(list)
-	var count := 0
-	for id in ui.session.parts_bag:
-		if int(ui.session.parts_bag[id]) <= 0 or id in actor.equipped_abilities: continue
-		count += 1
-		ui.button(list,"%s ×%d" % [ui.Session.Rules.skill(id).name,ui.session.parts_bag[id]],func():
-			if ui.session.equip_part(index,slot,id):
-				ui.item_popup.hide(); ui.refresh(); ui.show_character(index,"파츠"),ui.session.phase == "CAMP" and actor.hp > 0)
-	if count == 0: text(list,"가방에 파츠 없음")
-	ui.button(ui.item_detail,"취소",func(): ui.item_popup.hide()); ui.item_popup.popup_centered()
-
-static func preview(ui, id: String, stat: bool = false) -> void:
-	var index: int = ui.tactics_actor
-	var actor: Dictionary = ui.session.party[index]
-	var pool := "stat_points" if stat else "points"
-	var rows := "stats" if stat else "ranks"
-	var before: int = actor.growth[rows][id]; var points: int = actor.growth[pool]
-	var dialog := ConfirmationDialog.new(); dialog.title = "능력치 투자" if stat else "숙련 투자"
-	dialog.ok_button_text = "1점 투자"; dialog.cancel_button_text = "취소"
-	dialog.get_label().autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var change := "기본 위력 +2" if stat else "피해 감소 %d%% → %d%%" % [before*4,(before+1)*4] if id == "DEFENSE" else "위력 +%d%% → +%d%%" % [before*8,(before+1)*8]
-	dialog.dialog_text = "%s %d → %d\n%s\n\n포인트 1점 소모 · 재분배 불가" % [(Growth.STATS if stat else Growth.AXES)[id],before,before+1,change]
-	ui.details_popup.add_child(dialog); dialog.transient = true; dialog.exclusive = true
-	dialog.confirmed.connect(func():
-		if actor.growth[pool] == points and actor.growth[rows][id] == before:
-			ui.session.spend_growth(index,id,stat)
-		dialog.queue_free(); ui.refresh(); ui.show_character(index,"상태" if stat else "숙련"))
-	dialog.canceled.connect(dialog.queue_free)
-	dialog.popup_centered(Vector2i(300,200))

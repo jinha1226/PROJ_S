@@ -24,5 +24,5 @@ func run() -> void:
 	check(s.camp() and s.food == 0 and s.phase == "CAMP","camp costs one food per survivor")
 	check(s.party.all(func(a): return a.hp == 10+ceili(a.max_hp*0.5) and a.stress == 50 and a.cooldowns.PUSH == 0),"camp heals and clears cooldown")
 	check(s.equip_part(0,0,"PUSH") and s.unequip_part(0,0),"part changes at camp")
-	check(s.end_camp() and s.phase == "EXPLORE" and not s.equip_part(0,0,"PUSH"),"parts locked after camp")
+	check(s.end_camp() and s.phase == "EXPLORE" and s.equip_part(0,0,"PUSH"),"essences can be changed in a safe explored area")
 	print("Camping: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)

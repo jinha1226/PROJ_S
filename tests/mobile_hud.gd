@@ -17,6 +17,9 @@ func run() -> void:
 	check(Art.actor_portrait({"id":1000,"npc":true}).atlas == Art.actor_texture(1).atlas and Art.actor_portrait({"id":1000,"npc":true}).region.position.x > Art.actor_texture(1).region.position.x,"NPC portrait is a larger crop of the map sprite")
 	check(Art.MONSTER_SPRITES.size() == Art.MONSTER_IDS.size() and range(Art.MONSTER_IDS.size()).all(func(i): return Art.MONSTER_SPRITES[i].resource_path.ends_with("/"+Art.MONSTER_IDS[i]+".png")),"monster sprites follow MONSTER_IDS")
 	check(Art.enemy_sprite("kobold").atlas.resource_path.ends_with("monsters/kobold.png") and Art.enemy_sprite("unknown").atlas == Art.enemy_sprite("kobold").atlas,"unknown species fall back to the kobold")
+	for caster in ["kobold_firecaller","frost_imp","storm_bat","goblin_hexer","gnoll_summoner"]:
+		check(Art.MONSTER_IDS.has(caster) and Art.enemy_sprite(caster).atlas.resource_path.ends_with("monsters/"+caster+".png"),"%s has its own sprite" % caster)
+	check(["fire","ice","air","poison","will"].all(func(e): return Art.ELEMENT_TINTS.has(e) and Art.ELEMENT_MARKS.has(e)),"every element has a tint and mark")
 	check(Art.FirstFloor.tile("floor_a").get_width() > 250 and Art.FirstFloor.tile("front").get_width() > 250,"flat floor and wall tiles are active")
 	check(Art.FirstFloor.tile("floor_a","F2_MINES").atlas != Art.FirstFloor.tile("floor_a","F1_RUINS").atlas,"mines have their own floor slabs")
 	check(Art.FirstFloor.tile("front","F2_MINES").atlas != Art.FirstFloor.tile("front","F1_RUINS").atlas,"mines have their own wall blocks")

@@ -25,7 +25,15 @@ static func catalog() -> Dictionary:
 	return _catalog
 
 static func skill(id: String) -> Dictionary:
-	return catalog().get(id,{})
+	var at := id.find("@")
+	if at < 0: return catalog().get(id,{})
+	var base: Dictionary = catalog().get(id.substr(0,at),{})
+	if base.is_empty(): return {}
+	var def: Dictionary = load("res://expedition/items/abilities.gd").definition(id)
+	if def.is_empty(): return {}
+	var row: Dictionary = base.duplicate(true)
+	row.name = str(def.name); row.description = str(def.description)
+	return row
 
 static func defaults() -> Array:
 	return []

@@ -18,8 +18,6 @@ static func apply_build(s, id: String) -> void:
 	var row := build(id)
 	for i in range(s.party.size()):
 		var actor: Dictionary = s.party[i]
-		for axis in row.get("ranks",{}): actor.growth.ranks[axis] = int(row.ranks[axis])
-		for stat in row.get("stats",{}): actor.growth.stats[stat] = int(row.stats[stat])
 		# `equipped_by_member` lets one build hand each seat its own parts — a
 		# mixed party needs the skirmisher's sling without splitting the build.
 		var per_member: Array = row.get("equipped_by_member",[])
@@ -141,7 +139,7 @@ static func run_one(config: Dictionary, seed: int) -> Dictionary:
 		guards += int(row.guards); redirects += int(row.covers)
 		for part in row.parts:
 			skill_uses[part] = int(skill_uses.get(part,0))+int(row.parts[part])
-			if s.Abilities.DEFINITIONS[part].effect == "HEAL": heals += int(row.parts[part])
+			if s.Abilities.definition(part).effect == "HEAL": heals += int(row.parts[part])
 	return {"result":result,"rounds":s.round_number,"damage_taken":taken,"hp_end":s.party.map(func(a): return a.hp),
 		"deaths":s.party.filter(func(a): return a.hp <= 0).map(func(a): return a.id),"first_death_round":first_death,
 		"heals_used":heals,"guards_used":guards,"protect_redirects":redirects,"skill_uses":skill_uses,"player_actions":actions,"damage_before_first_action":int(counters.before_first),

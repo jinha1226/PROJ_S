@@ -125,7 +125,7 @@ static func member_card(ui, list: VBoxContainer, index: int, probe: Dictionary) 
 		var pick := OptionButton.new(); pick.name = "ArenaPart_%d_%d" % [index,slot]
 		pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL; pick.custom_minimum_size.y = 44; pick.clip_text = true
 		pick.add_item("빈 슬롯")
-		for id in ids: pick.add_item(str(Abilities.DEFINITIONS[id].name))
+		for id in ids: pick.add_item(str(Abilities.definition(id).name))
 		pick.select(ids.find(str(setup.parts[slot]))+1)
 		# One part, one slot: what the other slot holds cannot be picked again.
 		var other: int = ids.find(str(setup.parts[1-slot]))

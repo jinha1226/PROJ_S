@@ -24,35 +24,88 @@ const DEFINITIONS = {
 	"HOB_CLUB":{"name":"내려치기","item":"홉고블린 곤봉","description":"두꺼운 가죽: 받는 피해 -1 · 내려치기: 인접 대상 피해 14 · 재사용 3턴","target":"ENEMY","range":1,"radius":0,"damage":14,"cooldown":3,"effect":"DAMAGE","axis":"MELEE","rule_when":"ALWAYS","short":"곤봉","shape":"SQUARE","self_hit":false,"icon":5,"species":"dcss_hobgoblin","passive":{"kind":"THICK_HIDE","value":1},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0},
 	"ORC_CLEAVER":{"name":"휘두르기","item":"오크 도끼","description":"피의 갈망: 자신 체력 절반 미만이면 피해 +3 · 휘두르기: 대상 주위 3×3 피해 11 · 재사용 3턴","target":"ENEMY","range":1,"radius":1,"damage":11,"cooldown":3,"effect":"DAMAGE","axis":"MELEE","rule_when":"ALWAYS","short":"도끼","shape":"SQUARE","self_hit":false,"icon":5,"species":"dcss_orc","passive":{"kind":"BLOODLUST","value":3},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0},
 	"GNOLL_SPEAR":{"name":"창 찌르기","item":"놀 창","description":"재생: 라운드마다 체력 +2 · 창 찌르기: 사거리 2 피해 12 · 재사용 3턴","target":"ENEMY","range":2,"radius":0,"damage":12,"cooldown":3,"effect":"DAMAGE","axis":"MELEE","rule_when":"ALWAYS","short":"창","shape":"SQUARE","self_hit":false,"icon":5,"species":"dcss_gnoll","passive":{"kind":"REGEN","value":2},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0},
-	"RIVER_RAT_SPLASH":{"name":"물세례","item":"강쥐 가죽","description":"물갈퀴: 젖은 칸에서 피해 +3 · 물세례: 사거리 3 · 3×3 피해 5 · 칸을 적심 · 재사용 3턴","target":"ENEMY","range":3,"radius":1,"damage":5,"cooldown":3,"effect":"DAMAGE","axis":"RANGED","rule_when":"ALWAYS","short":"물","shape":"SQUARE","self_hit":false,"icon":5,"species":"dcss_river_rat","passive":{"kind":"AMPHIBIOUS","value":3},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":70}}
+	"RIVER_RAT_SPLASH":{"name":"물세례","item":"강쥐 가죽","description":"물갈퀴: 젖은 칸에서 피해 +3 · 물세례: 사거리 3 · 3×3 피해 5 · 칸을 적심 · 재사용 3턴","target":"ENEMY","range":3,"radius":1,"damage":5,"cooldown":3,"effect":"DAMAGE","axis":"RANGED","rule_when":"ALWAYS","short":"물","shape":"SQUARE","self_hit":false,"icon":5,"species":"dcss_river_rat","passive":{"kind":"AMPHIBIOUS","value":3},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":70},
+	"FIRE_CALLER":{"name":"화염 화살","item":"화염술사의 불씨","description":"궁지: 자신 체력 절반 미만이면 피해 +2 · 화염 화살: 사거리 4 피해 9 · 맞은 칸에 불 · 재사용 2턴","target":"ENEMY","range":4,"radius":0,"damage":9,"cooldown":2,"effect":"DAMAGE","axis":"MAGIC","rule_when":"ALWAYS","short":"화염","shape":"SQUARE","self_hit":false,"icon":4,"species":"kobold_firecaller","passive":{"kind":"BLOODLUST","value":2},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0,"element":"fire","monster_only":true},
+	"FROST_IMP":{"name":"서리 숨결","item":"서리 도깨비의 뿔","description":"서리 가죽: 받는 피해 -1 · 서리 숨결: 사거리 3 · 3×3 피해 6 · 둔화 · 재사용 3턴","target":"ENEMY","range":3,"radius":1,"damage":6,"cooldown":3,"effect":"DAMAGE","axis":"MAGIC","rule_when":"ALWAYS","short":"서리","shape":"SQUARE","self_hit":false,"icon":4,"species":"frost_imp","passive":{"kind":"THICK_HIDE","value":1},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0,"element":"ice","monster_only":true},
+	"STORM_BAT":{"name":"번개 화살","item":"폭풍 박쥐의 날개막","description":"물갈퀴: 젖은 칸에서 피해 +2 · 번개 화살: 사거리 4 피해 8 · 젖은 대상 피해 +4 · 재사용 2턴","target":"ENEMY","range":4,"radius":0,"damage":8,"cooldown":2,"effect":"DAMAGE","axis":"MAGIC","rule_when":"ALWAYS","short":"번개","shape":"SQUARE","self_hit":false,"icon":4,"species":"storm_bat","passive":{"kind":"AMPHIBIOUS","value":2},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0,"element":"air","monster_only":true},
+	"GOBLIN_HEXER":{"name":"혼란의 저주","item":"고블린 주술 부적","description":"비열: 체력 절반 미만 대상에 피해 +2 · 혼란의 저주: 사거리 4 피해 4 · 혼란 · 재사용 3턴","target":"ENEMY","range":4,"radius":0,"damage":4,"cooldown":3,"effect":"DAMAGE","axis":"MAGIC","rule_when":"ALWAYS","short":"저주","shape":"SQUARE","self_hit":false,"icon":4,"species":"goblin_hexer","passive":{"kind":"DIRTY","value":2},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0,"element":"will","monster_only":true},
+	"GNOLL_SUMMONER":{"name":"영혼 채찍","item":"놀 소환사의 사슬","description":"재생: 라운드마다 체력 +1 · 영혼 채찍: 사거리 3 피해 10 · 혼란 · 재사용 3턴","target":"ENEMY","range":3,"radius":0,"damage":10,"cooldown":3,"effect":"DAMAGE","axis":"MAGIC","rule_when":"ALWAYS","short":"채찍","shape":"SQUARE","self_hit":false,"icon":4,"species":"gnoll_summoner","passive":{"kind":"REGEN","value":1},"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0,"element":"will","monster_only":true}}
 ## Actions that are not catalog parts.
 const BASIC_BADGES := {"ATTACK":"공격","MOVE":"이동","WAIT":"대기"}
+
+## Element variants (spec §3.7). "<BASE_ID>@<element>" is the base part with an
+## element: same numbers, its element's damage and mark. Every reader of the
+## catalog goes through `has` and `definition`, so a variant id works anywhere
+## a base id does.
+const ELEMENT_NAMES := {"fire":"화염","ice":"냉기","air":"전기","poison":"독","will":"의지"}
+const ELEMENT_FORMS := {"fire":"FIRE","ice":"ICE","air":"AIR","poison":"POISON","will":"WILL"}
+const ELEMENT_NOTES := {"fire":"화염: 맞은 칸에 불이 붙음","ice":"냉기: 둔화","air":"전기: 젖은 대상에게 피해 +4","poison":"독: 중독","will":"의지: 혼란"}
+const OPPOSITE := {"fire":"ice","ice":"fire"}
+static var variant_cache: Dictionary = {}
+
+static func base_id(id: String) -> String:
+	var at := id.find("@")
+	return id if at < 0 else id.substr(0,at)
+
+static func element_of(id: String) -> String:
+	var at := id.find("@")
+	return "" if at < 0 else id.substr(at+1)
+
+static func has(id: String) -> bool:
+	var element := element_of(id)
+	return DEFINITIONS.has(base_id(id)) and (element.is_empty() or ELEMENT_NAMES.has(element))
+
+## The catalog row for `id`; a variant is a copy of its base with the element.
+static func definition(id: String) -> Dictionary:
+	if not has(id): return {}
+	var element := element_of(id)
+	if element.is_empty(): return DEFINITIONS[id]
+	if not variant_cache.has(id):
+		var def: Dictionary = DEFINITIONS[base_id(id)].duplicate(true)
+		def["element"] = element
+		def.name = "%s %s" % [ELEMENT_NAMES[element],def.name]
+		def.item = "%s %s" % [ELEMENT_NAMES[element],def.item]
+		def.description = "%s · %s" % [def.description,ELEMENT_NOTES[element]]
+		variant_cache[id] = def
+	return variant_cache[id]
+
+## Whether `actor` may use `id` as an action: a caster species' own attack is
+## the monster's, never a party member's.
+static func usable_by(actor: Dictionary, id: String) -> bool:
+	if not has(id): return false
+	return bool(actor.get("enemy",false)) or not bool(definition(id).get("monster_only",false))
+
+## The kill key of a monster: its species, and its element for a variant.
+static func kind_key(enemy: Dictionary) -> String:
+	var element: String = str(enemy.get("variant_element",""))
+	return str(enemy.get("species_id","")) if element.is_empty() else "%s@%s" % [enemy.get("species_id",""),element]
+
 
 ## Part ids that a species drops, in DEFINITIONS insertion order.
 static func droppable() -> Array:
 	var result: Array = []
 	for id in DEFINITIONS:
-		if not str(DEFINITIONS[id].species).is_empty(): result.append(id)
+		if not str(definition(id).species).is_empty(): result.append(id)
 	return result
 
 ## The signature part of `species_id`, or "" when the species has none.
 static func species_part(species_id: String) -> String:
 	for id in DEFINITIONS:
-		if str(DEFINITIONS[id].species) == species_id: return id
+		if str(definition(id).species) == species_id: return id
 	return ""
 
 ## Short badge text for any action kind, catalog part or basic action.
 static func badge(kind: String) -> String:
-	return str(DEFINITIONS[kind].short) if DEFINITIONS.has(kind) else str(BASIC_BADGES.get(kind,kind))
+	return str(definition(kind).short) if has(kind) else str(BASIC_BADGES.get(kind,kind))
 
 static func default_rule(id: String) -> Dictionary:
-	var def: Dictionary = DEFINITIONS[id]
+	var def: Dictionary = definition(id)
 	var target: String = {"SELF":"SELF","ALLY":"ALLY"}.get(def.target,"NEAREST")
 	return preload("res://expedition/ai/tactic_rules.gd").make_rule(id,target,def.rule_when)
 
 ## Nearest free cell adjacent to the target that the actor can reach within the part's range.
 static func lunge_cell(s, actor: Dictionary, id: String, target: Vector2i) -> Vector2i:
-	var def: Dictionary = DEFINITIONS[id]
+	var def: Dictionary = definition(id)
 	var best := Vector2i(-1,-1)
 	var best_len := 1 << 30
 	for d in s.DIRECTIONS:
@@ -67,8 +120,8 @@ static func lunge_cell(s, actor: Dictionary, id: String, target: Vector2i) -> Ve
 
 static func cells(s, actor: Dictionary, id: String, target: Vector2i) -> Array:
 	var result: Array = []
-	if not DEFINITIONS.has(id): return result
-	var def: Dictionary = DEFINITIONS[id]
+	if not has(id): return result
+	var def: Dictionary = definition(id)
 	var center: Vector2i = actor.pos if def.target == "SELF" else target
 	for y in range(maxi(0,center.y-def.radius),mini(s.BOARD_SIDE,center.y+def.radius+1)):
 		for x in range(maxi(0,center.x-def.radius),mini(s.BOARD_SIDE,center.x+def.radius+1)):
@@ -80,20 +133,21 @@ static func cells(s, actor: Dictionary, id: String, target: Vector2i) -> Array:
 ## A monster hits for the listed damage. A member adds half of the reading
 ## attribute over ten, then the essence's tier: +25% a tier.
 static func power(s, actor: Dictionary, def: Dictionary, id: String = "") -> int:
-	if actor.enemy: return int(def.damage)
+	if actor.enemy: return scaled(actor,int(def.damage))
 	var key: String = {"RANGED":"dex","MAGIC":"int"}.get(str(def.axis),"str")
 	var base: int = int(def.damage)+maxi(0,s.StatSheet.value(s,actor,key)-10)/2
 	return Essences.active_power(maxi(1,Essences.tier(actor,id)),base)
 
 ## Whether `actor` holds the part: a slot for party members, the species signature for monsters.
 static func holds(actor: Dictionary, id: String) -> bool:
-	return str(actor.get("part_id","")) == id if actor.enemy else id in actor.equipped_abilities
+	if actor.enemy: return str(actor.get("part_id","")) == id
+	return id in actor.equipped_abilities and usable_by(actor,id)
 
 static func legal(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
-	if not DEFINITIONS.has(id) or not holds(actor,id) or actor.cooldowns.get(id,0) > 0: return false
+	if not has(id) or not holds(actor,id) or actor.cooldowns.get(id,0) > 0: return false
 	if s.phase != "BATTLE" or actor.hp <= 0 or not s.inside(target): return false
 	if not actor.enemy and actor.ap <= 0: return false
-	var def: Dictionary = DEFINITIONS[id]
+	var def: Dictionary = definition(id)
 	if def.target == "SELF":
 		if def.effect == "HEAL" and actor.hp >= actor.max_hp: return false
 		return target == actor.pos
@@ -123,7 +177,7 @@ static func execute(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 ## Resolves the part on `target` without a legality check: a telegraphed
 ## monster part lands on the announced cell whoever stands there now.
 static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
-	var def: Dictionary = DEFINITIONS[id]
+	var def: Dictionary = definition(id)
 	var victim: Dictionary = s.at(target)
 	# The use is logged first so that a miss is the last line the log shows.
 	if def.effect not in ["GUARD","PUSH"]: s.message(actor.name+" · "+def.name)
@@ -163,7 +217,7 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 			if victim.is_empty() or spared or cell == Vector2i(-1,-1): s.message(actor.name+"의 "+def.name+"가 빗나갔습니다.")
 			else:
 				s.effects.append({"kind":"ENEMY_ATTACK","from":actor.pos,"cell":target,"cells":[target],"area":false,"amount":0,"form":"SLASH"})
-				s.damage(victim,power(s,actor,def,id),actor.id,"SLASH")
+				strike_victim(s,actor,victim,power(s,actor,def,id),"SLASH",def)
 		"DAMAGE":
 			var affected := cells(s,actor,id,target)
 			var amount: int = power(s,actor,def,id)
@@ -172,7 +226,7 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 			for other in s.party+s.npcs+s.enemies:
 				if other.hp <= 0 or other.id == actor.id or other.pos not in affected: continue
 				if not def.allies_hit and other.enemy == actor.enemy: continue
-				s.damage(other,amount,actor.id,"IMPACT"); hit += 1
+				strike_victim(s,actor,other,amount,"IMPACT",def); hit += 1
 			# Bombs can also hit the caster; self-centered shockwaves cannot.
 			if def.self_hit and actor.pos in affected: s.damage(actor,amount,actor.id,"IMPACT"); hit += 1
 			for cell in affected:
@@ -185,3 +239,34 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 	else:
 		var row: Dictionary = s.member_stats(actor.id)
 		if not row.is_empty(): row.parts[id] = int(row.parts.get(id,0))+1
+
+static func scaled(actor: Dictionary, amount: int) -> int:
+	return amount*int(actor.get("attack_percent",100))/100
+
+const SHOCK_BONUS := 4
+const FIRE_TILE_ADD := 35
+const ELEMENT_TICKS := 200
+
+## One victim of a part. A part with an element deals that element (so the
+## victim's resistance and weakness apply) and leaves the element's mark.
+static func strike_victim(s, actor: Dictionary, victim: Dictionary, amount: int, form: String, def: Dictionary) -> void:
+	var element: String = str(def.get("element",""))
+	if element.is_empty():
+		s.damage(victim,amount,actor.id,form)
+		return
+	if element == "air" and int(s.tile(victim.pos).wet) > 0: amount += SHOCK_BONUS
+	s.damage(victim,amount,actor.id,ELEMENT_FORMS[element])
+	element_mark(s,victim,element)
+
+## What an element leaves behind on whoever it hit.
+static func element_mark(s, victim: Dictionary, element: String) -> void:
+	match element:
+		"fire":
+			var tile: Dictionary = s.tile(victim.pos)
+			if int(tile.wet) <= 0 and str(tile.terrain) != "water": tile.fire = mini(100,int(tile.fire)+FIRE_TILE_ADD)
+		"ice":
+			if victim.hp > 0: s.Statuses.apply(s,victim,"slow",ELEMENT_TICKS)
+		"poison":
+			if victim.hp > 0 and int(victim.get("res",{}).get("poison",0)) < 100: victim.statuses["poison"] = s.time+ELEMENT_TICKS+100
+		"will":
+			if victim.hp > 0: s.Statuses.apply(s,victim,"confuse",ELEMENT_TICKS)

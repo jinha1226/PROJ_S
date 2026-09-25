@@ -10,7 +10,10 @@ const ACTOR_SPRITES := [preload("res://assets/sprites-v1/actors/human.png"),prel
 const MONSTER_SPRITES := [preload("res://assets/sprites-v1/monsters/dcss_rat.png"),preload("res://assets/sprites-v1/monsters/dcss_frilled_lizard.png"),
 	preload("res://assets/sprites-v1/monsters/kobold.png"),preload("res://assets/sprites-v1/monsters/goblin.png"),
 	preload("res://assets/sprites-v1/monsters/dcss_hobgoblin.png"),preload("res://assets/sprites-v1/monsters/dcss_orc.png"),
-	preload("res://assets/sprites-v1/monsters/dcss_gnoll.png"),preload("res://assets/sprites-v1/monsters/dcss_river_rat.png")]
+	preload("res://assets/sprites-v1/monsters/dcss_gnoll.png"),preload("res://assets/sprites-v1/monsters/dcss_river_rat.png"),
+	preload("res://assets/sprites-v1/monsters/kobold_firecaller.png"),preload("res://assets/sprites-v1/monsters/frost_imp.png"),
+	preload("res://assets/sprites-v1/monsters/storm_bat.png"),preload("res://assets/sprites-v1/monsters/goblin_hexer.png"),
+	preload("res://assets/sprites-v1/monsters/gnoll_summoner.png")]
 const BOSS_SPRITES := [preload("res://assets/sprites-v1/bosses/boss_mire.png"),preload("res://assets/sprites-v1/bosses/boss_bomber.png"),
 	preload("res://assets/sprites-v1/bosses/boss_giant.png")]
 ## Potion flasks in `consumables.json` `appearances.potion` order, and the
@@ -120,7 +123,10 @@ const TIER_SHEETS = [preload("res://assets/8bit/classic/spells-fire.png"),preloa
 const MAGIC_SCHOOLS := ["fire","ice","air","hex","summon"]
 const ITEM_SHEET = preload("res://assets/topdown/flat-v1/items.png")
 const ACTOR_IDS := ["human","dwarf","elf","orc","wolf","mage","merchant","wanderer"]
-const MONSTER_IDS := ["dcss_rat","dcss_frilled_lizard","kobold","goblin","dcss_hobgoblin","dcss_orc","dcss_gnoll","dcss_river_rat"]
+const MONSTER_IDS := ["dcss_rat","dcss_frilled_lizard","kobold","goblin","dcss_hobgoblin","dcss_orc","dcss_gnoll","dcss_river_rat",
+	"kobold_firecaller","frost_imp","storm_bat","goblin_hexer","gnoll_summoner"]
+const ELEMENT_TINTS := {"fire":Color(1.0,0.72,0.62),"ice":Color(0.7,0.86,1.0),"air":Color(1.0,0.96,0.6),"poison":Color(0.72,1.0,0.62),"will":Color(0.86,0.72,1.0)}
+const ELEMENT_MARKS := {"fire":Color("ff7a3a"),"ice":Color("7fc8ff"),"air":Color("ffe14a"),"poison":Color("7bd35a"),"will":Color("b889ff")}
 const MASTERY_IDS := ["sword","spear","mace","axe","bow","fire","ice","air","hex","summon"]
 const SPELL_IDS := ["bolt","blast","cone","cloud","confuse","blink","passwall","ward","hound","turret","ignite","mend"]
 const EQUIPMENT_IDS := ["sword","dagger","spear","mace","axe","bow","staff","armour","shield","ring","book","scroll"]
@@ -271,8 +277,14 @@ static func food_icon() -> AtlasTexture:
 static func paint_actor(canvas: CanvasItem, index: int, rect: Rect2, tint: Color = Color.WHITE) -> void:
 	paint_standing(canvas,actor_texture(index),rect,2.2,tint)
 
-static func paint_monster(canvas: CanvasItem, species_id: String, rect: Rect2, tint: Color = Color.WHITE) -> void:
-	paint_standing(canvas,enemy_sprite(species_id),rect,2.2,tint)
+static func paint_monster(canvas: CanvasItem, species_id: String, rect: Rect2, tint: Color = Color.WHITE, element: String = "") -> void:
+	var wash: Color = tint*ELEMENT_TINTS[element] if ELEMENT_TINTS.has(element) else tint
+	paint_standing(canvas,enemy_sprite(species_id),rect,2.2,wash)
+	if not ELEMENT_MARKS.has(element): return
+	var centre := Vector2(rect.end.x-rect.size.x*0.12,rect.position.y-rect.size.y*0.9)
+	var radius: float = rect.size.x*0.13
+	canvas.draw_circle(centre,radius+1.5,Color(0.1,0.08,0.07,tint.a))
+	canvas.draw_circle(centre,radius,Color(ELEMENT_MARKS[element],tint.a))
 
 static func paint_boss(canvas: CanvasItem, rect: Rect2, tint: Color = Color.WHITE, pattern: int = 0) -> void:
 	paint_standing(canvas,boss_sprite(pattern),rect,3.0,tint)

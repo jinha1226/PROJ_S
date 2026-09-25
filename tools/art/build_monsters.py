@@ -256,6 +256,30 @@ def giant(uid, facing):
     return wrap("".join(parts))
 
 
+def bat(uid, facing, fur, wing, glow="#ffe14a"):
+    """A winged caster silhouette that stays legible at the game's tile size."""
+    turn = {"east": 1, "west": -1}.get(facing, 0)
+    cx, cy = 32 + 2 * turn, 38
+    parts = [shadow(14, 59)]
+    spans = {"south": (-1, 1), "north": (-1, 1), "east": (-1,), "west": (1,)}[facing]
+    for i, side in enumerate(spans):
+        tip = cx + side * 26
+        wing_path = (f"M{cx + side * 6} {cy - 6} Q{cx + side * 18} {cy - 20} {tip} {cy - 10} "
+                     f"L{cx + side * 20} {cy + 2} L{cx + side * 14} {cy - 2} L{cx + side * 8} {cy + 6} Z")
+        parts.append(shaded(f"{uid}w{i}", wing_path, *wing, 2.0, 1.6))
+    parts.append(shaded(uid + "b", ellipse(cx, cy, 11, 12), *fur, 2.6, 2.2))
+    for i, side in enumerate((-1, 1)):
+        ear = poly([(cx + side * 3, cy - 10), (cx + side * 8, cy - 21), (cx + side * 9, cy - 8)])
+        parts.append(shaded(f"{uid}e{i}", ear, *fur, 1.2, 1.0))
+    parts.append(pills(cx, cy - 2, facing, glow, gap=3.4, h=5.2))
+    return wrap("".join(parts))
+
+
+FLAME = f'<path d="M32 52 Q27.5 48 30.5 42.5 Q32 46 33.5 43.5 Q37 48.5 32 52 Z" fill="#ffb13a" stroke="{INK}" stroke-width="1.4" stroke-linejoin="round"/>'
+RUNE = f'<circle cx="32" cy="48" r="3.4" fill="none" stroke="#e7d36a" stroke-width="1.8"/>'
+CHAIN = '<path d="M24 46 L40 50" stroke="#c9c9c9" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="3 2"/>'
+
+
 GOBLIN_SKIN = ("#78c24c", "#5ea338")
 MONSTERS = {
     # id: (display name, builder, raster scale)
@@ -273,6 +297,15 @@ MONSTERS = {
                                        ears="round", snout=("#6a5040", "#553f32"), spots=[(-5, -4, 1.8), (4, -6, 1.5), (6, 2, 1.6), (-7, 3, 1.3)]), 2),
     "dcss_river_rat": ("강쥐", lambda f: beast("rrat" + f, f, ("#5a6a86", "#46546e"), ("#d98a92", "#bf7078"), "#d98a92", 1.08,
                                              crest="#9fb3d4"), 2),
+    "kobold_firecaller": ("코볼트 화염술사", lambda f: humanoid("kfc" + f, f, (8.5, 7.5, 0.5, 34, 10.0), ("#d0763c", "#b0602c"), ("#b8412e", "#963223"),
+                                                   snout=("#d0763c", "#b0602c"), horns=True, mark=FLAME), 2),
+    "frost_imp": ("서리 도깨비", lambda f: humanoid("imp" + f, f, (7.5, 6.5, 0.5, 35, 9.5), ("#9fd3ec", "#7ab5d2"), ("#4d6f9c", "#3c5a80"),
+                                         ears="pointy", horns=True, eye="#1d3a5c"), 2),
+    "storm_bat": ("폭풍 박쥐", lambda f: bat("sbat" + f, f, ("#4a4f6e", "#3a3e58"), ("#6a6f94", "#555a7a")), 2),
+    "goblin_hexer": ("고블린 주술사", lambda f: humanoid("ghx" + f, f, (9.5, 8.5, 0.5, 33, 10.5), GOBLIN_SKIN, ("#6a4a9c", "#553a80"),
+                                              ears="pointy", mark=RUNE), 2),
+    "gnoll_summoner": ("놀 소환사", lambda f: humanoid("gsm" + f, f, (13.5, 11.5, 1.0, 31, 11.5), ("#d2a95e", "#b58c48"), ("#3f6b5a", "#31554a"),
+                                              ears="round", snout=("#6a5040", "#553f32"), spots=[(-5, -4, 1.8), (4, -6, 1.5)], mark=CHAIN), 2),
     "boss_mire": ("수렁 포식자", lambda f: mire("mire" + f, f), 3),
     "boss_bomber": ("폭탄 암살자", lambda f: bomber("bomb" + f, f), 3),
     "boss_giant": ("과부하 거인", lambda f: giant("giant" + f, f), 3),
