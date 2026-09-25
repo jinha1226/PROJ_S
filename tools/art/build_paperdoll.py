@@ -1,11 +1,11 @@
 """Bare paper-doll figures: RimWorld body types in the flat cartoon grammar.
 
 No hats, no weapons, no clothing details: a limbless bell-shaped torso with
-shoulders (RimWorld's thin / standard / female / fat / hulk silhouettes), a
+shoulders (RimWorld's thin / standard / hulk silhouettes), a
 round head set on top, tall pill eyes, one flat shade on the right, a thick
-ink outline and a flat ground shadow. Three facings like RimWorld: south
-(front), east (side, eyes toward the facing), north (back, no face). West is
-the east sprite mirrored.
+ink outline and a flat ground shadow. Four facings: south (front), east and
+west (side, eyes toward the facing), north (back, no face). West is drawn,
+not mirrored, so the light still falls from the top-left.
 
 Each SVG keeps `shadow`, `body` and `head` as separate groups so hats,
 armour and weapons can be layered on later.
@@ -29,11 +29,9 @@ LINE = flat.LINE
 BODIES = {
     "thin": (10.0, 8.5, 0.5, 31, 10.5),
     "standard": (13.0, 11.0, 1.0, 31, 11.0),
-    "female": (11.0, 13.0, 1.0, 32, 10.5),
-    "fat": (13.0, 15.5, 4.0, 31, 11.0),
     "hulk": (17.0, 12.0, 1.0, 30, 11.5),
 }
-FACINGS = ("south", "east", "north")
+FACINGS = ("south", "east", "west", "north")
 BOTTOM = 55
 SKINS = {"light": ("#f6c79a", "#e0a574"), "tan": ("#d99a6c", "#bf7f52"), "dark": ("#9a6444", "#7e4f34")}
 CLOTH = {"grey": ("#8a8f9c", "#707584"), "green": ("#6b8f4e", "#56763d"), "blue": ("#4f6fb5", "#3e5a97"),
@@ -50,10 +48,14 @@ def torso(cx: float, top: float, s: float, h: float, b: float) -> str:
             f"C{cx - h - 1 - b} {BOTTOM - 8} {cx - s - 1 - b} {top + 11} {cx - s} {y1} Z")
 
 
-def shaded(uid: str, path: str, fill: str, shade: str, split: float) -> str:
+def shaded(uid: str, path: str, fill: str, shade: str, dx: float = 3.2, dy: float = 2.4) -> str:
+    """A crescent that follows the form: the shape is filled with the shade,
+    then the base colour is laid over it nudged toward the light (up-left),
+    so only a curved rim on the lower-right stays dark."""
     return (f'<clipPath id="{uid}"><path d="{path}"/></clipPath>'
-            f'<path d="{path}" fill="{fill}"/>'
-            f'<rect x="{split}" y="0" width="64" height="64" fill="{shade}" clip-path="url(#{uid})"/>'
+            f'<path d="{path}" fill="{shade}"/>'
+            f'<path d="{path}" fill="{fill}" transform="translate({-dx} {-dy})" clip-path="url(#{uid}m)"/>'
+            f'<clipPath id="{uid}m" transform="translate({dx} {dy})"><path d="{path}"/></clipPath>'
             f'<path d="{path}" fill="none" {LINE}/>')
 
 
@@ -61,27 +63,29 @@ def figure(body: str, facing: str, skin: str, cloth: str) -> str:
     s, h, b, top, r = BODIES[body]
     skin_fill, skin_shade = SKINS[skin]
     cloth_fill, cloth_shade = CLOTH[cloth]
-    if facing == "east":
+    side = facing in ("east", "west")
+    if side:
         s, h, b = s * 0.72, h * 0.78, b * 0.8
+    turn = {"east": 1, "west": -1}.get(facing, 0)
     cx = 32
     uid = f"{body}{facing}{skin}{cloth}"
     body_path = torso(cx, top, s, h, b)
-    head_cx = cx + (2.5 if facing == "east" else 0)
+    head_cx = cx + 2.5 * turn
     head_cy = top - r + 4
-    head = (f'<clipPath id="h{uid}"><circle cx="{head_cx}" cy="{head_cy}" r="{r}"/></clipPath>'
-            f'<circle cx="{head_cx}" cy="{head_cy}" r="{r}" fill="{skin_fill}"/>'
-            f'<rect x="{head_cx + r * 0.35}" y="{head_cy - r - 2}" width="{r * 2}" height="{r * 2 + 4}" fill="{skin_shade}" clip-path="url(#h{uid})"/>'
-            f'<circle cx="{head_cx}" cy="{head_cy}" r="{r}" fill="none" {LINE}/>')
+    circle = (f"M{head_cx - r} {head_cy} A{r} {r} 0 1 0 {head_cx + r} {head_cy} "
+              f"A{r} {r} 0 1 0 {head_cx - r} {head_cy} Z")
+    head = shaded("h" + uid, circle, skin_fill, skin_shade, 2.6, 2.2)
     if facing == "south":
         head += (f'<rect x="{head_cx - 4.6}" y="{head_cy - 1.5}" width="3.2" height="6.4" rx="1.6" fill="{INK}"/>'
                  f'<rect x="{head_cx + 1.4}" y="{head_cy - 1.5}" width="3.2" height="6.4" rx="1.6" fill="{INK}"/>')
-    elif facing == "east":
-        head += (f'<rect x="{head_cx + 0.8}" y="{head_cy - 1.5}" width="3.2" height="6.4" rx="1.6" fill="{INK}"/>'
-                 f'<rect x="{head_cx + 5.6}" y="{head_cy - 1.2}" width="2.6" height="5.8" rx="1.3" fill="{INK}"/>')
+    elif side:
+        near, far = head_cx + 0.8 * turn, head_cx + 5.6 * turn
+        head += (f'<rect x="{near - 1.6}" y="{head_cy - 1.5}" width="3.2" height="6.4" rx="1.6" fill="{INK}"/>'
+                 f'<rect x="{far - 1.3}" y="{head_cy - 1.2}" width="2.6" height="5.8" rx="1.3" fill="{INK}"/>')
     shadow_rx = max(s, h) + 4
     return ('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'
             f'<g id="shadow"><ellipse cx="{cx}" cy="{BOTTOM + 2}" rx="{shadow_rx}" ry="3.6" fill="#000" fill-opacity="0.2"/></g>'
-            f'<g id="body">{shaded("b" + uid, body_path, cloth_fill, cloth_shade, cx + max(s, h) * 0.35)}</g>'
+            f'<g id="body">{shaded("b" + uid, body_path, cloth_fill, cloth_shade)}</g>'
             f'<g id="head">{head}</g></svg>')
 
 
@@ -98,24 +102,18 @@ def main() -> None:
             source.write_text(figure(body, facing, "light", "grey"))
             jobs.append((source, OUT / "png" / f"{name}.png", 2))
     # A few skin and clothing combinations to show the recolour range.
-    variants = [("standard", "light", "blue"), ("female", "tan", "red"), ("fat", "dark", "brown"),
-                ("hulk", "tan", "green"), ("thin", "dark", "blue"), ("standard", "dark", "red"),
-                ("female", "light", "green"), ("hulk", "light", "brown")]
+    variants = [("standard", "light", "blue"), ("thin", "tan", "red"), ("hulk", "dark", "brown"),
+                ("hulk", "tan", "green"), ("thin", "dark", "blue"), ("standard", "dark", "red")]
     for i, (body, skin, cloth) in enumerate(variants):
         source = OUT / "svg" / f"variant_{i}.svg"
         source.write_text(figure(body, "south", skin, cloth))
         jobs.append((source, OUT / "png" / f"variant_{i}.png", 2))
     flat.rasterise(jobs)
 
-    # West is east mirrored.
-    for body in BODIES:
-        east = Image.open(OUT / "png" / f"{body}_east.png")
-        east.transpose(Image.FLIP_LEFT_RIGHT).save(OUT / "png" / f"{body}_west.png")
-
     font = ImageFont.truetype(str(ROOT / "assets/fonts/Jua-Regular.ttf"), 22)
     cell, pad, label = 128, 18, 150
     facings = ("south", "east", "west", "north")
-    sheet = Image.new("RGBA", (label + len(facings) * (cell + pad), 60 + len(BODIES) * (cell + pad) + 60 + 2 * cell + 20), "#e9a25c")
+    sheet = Image.new("RGBA", (label + len(facings) * (cell + pad), 60 + len(BODIES) * (cell + pad) + 40 + cell), "#e9a25c")
     draw = ImageDraw.Draw(sheet)
     for c, facing in enumerate(facings):
         draw.text((label + c * (cell + pad) + cell // 2, 22), facing, font=font, fill=INK, anchor="mm")
