@@ -1,6 +1,6 @@
 # 평면 일러스트 그래픽 적용
 
-기준 화면은 [첫 게임 화면 시안](flat-v1/reference-gameplay.png)이다. 작은 픽셀 캐릭터 대신 큰 머리와 짧고 굵은 실루엣, 넓은 색면, 절제된 먹선을 사용한다. 표시용 원본 PNG는 `assets/topdown/flat-v1/`에 모았다.
+기준 화면은 [첫 게임 화면 시안](flat-v1/reference-gameplay.png)이다. [실제 적용 화면](flat-v1/gameplay-applied.png)은 390×844 휴대폰 크기의 웹 빌드에서 캡처했다. 작은 픽셀 캐릭터 대신 큰 머리와 짧고 굵은 실루엣, 넓은 색면, 절제된 먹선을 사용한다. 표시용 원본 PNG는 `assets/topdown/flat-v1/`에 모았다.
 
 | 시트 | 용도 |
 | --- | --- |
