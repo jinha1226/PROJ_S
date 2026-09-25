@@ -34,6 +34,16 @@ static func shuffle_appearances(seed: int) -> Dictionary:
 			result[str(rows[i].id)] = "%s 물약" % looks[i] if category == "potion" else "'%s' 두루마리" % looks[i]
 	return result
 
+## Which look from `appearances.potion` (or `.scroll`) this run gave the kind,
+## as an index into that list; -1 when the kind has no look. The art keeps its
+## flasks in the same order.
+static func look_index(s, kind: String) -> int:
+	var row: Dictionary = definition(kind)
+	if row.is_empty(): return -1
+	var text: String = str(s.appearances.get(kind,""))
+	var look: String = text.trim_suffix(" 물약") if str(row.get("class","")) == "potion" else text.trim_prefix("'").trim_suffix("' 두루마리")
+	return content.appearances[str(row.get("class","potion"))].find(look)
+
 static func label(s, kind: String) -> String:
 	var row: Dictionary = definition(kind)
 	if row.is_empty(): return kind

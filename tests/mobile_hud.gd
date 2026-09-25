@@ -246,7 +246,7 @@ func recruited_ui() -> void:
 	var second: Dictionary = s.npcs[0]
 	second.partner = -1; second.bond = ""; second.state = "MET"; second.pos = center+Vector2i(-1,1)
 	check(s.recruit(second) and s.party.size() == 3,"party can fill all three slots")
-	check(Popups.inventory_rows(scene).all(func(row): return row.icon.atlas == Art.ITEM_SHEET),"all item categories share one flat atlas")
+	check(Popups.inventory_rows(scene).all(func(row): return row.icon.atlas == Art.ITEM_SHEET or (row.get("class","") == "potion" and row.icon.atlas in Art.POTION_LOOKS)),"item rows use the flat sheet, potions their flask")
 	for viewport in [Vector2i(390,844),Vector2i(320,640),Vector2i(320,568)]:
 		root.size = viewport; scene.refresh(); await process_frame
 		check(Rect2(Vector2.ZERO,scene.get_viewport_rect().size).encloses(scene.get_global_rect()),"game scene fits logical screen at %s" % viewport)
@@ -264,7 +264,7 @@ func recruited_ui() -> void:
 		for frame in range(3): await process_frame
 		var popup_rect := Rect2(Vector2(scene.details_popup.position),Vector2(scene.details_popup.size))
 		check(scene.get_global_rect().encloses(popup_rect),"parts bag fits %s" % viewport)
-		check(scene.inventory_slots.all(func(slot): return slot.row.is_empty() or slot.row.icon.atlas == Art.ITEM_SHEET),"all bag categories use the flat item sheet")
+		check(scene.inventory_slots.all(func(slot): return slot.row.is_empty() or slot.row.icon.atlas == Art.ITEM_SHEET or slot.row.icon.atlas in Art.POTION_LOOKS),"bag slots use the flat item sheet or a potion flask")
 		scene.details_popup.hide()
 	scene.queue_free(); await process_frame
 

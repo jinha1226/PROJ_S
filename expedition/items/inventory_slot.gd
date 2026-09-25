@@ -1,6 +1,7 @@
 extends Button
 ## Adapted from ../playtest/item_inventory_slot.gd: recessed slot,
 ## selected brackets, quantity badge and immutable display row.
+const Art = preload("res://expedition/art/mobile_art.gd")
 var row: Dictionary = {}
 var selected := false
 
@@ -34,7 +35,11 @@ func _draw() -> void:
 	var icon: Texture2D = row.get("icon")
 	if icon != null:
 		var side := minf(plate.size.x,plate.size.y)-12
-		draw_texture_rect(icon,Rect2(plate.get_center()-Vector2.ONE*side/2,Vector2.ONE*side),false)
+		var icon_rect := Rect2(plate.get_center()-Vector2.ONE*side/2,Vector2.ONE*side)
+		draw_texture_rect(icon,icon_rect,false)
+		# An overlay such as a potion's effect badge, lifted clear of the count.
+		var badge: Texture2D = row.get("badge")
+		if badge != null: draw_texture_rect(badge,Art.badge_rect(icon_rect,side*0.14),false)
 	elif row.category == "장비":
 		var center := plate.get_center()
 		var ink := Color("d1b16d")

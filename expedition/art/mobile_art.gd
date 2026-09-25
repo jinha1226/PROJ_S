@@ -13,6 +13,24 @@ const MONSTER_SPRITES := [preload("res://assets/sprites-v1/monsters/dcss_rat.png
 	preload("res://assets/sprites-v1/monsters/dcss_gnoll.png"),preload("res://assets/sprites-v1/monsters/dcss_river_rat.png")]
 const BOSS_SPRITES := [preload("res://assets/sprites-v1/bosses/boss_mire.png"),preload("res://assets/sprites-v1/bosses/boss_bomber.png"),
 	preload("res://assets/sprites-v1/bosses/boss_giant.png")]
+## Potion flasks in `consumables.json` `appearances.potion` order, and the
+## effect badges that sit on a flask's lower-right corner (tools/art/build_potions.py).
+const POTION_LOOKS := [preload("res://assets/items-v1/potions/red.png"),preload("res://assets/items-v1/potions/blue.png"),
+	preload("res://assets/items-v1/potions/green.png"),preload("res://assets/items-v1/potions/amber.png"),
+	preload("res://assets/items-v1/potions/purple.png"),preload("res://assets/items-v1/potions/silver.png"),
+	preload("res://assets/items-v1/potions/black.png"),preload("res://assets/items-v1/potions/white.png"),
+	preload("res://assets/items-v1/potions/murky.png"),preload("res://assets/items-v1/potions/golden.png")]
+const POTION_BADGES := {"healing":preload("res://assets/items-v1/potion-effects-badge/healing.png"),
+	"strength":preload("res://assets/items-v1/potion-effects-badge/strength.png"),
+	"haste":preload("res://assets/items-v1/potion-effects-badge/haste.png"),
+	"liquid_flame":preload("res://assets/items-v1/potion-effects-badge/liquid_flame.png"),
+	"frost":preload("res://assets/items-v1/potion-effects-badge/frost.png"),
+	"toxic_gas":preload("res://assets/items-v1/potion-effects-badge/toxic_gas.png"),
+	"experience":preload("res://assets/items-v1/potion-effects-badge/experience.png"),
+	"calm":preload("res://assets/items-v1/potion-effects-badge/calm.png"),
+	"unknown":preload("res://assets/items-v1/potion-effects-badge/unknown.png")}
+## A badge covers this share of its flask's side.
+const BADGE_SHARE := 0.55
 ## Where the figure stands inside a paper-doll PNG, as fractions of its side:
 ## feet on FEET_Y, and the head and shoulders inside PORTRAIT for cards.
 const FEET_Y := 55.0/64.0
@@ -128,6 +146,24 @@ static func equipment_icon(slot: String, kind: String = "") -> AtlasTexture:
 
 static func consumable_icon(kind: String) -> AtlasTexture:
 	return pixel_region(ITEM_SHEET,4,4,11 if kind == "scroll" else 12,"flat/consumable/"+kind)
+
+static func potion_icon(look: int) -> AtlasTexture:
+	var index := posmod(look,POTION_LOOKS.size())
+	return whole(POTION_LOOKS[index],"potion/"+str(index))
+
+## The effect badge for a potion kind, or the question mark until it is known.
+static func potion_badge(kind: String, known: bool) -> Texture2D:
+	return POTION_BADGES.get(kind if known else "unknown",POTION_BADGES.unknown)
+
+## The badge's square inside a flask drawn in `rect`: its lower-right corner,
+## lifted by `lift` so a count label along the bottom edge stays readable.
+static func badge_rect(rect: Rect2, lift: float = 0.0) -> Rect2:
+	var side := minf(rect.size.x,rect.size.y)*BADGE_SHARE
+	return Rect2(rect.end-Vector2(side,side+lift)+Vector2(side*0.06,side*0.04),Vector2.ONE*side)
+
+static func paint_potion(canvas: CanvasItem, rect: Rect2, look: int, badge: Texture2D = null, tint: Color = Color.WHITE) -> void:
+	canvas.draw_texture_rect(potion_icon(look),rect,false,tint)
+	if badge != null: canvas.draw_texture_rect(badge,badge_rect(rect),false,tint)
 
 static func food_icon() -> AtlasTexture:
 	return pixel_region(ITEM_SHEET,4,4,13,"flat/item/food")

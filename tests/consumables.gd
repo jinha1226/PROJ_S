@@ -2,6 +2,7 @@ extends SceneTree
 const Session = preload("res://expedition/run/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Consumables = preload("res://expedition/items/consumables.gd")
+const Art = preload("res://expedition/art/mobile_art.gd")
 var checks := 0
 var failures := 0
 
@@ -18,6 +19,14 @@ func run() -> void:
 	var looks: Dictionary = Consumables.shuffle_appearances(91)
 	check(looks == Consumables.shuffle_appearances(91) and looks != Consumables.shuffle_appearances(92),"seeded appearance shuffle")
 	check(looks.values().size() == looks.values().duplicate().reduce(func(a,b): return a if b in a else a+[b],[]).size(),"distinct appearances")
+	# The art: every potion's look finds its flask, and the badge waits for identification.
+	var dressed = Session.new_run(33)
+	var flasks: Array = Consumables.potions().map(func(row): return Consumables.look_index(dressed,str(row.id)))
+	check(flasks.all(func(i): return i >= 0 and i < Art.POTION_LOOKS.size()) and flasks.size() == flasks.reduce(func(a,b): return a if b in a else a+[b],[]).size(),"each potion kind maps to its own flask")
+	var red: int = Consumables.content.appearances.potion.find("붉은")
+	check(Art.POTION_LOOKS[red].resource_path.ends_with("/red.png") and Art.POTION_LOOKS.size() == Consumables.content.appearances.potion.size(),"flasks follow the appearance order")
+	check(Art.potion_badge("frost",false) == Art.POTION_BADGES.unknown and Art.potion_badge("frost",true).resource_path.ends_with("/frost.png"),"badge is a question mark until known")
+	check(Consumables.potions().all(func(row): return Art.POTION_BADGES.has(str(row.id))),"every potion kind has an effect badge")
 	for seed in range(3):
 		var floor = Session.new_run(seed+10)
 		var drops: Array = floor.floor_state.features.values().filter(func(f): return f.kind == "item")
