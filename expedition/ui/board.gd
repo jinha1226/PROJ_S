@@ -661,6 +661,7 @@ func _draw_foreground(canvas: Node2D) -> void:
 		elif kind == "MISS": draw_miss(effect,canvas)
 		elif kind == "SPEECH": draw_speech(effect,canvas)
 		elif kind == "REACTION": draw_reaction(effect,canvas)
+		elif kind == "PROC": draw_proc(effect,canvas)
 		elif effect.has("amount"): draw_hit(effect,canvas)
 	canvas.draw_set_transform(Vector2.ZERO)
 	# The edges of the screen flare red while the party is being hurt.
@@ -780,6 +781,21 @@ func draw_reaction(effect: Dictionary, canvas: Node2D) -> void:
 	var center := cell_center(effect.cell)-Vector2(0,half_width*(1.6+t*0.9))
 	var grow := 1.0+0.6*maxf(0,1.0-t/0.12)
 	draw_outlined(canvas,center,str(effect.get("text","")),int(24*grow),Color(1.0,0.86,0.35,clampf((1.1-t)/0.35,0,1)))
+
+## A soul stone's proc: its word over the cell, smaller than a reaction's and
+## in its tone's colour. Several on one cell stack upward instead of overlapping.
+const PROC_COLORS := {"buff":Color("ffd35a"),"heal":Color("6fe07a"),"debuff":Color("c58cff"),"crit":Color("ff4a3a")}
+func draw_proc(effect: Dictionary, canvas: Node2D) -> void:
+	var t := clock_of(effect)
+	if t < 0 or t >= 1.0: return
+	var stack := 0
+	for other in effects:
+		if is_same(other,effect): break
+		if str(other.get("kind","")) == "PROC" and other.get("cell") == effect.get("cell"): stack += 1
+	var center := cell_center(effect.cell)-Vector2(0,half_width*(1.2+t*0.7)+stack*16)
+	var color: Color = PROC_COLORS.get(str(effect.get("tone","buff")),PROC_COLORS.buff)
+	color.a = clampf((1.0-t)/0.3,0,1)
+	draw_outlined(canvas,center,str(effect.get("text","")),int(15*(1.0+0.4*maxf(0,1.0-t/0.1))),color)
 
 func draw_speech(effect: Dictionary, canvas: Node2D) -> void:
 	if clock_of(effect) >= 2.5: return
