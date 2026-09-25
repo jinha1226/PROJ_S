@@ -2,7 +2,13 @@
 
 Forge Master: Idle RPG의 앱스토어 스크린샷을 보고 그림 문법을 뽑아, 이 게임의 던전 화면에 적용한 원본 샘플이다. 이미지 생성 모델을 쓰지 않았다. 모든 그림은 `tools/art/build_flat_cartoon.py` 안에 SVG 코드로 적혀 있고, Godot 내장 SVG 렌더러로 래스터화한다.
 
-![게임 화면 샘플](flat-cartoon-v1/gameplay-v2-780x1688.png)
+![Forge Master 구도 목업](flat-cartoon-v1/forge-layout-780x1688.png)
+
+위 화면은 참고 스크린샷의 구도·비율·색을 재서 맞춘 목업이다(`tools/art/build_forge_layout.py`). 위 절반은 옆에서 본 들판과 흙길이다. 주인공은 왼쪽에서 오른쪽을 보고, 적 무리는 오른쪽에서 왼쪽을 본다. 아래 절반은 장비 슬롯 5×2, 모루 자리의 보물상자, 아이콘 탭 바다. 캐릭터는 화면 폭의 약 6%로 참고와 같다. 제목과 숫자는 주아(Jua, OFL) 글꼴로 쓴다. 참고 화면의 빨간 리본 문구는 앱스토어 홍보용이라 넣지 않았다.
+
+아래 화면은 같은 그림을 현재 게임의 격자 로그라이크 구성에 입힌 것이다.
+
+![격자 로그라이크 구성](flat-cartoon-v1/gameplay-v2-780x1688.png)
 
 ![스프라이트 시트](flat-cartoon-v1/sprite-sheet.png)
 
@@ -34,6 +40,7 @@ Forge Master: Idle RPG의 앱스토어 스크린샷을 보고 그림 문법을 �
 
 ```bash
 python3 tools/art/build_flat_cartoon.py
+python3 tools/art/build_forge_layout.py
 ```
 
 ## 주의
