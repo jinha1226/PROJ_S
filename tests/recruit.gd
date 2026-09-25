@@ -289,6 +289,8 @@ func scene() -> void:
 	check("OfferPopup" in found and "OfferAccept" in found and "OfferDecline" in found,"a pending offer shows the offer popup")
 	main.find_child("OfferAccept",true,false).pressed.emit(); await process_frame
 	check(npc.state == "PARTY" and s.party.size() == 2,"accepting recruits")
-	main.on_cell(npc.pos); await process_frame
-	check(s.selected == 1,"a tap on the recruit selects it by its rank, not its roster id")
+	var hero_cell: Vector2i = s.party[0].pos
+	var recruit_cell: Vector2i = npc.pos
+	main.on_cell(recruit_cell); await process_frame
+	check(s.party[0].pos == recruit_cell and npc.pos == hero_cell,"tapping an adjacent recruit exchanges their cells")
 	main.queue_free(); await process_frame
