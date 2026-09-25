@@ -59,3 +59,39 @@
 | `steam.png`, `ice.png`, `poison_pool.png` | 반응 칸. 바닥 위에 겹친다 |
 
 - 연결: `board.gd`의 칸 그리기에서 지형(`lava`, `deep_water`, `bog`)은 재료 대신, 나머지는 바닥을 그린 뒤 위에 그린다. 필드 이름은 구역 계획(`gas`, `fog`, `collapse`)과 반응 계획(`steam_until`, `ice`, `poison_pool`)을 따른다.
+
+## 구역 재료 칸 `assets/zones-v1/tiles/<테마>-materials.png` (1254 px)
+
+`temple-materials.png`, `crypt-materials.png`. 폐허 재료 시트(`assets/topdown/flat-v1/ruins-materials.png`)와 16칸의 위치가 같아서 `assets/topdown/floor1-ink-v2/catalog.json`의 `materials` 좌표로 그대로 자른다.
+
+| 칸 | 신전 | 묘역 |
+| --- | --- | --- |
+| `floor_a`~`floor_d` | 청록 판석, 이끼 | 보라 판석, 룬 고리 |
+| `front`, `top` | 청록 벽 | 보라 벽 |
+| `wood` | 이끼 낀 판자 | 관 판자 |
+| `metal` | 녹청 슨 청동 창살 | 녹슨 쇠 창살 |
+| `water`, `water_ripple` | 바닥 타일이 비치는 맑은 물 | 검은 물 |
+| `mud`, `dirt` | 뻘, 모래 | 무덤 흙 |
+| `moss` | 짙은 이끼 | 창백한 균류 |
+| `rubble` | 무너진 기둥 조각 | 뼈 무더기 |
+| `embers` | 푸른 룬 빛 | 보라 혼불 |
+| `damp` | 젖은 판석 | 얼룩진 판석 |
+
+- 연결: `floor1_art.gd` `tile()`의 재료 분기에서 `F3_TEMPLE`, `F4_CRYPT`일 때 이 시트를 쓴다.
+- 시트: `docs/art/zones-v1/materials.png`.
+
+## 배너 틀과 승리 그림 `assets/ui/frames-v1/` (도구 `tools/art/build_ui_extras.py`)
+
+| 파일 | 쓰임 |
+| --- | --- |
+| `banner_level.png` | 레벨 업 배너(금색, 별 모서리) |
+| `banner_essence.png` | 영혼석 획득 배너(보라, 보석 모서리) |
+| `banner_boss.png` | 보스 등장 배너(빨강, 해골 모서리) |
+| `banner_victory.png` | 승리 결과 카드(금색과 초록) |
+| `ribbon_gold.png`, `ribbon_purple.png`, `ribbon_red.png` | 배너 제목 리본 |
+| `victory.png` | 승리 결과 카드 그림(360×240): 영혼석 왕관, 검과 지팡이, 월계수, 묘역 계단 위로 비치는 빛 |
+
+- 배너 틀은 나인 패치다. PNG는 384 px이고 모서리 여백은 112 px(원본 192 단위의 56)다. `banners.gd`의 `frame()`에서 `StyleBoxFlat` 대신 `StyleBoxTexture`를 쓰고 `texture_margin_*`을 112로, 화면에서는 `scale`로 줄이거나 `texture_margin`을 56으로 두고 텍스처를 절반 크기로 불러온다. 내용 여백(`content_margin_*`)은 40 정도가 알맞다.
+- 리본은 가운데 3분의 1만 늘린다(`texture_margin_left/right` = 폭의 3분의 1). 배너 제목 뒤에 깐다.
+- `victory.png`는 `result_card.gd`의 승리 분기(`session.phase == "VICTORY"`) 맨 위에 둔다.
+- 시트: `docs/art/zones-v1/ui-frames.png`.
