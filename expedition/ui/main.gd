@@ -20,6 +20,7 @@ var log_popup: PopupPanel
 var log_filter := "전체"
 var auto_explore_button: Button
 var inventory_filter := "전체"
+var inventory_actor := 0
 ## The starting kit the picker has on it, spent when a run departs.
 var kit_choice := "sword"
 var inventory_selected := ""

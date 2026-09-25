@@ -74,6 +74,7 @@ func run() -> void:
 	hero.spells = ["fire_1"]; hero.prepared = ["fire_1"]
 	scene.refresh(); await process_frame
 	scene.find_child("Tactics",true,false).pressed.emit(); await process_frame
+	scene.find_child("TacticSkills",true,false).pressed.emit(); await process_frame
 	check(scene.find_child("Spell_fire_1",true,false) != null,"prepared spell appears in tactics")
 	var before_mp: int = hero.mp
 	before_time = scene.session.time
