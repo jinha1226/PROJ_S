@@ -81,7 +81,7 @@ static func show_prepare(ui, index: int) -> void:
 		var spell: Dictionary = Session.CombatStats.content.spells[id]
 		var choice = ui.button(box,("✓ " if id in actor.prepared else "○ ")+str(spell.name),func():
 			if session.prepare_spell(index,id,id not in actor.prepared): show_prepare(ui,index))
-		choice.icon = Art.spell_icon(str(id)); choice.add_theme_constant_override("icon_max_width",28)
+		choice.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR; choice.icon = Art.spell_icon(str(id)); choice.add_theme_constant_override("icon_max_width",28)
 	ui.button(box,"닫기",func(): ui.details_popup.hide())
 	ui.details_popup.popup_centered()
 
@@ -107,7 +107,7 @@ static func show_learn(ui, index: int) -> void:
 			if not reason.is_empty(): caption += "  (%s)" % reason
 			var choice = ui.button(box,caption,func():
 				if session.learn_spell(index,spell_id): show_learn(ui,index),reason.is_empty())
-			choice.icon = Art.spell_icon(spell_id); choice.add_theme_constant_override("icon_max_width",28)
+			choice.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR; choice.icon = Art.spell_icon(spell_id); choice.add_theme_constant_override("icon_max_width",28)
 			choice.name = "Learn_"+spell_id
 			choice.custom_minimum_size.y = 44
 	ui.button(box,"닫기",func(): ui.details_popup.hide())

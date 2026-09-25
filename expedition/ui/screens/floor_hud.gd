@@ -105,7 +105,7 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 			var id: String = str(prepared[slot]) if slot < prepared.size() else ""
 			var caption: String = str(Session.CombatStats.content.spells[id].name) if not id.is_empty() else "—"
 			var spell = ui.button(spells,caption,func(): choose_spell(ui,id),not id.is_empty())
-			if not id.is_empty(): spell.icon = Art.spell_icon(id); spell.add_theme_constant_override("icon_max_width",22)
+			if not id.is_empty(): spell.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR; spell.icon = Art.spell_icon(id); spell.add_theme_constant_override("icon_max_width",22)
 			spell.name = "Spell%d" % slot; spell.custom_minimum_size.y = 44
 	var nav := GridContainer.new(); nav.name = "BottomActions"; nav.columns = 4; ui.root_layout.add_child(nav)
 	var attack = ui.action_button(nav,"공격",Art.ui_icon(0),func():
@@ -136,7 +136,7 @@ static func build_manual_controls(ui) -> void:
 			var id: String = str(prepared[slot]) if slot < prepared.size() else ""
 			var caption: String = str(Session.CombatStats.content.spells[id].name) if not id.is_empty() else "—"
 			var spell = ui.button(spells,caption,func(): choose_spell(ui,id),not id.is_empty())
-			if not id.is_empty(): spell.icon = Art.spell_icon(id); spell.add_theme_constant_override("icon_max_width",22)
+			if not id.is_empty(): spell.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR; spell.icon = Art.spell_icon(id); spell.add_theme_constant_override("icon_max_width",22)
 			spell.name = "Spell%d" % slot; spell.custom_minimum_size.y = 44
 			spell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var portraits := HBoxContainer.new(); portraits.name = "PortraitRow"
@@ -292,7 +292,7 @@ static func show_manual_skills(ui) -> void:
 		var spell_id: String = str(id)
 		var definition: Dictionary = Session.CombatStats.content.spells.get(spell_id,{})
 		var spell = ui.button(choices,"%s   ·   MP %d" % [str(definition.get("name",spell_id)),int(definition.get("mp",0))],func(): ui.details_popup.hide(); choose_spell(ui,spell_id),actor.mp >= int(definition.get("mp",0)))
-		spell.icon = Art.spell_icon(spell_id); spell.add_theme_constant_override("icon_max_width",28)
+		spell.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR; spell.icon = Art.spell_icon(spell_id); spell.add_theme_constant_override("icon_max_width",28)
 		spell.name = "Spell_"+spell_id
 		spell.alignment = HORIZONTAL_ALIGNMENT_LEFT; spell.custom_minimum_size.y = 54
 	if actor.equipped_abilities.any(func(id): return not str(id).is_empty()): ui.label(choices,"파츠",15)

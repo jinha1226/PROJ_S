@@ -39,6 +39,71 @@ const ARMOUR_ICONS := {"robe":preload("res://assets/items-v1/gear/armours/robe.p
 const RING_ICONS := {"fire":preload("res://assets/items-v1/gear/rings/fire.png"),"ice":preload("res://assets/items-v1/gear/rings/ice.png"),"poison":preload("res://assets/items-v1/gear/rings/poison.png"),"air":preload("res://assets/items-v1/gear/rings/air.png"),"power":preload("res://assets/items-v1/gear/rings/power.png"),"ev":preload("res://assets/items-v1/gear/rings/ev.png")}
 const SHIELD_ICON := preload("res://assets/items-v1/gear/shield.png")
 const BOOK_ICON := preload("res://assets/items-v1/gear/book.png")
+## Spell icons: the fifty school spells and the twelve basic ones, each its
+## own card in its school's colours (tools/art/build_spells.py).
+const SPELL_ICONS := {
+	"fire_1":preload("res://assets/items-v1/spells/fire_1.png"),
+	"fire_2":preload("res://assets/items-v1/spells/fire_2.png"),
+	"fire_3":preload("res://assets/items-v1/spells/fire_3.png"),
+	"fire_4":preload("res://assets/items-v1/spells/fire_4.png"),
+	"fire_5":preload("res://assets/items-v1/spells/fire_5.png"),
+	"fire_6":preload("res://assets/items-v1/spells/fire_6.png"),
+	"fire_7":preload("res://assets/items-v1/spells/fire_7.png"),
+	"fire_8":preload("res://assets/items-v1/spells/fire_8.png"),
+	"fire_9":preload("res://assets/items-v1/spells/fire_9.png"),
+	"fire_10":preload("res://assets/items-v1/spells/fire_10.png"),
+	"ice_1":preload("res://assets/items-v1/spells/ice_1.png"),
+	"ice_2":preload("res://assets/items-v1/spells/ice_2.png"),
+	"ice_3":preload("res://assets/items-v1/spells/ice_3.png"),
+	"ice_4":preload("res://assets/items-v1/spells/ice_4.png"),
+	"ice_5":preload("res://assets/items-v1/spells/ice_5.png"),
+	"ice_6":preload("res://assets/items-v1/spells/ice_6.png"),
+	"ice_7":preload("res://assets/items-v1/spells/ice_7.png"),
+	"ice_8":preload("res://assets/items-v1/spells/ice_8.png"),
+	"ice_9":preload("res://assets/items-v1/spells/ice_9.png"),
+	"ice_10":preload("res://assets/items-v1/spells/ice_10.png"),
+	"air_1":preload("res://assets/items-v1/spells/air_1.png"),
+	"air_2":preload("res://assets/items-v1/spells/air_2.png"),
+	"air_3":preload("res://assets/items-v1/spells/air_3.png"),
+	"air_4":preload("res://assets/items-v1/spells/air_4.png"),
+	"air_5":preload("res://assets/items-v1/spells/air_5.png"),
+	"air_6":preload("res://assets/items-v1/spells/air_6.png"),
+	"air_7":preload("res://assets/items-v1/spells/air_7.png"),
+	"air_8":preload("res://assets/items-v1/spells/air_8.png"),
+	"air_9":preload("res://assets/items-v1/spells/air_9.png"),
+	"air_10":preload("res://assets/items-v1/spells/air_10.png"),
+	"hex_1":preload("res://assets/items-v1/spells/hex_1.png"),
+	"hex_2":preload("res://assets/items-v1/spells/hex_2.png"),
+	"hex_3":preload("res://assets/items-v1/spells/hex_3.png"),
+	"hex_4":preload("res://assets/items-v1/spells/hex_4.png"),
+	"hex_5":preload("res://assets/items-v1/spells/hex_5.png"),
+	"hex_6":preload("res://assets/items-v1/spells/hex_6.png"),
+	"hex_7":preload("res://assets/items-v1/spells/hex_7.png"),
+	"hex_8":preload("res://assets/items-v1/spells/hex_8.png"),
+	"hex_9":preload("res://assets/items-v1/spells/hex_9.png"),
+	"hex_10":preload("res://assets/items-v1/spells/hex_10.png"),
+	"summon_1":preload("res://assets/items-v1/spells/summon_1.png"),
+	"summon_2":preload("res://assets/items-v1/spells/summon_2.png"),
+	"summon_3":preload("res://assets/items-v1/spells/summon_3.png"),
+	"summon_4":preload("res://assets/items-v1/spells/summon_4.png"),
+	"summon_5":preload("res://assets/items-v1/spells/summon_5.png"),
+	"summon_6":preload("res://assets/items-v1/spells/summon_6.png"),
+	"summon_7":preload("res://assets/items-v1/spells/summon_7.png"),
+	"summon_8":preload("res://assets/items-v1/spells/summon_8.png"),
+	"summon_9":preload("res://assets/items-v1/spells/summon_9.png"),
+	"summon_10":preload("res://assets/items-v1/spells/summon_10.png"),
+	"bolt":preload("res://assets/items-v1/spells/bolt.png"),
+	"blast":preload("res://assets/items-v1/spells/blast.png"),
+	"cone":preload("res://assets/items-v1/spells/cone.png"),
+	"cloud":preload("res://assets/items-v1/spells/cloud.png"),
+	"confuse":preload("res://assets/items-v1/spells/confuse.png"),
+	"blink":preload("res://assets/items-v1/spells/blink.png"),
+	"passwall":preload("res://assets/items-v1/spells/passwall.png"),
+	"ward":preload("res://assets/items-v1/spells/ward.png"),
+	"hound":preload("res://assets/items-v1/spells/hound.png"),
+	"turret":preload("res://assets/items-v1/spells/turret.png"),
+	"ignite":preload("res://assets/items-v1/spells/ignite.png"),
+	"mend":preload("res://assets/items-v1/spells/mend.png")}
 ## Magic school icons for the mastery axes; the weapon axes reuse WEAPON_ICONS.
 const SCHOOL_ICONS := {"fire":preload("res://assets/items-v1/schools/fire.png"),"ice":preload("res://assets/items-v1/schools/ice.png"),
 	"air":preload("res://assets/items-v1/schools/air.png"),"hex":preload("res://assets/items-v1/schools/hex.png"),
@@ -144,16 +209,10 @@ static func mastery_icon(axis: String) -> AtlasTexture:
 	var texture: Texture2D = WEAPON_ICONS.get(axis,SCHOOL_ICONS.get(axis,WEAPON_ICONS.sword))
 	return whole(texture,"mastery/"+axis)
 
+## A spell's card; an unknown id falls back to the plain fire bolt.
 static func spell_icon(id: String) -> AtlasTexture:
-	for school in range(MAGIC_SCHOOLS.size()):
-		if id.begins_with(MAGIC_SCHOOLS[school]+"_"):
-			var rank := int(id.get_slice("_",1))
-			if rank >= 1 and rank <= 10:
-				return pixel_region(TIER_SHEETS[school],5,2,rank-1,"spell/"+id)
-	var index := SPELL_IDS.find(id)
-	if index < 0:
-		index = 0
-	return pixel_region(SPELL_SHEET,4,3,index,"spell/"+str(index))
+	var key := id if SPELL_ICONS.has(id) else "bolt"
+	return whole(SPELL_ICONS[key],"spell/"+key)
 
 ## The picture for a piece of gear: `slot` is weapon / armour / shield / ring
 ## (or book, scroll) and `kind` the combat.json id. Unknown ids fall back to

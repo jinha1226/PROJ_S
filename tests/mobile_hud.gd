@@ -29,6 +29,9 @@ func run() -> void:
 	check(["SUPPLY_CACHE","BROKEN_CHEST","MUSHROOMS","DEAD_ADVENTURER"].map(func(c): return Art.FirstFloor.feature_id({"kind":"curio","curio_id":c})).reduce(func(a,b): return a if b in a else a+[b],[]).size() == 4,"the four curios look different")
 	check(["stairs","pylon","entry","altar","relic","camp"].all(func(k): return Art.FirstFloor.OBJECTS.has(Art.FirstFloor.feature_id({"kind":k}))),"map features are drawn as objects")
 	check(Art.MASTERY_IDS.all(func(axis): return Art.mastery_icon(axis).atlas == (Art.WEAPON_ICONS[axis] if Art.WEAPON_ICONS.has(axis) else Art.SCHOOL_ICONS[axis])),"every mastery axis has its weapon or school picture")
+	var spells: Dictionary = Session.CombatStats.content.spells
+	check(spells.keys().all(func(id): return Art.spell_icon(id).atlas == Art.SPELL_ICONS[id]),"every spell in combat.json has its own card")
+	check(Art.spell_icon("no_such_spell").atlas == Art.SPELL_ICONS.bolt,"an unknown spell falls back to the fire bolt")
 	check(["boss_mire","boss_bomber","boss_giant"].all(func(n): return Art.boss_sprite(["boss_mire","boss_bomber","boss_giant"].find(n)).atlas.resource_path.ends_with(n+".png")),"each boss pattern has its own sprite")
 	root.size = Vector2i(390,844)
 	var scene = load("res://expedition/ui/main.tscn").instantiate()
