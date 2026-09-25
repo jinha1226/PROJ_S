@@ -21,7 +21,7 @@ func check(ok: bool, reason: String) -> void:
 func _initialize() -> void: call_deferred("run")
 
 func run() -> void:
-	brackets(); pack(); berserk(); ambush(); guard(); archer(); caster(); boost(); listing()
+	brackets(); pack(); party_pool(); berserk(); ambush(); guard(); archer(); caster(); boost(); listing()
 	StoneEffects.force = -1
 	print("Role combos: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
@@ -86,6 +86,17 @@ func pack() -> void:
 	hit(s,d.hero,d.foe,5)
 	check(int(d.hero.hp) == 20+int(d.hero.max_hp)*5/100 and int(d.ally.hp) == 20+int(d.ally.max_hp)*5/100,"a kill heals the party five percent")
 	check(hit(s,d.foe,d.hero,20) == 20,"a monster borrows nothing from the party")
+
+## Slotting the fourth pack stone at camp brings every member's pool in line.
+func party_pool() -> void:
+	var d := duo(); var s = d.s
+	s.phase = "CAMP"
+	var ally_hp: int = int(d.ally.max_hp)
+	slot(d.hero,stones("RIVER_RAT_SPLASH",3)+[""])
+	s.parts_bag["RIVER_RAT_SPLASH@poison"] = 1
+	check(s.equip_part(0,3,"RIVER_RAT_SPLASH@poison") and TagSets.bracket(d.hero,"PACK") == 4,"the fourth pack stone goes in")
+	check(int(d.ally.max_hp) == ally_hp*120/100,"and the ally's max HP rises with it at once")
+	check(s.unequip_part(0,3) and int(d.ally.max_hp) == ally_hp,"and falls when it comes off")
 
 func berserk() -> void:
 	var d := duo(); var s = d.s

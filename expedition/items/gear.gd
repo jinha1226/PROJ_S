@@ -51,7 +51,7 @@ static func equip_part(s, index: int, slot: int, id: String) -> bool:
 	if slot < 0 or slot >= Essences.slot_count(actor) or id in actor.equipped_abilities: return false
 	if int(actor.get("essences",{}).get(id,0)) <= 0 and not absorb_essence(s,index,id).is_empty(): return false
 	if not Essences.equip(s,actor,slot,id): return false
-	StatSheet.refresh_pools(s,actor)
+	refresh_party(s)
 	return true
 
 ## The slot empties; the essence stays absorbed and can be slotted again.
@@ -59,7 +59,7 @@ static func unequip_part(s, index: int, slot: int) -> bool:
 	if index < 0 or index >= s.party.size(): return false
 	var actor: Dictionary = s.party[index]
 	if not Essences.unequip(s,actor,slot): return false
-	StatSheet.refresh_pools(s,actor)
+	refresh_party(s)
 	return true
 
 static func absorb_essence(s, index: int, id: String) -> String:
@@ -114,3 +114,8 @@ static func reset_rules(s, index: int) -> void:
 	actor.rules = Rules.defaults(); actor.basic_target = Rules.BASIC_TARGET_DEFAULT
 	for id in actor.equipped_abilities:
 		if Abilities.has(id): actor.rules.append(Abilities.default_rule(id))
+
+## A slot change can move 무리 4's HP for the whole party: every pool is
+## brought in line, not just the wearer's.
+static func refresh_party(s) -> void:
+	for member in s.party: StatSheet.refresh_pools(s,member)
