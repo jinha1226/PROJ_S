@@ -29,6 +29,16 @@ const POTION_BADGES := {"healing":preload("res://assets/items-v1/potion-effects-
 	"experience":preload("res://assets/items-v1/potion-effects-badge/experience.png"),
 	"calm":preload("res://assets/items-v1/potion-effects-badge/calm.png"),
 	"unknown":preload("res://assets/items-v1/potion-effects-badge/unknown.png")}
+## Scrolls in `appearances.scroll` order and their effect badges; an unknown
+## scroll wears the same question mark as an unknown potion (tools/art/build_gear.py).
+const SCROLL_LOOKS := [preload("res://assets/items-v1/scrolls/zelgo_mer.png"),preload("res://assets/items-v1/scrolls/kirje.png"),preload("res://assets/items-v1/scrolls/andova.png"),preload("res://assets/items-v1/scrolls/pratyav.png"),preload("res://assets/items-v1/scrolls/venzar.png"),preload("res://assets/items-v1/scrolls/nafa.png"),preload("res://assets/items-v1/scrolls/temov.png"),preload("res://assets/items-v1/scrolls/gari.png"),preload("res://assets/items-v1/scrolls/lomas.png"),preload("res://assets/items-v1/scrolls/xixaxa.png")]
+const SCROLL_BADGES := {"identify":preload("res://assets/items-v1/scroll-effects-badge/identify.png"),"upgrade":preload("res://assets/items-v1/scroll-effects-badge/upgrade.png"),"magic_mapping":preload("res://assets/items-v1/scroll-effects-badge/magic_mapping.png"),"teleportation":preload("res://assets/items-v1/scroll-effects-badge/teleportation.png"),"mirror_image":preload("res://assets/items-v1/scroll-effects-badge/mirror_image.png"),"lullaby":preload("res://assets/items-v1/scroll-effects-badge/lullaby.png"),"rage":preload("res://assets/items-v1/scroll-effects-badge/rage.png"),"recharging":preload("res://assets/items-v1/scroll-effects-badge/recharging.png")}
+## Gear by combat.json id: every weapon, armour and ring has its own picture.
+const WEAPON_ICONS := {"sword":preload("res://assets/items-v1/gear/weapons/sword.png"),"dagger":preload("res://assets/items-v1/gear/weapons/dagger.png"),"spear":preload("res://assets/items-v1/gear/weapons/spear.png"),"mace":preload("res://assets/items-v1/gear/weapons/mace.png"),"axe":preload("res://assets/items-v1/gear/weapons/axe.png"),"bow":preload("res://assets/items-v1/gear/weapons/bow.png"),"staff":preload("res://assets/items-v1/gear/weapons/staff.png")}
+const ARMOUR_ICONS := {"robe":preload("res://assets/items-v1/gear/armours/robe.png"),"leather":preload("res://assets/items-v1/gear/armours/leather.png"),"mail":preload("res://assets/items-v1/gear/armours/mail.png"),"plate":preload("res://assets/items-v1/gear/armours/plate.png")}
+const RING_ICONS := {"fire":preload("res://assets/items-v1/gear/rings/fire.png"),"ice":preload("res://assets/items-v1/gear/rings/ice.png"),"poison":preload("res://assets/items-v1/gear/rings/poison.png"),"air":preload("res://assets/items-v1/gear/rings/air.png"),"power":preload("res://assets/items-v1/gear/rings/power.png"),"ev":preload("res://assets/items-v1/gear/rings/ev.png")}
+const SHIELD_ICON := preload("res://assets/items-v1/gear/shield.png")
+const BOOK_ICON := preload("res://assets/items-v1/gear/book.png")
 ## A badge covers this share of its flask's side.
 const BADGE_SHARE := 0.55
 ## Where the figure stands inside a paper-doll PNG, as fractions of its side:
@@ -139,10 +149,31 @@ static func spell_icon(id: String) -> AtlasTexture:
 		index = 0
 	return pixel_region(SPELL_SHEET,4,3,index,"spell/"+str(index))
 
+## The picture for a piece of gear: `slot` is weapon / armour / shield / ring
+## (or book, scroll) and `kind` the combat.json id. Unknown ids fall back to
+## the plainest piece of their slot.
 static func equipment_icon(slot: String, kind: String = "") -> AtlasTexture:
-	var id: String = kind if slot == "weapon" else "armour" if slot == "armour" else slot
-	var index := EQUIPMENT_IDS.find(id)
-	return pixel_region(ITEM_SHEET,4,4,maxi(0,index),"flat/item/"+str(index))
+	match slot:
+		"weapon": return whole(WEAPON_ICONS.get(kind,WEAPON_ICONS.sword),"gear/weapon/"+kind)
+		"armour": return whole(ARMOUR_ICONS.get(kind,ARMOUR_ICONS.leather),"gear/armour/"+kind)
+		"ring": return whole(RING_ICONS.get(kind,RING_ICONS.power),"gear/ring/"+kind)
+		"shield": return whole(SHIELD_ICON,"gear/shield")
+		"book": return whole(BOOK_ICON,"gear/book")
+		"scroll": return scroll_icon(0)
+	return whole(WEAPON_ICONS.sword,"gear/weapon/sword")
+
+static func scroll_icon(look: int) -> AtlasTexture:
+	var index := posmod(look,SCROLL_LOOKS.size())
+	return whole(SCROLL_LOOKS[index],"scroll/"+str(index))
+
+## A potion or scroll's look, whichever class the kind is.
+static func item_icon(item_class: String, look: int) -> AtlasTexture:
+	return potion_icon(look) if item_class == "potion" else scroll_icon(look)
+
+## The effect badge for any potion or scroll kind, or the question mark until known.
+static func item_badge(kind: String, known: bool) -> Texture2D:
+	if not known: return POTION_BADGES.unknown
+	return POTION_BADGES.get(kind,SCROLL_BADGES.get(kind,POTION_BADGES.unknown))
 
 static func consumable_icon(kind: String) -> AtlasTexture:
 	return pixel_region(ITEM_SHEET,4,4,11 if kind == "scroll" else 12,"flat/consumable/"+kind)
@@ -162,7 +193,11 @@ static func badge_rect(rect: Rect2, lift: float = 0.0) -> Rect2:
 	return Rect2(rect.end-Vector2(side,side+lift)+Vector2(side*0.06,side*0.04),Vector2.ONE*side)
 
 static func paint_potion(canvas: CanvasItem, rect: Rect2, look: int, badge: Texture2D = null, tint: Color = Color.WHITE) -> void:
-	canvas.draw_texture_rect(potion_icon(look),rect,false,tint)
+	paint_item(canvas,rect,potion_icon(look),badge,tint)
+
+## A potion or scroll picture with its badge on the lower-right corner.
+static func paint_item(canvas: CanvasItem, rect: Rect2, texture: Texture2D, badge: Texture2D = null, tint: Color = Color.WHITE) -> void:
+	canvas.draw_texture_rect(texture,rect,false,tint)
 	if badge != null: canvas.draw_texture_rect(badge,badge_rect(rect),false,tint)
 
 static func food_icon() -> AtlasTexture:

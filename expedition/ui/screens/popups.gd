@@ -362,11 +362,10 @@ static func inventory_rows(ui) -> Array:
 		var def: Dictionary = Session.Consumables.definition(kind)
 		var is_known: bool = session.known.has(kind)
 		var row := {"id":"item:"+kind,"label":session.item_label(kind)+("" if is_known else " · 미감정"),"quantity":count,"category":"소모품","kind":kind,"class":str(def["class"]),"known":is_known,"area":bool(def.get("area",false)),"description":Session.Consumables.description(session,kind),"icon":Art.consumable_icon(str(def["class"]))}
-		# A potion shows the flask this run dressed it in, with its effect badge
-		# once it is known and a question mark until then.
-		if str(def["class"]) == "potion":
-			row.icon = Art.potion_icon(Session.Consumables.look_index(session,kind))
-			row.badge = Art.potion_badge(kind,is_known)
+		# A potion or scroll shows the look this run dressed it in, with its
+		# effect badge once it is known and a question mark until then.
+		row.icon = Art.item_icon(str(def["class"]),Session.Consumables.look_index(session,kind))
+		row.badge = Art.item_badge(kind,is_known)
 		rows.append(row)
 	for i in range(session.gear_bag.size()):
 		var item: Dictionary = session.gear_bag[i]

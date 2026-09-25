@@ -27,6 +27,10 @@ func run() -> void:
 	check(Art.POTION_LOOKS[red].resource_path.ends_with("/red.png") and Art.POTION_LOOKS.size() == Consumables.content.appearances.potion.size(),"flasks follow the appearance order")
 	check(Art.potion_badge("frost",false) == Art.POTION_BADGES.unknown and Art.potion_badge("frost",true).resource_path.ends_with("/frost.png"),"badge is a question mark until known")
 	check(Consumables.potions().all(func(row): return Art.POTION_BADGES.has(str(row.id))),"every potion kind has an effect badge")
+	var scrolls: Array = Consumables.scrolls().map(func(row): return Consumables.look_index(dressed,str(row.id)))
+	check(scrolls.all(func(i): return i >= 0 and i < Art.SCROLL_LOOKS.size()) and scrolls.size() == scrolls.reduce(func(a,b): return a if b in a else a+[b],[]).size(),"each scroll kind maps to its own look")
+	check(Art.SCROLL_LOOKS.size() == Consumables.content.appearances.scroll.size() and Consumables.scrolls().all(func(row): return Art.SCROLL_BADGES.has(str(row.id))),"scroll looks and badges cover the catalog")
+	check(Art.item_badge("lullaby",false) == Art.POTION_BADGES.unknown and Art.item_badge("lullaby",true) == Art.SCROLL_BADGES.lullaby,"scroll badge waits for identification")
 	for seed in range(3):
 		var floor = Session.new_run(seed+10)
 		var drops: Array = floor.floor_state.features.values().filter(func(f): return f.kind == "item")

@@ -375,10 +375,11 @@ func _draw() -> void:
 				var icon: String = ("potion" if session.Consumables.definition(str(feature.get("item_id",""))).get("class","") == "potion" else "scroll") if feature.kind == "item" else session.Curios.definition(feature).get("icon",feature.kind)
 				var object_id: String = Art.FirstFloor.feature_id(feature) if uses_pixel_floor_art() else ""
 				var item_kind: String = str(feature.get("item_id","")) if feature.kind == "item" else ""
-				if icon == "potion" and not item_kind.is_empty():
-					# A dropped potion wears its run look; a known one shows its effect.
+				if not item_kind.is_empty():
+					# A dropped potion or scroll wears its run look; a known one shows its effect.
 					var known: bool = session.known.has(item_kind)
-					Art.paint_potion(self,Rect2(center-Vector2.ONE*half_width*0.95,Vector2.ONE*half_width*1.9),session.Consumables.look_index(session,item_kind),Art.potion_badge(item_kind,true) if known else null)
+					var texture: Texture2D = Art.item_icon(icon,session.Consumables.look_index(session,item_kind))
+					Art.paint_item(self,Rect2(center-Vector2.ONE*half_width*0.95,Vector2.ONE*half_width*1.9),texture,Art.item_badge(item_kind,true) if known else null)
 				elif not object_id.is_empty():
 					Art.FirstFloor.paint_object(self,object_id,Rect2(center-Vector2.ONE*half_width,Vector2.ONE*half_width*2),Color("777777") if bool(feature.get("used",false)) else Color.WHITE)
 				else:

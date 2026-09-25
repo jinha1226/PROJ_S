@@ -20,6 +20,9 @@ func run() -> void:
 	check(Art.FirstFloor.tile("floor_a").get_width() > 250 and Art.FirstFloor.tile("front").get_width() > 250,"flat floor and wall tiles are active")
 	check(Art.FirstFloor.tile("floor_a","F2_MINES").atlas != Art.FirstFloor.tile("floor_a","F1_RUINS").atlas,"mines have their own floor slabs")
 	check(Art.FirstFloor.tile("front","F2_MINES").atlas != Art.FirstFloor.tile("front","F1_RUINS").atlas,"mines have their own wall blocks")
+	for pair in [["weapon",Session.CombatStats.content.weapons,Art.WEAPON_ICONS],["armour",Session.CombatStats.content.armours,Art.ARMOUR_ICONS],["ring",Session.CombatStats.content.rings,Art.RING_ICONS]]:
+		check(pair[1].keys().all(func(id): return Art.equipment_icon(pair[0],id).atlas == pair[2][id]),"every %s id has its own picture" % pair[0])
+	check(Art.equipment_icon("shield").atlas == Art.SHIELD_ICON and Art.equipment_icon("weapon","nope").atlas == Art.WEAPON_ICONS.sword,"shield picture and weapon fallback")
 	check(["boss_mire","boss_bomber","boss_giant"].all(func(n): return Art.boss_sprite(["boss_mire","boss_bomber","boss_giant"].find(n)).atlas.resource_path.ends_with(n+".png")),"each boss pattern has its own sprite")
 	root.size = Vector2i(390,844)
 	var scene = load("res://expedition/ui/main.tscn").instantiate()
@@ -161,9 +164,11 @@ func sight_stops(scene, s) -> void:
 	scene.refresh(); await process_frame
 	var stop_button: Button = scene.auto_explore_button
 	check(stop_button.text == "중지" and stop_button.action_mode == BaseButton.ACTION_MODE_BUTTON_PRESS,"exploration can stop on touch-down")
+	check(stop_button.get_node("ActionCaption").text == "중지","visible exploration caption shows stop")
 	stop_button.pressed.emit()
-	check(not scene.navigation.active,"stop button cancels exploration")
-	check(scene.navigation.explore(s),"exploration can start again")
+	check(not scene.navigation.active and stop_button.get_node("ActionCaption").text == "탐색","stop button restores the visible explore caption")
+	stop_button.pressed.emit()
+	check(scene.navigation.active and stop_button.get_node("ActionCaption").text == "중지","explore button updates the visible caption immediately")
 	enemy.pos = c+Vector2i(4,0); s.floor_state.observe(s)
 	check(not s.party_enemies().is_empty(),"a foe four tiles away is in sight")
 	check(scene.navigation.next_step(s).x < 0 and not scene.navigation.active,"and stops exploration")
@@ -246,7 +251,7 @@ func recruited_ui() -> void:
 	var second: Dictionary = s.npcs[0]
 	second.partner = -1; second.bond = ""; second.state = "MET"; second.pos = center+Vector2i(-1,1)
 	check(s.recruit(second) and s.party.size() == 3,"party can fill all three slots")
-	check(Popups.inventory_rows(scene).all(func(row): return row.icon.atlas == Art.ITEM_SHEET or (row.get("class","") == "potion" and row.icon.atlas in Art.POTION_LOOKS)),"item rows use the flat sheet, potions their flask")
+	check(Popups.inventory_rows(scene).all(func(row): return row.icon is AtlasTexture and row.icon.atlas != null),"every bag row has a picture")
 	for viewport in [Vector2i(390,844),Vector2i(320,640),Vector2i(320,568)]:
 		root.size = viewport; scene.refresh(); await process_frame
 		check(Rect2(Vector2.ZERO,scene.get_viewport_rect().size).encloses(scene.get_global_rect()),"game scene fits logical screen at %s" % viewport)
@@ -264,7 +269,7 @@ func recruited_ui() -> void:
 		for frame in range(3): await process_frame
 		var popup_rect := Rect2(Vector2(scene.details_popup.position),Vector2(scene.details_popup.size))
 		check(scene.get_global_rect().encloses(popup_rect),"parts bag fits %s" % viewport)
-		check(scene.inventory_slots.all(func(slot): return slot.row.is_empty() or slot.row.icon.atlas == Art.ITEM_SHEET or slot.row.icon.atlas in Art.POTION_LOOKS),"bag slots use the flat item sheet or a potion flask")
+		check(scene.inventory_slots.all(func(slot): return slot.row.is_empty() or slot.row.icon.atlas != null),"every filled bag slot has a picture")
 		scene.details_popup.hide()
 	scene.queue_free(); await process_frame
 
