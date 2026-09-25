@@ -38,6 +38,8 @@ const Orders = preload("res://expedition/run/orders.gd")
 const ArenaTest = preload("res://expedition/run/arena_test.gd")
 const RunResult = preload("res://expedition/run/run_result.gd")
 var parts_bag: Dictionary = {}
+var essence_seen: Dictionary = {}
+var events: Array = []
 ## Forwarded for callers that read it on the session; defined in `Camp`.
 const PREPARED_SLOTS := Camp.PREPARED_SLOTS
 const STARTING_PARTS := {"PUSH":1,"GUARD":1}
@@ -143,7 +145,8 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"rules":Rules.defaults(),
 		"basic_target":Rules.BASIC_TARGET_DEFAULT,
 		"reservation":{},
-		"equipped_abilities":["",""],"cooldowns":{},"iron_guard":false,
+		"equipped_abilities":[""],"cooldowns":{},"iron_guard":false,
+		"essences":{},"essence_spells":{},"pool_bonus":{"hp":0,"mp":0},
 		"growth":Growth.create(),"protected_by":-1,
 		"gear":{"weapon":{},"armour":{},"shield":{},"ring":{}},
 		"mp":18,"max_mp":18,"skill_xp":{},"usage":{},"statuses":{},"spells":[],"prepared":[],
@@ -304,6 +307,14 @@ func stairs_sealed() -> bool: return Descent.stairs_sealed(self)
 func descend() -> bool: return Descent.descend(self)
 
 func grant_part(id: String) -> void: Gear.grant_part(self,id)
+
+func push_event(event: Dictionary) -> void:
+	events.append(event)
+	while events.size() > 32: events.pop_front()
+
+func absorb_essence(index: int, id: String) -> String: return Gear.absorb_essence(self,index,id)
+
+func choose_essence_spell(index: int, essence_id: String, spell_id: String) -> bool: return Gear.choose_essence_spell(self,index,essence_id,spell_id)
 
 func grant_item(kind: String, count: int = 1, identified: bool = false) -> void: Consumables.grant(self,kind,count,identified)
 func use_item(kind: String, target: Vector2i = Vector2i(-1,-1), recipient: int = -1) -> bool: return Consumables.use(self,kind,target,recipient)

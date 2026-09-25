@@ -23,7 +23,7 @@ func roster() -> void:
 	check(rows.all(func(n): return n.stress >= 0 and n.stress <= 40),"stress 0-40")
 	check(rows.all(func(n): return n.stance in ["CHARGER","SKIRMISHER","GUARDIAN"] and n.stance == s.Stances.default_stance(n.profile)),"stance is the personality's default")
 	var with_part: int = rows.filter(func(n): return n.equipped_abilities[0] != "").size()
-	check(with_part >= 1 and with_part <= 8 and rows.all(func(n): return n.equipped_abilities[1] == "" and (n.equipped_abilities[0] == "" or n.rules.size() == 1)),"some carry one part with its rule")
+	check(with_part >= 1 and with_part <= 8 and rows.all(func(n): return n.equipped_abilities.size() == n.level and (n.equipped_abilities[0] == "" or n.rules.size() == 1)),"some carry one part with its rule")
 	var paired: Array = rows.filter(func(n): return n.partner >= 0)
 	check(paired.size() == 4 and paired.all(func(n): return rows.filter(func(m): return m.id == n.partner)[0].partner == n.id),"two mutual duos")
 	check(paired.all(func(n): return n.bond in ["close","strained"] and rows.filter(func(m): return m.id == n.partner)[0].bond == n.bond),"bond shared by the pair")

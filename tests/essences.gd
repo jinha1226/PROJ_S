@@ -17,6 +17,9 @@ func _initialize() -> void: call_deferred("run")
 func run() -> void:
 	catalog()
 	sets()
+	levels()
+	absorbing()
+	drops()
 	print("Essences: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func catalog() -> void:
@@ -69,3 +72,66 @@ func sets() -> void:
 	check(int(TagSets.stat_bonus(hexers).res_will) == 20,"의지 2 gives will")
 	var ambush := {"level":3,"essences":{},"equipped_abilities":["GOBLIN_SHIV","GOBLIN_SHIV@fire","GOBLIN_SHIV@ice"]}
 	check(int(TagSets.stat_bonus(ambush).ev) == 5,"기습 3 gives evasion")
+
+func levels() -> void:
+	var s = Session.new_run(731,"sword"); var hero: Dictionary = s.party[0]
+	check(hero.equipped_abilities == [""],"a first-level hero has one slot")
+	s.events.clear()
+	check(s.gain_level_xp(hero,65) == 1 and hero.equipped_abilities.size() == 2,"level two opens a second slot")
+	check(s.events.any(func(e): return e.kind == "LEVEL_UP" and int(e.level) == 2 and int(e.actor) == int(hero.id)),"a level-up is announced")
+	s.gain_level_xp(hero,999999)
+	check(int(hero.level) == 10 and hero.equipped_abilities.size() == 10,"level ten is the top, with ten slots")
+	check(s.gain_level_xp(hero,999999) == 0,"nothing past ten")
+
+func absorbing() -> void:
+	var s = Session.new_run(731,"sword"); var hero: Dictionary = s.party[0]
+	s.phase = "CAMP"
+	s.parts_bag = {"ORC_CLEAVER":4}
+	var hp: int = hero.max_hp
+	check(s.absorb_essence(0,"ORC_CLEAVER") == "" and int(hero.essences.ORC_CLEAVER) == 1 and int(s.parts_bag.ORC_CLEAVER) == 3,"absorbing takes one from the bag")
+	check(s.absorb_essence(0,"ORC_CLEAVER") == "" and s.absorb_essence(0,"ORC_CLEAVER") == "" and int(hero.essences.ORC_CLEAVER) == 3,"absorbing again raises the tier")
+	check(s.absorb_essence(0,"ORC_CLEAVER") == "최고 단계" and int(s.parts_bag.ORC_CLEAVER) == 1,"the fourth is refused and stays in the bag")
+	check(s.absorb_essence(0,"GOBLIN_SHIV") == "가방에 없음","nothing absorbed from an empty bag")
+	check(int(hero.max_hp) == hp,"absorbing alone changes no pool")
+	check(s.equip_part(0,0,"ORC_CLEAVER") and hero.equipped_abilities == ["ORC_CLEAVER"],"an absorbed essence fills a slot")
+	check(int(hero.max_hp) == hp+18,"a tier-three orc is six constitution")
+	check(not s.equip_part(0,1,"GOBLIN_SHIV"),"no second slot at level one")
+	check(s.unequip_part(0,0) and hero.equipped_abilities == [""] and int(s.parts_bag.ORC_CLEAVER) == 1,"taking it off keeps it absorbed, not bagged")
+	check(int(hero.max_hp) == hp and int(hero.essences.ORC_CLEAVER) == 3,"the pools drop, the tier stays")
+	s.parts_bag["GOBLIN_SHIV"] = 1
+	check(s.equip_part(0,0,"GOBLIN_SHIV") and int(hero.essences.GOBLIN_SHIV) == 1 and int(s.parts_bag.GOBLIN_SHIV) == 0,"equipping from the bag absorbs on the way")
+	check(hero.rules.any(func(r): return r.skill == "GOBLIN_SHIV"),"a part essence brings its rule")
+	s.phase = "BATTLE"
+	s.parts_bag["RAT_GNAW"] = 1
+	check(s.absorb_essence(0,"RAT_GNAW") == "전투 중" and not s.unequip_part(0,0),"nothing changes hands in a fight")
+	check(Essences.put(hero,0,"ORC_CLEAVER") and hero.equipped_abilities[0] == "ORC_CLEAVER","the unchecked put works mid-fight, for NPCs")
+	check(Essences.take(hero,0) and hero.equipped_abilities[0] == "","and so does take")
+	s.phase = "EXPLORE"
+	check(Essences.can_manage(s) == s.floor_state.safe(s),"a quiet corridor counts as safe")
+
+func drops() -> void:
+	var s = Session.new_run(731,"sword"); var hero: Dictionary = s.party[0]
+	s.essence_seen.clear(); s.events.clear(); s.parts_bag.clear()
+	var foe: Dictionary = s.enemies[0]
+	foe.part_id = "GOBLIN_SHIV"; foe.species_id = "goblin"
+	check(Essences.drop_chance(s,"goblin") == 100,"the first goblin always leaves its essence")
+	s.damage(foe,9999,int(hero.id),"SLASH")
+	check(int(s.parts_bag.get("GOBLIN_SHIV",0)) == 1,"the first kill drops it")
+	check(s.essence_seen.has("goblin") and Essences.drop_chance(s,"goblin") == 25,"after that, one in four")
+	check(s.events.any(func(e): return e.kind == "ESSENCE" and e.id == "GOBLIN_SHIV" and bool(e.new)),"a new essence is announced")
+	s.parts_bag.clear()
+	var dropped := 0
+	for seed_value in range(40):
+		var t = Session.new_run(seed_value,"sword")
+		t.essence_seen["goblin"] = true; t.parts_bag.clear()
+		var other: Dictionary = t.enemies[0]
+		other.part_id = "GOBLIN_SHIV"; other.species_id = "goblin"
+		t.damage(other,9999,int(t.party[0].id),"SLASH")
+		dropped += int(t.parts_bag.get("GOBLIN_SHIV",0))
+	check(dropped > 0 and dropped < 40,"repeat drops are seeded, not certain (%d of 40)" % dropped)
+	var npc_only = Session.new_run(733,"sword")
+	npc_only.parts_bag.clear()
+	var lone: Dictionary = npc_only.enemies[0]
+	lone.part_id = "GOBLIN_SHIV"; lone.species_id = "goblin"; lone.hp = 0
+	npc_only.roll_part(lone,[])
+	check(npc_only.parts_bag.is_empty(),"a hunt without the party drops nothing into the bag")

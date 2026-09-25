@@ -5,6 +5,8 @@ const Body = preload("res://game/rebuilt/body_bridge.gd")
 const CombatStats = preload("res://expedition/combat/combat_stats.gd")
 const Growth = preload("res://expedition/progression/growth.gd")
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
+const Essences = preload("res://expedition/progression/essences.gd")
+const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const Mastery = preload("res://expedition/progression/mastery.gd")
 const Rules = preload("res://expedition/ai/tactic_rules.gd")
 
@@ -47,53 +49,63 @@ static func grant_gear(s, item: Dictionary) -> void:
 	s.gear_bag.append(item.duplicate(true))
 	s.message(str(item.get("type","장비"))+" 획득")
 
-## Town only: a part leaves the bag for a slot; the slot's old part returns to the bag.
 static func equip_part(s, index: int, slot: int, id: String) -> bool:
-	if s.phase != "CAMP" or index < 0 or index >= s.party.size() or slot < 0 or slot >= 2: return false
+	if index < 0 or index >= s.party.size() or not Essences.has(id): return false
 	var actor: Dictionary = s.party[index]
-	if actor.hp <= 0 or not Abilities.DEFINITIONS.has(id) or int(s.parts_bag.get(id,0)) <= 0: return false
-	if id in actor.equipped_abilities: return false
-	var old: String = str(actor.equipped_abilities[slot])
-	if not old.is_empty(): s.unequip_part(index,slot)
-	s.parts_bag[id] -= 1
-	actor.equipped_abilities[slot] = id
-	actor.reservation = {}
-	if not actor.rules.any(func(r): return r.skill == id): actor.rules.append(Abilities.default_rule(id))
+	if not Essences.can_manage(s) or int(actor.hp) <= 0: return false
+	Essences.sync_slots(actor)
+	if slot < 0 or slot >= Essences.slot_count(actor) or id in actor.equipped_abilities: return false
+	if int(actor.get("essences",{}).get(id,0)) <= 0 and not absorb_essence(s,index,id).is_empty(): return false
+	if not Essences.equip(s,actor,slot,id): return false
+	StatSheet.refresh_pools(s,actor)
 	return true
 
+## The slot empties; the essence stays absorbed and can be slotted again.
 static func unequip_part(s, index: int, slot: int) -> bool:
-	if s.phase != "CAMP" or index < 0 or index >= s.party.size() or slot < 0 or slot >= 2: return false
+	if index < 0 or index >= s.party.size(): return false
 	var actor: Dictionary = s.party[index]
-	var old: String = str(actor.equipped_abilities[slot])
-	if actor.hp <= 0 or old.is_empty(): return false
-	actor.equipped_abilities[slot] = ""
-	s.parts_bag[old] = int(s.parts_bag.get(old,0))+1
-	actor.rules = actor.rules.filter(func(r): return r.skill != old)
-	actor.reservation = {}
+	if not Essences.unequip(s,actor,slot): return false
+	StatSheet.refresh_pools(s,actor)
 	return true
+
+static func absorb_essence(s, index: int, id: String) -> String:
+	if index < 0 or index >= s.party.size(): return "없는 인물"
+	var actor: Dictionary = s.party[index]
+	var reason: String = Essences.absorb(s,actor,id)
+	if not reason.is_empty(): return reason
+	StatSheet.refresh_pools(s,actor)
+	s.message("%s · %s %d단계" % [actor.name,Essences.title(id),int(actor.essences[id])])
+	return ""
+
+static func choose_essence_spell(s, index: int, essence_id: String, spell_id: String) -> bool:
+	if index < 0 or index >= s.party.size(): return false
+	return Essences.choose_spell(s,s.party[index],essence_id,spell_id)
 
 static func grant_part(s, id: String) -> void:
-	if not Abilities.DEFINITIONS.has(id): return
+	if not Essences.has(id): return
 	s.parts_bag[id] = int(s.parts_bag.get(id,0))+1
-	s.message(Abilities.DEFINITIONS[id].item+" 획득")
+	s.message(Essences.title(id)+" 획득")
 
+## Level XP to every hunter; the essence only to a hunt the party joined. The
+## first of a species this run always leaves it, the rest one time in four.
 static func roll_part(s, enemy: Dictionary, reward_actors: Variant = null) -> void:
 	if not enemy.enemy or enemy.hp > 0 or enemy.get("part_rolled",false): return
 	enemy.part_rolled = true
 	var recipients: Array = s.alive() if reward_actors == null else reward_actors
 	for actor in recipients:
-		if s.manual_mode:
-			if s.gain_level_xp(actor,18+s.depth*8) > 0 and (actor in s.party or s.floor_state.visible.has(actor.pos)): s.message(actor.name+" · 레벨 %d" % actor.level)
-		elif Growth.gain(actor,25) > 0 and (actor in s.party or s.floor_state.visible.has(actor.pos)): s.message(actor.name+" · 레벨 %d" % actor.growth.level)
-	# Only a party hunt puts a part into the party's shared bag.
+		if s.gain_level_xp(actor,18+s.depth*8) > 0 and (actor in s.party or s.floor_state.visible.has(actor.pos)): s.message(actor.name+" · 레벨 %d" % actor.level)
 	if not recipients.any(func(a): return a in s.party): return
 	var id: String = str(enemy.get("part_id",""))
-	if not Abilities.DEFINITIONS.has(id): return
-	var chance: int = Abilities.DROP_PERCENT
+	if not Essences.has(id): return
+	var species: String = str(enemy.get("species_id",""))
+	var chance: int = Essences.drop_chance(s,species)
+	s.essence_seen[species] = true
 	if Hexaco.sample(s.seed_value,s.depth*10000+enemy.id,"essence",100) >= chance: return
+	var fresh: bool = not s.party.any(func(a): return int(a.get("essences",{}).get(id,0)) > 0)
 	s.parts_bag[id] = int(s.parts_bag.get(id,0))+1
 	s.battle_stats.drops[id] = int(s.battle_stats.drops.get(id,0))+1
-	s.message(Abilities.DEFINITIONS[id].item+" 획득")
+	s.message(Essences.title(id)+" 획득")
+	s.push_event({"kind":"ESSENCE","id":id,"new":fresh})
 
 ## Playtest helper: one of every catalog part in the bag, so loadouts can be tried without farming.
 static func grant_test_loadout(s) -> bool:

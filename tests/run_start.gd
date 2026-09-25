@@ -11,7 +11,7 @@ func run() -> void:
 	check(s.party.size() == 1 and s.phase == "IDLE","idle solo party")
 	check(s.depart(),"start")
 	check(s.phase == "EXPLORE" and s.depth == 1 and s.food == 2,"floor 1 state")
-	check(s.party[0].equipped_abilities == ["",""],"empty ability slots")
+	check(s.party[0].equipped_abilities == [""],"one empty slot at level one")
 	check(s.bag.is_empty() and s.known.is_empty() and s.appearances.size() == 16,"empty bag and shuffled appearances")
 	check(s.floor_state.sight_radius() == 6.0,"six-tile sight")
 	var body_before: Dictionary = s.party[0].body.to_dict()

@@ -80,3 +80,110 @@ static func spell_cap(tier: int) -> int:
 
 static func active_power(tier: int, base: int) -> int:
 	return base*(100+25*(clampi(tier,1,MAX_TIER)-1))/100
+
+static func can_manage(s) -> bool:
+	if s.phase in ["IDLE","CAMP"]: return true
+	return s.phase == "EXPLORE" and s.floor_state.safe(s)
+
+## Grows the slot row to the level. A level never falls, so slots never close.
+static func sync_slots(actor: Dictionary) -> void:
+	var slots: Array = actor.get("equipped_abilities",[])
+	while slots.size() < slot_count(actor): slots.append("")
+	actor.equipped_abilities = slots
+
+## One from the bag into the member: a new essence at tier one, a known one a
+## tier higher. The bag loses it for good.
+static func absorb(s, actor: Dictionary, id: String) -> String:
+	if not has(id): return "없는 이능"
+	if int(s.parts_bag.get(id,0)) <= 0: return "가방에 없음"
+	if int(actor.hp) <= 0: return "쓰러짐"
+	if not can_manage(s): return "전투 중"
+	var known: Dictionary = actor.get_or_add("essences",{})
+	var before: int = int(known.get(id,0))
+	if before >= MAX_TIER: return "최고 단계"
+	s.parts_bag[id] = int(s.parts_bag[id])-1
+	known[id] = before+1
+	var chosen: Dictionary = actor.get_or_add("essence_spells",{})
+	if not school(id).is_empty() and not chosen.has(id):
+		var choices := spell_choices(actor,id)
+		if not choices.is_empty(): chosen[id] = choices[0]
+	sync_spells(actor)
+	return ""
+
+static func equip(s, actor: Dictionary, slot: int, id: String) -> bool:
+	if not can_manage(s) or int(actor.hp) <= 0: return false
+	return put(actor,slot,id)
+
+static func unequip(s, actor: Dictionary, slot: int) -> bool:
+	if not can_manage(s) or int(actor.hp) <= 0: return false
+	return take(actor,slot)
+
+## The slot change itself, with no question of where or when: NPCs re-slot on
+## their own in the middle of a floor (plan 3/3), the player only through
+## `equip`/`unequip`.
+static func put(actor: Dictionary, slot: int, id: String) -> bool:
+	sync_slots(actor)
+	if slot < 0 or slot >= slot_count(actor): return false
+	if int(actor.get("essences",{}).get(id,0)) <= 0 or id in actor.equipped_abilities: return false
+	if not str(actor.equipped_abilities[slot]).is_empty(): take(actor,slot)
+	actor.equipped_abilities[slot] = id
+	actor.reservation = {}
+	if Abilities.DEFINITIONS.has(id) and not actor.get("rules",[]).any(func(r): return r.skill == id):
+		actor.get_or_add("rules",[]).append(Abilities.default_rule(id))
+	sync_spells(actor)
+	return true
+
+static func take(actor: Dictionary, slot: int) -> bool:
+	var slots: Array = actor.get("equipped_abilities",[])
+	if slot < 0 or slot >= slots.size() or str(slots[slot]).is_empty(): return false
+	var old: String = str(slots[slot])
+	slots[slot] = ""
+	actor.rules = actor.get("rules",[]).filter(func(r): return r.skill != old)
+	actor.reservation = {}
+	sync_spells(actor)
+	return true
+
+## The school's spells this essence's tier reaches, lowest level first.
+static func spell_choices(actor: Dictionary, id: String) -> Array:
+	var wanted := school(id)
+	if wanted.is_empty(): return []
+	var cap := spell_cap(maxi(1,tier(actor,id)))
+	var result: Array = []
+	for spell_id in combat.spells:
+		var spell: Dictionary = combat.spells[spell_id]
+		if str(spell.get("shape","")).is_empty(): continue
+		if str(spell.get("school","")) == wanted and int(spell.level) <= cap: result.append(str(spell_id))
+	result.sort_custom(func(a,b): return int(combat.spells[a].level) < int(combat.spells[b].level) or int(combat.spells[a].level) == int(combat.spells[b].level) and a < b)
+	return result
+
+static func choose_spell(s, actor: Dictionary, id: String, spell_id: String) -> bool:
+	if not can_manage(s) or int(actor.get("essences",{}).get(id,0)) <= 0: return false
+	if spell_id not in spell_choices(actor,id): return false
+	actor.get_or_add("essence_spells",{})[id] = spell_id
+	sync_spells(actor)
+	return true
+
+## `spells` is every spell an absorbed caster essence has chosen; `prepared`
+## is the ones in a slot now, at most READY_SPELLS, in slot order.
+static func sync_spells(actor: Dictionary) -> void:
+	var chosen: Dictionary = actor.get("essence_spells",{})
+	var known: Array = []
+	for id in actor.get("essences",{}):
+		var spell: String = str(chosen.get(id,""))
+		if not school(str(id)).is_empty() and not spell.is_empty() and spell not in known: known.append(spell)
+	var ready: Array = []
+	for id in actor.get("equipped_abilities",[]):
+		var spell: String = str(chosen.get(str(id),""))
+		if not school(str(id)).is_empty() and not spell.is_empty() and spell not in ready and ready.size() < READY_SPELLS: ready.append(spell)
+	actor.spells = known
+	actor.prepared = ready
+
+## The best tier among the slotted caster essences of that school.
+static func caster_tier(actor: Dictionary, wanted: String) -> int:
+	var best := 0
+	for id in equipped(actor):
+		if school(id) == wanted: best = maxi(best,tier(actor,id))
+	return best
+
+static func drop_chance(s, species_id: String) -> int:
+	return REPEAT_PERCENT if s.essence_seen.has(species_id) else FIRST_KILL_PERCENT

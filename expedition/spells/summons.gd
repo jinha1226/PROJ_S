@@ -30,7 +30,7 @@ static func summon(s, caster: Dictionary, cell: Vector2i, kind: String = "hound"
 		"state":"MET","floor_seen":int(s.depth),"joined_floor":0,"activity":"","explains":[],
 		"noise_seen":s.npc_clock(),"declined_until":-99,"offered_until":-99},true)
 	pet.gear = {"weapon":{},"armour":{},"shield":{},"ring":{}}
-	pet.equipped_abilities = ["",""]; pet.rules = []
+	pet.equipped_abilities = []; pet.rules = []
 	pet.stance = "CHARGER"
 	pet.hp = int(row.hp)*int(buffs.get("summon_hp",100))/100
 	pet.max_hp = pet.hp

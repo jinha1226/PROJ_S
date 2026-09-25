@@ -4,6 +4,7 @@ const CombatStats = preload("res://expedition/combat/combat_stats.gd")
 const Memory = preload("res://sim/party_memory_state.gd")
 const NpcRoster = preload("res://expedition/actors/npc_roster.gd")
 const Spells = preload("res://expedition/spells/spells.gd")
+const Essences = preload("res://expedition/progression/essences.gd")
 
 static func depart(s) -> bool:
 	if s.phase != "IDLE" or s.alive().is_empty(): return false
@@ -11,6 +12,7 @@ static func depart(s) -> bool:
 	if kit.is_empty(): return false
 	s.depth = 1; s.score = 0; s.run_stats = {"mistakes":0,"kills":0}
 	s.bag.clear(); s.known.clear(); s.pending_choice.clear()
+	s.essence_seen.clear(); s.events.clear()
 	s.appearances = s.Consumables.shuffle_appearances(s.seed_value)
 	s.time = 0; s.boundary = 100; s.turn_serial = 0; s.roll_serial = 0
 	s.party[0].gear.weapon = {"type":str(kit.weapon),"enchant":0}
@@ -54,8 +56,10 @@ static func descend(s) -> bool:
 static func gain_level_xp(s, actor: Dictionary, amount: int) -> int:
 	var before := int(actor.get("level",1))
 	actor.level_xp = int(actor.get("level_xp",0))+maxi(0,amount)
-	while actor.level < 12 and actor.level_xp >= actor.level*actor.level*65:
+	while actor.level < Essences.MAX_LEVEL and actor.level_xp >= actor.level*actor.level*65:
 		actor.level += 1
 		actor.max_hp += 4; actor.hp = mini(actor.max_hp,actor.hp+4)
 		actor.max_mp += 2; actor.mp = mini(actor.max_mp,actor.mp+2)
-	return actor.level-before
+		if actor in s.party: s.push_event({"kind":"LEVEL_UP","actor":int(actor.id),"level":int(actor.level)})
+	Essences.sync_slots(actor)
+	return int(actor.level)-before

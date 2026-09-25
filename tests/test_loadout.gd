@@ -53,6 +53,7 @@ func scene_layer() -> void:
 	for id in Session.Abilities.DEFINITIONS:
 		check(s.parts_bag.get(id,0) >= 1,"fixture grants "+id)
 	s.phase = "CAMP"; scene.refresh()
+	s.gain_level_xp(s.party[0],65)
 	check(s.equip_part(0,0,"PUSH") and s.equip_part(0,1,"GUARD"),"granted parts can be equipped")
 	scene.show_character(0,"파츠")
 	for frame in range(4): await process_frame
