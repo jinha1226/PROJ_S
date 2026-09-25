@@ -21,7 +21,7 @@ func _init(host,source: Dictionary) -> void:
 		if actor.hp <= 0 or seen_ids.has(int(actor.id)): continue
 		seen_ids[int(actor.id)] = true
 		var row: Dictionary = actor.duplicate()
-		row.position = actor.pos; row.team = s.side_of(actor)
+		row.position = actor.pos; row.team = 0 if source.get("enemy",false) and not s.dominated(source) and s.wanderer(actor) else s.side_of(actor)
 		row.profile = actor.profile.to_dict(); row.skills = []; row.barrier = 0
 		actors.append(row); ready[row.id] = now
 func duration(_actor: Dictionary,_kind: String) -> int: return 100

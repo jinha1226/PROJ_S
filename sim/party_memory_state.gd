@@ -5,12 +5,12 @@ const SCHEMA_VERSION := 1
 const MAX_RECORDS := 8
 const KINDS := ["SELF_HARM", "ALLY_DOWNED", "ALLY_LOST", "AID_RECEIVED",
 	"COMMAND_CONFLICT", "RECRUITED", "DECLINED_BY_PLAYER", "DECLINED_PLAYER",
-	"LEFT_BY_PARTNER"]
+	"LEFT_BY_PARTNER", "ATTACKED_BY_PLAYER"]
 ## What the party owes and is owed. These are cheap next to a death, so every
 ## pruning rule — eviction here, the landmark filters in `Session` — keeps them
 ## until nothing else is left to drop.
 const SOCIAL_KINDS := ["AID_RECEIVED", "RECRUITED", "DECLINED_BY_PLAYER",
-	"DECLINED_PLAYER", "LEFT_BY_PARTNER"]
+	"DECLINED_PLAYER", "LEFT_BY_PARTNER", "ATTACKED_BY_PLAYER"]
 const Int64CodecScript = preload("res://sim/int64_codec.gd")
 const MAX_WORLD_TIME := 9223372036854775707
 

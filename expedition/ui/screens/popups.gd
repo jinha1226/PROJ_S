@@ -120,6 +120,8 @@ static func show_npc(ui, npc: Dictionary) -> void:
 	ask.name = "ProposeButton"
 	var share = ui.button(page,"식량 1 나누기",func(): ui.details_popup.hide(); ui.run_action(func(): return session.aid(npc)),bool(talk.can_aid))
 	share.name = "AidButton"
+	var attack = ui.button(page,"공격",func(): ui.details_popup.hide(); ui.run_action(func(): return session.act("ATTACK",npc.pos)),not session.attack_preview(npc.pos).is_empty())
+	attack.name = "AttackNpcButton"
 	var close = ui.button(page,"닫기",func(): ui.details_popup.hide())
 	close.name = "CloseNpc"
 	ui.details_popup.popup_centered()

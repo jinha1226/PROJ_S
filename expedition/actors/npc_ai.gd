@@ -5,6 +5,7 @@ const Tactics = preload("res://expedition/ai/tactical_action_selector.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const Knobs = preload("res://expedition/ai/knobs.gd")
 const Modes = preload("res://expedition/actors/npc_modes.gd")
+const Hostility = preload("res://expedition/actors/npc_hostility.gd")
 const NOISE_RADIUS := 10
 const SLEEP_AFTER := 5
 const MATE_LABEL := "동료에게 이동 중"
@@ -18,7 +19,7 @@ static func sense(s, npc: Dictionary) -> bool:
 	if sees_party or hears:
 		npc.awake = true; npc.noise_seen = s.npc_clock()
 		return true
-	if npc.awake and not s.floor_state.visible.has(npc.pos) and s.npc_clock()-int(npc.noise_seen) >= (500 if s.manual_mode else SLEEP_AFTER):
+	if npc.awake and not npc.get("hostile",false) and not s.floor_state.visible.has(npc.pos) and s.npc_clock()-int(npc.noise_seen) >= (500 if s.manual_mode else SLEEP_AFTER):
 		npc.awake = false; npc.mode = ""; npc.activity = ""
 	if npc.awake and s.floor_state.visible.has(npc.pos): npc.noise_seen = s.npc_clock()
 	return npc.awake
@@ -29,11 +30,18 @@ static func sense(s, npc: Dictionary) -> bool:
 static func turn(s, npc: Dictionary) -> void:
 	npc.ap = 1
 	var seen: int = MonsterAI.sight(s)
+	if npc.get("hostile",false):
+		hostile_turn(s,npc,seen)
+		return
 	var foes: Array = s.enemies.filter(func(e): return e.hp > 0 and MonsterAI.line(s,npc.pos,e.pos,seen))
 	if not foes.is_empty():
 		npc.activity = LABELS.FIGHT; npc.mode = ""
 		var choice: Dictionary = Tactics.choose(s,npc)
 		perform(s,npc,choice)
+		return
+	if s.alive().any(func(a): return MonsterAI.line(s,npc.pos,a.pos,seen)) and Hostility.may_start(s,npc):
+		Hostility.provoke(s,npc,{})
+		hostile_turn(s,npc,seen)
 		return
 	var pick: Dictionary = Modes.choose(s,npc)
 	if pick.mode != str(npc.get("mode","")): npc.mode = pick.mode; npc.mode_until = s.npc_clock()+(Modes.COMMIT_ROUNDS*100 if s.manual_mode else Modes.COMMIT_ROUNDS)
@@ -69,6 +77,28 @@ static func turn(s, npc: Dictionary) -> void:
 			var goals: Array = [goal] if s.is_free(goal) else Stances.near_free(s,goal,2)
 			var steps: Array = Stances.steps_toward(s,npc,goals)
 			if not steps.is_empty(): s.act_as(npc,"MOVE",steps[0],false)
+
+## A hostile stranger follows its own sight and attacks the weakest reachable
+## party member. It cannot target an unseen hero through walls.
+static func hostile_turn(s, npc: Dictionary, seen: int) -> void:
+	npc.activity = "적대 중"
+	# A monster in contact is an immediate danger even to a party-hating NPC.
+	var close_monsters: Array = s.enemies.filter(func(e): return e.hp > 0 and s.melee_reach(npc.pos,e.pos))
+	if not close_monsters.is_empty():
+		close_monsters.sort_custom(func(a,b): return int(a.id) < int(b.id))
+		if s.act_as(npc,"ATTACK",close_monsters[0].pos,false): return
+	var targets: Array = s.alive().filter(func(a): return MonsterAI.line(s,npc.pos,a.pos,seen))
+	if targets.is_empty(): return
+	targets.sort_custom(func(a,b):
+		var da: int = s.distance(npc.pos,a.pos); var db: int = s.distance(npc.pos,b.pos)
+		if da != db: return da < db
+		var ha: float = float(a.hp)/maxf(1.0,float(a.max_hp)); var hb: float = float(b.hp)/maxf(1.0,float(b.max_hp))
+		return ha < hb if ha != hb else int(a.id) < int(b.id))
+	var target: Dictionary = targets[0]
+	if s.attack_reach(npc,target.pos,int(s.CombatStats.stats(s,npc).range)):
+		if s.act_as(npc,"ATTACK",target.pos,false): return
+	if s.status_blocks(npc,"MOVE"): return
+	close_on(s,npc,Stances.adjacent_free(s,target.pos),target.pos)
 
 ## One step along the route to `goals`. The route ties on a diagonal as often
 ## as not, so among the steps that close just as fast the one that ends nearest

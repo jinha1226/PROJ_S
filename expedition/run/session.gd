@@ -7,6 +7,7 @@ const TurnCore = preload("res://sim/turn_engine.gd")
 const ElementRules = preload("res://sim/environment_rules.gd")
 const NpcRoster = preload("res://expedition/actors/npc_roster.gd")
 const NpcAI = preload("res://expedition/actors/npc_ai.gd")
+const NpcHostility = preload("res://expedition/actors/npc_hostility.gd")
 const Recruit = preload("res://expedition/actors/npc_recruit.gd")
 var BOARD_SIDE := 64
 const Floor = preload("res://expedition/level/continuous_floor.gd")
@@ -217,7 +218,7 @@ func npc_cooldown() -> int:
 ## living dungeon NPC. `alive()` stays the party alone — defeat, stress and the
 ## battle's end are the party's own business.
 func friends() -> Array:
-	return alive()+npcs.filter(func(n): return n.hp > 0 and n.awake)+enemies.filter(func(e): return e.hp > 0 and dominated(e))
+	return alive()+npcs.filter(func(n): return n.hp > 0 and n.awake and not n.get("hostile",false))+enemies.filter(func(e): return e.hp > 0 and dominated(e))
 
 ## A dominated monster fights for the party while the spell holds. The `enemy`
 ## flag never moves: only this clock decides which side it is counted on.
@@ -228,13 +229,16 @@ func dominated(actor: Dictionary) -> bool:
 ## Domination moves a monster across without touching its `enemy` flag, so
 ## everything that used to read `enemy` to tell friend from foe reads this.
 func side_of(actor: Dictionary) -> int:
+	if wanderer(actor): return 1 if actor.get("hostile",false) else 0
 	return 1 if bool(actor.get("enemy",false)) != dominated(actor) else 0
 
 ## Whom this actor fights. A dominated monster turns on its own kind.
 func hostiles_of(actor: Dictionary) -> Array:
 	var side: int = side_of(actor)
+	if bool(actor.get("enemy",false)) and side == 1:
+		return (friends()+npcs.filter(func(n): return n.hp > 0 and n.awake and n.get("hostile",false))).filter(func(a): return int(a.id) != int(actor.id))
 	if side == 1: return friends().filter(func(a): return int(a.id) != int(actor.id) and side_of(a) == 0)
-	return enemies.filter(func(e): return e.hp > 0 and int(e.id) != int(actor.id) and side_of(e) == 1)
+	return (enemies+npcs).filter(func(e): return e.hp > 0 and int(e.id) != int(actor.id) and side_of(e) == 1)
 
 func companion_rows() -> Array: return RunResult.companion_rows(self)
 
@@ -252,7 +256,7 @@ func recruit(npc: Dictionary) -> bool:
 ## the npc will not ask again for twenty rounds after an answer.
 ## An NPC only speaks up while the party is exploring: never into a battle.
 func offer(npc: Dictionary) -> bool:
-	if phase != "EXPLORE" or pending_offer >= 0 or npc.state != "MET" or npc_clock() < int(npc.get("offered_until",-99)): return false
+	if phase != "EXPLORE" or pending_offer >= 0 or npc.state != "MET" or npc.get("hostile",false) or npc_clock() < int(npc.get("offered_until",-99)): return false
 	# A summoned creature never asks to come along: it is already the hero's.
 	if bool(npc.get("summoned",false)): return false
 	pending_offer = npc.id
@@ -426,7 +430,7 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 	if not manual_mode:
 		if target not in attack_cells(actor_index): return {}
 		var old_victim := at(target)
-		if old_victim.is_empty() or not old_victim.enemy: return {}
+		if old_victim.is_empty() or not (old_victim.enemy or wanderer(old_victim)): return {}
 		var old_actor: Dictionary = party[selected] if actor_index < 0 else (party[actor_index] if actor_index < party.size() else actor_by_id(actor_index))
 		if old_actor.is_empty(): return {}
 		var old_hit := TurnCore.physical(Growth.power(old_actor,"MELEE",18) * old_actor.attack_factor / 100, 1000, 0, 2)
@@ -435,7 +439,7 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 		if old_victim.get("shield",false): old_amount = 0
 		return {"actor":old_actor.id,"target":old_victim.id,"cell":target,"name":old_victim.name,"chance":100,"damage":old_amount,"damage_min":old_amount,"damage_max":old_amount,"time":100}
 	var victim := at(target)
-	if victim.is_empty() or not victim.enemy: return {}
+	if victim.is_empty() or not (victim.enemy or wanderer(victim)): return {}
 	var actor: Dictionary = party[selected] if actor_index < 0 else (party[actor_index] if actor_index < party.size() else actor_by_id(actor_index))
 	if actor.is_empty(): return {}
 	var offense: Dictionary = CombatStats.stats(self,actor)
@@ -593,7 +597,11 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 			actor.hit_and_run = false
 			victim.hit_and_run = false
 		"ATTACK":
-			if victim.is_empty() or not victim.enemy or not attack_reach(actor,target,int(CombatStats.stats(self,actor).range)): return false
+			if victim.is_empty() or victim.hp <= 0 or not attack_reach(actor,target,int(CombatStats.stats(self,actor).range)): return false
+			var assault: bool = actor in party and wanderer(victim)
+			var npc_self_defense: bool = wanderer(actor) and victim.enemy
+			if not assault and not npc_self_defense and side_of(actor) == side_of(victim): return false
+			if assault: NpcHostility.provoke(self,victim,actor)
 			if manual_mode and melee_reach(was,target):
 				effects.append({"kind":"ATTACK_SWING","from":was,"cell":target,"amount":0,"form":"SLASH"})
 			if manual_mode: CombatRules.attack(self,actor,victim)
@@ -800,7 +808,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 	var source_cell: Vector2i = target.pos
 	var source_name: String = {"FIRE":"불길","ELECTRIC":"방전","POISON":"독"}.get(form,"함정")
 	if not attacker.is_empty(): source_cell = attacker.pos; source_name = attacker.name
-	var effect := {"from":source_cell,"cell":target.pos,"amount":lost,"form":form,"enemy":bool(target.get("enemy",false))}
+	var effect := {"from":source_cell,"cell":target.pos,"amount":lost,"form":form,"enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))}
 	effects.append(effect)
 	if presentation == null and effects.size() > 32: effects.pop_front()
 	var dealt_row: Dictionary = member_stats(source) if not attacker.is_empty() and not attacker.enemy else {}
@@ -824,7 +832,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 			# shaken, and someone the npc owed a debt to feels it twice.
 			# A summoned creature is a spell ending, not a stranger dying: the
 			# party grieves nobody for it.
-			var watched: bool = floor_state.visible.has(target.pos) and not bool(target.get("summoned",false))
+			var watched: bool = floor_state.visible.has(target.pos) and not bool(target.get("summoned",false)) and not bool(target.get("hostile",false))
 			for ally in alive():
 				if not watched: continue
 				stress(ally,5)

@@ -22,12 +22,12 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 	if source.get("statuses", {}).has("distort"): dodge = mini(95, dodge + 30)
 	if roll(s, source, target, "dodge", 100) < dodge:
 		out.evaded = true; s.message(str(target.name) + " 회피")
-		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"회피","enemy":bool(target.get("enemy",false))})
+		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"회피","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
 		Effects.on_dodge(s,target,source)
 		return out
 	if roll(s, source, target, "block", 100) < int(defense.sh):
 		out.blocked = true; s.message(str(target.name) + " 방패 방어")
-		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"막음","enemy":bool(target.get("enemy",false))})
+		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"막음","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
 		return out
 	var raw := int(offense.damage)
 	raw = Effects.attack_raw(s,source,target,raw)

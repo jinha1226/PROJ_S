@@ -16,6 +16,7 @@ const Art = preload("res://expedition/art/mobile_art.gd")
 const MEMORY_TINT := Color(0.18,0.20,0.23)
 ## A dungeon npc is neither the party's green nor the monsters' red.
 const NPC_COLOR := Color("d8c98a")
+const HOSTILE_NPC_COLOR := Color("eea38c")
 const Icons = preload("res://expedition/art/map_icons.gd")
 var session
 var ui_font: Font
@@ -557,7 +558,7 @@ func draw_distant_npcs() -> void:
 		draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
 
 func paint_actor_base(center: Vector2, actor: Dictionary) -> void:
-	var color := NPC_COLOR if session.wanderer(actor) else Color("eea38c") if actor.enemy else Color("b9dcd6")
+	var color := HOSTILE_NPC_COLOR if session.wanderer(actor) and actor.get("hostile",false) else NPC_COLOR if session.wanderer(actor) else Color("eea38c") if actor.enemy else Color("b9dcd6")
 	var base := center+Vector2(0,half_width*0.65)
 	if actor.enemy:
 		outline(PackedVector2Array([base+Vector2(-half_width*0.65,0),base+Vector2(0,-half_width*0.23),base+Vector2(half_width*0.65,0),base+Vector2(0,half_width*0.23)]),color,1.5)
@@ -582,12 +583,13 @@ func _draw_foreground(canvas: Node2D) -> void:
 		var fade: float = 1.0 if seen else 0.5
 		var center := display_center(actor)
 		if npc:
-			canvas.draw_string(ui_font,center+Vector2(-40,-half_width*1.1),str(actor.name),HORIZONTAL_ALIGNMENT_CENTER,80,10,Color(NPC_COLOR,fade))
+			var npc_color: Color = HOSTILE_NPC_COLOR if actor.get("hostile",false) else NPC_COLOR
+			canvas.draw_string(ui_font,center+Vector2(-40,-half_width*1.1),str(actor.name),HORIZONTAL_ALIGNMENT_CENTER,80,10,Color(npc_color,fade))
 			var doing: String = str(actor.get("activity",""))
 			if not doing.is_empty():
 				canvas.draw_string(ui_font,center+Vector2(-45,half_width+10),doing,HORIZONTAL_ALIGNMENT_CENTER,90,9,Color("cfc6ab",fade))
 		canvas.draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24,3)),Color(Color("191d24"),fade))
-		canvas.draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24*float(actor.hp)/actor.max_hp,3)),Color(NPC_COLOR,fade) if npc else Color("ce7770") if actor.enemy else Color("9ec987"))
+		canvas.draw_rect(Rect2(center+Vector2(-12,half_width-5),Vector2(24*float(actor.hp)/actor.max_hp,3)),Color(HOSTILE_NPC_COLOR if actor.get("hostile",false) else NPC_COLOR,fade) if npc else Color("ce7770") if actor.enemy else Color("9ec987"))
 	if is_presenting():
 		var frame: Dictionary = playback[0]
 		for actor in actors:

@@ -171,12 +171,12 @@ func threats(s) -> Array:
 	# Hoisted: the watchers are the same for every enemy this call weighs.
 	var watchers: Array = s.npcs.filter(func(n): return n.awake and n.hp > 0)
 	# A dominated monster fights beside the party: it threatens nobody.
-	return s.enemies.filter(func(e): return e.hp > 0 and not s.dominated(e) and (visible.has(e.pos) or watchers.any(func(n): return MonsterAI.line(s,n.pos,e.pos,seen))))
+	return s.enemies.filter(func(e): return e.hp > 0 and not s.dominated(e) and (visible.has(e.pos) or watchers.any(func(n): return MonsterAI.line(s,n.pos,e.pos,seen)))) + s.npcs.filter(func(n): return n.hp > 0 and n.get("hostile",false) and visible.has(n.pos))
 
 ## Only what the party itself sees: the auto-run's stop events are about the
 ## party's eyes, not an npc's.
 func party_threats(s) -> Array:
-	return s.enemies.filter(func(e): return e.hp > 0 and not s.dominated(e) and visible.has(e.pos))
+	return s.enemies.filter(func(e): return e.hp > 0 and not s.dominated(e) and visible.has(e.pos)) + s.npcs.filter(func(n): return n.hp > 0 and n.get("hostile",false) and visible.has(n.pos))
 
 ## Whether the party may treat this cell as quiet: its own eyes decide, not a
 ## fight an npc picked out of its sight.

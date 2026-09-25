@@ -438,7 +438,7 @@ func on_cell(point: Vector2i) -> void:
 		return
 	if session.manual_mode and mode == "ATTACK":
 		var target: Dictionary = session.at(point)
-		if not target.is_empty() and target.enemy and not session.attack_preview(point).is_empty():
+		if not target.is_empty() and (target.enemy or session.wanderer(target)) and not session.attack_preview(point).is_empty():
 			run_action(func(): return session.act("ATTACK",point))
 		else:
 			notice = "공격 대상 없음"
@@ -452,7 +452,10 @@ func on_cell(point: Vector2i) -> void:
 		# A tap only reaches an npc the party can see, and only an adjacent one talks.
 		var wanderer: Dictionary = session.at(point)
 		if session.wanderer(wanderer):
-			if session.melee_reach(session.party[session.selected].pos,point): Popups.show_npc(self,wanderer)
+			if wanderer.get("hostile",false):
+				if session.attack_preview(point).is_empty(): Popups.show_enemy_info(self,wanderer)
+				else: run_action(func(): return session.act("ATTACK",point))
+			elif session.melee_reach(session.party[session.selected].pos,point): Popups.show_npc(self,wanderer)
 			else: notice = "%s · %s" % [wanderer.name,wanderer.get("activity","")] if not str(wanderer.get("activity","")).is_empty() else str(wanderer.name); refresh()
 			return
 		if feature.get("kind","") == "curio": Popups.show_curio(self,point); return

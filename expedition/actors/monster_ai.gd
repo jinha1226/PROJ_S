@@ -133,7 +133,7 @@ static func resolve_spell(s, enemy: Dictionary, cell: Vector2i) -> void:
 	if not line(s,enemy.pos,cell,4): return
 	s.enemy_attack_effect(enemy,[cell],true)
 	var victim: Dictionary = s.at(cell)
-	if not victim.is_empty() and s.side_of(victim) != s.side_of(enemy): s.damage(victim,SPELL_DAMAGE,enemy.id,"ELECTRIC")
+	if not victim.is_empty() and (s.side_of(victim) != s.side_of(enemy) or s.wanderer(victim) and not s.dominated(enemy)): s.damage(victim,SPELL_DAMAGE,enemy.id,"ELECTRIC")
 	s.message(enemy.name+"의 마법이 예고한 지점에 떨어졌습니다.")
 
 static func role_turn(s, enemy: Dictionary, targets: Array, held: bool = false) -> void:
@@ -182,7 +182,7 @@ static func role_turn(s, enemy: Dictionary, targets: Array, held: bool = false) 
 	if route.found and route.path.size() > 1: enemy.pos = route.path[1]
 
 static func strike(s, enemy: Dictionary, target: Dictionary, amount: int) -> void:
-	if target.is_empty() or s.side_of(target) == s.side_of(enemy): return
+	if target.is_empty() or s.side_of(target) == s.side_of(enemy) and not (s.wanderer(target) and not s.dominated(enemy)): return
 	s.enemy_attack_effect(enemy,[target.pos])
 	if s.manual_mode:
 		enemy.power = amount

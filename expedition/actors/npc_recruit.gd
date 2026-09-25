@@ -13,6 +13,7 @@ static func hero(s) -> int:
 	return int(s.party[0].id)+1
 
 static func can_aid(s, npc: Dictionary) -> String:
+	if npc.get("hostile",false): return "적대 중"
 	if s.phase != "EXPLORE": return "전투 중"
 	if npc.hp <= 0 or npc.state != "MET" or bool(npc.get("summoned",false)): return "대상 아님"
 	if not s.alive().any(func(a): return s.melee_reach(a.pos,npc.pos)): return "거리 초과"
@@ -39,6 +40,7 @@ static func chance(s, npc: Dictionary) -> int:
 	return clampi(c,0,95)
 
 static func dialogue(s, npc: Dictionary) -> Dictionary:
+	if npc.get("hostile",false): return {"line":"적대 중","can_propose":false,"can_aid":false,"aided":false}
 	var full: bool = s.alive().size() >= MAX_PARTY
 	var waiting: bool = s.npc_clock() < int(npc.get("declined_until",-99))
 	var line: String = "자리가 없군" if full else ("고맙다. 같이 가지." if aided(s,npc) else "지금은 아니야" if waiting else "무슨 일이지?")
@@ -63,6 +65,7 @@ static func propose(s, npc: Dictionary) -> Dictionary:
 
 ## The join itself, with the duo rules.
 static func recruit(s, npc: Dictionary) -> Dictionary:
+	if npc.get("hostile",false): return {"accepted":false,"line":"적대 중"}
 	if s.alive().size() >= MAX_PARTY or npc.state != "MET" or bool(npc.get("summoned",false)): return {"accepted":false,"line":"자리가 없군"}
 	var mate: Dictionary = {}
 	for n in s.npcs:
