@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "rows": {
+    "PUSH": {"stats": {}, "role": "", "element": "", "school": "", "species": ""},
+    "GUARD": {"stats": {}, "role": "", "element": "", "school": "", "species": ""},
+    "SHOCKWAVE": {"stats": {}, "role": "", "element": "", "school": "", "species": ""},
+    "BOMB": {"stats": {}, "role": "", "element": "", "school": "", "species": ""},
+    "IRON_HIDE": {"stats": {}, "role": "", "element": "", "school": "", "species": ""},
+    "HEAVY_STRIKE": {"stats": {}, "role": "", "element": "", "school": "", "species": ""},
+    "THROWING_KNIFE": {"stats": {}, "role": "", "element": "", "school": "", "species": ""},
+    "FIELD_DRESSING": {"stats": {}, "role": "", "element": "", "school": "", "species": ""},
+    "LUNGE": {"stats": {}, "role": "", "element": "", "school": "", "species": ""},
+    "RAT_GNAW": {"stats": {"ev": 1}, "role": "PACK", "element": "", "school": "", "species": "dcss_rat"},
+    "LIZARD_TAIL": {"stats": {"ac": 1, "res_poison": 10}, "role": "GUARD", "element": "", "school": "", "species": "dcss_frilled_lizard"},
+    "KOBOLD_SLING": {"stats": {"dex": 1}, "role": "ARCHER", "element": "", "school": "", "species": "kobold"},
+    "GOBLIN_SHIV": {"stats": {"dex": 2}, "role": "AMBUSH", "element": "", "school": "", "species": "goblin"},
+    "HOB_CLUB": {"stats": {"con": 1, "sh": 5}, "role": "GUARD", "element": "", "school": "", "species": "dcss_hobgoblin"},
+    "ORC_CLEAVER": {"stats": {"str": 2, "con": 2}, "role": "BERSERK", "element": "", "school": "", "species": "dcss_orc"},
+    "GNOLL_SPEAR": {"stats": {"con": 2}, "role": "BERSERK", "element": "", "school": "", "species": "dcss_gnoll"},
+    "RIVER_RAT_SPLASH": {"stats": {"con": 1, "res_air": 10}, "role": "PACK", "element": "", "school": "", "species": "dcss_river_rat"},
+    "FIRE_CALLER": {"name": "화염술사의 불씨", "stats": {"int": 2, "res_fire": 10}, "role": "CASTER", "element": "fire", "school": "fire", "species": "kobold_firecaller"},
+    "FROST_IMP": {"name": "서리 도깨비의 숨", "stats": {"int": 2, "res_ice": 10}, "role": "CASTER", "element": "ice", "school": "ice", "species": "frost_imp"},
+    "STORM_BAT": {"name": "폭풍 박쥐의 날개", "stats": {"dex": 1, "int": 1, "res_air": 10}, "role": "CASTER", "element": "air", "school": "air", "species": "storm_bat"},
+    "GOBLIN_HEXER": {"name": "주술사의 부적", "stats": {"int": 2, "res_will": 10}, "role": "CASTER", "element": "will", "school": "hex", "species": "goblin_hexer"},
+    "GNOLL_SUMMONER": {"name": "소환사의 뼈피리", "stats": {"int": 1, "con": 1}, "role": "CASTER", "element": "will", "school": "summon", "species": "gnoll_summoner"}
+  }
+}
