@@ -321,7 +321,13 @@ static func portrait_face(index: int) -> AtlasTexture:
 static func skill(index: int) -> AtlasTexture:
 	return region(Rect2([48,180,347,480,647,780][index],1156,105,78))
 
+## A skill's own icon (tools/art/build_skill_icons.py), found by the part id
+## before any "@element" of a variant; parts without one fall back to the old
+## item sheet.
 static func part_icon(id: String) -> AtlasTexture:
+	var base: String = id.get_slice("@",0)
+	var path := "res://assets/items-v1/skills/%s.png" % base
+	if ResourceLoader.exists(path): return whole(load(path),"skill/"+base)
 	var icons := {"PUSH":10,"GUARD":10,"BOMB":12,"IRON_HIDE":8,
 		"KOBOLD_SLING":5,"GOBLIN_SHIV":1,"SERPENT_SHED":8,"BEETLE_CURL":8,"SHIELD_STANCE":10,"THORN_ARMOUR":8,"SKELETON_WALL":10,
 		"HOB_TAUNT":8,"ORE_SLAM":3,"ORC_CLEAVER":4,"GNOLL_SPEAR":2}

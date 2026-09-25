@@ -376,7 +376,13 @@ func refresh() -> void:
 	FloorHud.build(self,elapsed,impact_elapsed)
 	show_choice_if_pending()
 
+## The tap that read the scroll also closed the bag popups, and Godot
+## finishes closing a popup on the next frame: opened at once, the choice
+## would be closed with them and only show after the next action. It opens
+## one frame later instead.
 func show_choice_if_pending() -> void:
+	if session == null or session.pending_choice.is_empty(): return
+	await get_tree().process_frame
 	if session != null and not session.pending_choice.is_empty(): Popups.show_choice(self)
 
 func finish_presentation() -> void:
@@ -433,6 +439,11 @@ func queue_action(kind: String, point: Vector2i) -> void:
 func on_cell(point: Vector2i) -> void:
 	if session == null or not session.on_floor(): return
 	stop_navigation()
+	var downed: Dictionary = session.downed_at(point)
+	if not downed.is_empty():
+		if session.Downed.can_rescue(session,session.party[session.selected],downed): run_action(func(): return session.act("RESCUE",point))
+		else: notice = "%s · 빈사 %d턴" % [downed.name,int(downed.bleedout_turns)]; refresh()
+		return
 	if mode == "COMMAND_TARGET":
 		var marked: Dictionary = session.at(point)
 		if not marked.is_empty() and session.issue_party_command("ATTACK_TARGET",int(marked.id)):
