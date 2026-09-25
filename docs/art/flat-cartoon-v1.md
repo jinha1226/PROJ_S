@@ -34,7 +34,8 @@ Forge Master: Idle RPG의 앱스토어 스크린샷을 보고 그림 문법을 �
 | --- | --- |
 | `assets/flat-cartoon-v1/svg/*.svg` | 원본 벡터: 주인공(투구 전사), 고블린, 해골, 쥐, 오크, 상자, 통, 횃불, 물약, 두루마리, 아이콘 7종, 방 배경 |
 | `assets/flat-cartoon-v1/png/*.png` | 위 SVG를 192×192(방은 780×960)로 래스터화한 것 |
-| `docs/art/flat-cartoon-v1/gameplay-v2-780x1688.png` | 390×844 화면을 2배로 조립한 검토용 화면 |
+| `docs/art/flat-cartoon-v1/forge-layout-780x1688.png` | Forge Master 구도로 조립한 390×844 화면(2배) |
+| `docs/art/flat-cartoon-v1/gameplay-v2-780x1688.png` | 격자 로그라이크 구성으로 조립한 390×844 화면(2배) |
 
 다시 만들기:
 
