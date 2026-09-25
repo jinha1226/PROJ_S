@@ -44,7 +44,7 @@ static func push_options(s, actor: Dictionary, options: Array) -> void:
 				if ally.id != actor.id and s.melee_reach(ally.pos,enemy.pos) and not s.melee_reach(ally.pos,landing) and benefit <= 0: unsafe = true
 		if unsafe: continue
 		# A shove with nowhere to go is an 8-damage hit instead.
-		options.append(part("PUSH",enemy.pos,0 if moved else int(s.CombatStats.stats(s,actor).damage) if s.manual_mode else s.Growth.power(actor,"MELEE",8),int(enemy.id)))
+		options.append(part("PUSH",enemy.pos,0 if moved else int(s.CombatStats.stats(s,actor).damage) if s.manual_mode else s.StatSheet.legacy_power(actor,"MELEE",8),int(enemy.id)))
 
 ## 엄호 has no self form: one candidate per adjacent living ally.
 static func guard_options(s, actor: Dictionary, options: Array) -> void:

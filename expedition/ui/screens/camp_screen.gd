@@ -34,8 +34,6 @@ static func build_camp_screen(ui) -> void:
 			ui.button(actions,"파츠",func(): Popups.show_character(ui,i,"파츠"))
 		if session.manual_mode:
 			ui.button(actions,"장비",func(): show_gear(ui,i))
-			ui.button(actions,"주문 준비",func(): show_prepare(ui,i))
-			ui.button(actions,"주문 배우기",func(): show_learn(ui,i))
 	var spacer := Control.new(); spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL; box.add_child(spacer)
 	ui.button(box,"가방",func(): Popups.show_supplies(ui))
 	var end = ui.button(box,"야영 끝",func(): ui.run_action(session.end_camp)); end.name = "CampEnd"
@@ -67,49 +65,6 @@ static func show_gear(ui, index: int) -> void:
 		choice.add_theme_constant_override("icon_max_width",28)
 		choice.name = "GearOption%d" % i
 		choice.custom_minimum_size.y = 44
-	ui.button(box,"닫기",func(): ui.details_popup.hide())
-	ui.details_popup.popup_centered()
-
-static func show_prepare(ui, index: int) -> void:
-	var session = ui.session
-	if session.phase != "CAMP" or index < 0 or index >= session.party.size(): return
-	ui.clear(ui.modal_content)
-	var box := VBoxContainer.new(); box.name = "PrepareScreen"; ui.modal_content.add_child(box)
-	var actor: Dictionary = session.party[index]
-	ui.label(box,actor.name+" · 주문",20)
-	for id in actor.spells:
-		var spell: Dictionary = Session.CombatStats.content.spells[id]
-		var choice = ui.button(box,("✓ " if id in actor.prepared else "○ ")+str(spell.name),func():
-			if session.prepare_spell(index,id,id not in actor.prepared): show_prepare(ui,index))
-		choice.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR; choice.icon = Art.spell_icon(str(id)); choice.add_theme_constant_override("icon_max_width",28)
-	ui.button(box,"닫기",func(): ui.details_popup.hide())
-	ui.details_popup.popup_centered()
-
-## The camp's reading. Every spell the bag's books hold is listed; the ones
-## this rank cannot take yet say why beside their name.
-static func show_learn(ui, index: int) -> void:
-	var session = ui.session
-	if session.phase != "CAMP" or index < 0 or index >= session.party.size(): return
-	ui.clear(ui.modal_content)
-	var box := VBoxContainer.new(); box.name = "LearnList"; ui.modal_content.add_child(box)
-	var actor: Dictionary = session.party[index]
-	ui.label(box,actor.name+" · 주문 배우기",20)
-	if actor.books.is_empty(): ui.label(box,"주문서 없음",14)
-	for entry in actor.books:
-		var book_id: String = str(entry)
-		var row: Dictionary = Session.Spells.book(book_id)
-		ui.label(box,str(row.get("name",book_id)),15)
-		for spell_entry in Session.Spells.book_spells(book_id):
-			var spell_id: String = str(spell_entry)
-			var spell: Dictionary = Session.CombatStats.content.spells[spell_id]
-			var reason: String = Session.Spells.learnable(session,actor,spell_id)
-			var caption: String = "%s · Lv%d · %dMP" % [str(spell.name),int(spell.level),int(spell.mp)]
-			if not reason.is_empty(): caption += "  (%s)" % reason
-			var choice = ui.button(box,caption,func():
-				if session.learn_spell(index,spell_id): show_learn(ui,index),reason.is_empty())
-			choice.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR; choice.icon = Art.spell_icon(spell_id); choice.add_theme_constant_override("icon_max_width",28)
-			choice.name = "Learn_"+spell_id
-			choice.custom_minimum_size.y = 44
 	ui.button(box,"닫기",func(): ui.details_popup.hide())
 	ui.details_popup.popup_centered()
 

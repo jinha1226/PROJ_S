@@ -1,6 +1,10 @@
 extends SceneTree
 ## Essences: the catalog every monster and caster leaves behind, the tiers a
 ## member absorbs, the slots a level opens, and the drops a hunt yields.
+const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
+const Stats = preload("res://expedition/combat/combat_stats.gd")
+const Spells = preload("res://expedition/spells/spells.gd")
+const Hunt = preload("res://expedition/progression/hunt.gd")
 const Session = preload("res://expedition/run/session.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
@@ -20,6 +24,7 @@ func run() -> void:
 	levels()
 	absorbing()
 	drops()
+	actives()
 	print("Essences: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func catalog() -> void:
@@ -135,3 +140,29 @@ func drops() -> void:
 	lone.part_id = "GOBLIN_SHIV"; lone.species_id = "goblin"; lone.hp = 0
 	npc_only.roll_part(lone,[])
 	check(npc_only.parts_bag.is_empty(),"a hunt without the party drops nothing into the bag")
+
+func actives() -> void:
+	var s = Session.new_run(731,"sword"); var hero: Dictionary = s.party[0]
+	var club: Dictionary = Abilities.DEFINITIONS.HOB_CLUB
+	hero.level = 1; hero.equipped_abilities = ["HOB_CLUB"]; hero.essences = {"HOB_CLUB":1}
+	check(Abilities.power(s,hero,club,"HOB_CLUB") == int(club.damage)+(12-10)/2,"a part hits for its damage plus half the strength over ten")
+	hero.essences.HOB_CLUB = 3
+	check(Abilities.power(s,hero,club,"HOB_CLUB") == Essences.active_power(3,int(club.damage)+1),"tier three hits half again as hard")
+	check(Abilities.power(s,hero,club) == int(club.damage)+1,"without an id the part counts as tier one")
+	var sling: Dictionary = Abilities.DEFINITIONS.KOBOLD_SLING
+	hero.equipped_abilities = ["GOBLIN_SHIV"]; hero.essences = {"GOBLIN_SHIV":3}
+	check(Abilities.power(s,hero,sling,"KOBOLD_SLING") == int(sling.damage)+(18-10)/2,"a ranged part reads dexterity")
+	var foe: Dictionary = s.enemies[0]
+	check(Abilities.power(s,foe,club,"HOB_CLUB") == int(club.damage),"a monster hits for the listed damage")
+	hero.skill_xp = {"sword":2500}
+	hero.equipped_abilities = [""]; hero.essences = {}
+	check(int(Stats.stats(s,hero).damage) == int(Stats.content.weapons.sword.damage)+2,"old sword mastery adds nothing any more")
+	Hunt.record(hero,int(foe.id))
+	check(hero.usage.has(int(foe.id)),"a strike marks the member as a hunter")
+	check(s.hunt_recipients(foe,{}).has(hero),"and the hunt counts them")
+	hero.essences = {"FIRE_CALLER":2}; hero.equipped_abilities = ["FIRE_CALLER"]
+	var enc: int = int(Stats.stats(s,hero).enc)
+	check(Spells.failure(s,hero,"fire_4") == clampi(8+4*9+enc*5-(12+4)-20,0,85),"failure reads mind and the caster tier")
+	s.manual_mode = false
+	hero.essences = {"ORC_CLEAVER":1}; hero.equipped_abilities = ["ORC_CLEAVER"]
+	check(StatSheet.legacy_power(hero,"MELEE",18) == 22,"the old auto path reads essence strength")

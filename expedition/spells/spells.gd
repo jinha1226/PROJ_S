@@ -5,8 +5,9 @@ const TagSets = preload("res://expedition/progression/tag_sets.gd")
 ## code below knows the shapes, not the spells.
 const Stats = preload("res://expedition/combat/combat_stats.gd")
 const Rules = preload("res://expedition/combat/combat_rules.gd")
-const Mastery = preload("res://expedition/progression/mastery.gd")
-const Effects = preload("res://expedition/progression/mastery_effects.gd")
+const Hunt = preload("res://expedition/progression/hunt.gd")
+const Essences = preload("res://expedition/progression/essences.gd")
+const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const Kernel = preload("res://sim/combat_kernel.gd")
 const Summons = preload("res://expedition/spells/summons.gd")
 const Statuses = preload("res://expedition/combat/statuses.gd")
@@ -45,30 +46,16 @@ static func definition(id: String) -> Dictionary:
 static func shape_of(spell: Dictionary) -> String:
 	return str(spell.get("shape", ""))
 
-static func book(id: String) -> Dictionary:
-	return Stats.content.books.get(id, {})
-
-## The spells a book teaches, lowest level first.
-static func book_spells(book_id: String) -> Array:
-	var row: Dictionary = book(book_id)
-	if row.is_empty(): return []
-	return row.levels.map(func(level): return "%s_%d" % [str(row.school), int(level)])
-
-## Why this actor may not learn the spell right now — empty when it may.
-static func learnable(s, actor: Dictionary, id: String) -> String:
-	var spell: Dictionary = definition(id)
-	if spell.is_empty() or str(spell.get("book", "")).is_empty(): return "없는 주문"
-	if id in actor.get("spells", []): return "이미 배움"
-	if s != null and str(s.phase) != "CAMP": return "야영에서만"
-	if str(spell.book) not in actor.get("books", []): return "주문서 없음"
-	if Mastery.rank(actor, str(spell.school)) < int(spell.level) - 1: return "숙련 부족"
-	return ""
-
 static func failure(s, caster: Dictionary, id: String) -> int:
 	var spell: Dictionary = definition(id)
 	if spell.is_empty(): return 100
-	var school: String = str(spell.school)
-	return clampi(8 + int(spell.level) * 9 + int(Stats.stats(s,caster).enc) * 5 - Mastery.rank(caster,school) * 5 - int(Stats.species(caster).int), 0, 85)
+	var mind: int = StatSheet.value(s,caster,"int")
+	var tier: int = Essences.caster_tier(caster,str(spell.school))
+	var focus: int = 10 if TagSets.level(caster,"CASTER") >= 3 else 0
+	return clampi(8 + int(spell.level) * 9 + int(Stats.stats(s,caster).enc) * 5 - mind - tier * 10 - focus, 0, 85)
+
+static func mind_bonus(s, caster: Dictionary) -> int:
+	return maxi(0,StatSheet.value(s,caster,"int")-10)/2
 
 # ── shapes ────────────────────────────────────────────────────────────────
 
@@ -193,7 +180,7 @@ static func shaped_cast(s, caster: Dictionary, id: String, target: Vector2i, spe
 	var school: String = str(spell.school)
 	var shape: String = shape_of(spell)
 	var power: int = int(spell.power)
-	if power > 0: power += Mastery.rank(caster,school) + int(Stats.stats(s,caster).power)
+	if power > 0: power += mind_bonus(s,caster) + int(Stats.stats(s,caster).power)
 	var penetration: int = int(spell.get("penetration",0))
 	var ticks: int = int(spell.get("ticks",0))
 	var chain: int = int(spell.get("chain",0))
@@ -202,7 +189,6 @@ static func shaped_cast(s, caster: Dictionary, id: String, target: Vector2i, spe
 	var slows: bool = str(spell.get("status","")) == "slow" and ticks > 0
 	match school:
 		"fire":
-			power = Effects.fire_power(caster,power)
 			if statuses.has("fire_mastery"): power = power*3/2
 			# A charge waits for a spell that can actually spend it.
 			if hurts and buffs.has("next_fire"): power = power*int(buffs.next_fire)/100; buffs.erase("next_fire")
@@ -266,7 +252,7 @@ static func shaped_cast(s, caster: Dictionary, id: String, target: Vector2i, spe
 ## hangs on what survives.
 static func strike(s, caster: Dictionary, victim: Dictionary, spell: Dictionary, power: int, penetration: int, ticks: int) -> void:
 	var school: String = str(spell.school)
-	if bool(victim.enemy): Mastery.record(caster,int(victim.id),school)
+	if bool(victim.enemy): Hunt.record(caster,int(victim.id))
 	if power > 0: Rules.damage(s,caster,victim,power,str(spell.get("element","physical")),penetration)
 	if victim.hp <= 0: return
 	var status: String = str(spell.get("status",""))
@@ -275,7 +261,6 @@ static func strike(s, caster: Dictionary, victim: Dictionary, spell: Dictionary,
 	if status == "dominate" and ticks > 0: victim["dominated_until"] = s.time+Statuses.resisted_ticks(s,victim,"dominate",ticks)
 	if school == "ice" and caster.get("statuses",{}).has("ice_freeze") and Rules.roll(s,caster,victim,"ice_freeze",100) < 30:
 		victim.statuses["freeze"] = s.time+100
-	if school == "fire": Effects.on_spell_hit(s,caster,victim,school)
 
 ## A status a spell hangs on somebody; `Statuses` holds the body.
 static func apply_status(s, victim: Dictionary, status: String, ticks: int) -> void: Statuses.apply(s,victim,status,ticks)
@@ -285,10 +270,10 @@ static func apply_status(s, victim: Dictionary, status: String, ticks: int) -> v
 static func mark(s, caster: Dictionary, victim: Dictionary, spell: Dictionary, power: int, ticks: int) -> void:
 	var school: String = str(spell.school)
 	# Only the hex school argues with a will; a fire mark simply burns.
-	var force: int = power + Mastery.rank(caster,school) + int(Stats.stats(s,caster).power)
+	var force: int = power + mind_bonus(s,caster) + int(Stats.stats(s,caster).power)
 	if school == "hex" and Rules.roll(s,caster,victim,"mark_"+str(spell.name),100)+force < int(victim.get("will",80)):
 		s.message(str(victim.name)+" 저항"); return
-	if bool(victim.enemy): Mastery.record(caster,int(victim.id),school)
+	if bool(victim.enemy): Hunt.record(caster,int(victim.id))
 	var status: String = str(spell.get("status",""))
 	ticks = TagSets.status_ticks(caster,status,ticks)
 	match status:
@@ -383,8 +368,7 @@ static func blink_cells(s, caster: Dictionary) -> Array:
 
 static func relic_cast(s, caster: Dictionary, id: String, target: Vector2i, spell: Dictionary) -> void:
 	var school: String = str(spell.school)
-	var power: int = int(spell.power) + Mastery.rank(caster,school) + int(Stats.stats(s,caster).power)
-	if school == "fire": power = Effects.fire_power(caster,power)
+	var power: int = int(spell.power) + mind_bonus(s,caster) + int(Stats.stats(s,caster).power)
 	match id:
 		"blink":
 			var choices: Array = blink_cells(s,caster)
@@ -393,11 +377,10 @@ static func relic_cast(s, caster: Dictionary, id: String, target: Vector2i, spel
 			caster.hp = mini(caster.max_hp,caster.hp+power)
 			caster.statuses["slow"] = s.time+300
 		"blast":
-			var penetration := 20 if Mastery.rank(caster,"fire") >= 7 else 0
+			var penetration := 0
 			for cell in cells(s,caster,id,target):
 				var victim: Dictionary = s.at(cell)
 				if victim.is_empty(): continue
-				if victim.enemy: Mastery.record(caster,int(victim.id),school)
+				if victim.enemy: Hunt.record(caster,int(victim.id))
 				Rules.damage(s,caster,victim,power,"fire",penetration)
-				Effects.on_spell_hit(s,caster,victim,school)
 			for cell in cells(s,caster,id,target): s.tile(cell).fire = mini(100,int(s.tile(cell).fire)+30)

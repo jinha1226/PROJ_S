@@ -30,6 +30,7 @@ const Statuses = preload("res://expedition/combat/statuses.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const TagSets = preload("res://expedition/progression/tag_sets.gd")
+const Hunt = preload("res://expedition/progression/hunt.gd")
 ## Run modules: the session keeps the state and hands each group of verbs to
 ## its own file. Every public name here stays on the session as a delegate.
 const Camp = preload("res://expedition/run/camp.gd")
@@ -153,7 +154,7 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"growth":Growth.create(),"protected_by":-1,
 		"gear":{"weapon":{},"armour":{},"shield":{},"ring":{}},
 		"mp":18,"max_mp":18,"skill_xp":{},"usage":{},"statuses":{},"spells":[],"prepared":[],
-		"books":[],"buffs":{},"opinions":{},
+		"buffs":{},"opinions":{},
 		"level":1,"level_xp":0,"str_bonus":0,"sleep_until":0,"ready_at":0,
 		"pos":Vector2i.ZERO, "hp":28 if enemy else 55, "max_hp":28 if enemy else 55,
 		"stress":0, "condition":"평온", "ap":2,
@@ -447,7 +448,7 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 		if old_victim.is_empty() or not (old_victim.enemy or wanderer(old_victim) and not old_victim.get("summoned",false)): return {}
 		var old_actor: Dictionary = party[selected] if actor_index < 0 else (party[actor_index] if actor_index < party.size() else actor_by_id(actor_index))
 		if old_actor.is_empty(): return {}
-		var old_hit := TurnCore.physical(Growth.power(old_actor,"MELEE",18) * old_actor.attack_factor / 100, 1000, 0, 2)
+		var old_hit := TurnCore.physical(StatSheet.legacy_power(old_actor,"MELEE",18) * old_actor.attack_factor / 100, 1000, 0, 2)
 		var old_amount := int(old_hit.damage)
 		if old_victim.get("guarded",false): old_amount = maxi(1,old_amount/2)
 		if old_victim.get("shield",false): old_amount = 0
@@ -538,16 +539,6 @@ func cast(id: String, target: Vector2i) -> bool:
 ## the body.
 func status_blocks(actor: Dictionary, kind: String) -> bool: return Statuses.blocks(actor,kind)
 
-func prepare_spell(index: int, id: String, on: bool) -> bool: return Camp.prepare_spell(self,index,id,on)
-
-func learn_spell(index: int, id: String) -> bool: return Camp.learn_spell(self,index,id)
-
-func grant_book(book_id: String) -> bool: return Camp.grant_book(self,book_id)
-
-func book_tier(key: int, top: bool = false) -> int: return Camp.book_tier(self,key,top)
-
-func random_book(key: int, top: bool = false) -> String: return Camp.random_book(self,key,top)
-
 func gear_slot(item: Dictionary) -> String: return Gear.gear_slot(self,item)
 
 func equip_gear(index: int, item: Dictionary) -> bool: return Gear.equip_gear(self,index,item)
@@ -620,8 +611,8 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 				effects.append({"kind":"ATTACK_SWING","from":was,"cell":target,"amount":0,"form":"SLASH"})
 			if manual_mode: CombatRules.attack(self,actor,victim)
 			else:
-				if not actor.enemy and victim.enemy: Mastery.record(actor,int(victim.id),Mastery.weapon_axis(str(actor.get("gear",{}).get("weapon",{}).get("type","sword"))))
-				var hit := TurnCore.physical(Growth.power(actor,"MELEE",18) * actor.attack_factor / 100, 1000, 0, 2)
+				if not actor.enemy and victim.enemy: Hunt.record(actor,int(victim.id))
+				var hit := TurnCore.physical(StatSheet.legacy_power(actor,"MELEE",18) * actor.attack_factor / 100, 1000, 0, 2)
 				damage(victim,int(hit.damage),actor.id,"SLASH")
 			# A skirmisher with nothing to shoot strikes once, then breaks away.
 			if Stances.effective(actor) == "SKIRMISHER" and Stances.ranged_part(actor).is_empty(): actor.hit_and_run = true
@@ -822,7 +813,6 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 		message("보호막 · 피해 무효"); return 0
 	if target.get("iron_guard",false): amount = maxi(1,amount / 4)
 	elif target.get("guarded",false): amount = maxi(1,amount / 2)
-	if not manual_mode and not target.enemy: amount = Growth.incoming(target,amount)
 	if passive_hit: amount = Passives.incoming(self,target,amount)
 	# A solo floor always grants one action; collapse instead exposes the hero
 	# to one extra point of damage. Calming supplies can prevent this penalty.
@@ -874,7 +864,6 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 	if target.enemy and target.hp <= 0:
 		var hunters: Array = hunt_recipients(target,attacker)
 		var party_hunted: bool = hunters.any(func(a): return a in party)
-		Mastery.award(hunters,int(target.id),18+depth*8)
 		if not attacker.is_empty(): TagSets.on_kill(self,attacker)
 		for actor in party+npcs: actor.get("usage",{}).erase(int(target.id))
 		if party_hunted:
@@ -886,7 +875,6 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 		if target.get("boss",false):
 			if party_hunted:
 				grant_part(str(target.part_id)); score += 100
-				grant_book(random_book(depth*1000+int(target.id),true))
 		else: roll_part(target,hunters)
 	if not target.enemy and target.id == 0 and target.hp <= 0: check_battle_end()
 	return lost

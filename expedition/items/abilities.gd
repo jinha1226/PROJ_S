@@ -2,6 +2,8 @@ extends RefCounted
 ## Parts catalog. One definition is both a monster's signature attack and the
 ## item the player equips: `passive` applies while equipped (or always, for the
 ## owning species), the active is executed by `resolve` for either side.
+const Essences = preload("res://expedition/progression/essences.gd")
+const Hunt = preload("res://expedition/progression/hunt.gd")
 const DROP_PERCENT := 50
 const NO_PASSIVE := {}
 const IMMEDIATE := {"prep":0,"target":"NEAREST"}
@@ -75,13 +77,13 @@ static func cells(s, actor: Dictionary, id: String, target: Vector2i) -> Array:
 			if in_range and s.tile(cell).terrain != "wall" and s.TurnCore.Geometry.sees(center,cell,func(p): return s.tile(p).terrain == "wall"): result.append(cell)
 	return result
 
-## Party members grow; monsters hit for the listed damage plus the floor's darkness bonus.
-static func power(s, actor: Dictionary, def: Dictionary) -> int:
+## A monster hits for the listed damage. A member adds half of the reading
+## attribute over ten, then the essence's tier: +25% a tier.
+static func power(s, actor: Dictionary, def: Dictionary, id: String = "") -> int:
 	if actor.enemy: return int(def.damage)
-	if s.manual_mode:
-		var axis: String = "bow" if def.axis == "RANGED" else "hex" if def.axis == "MAGIC" else s.Mastery.weapon_axis(str(actor.get("gear",{}).get("weapon",{}).get("type","sword")))
-		return int(def.damage)+s.Mastery.rank(actor,axis)
-	return s.Growth.power(actor,def.axis,int(def.damage))
+	var key: String = {"RANGED":"dex","MAGIC":"int"}.get(str(def.axis),"str")
+	var base: int = int(def.damage)+maxi(0,s.StatSheet.value(s,actor,key)-10)/2
+	return Essences.active_power(maxi(1,Essences.tier(actor,id)),base)
 
 ## Whether `actor` holds the part: a slot for party members, the species signature for monsters.
 static func holds(actor: Dictionary, id: String) -> bool:
@@ -111,13 +113,10 @@ static func execute(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 	if not legal(s,actor,id,target): return false
 	# Ranged and magical parts train only when they affect a hostile target.
 	# Record before resolving damage so a killing blow receives its XP share.
-	if s.manual_mode and not actor.enemy:
-		var axis: String = "bow" if DEFINITIONS[id].axis == "RANGED" else "hex" if DEFINITIONS[id].axis == "MAGIC" else ""
-		if not axis.is_empty():
-			var affected: Array = cells(s,actor,id,target)
-			for foe in s.enemies:
-				if foe.hp > 0 and foe.pos in affected:
-					s.Mastery.record(actor,int(foe.id),axis)
+	if not actor.enemy:
+		var affected: Array = cells(s,actor,id,target)
+		for foe in s.enemies:
+			if foe.hp > 0 and foe.pos in affected: Hunt.record(actor,int(foe.id))
 	resolve(s,actor,id,target)
 	return true
 
@@ -149,7 +148,7 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 			else:
 				var destination: Vector2i = target+(target-actor.pos)
 				if s.can_step(target,destination): victim.pos = destination
-				else: s.damage(victim,power(s,actor,def),actor.id,"IMPACT")
+				else: s.damage(victim,power(s,actor,def,id),actor.id,"IMPACT")
 				s.intents = s.intents.filter(func(intent): return intent.id != victim.id)
 				if victim.get("boss",false) and victim.get("charging",false):
 					victim.charging = false; victim.fuse = 0; victim.cooldown = 6; victim.recovery = 1
@@ -164,10 +163,10 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 			if victim.is_empty() or spared or cell == Vector2i(-1,-1): s.message(actor.name+"의 "+def.name+"가 빗나갔습니다.")
 			else:
 				s.effects.append({"kind":"ENEMY_ATTACK","from":actor.pos,"cell":target,"cells":[target],"area":false,"amount":0,"form":"SLASH"})
-				s.damage(victim,power(s,actor,def),actor.id,"SLASH")
+				s.damage(victim,power(s,actor,def,id),actor.id,"SLASH")
 		"DAMAGE":
 			var affected := cells(s,actor,id,target)
-			var amount: int = power(s,actor,def)
+			var amount: int = power(s,actor,def,id)
 			s.effects.append({"kind":"ENEMY_ATTACK","from":actor.pos,"cell":target,"cells":affected,"area":true,"amount":0,"form":"IMPACT"})
 			var hit := 0
 			for other in s.party+s.npcs+s.enemies:

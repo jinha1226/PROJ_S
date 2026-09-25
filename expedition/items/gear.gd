@@ -27,10 +27,6 @@ static func equip_gear(s, index: int, item: Dictionary) -> bool:
 	if slot == "weapon" and str(item.type) in ["bow","staff"] and not actor.gear.shield.is_empty(): return false
 	if slot == "armour" and actor.species_id == "elf" and str(item.type) == "plate": return false
 	var previous: Dictionary = actor.gear[slot]
-	if slot == "weapon" and not previous.is_empty():
-		var old_axis := Mastery.weapon_axis(str(previous.type))
-		var new_axis := Mastery.weapon_axis(str(item.type))
-		if old_axis != new_axis and Mastery.rank(actor,old_axis) > 0: Mastery.catchup(actor,new_axis)
 	s.gear_bag.erase(item)
 	if not previous.is_empty(): s.gear_bag.append(previous)
 	actor.gear[slot] = item.duplicate(true)

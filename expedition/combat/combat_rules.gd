@@ -2,8 +2,7 @@ extends RefCounted
 const TagSets = preload("res://expedition/progression/tag_sets.gd")
 const Stats = preload("res://expedition/combat/combat_stats.gd")
 const Turns = preload("res://sim/turn_engine.gd")
-const Mastery = preload("res://expedition/progression/mastery.gd")
-const Effects = preload("res://expedition/progression/mastery_effects.gd")
+const Hunt = preload("res://expedition/progression/hunt.gd")
 
 static func roll(s, source: Dictionary, target: Dictionary, lane: String, modulus: int) -> int:
 	if modulus <= 1: return 0
@@ -15,7 +14,7 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 	var out := {"hit":false, "evaded":false, "blocked":false, "damage":0}
 	if target.is_empty() or int(target.hp) <= 0: return out
 	if not bool(source.get("enemy",false)) and bool(target.get("enemy",false)):
-		Mastery.record(source,int(target.id),Mastery.weapon_axis(str(source.get("gear",{}).get("weapon",{}).get("type","sword"))))
+		Hunt.record(source,int(target.id))
 	var offense: Dictionary = Stats.stats(s, source)
 	var defense: Dictionary = Stats.stats(s, target)
 	# 왜곡 takes thirty points off whatever the attacker can still aim.
@@ -25,20 +24,17 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 	if not sure and roll(s, source, target, "dodge", 100) < dodge:
 		out.evaded = true; s.message(str(target.name) + " 회피")
 		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"회피","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
-		Effects.on_dodge(s,target,source)
 		return out
 	if not sure and roll(s, source, target, "block", 100) < int(defense.sh):
 		out.blocked = true; s.message(str(target.name) + " 방패 방어")
 		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"막음","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
 		return out
 	var raw := int(offense.damage)
-	raw = Effects.attack_raw(s,source,target,raw)
 	if offense.trait == "stab" and (target.get("statuses", {}).has("confuse") or not bool(target.get("alert", true))): raw *= 2
 	var ac := int(defense.ac) / 2 if offense.trait == "pierce" else int(defense.ac)
 	var physical: Dictionary = Turns.physical(raw, 950, 0, roll(s, source, target, "absorb", ac + 1))
 	out.hit = true
 	out.damage = damage(s, source, target, int(physical.damage), "physical")
-	Effects.on_attack(s,source,target,out)
 	TagSets.on_hit(s,source,target)
 	if target.hp <= 0: return out
 	match str(offense.brand):

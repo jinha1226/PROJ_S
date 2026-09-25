@@ -99,8 +99,8 @@ func floor_actions() -> void:
 	s.floor_state.observe(s)
 	var foe_hp: int = foe.hp
 	check(s.act("PUSH",foe.pos),"a shove with nowhere to go still goes off")
-	# The shove carries the hero's 검술: the starting kit departs at rank 1.
-	var shove: int = int(Session.Abilities.DEFINITIONS.PUSH.damage)+Session.Mastery.rank(hero,"sword")
+	# The shove carries the hero's strength: half of it over ten.
+	var shove: int = Session.Abilities.power(s,hero,Session.Abilities.DEFINITIONS.PUSH,"PUSH")
 	check(foe.pos == center+Vector2i(1,0) and foe.hp == foe_hp-shove,"it stays put and takes the damage instead")
 	s.tile(center+Vector2i(2,0)).terrain = "stone"
 	var wet := center+Vector2i(0,5)

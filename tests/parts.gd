@@ -300,7 +300,7 @@ func telegraph() -> void:
 	var hp: int = d.hero.hp
 	MonsterAI.turn(s,d.foe)
 	check(not d.foe.charging and s.intents.is_empty(),"resolved on the next turn")
-	check(d.hero.hp == hp-s.Growth.incoming(d.hero,14),"club lands for its announced damage")
+	check(d.hero.hp == hp-14,"club lands for its announced damage")
 	check(int(d.foe.cooldowns.HOB_CLUB) == 4,"cooldown set (3 + 1)")
 	check(int(s.battle_stats.enemy_parts.get("HOB_CLUB",0)) == 1,"enemy skill use counted")
 	MonsterAI.turn(s,d.foe)
@@ -370,4 +370,4 @@ func telegraph() -> void:
 	# Player use is immediate and grows with the melee axis.
 	d = duel(); s = d.s; d.hero.equipped_abilities = ["HOB_CLUB","GUARD"]; d.hero.cooldowns = {}
 	var foe_hp: int = d.foe.hp
-	check(s.act("HOB_CLUB",d.foe.pos) and d.foe.hp == foe_hp-s.Growth.power(d.hero,"MELEE",14) and d.hero.ap == 2 and int(d.hero.cooldowns.HOB_CLUB) == 4,"player club is immediate, scaled and cooled")
+	check(s.act("HOB_CLUB",d.foe.pos) and d.foe.hp == foe_hp-Abilities.power(s,d.hero,Abilities.DEFINITIONS.HOB_CLUB,"HOB_CLUB") and d.hero.ap == 2 and int(d.hero.cooldowns.HOB_CLUB) == 4,"player club is immediate, scaled and cooled")

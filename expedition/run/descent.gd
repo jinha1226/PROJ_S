@@ -3,7 +3,7 @@ extends RefCounted
 const CombatStats = preload("res://expedition/combat/combat_stats.gd")
 const Memory = preload("res://sim/party_memory_state.gd")
 const NpcRoster = preload("res://expedition/actors/npc_roster.gd")
-const Spells = preload("res://expedition/spells/spells.gd")
+const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 
 static func depart(s) -> bool:
@@ -17,15 +17,18 @@ static func depart(s) -> bool:
 	s.time = 0; s.boundary = 100; s.turn_serial = 0; s.roll_serial = 0
 	s.party[0].gear.weapon = {"type":str(kit.weapon),"enchant":0}
 	s.party[0].gear.armour = {"type":"robe","enchant":0}
-	s.party[0].skill_xp[str(kit.axis)] = 25
+	var hero: Dictionary = s.party[0]
 	var kit_spell: String = str(kit.get("spell",""))
-	s.party[0].books = []; s.party[0].buffs = {}
-	s.party[0].spells = []; s.party[0].prepared = []
+	hero.buffs = {}; hero.spells = []; hero.prepared = []
+	hero.essences = {}; hero.essence_spells = {}; hero.equipped_abilities = [""]
 	if not kit_spell.is_empty():
-		# A magic kit leaves with its school's primer and the first spell in it.
-		s.party[0].spells = [kit_spell]
-		s.party[0].prepared = [kit_spell]
-		s.party[0].books = [str(Spells.definition(kit_spell).get("book",""))]
+		var essence: String = str(Essences.CASTER_BY_SCHOOL.get(str(kit.axis),""))
+		hero.essences[essence] = 1
+		hero.essence_spells[essence] = kit_spell
+		Essences.sync_slots(hero)
+		hero.equipped_abilities[0] = essence
+		Essences.sync_spells(hero)
+	StatSheet.refresh_pools(s,hero)
 	for actor in s.party:
 		# A debt owed or refused outlives the run it was made in.
 		actor.memory.records = actor.memory.records.filter(func(record): return int(record.salience) >= 700 or str(record.kind) in Memory.SOCIAL_KINDS)

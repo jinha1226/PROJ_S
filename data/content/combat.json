@@ -248,7 +248,6 @@
       "ticks": 0,
       "mp": 3,
       "range": 6,
-      "book": "fire_1",
       "note": "적 하나를 태운다"
     },
     "fire_2": {
@@ -262,7 +261,6 @@
       "ticks": 0,
       "mp": 4,
       "range": 0,
-      "book": "fire_1",
       "buff": "next_fire",
       "value": 150,
       "note": "다음 화염 주문의 위력 +50%"
@@ -278,7 +276,6 @@
       "ticks": 0,
       "mp": 5,
       "range": 5,
-      "book": "fire_1",
       "radius": 1,
       "note": "반경 1의 적을 태운다"
     },
@@ -293,7 +290,6 @@
       "ticks": 300,
       "mp": 6,
       "range": 5,
-      "book": "fire_2",
       "note": "세 턴 동안 계속 타오른다"
     },
     "fire_5": {
@@ -307,7 +303,6 @@
       "ticks": 0,
       "mp": 7,
       "range": 0,
-      "book": "fire_2",
       "buff": "next_pierce",
       "value": 20,
       "note": "다음 화염 주문이 저항 20을 관통한다"
@@ -323,7 +318,6 @@
       "ticks": 300,
       "mp": 8,
       "range": 4,
-      "book": "fire_2",
       "length": 3,
       "note": "세 칸의 불벽이 세 턴 동안 길을 막고 태운다"
     },
@@ -338,7 +332,6 @@
       "ticks": 300,
       "mp": 9,
       "range": 5,
-      "book": "fire_3",
       "note": "연소가 인접한 적에게 옮는다"
     },
     "fire_8": {
@@ -352,7 +345,6 @@
       "ticks": 0,
       "mp": 10,
       "range": 6,
-      "book": "fire_3",
       "note": "희게 타는 한 발"
     },
     "fire_9": {
@@ -366,7 +358,6 @@
       "ticks": 300,
       "mp": 11,
       "range": 5,
-      "book": "fire_3",
       "radius": 2,
       "note": "반경 2를 태우고 불붙인다"
     },
@@ -381,7 +372,6 @@
       "ticks": 500,
       "mp": 12,
       "range": 0,
-      "book": "fire_3",
       "buff": "fire_mastery",
       "value": 150,
       "note": "다섯 턴 동안 화염 위력 1.5배"
@@ -397,7 +387,6 @@
       "ticks": 200,
       "mp": 3,
       "range": 3,
-      "book": "ice_1",
       "length": 3,
       "note": "앞의 세 칸을 얼려 늦춘다"
     },
@@ -412,7 +401,6 @@
       "ticks": 0,
       "mp": 4,
       "range": 0,
-      "book": "ice_1",
       "buff": "next_ice_slow",
       "value": 200,
       "note": "다음 냉기 주문의 둔화가 두 배"
@@ -428,7 +416,6 @@
       "ticks": 100,
       "mp": 5,
       "range": 5,
-      "book": "ice_1",
       "note": "한 턴 동안 얼어붙는다"
     },
     "ice_4": {
@@ -442,7 +429,6 @@
       "ticks": 300,
       "mp": 6,
       "range": 4,
-      "book": "ice_2",
       "note": "부채꼴을 세 턴 늦춘다"
     },
     "ice_5": {
@@ -456,7 +442,6 @@
       "ticks": 300,
       "mp": 7,
       "range": 5,
-      "book": "ice_2",
       "note": "갑옷이 부서진다 · AC −4"
     },
     "ice_6": {
@@ -470,7 +455,6 @@
       "ticks": 300,
       "mp": 8,
       "range": 4,
-      "book": "ice_2",
       "length": 3,
       "note": "세 칸의 얼음벽이 세 턴 동안 길을 막는다"
     },
@@ -485,7 +469,6 @@
       "ticks": 200,
       "mp": 9,
       "range": 4,
-      "book": "ice_3",
       "note": "부채꼴에 냉기와 둔화"
     },
     "ice_8": {
@@ -499,7 +482,6 @@
       "ticks": 100,
       "mp": 10,
       "range": 5,
-      "book": "ice_3",
       "radius": 1,
       "note": "반경 1을 얼린다"
     },
@@ -514,7 +496,6 @@
       "ticks": 0,
       "mp": 11,
       "range": 5,
-      "book": "ice_3",
       "length": 5,
       "note": "다섯 칸을 가르는 얼음"
     },
@@ -529,7 +510,6 @@
       "ticks": 500,
       "mp": 12,
       "range": 0,
-      "book": "ice_3",
       "buff": "ice_freeze",
       "value": 30,
       "note": "다섯 턴 동안 냉기가 30%로 얼린다"
@@ -545,7 +525,6 @@
       "ticks": 0,
       "mp": 3,
       "range": 6,
-      "book": "air_1",
       "ignore_los": true,
       "note": "사선을 무시하는 한 줄기"
     },
@@ -560,7 +539,6 @@
       "ticks": 0,
       "mp": 4,
       "range": 0,
-      "book": "air_1",
       "buff": "next_chain",
       "value": 1,
       "note": "다음 번개가 한 번 연쇄한다"
@@ -576,7 +554,6 @@
       "ticks": 0,
       "mp": 5,
       "range": 3,
-      "book": "air_1",
       "length": 3,
       "push": 1,
       "note": "앞의 세 칸을 한 칸 밀어낸다"
@@ -592,7 +569,6 @@
       "ticks": 0,
       "mp": 6,
       "range": 5,
-      "book": "air_2",
       "radius": 1,
       "wet_bonus": true,
       "note": "반경 1 · 젖은 칸에서 두 배"
@@ -608,7 +584,6 @@
       "ticks": 0,
       "mp": 7,
       "range": 6,
-      "book": "air_2",
       "chain": 2,
       "note": "인접한 적으로 두 번 연쇄한다"
     },
@@ -623,7 +598,6 @@
       "ticks": 0,
       "mp": 8,
       "range": 5,
-      "book": "air_2",
       "radius": 2,
       "push": 1,
       "note": "반경 2를 때리고 밀어낸다"
@@ -639,7 +613,6 @@
       "ticks": 0,
       "mp": 9,
       "range": 4,
-      "book": "air_3",
       "length": 4,
       "note": "네 칸을 꿰뚫는 방전"
     },
@@ -654,7 +627,6 @@
       "ticks": 300,
       "mp": 10,
       "range": 0,
-      "book": "air_3",
       "buff": "stormeye",
       "value": 20,
       "note": "세 턴 동안 EV +20"
@@ -670,7 +642,6 @@
       "ticks": 0,
       "mp": 11,
       "range": 6,
-      "book": "air_3",
       "penetration": 100,
       "note": "저항을 관통하는 벼락"
     },
@@ -685,7 +656,6 @@
       "ticks": 500,
       "mp": 12,
       "range": 0,
-      "book": "air_3",
       "buff": "air_chain",
       "value": 1,
       "note": "다섯 턴 동안 연쇄 +1"
@@ -701,7 +671,6 @@
       "ticks": 300,
       "mp": 3,
       "range": 5,
-      "book": "hex_1",
       "note": "세 턴 동안 무작위로 움직인다"
     },
     "hex_2": {
@@ -715,7 +684,6 @@
       "ticks": 300,
       "mp": 4,
       "range": 5,
-      "book": "hex_1",
       "note": "피해 −30%"
     },
     "hex_3": {
@@ -729,7 +697,6 @@
       "ticks": 200,
       "mp": 5,
       "range": 5,
-      "book": "hex_1",
       "note": "두 턴 동안 움직이지 못한다"
     },
     "hex_4": {
@@ -743,7 +710,6 @@
       "ticks": 200,
       "mp": 6,
       "range": 5,
-      "book": "hex_2",
       "note": "걸린 상태가 두 턴 늘어난다"
     },
     "hex_5": {
@@ -757,7 +723,6 @@
       "ticks": 300,
       "mp": 7,
       "range": 5,
-      "book": "hex_2",
       "note": "명중 −30%"
     },
     "hex_6": {
@@ -771,7 +736,6 @@
       "ticks": 300,
       "mp": 8,
       "range": 5,
-      "book": "hex_2",
       "note": "받는 피해 +30%"
     },
     "hex_7": {
@@ -785,7 +749,6 @@
       "ticks": 300,
       "mp": 9,
       "range": 5,
-      "book": "hex_3",
       "radius": 1,
       "note": "반경 1을 혼란에 빠뜨린다"
     },
@@ -800,7 +763,6 @@
       "ticks": 300,
       "mp": 10,
       "range": 5,
-      "book": "hex_3",
       "note": "걸린 상태가 인접한 적에게 복사된다"
     },
     "hex_9": {
@@ -814,7 +776,6 @@
       "ticks": 200,
       "mp": 11,
       "range": 5,
-      "book": "hex_3",
       "note": "두 턴 동안 아군으로 싸운다"
     },
     "hex_10": {
@@ -828,7 +789,6 @@
       "ticks": 500,
       "mp": 12,
       "range": 0,
-      "book": "hex_3",
       "buff": "hex_mastery",
       "value": 200,
       "note": "다섯 턴 동안 상태 지속 두 배"
@@ -844,7 +804,6 @@
       "ticks": 0,
       "mp": 3,
       "range": 0,
-      "book": "summon_1",
       "summon": "hound",
       "count": 1,
       "note": "사냥개 하나를 부른다"
@@ -860,7 +819,6 @@
       "ticks": 0,
       "mp": 4,
       "range": 0,
-      "book": "summon_1",
       "buff": "summon_hp",
       "value": 150,
       "note": "소환수 HP +50%"
@@ -876,7 +834,6 @@
       "ticks": 0,
       "mp": 5,
       "range": 0,
-      "book": "summon_1",
       "summon": "imp",
       "count": 2,
       "note": "임프 둘을 부른다"
@@ -892,7 +849,6 @@
       "ticks": 0,
       "mp": 6,
       "range": 0,
-      "book": "summon_2",
       "buff": "summon_time",
       "value": 200,
       "note": "소환이 200틱 더 머문다"
@@ -908,7 +864,6 @@
       "ticks": 0,
       "mp": 7,
       "range": 0,
-      "book": "summon_2",
       "radius": 1,
       "sacrifice": true,
       "note": "소환수가 터져 반경 1을 때린다"
@@ -924,7 +879,6 @@
       "ticks": 0,
       "mp": 8,
       "range": 0,
-      "book": "summon_2",
       "summon": "rat",
       "count": 3,
       "note": "쥐 셋을 부른다"
@@ -940,7 +894,6 @@
       "ticks": 0,
       "mp": 9,
       "range": 0,
-      "book": "summon_3",
       "summon": "wolf",
       "count": 1,
       "note": "늑대 하나를 부른다"
@@ -956,7 +909,6 @@
       "ticks": 500,
       "mp": 10,
       "range": 0,
-      "book": "summon_3",
       "buff": "summon_power",
       "value": 150,
       "note": "다섯 턴 동안 소환수 피해 +50%"
@@ -972,7 +924,6 @@
       "ticks": 0,
       "mp": 11,
       "range": 0,
-      "book": "summon_3",
       "summon": "wolf",
       "count": 2,
       "note": "늑대 둘을 부른다"
@@ -988,7 +939,6 @@
       "ticks": 0,
       "mp": 12,
       "range": 0,
-      "book": "summon_3",
       "buff": "summon_renew",
       "value": 1,
       "note": "소환수를 회복시키고 지속을 갱신한다"
@@ -1158,196 +1108,20 @@
         "ring:power",
         "ring:ev"
       ]
-    },
-    "books": {
-      "tier_depth": {
-        "1": 1,
-        "2": 3,
-        "3": 6
-      },
-      "dead_adventurer": 20,
-      "broken_chest": 30,
-      "boss": 100
     }
   },
   "kill_xp": {
     "base": 18,
     "per_depth": 8
   },
-  "books": {
-    "fire_1": {
-      "id": "fire_1",
-      "school": "fire",
-      "tier": 1,
-      "name": "화염술 초급서",
-      "levels": [
-        1,
-        2,
-        3
-      ]
-    },
-    "fire_2": {
-      "id": "fire_2",
-      "school": "fire",
-      "tier": 2,
-      "name": "화염술 중급서",
-      "levels": [
-        4,
-        5,
-        6
-      ]
-    },
-    "fire_3": {
-      "id": "fire_3",
-      "school": "fire",
-      "tier": 3,
-      "name": "화염술 고급서",
-      "levels": [
-        7,
-        8,
-        9,
-        10
-      ]
-    },
-    "ice_1": {
-      "id": "ice_1",
-      "school": "ice",
-      "tier": 1,
-      "name": "냉기술 초급서",
-      "levels": [
-        1,
-        2,
-        3
-      ]
-    },
-    "ice_2": {
-      "id": "ice_2",
-      "school": "ice",
-      "tier": 2,
-      "name": "냉기술 중급서",
-      "levels": [
-        4,
-        5,
-        6
-      ]
-    },
-    "ice_3": {
-      "id": "ice_3",
-      "school": "ice",
-      "tier": 3,
-      "name": "냉기술 고급서",
-      "levels": [
-        7,
-        8,
-        9,
-        10
-      ]
-    },
-    "air_1": {
-      "id": "air_1",
-      "school": "air",
-      "tier": 1,
-      "name": "기류술 초급서",
-      "levels": [
-        1,
-        2,
-        3
-      ]
-    },
-    "air_2": {
-      "id": "air_2",
-      "school": "air",
-      "tier": 2,
-      "name": "기류술 중급서",
-      "levels": [
-        4,
-        5,
-        6
-      ]
-    },
-    "air_3": {
-      "id": "air_3",
-      "school": "air",
-      "tier": 3,
-      "name": "기류술 고급서",
-      "levels": [
-        7,
-        8,
-        9,
-        10
-      ]
-    },
-    "hex_1": {
-      "id": "hex_1",
-      "school": "hex",
-      "tier": 1,
-      "name": "변이·제어 초급서",
-      "levels": [
-        1,
-        2,
-        3
-      ]
-    },
-    "hex_2": {
-      "id": "hex_2",
-      "school": "hex",
-      "tier": 2,
-      "name": "변이·제어 중급서",
-      "levels": [
-        4,
-        5,
-        6
-      ]
-    },
-    "hex_3": {
-      "id": "hex_3",
-      "school": "hex",
-      "tier": 3,
-      "name": "변이·제어 고급서",
-      "levels": [
-        7,
-        8,
-        9,
-        10
-      ]
-    },
-    "summon_1": {
-      "id": "summon_1",
-      "school": "summon",
-      "tier": 1,
-      "name": "소환술 초급서",
-      "levels": [
-        1,
-        2,
-        3
-      ]
-    },
-    "summon_2": {
-      "id": "summon_2",
-      "school": "summon",
-      "tier": 2,
-      "name": "소환술 중급서",
-      "levels": [
-        4,
-        5,
-        6
-      ]
-    },
-    "summon_3": {
-      "id": "summon_3",
-      "school": "summon",
-      "tier": 3,
-      "name": "소환술 고급서",
-      "levels": [
-        7,
-        8,
-        9,
-        10
-      ]
-    }
-  },
   "summons": {
-    "mirror": {"name":"거울상","hp":12,"power":6,"speed":100,"duration":300},
+    "mirror": {
+      "name": "거울상",
+      "hp": 12,
+      "power": 6,
+      "speed": 100,
+      "duration": 300
+    },
     "hound": {
       "name": "사냥개",
       "hp": 20,
