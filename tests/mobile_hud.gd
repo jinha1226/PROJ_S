@@ -23,6 +23,12 @@ func run() -> void:
 	for pair in [["weapon",Session.CombatStats.content.weapons,Art.WEAPON_ICONS],["armour",Session.CombatStats.content.armours,Art.ARMOUR_ICONS],["ring",Session.CombatStats.content.rings,Art.RING_ICONS]]:
 		check(pair[1].keys().all(func(id): return Art.equipment_icon(pair[0],id).atlas == pair[2][id]),"every %s id has its own picture" % pair[0])
 	check(Art.equipment_icon("shield").atlas == Art.SHIELD_ICON and Art.equipment_icon("weapon","nope").atlas == Art.WEAPON_ICONS.sword,"shield picture and weapon fallback")
+	for curio in ["SUPPLY_CACHE","BROKEN_CHEST","MUSHROOMS","DEAD_ADVENTURER"]:
+		var object_id: String = Art.FirstFloor.feature_id({"kind":"curio","curio_id":curio})
+		check(Art.FirstFloor.OBJECTS.has(object_id),"curio %s has its own object" % curio)
+	check(["SUPPLY_CACHE","BROKEN_CHEST","MUSHROOMS","DEAD_ADVENTURER"].map(func(c): return Art.FirstFloor.feature_id({"kind":"curio","curio_id":c})).reduce(func(a,b): return a if b in a else a+[b],[]).size() == 4,"the four curios look different")
+	check(["stairs","pylon","entry","altar","relic","camp"].all(func(k): return Art.FirstFloor.OBJECTS.has(Art.FirstFloor.feature_id({"kind":k}))),"map features are drawn as objects")
+	check(Art.MASTERY_IDS.all(func(axis): return Art.mastery_icon(axis).atlas == (Art.WEAPON_ICONS[axis] if Art.WEAPON_ICONS.has(axis) else Art.SCHOOL_ICONS[axis])),"every mastery axis has its weapon or school picture")
 	check(["boss_mire","boss_bomber","boss_giant"].all(func(n): return Art.boss_sprite(["boss_mire","boss_bomber","boss_giant"].find(n)).atlas.resource_path.ends_with(n+".png")),"each boss pattern has its own sprite")
 	root.size = Vector2i(390,844)
 	var scene = load("res://expedition/ui/main.tscn").instantiate()

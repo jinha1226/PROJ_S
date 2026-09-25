@@ -6,7 +6,35 @@ const FLOOR_SLABS = preload("res://assets/topdown/flat-v1/ruins-floor-slabs.png"
 const WALL_BLOCKS = preload("res://assets/topdown/flat-v1/ruins-wall-blocks.png")
 const MINES_FLOOR_SLABS = preload("res://assets/topdown/flat-v1/mines-floor-slabs.png")
 const MINES_WALL_BLOCKS = preload("res://assets/topdown/flat-v1/mines-wall-blocks.png")
-const PROPS = preload("res://assets/topdown/flat-v1/props.png")
+## Floor objects in the paper-doll style (tools/art/build_objects.py), one PNG
+## each, standing with their base on a 64-unit grid's y = OBJECT_FOOT.
+const OBJECTS := {
+	"pillar_broken":preload("res://assets/objects-v1/pillar_broken.png"),
+	"rubble":preload("res://assets/objects-v1/rubble.png"),
+	"crate":preload("res://assets/objects-v1/crate.png"),
+	"barrel":preload("res://assets/objects-v1/barrel.png"),
+	"torch_lit":preload("res://assets/objects-v1/torch_lit.png"),
+	"torch_unlit":preload("res://assets/objects-v1/torch_unlit.png"),
+	"brazier":preload("res://assets/objects-v1/brazier.png"),
+	"campfire":preload("res://assets/objects-v1/campfire.png"),
+	"locked_chest":preload("res://assets/objects-v1/locked_chest.png"),
+	"dirt_pile":preload("res://assets/objects-v1/dirt_pile.png"),
+	"sarcophagus":preload("res://assets/objects-v1/sarcophagus.png"),
+	"altar":preload("res://assets/objects-v1/altar.png"),
+	"relic":preload("res://assets/objects-v1/relic.png"),
+	"gate":preload("res://assets/objects-v1/gate.png"),
+	"bones":preload("res://assets/objects-v1/bones.png"),
+	"barricade":preload("res://assets/objects-v1/barricade.png"),
+	"stairs":preload("res://assets/objects-v1/stairs.png"),
+	"pylon":preload("res://assets/objects-v1/pylon.png"),
+	"supply_cache":preload("res://assets/objects-v1/supply_cache.png"),
+	"broken_chest":preload("res://assets/objects-v1/broken_chest.png"),
+	"dead_adventurer":preload("res://assets/objects-v1/dead_adventurer.png"),
+	"mushrooms":preload("res://assets/objects-v1/mushrooms.png")}
+const OBJECT_FOOT := 58.0/64.0
+## Objects are drawn this many tiles wide; flat ones lie inside their tile.
+const OBJECT_SCALE := 1.3
+const FLAT_OBJECTS := ["stairs"]
 const Regions = preload("res://expedition/art/environment_art.gd")
 static var catalog: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/topdown/floor1-ink-v2/catalog.json"))
 
@@ -31,14 +59,18 @@ static func terrain(cell: Dictionary, point: Vector2i, theme_id: String = "F1_RU
 	var id: String = {"wood":"wood","water":"water","metal":"metal","wall":"front","rubble":"rubble","dirt":"dirt"}.get(cell.terrain,["floor_a","floor_b","floor_c","floor_d"][posmod(point.x*7+point.y*3,4)])
 	return tile(id,theme_id)
 
+## The object that stands for a map feature: every curio has its own, and
+## the stairs and the boss pylon are drawn as objects too.
 static func feature_id(feature: Dictionary) -> String:
 	if feature.kind == "curio":
-		return {"SUPPLY_CACHE":"locked_chest","BROKEN_CHEST":"locked_chest","MUSHROOMS":"dirt_pile","DEAD_ADVENTURER":"locked_chest"}.get(feature.get("curio_id",""),"")
-	return {"entry":"gate","altar":"altar","relic":"relic","camp":"campfire"}.get(feature.kind,"")
+		return {"SUPPLY_CACHE":"supply_cache","BROKEN_CHEST":"broken_chest","MUSHROOMS":"mushrooms","DEAD_ADVENTURER":"dead_adventurer"}.get(feature.get("curio_id",""),"")
+	return {"entry":"gate","altar":"altar","relic":"relic","camp":"campfire","stairs":"stairs","pylon":"pylon"}.get(feature.kind,"")
 
 static func paint_object(canvas: CanvasItem, id: String, cell: Rect2, tint: Color = Color.WHITE) -> void:
-	var entry: Dictionary = catalog.objects[id]
-	var texture := Regions.region(PROPS,entry.rect,"flat/object/"+id)
-	var extent := texture.get_size()*cell.size.x/float(entry.source_cell_size)
-	var position := cell.position+Vector2((cell.size.x-extent.x)*0.5,cell.size.y-extent.y)
-	canvas.draw_texture_rect(texture,Rect2(position,extent),false,tint)
+	var texture: Texture2D = OBJECTS.get(id)
+	if texture == null: return
+	if id in FLAT_OBJECTS:
+		canvas.draw_texture_rect(texture,cell,false,tint); return
+	var extent := cell.size*OBJECT_SCALE
+	var feet := cell.end.y-cell.size.y*0.04
+	canvas.draw_texture_rect(texture,Rect2(Vector2(cell.get_center().x-extent.x*0.5,feet-extent.y*OBJECT_FOOT),extent),false,tint)

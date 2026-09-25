@@ -39,6 +39,10 @@ const ARMOUR_ICONS := {"robe":preload("res://assets/items-v1/gear/armours/robe.p
 const RING_ICONS := {"fire":preload("res://assets/items-v1/gear/rings/fire.png"),"ice":preload("res://assets/items-v1/gear/rings/ice.png"),"poison":preload("res://assets/items-v1/gear/rings/poison.png"),"air":preload("res://assets/items-v1/gear/rings/air.png"),"power":preload("res://assets/items-v1/gear/rings/power.png"),"ev":preload("res://assets/items-v1/gear/rings/ev.png")}
 const SHIELD_ICON := preload("res://assets/items-v1/gear/shield.png")
 const BOOK_ICON := preload("res://assets/items-v1/gear/book.png")
+## Magic school icons for the mastery axes; the weapon axes reuse WEAPON_ICONS.
+const SCHOOL_ICONS := {"fire":preload("res://assets/items-v1/schools/fire.png"),"ice":preload("res://assets/items-v1/schools/ice.png"),
+	"air":preload("res://assets/items-v1/schools/air.png"),"hex":preload("res://assets/items-v1/schools/hex.png"),
+	"summon":preload("res://assets/items-v1/schools/summon.png")}
 ## A badge covers this share of its flask's side.
 const BADGE_SHARE := 0.55
 ## Where the figure stands inside a paper-doll PNG, as fractions of its side:
@@ -134,9 +138,11 @@ static func paint_standing(canvas: CanvasItem, texture: Texture2D, rect: Rect2, 
 	var display := Rect2(Vector2(rect.get_center().x-extent.x*0.5,feet-extent.y*FEET_Y),extent)
 	canvas.draw_texture_rect(texture,display,false,tint)
 
+## A mastery axis's picture: its weapon for the five weapon axes, its school
+## emblem for the five magic ones (the kit picker and the mastery tab).
 static func mastery_icon(axis: String) -> AtlasTexture:
-	var index := MASTERY_IDS.find(axis)
-	return pixel_region(MASTERY_SHEET,5,2,maxi(0,index),"mastery/"+str(index))
+	var texture: Texture2D = WEAPON_ICONS.get(axis,SCHOOL_ICONS.get(axis,WEAPON_ICONS.sword))
+	return whole(texture,"mastery/"+axis)
 
 static func spell_icon(id: String) -> AtlasTexture:
 	for school in range(MAGIC_SCHOOLS.size()):

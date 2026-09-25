@@ -54,7 +54,7 @@ static func build_kit_picker(ui, parent: Node) -> void:
 			var glyph := TextureRect.new(); glyph.texture = Art.mastery_icon(str(kit.axis))
 			glyph.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			glyph.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			glyph.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			glyph.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 			glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			node.add_child(glyph); glyph.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 			glyph.offset_left = -16; glyph.offset_right = 16; glyph.offset_top = 5; glyph.offset_bottom = 37

@@ -143,7 +143,7 @@ static func mastery(ui, list: VBoxContainer, actor: Dictionary) -> void:
 			var glyph := TextureRect.new(); glyph.texture = Art.mastery_icon(axis)
 			glyph.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			glyph.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			glyph.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			glyph.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 			glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			glyph.custom_minimum_size = Vector2(30,30); glyph.size = Vector2(30,30); tile.add_child(glyph)
 			glyph.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -185,7 +185,8 @@ static func mastery_detail(ui, list: VBoxContainer, actor: Dictionary, axis: Str
 		icon.texture = Art.spell_icon(axis+"_"+str(level)) if axis in Mastery.AXES.slice(5) else Art.mastery_icon(axis)
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		# Spell icons are still pixel art; the weapon pictures are vector art.
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST if axis in Mastery.AXES.slice(5) else CanvasItem.TEXTURE_FILTER_LINEAR
 		icon.custom_minimum_size = Vector2(30,30); line.add_child(icon)
 		text(line,Mastery.bonus(axis,level))
 		var reward: Dictionary = rewards.get(str(level),{})
