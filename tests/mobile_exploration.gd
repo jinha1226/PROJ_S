@@ -27,6 +27,9 @@ func run() -> void:
 	check(s.party[0].pos != start and s.party[0].pos != target and s.round_number == turns+1,"distant tap advances one step, not teleport")
 	check(scene.board.walk_actor_id == int(s.party[0].id) and scene.board.walk_from == start and scene.board.walk_to == s.party[0].pos,
 		"travel step animates from the previous tile")
+	var first_step: Vector2i = s.party[0].pos
+	scene.navigation_tick()
+	check(s.party[0].pos == first_step,"the next travel turn waits for the camera to finish its step")
 	var board = scene.board
 	check(board.display_center(s.party[0]).distance_to(center_before) < 0.01,"the hero does not jump when a travel step begins")
 	board.walk_elapsed = board.walk_duration*0.5
@@ -39,10 +42,15 @@ func run() -> void:
 		"a queued step continues from the current visual position")
 	board.animate_walk(int(s.party[0].id),start,s.party[0].pos,board.walk_duration)
 	for i in range(10):
-		if scene.navigation.active: scene.navigation_tick()
+		if scene.navigation.active:
+			board._process(board.walk_duration)
+			scene.navigation_tick()
+			var visual_focus: Vector2 = board.camera_origin()+Vector2.ONE*float((board.visible_side()-1)/2)
+			check(visual_focus.distance_to(Vector2(s.party[0].pos)) <= 1.01,"camera remains within one tile of the moving hero")
 	check(s.party[0].pos == target and s.round_number == turns+4 and not scene.navigation.active,"queued movement arrives using four turns")
 	check(scene.navigation.plan_builds == 1,"long route reuses one A* plan")
 	check(not scene.navigation.start(s,Vector2i(s.BOARD_SIDE-1,s.BOARD_SIDE-1)),"unknown destination rejected")
+	board._process(board.walk_duration)
 	scene.toggle_explore(); check(scene.navigation.active and scene.navigation.automatic,"auto exploration starts")
 	turns = s.round_number; scene.navigation_tick()
 	check(s.round_number == turns+1,"auto exploration performs a normal action")

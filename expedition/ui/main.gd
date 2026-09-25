@@ -178,10 +178,17 @@ func _process(delta: float) -> void:
 	if session == null or not navigation.active: return
 	if details_popup.visible or map_popup.visible or log_popup.visible or not get_window().has_focus(): stop_navigation(); return
 	navigation_clock += delta
-	if navigation_clock >= NAVIGATION_STEP_SECONDS:
+	if navigation_clock >= NAVIGATION_STEP_SECONDS and not navigation_camera_busy():
 		navigation_clock = 0; navigation_tick()
 
+func navigation_camera_busy() -> bool:
+	return session != null and not session.party.is_empty() and is_instance_valid(board) \
+		and board.walk_actor_id == int(session.party[0].id) and board.walk_elapsed < board.walk_duration
+
 func navigation_tick() -> void:
+	if navigation_camera_busy():
+		if session.phase != "EXPLORE" or not session.party_enemies().is_empty(): stop_navigation()
+		return
 	var step: Vector2i = navigation.next_step(session)
 	if step.x < 0: stop_navigation(); return
 	var health: Array = session.party.map(func(a): return a.hp)
