@@ -792,7 +792,9 @@ func draw_proc(effect: Dictionary, canvas: Node2D) -> void:
 	for other in effects:
 		if is_same(other,effect): break
 		if str(other.get("kind","")) == "PROC" and other.get("cell") == effect.get("cell"): stack += 1
-	var center := cell_center(effect.cell)-Vector2(0,half_width*(1.2+t*0.7)+stack*16)
+	# Above the rising damage number, not on it: one line higher for every
+	# earlier proc on the same cell.
+	var center := cell_center(effect.cell)-Vector2(0,half_width*2.7+t*16+stack*19)
 	var color: Color = PROC_COLORS.get(str(effect.get("tone","buff")),PROC_COLORS.buff)
 	color.a = clampf((1.0-t)/0.3,0,1)
 	draw_outlined(canvas,center,str(effect.get("text","")),int(15*(1.0+0.4*maxf(0,1.0-t/0.1))),color)
