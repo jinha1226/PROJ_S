@@ -162,9 +162,9 @@ static func hang(s, victim: Dictionary, status: String, ticks: int) -> void:
 	victim.statuses[status] = int(s.time)+ticks
 	if status == "burn": victim.get_or_add("status_power",{})["burn"] = s.Statuses.BURN_DAMAGE
 
-## A caster's step-three set makes every reaction it starts bite harder.
-static func reaction_damage(source: Dictionary, amount: int) -> int:
-	if not source.is_empty() and TagSets.level(source,"CASTER") >= 3: return amount*13/10
+## What a reaction bites for: its own number. (The old 술사 3 bonus went with
+## the role sets; the role combos never touch secondary damage.)
+static func reaction_damage(_source: Dictionary, amount: int) -> int:
 	return amount
 
 static func react_damage(s, source: Dictionary, target: Dictionary, amount: int, element: String) -> int:
@@ -176,7 +176,6 @@ static func announce(s, cell: Vector2i, key: String, source: Dictionary) -> void
 	s.effects.append({"kind":"REACTION","from":cell,"cell":cell,"text":name})
 	s.message("%s 반응" % name.trim_suffix("!"))
 	s.push_event({"kind":"REACTION","name":name,"cell":cell})
-	if not source.is_empty(): TagSets.on_reaction(s,source)
 
 ## What the statuses a target already wears do with each other and with the
 ## element that just struck it. `form` is "HIT", "EXTRA" or "STATUS" (a status

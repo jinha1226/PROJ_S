@@ -11,6 +11,7 @@ const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const Kernel = preload("res://sim/combat_kernel.gd")
 const Summons = preload("res://expedition/spells/summons.gd")
 const Statuses = preload("res://expedition/combat/statuses.gd")
+const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
 
 ## The eight effect primitives every school is written in.
 const primitives := ["bolt", "line", "cone", "burst", "wall", "self", "mark", "summon"]
@@ -49,10 +50,11 @@ static func shape_of(spell: Dictionary) -> String:
 static func failure(s, caster: Dictionary, id: String) -> int:
 	var spell: Dictionary = definition(id)
 	if spell.is_empty(): return 100
+	if StoneEffects.sure_casting(caster): return 0
 	var mind: int = StatSheet.value(s,caster,"int")
-	var tier: int = Essences.caster_tier(caster,str(spell.school))
-	var focus: int = 10 if TagSets.level(caster,"CASTER") >= 3 else 0
-	return clampi(8 + int(spell.level) * 9 + int(Stats.stats(s,caster).enc) * 5 - mind - tier * 10 - focus, 0, 85)
+	# A slotted stone of the spell's school steadies it by ten.
+	var school: int = 10 if Essences.school_slotted(caster,str(spell.school)) else 0
+	return clampi(8 + int(spell.level) * 9 + int(Stats.stats(s,caster).enc) * 5 - mind - school, 0, 85)
 
 static func mind_bonus(s, caster: Dictionary) -> int:
 	return maxi(0,StatSheet.value(s,caster,"int")-10)/2
@@ -181,7 +183,7 @@ static func shaped_cast(s, caster: Dictionary, id: String, target: Vector2i, spe
 	var school: String = str(spell.school)
 	var shape: String = shape_of(spell)
 	var power: int = int(spell.power)
-	if power > 0: power += mind_bonus(s,caster) + int(Stats.stats(s,caster).power)
+	if power > 0: power = (power + mind_bonus(s,caster) + int(Stats.stats(s,caster).power))*(100+StoneEffects.spell_percent(s,caster))/100
 	var penetration: int = int(spell.get("penetration",0))
 	var ticks: int = int(spell.get("ticks",0))
 	var chain: int = int(spell.get("chain",0))
@@ -206,7 +208,7 @@ static func shaped_cast(s, caster: Dictionary, id: String, target: Vector2i, spe
 		"summon":
 			var kind: String = str(spell.get("summon","hound"))
 			var places: Array = summon_cells(s,caster)
-			for i in range(mini(int(spell.get("count",1)),places.size())):
+			for i in range(mini(int(spell.get("count",1))+StoneEffects.summon_extra(caster),places.size())):
 				summon(s,caster,places[i],kind)
 		"mark":
 			var victim: Dictionary = s.at(target)
@@ -254,14 +256,22 @@ static func shaped_cast(s, caster: Dictionary, id: String, target: Vector2i, spe
 static func strike(s, caster: Dictionary, victim: Dictionary, spell: Dictionary, power: int, penetration: int, ticks: int) -> void:
 	var school: String = str(spell.school)
 	if bool(victim.enemy): Hunt.record(caster,int(victim.id))
-	if power > 0: Rules.damage(s,caster,victim,power,str(spell.get("element","physical")),penetration)
+	if power > 0: hurt(s,caster,victim,power,str(spell.get("element","physical")),penetration)
 	if victim.hp <= 0: return
 	var status: String = str(spell.get("status",""))
-	ticks = TagSets.status_ticks(caster,status,ticks)
+	ticks = StoneEffects.status_ticks(caster,status,TagSets.status_ticks(caster,status,ticks))
 	if status in STATUSES and ticks > 0: apply_status(s,victim,status,ticks)
 	if status == "dominate" and ticks > 0: victim["dominated_until"] = s.time+Statuses.resisted_ticks(s,victim,"dominate",ticks)
 	if school == "ice" and caster.get("statuses",{}).has("ice_freeze") and Rules.roll(s,caster,victim,"ice_freeze",100) < 30:
 		victim.statuses["freeze"] = s.time+100
+
+## A spell's damage: flagged as a spell's while it resolves, so no weapon
+## bonus, critical or on-hit proc of the stones reads it as a blow.
+static func hurt(s, caster: Dictionary, victim: Dictionary, power: int, element: String, penetration: int = 0) -> int:
+	s.casting += 1
+	var lost: int = Rules.damage(s,caster,victim,power,element,penetration)
+	s.casting -= 1
+	return lost
 
 ## A status a spell hangs on somebody; `Statuses` holds the body.
 static func apply_status(s, victim: Dictionary, status: String, ticks: int) -> void: Statuses.apply(s,victim,status,ticks)
@@ -276,7 +286,7 @@ static func mark(s, caster: Dictionary, victim: Dictionary, spell: Dictionary, p
 		s.message(str(victim.name)+" 저항"); return
 	if bool(victim.enemy): Hunt.record(caster,int(victim.id))
 	var status: String = str(spell.get("status",""))
-	ticks = TagSets.status_ticks(caster,status,ticks)
+	ticks = StoneEffects.status_ticks(caster,status,TagSets.status_ticks(caster,status,ticks))
 	match status:
 		"extend":
 			for id in victim.statuses: victim.statuses[id] = int(victim.statuses[id])+ticks
@@ -301,7 +311,7 @@ static func mark(s, caster: Dictionary, victim: Dictionary, spell: Dictionary, p
 		_:
 			if status in STATUSES: apply_status(s,victim,status,ticks)
 	if str(spell.get("element","")) != "" and int(spell.power) > 0:
-		Rules.damage(s,caster,victim,power,str(spell.element))
+		hurt(s,caster,victim,power,str(spell.element))
 
 ## The self spells. A timed one is a status the caster wears; a stored one is a
 ## single charge in `buffs`, spent by the next spell that fits it.
@@ -383,5 +393,5 @@ static func relic_cast(s, caster: Dictionary, id: String, target: Vector2i, spel
 				var victim: Dictionary = s.at(cell)
 				if victim.is_empty(): continue
 				if victim.enemy: Hunt.record(caster,int(victim.id))
-				Rules.damage(s,caster,victim,power,"fire",penetration)
+				hurt(s,caster,victim,power,"fire",penetration)
 			for cell in cells(s,caster,id,target): s.tile(cell).fire = mini(100,int(s.tile(cell).fire)+30)

@@ -1,5 +1,4 @@
 extends RefCounted
-const Families = preload("res://expedition/combat/families.gd")
 ## Zone hazards (spec §1). Three terrains keep themselves hot or soaked each
 ## environment tick; three tile flags (gas, collapse, fog) are placed by the
 ## generator and copied onto the tiles when a floor is applied.
@@ -137,7 +136,7 @@ static func collapse_tick(s, point: Vector2i, cell: Dictionary) -> void:
 ## The sight radius of `actor`: three less while standing in fog.
 static func sight_radius(s, actor: Dictionary, base: float) -> float:
 	if actor.is_empty() or not s.inside(actor.pos): return base
-	if bool(s.tile(actor.pos).get("fog",false)) and not Families.ignores_fog(actor): return maxf(FOG_MIN_SIGHT,base-FOG_SIGHT_PENALTY)
+	if bool(s.tile(actor.pos).get("fog",false)): return maxf(FOG_MIN_SIGHT,base-FOG_SIGHT_PENALTY)
 	return base
 
 ## The wash a hazard terrain lays over its floor texture.

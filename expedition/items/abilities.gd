@@ -156,13 +156,12 @@ static func cells(s, actor: Dictionary, id: String, target: Vector2i) -> Array:
 	return result
 
 ## A monster hits for the listed damage. A member adds half of the reading
-## attribute over ten, then the essence's tier: +25% a tier.
-static func power(s, actor: Dictionary, def: Dictionary, id: String = "") -> int:
+## attribute over ten.
+static func power(s, actor: Dictionary, def: Dictionary, _id: String = "") -> int:
 	if int(def.damage) <= 0: return 0
 	if actor.enemy: return scaled(actor,int(def.damage))
 	var key: String = {"RANGED":"dex","MAGIC":"int"}.get(str(def.axis),"str")
-	var base: int = int(def.damage)+maxi(0,s.StatSheet.value(s,actor,key)-10)/2
-	return Essences.active_power(maxi(1,Essences.tier(actor,id)),base)
+	return int(def.damage)+maxi(0,s.StatSheet.value(s,actor,key)-10)/2
 
 ## Whether `actor` holds the part: a slot for party members, the species signature for monsters.
 static func holds(actor: Dictionary, id: String) -> bool:

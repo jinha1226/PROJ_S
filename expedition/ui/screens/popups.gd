@@ -97,6 +97,10 @@ static func show_enemy_info(ui, enemy: Dictionary) -> void:
 		if not EssenceTab.tag_line(essence).is_empty(): ui.label(ui.modal_content,EssenceTab.tag_line(essence),13)
 		var words = ui.label(ui.modal_content,EssenceTab.active_line(essence),13)
 		words.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; words.custom_minimum_size.x = ui.popup_width()
+		# The monster fights with its own stone's headline effect (a boss has none).
+		if not bool(enemy.get("boss",false)):
+			var effect = ui.label(ui.modal_content,EssenceTab.effect_line(essence),13)
+			effect.name = "EnemyEffect"; effect.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; effect.custom_minimum_size.x = ui.popup_width()
 	var preview: Dictionary = session.attack_preview(enemy.pos)
 	if not preview.is_empty():
 		ui.label(ui.modal_content,"명중 %d%%   피해 %d–%d   %d tick" % [int(preview.chance),int(preview.damage_min),int(preview.damage_max),int(preview.time)],14)
@@ -461,9 +465,9 @@ static func show_item_detail(ui, id: String) -> void:
 	elif row.category == "파츠":
 		for i in range(session.party.size()):
 			var member: Dictionary = session.party[i]
-			var tier: int = Essences.tier(member,id)
-			var caption: String = "%s 흡수" % member.name if tier == 0 else "%s 흡수 (%d→%d단계)" % [member.name,tier,tier+1]
-			var absorb = ui.button(ui.item_detail,caption,func(): absorb_from_bag(ui,i,id),Essences.can_manage(session) and member.hp > 0 and Essences.has(id) and tier < Essences.MAX_TIER)
+			var known: bool = Essences.absorbed(member,id)
+			var caption: String = "%s 흡수" % member.name if not known else "%s · 이미 흡수함" % member.name
+			var absorb = ui.button(ui.item_detail,caption,func(): absorb_from_bag(ui,i,id),Essences.can_manage(session) and member.hp > 0 and Essences.has(id) and not known)
 			absorb.name = "BagAbsorb%d" % i
 	ui.button(ui.item_detail,"닫기",func(): ui.item_popup.hide()); ui.item_popup.popup_centered(); ui.item_popup.grab_focus()
 

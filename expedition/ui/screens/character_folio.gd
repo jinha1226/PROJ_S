@@ -2,7 +2,8 @@ extends RefCounted
 ## Adapted from ../playtest status folio and mastery cards, using expedition data.
 const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
-const STAT_GROUPS := [["능력치",["str","dex","int","con"]],["방어 수치",["ac","ev","sh"]],["속성 저항",["res_fire","res_ice","res_air","res_poison","res_will"]]]
+const STAT_GROUPS := [["능력치",["str","dex","int","con"]],["영혼석 보정",["atk","hp","spell","mp","speed","dodge"]],["방어 수치",["ac","ev","sh"]],["속성 저항",["res_fire","res_ice","res_air","res_poison","res_will"]]]
+const PERCENT_KEYS := ["speed","dodge"]
 const CombatStats = preload("res://expedition/combat/combat_stats.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
@@ -125,10 +126,10 @@ static func sheet_cards(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	for group in STAT_GROUPS:
 		var keys: Array = group[1]
 		var box := card(list,str(group[0])); box.get_parent().name = "StatGroup_"+str(group[0])
-		var cells := grid(box,keys.size())
+		var cells := grid(box,keys.size() if keys.size() <= 5 else 3)
 		for key in keys:
 			var entry: Dictionary = sheet.get(key,{"total":0,"parts":[]})
-			var shown: String = ("%d%%" if str(key).begins_with("res_") else "%d") % int(entry.total)
+			var shown: String = ("%d%%" if str(key).begins_with("res_") or key in PERCENT_KEYS else "%d") % int(entry.total)
 			var cell = ui.button(cells,"%s\n%s" % [StatSheet.NAMES[key],shown],func(): detail(ui,str(StatSheet.NAMES[key]),breakdown(entry,str(key))))
 			cell.name = "Stat_"+str(key); cell.custom_minimum_size = Vector2(0,52)
 			cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -136,13 +137,35 @@ static func sheet_cards(ui, list: VBoxContainer, actor: Dictionary) -> void:
 
 ## "종족  +12 / 영혼석 오크  +2 / 합계  14": one line per non-zero source.
 static func breakdown(entry: Dictionary, key: String) -> String:
-	var unit: String = "%" if key.begins_with("res_") else ""
+	var unit: String = "%" if key.begins_with("res_") or key in PERCENT_KEYS else ""
 	var lines: Array = []
 	for part in entry.get("parts",[]):
 		if int(part.value) != 0: lines.append("%s  %+d%s" % [str(part.from),int(part.value),unit])
 	if lines.is_empty(): lines.append("기본값 없음")
 	lines.append("합계  %d%s" % [int(entry.get("total",0)),unit])
 	return "\n".join(lines)
+
+## The numbers a soul stone moves, as the fight reads them.
+static func numbers(session, actor: Dictionary) -> Dictionary:
+	var values: Dictionary = CombatStats.stats(session,actor)
+	return {"공격력":int(values.damage),"최대 HP":int(actor.max_hp),"최대 MP":int(actor.get("max_mp",0)),"주문력":int(values.power),
+		"방어":int(values.ac),"막기":int(values.sh),"회피율":int(values.dodge),"행동 속도":StatSheet.value(session,actor,"speed")}
+
+## What slotting `id` into `slot` would change, before → after: "공격력 12 → 16".
+static func changes(session, actor: Dictionary, slot: int, id: String) -> PackedStringArray:
+	var result := PackedStringArray()
+	var after: Dictionary = actor.duplicate()
+	after.equipped_abilities = actor.get("equipped_abilities",[]).duplicate()
+	after.essences = actor.get("essences",{}).duplicate(); after.pool_bonus = actor.get("pool_bonus",{}).duplicate()
+	Essences.sync_slots(after)
+	if slot < 0 or slot >= after.equipped_abilities.size(): return result
+	after.equipped_abilities[slot] = id; after.essences[id] = 1
+	StatSheet.refresh_pools(session,after)
+	var old: Dictionary = numbers(session,actor)
+	var new: Dictionary = numbers(session,after)
+	for key in old:
+		if int(old[key]) != int(new[key]): result.append("%s %d → %d" % [key,int(old[key]),int(new[key])])
+	return result
 
 static func detail(ui, title: String, message: String) -> void:
 	ui.clear(ui.item_detail); text(ui.item_detail,title,20); text(ui.item_detail,message)

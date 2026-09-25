@@ -65,16 +65,13 @@ static func absorb(s, boss: Dictionary, dead: Dictionary) -> void:
 		boss.cooldowns[part] = 0
 	s.message("%s · %s의 영혼을 흡수했습니다" % [boss.name,dead.name])
 
+## The stone it seals: the member's first slotted one (a stone has no tiers).
 static func strongest(member: Dictionary) -> String:
-	var best := ""
-	var tier := 0
-	for id in Essences.equipped(member):
-		var at: int = Essences.tier(member,str(id))
-		if at > tier: best = str(id); tier = at
-	return best
+	var worn: Array = Essences.equipped(member)
+	return str(worn[0]) if not worn.is_empty() else ""
 
 ## Marks the member wearing the most essences (lowest id on a tie) and that
-## member's highest-tier essence (first slot on a tie).
+## member's first slotted essence.
 static func announce_seal(s, boss: Dictionary) -> bool:
 	var candidates: Array = s.alive().filter(func(a): return not Essences.equipped(a).is_empty())
 	if candidates.is_empty(): return false

@@ -26,7 +26,7 @@ const CombatRules = preload("res://expedition/combat/combat_rules.gd")
 const Scheduler = preload("res://expedition/time/scheduler.gd")
 const Spells = preload("res://expedition/spells/spells.gd")
 const Passives = preload("res://expedition/combat/passives.gd")
-const Families = preload("res://expedition/combat/families.gd")
+const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
 const Statuses = preload("res://expedition/combat/statuses.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
@@ -105,6 +105,8 @@ var boundary := 100
 var turn_serial := 0
 var roll_serial := 0
 var action_serial := 0
+## Above zero while a spell resolves: its damage is a spell's, never a weapon's.
+var casting := 0
 var gear_bag: Array = []
 var manual_mode := false
 var selected := 0
@@ -332,7 +334,7 @@ func item_label(kind: String) -> String: return Consumables.label(self,kind)
 
 func start_battle() -> void:
 	phase = "BATTLE"; round_number = 1
-	Families.battle_start(self)
+	StoneEffects.battle_start(self)
 	for actor in party:
 		actor.reservation = {}; actor.ap = action_budget(actor)
 		actor["guarded"] = false; actor["protected_by"] = -1
@@ -469,7 +471,7 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 	var defense: Dictionary = CombatStats.stats(self,victim)
 	if not attack_reach(actor,target,int(offense.range)): return {}
 	var ac: int = int(defense.ac)/2 if offense.trait == "pierce" else int(defense.ac)
-	var dodge: int = clampi(int(defense.ev)*2,5,45)
+	var dodge: int = clampi(int(defense.ev)*2+int(defense.get("dodge",0)),5,45)
 	var block: int = int(defense.sh)
 	return {"actor":actor.id,"target":victim.id,"cell":target,"name":victim.name,
 		"chance":maxi(0,(100-dodge)*(100-block)/100),"block":block,"damage":maxi(1,int(offense.damage)-ac),
@@ -491,14 +493,13 @@ func action_cost(actor: Dictionary, kind: String, target: Vector2i, _value: Stri
 			if inside(target): cost = CombatRules.move_time(self,actor,target)
 		"ATTACK":
 			cost = int(CombatStats.stats(self,actor).delay)
-			cost = TagSets.attack_delay(actor,cost,str(CombatStats.stats(self,actor).trait) == "ranged")
 		_:
 			if Abilities.has(kind): cost = int(Abilities.definition(kind).get("delay",100))
 	var statuses: Dictionary = actor.get("statuses",{})
 	if kind != "MOVE":
 		if statuses.has("slow"): cost = cost*3/2
 		if statuses.has("haste"): cost = cost*2/3
-	return maxi(40,cost)
+	return maxi(40,StoneEffects.delay(self,actor,cost))
 
 func submit(kind: String, target: Vector2i, value: String = "") -> bool:
 	if not pending_choice.is_empty(): return false
@@ -815,7 +816,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 	var attacker: Dictionary = actor_by_id(source)
 	# Retaliation is plain damage: it never triggers passives again.
 	var passive_hit: bool = form not in Reactions.SECONDARY
-	if passive_hit and not attacker.is_empty(): amount = Passives.outgoing(self,attacker,target,amount)
+	if passive_hit and not attacker.is_empty(): amount = Passives.outgoing(self,attacker,target,amount,form)
 	# 엄호: the protector steps in front. Counted and logged once, and only when
 	# the hit really lands on somebody else.
 	var recipient: Dictionary = protection_recipient(target)
@@ -834,7 +835,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 	# to one extra point of damage. Calming supplies can prevent this penalty.
 	if party.size() == 1 and not target.enemy and target.stress >= 150 and amount > 0: amount += 1
 	serial += 1
-	amount = Families.lethal(self,target,amount)
+	if passive_hit: amount = StoneEffects.lethal(self,target,amount)
 	var lost := mini(int(target.hp), amount)
 	if lost > 0 and bool(target.get("enemy",false)): target.sleep_until = 0
 	var source_cell: Vector2i = target.pos
@@ -882,8 +883,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 		BossAI.on_monster_death(self,target,attacker)
 		var hunters: Array = hunt_recipients(target,attacker)
 		var party_hunted: bool = hunters.any(func(a): return a in party)
-		if not attacker.is_empty(): TagSets.on_kill(self,attacker)
-		if not attacker.is_empty(): Families.on_kill(self,attacker)
+		if passive_hit and not attacker.is_empty(): StoneEffects.on_kill(self,attacker,target)
 		for actor in party+npcs: actor.get("usage",{}).erase(int(target.id))
 		if party_hunted:
 			battle_stats.kills = int(battle_stats.get("kills",0))+1

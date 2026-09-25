@@ -68,7 +68,7 @@ static func absorb_essence(s, index: int, id: String) -> String:
 	var reason: String = Essences.absorb(s,actor,id)
 	if not reason.is_empty(): return reason
 	StatSheet.refresh_pools(s,actor)
-	s.message("%s · %s %d단계" % [actor.name,Essences.title(id),int(actor.essences[id])])
+	s.message("%s · %s 흡수" % [actor.name,Essences.title(id)])
 	return ""
 
 static func choose_essence_spell(s, index: int, essence_id: String, spell_id: String) -> bool:

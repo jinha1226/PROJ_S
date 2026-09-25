@@ -27,8 +27,8 @@ static func baseline(seed: int, kit: String, depth: int, share: int = 100) -> Di
 	return {"xp":xp*share/100,"essences":drops}
 
 ## A session on floor `depth` whose hero has the baseline's level and wears its
-## most common essences, each absorbed once for the certain first kill and once
-## more per four further kills (the 25% drop), up to the top tier.
+## most common essences, each absorbed once (a stone has no tiers: the first
+## kill's certain drop is all it takes).
 static func prepare(seed: int, kit: String, depth: int, share: int = 100):
 	var base: Dictionary = baseline(seed,kit,depth,share)
 	var s = Session.new_run(seed,kit)
@@ -40,9 +40,9 @@ static func prepare(seed: int, kit: String, depth: int, share: int = 100):
 	var ids: Array = base.essences.keys()
 	ids.sort_custom(func(a,b): return int(base.essences[a]) > int(base.essences[b]) or (int(base.essences[a]) == int(base.essences[b]) and str(a) < str(b)))
 	for id in ids:
-		var copies: int = mini(Essences.MAX_TIER,1+(int(base.essences[id])-1)/4)
-		s.parts_bag[id] = int(s.parts_bag.get(id,0))+copies
-		for _i in range(copies): s.absorb_essence(0,str(id))
+		if Essences.absorbed(hero,str(id)): continue
+		s.parts_bag[id] = int(s.parts_bag.get(id,0))+1
+		s.absorb_essence(0,str(id))
 	for id in ids:
 		var free: int = hero.equipped_abilities.find("")
 		if free < 0: break

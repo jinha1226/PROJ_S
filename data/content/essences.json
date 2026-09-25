@@ -6,49 +6,56 @@
       "element": "",
       "school": "",
       "species": "dcss_rat",
-      "family": "rat"
+      "family": "rat",
+      "effect": "RAT_GNAW"
     },
     "LIZARD_TAIL": {
       "role": "BERSERK",
       "element": "",
       "school": "",
       "species": "dcss_frilled_lizard",
-      "family": "reptile"
+      "family": "reptile",
+      "effect": "LIZARD_TAIL"
     },
     "KOBOLD_SLING": {
       "role": "ARCHER",
       "element": "",
       "school": "",
       "species": "kobold",
-      "family": "kobold"
+      "family": "kobold",
+      "effect": "KOBOLD_SLING"
     },
     "GOBLIN_SHIV": {
       "role": "AMBUSH",
       "element": "",
       "school": "",
       "species": "goblin",
-      "family": "goblin"
+      "family": "goblin",
+      "effect": "GOBLIN_SHIV"
     },
     "ORC_CLEAVER": {
       "role": "BERSERK",
       "element": "",
       "school": "",
       "species": "dcss_orc",
-      "family": "orc"
+      "family": "orc",
+      "effect": "ORC_CLEAVER"
     },
     "GNOLL_SPEAR": {
       "role": "BERSERK",
       "element": "",
       "school": "",
       "species": "dcss_gnoll",
-      "family": "gnoll"
+      "family": "gnoll",
+      "effect": "GNOLL_SPEAR"
     },
     "RIVER_RAT_SPLASH": {
       "role": "PACK",
       "element": "",
       "school": "",
       "species": "dcss_river_rat",
-      "family": "rat"
+      "family": "rat",
+      "effect": "RIVER_RAT_SPLASH"
     },
     "FIRE_CALLER": {
       "name": "화염술사의 불씨",
@@ -56,7 +63,8 @@
       "element": "fire",
       "school": "fire",
       "species": "kobold_firecaller",
-      "family": "kobold"
+      "family": "kobold",
+      "effect": "FIRE_CALLER"
     },
     "FROST_IMP": {
       "name": "서리 도깨비의 숨",
@@ -64,7 +72,8 @@
       "element": "ice",
       "school": "ice",
       "species": "frost_imp",
-      "family": "elemental"
+      "family": "elemental",
+      "effect": "FROST_IMP"
     },
     "STORM_BAT": {
       "name": "폭풍 박쥐의 날개",
@@ -72,7 +81,8 @@
       "element": "air",
       "school": "air",
       "species": "storm_bat",
-      "family": "bat"
+      "family": "bat",
+      "effect": "STORM_BAT"
     },
     "GOBLIN_HEXER": {
       "name": "주술사의 부적",
@@ -80,7 +90,8 @@
       "element": "will",
       "school": "hex",
       "species": "goblin_hexer",
-      "family": "goblin"
+      "family": "goblin",
+      "effect": "GOBLIN_HEXER"
     },
     "GNOLL_SUMMONER": {
       "name": "소환사의 뼈피리",
@@ -88,119 +99,136 @@
       "element": "will",
       "school": "summon",
       "species": "gnoll_summoner",
-      "family": "gnoll"
+      "family": "gnoll",
+      "effect": "GNOLL_SUMMONER"
     },
     "HOB_TAUNT": {
       "role": "GUARD",
       "element": "",
       "school": "",
       "species": "dcss_hobgoblin",
-      "family": "goblin"
+      "family": "goblin",
+      "effect": "HOB_TAUNT"
     },
     "GOBLIN_AIM": {
       "role": "ARCHER",
       "element": "",
       "family": "goblin",
       "species": "goblin_archer",
-      "school": ""
+      "school": "",
+      "effect": "GOBLIN_AIM"
     },
     "SHIELD_STANCE": {
       "role": "GUARD",
       "element": "",
       "family": "goblin",
       "species": "goblin_shield",
-      "school": ""
+      "school": "",
+      "effect": "SHIELD_STANCE"
     },
     "ORC_THROW": {
       "role": "ARCHER",
       "element": "",
       "family": "orc",
       "species": "orc_thrower",
-      "school": ""
+      "school": "",
+      "effect": "ORC_THROW"
     },
     "SPIDER_WEB": {
       "role": "AMBUSH",
       "element": "",
       "family": "insect",
       "species": "cave_spider",
-      "school": ""
+      "school": "",
+      "effect": "SPIDER_WEB"
     },
     "BEETLE_CURL": {
       "role": "GUARD",
       "element": "",
       "family": "insect",
       "species": "rock_beetle",
-      "school": ""
+      "school": "",
+      "effect": "BEETLE_CURL"
     },
     "ORE_SLAM": {
       "role": "BERSERK",
       "element": "",
       "family": "elemental",
       "species": "ore_golem",
-      "school": ""
+      "school": "",
+      "effect": "ORE_SLAM"
     },
     "LEECH_LATCH": {
       "role": "AMBUSH",
       "element": "",
       "family": "insect",
       "species": "giant_leech",
-      "school": ""
+      "school": "",
+      "effect": "LEECH_LATCH"
     },
     "TOAD_SPIT": {
       "role": "ARCHER",
       "element": "",
       "family": "reptile",
       "species": "swamp_toad",
-      "school": ""
+      "school": "",
+      "effect": "TOAD_SPIT"
     },
     "SERPENT_SHED": {
       "role": "GUARD",
       "element": "",
       "family": "reptile",
       "species": "temple_serpent",
-      "school": ""
+      "school": "",
+      "effect": "SERPENT_SHED"
     },
     "WATER_WAVE": {
       "role": "PACK",
       "element": "",
       "family": "elemental",
       "species": "water_spirit",
-      "school": ""
+      "school": "",
+      "effect": "WATER_WAVE"
     },
     "SKELETON_WALL": {
       "role": "PACK",
       "element": "",
       "family": "undead",
       "species": "skeleton_soldier",
-      "school": ""
+      "school": "",
+      "effect": "SKELETON_WALL"
     },
     "SKELETON_VOLLEY": {
       "role": "ARCHER",
       "element": "",
       "family": "undead",
       "species": "skeleton_archer",
-      "school": ""
+      "school": "",
+      "effect": "SKELETON_VOLLEY"
     },
     "GHOUL_CLAW": {
       "role": "BERSERK",
       "element": "",
       "family": "undead",
       "species": "ghoul",
-      "school": ""
+      "school": "",
+      "effect": "GHOUL_CLAW"
     },
     "VAMPIRE_BITE": {
       "role": "AMBUSH",
       "element": "",
       "family": "bat",
       "species": "vampire_bat",
-      "school": ""
+      "school": "",
+      "effect": "VAMPIRE_BITE"
     },
     "THORN_ARMOUR": {
       "role": "GUARD",
       "element": "",
       "family": "undead",
       "species": "wraith_knight",
-      "school": ""
+      "school": "",
+      "effect": "THORN_ARMOUR"
     },
     "WRAITH": {
       "role": "CASTER",
@@ -208,7 +236,8 @@
       "family": "undead",
       "species": "wraith",
       "school": "hex",
-      "name": "원혼의 속삭임"
+      "name": "원혼의 속삭임",
+      "effect": "WRAITH"
     },
     "GRAVEKEEPER": {
       "role": "CASTER",
@@ -216,15 +245,11 @@
       "family": "undead",
       "species": "gravekeeper",
       "school": "summon",
-      "name": "묘지기의 등불"
+      "name": "묘지기의 등불",
+      "effect": "GRAVEKEEPER"
     },
     "GOBLIN_CHIEF": {
       "name": "족장의 뿔나팔",
-      "stats": {
-        "con": 1,
-        "ev": 1,
-        "dex": 1
-      },
       "role": "PACK",
       "element": "",
       "school": "",
@@ -233,11 +258,6 @@
     },
     "FURNACE_HEART": {
       "name": "용광로 심장",
-      "stats": {
-        "con": 1,
-        "ac": 1,
-        "sh": 5
-      },
       "role": "GUARD",
       "element": "fire",
       "school": "",
@@ -246,10 +266,6 @@
     },
     "SOUL_EATER": {
       "name": "포식자의 핵",
-      "stats": {
-        "int": 2,
-        "res_will": 10
-      },
       "role": "CASTER",
       "element": "will",
       "school": "",

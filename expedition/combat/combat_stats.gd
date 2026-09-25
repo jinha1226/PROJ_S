@@ -1,6 +1,7 @@
 extends RefCounted
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const TagSets = preload("res://expedition/progression/tag_sets.gd")
+const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/combat.json"))
 
 ## The ten starting kits: five weapons and five spell schools.
@@ -17,7 +18,7 @@ static func species(actor: Dictionary) -> Dictionary:
 
 static func stats(session, actor: Dictionary) -> Dictionary:
 	var sheet: Dictionary = StatSheet.sheet(session,actor)
-	var result := {"damage":int(actor.get("power", 7)), "delay":100, "ac":int(sheet.ac.total), "ev":int(sheet.ev.total), "sh":mini(StatSheet.BLOCK_CAP,int(sheet.sh.total)), "enc":0, "range":1, "brand":"", "trait":"", "res":{}, "power":0}
+	var result := {"damage":int(actor.get("power", 7)), "delay":100, "ac":int(sheet.ac.total), "ev":int(sheet.ev.total), "sh":mini(StatSheet.BLOCK_CAP,int(sheet.sh.total)), "enc":0, "range":1, "brand":"", "trait":"", "res":{}, "power":0, "dodge":int(sheet.dodge.total)}
 	for element in StatSheet.RES: result.res[element] = int(sheet["res_"+element].total)
 	if not bool(actor.get("enemy", false)):
 		var strength: int = int(sheet.str.total)
@@ -25,13 +26,15 @@ static func stats(session, actor: Dictionary) -> Dictionary:
 		var gear: Dictionary = actor.get("gear", {})
 		var weapon: Dictionary = gear.get("weapon", {})
 		var weapon_def: Dictionary = content.weapons.get(str(weapon.get("type", "")), {})
-		result.damage = 4 + strength / 6
+		# 공격력 from the soul stones adds to whatever the weapon hits for.
+		var attack: int = int(sheet.atk.total)
+		result.damage = 4 + strength / 6 + attack
 		if not weapon_def.is_empty():
 			result.trait = str(weapon_def.trait)
 			var drive: int = dexterity if result.trait == "ranged" else strength
-			result.damage = int(weapon_def.damage) + int(weapon.get("enchant", 0)) + drive / 6
+			result.damage = int(weapon_def.damage) + int(weapon.get("enchant", 0)) + drive / 6 + attack
 			result.delay = int(weapon_def.delay)
-			result.range = int(weapon_def.range) + (TagSets.range_bonus(actor) if result.trait == "ranged" else 0)
+			result.range = int(weapon_def.range) + (TagSets.range_bonus(actor)+StoneEffects.range_bonus(actor) if result.trait == "ranged" else 0)
 			result.brand = str(weapon.get("brand", ""))
 			if result.trait == "focus": result.power += 4
 		# A summoned creature carries no gear at all: it fights with the power
@@ -48,6 +51,7 @@ static func stats(session, actor: Dictionary) -> Dictionary:
 		var ring: Dictionary = gear.get("ring", {})
 		var ring_def: Dictionary = content.rings.get(str(ring.get("type", "")), {})
 		if not ring_def.is_empty() and str(ring_def.stat) == "power": result.power += int(ring_def.value)
+		result.power += int(sheet.spell.total)
 	var statuses: Dictionary = actor.get("statuses", {})
 	if statuses.has("ward"): result.ac += 6
 	if statuses.has("rage"): result.damage += 8

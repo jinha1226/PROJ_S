@@ -68,6 +68,9 @@ static func level_banner(ui, actor: Dictionary, level: int) -> void:
 	line(box,str(actor.name),18)
 	line(box,"HP +4 · MP +2",16)
 	if level <= Essences.MAX_LEVEL: line(box,"영혼석 슬롯 +1",22,GOLD).name = "BannerSlotLine"
+	# A caster stone opens spells up to the character's level, not a tier.
+	var casting: bool = actor.get("essences",{}).keys().any(func(id): return not Essences.school(str(id)).is_empty())
+	if casting and level <= Essences.MAX_LEVEL: line(box,"주문 Lv.%d까지 선택 가능" % level,16).name = "BannerSpellLine"
 	finish(ui,box)
 
 static func boss_banner(ui, boss_name: String, hint: String) -> void:

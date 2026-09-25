@@ -17,13 +17,15 @@ const PARTY_HP_STEP := 35
 
 static func party_percent(size: int) -> int:
 	return 100+PARTY_HP_STEP*(maxi(1,size)-1)
+## A soul stone's fixed base stats by role (2026-09-26 spec §1): straight onto
+## the fight's numbers, no attribute points.
 const ROLE_POINTS := {
-	"PACK":{"con":1,"ev":1,"dex":1},
-	"BERSERK":{"str":2,"con":1},
-	"AMBUSH":{"dex":2,"ev":1},
-	"GUARD":{"con":1,"ac":1,"sh":5},
-	"ARCHER":{"dex":2,"int":1},
-	"CASTER":{"int":2}}
+	"PACK":{"hp":10,"atk":2},
+	"BERSERK":{"atk":4,"hp":8},
+	"AMBUSH":{"atk":3,"dodge":5},
+	"GUARD":{"hp":20,"ac":3},
+	"ARCHER":{"atk":3,"speed":5},
+	"CASTER":{"spell":4,"mp":8}}
 const SCHOOL_ELEMENT := {"fire":"fire","ice":"ice","air":"air","hex":"will","summon":"will"}
 
 static func table() -> Array:
@@ -56,9 +58,6 @@ static func monster_stats(species_id: String, depth: int) -> Dictionary:
 		"range":4 if role in ["ARCHER","CASTER"] else 1,
 		"attack_percent":int(ZONE_ATTACK[zone])*step/ACTIVE_BASE_ATTACK}
 
-## A tier-one soul stone of `role` (§3.1): three points; a caster adds its
-## school's resistance.
-static func essence_stats(role: String, school: String) -> Dictionary:
-	var result: Dictionary = (ROLE_POINTS.get(role,{}) as Dictionary).duplicate()
-	if role == "CASTER" and SCHOOL_ELEMENT.has(school): result["res_"+str(SCHOOL_ELEMENT[school])] = 10
-	return result
+## A soul stone of `role`: the same for every stone of that role.
+static func essence_stats(role: String, _school: String = "") -> Dictionary:
+	return (ROLE_POINTS.get(role,{}) as Dictionary).duplicate()

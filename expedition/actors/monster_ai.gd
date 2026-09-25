@@ -6,6 +6,7 @@ extends RefCounted
 const Melee = preload("res://expedition/actors/floor_tactics_adapter.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
 const BossAI = preload("res://expedition/actors/boss_ai.gd")
+const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
 const ROLES := {
 	"MELEE":{"label":"추격병","range":1,"damage":7},
 	"RANGED":{"label":"궁수","range":5,"damage":6},
@@ -157,7 +158,8 @@ static func role_turn(s, enemy: Dictionary, targets: Array, held: bool = false) 
 		elif choice.kind == "ATTACK": strike(s,enemy,s.at(choice.cell),7)
 		return
 	targets.sort_custom(func(a,b): return distance(enemy.pos,a.pos) < distance(enemy.pos,b.pos))
-	var reach: int = mini(int(ROLES[role].range),sight(s))
+	# 고블린 궁수: its own stone's headline effect shoots two farther.
+	var reach: int = mini(int(ROLES[role].range),sight(s))+StoneEffects.range_bonus(enemy)
 	var ready: bool = enemy.get("cast_cooldown",2) <= 0
 	enemy.cast_cooldown = maxi(0,int(enemy.get("cast_cooldown",2))-1)
 	# An archer reloads for a round after every shot: half the volleys, and the

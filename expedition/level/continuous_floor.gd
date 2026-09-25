@@ -6,7 +6,7 @@ const Abilities = preload("res://expedition/items/abilities.gd")
 const Variants = preload("res://expedition/level/variants.gd")
 const Zones = preload("res://expedition/level/zones.gd")
 const Hazards = preload("res://expedition/level/hazards.gd")
-const Families = preload("res://expedition/combat/families.gd")
+const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
 const Bestiary = preload("res://expedition/progression/bestiary.gd")
 const THEME_ID := "F1_RUINS"
 ## Roster health was tuned for a pair; a lone hero meets the same groups at
@@ -123,6 +123,9 @@ static func mint_enemy(s, member: Dictionary, group: String, tier: String, manda
 	MonsterAI.configure(enemy,member.role)
 	enemy.power = int(MonsterAI.ROLES[str(member.role)].damage)
 	enemy.part_id = Abilities.species_part(member.species_id)
+	# 홉고블린: its own stone's fifth more health.
+	var bulk: int = StoneEffects.hp_percent(s,enemy)
+	if bulk > 0: enemy.max_hp = int(enemy.max_hp)*(100+bulk)/100; enemy.hp = enemy.max_hp
 	s.enemies.append(enemy)
 	return enemy
 
@@ -132,7 +135,7 @@ func observer(s) -> Dictionary:
 func observe(s) -> void:
 	visible.clear()
 	var center := observer(s)
-	var radius: float = Hazards.sight_radius(s,center,SIGHT_RADIUS+float(Families.vision_bonus(center)))
+	var radius: float = Hazards.sight_radius(s,center,SIGHT_RADIUS)
 	var before := ceili(radius)
 	var side := before*2+1
 	for actor in ([] if center.is_empty() else [center]):
@@ -164,7 +167,7 @@ func observe(s) -> void:
 	if not s.simulation_arena and s.phase in ["EXPLORE","BATTLE"]:
 		var was: String = s.phase
 		s.phase = "EXPLORE" if safe(s) else "BATTLE"
-		if was == "EXPLORE" and s.phase == "BATTLE": Families.battle_start(s)
+		if was == "EXPLORE" and s.phase == "BATTLE": StoneEffects.battle_start(s)
 
 ## Static markers are cached per epoch by the minimap; a state change rewrites
 ## the row and starts a new epoch so the next observation rebuilds once.

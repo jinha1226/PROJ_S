@@ -37,6 +37,7 @@ static func summon(s, caster: Dictionary, cell: Vector2i, kind: String = "hound"
 	pet.power = int(row.power); pet.speed = int(row.speed); pet.stress = 0
 	pet.pos = cell; pet.ap = 1; pet.ready_at = s.time+100
 	pet.enemy = bool(caster.get("enemy",false))
+	pet.summoner = int(caster.get("id",-1))
 	if caster.get("statuses",{}).has("summon_power"): pet.statuses["summon_power"] = int(caster.statuses.summon_power)
 	s.npcs.append(pet)
 	return pet

@@ -1,9 +1,9 @@
 extends RefCounted
 ## 12층 타락한 모험가 (spec §7.4): 동료와 NPC. A roster NPC this run left
 ## behind comes back as the last boss with its own name, weapon, stance, nature
-## and essences, the empty slots filled at the third tier. It stays an NPC on
+## and essences, the empty slots filled with more stones. It stays an NPC on
 ## the floor's list, hostile and a boss, so every rule that dresses a member —
-## the stat sheet, sets, spells — dresses it too.
+## the stat sheet, sets, headline effects, spells — dresses it too.
 const Common = preload("res://expedition/actors/bosses/boss_common.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
@@ -69,7 +69,7 @@ static func spawn(s, room: Dictionary, depth: int) -> void:
 	boss.ready_at = int(s.time)+100
 	s.npcs.append(boss)
 
-## Tops the essences up to ten with floor species' essences at the third tier,
+## Tops the essences up to ten with floor species' essences, each absorbed,
 ## chosen by the same nature-and-sets score an NPC uses for its own slots.
 static func fill(boss: Dictionary) -> void:
 	var pool: Array = Abilities.droppable().filter(func(id): return Essences.has(str(id)) and not boss.essences.has(str(id)))
@@ -80,7 +80,7 @@ static func fill(boss: Dictionary) -> void:
 			var id: String = str(entry)
 			var score: int = NpcEssences.preference(boss,id)+NpcEssences.SET_BONUS*NpcEssences.continuing(boss.essences.keys(),id)
 			if score > best_score or score == best_score and id < best: best = id; best_score = score
-		boss.essences[best] = Essences.MAX_TIER
+		boss.essences[best] = 1
 		pool.erase(best)
 
 static func line(boss: Dictionary, moment: int) -> String:
@@ -160,12 +160,11 @@ static func back_off(s, boss: Dictionary, foe: Dictionary) -> bool:
 	boss.pos = best
 	return true
 
-## Its last line, its best essence to the party, and the run is won.
+## Its last line, its first slotted essence (or, wearing none, the first it
+## absorbed) to the party, and the run is won.
 static func defeated(s, boss: Dictionary) -> void:
 	Common.say(s,boss,line(boss,2))
-	var best := ""
-	var tier := 0
-	for id in boss.get("essences",{}):
-		if int(boss.essences[id]) > tier: best = str(id); tier = int(boss.essences[id])
+	var worn: Array = Essences.equipped(boss)
+	var best: String = str(worn[0]) if not worn.is_empty() else str(boss.get("essences",{}).keys()[0]) if not boss.get("essences",{}).is_empty() else ""
 	if not best.is_empty(): s.grant_part(best)
 	s.victory()

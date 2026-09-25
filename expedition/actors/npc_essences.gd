@@ -9,10 +9,11 @@ const DROP_PERCENT := 25
 const SET_BONUS := 300
 const PLAIN := 300
 
-## Low A leans to 광폭·기습, high C to 수호, high O to 술사; the tier counts too.
+## Low A leans to 광폭·기습, high C to 수호, high O to 술사; a stone it has
+## absorbed counts a little over one it has not.
 static func preference(npc: Dictionary, id: String) -> int:
 	var profile = npc.profile
-	var score: int = 100*Essences.tier(npc,id)
+	var score: int = 100 if Essences.absorbed(npc,id) else 0
 	match str(Essences.role(id)):
 		"BERSERK", "AMBUSH": score += 1000-int(profile.value("A"))
 		"GUARD": score += int(profile.value("C"))
@@ -66,7 +67,6 @@ static func on_hunt(s, enemy: Dictionary, hunters: Array) -> void:
 		var species: String = Abilities.kind_key(enemy)
 		if seen.has(species) and Hexaco.sample(s.seed_value,int(s.depth)*100000+int(enemy.id)*100+int(npc.id)%100,"npc_essence",100) >= DROP_PERCENT: continue
 		seen[species] = true
-		var tier: int = Essences.tier(npc,id)
-		if tier >= Essences.MAX_TIER: continue
-		npc.get_or_add("essences",{})[id] = tier+1
+		if Essences.absorbed(npc,id): continue
+		npc.get_or_add("essences",{})[id] = 1
 		choose(s,npc)

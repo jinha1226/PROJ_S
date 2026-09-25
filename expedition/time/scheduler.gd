@@ -59,7 +59,6 @@ static func flush_ready(s) -> bool:
 	return complete
 
 static func advance(s, cost: int) -> bool:
-	if s.phase == "BATTLE": cost = s.Families.first_action_delay(s.party[0],cost)
 	var end: int = s.time + maxi(1, cost)
 	s.party[0].ready_at = end
 	s.floor_state.observe(s)
@@ -116,7 +115,6 @@ static func act(s, actor: Dictionary) -> void:
 		s.resolving_companions = false
 		s.note_explain(actor, choice)
 		if str(choice.get("mistake", "")) != "": s.note_mistake(actor, str(choice.mistake))
-	if s.phase == "BATTLE": cost = s.Families.first_action_delay(actor,cost)
 	actor.ready_at = s.time + maxi(40, cost)
 
 static func environment_tick(s) -> void:

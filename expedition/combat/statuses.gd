@@ -6,7 +6,7 @@ extends RefCounted
 const Rules = preload("res://expedition/combat/combat_rules.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const TagSets = preload("res://expedition/progression/tag_sets.gd")
-const Families = preload("res://expedition/combat/families.gd")
+const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
 const Reactions = preload("res://expedition/combat/reactions.gd")
 const HARMFUL := ["confuse","slow","freeze","bind","burn","weak","brittle","distort","vulnerable","dominate","bleed","poison","taunted","stun"]
 
@@ -33,8 +33,7 @@ static func resisted_ticks(s, victim: Dictionary, status: String, ticks: int) ->
 static func apply(s, victim: Dictionary, status: String, ticks: int, source: Dictionary = {}) -> void:
 	if status in HARMFUL and victim.get("statuses",{}).has("immune"): return
 	ticks = resisted_ticks(s,victim,status,ticks)
-	if status in HARMFUL: ticks = Families.status_ticks(victim,ticks)
-	if ticks <= 0: return
+	if ticks <= 0 or StoneEffects.shed(s,victim,status,source): return
 	victim.statuses[status] = s.time+ticks
 	if status == "burn": victim.get_or_add("status_power",{})["burn"] = BURN_DAMAGE
 	Reactions.status_react(s,victim,source,"","STATUS")

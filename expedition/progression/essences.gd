@@ -7,14 +7,15 @@ const Abilities = preload("res://expedition/items/abilities.gd")
 const Bestiary = preload("res://expedition/progression/bestiary.gd")
 const ROLES := {"PACK":"무리","BERSERK":"광폭","AMBUSH":"기습","GUARD":"수호","ARCHER":"사수","CASTER":"술사"}
 const ELEMENTS := {"fire":"화염","ice":"냉기","air":"전기","poison":"독","will":"의지","bleed":"출혈"}
-const MAX_TIER := 3
+## A soul stone has no tiers any more (2026-09-26 spec §4): one absorption
+## switches all of it on, and a member absorbs a stone once.
+const MAX_TIER := 1
 const MAX_LEVEL := 10
 ## How many spells stand ready at once: the floor HUD draws this many buttons.
 const READY_SPELLS := 5
 const FIRST_KILL_PERCENT := 100
 const REPEAT_PERCENT := 25
 const CASTER_BY_SCHOOL := {"fire":"FIRE_CALLER","ice":"FROST_IMP","air":"STORM_BAT","hex":"GOBLIN_HEXER","summon":"GNOLL_SUMMONER"}
-const SPELL_CAP := {1:3,2:6,3:10}
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/essences.json"))
 static var combat: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/combat.json"))
 
@@ -38,7 +39,8 @@ static func row(id: String) -> Dictionary:
 	var role: String = str(base.get("role",""))
 	var stats: Dictionary = Bestiary.essence_stats(role,str(base.get("school",""))) if not role.is_empty() else (base.get("stats",{}) as Dictionary).duplicate()
 	var result := {"name":str(base.get("name","")),"stats":stats,"role":role,"element":str(base.get("element","")),
-		"school":str(base.get("school","")),"species":str(base.get("species","")),"family":str(base.get("family",""))}
+		"school":str(base.get("school","")),"species":str(base.get("species","")),"family":str(base.get("family","")),
+		"effect":str(base.get("effect",""))}
 	var element := variant_element(id)
 	if not element.is_empty():
 		result.element = element
@@ -57,10 +59,11 @@ static func title(id: String) -> String:
 	var element := variant_element(id)
 	return name if element.is_empty() else "%s %s" % [ELEMENTS[element],name]
 
-static func stats(id: String, tier: int) -> Dictionary:
+## The stone's fixed base stats: its role's, plus a variant's resistance.
+static func stats(id: String) -> Dictionary:
 	var result: Dictionary = {}
 	var base: Dictionary = row(id).get("stats",{})
-	for key in base: result[key] = int(base[key])*clampi(tier,1,MAX_TIER)
+	for key in base: result[key] = int(base[key])
 	return result
 
 static func role(id: String) -> String: return str(row(id).get("role",""))
@@ -69,13 +72,11 @@ static func element(id: String) -> String: return str(row(id).get("element",""))
 
 static func school(id: String) -> String: return str(row(id).get("school",""))
 
-## The absorbed tier; an essence put straight into a slot (fixtures, sims)
-## counts as tier one.
-static func tier(actor: Dictionary, id: String) -> int:
-	if id.is_empty(): return 0
-	var known: int = int(actor.get("essences",{}).get(id,0))
-	if known > 0: return mini(known,MAX_TIER)
-	return 1 if id in actor.get("equipped_abilities",[]) else 0
+## Whether the member has this stone: absorbed, or put straight into a slot
+## (fixtures, sims).
+static func absorbed(actor: Dictionary, id: String) -> bool:
+	if id.is_empty(): return false
+	return int(actor.get("essences",{}).get(id,0)) > 0 or id in actor.get("equipped_abilities",[])
 
 static func equipped(actor: Dictionary) -> Array:
 	var sealed: Dictionary = actor.get("sealed",{})
@@ -84,11 +85,9 @@ static func equipped(actor: Dictionary) -> Array:
 static func slot_count(actor: Dictionary) -> int:
 	return clampi(int(actor.get("level",1)),1,MAX_LEVEL)
 
-static func spell_cap(tier: int) -> int:
-	return int(SPELL_CAP[clampi(tier,1,MAX_TIER)])
-
-static func active_power(tier: int, base: int) -> int:
-	return base*(100+25*(clampi(tier,1,MAX_TIER)-1))/100
+## The highest spell level a caster stone opens: the character's own level.
+static func spell_cap(actor: Dictionary) -> int:
+	return clampi(int(actor.get("level",1)),1,MAX_LEVEL)
 
 static func can_manage(s) -> bool:
 	if s.phase in ["IDLE","CAMP"]: return true
@@ -100,18 +99,17 @@ static func sync_slots(actor: Dictionary) -> void:
 	while slots.size() < slot_count(actor): slots.append("")
 	actor.equipped_abilities = slots
 
-## One from the bag into the member: a new essence at tier one, a known one a
-## tier higher. The bag loses it for good.
+## One from the bag into the member, once: a stone already absorbed stays in
+## the bag for somebody else. The bag loses it for good.
 static func absorb(s, actor: Dictionary, id: String) -> String:
 	if not has(id): return "없는 영혼석"
 	if int(s.parts_bag.get(id,0)) <= 0: return "가방에 없음"
 	if int(actor.hp) <= 0: return "쓰러짐"
 	if not can_manage(s): return "전투 중"
 	var known: Dictionary = actor.get_or_add("essences",{})
-	var before: int = int(known.get(id,0))
-	if before >= MAX_TIER: return "최고 단계"
+	if int(known.get(id,0)) > 0: return "이미 흡수함"
 	s.parts_bag[id] = int(s.parts_bag[id])-1
-	known[id] = before+1
+	known[id] = 1
 	var chosen: Dictionary = actor.get_or_add("essence_spells",{})
 	if not school(id).is_empty() and not chosen.has(id):
 		var choices := spell_choices(actor,id)
@@ -152,11 +150,11 @@ static func take(actor: Dictionary, slot: int) -> bool:
 	sync_spells(actor)
 	return true
 
-## The school's spells this essence's tier reaches, lowest level first.
+## The school's spells up to the member's level, lowest level first.
 static func spell_choices(actor: Dictionary, id: String) -> Array:
 	var wanted := school(id)
 	if wanted.is_empty(): return []
-	var cap := spell_cap(maxi(1,tier(actor,id)))
+	var cap := spell_cap(actor)
 	var result: Array = []
 	for spell_id in combat.spells:
 		var spell: Dictionary = combat.spells[spell_id]
@@ -187,12 +185,9 @@ static func sync_spells(actor: Dictionary) -> void:
 	actor.spells = known
 	actor.prepared = ready
 
-## The best tier among the slotted caster essences of that school.
-static func caster_tier(actor: Dictionary, wanted: String) -> int:
-	var best := 0
-	for id in equipped(actor):
-		if school(id) == wanted: best = maxi(best,tier(actor,id))
-	return best
+## Whether a caster stone of that school is slotted.
+static func school_slotted(actor: Dictionary, wanted: String) -> bool:
+	return equipped(actor).any(func(id): return school(str(id)) == wanted)
 
 static func drop_chance(s, species_id: String) -> int:
 	return REPEAT_PERCENT if s.essence_seen.has(species_id) else FIRST_KILL_PERCENT
