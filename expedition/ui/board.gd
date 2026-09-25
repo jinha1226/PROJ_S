@@ -6,7 +6,7 @@ signal cell_pressed(cell: Vector2i)
 signal cell_inspected(cell: Vector2i)
 signal zoom_changed(side: int)
 signal gesture_started
-var view_side := 17
+var view_side := 11
 var camera_gesture = preload("res://expedition/legacy/base_map_camera.gd").new()
 var _pointer_down := false
 var _pointer_dragged := false
@@ -182,7 +182,7 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func _ready() -> void:
-	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	clip_contents = true
 	custom_minimum_size = Vector2(0,180)
 	size_flags_vertical = SIZE_EXPAND_FILL
@@ -306,9 +306,6 @@ func paint_terrain() -> void:
 			var cell: Dictionary = session.tile(point)
 			var rect := Rect2(project(Vector2(point)),Vector2.ONE*half_width*2)
 			var tint := MEMORY_TINT if visibility == 1 else Color.WHITE
-			if visibility == 2 and uses_pixel_floor_art():
-				if cell.terrain == "wall": tint = Color(0.80,0.87,0.96)
-				elif cell.terrain == "stone" and session.floor_state.theme_id == "F1_RUINS": tint = Color(1.0,0.94,0.83)
 			if cell.terrain == "wall":
 				draw_rect(rect,Color("090c10"))
 				walls.append({"point":point,"rect":rect,"tint":tint})
@@ -316,8 +313,8 @@ func paint_terrain() -> void:
 				if visibility == 1: draw_rect(rect,Color("151b22"))
 				else: draw_texture_rect(Art.terrain(cell,point,session.floor_state.theme_id if uses_pixel_floor_art() else ""),rect,false,tint)
 				Art.Masonry.paint_floor_shadow(self,rect,point,is_wall_tile)
-				# Keep movement cells readable without outlining the connected walls.
-				draw_rect(rect,Color(0,0,0,0.22 if visibility == 1 else 0.45),false,2.0)
+				# Single-slab art already marks its own edges; remembered cells keep one fine rim.
+				if visibility == 1: draw_rect(rect,Color(0,0,0,0.16),false,1.0)
 	Art.Masonry.paint_walls(self,walls,is_wall_tile,Art.FirstFloor.material(session.floor_state.theme_id) if uses_pixel_floor_art() else {})
 
 func uses_pixel_floor_art() -> bool:

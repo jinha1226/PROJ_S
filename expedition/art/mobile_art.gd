@@ -1,13 +1,13 @@
 extends RefCounted
 const SHEET = preload("res://assets/mobile/ui-atlas.png")
-const ACTOR_SHEET = preload("res://assets/8bit/classic/actors.png")
-const MONSTER_SHEET = preload("res://assets/8bit/classic/monsters.png")
+const ACTOR_SHEET = preload("res://assets/topdown/flat-v1/actors.png")
+const MONSTER_SHEET = preload("res://assets/topdown/flat-v1/monsters.png")
 const MASTERY_SHEET = preload("res://assets/8bit/classic/mastery-icons.png")
 const SPELL_SHEET = preload("res://assets/8bit/classic/spell-icons.png")
 const TIER_SHEETS = [preload("res://assets/8bit/classic/spells-fire.png"),preload("res://assets/8bit/classic/spells-ice.png"),preload("res://assets/8bit/classic/spells-air.png"),preload("res://assets/8bit/classic/spells-hex.png"),preload("res://assets/8bit/classic/spells-summon.png")]
 const MAGIC_SCHOOLS := ["fire","ice","air","hex","summon"]
 const EQUIPMENT_SHEET = preload("res://assets/8bit/classic/equipment-icons.png")
-const BOSS = preload("res://assets/8bit/classic/fire-lizard-boss.png")
+const BOSS = preload("res://assets/topdown/flat-v1/fire-lizard-boss.png")
 const ACTOR_IDS := ["human","dwarf","elf","orc","wolf","mage","merchant","wanderer"]
 const MONSTER_IDS := ["dcss_rat","dcss_frilled_lizard","kobold","goblin","dcss_hobgoblin","dcss_orc","dcss_gnoll","dcss_river_rat"]
 const MASTERY_IDS := ["sword","spear","mace","axe","bow","fire","ice","air","hex","summon"]
@@ -21,7 +21,8 @@ const Masonry = preload("res://expedition/art/masonry_tiles.gd")
 const FirstFloor = preload("res://expedition/art/floor1_art.gd")
 const FLAGSTONE = preload("res://assets/topdown/flagstone-floor-v1.png")
 const UI_ATLAS_8BIT = preload("res://assets/ui/ui-atlas-8bit-v1.png")
-const UI_BUTTON_FRAMES = preload("res://assets/ui/button-frames-8bit-v2.png")
+const ACTION_ICONS = preload("res://assets/topdown/flat-v1/action-icons.png")
+const UI_BUTTON_FRAMES = preload("res://assets/ui/button-frames-flat-v1.png")
 const UI_CELL := 256
 const UI_ROW_BOUNDS := [Vector2i(24,291),Vector2i(292,526),Vector2i(528,728),Vector2i(734,992)]
 static var terrain_cache: Dictionary = {}
@@ -73,10 +74,20 @@ static func equipment_icon(slot: String, kind: String = "") -> AtlasTexture:
 	return pixel_region(EQUIPMENT_SHEET,4,3,maxi(0,index),"equipment/"+str(index))
 
 static func paint_actor(canvas: CanvasItem, index: int, rect: Rect2, tint: Color = Color.WHITE) -> void:
-	# All eight sprites share a baseline; let the character rise above its cell.
+	# The transparent source cells share a baseline; let the figure rise above its tile.
 	var extent := rect.size*1.92
 	var display := Rect2(rect.position+Vector2((rect.size.x-extent.x)*0.5,rect.size.y-extent.y),extent)
 	canvas.draw_texture_rect(actor_texture(index),display,false,tint)
+
+static func paint_monster(canvas: CanvasItem, species_id: String, rect: Rect2, tint: Color = Color.WHITE) -> void:
+	var extent := rect.size*1.62
+	var display := Rect2(rect.position+Vector2((rect.size.x-extent.x)*0.5,rect.size.y-extent.y),extent)
+	canvas.draw_texture_rect(enemy_sprite(species_id),display,false,tint)
+
+static func paint_boss(canvas: CanvasItem, rect: Rect2, tint: Color = Color.WHITE) -> void:
+	var extent := rect.size*2.5
+	var display := Rect2(rect.position+Vector2((rect.size.x-extent.x)*0.5,rect.size.y-extent.y),extent)
+	canvas.draw_texture_rect(BOSS,display,false,tint)
 
 static func terrain(cell: Dictionary, point: Vector2i = Vector2i.ZERO, theme_id: String = "") -> AtlasTexture:
 	if theme_id in ["F1_RUINS","F2_MINES"]: return FirstFloor.terrain(cell,point,theme_id)
@@ -121,9 +132,11 @@ static func ui_region(column: int, row: int) -> AtlasTexture:
 	return texture
 
 static func ui_icon(index: int) -> AtlasTexture:
+	if index >= 0 and index < 6:
+		return pixel_region(ACTION_ICONS,3,2,index,"flat/action/"+str(index))
 	return ui_region(posmod(index,6),index/6)
 
-## Frames extracted from row 3 of the 8-bit UI artwork and sized for 9-slice.
+## Precise 48px frames built for the flat UI and sized for nine-slice.
 static func ui_frame(state: int) -> Texture2D:
 	state = clampi(state,0,5)
 	if ui_frame_cache.has(state): return ui_frame_cache[state]

@@ -15,7 +15,7 @@ var portrait_gesture = preload("res://expedition/legacy/portrait_gesture.gd").ne
 var navigation = preload("res://expedition/level/exploration_navigation.gd").new()
 const NAVIGATION_STEP_SECONDS := 0.11
 var navigation_clock := 0.0
-var view_side := 17
+var view_side := 11
 var log_popup: PopupPanel
 var log_filter := "전체"
 var auto_explore_button: Button
@@ -26,7 +26,7 @@ var inventory_selected := ""
 var inventory_slots: Array = []
 var item_popup: PopupPanel
 var item_detail: VBoxContainer
-const FONT = preload("res://assets/fonts/Galmuri11.ttf")
+const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 const SKILLS = [["PUSH","GUARD"],["ATTACK","GUARD"],["WATER","ELECTRIC"]]
 const SKILL_NAMES = [["밀쳐내기","엄호"],["강타","엄호"],["물","방전"]]
 var session = null
@@ -248,7 +248,7 @@ func label(parent: Node, text: String, font_size: int = 12) -> Label:
 
 func button(parent: Node, text: String, callback: Callable, enabled: bool = true) -> Button:
 	var node := Button.new(); node.text = text; node.disabled = not enabled
-	node.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	node.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	node.custom_minimum_size = Vector2(0,44); node.size_flags_horizontal = SIZE_EXPAND_FILL
 	node.pressed.connect(callback); parent.add_child(node); return node
 
@@ -267,8 +267,25 @@ func icon_button(parent: Node, texture: Texture2D, callback: Callable, hint: Str
 
 func action_button(parent: Node, text: String, texture: Texture2D, callback: Callable, enabled: bool = true) -> Button:
 	var node := button(parent,text,callback,enabled)
-	node.icon = texture
-	node.add_theme_constant_override("icon_max_width",22)
+	node.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	node.custom_minimum_size.y = 54
+	for state in ["font_color","font_hover_color","font_pressed_color","font_disabled_color","font_focus_color"]:
+		node.add_theme_color_override(state,Color.TRANSPARENT)
+	var picture := TextureRect.new()
+	picture.texture = texture
+	picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	picture.mouse_filter = MOUSE_FILTER_IGNORE
+	node.add_child(picture)
+	picture.set_anchors_and_offsets_preset(PRESET_TOP_WIDE)
+	picture.offset_left = 5; picture.offset_right = -5
+	picture.offset_top = 3; picture.offset_bottom = 31
+	var caption := label(node,text,12)
+	caption.set_anchors_and_offsets_preset(PRESET_BOTTOM_WIDE)
+	caption.offset_left = 2; caption.offset_right = -2
+	caption.offset_top = -20; caption.offset_bottom = -4
+	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	caption.add_theme_color_override("font_color",Color("e5e7e8") if enabled else Color("80888c"))
 	return node
 
 func mark_selected(button_node: Button) -> void:

@@ -11,9 +11,12 @@ func check(ok: bool, reason: String) -> void:
 func _initialize() -> void: call_deferred("run")
 
 func run() -> void:
-	check(Art.ACTOR_SHEET.get_size() == Vector2(96,48),"actor sheet uses genuine 24px logical sprites")
-	check(Art.enemy_sprite("kobold").get_size() == Vector2(24,24),"monster sprite uses a 24px cell")
-	check(Art.FirstFloor.tile("floor_a").get_size() == Vector2(16,16),"floor tiles use 16px logical cells")
+	check(Art.ACTOR_SHEET.resource_path.ends_with("flat-v1/actors.png") and Art.actor_texture(0).get_width() > 300,"flat actor atlas is active")
+	check(Art.MONSTER_SHEET.resource_path.ends_with("flat-v1/monsters.png") and Art.enemy_sprite("kobold").get_width() > 300,"flat monster atlas is active")
+	check(Art.FirstFloor.tile("floor_a").get_width() > 250 and Art.FirstFloor.tile("front").get_width() > 250,"flat floor and wall tiles are active")
+	check(Art.FirstFloor.tile("floor_a","F2_MINES").atlas != Art.FirstFloor.tile("floor_a","F1_RUINS").atlas,"mines have their own floor slabs")
+	check(Art.FirstFloor.tile("front","F2_MINES").atlas != Art.FirstFloor.tile("front","F1_RUINS").atlas,"mines have their own wall blocks")
+	check(Art.BOSS.resource_path.ends_with("flat-v1/fire-lizard-boss.png"),"the boss matches the flat actors")
 	root.size = Vector2i(390,844)
 	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	root.add_child(scene); scene.set_process(false); await process_frame
@@ -103,7 +106,8 @@ func touch_targets(scene) -> void:
 		check(control != null and control.size.y >= 36,"%s is a touchable height" % id)
 		check(control != null and scene.get_global_rect().encloses(control.get_global_rect()),"%s stays on screen" % id)
 	var frame: StyleBox = scene.find_child("Attack",true,false).get_theme_stylebox("normal")
-	check(frame is StyleBoxTexture and frame.texture is AtlasTexture and frame.texture.atlas.resource_path == "res://assets/ui/button-frames-8bit-v2.png" and frame.texture.get_size() == Vector2(48,48) and frame.texture_margin_top == 10,"nine-slice image frame fits the action button")
+	check(frame is StyleBoxTexture and frame.texture is AtlasTexture and frame.texture.atlas.resource_path == "res://assets/ui/button-frames-flat-v1.png" and frame.texture.get_size() == Vector2(48,48) and frame.texture_margin_top == 10,"flat nine-slice frame fits the action button")
+	check(scene.find_child("Attack",true,false).find_children("*","TextureRect",true,false).size() == 1,"action icon sits above its label")
 	check(scene.item_buttons.is_empty(),"supplies live in the bag")
 	var nav: Node = scene.find_child("BottomActions",true,false)
 	check(nav.get_children().map(func(c): return str(c.text)) == ["공격","대기","탐색","전술","가방"],"five direct actions share one row")
@@ -112,12 +116,12 @@ func touch_targets(scene) -> void:
 	check(status != null and status.find_children("*","TextureRect",true,false).size() == 1,"hero portrait appears above actions")
 	check(scene.find_child("RecentLog",true,false).get_global_rect().end.y <= status.get_global_rect().position.y,"four-line log sits above portrait")
 
-## The board frames seventeen tiles with the hero in the middle.
+## The default board scale keeps the flat character art readable on a phone.
 func framing(scene, s) -> void:
-	check(scene.board.visible_side() == 17,"the default camera shows seventeen tiles")
+	check(scene.board.visible_side() == 11,"the default camera shows eleven tiles")
 	var camera: Vector2i = scene.board.camera_cell()
-	check(camera.x <= s.party[0].pos.x and s.party[0].pos.x < camera.x+17,"the hero is inside the frame horizontally")
-	check(camera.y <= s.party[0].pos.y and s.party[0].pos.y < camera.y+17,"the hero is inside the frame vertically")
+	check(camera.x <= s.party[0].pos.x and s.party[0].pos.x < camera.x+11,"the hero is inside the frame horizontally")
+	check(camera.y <= s.party[0].pos.y and s.party[0].pos.y < camera.y+11,"the hero is inside the frame vertically")
 	scene.show_menu(); await process_frame
 	check(scene.details_popup.size.x <= root.size.x,"the menu fits the screen width")
 	scene.details_popup.hide(); await process_frame

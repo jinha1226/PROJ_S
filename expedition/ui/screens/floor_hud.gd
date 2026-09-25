@@ -9,7 +9,7 @@ const Art = preload("res://expedition/art/mobile_art.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const Popups = preload("res://expedition/ui/screens/popups.gd")
 const AutoBattleHud = preload("res://expedition/ui/screens/autobattle_hud.gd")
-const FONT = preload("res://assets/fonts/Galmuri11.ttf")
+const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 
 static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 	var session = ui.session
@@ -30,11 +30,11 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 	turns.offset_top = -20; turns.offset_bottom = -3
 	var food_label = ui.label(header,"식량 %d" % session.food,14); food_label.name = "FoodLabel"
 	food_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	var menu = ui.button(header,"☰",ui.show_menu); menu.name = "ExpeditionMenu"; menu.size_flags_horizontal = Control.SIZE_SHRINK_END
+	var menu = ui.button(header,"메뉴",ui.show_menu); menu.name = "ExpeditionMenu"; menu.size_flags_horizontal = Control.SIZE_SHRINK_END
 	menu.custom_minimum_size.x = 44; menu.tooltip_text = "메뉴"
 	if not is_instance_valid(ui.board):
 		ui.board = Board.new(); ui.board.ui_font = FONT; ui.board.cell_pressed.connect(ui.on_cell)
-		ui.board.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		ui.board.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		ui.board.cell_inspected.connect(ui.inspect_cell)
 		ui.board.zoom_changed.connect(func(value): ui.view_side = value)
 		ui.board.gesture_started.connect(ui.stop_navigation); ui.board.playback_finished.connect(ui.finish_presentation)
@@ -143,6 +143,7 @@ static func build_manual_controls(ui) -> void:
 		portrait.add_child(content); content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		content.offset_left = 6; content.offset_right = -6; content.offset_top = 7; content.offset_bottom = -5
 		var image := TextureRect.new(); image.texture = Art.portrait_face(i)
+		image.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		image.custom_minimum_size.x = 66 if session.party.size() == 1 else 42
 		image.mouse_filter = Control.MOUSE_FILTER_IGNORE; content.add_child(image)
@@ -164,7 +165,7 @@ static func build_manual_controls(ui) -> void:
 	var tactics = ui.action_button(nav,"전술",Art.ui_icon(4),func(): show_manual_tactics(ui)); tactics.name = "Tactics"
 	ui.action_button(nav,"가방",Art.ui_icon(5),func(): Popups.show_supplies(ui))
 	for action in nav.get_children():
-		action.custom_minimum_size.y = 48
+		action.custom_minimum_size.y = 54
 		action.add_theme_font_size_override("font_size",11)
 		action.add_theme_constant_override("icon_max_width",16)
 		for state in ["normal","hover","pressed","focus","disabled"]:

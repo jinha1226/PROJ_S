@@ -1,17 +1,28 @@
 extends RefCounted
-## Pixel materials for the ruins and mines; gameplay still owns terrain rules.
-const RUINS = preload("res://assets/8bit/classic/ruins-tiles.png")
-const MINES = preload("res://assets/8bit/classic/mines-tiles.png")
-const PROPS = preload("res://assets/8bit/classic/props.png")
+## Flat illustrated materials for the ruins and mines; gameplay owns terrain rules.
+const RUINS = preload("res://assets/topdown/flat-v1/ruins-materials.png")
+const MINES = preload("res://assets/topdown/flat-v1/mines-materials.png")
+const FLOOR_SLABS = preload("res://assets/topdown/flat-v1/ruins-floor-slabs.png")
+const WALL_BLOCKS = preload("res://assets/topdown/flat-v1/ruins-wall-blocks.png")
+const MINES_FLOOR_SLABS = preload("res://assets/topdown/flat-v1/mines-floor-slabs.png")
+const MINES_WALL_BLOCKS = preload("res://assets/topdown/flat-v1/mines-wall-blocks.png")
+const PROPS = preload("res://assets/topdown/flat-v1/props.png")
 const Regions = preload("res://expedition/art/environment_art.gd")
 static var catalog: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/topdown/floor1-ink-v2/catalog.json"))
 
 static func tile(id: String, theme_id: String = "F1_RUINS") -> AtlasTexture:
+	var floors := ["floor_a","floor_b","floor_c","floor_d"]
+	var floor_index := floors.find(id)
+	if floor_index >= 0:
+		var floor_sheet: Texture2D = MINES_FLOOR_SLABS if theme_id == "F2_MINES" else FLOOR_SLABS
+		var side := floor_sheet.get_width()/2
+		return Regions.region(floor_sheet,[floor_index%2*side,floor_index/2*side,side,side],"flat/"+theme_id+"/floor/"+id)
+	if id in ["front","top"]:
+		var wall_sheet: Texture2D = MINES_WALL_BLOCKS if theme_id == "F2_MINES" else WALL_BLOCKS
+		var side := wall_sheet.get_width()/2
+		return Regions.region(wall_sheet,[0 if id == "front" else side,0,side,side],"flat/"+theme_id+"/wall/"+id)
 	var sheet: Texture2D = MINES if theme_id == "F2_MINES" else RUINS
-	var old_rect: Array = catalog.materials[id]
-	var column := floori((float(old_rect[0])+float(old_rect[2])*0.5)/313.5)
-	var row := floori((float(old_rect[1])+float(old_rect[3])*0.5)/313.5)
-	return Regions.region(sheet,[column*16,row*16,16,16],"classic/"+theme_id+"/material/"+id)
+	return Regions.region(sheet,catalog.materials[id],"flat/"+theme_id+"/material/"+id)
 
 static func material(theme_id: String = "F1_RUINS") -> Dictionary:
 	return {"front":tile("front",theme_id),"top":tile("top",theme_id)}
@@ -26,8 +37,8 @@ static func feature_id(feature: Dictionary) -> String:
 	return {"entry":"gate","altar":"altar","relic":"relic","camp":"campfire"}.get(feature.kind,"")
 
 static func paint_object(canvas: CanvasItem, id: String, cell: Rect2, tint: Color = Color.WHITE) -> void:
-	var old_rect: Array = catalog.objects[id].rect
-	var column := floori((float(old_rect[0])+float(old_rect[2])*0.5)/313.5)
-	var row := floori((float(old_rect[1])+float(old_rect[3])*0.5)/313.5)
-	var texture := Regions.region(PROPS,[column*24,row*24,24,24],"classic/object/"+id)
-	canvas.draw_texture_rect(texture,cell,false,tint)
+	var entry: Dictionary = catalog.objects[id]
+	var texture := Regions.region(PROPS,entry.rect,"flat/object/"+id)
+	var extent := texture.get_size()*cell.size.x/float(entry.source_cell_size)
+	var position := cell.position+Vector2((cell.size.x-extent.x)*0.5,cell.size.y-extent.y)
+	canvas.draw_texture_rect(texture,Rect2(position,extent),false,tint)

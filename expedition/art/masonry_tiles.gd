@@ -68,7 +68,7 @@ static func paint_walls(canvas: CanvasItem, cells: Array, is_wall: Callable, mat
 	# Explicit passes prevent a later tile from painting over an earlier corner.
 	for cell in cells:
 		var rect := raised_rect(cell.rect)
-		canvas.draw_texture_rect(top,rect,false,Color(0.22,0.23,0.25)*cell.tint)
+		canvas.draw_texture_rect(top,rect,false,cell.tint)
 	for cell in cells:
 		if not (exposed(cell.point,is_wall) & SOUTH): continue
 		var rect: Rect2 = cell.rect
