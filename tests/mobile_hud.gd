@@ -13,6 +13,7 @@ func _initialize() -> void: call_deferred("run")
 
 func run() -> void:
 	check(Art.ACTOR_SHEET.resource_path.ends_with("flat-v1/actors.png") and Art.actor_texture(0).get_width() > 300,"flat actor atlas is active")
+	check(Art.actor_portrait({"id":1000,"npc":true}).atlas == Art.actor_texture(1).atlas and Art.actor_portrait({"id":1000,"npc":true}).region.position.x > Art.actor_texture(1).region.position.x,"NPC portrait is a larger crop of the map sprite")
 	check(Art.MONSTER_SHEET.resource_path.ends_with("flat-v1/monsters.png") and Art.enemy_sprite("kobold").get_width() > 300,"flat monster atlas is active")
 	check(Art.FirstFloor.tile("floor_a").get_width() > 250 and Art.FirstFloor.tile("front").get_width() > 250,"flat floor and wall tiles are active")
 	check(Art.FirstFloor.tile("floor_a","F2_MINES").atlas != Art.FirstFloor.tile("floor_a","F1_RUINS").atlas,"mines have their own floor slabs")
@@ -27,6 +28,9 @@ func run() -> void:
 	root.size = Vector2i(320,640)
 	for frame in range(3): await process_frame
 	check(Rect2(Vector2.ZERO,root.size).encloses(scene.get_global_rect()),"start screen fits a 320px phone")
+	root.size = Vector2i(320,568)
+	for frame in range(3): await process_frame
+	check(Rect2(Vector2.ZERO,scene.get_viewport_rect().size).encloses(scene.get_global_rect()),"start screen fits a short phone")
 	root.size = Vector2i(390,844)
 	seed(731)
 	scene.find_child("NewRun",true,false).pressed.emit(); await process_frame
@@ -66,6 +70,9 @@ func run() -> void:
 	camp_button.pressed.emit(); await process_frame
 	check(s.phase == "CAMP" and scene.find_child("CampScreen",true,false) != null,"camp screen opens")
 	check(scene.find_child("CampMember0",true,false) != null and scene.find_child("CampEnd",true,false) != null,"camp member and exit controls")
+	root.size = Vector2i(320,568); scene.refresh()
+	for frame in range(3): await process_frame
+	check(Rect2(Vector2.ZERO,scene.get_viewport_rect().size).encloses(scene.root_layout.get_global_rect()),"camp fits a short phone")
 	scene.find_child("CampEnd",true,false).pressed.emit(); await process_frame
 	check(s.phase == "EXPLORE" and scene.find_child("FoodLabel",true,false).text == "식량 1","return to floor updates food")
 	scene.show_stairs(); await process_frame
@@ -238,8 +245,14 @@ func recruited_ui() -> void:
 	second.partner = -1; second.bond = ""; second.state = "MET"; second.pos = center+Vector2i(-1,1)
 	check(s.recruit(second) and s.party.size() == 3,"party can fill all three slots")
 	check(Popups.inventory_rows(scene).all(func(row): return row.icon.atlas == Art.ITEM_SHEET),"all item categories share one flat atlas")
-	for viewport in [Vector2i(390,844),Vector2i(320,640)]:
+	for viewport in [Vector2i(390,844),Vector2i(320,640),Vector2i(320,568)]:
 		root.size = viewport; scene.refresh(); await process_frame
+		check(Rect2(Vector2.ZERO,scene.get_viewport_rect().size).encloses(scene.get_global_rect()),"game scene fits logical screen at %s" % viewport)
+		check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"recruited floor HUD fits %s" % viewport)
+		check(scene.get_global_rect().encloses(scene.board.get_global_rect()),"floor board fits %s" % viewport)
+		for id in ["TopHUD","RecentLog","PortraitRow","BottomActions"]:
+			var control: Control = scene.find_child(id,true,false)
+			check(scene.get_global_rect().encloses(control.get_global_rect()),"%s fits %s" % [id,viewport])
 		for index in range(3):
 			var member: Button = scene.find_child("HeroStatus" if index == 0 else "MemberStatus%d" % index,true,false)
 			check(scene.get_global_rect().encloses(member.get_global_rect()),"member card stays on %s" % viewport)
@@ -248,7 +261,7 @@ func recruited_ui() -> void:
 		scene.inventory_filter = "파츠"; scene.show_supplies()
 		for frame in range(3): await process_frame
 		var popup_rect := Rect2(Vector2(scene.details_popup.position),Vector2(scene.details_popup.size))
-		check(Rect2(Vector2.ZERO,viewport).encloses(popup_rect),"parts bag fits %s" % viewport)
+		check(scene.get_global_rect().encloses(popup_rect),"parts bag fits %s" % viewport)
 		check(scene.inventory_slots.all(func(slot): return slot.row.is_empty() or slot.row.icon.atlas == Art.ITEM_SHEET),"all bag categories use the flat item sheet")
 		scene.details_popup.hide()
 	scene.queue_free(); await process_frame

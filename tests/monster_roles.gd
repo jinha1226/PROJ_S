@@ -49,6 +49,14 @@ func _initialize() -> void:
 	f = fixture("RANGED"); s = f.s; c = f.c; e = s.enemies[0]; hp = s.party[0].hp
 	e.pos = c+Vector2i(6,0); e.alert = true; AI.turn(s,e)
 	check(s.party[0].hp == hp,"an alert archer cannot shoot from six tiles away")
+	f = fixture("MELEE"); s = f.s; c = f.c; e = s.enemies[0]
+	e.pos = c+Vector2i(16,0); e.alert = true; s.floor_state.observe(s)
+	check(not s.floor_state.visible.has(e.pos),"alert monster is outside the hero's sight")
+	AI.turn(s,e)
+	check(e.alert and AI.distance(e.pos,c) == 15,"alert monster keeps pursuing outside sight")
+	f = fixture("MELEE"); s = f.s; c = f.c; e = s.enemies[0]
+	e.pos = c+Vector2i(16,0); e.alert = true; e.ready_at = s.time; s.floor_state.observe(s)
+	check(s.submit("WAIT",c) and AI.distance(e.pos,c) < 16,"the scheduler advances unseen alerted monsters")
 	f = fixture("RANGED"); s = f.s; c = f.c; e = s.enemies[0]; hp = s.party[0].hp
 	s.tile(c+Vector2i(2,0)).terrain = "wall"; AI.turn(s,e)
 	check(s.party[0].hp == hp and e.pos != c+Vector2i(4,0),"blocked shooter repositions without shooting through wall")

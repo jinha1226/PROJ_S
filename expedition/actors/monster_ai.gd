@@ -83,10 +83,6 @@ static func turn(s, enemy: Dictionary) -> void:
 		patrol(s,enemy)
 		return
 	if enemy.get("boss",false): BossAI.turn(s,enemy); return
-	if targets.all(func(a): return distance(enemy.pos,a.pos) > 15):
-		enemy.alert = false; enemy.charging = false; enemy.cast_id = ""; enemy.cast_left = 0; plan(s)
-		patrol(s,enemy)
-		return
 	if enemy.get("cast_recovery",0) > 0:
 		enemy.cast_recovery -= 1; return
 	var part: String = str(enemy.get("part_id",""))

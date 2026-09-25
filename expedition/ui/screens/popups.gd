@@ -252,9 +252,9 @@ static func show_supplies(ui) -> void:
 	else: ui.label(ui.modal_content,"공용 가방",18); build_inventory(ui)
 
 static func build_manual_inventory(ui) -> void:
-	var available_width: float = minf(360,ui.get_viewport_rect().size.x-32)
+	var available_width: float = minf(360,ui.size.x-32)
 	var columns := 4 if available_width >= 4*68+3*6 else 3
-	ui.modal_content.custom_minimum_size = Vector2(available_width,ui.get_viewport_rect().size.y-32)
+	ui.modal_content.custom_minimum_size = Vector2(available_width,ui.size.y-32)
 	var box := VBoxContainer.new(); box.name = "ManualInventory"; box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.custom_minimum_size.x = available_width
 	box.add_theme_constant_override("separation",8); ui.modal_content.add_child(box)
@@ -275,7 +275,8 @@ static func build_manual_inventory(ui) -> void:
 	var grid := GridContainer.new(); grid.columns = columns; grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	grid.add_theme_constant_override("h_separation",6); grid.add_theme_constant_override("v_separation",6); scroll.add_child(grid)
 	ui.inventory_slots.clear()
-	for i in range(maxi(columns*4,int(ceil(rows.size()/float(columns)))*columns)):
+	var minimum_rows := 2 if ui.size.y < 700 else 4
+	for i in range(maxi(columns*minimum_rows,int(ceil(rows.size()/float(columns)))*columns)):
 		var slot = InventorySlot.new(); grid.add_child(slot)
 		var row: Dictionary = rows[i] if i < rows.size() else {}
 		slot.configure(row,row.get("id","") == ui.inventory_selected); ui.inventory_slots.append(slot)
@@ -291,10 +292,10 @@ static func build_manual_inventory(ui) -> void:
 		var description = ui.label(details,str(selected[0].description),12)
 		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	ui.button(box,"닫기",func(): ui.details_popup.hide())
-	var popup_size := Vector2i(roundi(available_width)+16,roundi(ui.get_viewport_rect().size.y)-16)
+	var popup_size := Vector2i(roundi(available_width)+16,roundi(ui.size.y)-16)
 	ui.details_popup.popup_centered(popup_size)
 	ui.details_popup.size = popup_size
-	ui.details_popup.position = (Vector2i(ui.get_viewport_rect().size)-popup_size)/2
+	ui.details_popup.position = (Vector2i(ui.size)-popup_size)/2
 
 static func gear_name(ui, item: Dictionary, slot: String) -> String:
 	if slot == "shield": return "방패"

@@ -53,7 +53,17 @@ static func actor_index(actor: Dictionary) -> int:
 	return 1+posmod(id-1000,ACTOR_IDS.size()-1) if bool(actor.get("npc",false)) and id >= 1000 else posmod(id,ACTOR_IDS.size())
 
 static func actor_portrait(actor: Dictionary) -> AtlasTexture:
-	return actor_texture(actor_index(actor))
+	var index := actor_index(actor)
+	var key := "actor/portrait/"+str(index)
+	if not pixel_cache.has(key):
+		var source := actor_texture(index)
+		var region: Rect2 = source.region
+		var texture := AtlasTexture.new()
+		texture.atlas = ACTOR_SHEET
+		texture.region = Rect2(region.position+region.size*Vector2(0.08,0.10),region.size*Vector2(0.84,0.85))
+		texture.filter_clip = true
+		pixel_cache[key] = texture
+	return pixel_cache[key]
 
 static func enemy_sprite(species_id: String) -> AtlasTexture:
 	var index := MONSTER_IDS.find(species_id)

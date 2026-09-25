@@ -7,6 +7,7 @@ const Floor = preload("res://expedition/level/continuous_floor.gd")
 const IntentUI = preload("res://expedition/ui/companion_intent_ui.gd")
 const Knobs = preload("res://expedition/ai/knobs.gd")
 const NpcAI = preload("res://expedition/actors/npc_ai.gd")
+const MonsterAI = preload("res://expedition/actors/monster_ai.gd")
 const Passives = preload("res://expedition/combat/passives.gd")
 const Rules = preload("res://expedition/ai/tactic_rules.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
@@ -105,6 +106,10 @@ static func companion_choice(s, actor: Dictionary) -> Dictionary:
 	if s.companions:
 		var ordered: Dictionary = s.command_choice(actor)
 		if not ordered.is_empty(): return ordered
+	# An ally outside the hero's light still needs to close the gap even if the
+	# hero has entered combat. A foe in the ally's own sight takes priority.
+	if not s.floor_state.visible.has(actor.pos) and not s.enemies.any(func(e): return e.hp > 0 and not s.dominated(e) and MonsterAI.line(s,actor.pos,e.pos,MonsterAI.sight(s))):
+		return s.floor_state.follow(s,actor)
 	if s.floor_state.safe(s): return s.floor_state.follow(s,actor)
 	return Tactics.choose(s,actor)
 

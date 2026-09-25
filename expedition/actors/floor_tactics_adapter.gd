@@ -43,7 +43,7 @@ func _next_step(a: Vector2i,b: Vector2i) -> Vector2i:
 	for d in s.DIRECTIONS:
 		if s.is_free(b+d) and s.melee_reach(b+d,b): goals.append(b+d)
 	if goals.is_empty(): return a
-	var route: Dictionary = s.TurnCore.path(100,100,a,goals,func(from,to): return s.can_step(from,to),func(_p): return 100,100,20)
+	var route: Dictionary = s.TurnCore.path(100,100,a,goals,func(from,to): return s.can_step(from,to),func(_p): return 100,100,50)
 	return route.path[1] if route.found and route.path.size() > 1 else a
 func choose(source: Dictionary) -> Dictionary:
 	var row: Dictionary = actors.filter(func(a): return a.id == source.id)[0]

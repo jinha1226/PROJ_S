@@ -202,6 +202,16 @@ func marching_order() -> void:
 	check(s.submit("MOVE",f.c+Vector2i.RIGHT),"leader enters the corridor")
 	check(s.submit("MOVE",f.c+Vector2i(2,0)),"leader advances through the corridor")
 	check(s.party[1].pos == f.c and s.party[2].pos == f.c+Vector2i.LEFT,"both recruits follow one rank forward")
+	# A distant recruit rejoins even while the hero can see a different fight.
+	for x in range(f.c.x-12,f.c.x+13):
+		for y in range(f.c.y-12,f.c.y+13): s.tile(Vector2i(x,y)).terrain = "stone"
+	leader.pos = f.c; s.party[1].pos = f.c+Vector2i(-8,0); s.party[2].pos = f.c+Vector2i(-9,0)
+	var foe: Dictionary = s.enemies[0]
+	foe.hp = foe.max_hp; foe.pos = f.c+Vector2i(4,0); foe.alert = true; foe.ready_at = 9000
+	s.floor_state.observe(s)
+	check(not s.floor_state.visible.has(s.party[1].pos) and not s.floor_state.visible.has(s.party[2].pos),"recruits are outside hero sight")
+	check(s.submit("WAIT",leader.pos),"hero waits while an enemy is visible")
+	check(s.party[1].pos.x > f.c.x-8 and s.party[2].pos.x > f.c.x-9,"both unseen recruits continue toward the leader")
 
 ## Once recruited it is a comrade: its death is the party's loss, not a
 ## stranger's.

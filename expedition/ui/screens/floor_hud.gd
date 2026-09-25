@@ -151,7 +151,7 @@ static func build_manual_controls(ui) -> void:
 			var icon := TextureRect.new(); icon.texture = Art.actor_portrait(actor)
 			icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			icon.custom_minimum_size = Vector2(30,30); icon.mouse_filter = Control.MOUSE_FILTER_IGNORE; heading.add_child(icon)
+			icon.custom_minimum_size = Vector2(40,40); icon.mouse_filter = Control.MOUSE_FILTER_IGNORE; heading.add_child(icon)
 			var name: Label = ui.label(heading,str(actor.name),11); name.clip_text = true
 			name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			var hp: Label = ui.label(compact,"HP %d/%d" % [actor.hp,actor.max_hp],10)

@@ -191,13 +191,15 @@ func _ready() -> void:
 	_resize_board()
 
 func _resize_board() -> void:
-	custom_minimum_size.y = maxf(180,size.x+4+(56 if action_footer else 8) if session != null and session.on_floor() else size.x+8)
+	# The HUD owns the remaining height on short screens; the map scales to it.
+	custom_minimum_size.y = 160+(56 if action_footer else 0)
 	queue_redraw()
 
 func geometry() -> void:
-	half_width = maxf(1,size.x/(visible_side()*2.0))
+	var map_side: float = maxf(2,minf(size.x,size.y-8))
+	half_width = maxf(1,map_side/(visible_side()*2.0))
 	half_height = half_width
-	origin = Vector2(0,4)
+	origin = (size-Vector2.ONE*map_side)*0.5
 
 func project(cell: Vector2) -> Vector2:
 	return origin + (cell-camera_origin())*half_width*2
@@ -466,9 +468,6 @@ func _draw_foreground(canvas: Node2D) -> void:
 		if not seen and not (npc and actor.get("awake",false)): continue
 		var fade: float = 1.0 if seen else 0.5
 		var center := display_center(actor)
-		if actor.enemy:
-			var role: String = "준비!" if actor.get("charging",false) else {"MELEE":"근접","RANGED":"사격","CASTER":"마법"}.get(actor.get("role","MELEE"),"")
-			canvas.draw_string(ui_font,center+Vector2(-20,-half_width*0.7),role,HORIZONTAL_ALIGNMENT_CENTER,40,11,Color("ffe2a0"))
 		if npc:
 			canvas.draw_string(ui_font,center+Vector2(-40,-half_width*1.1),str(actor.name),HORIZONTAL_ALIGNMENT_CENTER,80,10,Color(NPC_COLOR,fade))
 			var doing: String = str(actor.get("activity",""))
