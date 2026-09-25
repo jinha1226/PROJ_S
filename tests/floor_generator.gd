@@ -135,6 +135,15 @@ func full_layouts(theme: Dictionary) -> void:
 		min_usec = mini(min_usec,spent); max_usec = maxi(max_usec,spent); sum_usec += spent
 		check(Generator.validate(layout,theme) == "","layout valid: %s (seed %d)" % [Generator.validate(layout,theme),seed_value])
 		check(layout.size == size and layout.terrain.size() == size*size and layout.theme_id == "F1_RUINS" and layout.depth == 1,"contract scalars")
+		check(layout.get("pillars",{}).keys().all(func(p): return layout.terrain[p.y*size+p.x] == "wall"),"pillar markers identify blocking wall cells")
+		for room in layout.rooms:
+			if room.kind != "template": continue
+			for y in range(room.rect.position.y,room.rect.end.y):
+				for x in range(room.rect.position.x,room.rect.end.x):
+					var point := Vector2i(x,y)
+					if layout.terrain[y*size+x] != "wall": continue
+					if Generator.DIRECTIONS4.all(func(d): return layout.terrain[(y+d.y)*size+x+d.x] != "wall"):
+						check(layout.pillars.has(point),"isolated template columns are marked")
 		total_regenerations += layout.stats.regenerations
 		check(layout.stats.regenerations <= 5,"regenerations bounded")
 		var mandatory: Array = layout.encounters.filter(func(e): return e.mandatory)

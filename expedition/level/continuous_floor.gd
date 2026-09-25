@@ -79,7 +79,7 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 	for y in range(side):
 		for x in range(side):
 			var terrain: String = layout.terrain[y*side+x]
-			s.tiles.append({"terrain":terrain,"source_terrain":terrain,"fire":0,"wet":70 if terrain == "water" else 0,"variant":posmod(x*13+y*7,3),"palette":0})
+			s.tiles.append({"terrain":terrain,"source_terrain":terrain,"pillar":layout.get("pillars",{}).has(Vector2i(x,y)),"fire":0,"wet":70 if terrain == "water" else 0,"variant":posmod(x*13+y*7,3),"palette":0})
 	s.enemies = []
 	for e in range(layout.encounters.size()):
 		var encounter: Dictionary = layout.encounters[e]
@@ -130,7 +130,7 @@ func observe(s) -> void:
 				# Adjacent tiles stay readable so legal diagonal steps can be tapped at corners.
 				var adjacent: bool = maxi(absi(p.x-actor.pos.x),absi(p.y-actor.pos.y)) <= 1
 				if not adjacent and not s.TurnCore.Geometry.sees(actor.pos,p,
-					func(c): return s.tile(c).terrain == "wall",before): continue
+					func(c): return s.tile(c).terrain == "wall" and not bool(s.tile(c).get("pillar",false)),before): continue
 				visible[p] = true
 				if not explored.has(p):
 					explored[p] = true

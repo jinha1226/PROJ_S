@@ -542,8 +542,20 @@ static func attempt_layout(theme: Dictionary, seed: int, depth: int) -> Dictiona
 	var edges := build_graph(rooms,theme,rng)
 	var terrain := carve(rooms,edges,theme,rng)
 	var painted := paint(terrain,rooms,theme,rng)
+	var pillars: Dictionary = {}
+	for room_id in painted:
+		for point in painted[room_id].obstacles: pillars[point] = true
+	# Template rooms also use lone interior wall cells as columns.
+	for room in rooms:
+		if room.kind != "template": continue
+		for y in range(room.rect.position.y,room.rect.end.y):
+			for x in range(room.rect.position.x,room.rect.end.x):
+				var point := Vector2i(x,y)
+				if terrain[index_of(theme.size,point)] != "wall": continue
+				if DIRECTIONS4.all(func(d): return terrain[index_of(theme.size,point+d)] != "wall"):
+					pillars[point] = true
 	var layout := {"size":theme.size,"seed":seed,"theme_id":theme.get("id",""),"depth":depth,"terrain":terrain,"rooms":rooms,"edges":edges,
-		"entry":Vector2i(-1,-1),"stairs":Vector2i(-1,-1),"features":{},"encounters":[],"npc_rooms":[],"stats":{"regenerations":0,"stairs_distance":0,"max_distance":0}}
+		"entry":Vector2i(-1,-1),"stairs":Vector2i(-1,-1),"features":{},"encounters":[],"npc_rooms":[],"pillars":pillars,"stats":{"regenerations":0,"stairs_distance":0,"max_distance":0}}
 	choose_encounter_rooms(rooms,edges,theme) # sets tier/spine before features
 	place_features(layout,theme,rng)
 	layout.encounters = build_encounters(layout,theme,painted,rng,depth)

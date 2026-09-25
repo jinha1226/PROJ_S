@@ -1,6 +1,7 @@
 extends SceneTree
 const Session = preload("res://expedition/run/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
+const MonsterAI = preload("res://expedition/actors/monster_ai.gd")
 var failures := 0
 func check(ok: bool, message: String) -> void:
 	if not ok: failures += 1; push_error(message)
@@ -27,6 +28,16 @@ func run() -> void:
 	check(s.floor_state.explored.size() < s.BOARD_SIDE*s.BOARD_SIDE,"unexplored fog retained")
 	check(s.safe_management(),"safe exploration permits management")
 	check(s.floor_state.sight_radius() == 6.0 and not ("light" in s),"six-tile sight with no torch")
+	check(s.floor_state.layout.get("pillars",{}).keys().all(func(p): return s.tile(p).terrain == "wall" and bool(s.tile(p).pillar)),"generated pillars remain blocking wall cells")
+	var sight = Session.new(732,true,true,true); sight.depart()
+	var center: Vector2i = Fixture.arena(sight,8)
+	var column: Vector2i = center+Vector2i.RIGHT
+	sight.tile(column).terrain = "wall"; sight.tile(column).pillar = true
+	sight.floor_state.observe(sight)
+	check(sight.floor_state.visible.has(center+Vector2i(2,0)),"floor behind a pillar stays visible")
+	check(not sight.can_step(center,column) and not MonsterAI.line(sight,center,center+Vector2i(2,0),5),"pillar still blocks movement and attacks")
+	sight.tile(column).pillar = false; sight.floor_state.observe(sight)
+	check(not sight.floor_state.visible.has(center+Vector2i(2,0)),"ordinary walls still hide the floor behind them")
 	var enemy_positions: Array = s.enemies.map(func(e): return e.pos)
 	check(not s.auto_attack(),"auto attack cannot target unseen enemies")
 	for i in range(3): check(s.act("WAIT",s.party[0].pos),"waiting advances the floor")
