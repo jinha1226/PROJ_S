@@ -1,6 +1,6 @@
 # 구역, 보스, 원소 반응 설계
 
-작성일: 2026-09-25 · 상태: 합의됨, 구현 전 · 구현 계획: (writing-plans로 작성)
+작성일: 2026-09-25 · 상태: 합의됨, 구현 전 · 구현 계획(이 순서로): [1/4 구역](../plans/2026-09-25-zones.md) · [2/4 도감](../plans/2026-09-25-bestiary.md) · [3/4 반응](../plans/2026-09-25-reactions.md) · [4/4 보스](../plans/2026-09-25-bosses.md)
 근거: [성장 설계: 레벨과 이능 조합](2026-09-25-bestiary-progression-design.md), 구현 커밋 `27201db`까지(영혼석 핵심, 콘텐츠, 화면) · 기존 코드 `expedition/actors/boss_ai.gd`, `expedition/level/continuous_floor.gd`, `data/content/floor_themes.json`, `sim/environment_rules.gd`, `expedition/run/session.gd`(`discharge`, `conductive`), `expedition/progression/tag_sets.gd`
 
 용어: 성장 설계의 "이능"은 화면에서 **영혼석**이라고 부른다. 코드 이름 `essence`는 그대로 둔다.
