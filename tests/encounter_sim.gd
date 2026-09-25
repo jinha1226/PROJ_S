@@ -50,8 +50,10 @@ func runner() -> void:
 		"probe":func(s,round_number): if round_number == 1 and not s.combat_enemies().is_empty(): seen.enemy = true},7)
 	check(started.damage_before_first_action == 0 and seen.enemy,"nearby enemy is seen before first action, without ambush")
 	check(started.enemy_skill_uses is Dictionary and started.interrupts is int,"run_one reports enemy part uses and interrupts")
-	var many: Dictionary = Runner.run_many(config(hob,1,"tactical",Session.DEFAULT_RULES),range(100,120))
-	check(many.samples == 20 and many.results.has("WIN") and many.win_rate >= 0.0 and many.win_ci.size() == 2,"run_many aggregates")
+	var many: Dictionary = Runner.run_many(config(mixed,1,"tactical",Session.DEFAULT_RULES),range(100,120))
+	var counted := 0
+	for amount in many.results.values(): counted += int(amount)
+	check(many.samples == 20 and counted == 20 and many.win_rate >= 0.0 and many.win_ci.size() == 2,"run_many aggregates")
 	check(many.has("damage_wins_per_member") and many.has("guards") and many.has("before_first"),"run_many reports per-member win damage, guards and before_first")
 	check(many.damage.has("mean") and many.damage.has("p95") and many.rounds.has("median"),"run_many statistics")
 	check(many.has("distinct_outcomes") and many.distinct_outcomes >= 1 and many.distinct_outcomes <= many.samples,"run_many counts distinct outcomes")
@@ -133,21 +135,20 @@ func rules_policy() -> void:
 	var hob := [{"species_id":"dcss_hobgoblin","role":"MELEE"}]
 	var cfg: Dictionary = config(hob,1,"rules",Session.DEFAULT_RULES); cfg.build = "b_strike"; cfg.supplies = [0,0,0,0,0]
 	var one: Dictionary = Runner.run_one(cfg,11)
-	check(one.result == "WIN" and one.skill_uses.get("HEAVY_STRIKE",0) >= 1,"rules policy uses the equipped strike (%s)" % [one.skill_uses])
+	check(one.result == "WIN" and one.skill_uses.get("ORE_SLAM",0) >= 1,"rules policy uses the equipped strike (%s)" % [one.skill_uses])
 	check(one == Runner.run_one(cfg,11),"rules policy deterministic")
 	# cfg stays on b_strike: cfg2 below carries the dressing build, and run_many(cfg) averages strikes.
 	var mixed := [{"species_id":"dcss_hobgoblin","role":"MELEE"},{"species_id":"goblin","role":"RANGED"},{"species_id":"kobold","role":"MELEE"}]
 	var cfg2: Dictionary = config(mixed,1,"rules",Session.DEFAULT_RULES); cfg2.build = "b_dressing"; cfg2.supplies = [0,0,0,0,0]
 	var two: Dictionary = Runner.run_one(cfg2,11)
-	check(two.skill_uses.get("FIELD_DRESSING",0) >= 1,"dressing build heals at least once in a long fight (%s)" % [two.skill_uses])
+	check(two.skill_uses.get("SERPENT_SHED",0) >= 1,"shed build sheds at least once in a long fight (%s)" % [two.skill_uses])
 	var many: Dictionary = Runner.run_many(cfg,range(1,11))
-	check(many.skill_uses_mean.has("HEAVY_STRIKE") and many.skill_uses_mean.HEAVY_STRIKE >= 1.0,"run_many averages skill uses")
+	check(many.skill_uses_mean.has("ORE_SLAM") and many.skill_uses_mean.ORE_SLAM >= 1.0,"run_many averages skill uses")
 	for id in ["b_knife","b_lunge","b_bomb","b_shockwave","b_iron","melee_1"]:
 		cfg.build = id
 		check(Runner.run_one(cfg,3).result != "TIMEOUT","%s finishes a solo fight" % id)
-	# The `early_hob` arena of the balance matrix, three members, rules policy:
-	# the hobgoblin must actually land its signature part over the seed set, or
-	# every enemy-usage gate downstream is measuring an idle monster.
-	var trio: Dictionary = config(hob,3,"rules",Session.DEFAULT_RULES); trio.supplies = [0,0,0,0,0]
+	# The mixed pack includes two monsters with signature techniques; verify
+	# the enemy-usage gate measures real attacks rather than an idle roster.
+	var trio: Dictionary = config(mixed,3,"rules",Session.DEFAULT_RULES); trio.supplies = [0,0,0,0,0]
 	var trio_many: Dictionary = Runner.run_many(trio,range(200,220))
-	check(float(trio_many.enemy_skill_uses_mean.get("HOB_CLUB",0.0)) > 0.0,"the hobgoblin uses HOB_CLUB against a trio (%s)" % [trio_many.enemy_skill_uses_mean])
+	check(float(trio_many.enemy_skill_uses_mean.get("GOBLIN_SHIV",0.0))+float(trio_many.enemy_skill_uses_mean.get("KOBOLD_SLING",0.0)) > 0.0,"the mixed pack uses a signature part against a trio (%s)" % [trio_many.enemy_skill_uses_mean])

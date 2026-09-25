@@ -1,5 +1,5 @@
 extends RefCounted
-## The 이능 tab (§4): the slot grid, the bag with 흡수, what this member has
+## The 영혼석 tab (§4): the slot grid, the bag with 흡수, what this member has
 ## absorbed, the sets that are on and, for a caster essence, its spell. The
 ## text helpers are shared with the banners and the monster inspection.
 const Essences = preload("res://expedition/progression/essences.gd")
@@ -37,7 +37,7 @@ static func stat_line(id: String, tier: int) -> String:
 ## essence's active is its school's spell.
 static func active_line(id: String) -> String:
 	var school: String = str(Essences.school(id))
-	if not school.is_empty(): return "주문 이능 · %s 계열 주문 하나를 액티브로 쓴다" % str(SCHOOL_NAMES.get(school,school))
+	if not school.is_empty(): return "주문 영혼석 · %s 계열 주문 하나를 액티브로 쓴다" % str(SCHOOL_NAMES.get(school,school))
 	var def: Dictionary = Abilities.DEFINITIONS.get(id.split("@")[0],{})
 	return str(def.get("description",""))
 
@@ -98,7 +98,7 @@ static func sets(list: VBoxContainer, actor: Dictionary) -> void:
 
 static func bag(ui, list: VBoxContainer, actor: Dictionary, editable: bool) -> void:
 	var index: int = ui.tactics_actor
-	var box := card(list,"가방의 이능","EssenceBag")
+	var box := card(list,"가방의 영혼석","EssenceBag")
 	var ids: Array = ui.session.parts_bag.keys()
 	ids.sort()
 	var shown := 0
@@ -112,22 +112,22 @@ static func bag(ui, list: VBoxContainer, actor: Dictionary, editable: bool) -> v
 		label(info,"%s ×%d" % [Essences.title(id),int(ui.session.parts_bag[id])],15)
 		if not tag_line(id).is_empty(): label(info,tag_line(id),12)
 		if tier >= Essences.MAX_TIER: label(info,"최고 단계",12)
-		elif tier == 0: label(info,"새 이능 · "+stat_line(id,1),12)
+		elif tier == 0: label(info,"새 영혼석 · "+stat_line(id,1),12)
 		else: label(info,"단계 %d → %d · %s" % [tier,tier+1,stat_line(id,tier+1)],12)
 		var absorb: Button = ui.button(row,"흡수",func(): absorb_press(ui,index,id),editable and tier < Essences.MAX_TIER)
 		absorb.name = "EssenceAbsorb_"+id
-	if shown == 0: label(box,"가방에 이능 없음",13)
+	if shown == 0: label(box,"가방에 영혼석 없음",13)
 
 static func absorb_press(ui, index: int, id: String) -> void:
 	var reason: String = ui.session.absorb_essence(index,id)
 	if not reason.is_empty(): ui.notice = reason
-	ui.show_character(index,"이능")
+	ui.show_character(index,"영혼석")
 
 static func absorbed(ui, list: VBoxContainer, actor: Dictionary, editable: bool) -> void:
 	var index: int = ui.tactics_actor
-	var box := card(list,"흡수한 이능","EssenceOwned")
+	var box := card(list,"흡수한 영혼석","EssenceOwned")
 	var ids: Array = owned(actor)
-	if ids.is_empty(): label(box,"흡수한 이능 없음",13)
+	if ids.is_empty(): label(box,"흡수한 영혼석 없음",13)
 	for id in ids:
 		var tier: int = Essences.tier(actor,id)
 		label(box,"%s · %d단계%s" % [Essences.title(id),tier," · 장착" if id in actor.equipped_abilities else ""],15)
@@ -144,16 +144,16 @@ static func absorbed(ui, list: VBoxContainer, actor: Dictionary, editable: bool)
 static func chooser(ui, slot: int) -> void:
 	var index: int = ui.tactics_actor
 	var actor: Dictionary = ui.session.party[index]
-	ui.clear(ui.item_detail); label(ui.item_detail,"이능 장착",20)
+	ui.clear(ui.item_detail); label(ui.item_detail,"영혼석 장착",20)
 	var shown := 0
 	for id in owned(actor):
 		if id in actor.equipped_abilities: continue
 		shown += 1
 		var pick: Button = ui.button(ui.item_detail,"%s · %d단계" % [Essences.title(id),Essences.tier(actor,id)],func():
 			if ui.session.equip_part(index,slot,id):
-				ui.item_popup.hide(); ui.refresh(); ui.show_character(index,"이능"),Essences.can_manage(ui.session) and actor.hp > 0)
+				ui.item_popup.hide(); ui.refresh(); ui.show_character(index,"영혼석"),Essences.can_manage(ui.session) and actor.hp > 0)
 		pick.name = "EssencePick_"+str(id)
-	if shown == 0: label(ui.item_detail,"흡수한 이능 없음",14)
+	if shown == 0: label(ui.item_detail,"흡수한 영혼석 없음",14)
 	ui.button(ui.item_detail,"취소",func(): ui.item_popup.hide()); ui.item_popup.popup_centered()
 
 static func slot_detail(ui, slot: int, id: String) -> void:
@@ -169,7 +169,7 @@ static func slot_detail(ui, slot: int, id: String) -> void:
 		pick.name = "EssenceSpellPick_"+id
 	var off: Button = ui.button(ui.item_detail,"해제",func():
 		if ui.session.unequip_part(index,slot):
-			ui.item_popup.hide(); ui.refresh(); ui.show_character(index,"이능"),Essences.can_manage(ui.session) and actor.hp > 0)
+			ui.item_popup.hide(); ui.refresh(); ui.show_character(index,"영혼석"),Essences.can_manage(ui.session) and actor.hp > 0)
 	off.name = "EssenceUnequip"
 	ui.button(ui.item_detail,"닫기",func(): ui.item_popup.hide()); ui.item_popup.popup_centered()
 
@@ -185,7 +185,7 @@ static func pick_spell(ui, index: int, id: String) -> void:
 		var caption: String = "%s%s · Lv%d · %dMP" % ["✓ " if spell_id == chosen else "",str(row.get("name",spell_id)),int(row.get("level",1)),int(row.get("mp",0))]
 		var pick: Button = ui.button(ui.item_detail,caption,func():
 			if ui.session.choose_essence_spell(index,id,spell_id):
-				ui.item_popup.hide(); ui.show_character(index,"이능"),Essences.can_manage(ui.session))
+				ui.item_popup.hide(); ui.show_character(index,"영혼석"),Essences.can_manage(ui.session))
 		pick.name = "EssenceSpell_"+spell_id
 		pick.icon = Art.spell_icon(spell_id); pick.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		pick.add_theme_constant_override("icon_max_width",28)

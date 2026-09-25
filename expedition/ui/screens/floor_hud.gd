@@ -270,7 +270,7 @@ static func show_manual_tactics(ui) -> void:
 				session.in_combat() or command in ["HOLD_POSITION","FOLLOW","STOP_ATTACK"])
 			pick.name = "Tactic_"+command
 			pick.toggle_mode = true; pick.button_pressed = session.party_command == command
-	var skills = ui.button(box,"기술",func(): show_manual_skills(ui),not actor.prepared.is_empty() or actor.equipped_abilities.any(func(id): return not str(id).is_empty()))
+	var skills = ui.button(box,"기술",func(): show_manual_skills(ui),not actor.prepared.is_empty() or not Session.Abilities.held(actor).is_empty())
 	skills.name = "TacticSkills"
 	center_tactics_popup(ui,204 if session.party.size() == 1 else 348)
 
@@ -295,8 +295,8 @@ static func show_manual_skills(ui) -> void:
 		spell.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR; spell.icon = Art.spell_icon(spell_id); spell.add_theme_constant_override("icon_max_width",28)
 		spell.name = "Spell_"+spell_id
 		spell.alignment = HORIZONTAL_ALIGNMENT_LEFT; spell.custom_minimum_size.y = 54
-	if actor.equipped_abilities.any(func(id): return not str(id).is_empty()): ui.label(choices,"파츠",15)
-	for id in actor.equipped_abilities:
+	if not Session.Abilities.held(actor).is_empty(): ui.label(choices,"파츠",15)
+	for id in Session.Abilities.held(actor):
 		var part_id: String = str(id)
 		if part_id.is_empty() or not Session.Abilities.usable_by(actor,part_id): continue
 		var def: Dictionary = Session.Abilities.definition(part_id)
@@ -326,7 +326,7 @@ static func show_part_actions(ui) -> void:
 	var box := VBoxContainer.new(); box.name = "PartActionMenu"; ui.modal_content.add_child(box)
 	ui.label(box,"파츠",20)
 	var actor: Dictionary = session.party[0]
-	for id in actor.equipped_abilities:
+	for id in Session.Abilities.held(actor):
 		if str(id).is_empty() or not Session.Abilities.usable_by(actor,str(id)): continue
 		var def: Dictionary = Session.Abilities.definition(id)
 		var available: bool = int(actor.cooldowns.get(id,0)) <= 0

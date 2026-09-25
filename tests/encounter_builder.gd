@@ -9,19 +9,19 @@ func rng(seed_value: int) -> RandomNumberGenerator:
 func row(id: String) -> Dictionary:
 	return Builder.species(id)
 func run() -> void:
-	check(Builder.table().size() == 13,"thirteen species loaded")
-	check(is_equal_approx(Builder.curve(row("kobold"),1),1.0) and is_equal_approx(Builder.curve(row("kobold"),4),1.0),"FLAT is one across range")
-	check(is_equal_approx(Builder.curve(row("dcss_orc"),1),0.15) and is_equal_approx(Builder.curve(row("dcss_orc"),6),1.0),"RISE ramps 0.15 to 1")
+	check(Builder.table().size() == 30,"thirty species loaded")
+	check(is_equal_approx(Builder.curve(row("kobold"),1),1.0) and is_equal_approx(Builder.curve(row("kobold"),3),1.0),"FLAT is one across range")
+	check(is_equal_approx(Builder.curve(row("dcss_orc"),4),0.15) and is_equal_approx(Builder.curve(row("dcss_orc"),6),1.0),"RISE ramps 0.15 to 1")
 	check(is_equal_approx(Builder.curve(row("dcss_rat"),1),1.0) and is_equal_approx(Builder.curve(row("dcss_rat"),3),0.15),"FALL ramps 1 to 0.15")
-	check(is_equal_approx(Builder.curve(row("dcss_hobgoblin"),3),1.0) and is_equal_approx(Builder.curve(row("dcss_hobgoblin"),1),0.2),"PEAK is one at the middle, 0.2 at the ends")
+	check(is_equal_approx(Builder.curve(row("dcss_hobgoblin"),2),1.0) and is_equal_approx(Builder.curve(row("dcss_hobgoblin"),1),0.2),"PEAK is one at the middle, 0.2 at the ends")
 	check(Builder.curve(row("dcss_rat"),4) == 0.0 and Builder.curve(row("dcss_river_rat"),1) == 0.0,"outside the range is zero")
-	check(is_equal_approx(Builder.weight(row("dcss_orc"),1),150.0),"orc weight at depth one is 150")
+	check(Builder.weight(row("dcss_orc"),1) == 0.0 and Builder.weight(row("dcss_orc"),4) == 600.0,"orcs live in the mine zone")
 	check(Builder.threat({"species_id":"goblin","role":"CASTER"}) == 4 and Builder.threat({"species_id":"kobold","role":"RANGED"}) == 3,"role bonus adds to threat")
 	# Candidates respect depth and threat ceiling.
 	var early: Array = Builder.candidates(1,3+1).map(func(r): return r.species_id)
 	check("dcss_river_rat" not in early and "dcss_gnoll" not in early and "dcss_hobgoblin" in early,"early candidates exclude heavy species")
 	# Fill: budget respected, guardrails hold, deterministic.
-	var seen_backline := false; var seen_gnoll_band := false
+	var seen_backline := false
 	for seed_value in range(200):
 		for budget in [3,5,6,9]:
 			var members: Array = Builder.fill(rng(seed_value),1,budget,budget >= 9)
@@ -31,9 +31,6 @@ func run() -> void:
 			for m in members: total += m.threat
 			check(total >= budget-1 and total <= budget+1,"threat within budget ±1 (%d for %d)" % [total,budget])
 			if members.size() >= 3: seen_backline = true
-			if members.any(func(m): return m.species_id == "dcss_gnoll"):
-				seen_gnoll_band = true
-				check(members.size() <= 4 and members.filter(func(m): return m.species_id in ["dcss_rat","dcss_frilled_lizard"]).size() >= 2,"gnoll brings two small followers")
 			for m in members:
 				check(m.has("display_name") and m.max_health > 0 and m.role in ["MELEE","RANGED","CASTER"],"member carries name, health and role")
 			check(members == Builder.fill(rng(seed_value),1,budget,budget >= 9),"fill is deterministic per seed")
@@ -44,19 +41,25 @@ func run() -> void:
 			check(capped.size() <= 2 and Builder.valid(capped,budget,2).is_empty(),"F1 count cap and threat budget both hold")
 	var trio := [Builder.member(row("kobold"),"MELEE"),Builder.member(row("dcss_rat"),"MELEE"),Builder.member(row("goblin"),"RANGED")]
 	check(Builder.valid(trio,6).is_empty() and Builder.valid(trio,6,2) == "too many","count cap rejects an otherwise legal budget-six trio")
-	var band := [Builder.member(row("dcss_gnoll"),"MELEE"),Builder.member(row("dcss_rat"),"MELEE"),Builder.member(row("dcss_frilled_lizard"),"MELEE")]
+	var band := [Builder.member(row("dcss_gnoll"),"MELEE"),Builder.member(row("dcss_river_rat"),"MELEE"),Builder.member(row("giant_leech"),"MELEE")]
 	check(Builder.valid(band,7).is_empty(),"gnoll band is the deliberate all-melee exception")
+	var seen_gnoll_band := false
+	for seed_value in range(300):
+		var group: Array = Builder.fill(rng(seed_value),7,9,true)
+		if group.any(func(m): return m.species_id == "dcss_gnoll"):
+			seen_gnoll_band = true
+			check(group.filter(func(m): return m.species_id in ["dcss_river_rat","giant_leech"]).size() >= 2,"gnoll brings two zone-three followers")
 	check(seen_backline and seen_gnoll_band,"large encounters and gnoll bands both occur")
 	check(Builder.valid([{"species_id":"kobold","role":"MELEE","threat":2},{"species_id":"kobold","role":"MELEE","threat":2},{"species_id":"dcss_rat","role":"MELEE","threat":1}],5) != "","three melee without backline is rejected")
 	check(Builder.valid([{"species_id":"goblin","role":"CASTER","threat":4},{"species_id":"goblin","role":"CASTER","threat":4}],9) != "","two casters rejected")
 	check(Builder.valid([{"species_id":"dcss_rat","role":"MELEE","threat":1}],6) != "","far below budget rejected")
-	# Depth 3 sees more orcs than depth 1 over the same seeds.
-	var orcs := {1:0,3:0}
-	for depth in [1,3]:
+	# Orcs belong to the mine zone, not the ruins.
+	var orcs := {1:0,4:0}
+	for depth in [1,4]:
 		for seed_value in range(300):
 			for m in Builder.fill(rng(seed_value),depth,6,false):
 				if m.species_id == "dcss_orc": orcs[depth] += 1
-	check(orcs[3] > orcs[1]*2,"orcs become common by depth three (%s)" % [orcs])
+	check(orcs[1] == 0 and orcs[4] > 0,"orcs appear in the mine zone (%s)" % [orcs])
 	# Placement inside a 9x9 open room with one door on the north wall.
 	var cells: Array = []
 	for y in range(1,10):
@@ -78,5 +81,5 @@ func run() -> void:
 	var starved: Array = Builder.fill(rng(1),1,9,false)
 	Builder.content.species = original_table
 	check(starved.size() >= 1 and starved.size() <= 4,"a saturated single-role table still returns a bounded group")
-	check(Builder.table().size() == 13,"the species table is restored")
+	check(Builder.table().size() == 30,"the species table is restored")
 	print("Encounter builder: %d failures" % failures); quit(1 if failures else 0)

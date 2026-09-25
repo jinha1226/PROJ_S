@@ -18,11 +18,11 @@ func run() -> void:
 
 func session() -> void:
 	check(Session.ARENA_PRESETS.size() == 7 and Session.ARENA_PRESETS.has("early_hob") and Session.ARENA_PRESETS.has("custom"),"six presets plus custom")
-	var members := [{"stance":"CHARGER","parts":["HOB_CLUB","GUARD"]},{"stance":"SKIRMISHER","parts":["KOBOLD_SLING",""]},{"stance":"GUARDIAN","parts":["PUSH","GUARD"]}]
+	var members := [{"stance":"CHARGER","parts":["ORE_SLAM","GUARD"]},{"stance":"SKIRMISHER","parts":["KOBOLD_SLING",""]},{"stance":"GUARDIAN","parts":["PUSH","GUARD"]}]
 	var t = Session.arena_test(42,3,Session.ARENA_PRESETS.opt_archers,members)
 	check(t.phase == "BATTLE" and t.party.size() == 3 and t.in_combat(),"arena session is a floor battle")
 	check(t.enemies.size() == 3 and t.enemies.all(func(e): return e.hp > 0),"opt_archers roster spawned")
-	check(t.party[0].stance == "CHARGER" and t.party[0].equipped_abilities == ["HOB_CLUB","GUARD"] and t.party[0].rules.any(func(r): return r.skill == "HOB_CLUB"),"member setup applied with default rules")
+	check(t.party[0].stance == "CHARGER" and t.party[0].equipped_abilities == ["ORE_SLAM","GUARD"] and t.party[0].rules.any(func(r): return r.skill == "ORE_SLAM"),"member setup applied with default rules")
 	check(t.party[1].equipped_abilities == ["KOBOLD_SLING",""],"empty slot allowed")
 	check(t.party.all(func(a): return a.hp == a.max_hp),"full health")
 	check(t.auto_stop_reason() == "BATTLE_START","starts stopped at battle start")
@@ -56,10 +56,10 @@ func scene() -> void:
 	var part0 = scene.find_child("ArenaPart_0_0",true,false)
 	check(part0 != null and part0.item_count == Abilities.DEFINITIONS.size()+1,"part picker lists every catalog part plus empty")
 	# One part, one slot: the pair of pickers cannot both land on the same part.
-	var club: int = Abilities.DEFINITIONS.keys().find("HOB_CLUB")+1
+	var club: int = Abilities.DEFINITIONS.keys().find("ORE_SLAM")+1
 	part0.item_selected.emit(club)
 	for frame in range(3): await process_frame
-	check(scene.arena_config.members[0].parts[0] == "HOB_CLUB","the part choice is recorded")
+	check(scene.arena_config.members[0].parts[0] == "ORE_SLAM","the part choice is recorded")
 	check(scene.find_child("ArenaPart_0_1",true,false).is_item_disabled(club),"the other slot greys the part out")
 	check(not scene.find_child("ArenaPart_1_1",true,false).is_item_disabled(club),"another member may still take it")
 	check(scene.find_child("ArenaStance_0_SKIRMISHER",true,false) == null,"the manually controlled hero has no stance picker")

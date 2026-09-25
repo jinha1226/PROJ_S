@@ -14,7 +14,7 @@ static func paint(canvas: CanvasItem, kind: String, center: Vector2, radius: flo
 			canvas.draw_colored_polygon(PackedVector2Array([center+Vector2(-radius,radius*0.75),center+Vector2(radius,radius*0.75),center+Vector2(0,-radius)]),Color("24333d"))
 			canvas.draw_line(center+Vector2(-radius,radius*0.75),center+Vector2(radius,radius*0.75),color,2)
 			canvas.draw_line(center+Vector2(0,-radius),center+Vector2(0,radius*0.5),color,2)
-		"pylon":
+		"lever":
 			canvas.draw_rect(Rect2(center-Vector2(radius*0.3,radius),Vector2(radius*0.6,radius*2)),Color("24333d"))
 			canvas.draw_circle(center-Vector2(0,radius*0.6),radius*0.36,color)
 		"dirt":

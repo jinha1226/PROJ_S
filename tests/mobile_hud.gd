@@ -30,12 +30,12 @@ func run() -> void:
 		var object_id: String = Art.FirstFloor.feature_id({"kind":"curio","curio_id":curio})
 		check(Art.FirstFloor.OBJECTS.has(object_id),"curio %s has its own object" % curio)
 	check(["SUPPLY_CACHE","BROKEN_CHEST","MUSHROOMS","DEAD_ADVENTURER"].map(func(c): return Art.FirstFloor.feature_id({"kind":"curio","curio_id":c})).reduce(func(a,b): return a if b in a else a+[b],[]).size() == 4,"the four curios look different")
-	check(["stairs","pylon","entry","altar","relic","camp"].all(func(k): return Art.FirstFloor.OBJECTS.has(Art.FirstFloor.feature_id({"kind":k}))),"map features are drawn as objects")
+	check(["stairs","lever","binding","entry","altar","relic","camp"].all(func(k): return Art.FirstFloor.OBJECTS.has(Art.FirstFloor.feature_id({"kind":k}))),"map features are drawn as objects")
 	check(Art.MASTERY_IDS.all(func(axis): return Art.mastery_icon(axis).atlas == (Art.WEAPON_ICONS[axis] if Art.WEAPON_ICONS.has(axis) else Art.SCHOOL_ICONS[axis])),"every mastery axis has its weapon or school picture")
 	var spells: Dictionary = Session.CombatStats.content.spells
 	check(spells.keys().all(func(id): return Art.spell_icon(id).atlas == Art.SPELL_ICONS[id]),"every spell in combat.json has its own card")
 	check(Art.spell_icon("no_such_spell").atlas == Art.SPELL_ICONS.bolt,"an unknown spell falls back to the fire bolt")
-	check(["boss_mire","boss_bomber","boss_giant"].all(func(n): return Art.boss_sprite(["boss_mire","boss_bomber","boss_giant"].find(n)).atlas.resource_path.ends_with(n+".png")),"each boss pattern has its own sprite")
+	check(["dcss_hobgoblin","ore_golem","wraith"].all(func(n): return Art.enemy_sprite(n).atlas.resource_path.ends_with(n+".png")),"each boss uses a species sprite")
 	root.size = Vector2i(390,844)
 	var scene = load("res://expedition/ui/main.tscn").instantiate()
 	root.add_child(scene); scene.set_process(false); await process_frame
@@ -155,13 +155,13 @@ func framing(scene, s) -> void:
 ## The HUD speaks through the log, not through the toast.
 func quiet_log(scene, s) -> void:
 	var drop: Dictionary = s.make_actor(999,"시험 대상",true)
-	drop.hp = 0; drop.part_id = "BOMB"
+	drop.hp = 0; drop.part_id = "GOBLIN_SHIV"; drop.species_id = "goblin"
 	while s.Hexaco.sample(s.seed_value,s.depth*10000+drop.id,"essence",100) >= s.Abilities.DROP_PERCENT: drop.id += 1
 	scene.notice = ""
 	scene.run_action(func(): s.roll_part(drop); return true)
 	await process_frame
 	check(scene.notice.is_empty() and not scene.toast.visible,"a part drop produces no toast")
-	check(s.log_lines[-1] == Session.Abilities.DEFINITIONS.BOMB.item+" 획득","a part drop uses the concise log line")
+	check(s.log_lines[-1] == Session.Essences.title("GOBLIN_SHIV")+" 획득","a part drop uses the concise log line")
 	check(scene.find_child("RecentLog",true,false).text.ends_with(s.log_lines[-1]),"the HUD shows the latest log line")
 	check(scene.find_child("RecentLog",true,false).get_theme_stylebox("normal") is StyleBoxEmpty,"recent log has no button border")
 

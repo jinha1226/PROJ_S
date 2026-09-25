@@ -273,13 +273,17 @@ static func end_round(s) -> bool:
 		for x in range(s.BOARD_SIDE):
 			var point := Vector2i(x,y)
 			var cell: Dictionary = s.tile(point)
-			if cell.fire <= 0 and cell.wet <= 0: continue
-			var result := ElementRules.project_existing_fire_tick(cell.fire, cell.wet, 0, s.world_time)
-			cell.fire = result.fire_after_decay
-			cell.wet = maxi(0, result.wetness_after_suppression - ElementRules.WETNESS_DECAY_PER_ENVIRONMENT_TICK)
-			if result.known_damage <= 0: continue
-			var victim: Dictionary = s.at(point)
-			if not victim.is_empty() and result.known_damage > 0: s.damage(victim, result.known_damage, 999, "FIRE")
+			var suppression := 0
+			if cell.fire > 0 or cell.wet > 0:
+				var result := ElementRules.project_existing_fire_tick(cell.fire, cell.wet, 0, s.world_time)
+				cell.fire = result.fire_after_decay
+				cell.wet = maxi(0, result.wetness_after_suppression - ElementRules.WETNESS_DECAY_PER_ENVIRONMENT_TICK)
+				suppression = int(result.suppression)
+				var victim: Dictionary = s.at(point)
+				if not victim.is_empty() and result.known_damage > 0: s.damage(victim, result.known_damage, 999, "FIRE")
+			if suppression > 0 or cell.has("steam_until") or bool(cell.get("ice",false)) or bool(cell.get("poison_pool",false)):
+				s.Reactions.tile_tick(s, point, cell, suppression)
+	s.Reactions.refresh_wet(s)
 	# The round's guards end with the round, win or lose: a cleared room must not
 	# carry 엄호 into EXPLORE.
 	for actor in s.party+s.npcs: actor["guarded"] = false; actor["protected_by"] = -1
@@ -314,6 +318,7 @@ static func plan_enemies(s) -> void:
 	Floor.MonsterAI.plan(s)
 
 static func enemy_attack_turn(s, enemy: Dictionary) -> void:
+	s.Reactions.begin_action(s)
 	_enemy_attack_turn(s,enemy)
 	if s.presentation != null: s.presentation.capture(s,enemy.id)
 

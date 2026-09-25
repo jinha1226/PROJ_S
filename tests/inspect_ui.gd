@@ -34,7 +34,7 @@ func run() -> void:
 	var sheet: Dictionary = StatSheet.sheet(s,foe)
 	check(label(scene,"EnemyDefence") != null and label(scene,"EnemyDefence").text == "방어 %d   회피 %d   막기 %d" % [int(sheet.ac.total),int(sheet.ev.total),int(sheet.sh.total)],"defence numbers from the stat sheet")
 	check(label(scene,"EnemyResist") != null and label(scene,"EnemyResist").text.contains("%d%%" % int(sheet.res_fire.total)),"its resistance is listed")
-	check(label(scene,"EnemyEssence") != null and label(scene,"EnemyEssence").text == "이능 · "+Essences.title(str(foe.part_id)),"its essence is named")
+	check(label(scene,"EnemyEssence") != null and label(scene,"EnemyEssence").text == "영혼석 · "+Essences.title(str(foe.part_id)),"its essence is named")
 	scene.details_popup.hide()
 	foe.res = {}
 	scene.inspect_cell(cell)
@@ -45,6 +45,6 @@ func run() -> void:
 	npc.essences = {"ORC_CLEAVER":1}; npc.equipped_abilities = ["ORC_CLEAVER"]
 	scene.Popups.show_npc(scene,npc)
 	for _i in range(3): await process_frame
-	check(label(scene,"NpcLevel") != null and label(scene,"NpcLevel").text == "Lv.%d · 이능 %s" % [int(npc.level),Essences.title("ORC_CLEAVER")],"the npc line shows level and essences")
+	check(label(scene,"NpcLevel") != null and label(scene,"NpcLevel").text == "Lv.%d · 영혼석 %s" % [int(npc.level),Essences.title("ORC_CLEAVER")],"the npc line shows level and essences")
 	scene.details_popup.hide(); scene.queue_free(); await process_frame
 	print("Inspect UI: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)

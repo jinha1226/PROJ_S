@@ -62,7 +62,7 @@ func data() -> void:
 	# Suggested stance follows the build.
 	hero.equipped_abilities = ["KOBOLD_SLING",""]
 	check(Stances.ranged_part(hero) == "KOBOLD_SLING" and Stances.suggested(hero) == "SKIRMISHER","a ranged part suggests skirmisher")
-	hero.equipped_abilities = ["PUSH","GUARD"]
+	hero.equipped_abilities = ["PUSH","SHIELD_STANCE"]
 	check(Stances.ranged_part(hero) == "" and Stances.suggested(hero) == "GUARDIAN","guard suggests guardian")
 	hero.equipped_abilities = ["PUSH",""]
 	check(Stances.suggested(hero) == "CHARGER","otherwise charger")

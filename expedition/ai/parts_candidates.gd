@@ -25,7 +25,7 @@ static func part(id: String, cell: Vector2i, damage: int, target_id: int) -> Dic
 ## lands those, a push is scored by its rule condition alone. `benefit` itself
 ## survives as one half of the "do not drag a foe off an ally" test.
 static func push_options(s, actor: Dictionary, options: Array) -> void:
-	if "PUSH" not in actor.equipped_abilities: return
+	if not Abilities.holds(actor,"PUSH"): return
 	for enemy in s.combat_enemies():
 		if enemy.hp <= 0 or not s.melee_reach(actor.pos,enemy.pos): continue
 		var landing: Vector2i = enemy.pos+(enemy.pos-actor.pos)
@@ -48,7 +48,7 @@ static func push_options(s, actor: Dictionary, options: Array) -> void:
 
 ## 엄호 has no self form: one candidate per adjacent living ally.
 static func guard_options(s, actor: Dictionary, options: Array) -> void:
-	if "GUARD" not in actor.equipped_abilities: return
+	if not Abilities.holds(actor,"GUARD"): return
 	for mate in s.friends():
 		if mate.id != actor.id and s.melee_reach(actor.pos,mate.pos):
 			options.append(part("GUARD",mate.pos,0,int(mate.id)))

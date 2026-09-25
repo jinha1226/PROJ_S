@@ -1,5 +1,5 @@
 extends SceneTree
-## §4 이능 화면: the slot grid, 흡수 from the bag, equipping, sets and the
+## §4 영혼석 화면: the slot grid, 흡수 from the bag, equipping, sets and the
 ## caster's spell picker.
 const Session = preload("res://expedition/run/session.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
@@ -29,12 +29,12 @@ func run() -> void:
 	var hero: Dictionary = s.party[0]
 	s.parts_bag["RAT_GNAW"] = 2
 	s.parts_bag["RIVER_RAT_SPLASH"] = 1
-	scene.show_character(0,"이능")
+	scene.show_character(0,"영혼석")
 	await frames(4)
 	var tabs: Array = scene.modal_content.find_child("CharacterTabs",true,false).get_children().map(func(b): return b.text)
-	check(tabs == ["상태","성격","기억","이능"],"the folio has four tabs ending in 이능")
-	var heading: Array = scene.modal_content.find_children("*","Label",true,false).filter(func(l): return l.text.begins_with("이능 슬롯"))
-	check(not heading.is_empty() and heading[0].text == "이능 슬롯 0 / 1","level one: no essence worn, one slot")
+	check(tabs == ["상태","성격","기억","영혼석"],"the folio has four tabs ending in 영혼석")
+	var heading: Array = scene.modal_content.find_children("*","Label",true,false).filter(func(l): return l.text.begins_with("영혼석 슬롯"))
+	check(not heading.is_empty() and heading[0].text == "영혼석 슬롯 0 / 1","level one: no essence worn, one slot")
 	var grid: GridContainer = scene.modal_content.find_child("EssenceSlots",true,false)
 	check(grid != null and grid.columns == 5 and grid.get_child_count() == 10,"ten slot cells in two rows of five")
 	check(not button(scene,"EssenceSlot0").disabled and button(scene,"EssenceSlot1").disabled,"only the level's slots open")
@@ -57,14 +57,14 @@ func run() -> void:
 	scene.item_popup.hide()
 	# Not while enemies are awake.
 	s.phase = "BATTLE"
-	scene.show_character(0,"이능"); await frames(3)
+	scene.show_character(0,"영혼석"); await frames(3)
 	check(button(scene,"EssenceAbsorb_RIVER_RAT_SPLASH").disabled,"흡수 is refused in battle")
 	s.phase = "CAMP"
 	# A second slot and a set.
 	s.gain_level_xp(hero,65)
 	check(Essences.slot_count(hero) == 2,"level two opens a second slot")
 	check(s.absorb_essence(0,"RIVER_RAT_SPLASH").is_empty() and s.equip_part(0,1,"RIVER_RAT_SPLASH"),"a second pack essence is worn")
-	scene.show_character(0,"이능"); await frames(3)
+	scene.show_character(0,"영혼석"); await frames(3)
 	var sets: Node = scene.modal_content.find_child("EssenceSets",true,false)
 	check(sets != null and sets.find_children("*","Label",true,false).any(func(l): return l.text.begins_with("무리 2")),"the pack set shows under the grid")
 	# A caster essence and its spell.
@@ -79,6 +79,6 @@ func run() -> void:
 	check(str(hero.essence_spells.get(caster,"")) == first,"the picker sets the essence's spell")
 	# The old tab name still opens the new tab.
 	scene.show_character(0,"파츠"); await frames(3)
-	check(scene.character_tab == "이능","파츠 opens 이능")
+	check(scene.character_tab == "영혼석","파츠 opens 영혼석")
 	scene.queue_free(); await process_frame
 	print("Essence UI: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)

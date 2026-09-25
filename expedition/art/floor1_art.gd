@@ -42,29 +42,30 @@ static func tile(id: String, theme_id: String = "F1_RUINS") -> AtlasTexture:
 	var floors := ["floor_a","floor_b","floor_c","floor_d"]
 	var floor_index := floors.find(id)
 	if floor_index >= 0:
-		var floor_sheet: Texture2D = MINES_FLOOR_SLABS if theme_id == "F2_MINES" else FLOOR_SLABS
+		var floor_sheet: Texture2D = MINES_FLOOR_SLABS if theme_id in ["F2_MINES","F4_CRYPT"] else FLOOR_SLABS
 		var side := floor_sheet.get_width()/2
 		return Regions.region(floor_sheet,[floor_index%2*side,floor_index/2*side,side,side],"flat/"+theme_id+"/floor/"+id)
 	if id in ["front","top"]:
-		var wall_sheet: Texture2D = MINES_WALL_BLOCKS if theme_id == "F2_MINES" else WALL_BLOCKS
+		var wall_sheet: Texture2D = MINES_WALL_BLOCKS if theme_id in ["F2_MINES","F4_CRYPT"] else WALL_BLOCKS
 		var side := wall_sheet.get_width()/2
 		return Regions.region(wall_sheet,[0 if id == "front" else side,0,side,side],"flat/"+theme_id+"/wall/"+id)
-	var sheet: Texture2D = MINES if theme_id == "F2_MINES" else RUINS
+	var sheet: Texture2D = MINES if theme_id in ["F2_MINES","F4_CRYPT"] else RUINS
 	return Regions.region(sheet,catalog.materials[id],"flat/"+theme_id+"/material/"+id)
 
 static func material(theme_id: String = "F1_RUINS") -> Dictionary:
 	return {"front":tile("front",theme_id),"top":tile("top",theme_id)}
 
 static func terrain(cell: Dictionary, point: Vector2i, theme_id: String = "F1_RUINS") -> AtlasTexture:
-	var id: String = {"wood":"wood","water":"water","metal":"metal","wall":"front","rubble":"rubble","dirt":"dirt"}.get(cell.terrain,["floor_a","floor_b","floor_c","floor_d"][posmod(point.x*7+point.y*3,4)])
+	var id: String = {"wood":"wood","water":"water","metal":"metal","wall":"front","rubble":"rubble","dirt":"dirt",
+		"lava":"rubble","deep_water":"water","bog":"water"}.get(cell.terrain,["floor_a","floor_b","floor_c","floor_d"][posmod(point.x*7+point.y*3,4)])
 	return tile(id,theme_id)
 
 ## The object that stands for a map feature: every curio has its own, and
-## the stairs and the boss pylon are drawn as objects too.
+## the stairs and a foundry's levers are drawn as objects too.
 static func feature_id(feature: Dictionary) -> String:
 	if feature.kind == "curio":
 		return {"SUPPLY_CACHE":"supply_cache","BROKEN_CHEST":"broken_chest","MUSHROOMS":"mushrooms","DEAD_ADVENTURER":"dead_adventurer"}.get(feature.get("curio_id",""),"")
-	return {"entry":"gate","altar":"altar","relic":"relic","camp":"campfire","stairs":"stairs","pylon":"pylon"}.get(feature.kind,"")
+	return {"entry":"gate","altar":"altar","relic":"relic","camp":"campfire","stairs":"stairs","lever":"pylon","binding":"altar"}.get(feature.kind,"")
 
 static func paint_object(canvas: CanvasItem, id: String, cell: Rect2, tint: Color = Color.WHITE) -> void:
 	var texture: Texture2D = OBJECTS.get(id)

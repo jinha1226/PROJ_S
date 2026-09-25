@@ -51,7 +51,7 @@ static func shell(ui, tab: String) -> VBoxContainer:
 		member.toggle_mode = true; member.button_pressed = index == ui.tactics_actor
 	var tabs := HBoxContainer.new(); tabs.name = "CharacterTabs"; tabs.add_theme_constant_override("separation",0)
 	place(tabs,design,Rect2(0,168,390,46))
-	for name in ["상태","성격","기억","이능"]:
+	for name in ["상태","성격","기억","영혼석"]:
 		var button = ui.button(tabs,name,func(): ui.show_character(ui.tactics_actor,name))
 		button.toggle_mode = true; button.button_pressed = tab == name; button.custom_minimum_size.y = 46
 		button.size_flags_stretch_ratio = 1
@@ -70,7 +70,7 @@ static func shell(ui, tab: String) -> VBoxContainer:
 
 static func heading_text(ui, tab: String) -> String:
 	var actor: Dictionary = ui.session.party[ui.tactics_actor]
-	if tab == "이능": return "이능 슬롯 %d / %d" % [Essences.equipped(actor).size(),Essences.slot_count(actor)]
+	if tab == "영혼석": return "영혼석 슬롯 %d / %d" % [Essences.equipped(actor).size(),Essences.slot_count(actor)]
 	return "현재 상태" if tab == "상태" else tab
 
 static func card(parent: Node, title: String) -> VBoxContainer:
@@ -134,7 +134,7 @@ static func sheet_cards(ui, list: VBoxContainer, actor: Dictionary) -> void:
 			cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			cell.add_theme_font_size_override("font_size",12)
 
-## "종족  +12 / 이능 오크  +2 / 합계  14": one line per non-zero source.
+## "종족  +12 / 영혼석 오크  +2 / 합계  14": one line per non-zero source.
 static func breakdown(entry: Dictionary, key: String) -> String:
 	var unit: String = "%" if key.begins_with("res_") else ""
 	var lines: Array = []

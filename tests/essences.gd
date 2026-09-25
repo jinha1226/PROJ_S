@@ -28,7 +28,8 @@ func run() -> void:
 	print("Essences: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func catalog() -> void:
-	for id in Abilities.DEFINITIONS: check(Essences.has(id),"every part is an essence: "+id)
+	for id in Essences.content.rows: check(Essences.has(id),"every catalog row is an essence: "+id)
+	check(not Essences.has("PUSH") and not Essences.has("GUARD") and not Essences.has("BOMB"),"basic actions and retired boss parts are not soul stones")
 	for id in Abilities.droppable():
 		var row: Dictionary = Essences.row(id)
 		check(str(row.role) in Essences.ROLES,"%s has a role tag" % id)
@@ -37,7 +38,7 @@ func catalog() -> void:
 	for school in Essences.CASTER_BY_SCHOOL:
 		var id: String = str(Essences.CASTER_BY_SCHOOL[school])
 		check(Essences.has(id) and Essences.school(id) == school,"%s gives the %s school" % [id,school])
-		check(Essences.role(id) == "CASTER","%s is a caster" % id)
+		check(Essences.role(id) == ("PACK" if school == "air" else "CASTER"),"%s has its current role" % id)
 		check(not Essences.title(id).is_empty(),"%s is named" % id)
 	check(Essences.element("FIRE_CALLER") == "fire" and Essences.element("GOBLIN_HEXER") == "will","caster element tags follow the school")
 	var variant: Dictionary = Essences.row("GOBLIN_SHIV@fire")
@@ -65,18 +66,18 @@ func sets() -> void:
 	actor.equipped_abilities[3] = "RAT_GNAW@ice"
 	check(TagSets.level(actor,"PACK") == 3,"three of a tag is the second step")
 	var active: Array = TagSets.active(actor)
-	check(active.size() == 1 and active[0].tag == "PACK" and int(active[0].level) == 3 and str(active[0].text).contains("받는 피해"),"active sets carry their text")
-	var guard := {"level":3,"essences":{},"equipped_abilities":["LIZARD_TAIL","HOB_CLUB",""]}
+	check(active.size() == 1 and active[0].tag == "PACK" and int(active[0].level) == 3 and str(active[0].text).contains("반응"),"active sets carry their text")
+	var guard := {"level":3,"essences":{},"equipped_abilities":["HOB_TAUNT","SHIELD_STANCE",""]}
 	var bonus: Dictionary = TagSets.stat_bonus(guard)
 	check(int(bonus.ac) == 2 and int(bonus.sh) == 5,"수호 2 gives armour and block")
-	var burning := {"level":3,"essences":{},"equipped_abilities":["LIZARD_TAIL@fire","HOB_CLUB@fire",""]}
+	var burning := {"level":3,"essences":{},"equipped_abilities":["HOB_TAUNT@fire","SHIELD_STANCE@fire",""]}
 	check(int(TagSets.stat_bonus(burning).res_fire) == 20,"화염 2 gives fire resistance")
 	var casters := {"level":2,"essences":{},"equipped_abilities":["FIRE_CALLER","FROST_IMP"]}
 	check(int(TagSets.stat_bonus(casters).mp) == 5,"술사 2 gives MP")
 	var hexers := {"level":2,"essences":{},"equipped_abilities":["GOBLIN_HEXER","GNOLL_SUMMONER"]}
 	check(int(TagSets.stat_bonus(hexers).res_will) == 20,"의지 2 gives will")
 	var ambush := {"level":3,"essences":{},"equipped_abilities":["GOBLIN_SHIV","GOBLIN_SHIV@fire","GOBLIN_SHIV@ice"]}
-	check(int(TagSets.stat_bonus(ambush).ev) == 5,"기습 3 gives evasion")
+	check(TagSets.level(ambush,"AMBUSH") == 3 and not TagSets.stat_bonus(ambush).has("ev"),"기습 3 now rewards dodging with a critical")
 
 func levels() -> void:
 	var s = Session.new_run(731,"sword"); var hero: Dictionary = s.party[0]
@@ -99,7 +100,7 @@ func absorbing() -> void:
 	check(s.absorb_essence(0,"GOBLIN_SHIV") == "가방에 없음","nothing absorbed from an empty bag")
 	check(int(hero.max_hp) == hp,"absorbing alone changes no pool")
 	check(s.equip_part(0,0,"ORC_CLEAVER") and hero.equipped_abilities == ["ORC_CLEAVER"],"an absorbed essence fills a slot")
-	check(int(hero.max_hp) == hp+18,"a tier-three orc is six constitution")
+	check(int(hero.max_hp) == hp+9,"a tier-three orc is three constitution")
 	check(not s.equip_part(0,1,"GOBLIN_SHIV"),"no second slot at level one")
 	check(s.unequip_part(0,0) and hero.equipped_abilities == [""] and int(s.parts_bag.ORC_CLEAVER) == 1,"taking it off keeps it absorbed, not bagged")
 	check(int(hero.max_hp) == hp and int(hero.essences.ORC_CLEAVER) == 3,"the pools drop, the tier stays")
@@ -123,7 +124,7 @@ func drops() -> void:
 	s.damage(foe,9999,int(hero.id),"SLASH")
 	check(int(s.parts_bag.get("GOBLIN_SHIV",0)) == 1,"the first kill drops it")
 	check(s.essence_seen.has("goblin") and Essences.drop_chance(s,"goblin") == 25,"after that, one in four")
-	check(s.events.any(func(e): return e.kind == "ESSENCE" and e.id == "GOBLIN_SHIV" and bool(e.new)),"a new essence is announced")
+	check(not s.events.any(func(e): return e.kind == "ESSENCE") and s.log_lines[-1] == Essences.title("GOBLIN_SHIV")+" 획득","a new essence appears only in the log")
 	s.parts_bag.clear()
 	var dropped := 0
 	for seed_value in range(40):
@@ -143,17 +144,19 @@ func drops() -> void:
 
 func actives() -> void:
 	var s = Session.new_run(731,"sword"); var hero: Dictionary = s.party[0]
-	var club: Dictionary = Abilities.DEFINITIONS.HOB_CLUB
-	hero.level = 1; hero.equipped_abilities = ["HOB_CLUB"]; hero.essences = {"HOB_CLUB":1}
-	check(Abilities.power(s,hero,club,"HOB_CLUB") == int(club.damage)+(12-10)/2,"a part hits for its damage plus half the strength over ten")
-	hero.essences.HOB_CLUB = 3
-	check(Abilities.power(s,hero,club,"HOB_CLUB") == Essences.active_power(3,int(club.damage)+1),"tier three hits half again as hard")
-	check(Abilities.power(s,hero,club) == int(club.damage)+1,"without an id the part counts as tier one")
+	var club: Dictionary = Abilities.DEFINITIONS.ORE_SLAM
+	hero.level = 1; hero.equipped_abilities = ["ORE_SLAM"]; hero.essences = {"ORE_SLAM":1}
+	var base: int = int(club.damage)+maxi(0,StatSheet.value(s,hero,"str")-10)/2
+	check(Abilities.power(s,hero,club,"ORE_SLAM") == base,"a part reads the current strength")
+	hero.essences.ORE_SLAM = 3
+	base = int(club.damage)+maxi(0,StatSheet.value(s,hero,"str")-10)/2
+	check(Abilities.power(s,hero,club,"ORE_SLAM") == Essences.active_power(3,base),"tier three hits half again as hard")
+	check(Abilities.power(s,hero,club) == base,"without an id the part counts as tier one")
 	var sling: Dictionary = Abilities.DEFINITIONS.KOBOLD_SLING
 	hero.equipped_abilities = ["GOBLIN_SHIV"]; hero.essences = {"GOBLIN_SHIV":3}
 	check(Abilities.power(s,hero,sling,"KOBOLD_SLING") == int(sling.damage)+(18-10)/2,"a ranged part reads dexterity")
 	var foe: Dictionary = s.enemies[0]
-	check(Abilities.power(s,foe,club,"HOB_CLUB") == int(club.damage),"a monster hits for the listed damage")
+	check(Abilities.power(s,foe,club,"ORE_SLAM") == int(club.damage),"a monster hits for the listed damage")
 	hero.skill_xp = {"sword":2500}
 	hero.equipped_abilities = [""]; hero.essences = {}
 	check(int(Stats.stats(s,hero).damage) == int(Stats.content.weapons.sword.damage)+2,"old sword mastery adds nothing any more")

@@ -372,7 +372,7 @@ func refresh() -> void:
 		StartScreen.build_start_screen(self); return
 	map_view.session = session; map_view.queue_redraw()
 	if session.phase == "CAMP": CampScreen.build_camp_screen(self); show_choice_if_pending(); return
-	if session.phase == "DEFEAT": ResultCard.build_result_card(self); return
+	if session.phase in ["DEFEAT","VICTORY"]: ResultCard.build_result_card(self); return
 	FloorHud.build(self,elapsed,impact_elapsed)
 	show_choice_if_pending()
 
@@ -447,8 +447,8 @@ func on_cell(point: Vector2i) -> void:
 			refresh()
 		return
 	var feature: Dictionary = session.floor_state.features.get(point,{})
-	if feature.get("kind","") == "pylon" and session.floor_state.visible.has(point):
-		run_action(func(): return session.act("PYLON",point)); return
+	if feature.get("kind","") == "lever" and session.floor_state.visible.has(point):
+		run_action(func(): return session.act("LEVER",point)); return
 	if session.in_combat() and not session.manual_mode: focus_enemy(point); refresh(); return
 	if session.floor_state.visible.has(point):
 		# A tap only reaches an npc the party can see, and only an adjacent one talks.

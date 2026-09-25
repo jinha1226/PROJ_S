@@ -1,120 +1,145 @@
 extends RefCounted
+## Four bosses, one a zone, each a test of that zone's own system (spec §7).
+## This file is the shared frame: the spawn into the zone's boss room, the
+## round each boss takes, the sealed room and its banner, the hooks the session
+## calls, and the reward. A boss's own round lives in `bosses/`.
 const Abilities = preload("res://expedition/items/abilities.gd")
-## Simplified SPD-inspired patterns, implemented independently for an 10x10 arena.
-const NAMES = ["수렁 포식자", "폭탄 암살자", "과부하 거인"]
-const BOSS_PARTS := ["SHOCKWAVE","BOMB","IRON_HIDE"]
-const BOSS_SPECIES := ["boss_mire","boss_bomber","boss_giant"]
-const HINTS = ["폭발 후 탈진 틈에 공격 · 물에서 회복", "폭탄 예고 회피 · 순간이동한 보스 추격", "보호막 가동 시 전력탑 옆에서 탑 터치"]
-
-## Whom the boss is coming for. A dominated boss comes for its own kind.
-static func victims(s, boss: Dictionary) -> Array:
-	if s.dominated(boss): return s.hostiles_of(boss)
-	return s.alive()
-
-static func target(s, boss: Dictionary) -> Dictionary:
-	var allies: Array = victims(s,boss)
-	if allies.is_empty(): allies = s.alive()
-	allies.sort_custom(func(a,b): return s.distance(a.pos,boss.pos) < s.distance(b.pos,boss.pos))
-	return allies[0]
+const Zones = preload("res://expedition/level/zones.gd")
+const Common = preload("res://expedition/actors/bosses/boss_common.gd")
+const Chief = preload("res://expedition/actors/bosses/goblin_chief.gd")
+const Golem = preload("res://expedition/actors/bosses/furnace_golem.gd")
+const Eater = preload("res://expedition/actors/bosses/soul_eater.gd")
+const Fallen = preload("res://expedition/actors/bosses/fallen_adventurer.gd")
+const KINDS := ["chief","golem","eater","fallen"]
+const NAMES := {"chief":"고블린 족장","golem":"용광로 골렘","eater":"영혼 포식자"}
+const SPECIES := {"chief":"goblin_chief","golem":"furnace_golem","eater":"soul_eater"}
+const ESSENCES := {"chief":"GOBLIN_CHIEF","golem":"FURNACE_HEART","eater":"SOUL_EATER"}
+const FAMILIES := {"chief":"goblin","golem":"elemental","eater":"undead"}
+## Which floor species' picture each boss is drawn from, three tiles tall.
+const SPRITES := {"chief":"dcss_hobgoblin","golem":"ore_golem","eater":"wraith"}
+const HINTS := {
+	"chief":"지휘 부하",
+	"golem":"수로 레버",
+	"eater":"영혼 흡수",
+	"fallen":"영혼석 전술"}
+const STATS := {
+	"chief":{"ac":2,"ev":3,"sh":10,"res":{}},
+	"golem":{"ac":8,"ev":0,"sh":0,"res":{"fire":80,"ice":-25}},
+	"eater":{"ac":3,"ev":4,"sh":0,"res":{"will":50}}}
 
 static func spawn(s, layout: Dictionary, depth: int) -> void:
-	var pattern: int = posmod(int(depth/3)-1,3)
-	var boss: Dictionary = s.make_actor(900+depth,NAMES[pattern],true)
-	var lair: Dictionary = {}
-	for room in layout.rooms:
-		if room.template_id == "boss_lair": lair = room; break
-	boss.pos = s.Floor.Generator.room_anchor(lair)
-	var deep: Dictionary = s.Floor.deep_scale(depth)
-	boss.hp = (64+8*(int(depth/3)-1))*int(deep.hp)/100; boss.max_hp = boss.hp
-	boss.attack_percent = int(deep.attack)
+	var zone: int = int(Zones.zone_of(depth))
+	var kind: String = KINDS[clampi(zone-1,0,KINDS.size()-1)]
+	var room: Dictionary = {}
+	for row in layout.rooms:
+		if str(row.template_id) == str(Zones.boss_template(zone)): room = row; break
+	if room.is_empty(): return
+	if kind == "fallen": Fallen.spawn(s,room,depth); return
+	var boss: Dictionary = s.make_actor(900+depth,NAMES[kind],true)
+	boss.pos = s.Floor.Generator.room_anchor(room)
+	boss.hp = Common.boss_hp(depth); boss.max_hp = boss.hp
+	boss.base_attack = Common.boss_attack(depth); boss.power = boss.base_attack; boss.attack_percent = 100
 	boss.speed = 100; boss.ready_at = int(s.time)+int(boss.speed)
-	boss.boss = true; boss.pattern = pattern
-	boss.cooldown = 4; boss.recovery = 0; boss.shield = false; boss.overloaded = false; boss.fuse = 0
+	boss.boss = true; boss.boss_kind = kind; boss.room_template = str(room.template_id)
+	boss.species_id = SPECIES[kind]; boss.part_id = ESSENCES[kind]
+	boss.family = FAMILIES[kind]; boss.sprite_species = SPRITES[kind]
 	boss.alert = false; boss.charging = false; boss.role = "MELEE"
-	boss.pylon = Vector2i(-1,-1)
-	for point in layout.features:
-		if layout.features[point].kind == "pylon": boss.pylon = point; break
-	boss.part_id = BOSS_PARTS[pattern]
-	boss.species_id = BOSS_SPECIES[pattern]
+	boss.telegraph = {}; boss.turns = 0; boss.room_sealed = false
+	var stats: Dictionary = STATS[kind]
+	boss.ac = int(stats.ac); boss.ev = int(stats.ev); boss.sh = int(stats.sh); boss.res = (stats.res as Dictionary).duplicate()
 	s.enemies.append(boss)
+	match kind:
+		"chief": Chief.spawn(s,boss,room,depth)
+		"golem": Golem.spawn(s,boss,room,depth)
+		"eater": Eater.spawn(s,boss,room,depth)
 
+## The board's warning cells: whatever the boss has announced and not landed.
 static func plan(s, boss: Dictionary) -> void:
 	if s.alive().is_empty(): return
-	if boss.get("fuse",0) > 0:
-		for cell in boss.get("intent_cells",[]): s.intents.append({"id":boss.id,"cell":cell,"damage":Abilities.scaled(boss,16),"kind":"BOSS","resolve_at":int(boss.get("resolve_at",s.time+int(boss.fuse)*100))})
-		return
-	boss.charging = false
-	if boss.pattern == 2:
-		if boss.hp <= boss.max_hp/2 and not boss.overloaded:
-			boss.overloaded = true; boss.shield = true
-		return
-	if boss.get("recovery",0) > 0 or boss.get("cooldown",0) > 0: return
-	if boss.pattern == 0 and not s.melee_reach(boss.pos,target(s,boss).pos): return
-	boss.charging = true
-	boss.fuse = 2
-	boss.resolve_at = s.time+200
-	var center: Vector2i = boss.pos if boss.pattern == 0 else target(s,boss).pos
-	boss.intent_cells = []
-	for y in range(s.BOARD_SIDE):
-		for x in range(s.BOARD_SIDE):
-			var cell := Vector2i(x,y)
-			var marked: bool = s.distance(center,cell) <= 2 if boss.pattern == 0 else absi(center.x-x) <= 1 and absi(center.y-y) <= 1
-			if marked:
-				boss.intent_cells.append(cell)
-				s.intents.append({"id":boss.id,"cell":cell,"damage":Abilities.scaled(boss,16),"kind":"BOSS","resolve_at":int(boss.resolve_at)})
+	Common.emit(s,boss)
 
 static func turn(s, boss: Dictionary) -> void:
+	if int(boss.hp) <= 0: return
 	# A frozen boss spends its turn where it stands; a bound one still swings.
 	if s.status_blocks(boss,"ATTACK"): return
-	var held: bool = s.status_blocks(boss,"MOVE")
-	var hero: Dictionary = target(s,boss)
-	if boss.pattern == 0 and s.tile(boss.pos).terrain == "water": boss.hp = mini(boss.max_hp,boss.hp+3)
-	if boss.get("recovery",0) > 0:
-		boss.recovery -= 1; return
-	if boss.get("charging",false):
-		boss.fuse = maxi(0,boss.get("fuse",1)-1)
-		if boss.fuse > 0: return
-		var cells: Array = []
-		for intent in s.intents:
-			if intent.id == boss.id: cells.append(intent.cell)
-		s.enemy_attack_effect(boss,cells,true)
-		for intent in s.intents:
-			if intent.id != boss.id: continue
-			for ally in victims(s,boss):
-				if intent.cell == ally.pos: s.damage(ally,intent.damage,boss.id,"IMPACT")
-		boss.charging = false
-		boss.recovery = 1; boss.cooldown = 6
-		if boss.pattern == 1:
-			for room in s.floor_state.layout.rooms:
-				if room.template_id != "boss_lair": continue
-				for cell in s.Floor.Generator.floor_cells(s.floor_state.layout.terrain,s.BOARD_SIDE,room.rect):
-					if s.is_free(cell) and s.distance(cell,hero.pos) >= 3: boss.pos = cell; break
-		return
-	boss.cooldown = maxi(0,boss.get("cooldown",0)-1)
-	if s.melee_reach(boss.pos,hero.pos):
-		s.enemy_attack_effect(boss,[hero.pos])
-		if s.manual_mode:
-			boss.power = Abilities.scaled(boss,8); s.CombatRules.attack(s,boss,hero)
-		else: s.damage(hero,Abilities.scaled(boss,8),boss.id,"IMPACT")
-		return
-	if held: return
-	var goals: Array = []
-	for direction in s.DIRECTIONS:
-		if s.is_free(hero.pos+direction) and s.melee_reach(hero.pos+direction,hero.pos): goals.append(hero.pos+direction)
-	var route: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,boss.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100)
-	if route.found and route.path.size() > 1: boss.pos = route.path[1]
-	if s.melee_reach(boss.pos,hero.pos):
-		s.enemy_attack_effect(boss,[hero.pos])
-		if s.manual_mode:
-			boss.power = Abilities.scaled(boss,8); s.CombatRules.attack(s,boss,hero)
-		else: s.damage(hero,Abilities.scaled(boss,8),boss.id,"IMPACT")
+	if not bool(boss.get("room_sealed",false)): open_fight(s,boss)
+	if not bool(boss.get("room_sealed",false)): return
+	boss.turns = int(boss.get("turns",0))+1
+	match str(boss.get("boss_kind","")):
+		"chief": Chief.turn(s,boss)
+		"golem": Golem.turn(s,boss)
+		"eater": Eater.turn(s,boss)
+		"fallen": Fallen.turn(s,boss)
+		_: plain_round(s,boss)
 
-static func disable_pylon(s, point: Vector2i) -> bool:
-	var hero: Dictionary = s.party[s.selected]
-	var bosses: Array = s.enemies.filter(func(e): return e.get("boss",false) and e.hp > 0)
-	if bosses.is_empty(): return false
-	var boss: Dictionary = bosses[0]
-	if s.phase != "BATTLE" or not boss.shield or point != boss.pylon or hero.ap <= 0 or s.distance(hero.pos,point) != 1: return false
-	boss.shield = false; hero.ap -= 1
-	s.message("전력탑 파괴 · 보호막 해제")
-	return true
+## What a boss does with no round of its own: close in and swing.
+static func plain_round(s, boss: Dictionary) -> void:
+	var foe: Dictionary = Common.target(s,boss)
+	if foe.is_empty(): return
+	if s.melee_reach(boss.pos,foe.pos): Common.swing(s,boss,foe); return
+	if s.status_blocks(boss,"MOVE"): return
+	Common.step_toward(s,boss,foe)
+	if s.melee_reach(boss.pos,foe.pos): Common.swing(s,boss,foe)
+
+static func room_of(s, boss: Dictionary) -> Dictionary:
+	for row in s.floor_state.layout.rooms:
+		if str(row.template_id) == str(boss.get("room_template","")): return row
+	return {}
+
+## The first round with a party member inside the room: the doors shut behind
+## them and the boss is named. Until then the room stays open.
+static func open_fight(s, boss: Dictionary) -> void:
+	var room: Dictionary = room_of(s,boss)
+	if room.is_empty() or not s.alive().any(func(a): return room.rect.has_point(a.pos)): return
+	boss.room_sealed = true
+	for door in room.doors:
+		if not s.at(door).is_empty(): continue
+		var cell: Dictionary = s.tile(door)
+		cell.boss_door = true; cell.terrain = "wall"
+	s.push_event({"kind":"BOSS","name":str(boss.name),"hint":str(HINTS.get(str(boss.boss_kind),""))})
+	s.message("%s · 입구가 닫혔습니다" % boss.name)
+	if str(boss.boss_kind) == "eater": Eater.wake(s,boss)
+	if str(boss.boss_kind) == "fallen": Fallen.begin(s,boss)
+
+static func unseal(s, boss: Dictionary) -> void:
+	var room: Dictionary = room_of(s,boss)
+	if room.is_empty(): return
+	for door in room.doors:
+		var cell: Dictionary = s.tile(door)
+		if not bool(cell.get("boss_door",false)): continue
+		cell.terrain = str(cell.source_terrain); cell.erase("boss_door")
+
+## Any damage that reached a boss, by the form it came in.
+static func on_damaged(s, boss: Dictionary, form: String) -> void:
+	if str(boss.get("boss_kind","")) == "golem": Golem.on_damaged(s,boss,form)
+
+## A monster died; the bosses that care hear of it.
+static func on_monster_death(s, dead: Dictionary, killer: Dictionary) -> void:
+	if bool(dead.get("boss",false)): return
+	for boss in s.enemies:
+		if int(boss.hp) > 0 and str(boss.get("boss_kind","")) == "eater": Eater.absorb(s,boss,dead)
+	if killer.is_empty() or not bool(killer.get("devour_ready",false)): return
+	var part: String = str(dead.get("part_id",""))
+	if not Abilities.has(part): return
+	killer.borrowed = part; killer.devour_ready = false
+	s.message("%s · %s의 기술을 삼켰습니다" % [killer.name,dead.name])
+
+static func on_boss_defeated(s, boss: Dictionary) -> void:
+	unseal(s,boss)
+	if str(boss.get("boss_kind","")) == "eater": Eater.release(s,boss)
+	if str(boss.get("boss_kind","")) == "fallen": Fallen.defeated(s,boss)
+	s.message("%s 처치" % boss.name)
+
+## The party member a chief's order has marked for this minion, or {}.
+static func focus_of(s, enemy: Dictionary) -> Dictionary:
+	if not enemy.has("chief"): return {}
+	var chief: Dictionary = s.actor_by_id(int(enemy.chief))
+	if chief.is_empty() or int(chief.hp) <= 0 or int(enemy.get("focus_until",0)) <= int(chief.get("turns",0)): return {}
+	var mark: Dictionary = s.actor_by_id(int(enemy.get("focus_id",-1)))
+	return mark if not mark.is_empty() and int(mark.hp) > 0 else {}
+
+static func lever_ready(s, actor: Dictionary, point: Vector2i) -> bool:
+	return Golem.lever_ready(s,actor,point)
+
+static func pull_lever(s, actor: Dictionary, point: Vector2i) -> bool:
+	return Golem.pull_lever(s,actor,point)

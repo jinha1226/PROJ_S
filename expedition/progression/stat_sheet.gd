@@ -3,6 +3,7 @@ extends RefCounted
 ## gear, the essences and their sets. A monster carries its own numbers.
 const Essences = preload("res://expedition/progression/essences.gd")
 const TagSets = preload("res://expedition/progression/tag_sets.gd")
+const Families = preload("res://expedition/combat/families.gd")
 static var combat: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/combat.json"))
 const KEYS := ["str","dex","int","con","ac","ev","sh","res_fire","res_ice","res_air","res_poison","res_will"]
 const NAMES := {"str":"근력","dex":"민첩","int":"정신","con":"체력","ac":"방어","ev":"회피","sh":"막기",
@@ -24,6 +25,7 @@ static func sheet(s, actor: Dictionary) -> Dictionary:
 	for key in KEYS: result[key] = {"total":0,"parts":[]}
 	if bool(actor.get("enemy",false)):
 		add(result,"ac","몬스터",int(actor.get("ac",0)))
+		add(result,"ac","계열",Families.armour_bonus(actor))
 		add(result,"ev","몬스터",int(actor.get("ev",3)))
 		add(result,"sh","몬스터",int(actor.get("sh",0)))
 		add(result,"int","몬스터",int(actor.get("int",MONSTER_MIND)))
@@ -36,6 +38,7 @@ static func sheet(s, actor: Dictionary) -> Dictionary:
 	add(result,"int","종족",int(spec.int)); add(result,"con","종족",int(spec.get("con",CON_BASE)))
 	add(result,"str","물약",int(actor.get("str_bonus",0)))
 	gear(result,actor)
+	add(result,"ac","계열",Families.armour_bonus(actor))
 	for id in Essences.equipped(actor):
 		var values: Dictionary = Essences.stats(id,Essences.tier(actor,id))
 		for key in values:
@@ -43,7 +46,6 @@ static func sheet(s, actor: Dictionary) -> Dictionary:
 	var sets: Dictionary = TagSets.stat_bonus(actor)
 	for key in sets:
 		if key in KEYS: add(result,key,"세트",int(sets[key]))
-	add(result,"ac","수호 세트",TagSets.ally_guard(s,actor))
 	# Dexterity lends evasion: one point for every three.
 	add(result,"ev","민첩",total_of(result,"dex")/3)
 	finish(result)

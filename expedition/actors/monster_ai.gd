@@ -30,7 +30,7 @@ static func configure(enemy: Dictionary, role: String) -> void:
 
 static func line(s, a: Vector2i, b: Vector2i, reach: int) -> bool:
 	# Range uses eight-way tile distance; Geometry's circular cutoff must not trim diagonals.
-	return distance(a,b) <= reach and s.TurnCore.Geometry.sees(a,b,func(p): return not s.inside(p) or s.tile(p).terrain == "wall",ceili(reach*sqrt(2.0)))
+	return distance(a,b) <= reach and s.TurnCore.Geometry.sees(a,b,func(p): return not s.inside(p) or s.tile(p).terrain == "wall" or int(s.tile(p).get("steam_until",0)) > int(s.time),ceili(reach*sqrt(2.0)))
 
 static func distance(a: Vector2i, b: Vector2i) -> int:
 	return maxi(absi(a.x-b.x),absi(a.y-b.y))
@@ -72,6 +72,8 @@ static func turn(s, enemy: Dictionary) -> void:
 	if s.time < int(enemy.get("sleep_until",0)): return
 	# A dominated monster reads this list the other way round.
 	var targets: Array = s.hostiles_of(enemy)
+	var focus: Dictionary = BossAI.focus_of(s,enemy)
+	if not focus.is_empty(): targets = [focus]
 	if enemy.hp <= 0 or targets.is_empty(): return
 	# 빙결 and 속박 hold a monster exactly as they hold the hero: the turn is
 	# spent either way, but a frozen one neither steps nor swings and a bound
@@ -85,6 +87,9 @@ static func turn(s, enemy: Dictionary) -> void:
 	if enemy.get("boss",false): BossAI.turn(s,enemy); return
 	if enemy.get("cast_recovery",0) > 0:
 		enemy.cast_recovery -= 1; return
+	var taunter: Dictionary = taunter_of(s,enemy)
+	if not taunter.is_empty() and not enemy.get("charging",false):
+		taunted_turn(s,enemy,taunter); return
 	var part: String = str(enemy.get("part_id",""))
 	if Abilities.has(part): enemy.cooldowns[part] = maxi(0,int(enemy.cooldowns.get(part,0))-1)
 	if enemy.get("charging",false):
@@ -99,6 +104,12 @@ static func turn(s, enemy: Dictionary) -> void:
 		if id.is_empty(): resolve_spell(s,enemy,cell)
 		else: Abilities.resolve(s,enemy,id,cell)
 		return
+	# A guard's own active (방패 자세, 몸 말기, ...) goes up when a foe is in
+	# contact or the monster is under half health.
+	if Abilities.has(part) and int(enemy.cooldowns.get(part,0)) <= 0 and str(Abilities.definition(part).target) == "SELF":
+		var pressed: bool = targets.any(func(a): return s.melee_reach(enemy.pos,a.pos)) or int(enemy.hp)*2 < int(enemy.max_hp)
+		if pressed and Abilities.legal(s,enemy,part,enemy.pos):
+			Abilities.execute(s,enemy,part,enemy.pos); return
 	# A bound monster cannot work a manoeuvre that carries it anywhere; it is
 	# left with whatever it can already reach.
 	if Abilities.has(part) and int(enemy.cooldowns.get(part,0)) <= 0 and not s.status_blocks(enemy,"MOVE"):
@@ -182,10 +193,28 @@ static func role_turn(s, enemy: Dictionary, targets: Array, held: bool = false) 
 	if route.found and route.path.size() > 1: enemy.pos = route.path[1]
 
 static func strike(s, enemy: Dictionary, target: Dictionary, amount: int) -> void:
-	amount = Abilities.scaled(enemy,amount)
+	amount = int(enemy.basic_attack) if enemy.has("basic_attack") else Abilities.scaled(enemy,amount)
 	if target.is_empty() or s.side_of(target) == s.side_of(enemy) and not (s.wanderer(target) and not s.dominated(enemy)): return
 	s.enemy_attack_effect(enemy,[target.pos])
 	if s.manual_mode:
 		enemy.power = amount
 		s.CombatRules.attack(s,enemy,target)
 	else: s.damage(target,amount,enemy.id,"ELECTRIC" if enemy.get("role","") == "CASTER" else "IMPACT")
+
+## Who taunted `enemy`, while the taunt lasts and the taunter stands.
+static func taunter_of(s, enemy: Dictionary) -> Dictionary:
+	if not enemy.get("statuses",{}).has("taunted"): return {}
+	var who: Dictionary = s.actor_by_id(int(enemy.get("status_power",{}).get("taunted",-1)))
+	return who if not who.is_empty() and int(who.hp) > 0 else {}
+
+## A taunted monster strikes its taunter if it can, else steps toward it.
+static func taunted_turn(s, enemy: Dictionary, taunter: Dictionary) -> void:
+	if s.melee_reach(enemy.pos,taunter.pos):
+		strike(s,enemy,taunter,int(ROLES.MELEE.damage)); return
+	if s.status_blocks(enemy,"MOVE"): return
+	var goals: Array = []
+	for direction in s.DIRECTIONS:
+		var cell: Vector2i = taunter.pos+direction
+		if s.inside(cell) and s.is_free(cell) and s.melee_reach(cell,taunter.pos): goals.append(cell)
+	var route: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,enemy.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100)
+	if route.found and route.path.size() > 1: enemy.pos = route.path[1]

@@ -5,7 +5,8 @@ extends RefCounted
 static func build_result_card(ui) -> void:
 	var session = ui.session
 	var card := VBoxContainer.new(); card.name = "ResultCard"; card.size_flags_vertical = Control.SIZE_EXPAND_FILL; ui.root_layout.add_child(card)
-	ui.label(card,"%d층에서 쓰러졌다" % session.depth,24)
+	var won: bool = session.phase == "VICTORY"
+	ui.label(card,"승리 · %d층" % session.depth if won else "%d층에서 쓰러졌다" % session.depth,24)
 	ui.label(card,"점수 %d · 라운드 %d · 처치 %d" % [session.score,session.world_time/100,session.run_stats.kills],16)
 	for actor in session.party.slice(1):
 		ui.label(card,"%s · %s" % [actor.name,"생존" if actor.hp > 0 else "%d층에서 전사" % session.depth],14)

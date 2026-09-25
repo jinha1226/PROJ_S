@@ -1,8 +1,8 @@
 """The sprites the game draws: the south-facing paper-doll cast and monsters.
 
 Party and NPC looks follow `mobile_art.gd`'s ACTOR_IDS, monsters follow its
-MONSTER_IDS (the floor_monsters.json species), and bosses follow the boss
-`pattern` (0 mire, 1 bomber, 2 giant). Each is rasterised from SVG at 192 px.
+MONSTER_IDS (the floor_monsters.json species). Zone bosses reuse matching
+species sprites. Each is rasterised from SVG at 192 px.
 
 Run: python3 tools/art/build_game_sprites.py
 """
@@ -31,15 +31,16 @@ ACTORS = {
     "wanderer": lambda: mon.humanoid("awanderer", "south", THIN, SKIN["dark"], ("#8a8f9c", "#707584")),
 }
 MONSTERS = ["dcss_rat", "dcss_frilled_lizard", "kobold", "goblin", "dcss_hobgoblin", "dcss_orc", "dcss_gnoll", "dcss_river_rat",
-            "kobold_firecaller", "frost_imp", "storm_bat", "goblin_hexer", "gnoll_summoner"]
-BOSSES = ["boss_mire", "boss_bomber", "boss_giant"]
+            "kobold_firecaller", "frost_imp", "storm_bat", "goblin_hexer", "gnoll_summoner",
+            "goblin_archer", "goblin_shield", "orc_thrower", "cave_spider", "rock_beetle", "ore_golem",
+            "giant_leech", "swamp_toad", "temple_serpent", "water_spirit", "skeleton_soldier", "skeleton_archer",
+            "ghoul", "vampire_bat", "wraith_knight", "wraith", "gravekeeper"]
 
 
 def main() -> None:
     jobs = []
     for group, entries in (("actors", {k: v() for k, v in ACTORS.items()}),
-                           ("monsters", {k: mon.MONSTERS[k][1]("south") for k in MONSTERS}),
-                           ("bosses", {k: mon.MONSTERS[k][1]("south") for k in BOSSES})):
+                           ("monsters", {k: mon.MONSTERS[k][1]("south") for k in MONSTERS})):
         folder = OUT / group
         (folder / "svg").mkdir(parents=True, exist_ok=True)
         for name, body in entries.items():

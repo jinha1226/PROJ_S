@@ -95,20 +95,18 @@ static func roll_part(s, enemy: Dictionary, reward_actors: Variant = null) -> vo
 	var chance: int = Essences.drop_chance(s,species)
 	s.essence_seen[species] = true
 	if Hexaco.sample(s.seed_value,s.depth*10000+enemy.id,"essence",100) >= chance: return
-	var fresh: bool = not s.party.any(func(a): return int(a.get("essences",{}).get(id,0)) > 0)
 	s.parts_bag[id] = int(s.parts_bag.get(id,0))+1
 	s.battle_stats.drops[id] = int(s.battle_stats.drops.get(id,0))+1
 	s.message(Essences.title(id)+" 획득")
-	s.push_event({"kind":"ESSENCE","id":id,"new":fresh})
 
 ## Playtest helper: one of every catalog part in the bag, so loadouts can be tried without farming.
 static func grant_test_loadout(s) -> bool:
 	if s.party.is_empty(): return false
 	var added := 0
-	for id in Abilities.DEFINITIONS:
+	for id in Essences.content.rows:
 		if int(s.parts_bag.get(id,0)) > 0: continue
 		s.parts_bag[id] = 1; added += 1
-	s.message("시험 로드아웃 · 이미 전부 보유" if added == 0 else "시험 로드아웃 · 이능 %d종" % added)
+	s.message("시험 로드아웃 · 이미 전부 보유" if added == 0 else "시험 로드아웃 · 영혼석 %d종" % added)
 	return true
 
 static func reset_rules(s, index: int) -> void:

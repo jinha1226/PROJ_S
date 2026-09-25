@@ -60,7 +60,7 @@ func profiles() -> void:
 	for stance in p.profiles:
 		for tag in p.profiles[stance]:
 			if str(tag).begins_with("MOVE"): check(p.profiles[stance][tag].has("ally_delta"),"%s/%s carries the cohesion term" % [stance,tag])
-	check(Utility.tag({"kind":"MOVE","tag":"MOVE:approach"}) == "MOVE:approach" and Utility.tag({"kind":"HOB_CLUB"}) == "PART" and Utility.tag({"kind":"ATTACK"}) == "ATTACK","tags: explicit, part, default kind")
+	check(Utility.tag({"kind":"MOVE","tag":"MOVE:approach"}) == "MOVE:approach" and Utility.tag({"kind":"ORE_SLAM"}) == "PART" and Utility.tag({"kind":"ATTACK"}) == "ATTACK","tags: explicit, part, default kind")
 
 ## Three members with basics, one foe two cells right of the hero.
 func field(stances: Array, foes: int = 1) -> Dictionary:

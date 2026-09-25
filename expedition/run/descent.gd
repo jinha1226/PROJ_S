@@ -1,4 +1,5 @@
 extends RefCounted
+const Zones = preload("res://expedition/level/zones.gd")
 ## Leaving town and taking the stairs down, and the levels won on the way.
 const CombatStats = preload("res://expedition/combat/combat_stats.gd")
 const Memory = preload("res://sim/party_memory_state.gd")
@@ -42,9 +43,10 @@ static func depart(s) -> bool:
 	s.message("%d층 진입" % s.depth); return true
 
 static func stairs_sealed(s) -> bool:
-	return s.enemies.any(func(e): return e.get("boss",false) and e.hp > 0)
+	return s.enemies.any(func(e): return e.get("boss",false) and e.hp > 0) or s.npcs.any(func(n): return n.get("fallen",false) and n.hp > 0)
 
 static func descend(s) -> bool:
+	if s.depth >= Zones.FINAL_DEPTH: return false
 	if s.phase != "EXPLORE" or not s.floor_state.safe(s) or s.stairs_sealed(): return false
 	var stairs: Vector2i = s.floor_state.layout.get("stairs",Vector2i(-1,-1))
 	if stairs.x < 0 or not s.alive().any(func(a): return s.distance(a.pos,stairs) <= 1): return false

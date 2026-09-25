@@ -4,8 +4,9 @@ extends RefCounted
 ## A variant id is "<BASE>@<element>": the base row with that element's tag
 ## and ten more points of that element's resistance.
 const Abilities = preload("res://expedition/items/abilities.gd")
+const Bestiary = preload("res://expedition/progression/bestiary.gd")
 const ROLES := {"PACK":"무리","BERSERK":"광폭","AMBUSH":"기습","GUARD":"수호","ARCHER":"사수","CASTER":"술사"}
-const ELEMENTS := {"fire":"화염","ice":"냉기","air":"전기","poison":"독","will":"의지"}
+const ELEMENTS := {"fire":"화염","ice":"냉기","air":"전기","poison":"독","will":"의지","bleed":"출혈"}
 const MAX_TIER := 3
 const MAX_LEVEL := 10
 ## How many spells stand ready at once: the floor HUD draws this many buttons.
@@ -28,18 +29,25 @@ static func has(id: String) -> bool:
 	var element := variant_element(id)
 	return element.is_empty() or ELEMENTS.has(element)
 
+## A row's stats come from its role (zones spec §3.1); a role-less row (the
+## basics) keeps what it lists. A variant adds ten of its element's
+## resistance, except bleed, which nothing resists.
 static func row(id: String) -> Dictionary:
 	if not has(id): return {}
 	var base: Dictionary = content.rows[base_of(id)]
-	var result := {"name":str(base.get("name","")),"stats":(base.get("stats",{}) as Dictionary).duplicate(),
-		"role":str(base.get("role","")),"element":str(base.get("element","")),
-		"school":str(base.get("school","")),"species":str(base.get("species",""))}
+	var role: String = str(base.get("role",""))
+	var stats: Dictionary = Bestiary.essence_stats(role,str(base.get("school",""))) if not role.is_empty() else (base.get("stats",{}) as Dictionary).duplicate()
+	var result := {"name":str(base.get("name","")),"stats":stats,"role":role,"element":str(base.get("element","")),
+		"school":str(base.get("school","")),"species":str(base.get("species","")),"family":str(base.get("family",""))}
 	var element := variant_element(id)
 	if not element.is_empty():
 		result.element = element
-		var key := "res_"+element
-		result.stats[key] = int(result.stats.get(key,0))+10
+		if element != "bleed":
+			var key := "res_"+element
+			result.stats[key] = int(result.stats.get(key,0))+10
 	return result
+
+static func family(id: String) -> String: return str(row(id).get("family",""))
 
 ## The part's item name for a part essence, the row's own name for a caster.
 static func title(id: String) -> String:
@@ -70,7 +78,8 @@ static func tier(actor: Dictionary, id: String) -> int:
 	return 1 if id in actor.get("equipped_abilities",[]) else 0
 
 static func equipped(actor: Dictionary) -> Array:
-	return actor.get("equipped_abilities",[]).filter(func(id): return has(str(id)))
+	var sealed: Dictionary = actor.get("sealed",{})
+	return actor.get("equipped_abilities",[]).filter(func(id): return has(str(id)) and not sealed.has(str(id)))
 
 static func slot_count(actor: Dictionary) -> int:
 	return clampi(int(actor.get("level",1)),1,MAX_LEVEL)
@@ -94,7 +103,7 @@ static func sync_slots(actor: Dictionary) -> void:
 ## One from the bag into the member: a new essence at tier one, a known one a
 ## tier higher. The bag loses it for good.
 static func absorb(s, actor: Dictionary, id: String) -> String:
-	if not has(id): return "없는 이능"
+	if not has(id): return "없는 영혼석"
 	if int(s.parts_bag.get(id,0)) <= 0: return "가방에 없음"
 	if int(actor.hp) <= 0: return "쓰러짐"
 	if not can_manage(s): return "전투 중"
@@ -172,7 +181,7 @@ static func sync_spells(actor: Dictionary) -> void:
 		var spell: String = str(chosen.get(id,""))
 		if not school(str(id)).is_empty() and not spell.is_empty() and spell not in known: known.append(spell)
 	var ready: Array = []
-	for id in actor.get("equipped_abilities",[]):
+	for id in equipped(actor):
 		var spell: String = str(chosen.get(str(id),""))
 		if not school(str(id)).is_empty() and not spell.is_empty() and spell not in ready and ready.size() < READY_SPELLS: ready.append(spell)
 	actor.spells = known

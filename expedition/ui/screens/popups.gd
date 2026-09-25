@@ -92,7 +92,7 @@ static func show_enemy_info(ui, enemy: Dictionary) -> void:
 		resist.name = "EnemyResist"
 	var essence: String = str(enemy.get("part_id",""))
 	if Essences.has(essence):
-		var named = ui.label(ui.modal_content,"이능 · "+Essences.title(essence),15)
+		var named = ui.label(ui.modal_content,"영혼석 · "+Essences.title(essence),15)
 		named.name = "EnemyEssence"
 		if not EssenceTab.tag_line(essence).is_empty(): ui.label(ui.modal_content,EssenceTab.tag_line(essence),13)
 		var words = ui.label(ui.modal_content,EssenceTab.active_line(essence),13)
@@ -134,7 +134,7 @@ static func show_npc(ui, npc: Dictionary) -> void:
 	var words := VBoxContainer.new(); heading.add_child(words)
 	ui.label(words,str(npc.name),20)
 	var worn: Array = Essences.equipped(npc).map(func(id): return Essences.title(str(id)))
-	var level_line = ui.label(words,"Lv.%d · 이능 %s" % [int(npc.get("level",1)),", ".join(worn) if not worn.is_empty() else "없음"],13)
+	var level_line = ui.label(words,"Lv.%d · 영혼석 %s" % [int(npc.get("level",1)),", ".join(worn) if not worn.is_empty() else "없음"],13)
 	level_line.name = "NpcLevel"
 	var dialogue = ui.label(words,str(talk.line),15)
 	dialogue.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -186,7 +186,7 @@ static func update_offer_popup(ui) -> void:
 	ui.offer_popup.popup_centered()
 
 static func show_character(ui, index: int, tab: String = "상태") -> void:
-	if tab == "파츠": tab = "이능"
+	if tab == "파츠": tab = "영혼석"
 	var session = ui.session
 	ui.stop_navigation()
 	ui.tactics_actor = clampi(index,0,session.party.size()-1); ui.character_tab = tab
@@ -195,13 +195,13 @@ static func show_character(ui, index: int, tab: String = "상태") -> void:
 	var actor: Dictionary = session.party[ui.tactics_actor]
 	match tab:
 		"상태": CharacterUI.status(ui,list,actor)
-		"이능": EssenceTab.build(ui,list,actor)
+		"영혼석": EssenceTab.build(ui,list,actor)
 		"성격": CharacterUI.personality(ui,list,actor)
 		"기억": CharacterUI.memories(ui,list,actor)
 	ui.details_popup.popup_centered(Vector2i(ui.get_viewport_rect().size))
 
 static func show_tactics(ui) -> void:
-	show_character(ui,ui.tactics_actor,"이능")
+	show_character(ui,ui.tactics_actor,"영혼석")
 
 static func open_rule(ui, index: int) -> void:
 	ui.tactics_expanded = index

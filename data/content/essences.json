@@ -1,212 +1,260 @@
 {
   "version": 1,
   "rows": {
-    "PUSH": {
-      "stats": {},
-      "role": "",
-      "element": "",
-      "school": "",
-      "species": ""
-    },
-    "GUARD": {
-      "stats": {},
-      "role": "",
-      "element": "",
-      "school": "",
-      "species": ""
-    },
-    "SHOCKWAVE": {
-      "name": "수렁의 핵",
-      "stats": {
-        "con": 3,
-        "res_poison": 20
-      },
-      "role": "BERSERK",
-      "element": "poison",
-      "school": "",
-      "species": "boss_mire"
-    },
-    "BOMB": {
-      "name": "암살자의 화약낭",
-      "stats": {
-        "dex": 3,
-        "ev": 2
-      },
-      "role": "AMBUSH",
-      "element": "fire",
-      "school": "",
-      "species": "boss_bomber"
-    },
-    "IRON_HIDE": {
-      "name": "거인의 철갑핵",
-      "stats": {
-        "con": 2,
-        "ac": 3
-      },
-      "role": "GUARD",
-      "element": "air",
-      "school": "",
-      "species": "boss_giant"
-    },
-    "HEAVY_STRIKE": {
-      "stats": {},
-      "role": "",
-      "element": "",
-      "school": "",
-      "species": ""
-    },
-    "THROWING_KNIFE": {
-      "stats": {},
-      "role": "",
-      "element": "",
-      "school": "",
-      "species": ""
-    },
-    "FIELD_DRESSING": {
-      "stats": {},
-      "role": "",
-      "element": "",
-      "school": "",
-      "species": ""
-    },
-    "LUNGE": {
-      "stats": {},
-      "role": "",
-      "element": "",
-      "school": "",
-      "species": ""
-    },
     "RAT_GNAW": {
-      "stats": {
-        "ev": 1
-      },
       "role": "PACK",
       "element": "",
       "school": "",
-      "species": "dcss_rat"
+      "species": "dcss_rat",
+      "family": "rat"
     },
     "LIZARD_TAIL": {
-      "stats": {
-        "ac": 1,
-        "res_poison": 10
-      },
-      "role": "GUARD",
+      "role": "BERSERK",
       "element": "",
       "school": "",
-      "species": "dcss_frilled_lizard"
+      "species": "dcss_frilled_lizard",
+      "family": "reptile"
     },
     "KOBOLD_SLING": {
-      "stats": {
-        "dex": 1
-      },
       "role": "ARCHER",
       "element": "",
       "school": "",
-      "species": "kobold"
+      "species": "kobold",
+      "family": "kobold"
     },
     "GOBLIN_SHIV": {
-      "stats": {
-        "dex": 2
-      },
       "role": "AMBUSH",
       "element": "",
       "school": "",
-      "species": "goblin"
+      "species": "goblin",
+      "family": "goblin"
     },
-    "HOB_CLUB": {
-      "stats": {
-        "con": 1,
-        "sh": 5
-      },
+    "ORC_CLEAVER": {
+      "role": "BERSERK",
+      "element": "",
+      "school": "",
+      "species": "dcss_orc",
+      "family": "orc"
+    },
+    "GNOLL_SPEAR": {
+      "role": "BERSERK",
+      "element": "",
+      "school": "",
+      "species": "dcss_gnoll",
+      "family": "gnoll"
+    },
+    "RIVER_RAT_SPLASH": {
+      "role": "PACK",
+      "element": "",
+      "school": "",
+      "species": "dcss_river_rat",
+      "family": "rat"
+    },
+    "FIRE_CALLER": {
+      "name": "화염술사의 불씨",
+      "role": "CASTER",
+      "element": "fire",
+      "school": "fire",
+      "species": "kobold_firecaller",
+      "family": "kobold"
+    },
+    "FROST_IMP": {
+      "name": "서리 도깨비의 숨",
+      "role": "CASTER",
+      "element": "ice",
+      "school": "ice",
+      "species": "frost_imp",
+      "family": "elemental"
+    },
+    "STORM_BAT": {
+      "name": "폭풍 박쥐의 날개",
+      "role": "PACK",
+      "element": "air",
+      "school": "air",
+      "species": "storm_bat",
+      "family": "bat"
+    },
+    "GOBLIN_HEXER": {
+      "name": "주술사의 부적",
+      "role": "CASTER",
+      "element": "will",
+      "school": "hex",
+      "species": "goblin_hexer",
+      "family": "goblin"
+    },
+    "GNOLL_SUMMONER": {
+      "name": "소환사의 뼈피리",
+      "role": "CASTER",
+      "element": "will",
+      "school": "summon",
+      "species": "gnoll_summoner",
+      "family": "gnoll"
+    },
+    "HOB_TAUNT": {
       "role": "GUARD",
       "element": "",
       "school": "",
-      "species": "dcss_hobgoblin"
+      "species": "dcss_hobgoblin",
+      "family": "goblin"
     },
-    "ORC_CLEAVER": {
-      "stats": {
-        "str": 2,
-        "con": 2
-      },
+    "GOBLIN_AIM": {
+      "role": "ARCHER",
+      "element": "",
+      "family": "goblin",
+      "species": "goblin_archer",
+      "school": ""
+    },
+    "SHIELD_STANCE": {
+      "role": "GUARD",
+      "element": "",
+      "family": "goblin",
+      "species": "goblin_shield",
+      "school": ""
+    },
+    "ORC_THROW": {
+      "role": "ARCHER",
+      "element": "",
+      "family": "orc",
+      "species": "orc_thrower",
+      "school": ""
+    },
+    "SPIDER_WEB": {
+      "role": "AMBUSH",
+      "element": "",
+      "family": "insect",
+      "species": "cave_spider",
+      "school": ""
+    },
+    "BEETLE_CURL": {
+      "role": "GUARD",
+      "element": "",
+      "family": "insect",
+      "species": "rock_beetle",
+      "school": ""
+    },
+    "ORE_SLAM": {
       "role": "BERSERK",
       "element": "",
-      "school": "",
-      "species": "dcss_orc"
+      "family": "elemental",
+      "species": "ore_golem",
+      "school": ""
     },
-    "GNOLL_SPEAR": {
-      "stats": {
-        "con": 2
-      },
+    "LEECH_LATCH": {
+      "role": "AMBUSH",
+      "element": "",
+      "family": "insect",
+      "species": "giant_leech",
+      "school": ""
+    },
+    "TOAD_SPIT": {
+      "role": "ARCHER",
+      "element": "",
+      "family": "reptile",
+      "species": "swamp_toad",
+      "school": ""
+    },
+    "SERPENT_SHED": {
+      "role": "GUARD",
+      "element": "",
+      "family": "reptile",
+      "species": "temple_serpent",
+      "school": ""
+    },
+    "WATER_WAVE": {
+      "role": "PACK",
+      "element": "",
+      "family": "elemental",
+      "species": "water_spirit",
+      "school": ""
+    },
+    "SKELETON_WALL": {
+      "role": "PACK",
+      "element": "",
+      "family": "undead",
+      "species": "skeleton_soldier",
+      "school": ""
+    },
+    "SKELETON_VOLLEY": {
+      "role": "ARCHER",
+      "element": "",
+      "family": "undead",
+      "species": "skeleton_archer",
+      "school": ""
+    },
+    "GHOUL_CLAW": {
       "role": "BERSERK",
       "element": "",
-      "school": "",
-      "species": "dcss_gnoll"
+      "family": "undead",
+      "species": "ghoul",
+      "school": ""
     },
-    "RIVER_RAT_SPLASH": {
+    "VAMPIRE_BITE": {
+      "role": "AMBUSH",
+      "element": "",
+      "family": "bat",
+      "species": "vampire_bat",
+      "school": ""
+    },
+    "THORN_ARMOUR": {
+      "role": "GUARD",
+      "element": "",
+      "family": "undead",
+      "species": "wraith_knight",
+      "school": ""
+    },
+    "WRAITH": {
+      "role": "CASTER",
+      "element": "will",
+      "family": "undead",
+      "species": "wraith",
+      "school": "hex",
+      "name": "원혼의 속삭임"
+    },
+    "GRAVEKEEPER": {
+      "role": "CASTER",
+      "element": "will",
+      "family": "undead",
+      "species": "gravekeeper",
+      "school": "summon",
+      "name": "묘지기의 등불"
+    },
+    "GOBLIN_CHIEF": {
+      "name": "족장의 뿔나팔",
       "stats": {
         "con": 1,
-        "res_air": 10
+        "ev": 1,
+        "dex": 1
       },
       "role": "PACK",
       "element": "",
       "school": "",
-      "species": "dcss_river_rat"
+      "species": "goblin_chief",
+      "family": "goblin"
     },
-    "FIRE_CALLER": {
-      "name": "화염술사의 불씨",
+    "FURNACE_HEART": {
+      "name": "용광로 심장",
       "stats": {
-        "int": 2,
-        "res_fire": 10
+        "con": 1,
+        "ac": 1,
+        "sh": 5
       },
-      "role": "CASTER",
+      "role": "GUARD",
       "element": "fire",
-      "school": "fire",
-      "species": "kobold_firecaller"
+      "school": "",
+      "species": "furnace_golem",
+      "family": "elemental"
     },
-    "FROST_IMP": {
-      "name": "서리 도깨비의 숨",
-      "stats": {
-        "int": 2,
-        "res_ice": 10
-      },
-      "role": "CASTER",
-      "element": "ice",
-      "school": "ice",
-      "species": "frost_imp"
-    },
-    "STORM_BAT": {
-      "name": "폭풍 박쥐의 날개",
-      "stats": {
-        "dex": 1,
-        "int": 1,
-        "res_air": 10
-      },
-      "role": "CASTER",
-      "element": "air",
-      "school": "air",
-      "species": "storm_bat"
-    },
-    "GOBLIN_HEXER": {
-      "name": "주술사의 부적",
+    "SOUL_EATER": {
+      "name": "포식자의 핵",
       "stats": {
         "int": 2,
         "res_will": 10
       },
       "role": "CASTER",
       "element": "will",
-      "school": "hex",
-      "species": "goblin_hexer"
-    },
-    "GNOLL_SUMMONER": {
-      "name": "소환사의 뼈피리",
-      "stats": {
-        "int": 1,
-        "con": 1
-      },
-      "role": "CASTER",
-      "element": "will",
-      "school": "summon",
-      "species": "gnoll_summoner"
+      "school": "",
+      "species": "soul_eater",
+      "family": "undead"
     }
   }
 }

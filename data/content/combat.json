@@ -1077,7 +1077,10 @@
     "rubble": 120,
     "water": 140,
     "wood": 100,
-    "metal": 100
+    "metal": 100,
+    "lava": 100,
+    "deep_water": 150,
+    "bog": 120
   },
   "loot": {
     "gear_by_depth": {

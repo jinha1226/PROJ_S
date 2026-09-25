@@ -5,7 +5,7 @@ func check(ok: bool, reason: String) -> void:
 	if not ok: failures += 1; push_error(reason)
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
-	var ids := ["entry_camp","descent","flooded_cistern","collapsed_store","sealed_treasury","timber_gallery","boss_lair"]
+	var ids := ["entry_camp","descent","flooded_cistern","collapsed_store","sealed_treasury","timber_gallery","throne_room","foundry","binding_altar","crypt_heart"]
 	for id in ids:
 		var def: Dictionary = Templates.definition(id)
 		check(not def.is_empty() and def.rows.size() >= 3,"template %s exists" % id)
@@ -29,10 +29,14 @@ func run() -> void:
 	check(descent.features.values().filter(func(f): return f.kind == "stairs").size() == 1,"descent has one stair")
 	check(descent.anchor == Vector2i(-1,-1),"descent has no monster anchor")
 	check(descent.terrain.values().any(func(v): return v == "metal"),"descent accents survive parsing")
-	var lair: Dictionary = Templates.parse(Templates.definition("boss_lair").rows)
-	check(lair.anchor != Vector2i(-1,-1) and lair.doors.size() == 2,"boss lair has anchor and two doors")
-	check(lair.features.values().filter(func(f): return f.kind == "pylon").size() == 1,"boss lair has a pylon")
-	check(lair.features.values().filter(func(f): return f.kind == "stairs").size() == 1,"boss lair has stairs")
+	for id in ["throne_room","foundry","binding_altar","crypt_heart"]:
+		var lair: Dictionary = Templates.parse(Templates.definition(id).rows)
+		check(lair.anchor != Vector2i(-1,-1) and lair.doors.size() >= 1,"%s has anchor and door" % id)
+		check(lair.features.values().filter(func(f): return f.kind == "stairs").size() == 1,"%s has stairs" % id)
+	var foundry: Dictionary = Templates.parse(Templates.definition("foundry").rows)
+	check(foundry.features.values().filter(func(f): return f.kind == "lever").size() == 3,"foundry has three levers")
+	var sanctum: Dictionary = Templates.parse(Templates.definition("binding_altar").rows)
+	check(sanctum.features.values().filter(func(f): return f.kind == "binding").size() == 4,"sanctum has four bindings")
 	var treasury: Dictionary = Templates.parse(Templates.definition("sealed_treasury").rows)
 	check(treasury.doors.size() == 1,"treasury has exactly one door")
 	check(treasury.features.values().filter(func(f): return f.kind == "curio" and f.curio_id == "BROKEN_CHEST").size() == 1,"treasury has one broken chest")

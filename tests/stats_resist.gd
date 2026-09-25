@@ -45,27 +45,27 @@ func attributes() -> void:
 	slot(hero,["ORC_CLEAVER"]); StatSheet.refresh_pools(s,hero)
 	sheet = StatSheet.sheet(s,hero)
 	check(int(sheet.str.total) == 14 and sheet.str.parts.any(func(p): return p.from == Essences.title("ORC_CLEAVER") and int(p.value) == 2),"an essence adds strength under its own name")
-	check(int(hero.max_hp) == hp+6 and int(hero.hp) == hp+6,"two constitution is six more HP")
+	check(int(hero.max_hp) == hp+3 and int(hero.hp) == hp+3,"one constitution is three more HP")
 	check(int(Stats.stats(s,hero).damage) == int(sword.damage)+14/6,"strength feeds the sword")
 	slot(hero,["ORC_CLEAVER"],3); StatSheet.refresh_pools(s,hero)
-	check(int(StatSheet.value(s,hero,"str")) == 18 and int(hero.max_hp) == hp+18,"tier three triples the essence")
+	check(int(StatSheet.value(s,hero,"str")) == 18 and int(hero.max_hp) == hp+9,"tier three triples the essence")
 	slot(hero,[""]); StatSheet.refresh_pools(s,hero)
 	check(int(hero.max_hp) == hp and int(hero.hp) <= hp,"taking it off returns the HP")
 	slot(hero,["FIRE_CALLER"]); StatSheet.refresh_pools(s,hero)
 	check(int(hero.max_mp) == mp+2,"two mind is two more MP")
 	check(int(hero.pool_bonus.mp) == 2 and int(hero.pool_bonus.hp) == 0,"the pools remember what they were given")
 	slot(hero,["GOBLIN_SHIV"],3)
-	check(int(StatSheet.value(s,hero,"ev")) == 18/3,"evasion is one per three dexterity")
+	check(int(StatSheet.value(s,hero,"ev")) == 18/3+3,"evasion is one per three dexterity plus the stone's own")
 	check(StatSheet.legacy_power(hero,"RANGED",10) == 10+2*6,"the old auto path reads essence dexterity")
 
 func defence() -> void:
 	var s = hero_run(); var hero: Dictionary = s.party[0]
 	check(int(Stats.stats(s,hero).ac) == int(Stats.content.armours.robe.ac),"the robe's armour")
-	slot(hero,["HOB_CLUB"])
+	slot(hero,["HOB_TAUNT"])
 	check(int(Stats.stats(s,hero).sh) == 2,"block without a shield is halved")
 	hero.gear.shield = {"type":"shield"}
 	check(int(Stats.stats(s,hero).sh) == StatSheet.SHIELD_BLOCK+5,"a shield adds its fifteen")
-	slot(hero,["HOB_CLUB","HOB_CLUB@fire","HOB_CLUB@ice"],3)
+	slot(hero,["HOB_TAUNT","HOB_TAUNT@fire","HOB_TAUNT@ice"],3)
 	check(int(Stats.stats(s,hero).sh) == StatSheet.BLOCK_CAP,"block stops at fifty")
 
 func resistance() -> void:

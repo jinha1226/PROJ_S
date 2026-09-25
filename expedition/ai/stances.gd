@@ -1,4 +1,5 @@
 extends RefCounted
+const Essences = preload("res://expedition/progression/essences.gd")
 ## Stances: how a member uses whatever it has — charge in, keep range, or
 ## guard someone. Personality sets an aptitude per stance; the player may pick
 ## any stance, and an uncomfortable one costs mistakes rather than stress.
@@ -38,7 +39,7 @@ static func ranged_part(actor: Dictionary) -> String:
 ## What the build hints at; a badge, never a rule.
 static func suggested(actor: Dictionary) -> String:
 	if not ranged_part(actor).is_empty(): return "SKIRMISHER"
-	if actor.equipped_abilities.any(func(id): return Abilities.definition(id).get("effect","") == "GUARD"): return "GUARDIAN"
+	if actor.equipped_abilities.any(func(id): return Essences.role(str(id)) == "GUARD"): return "GUARDIAN"
 	return "CHARGER"
 
 ## The stance the member actually fights in: always the one it was given.

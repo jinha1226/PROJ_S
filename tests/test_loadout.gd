@@ -20,12 +20,12 @@ func session_layer() -> void:
 	var bag_before: Dictionary = s.parts_bag.duplicate(true)
 	check(s.grant_test_loadout(),"test loadout succeeds for an idle test session")
 	var newly: Array = []
-	for id in Session.Abilities.DEFINITIONS:
+	for id in Session.Essences.content.rows:
 		check(s.parts_bag.get(id,0) >= 1,"every catalog part is in the bag: "+id)
 		if int(bag_before.get(id,0)) <= 0: newly.append(id)
 	check(not newly.is_empty(),"the grant adds the parts the bag lacked")
 	check(hero.equipped_abilities == equipped_before and hero.rules.size() == rules_before,"equipment and rules untouched")
-	check(s.log_lines[-1] == "시험 로드아웃 · 이능 %d종" % newly.size(),"grant reports the granted count")
+	check(s.log_lines[-1] == "시험 로드아웃 · 영혼석 %d종" % newly.size(),"grant reports the granted count")
 
 	var bag: Dictionary = s.parts_bag.duplicate(true)
 	check(s.grant_test_loadout(),"second call still succeeds")
@@ -50,18 +50,18 @@ func scene_layer() -> void:
 	check(scene.get_global_rect().encloses(scene.root_layout.get_global_rect()),"run HUD fits viewport")
 	check(s.grant_test_loadout(),"test fixture grants parts through session API")
 	for frame in range(4): await process_frame
-	for id in Session.Abilities.DEFINITIONS:
+	for id in Session.Essences.content.rows:
 		check(s.parts_bag.get(id,0) >= 1,"fixture grants "+id)
 	s.phase = "CAMP"; scene.refresh()
 	s.gain_level_xp(s.party[0],65)
-	check(s.equip_part(0,0,"PUSH") and s.equip_part(0,1,"GUARD"),"granted parts can be equipped")
-	scene.show_character(0,"이능")
+	check(s.equip_part(0,0,"RAT_GNAW") and s.equip_part(0,1,"GOBLIN_SHIV"),"granted parts can be equipped")
+	scene.show_character(0,"영혼석")
 	for frame in range(4): await process_frame
 	var cards: Array = scene.modal_content.find_children("EssenceSlot*","Button",true,false)
 	check(cards.size() == 10,"the essence tab renders ten slot cells")
 	scene.find_child("EssenceSlot0",true,false).pressed.emit()
 	for frame in range(3): await process_frame
-	for id in Session.Abilities.DEFINITIONS:
+	for id in Session.Essences.content.rows:
 		if id in s.party[0].equipped_abilities: continue
 		check(scene.modal_content.find_child("EssenceAbsorb_"+id,true,false) != null,"the granted bag offers absorption: "+id)
 	scene.item_popup.hide()

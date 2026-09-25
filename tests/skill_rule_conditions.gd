@@ -8,7 +8,7 @@ const Abilities = preload("res://expedition/items/abilities.gd")
 const Rules = preload("res://expedition/ai/tactic_rules.gd")
 const Tactics = preload("res://expedition/ai/tactical_action_selector.gd")
 ## Distance to place the foe at; parts not listed are exercised at their own range.
-const REACH = {"PUSH":1,"HEAVY_STRIKE":1,"THROWING_KNIFE":4,"LUNGE":3,"BOMB":3}
+const REACH = {"PUSH":1,"ORE_SLAM":1,"KOBOLD_SLING":4,"GOBLIN_SHIV":3,"BOMB":3}
 var failures := 0
 var checks := 0
 func check(ok: bool, reason: String) -> void:

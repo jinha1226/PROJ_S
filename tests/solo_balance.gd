@@ -35,7 +35,7 @@ func play(seed: int) -> Dictionary:
 	var s = Session.new_run(seed)
 	# A real player can use the first ration to prepare the two starting parts.
 	if s.camp():
-		s.gain_level_xp(s.party[0],65); s.equip_part(0,0,"PUSH"); s.equip_part(0,1,"GUARD"); s.end_camp()
+		s.gain_level_xp(s.party[0],65); s.end_camp()
 	var row: Dictionary = clear_floor(s,1)
 	row.session = s
 	return row
@@ -103,7 +103,7 @@ func run() -> void:
 func campaign() -> void:
 	var s = Session.new_run(6)
 	if s.camp():
-		s.gain_level_xp(s.party[0],65); s.equip_part(0,0,"PUSH"); s.equip_part(0,1,"GUARD"); s.end_camp()
+		s.gain_level_xp(s.party[0],65); s.end_camp()
 	var reached := 1; var camps := 1; var last: Dictionary = {}
 	for attempt in range(2):
 		if not s.on_floor(): break

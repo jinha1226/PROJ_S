@@ -2,7 +2,6 @@ extends RefCounted
 const SHEET = preload("res://assets/mobile/ui-atlas.png")
 ## Paper-doll sprites, south facing, one PNG per look (tools/art/build_game_sprites.py).
 ## ACTOR_SPRITES follows ACTOR_IDS, MONSTER_SPRITES follows MONSTER_IDS, and
-## BOSS_SPRITES follows a boss's `pattern`: mire, bomber, giant.
 const ACTOR_SPRITES := [preload("res://assets/sprites-v1/actors/human.png"),preload("res://assets/sprites-v1/actors/dwarf.png"),
 	preload("res://assets/sprites-v1/actors/elf.png"),preload("res://assets/sprites-v1/actors/orc.png"),
 	preload("res://assets/sprites-v1/actors/wolf.png"),preload("res://assets/sprites-v1/actors/mage.png"),
@@ -13,9 +12,16 @@ const MONSTER_SPRITES := [preload("res://assets/sprites-v1/monsters/dcss_rat.png
 	preload("res://assets/sprites-v1/monsters/dcss_gnoll.png"),preload("res://assets/sprites-v1/monsters/dcss_river_rat.png"),
 	preload("res://assets/sprites-v1/monsters/kobold_firecaller.png"),preload("res://assets/sprites-v1/monsters/frost_imp.png"),
 	preload("res://assets/sprites-v1/monsters/storm_bat.png"),preload("res://assets/sprites-v1/monsters/goblin_hexer.png"),
-	preload("res://assets/sprites-v1/monsters/gnoll_summoner.png")]
-const BOSS_SPRITES := [preload("res://assets/sprites-v1/bosses/boss_mire.png"),preload("res://assets/sprites-v1/bosses/boss_bomber.png"),
-	preload("res://assets/sprites-v1/bosses/boss_giant.png")]
+	preload("res://assets/sprites-v1/monsters/gnoll_summoner.png"),
+	preload("res://assets/sprites-v1/monsters/goblin_archer.png"),preload("res://assets/sprites-v1/monsters/goblin_shield.png"),
+	preload("res://assets/sprites-v1/monsters/orc_thrower.png"),preload("res://assets/sprites-v1/monsters/cave_spider.png"),
+	preload("res://assets/sprites-v1/monsters/rock_beetle.png"),preload("res://assets/sprites-v1/monsters/ore_golem.png"),
+	preload("res://assets/sprites-v1/monsters/giant_leech.png"),preload("res://assets/sprites-v1/monsters/swamp_toad.png"),
+	preload("res://assets/sprites-v1/monsters/temple_serpent.png"),preload("res://assets/sprites-v1/monsters/water_spirit.png"),
+	preload("res://assets/sprites-v1/monsters/skeleton_soldier.png"),preload("res://assets/sprites-v1/monsters/skeleton_archer.png"),
+	preload("res://assets/sprites-v1/monsters/ghoul.png"),preload("res://assets/sprites-v1/monsters/vampire_bat.png"),
+	preload("res://assets/sprites-v1/monsters/wraith_knight.png"),preload("res://assets/sprites-v1/monsters/wraith.png"),
+	preload("res://assets/sprites-v1/monsters/gravekeeper.png")]
 ## Potion flasks in `consumables.json` `appearances.potion` order, and the
 ## effect badges that sit on a flask's lower-right corner (tools/art/build_potions.py).
 const POTION_LOOKS := [preload("res://assets/items-v1/potions/red.png"),preload("res://assets/items-v1/potions/blue.png"),
@@ -124,7 +130,10 @@ const MAGIC_SCHOOLS := ["fire","ice","air","hex","summon"]
 const ITEM_SHEET = preload("res://assets/topdown/flat-v1/items.png")
 const ACTOR_IDS := ["human","dwarf","elf","orc","wolf","mage","merchant","wanderer"]
 const MONSTER_IDS := ["dcss_rat","dcss_frilled_lizard","kobold","goblin","dcss_hobgoblin","dcss_orc","dcss_gnoll","dcss_river_rat",
-	"kobold_firecaller","frost_imp","storm_bat","goblin_hexer","gnoll_summoner"]
+	"kobold_firecaller","frost_imp","storm_bat","goblin_hexer","gnoll_summoner",
+	"goblin_archer","goblin_shield","orc_thrower","cave_spider","rock_beetle","ore_golem",
+	"giant_leech","swamp_toad","temple_serpent","water_spirit","skeleton_soldier","skeleton_archer",
+	"ghoul","vampire_bat","wraith_knight","wraith","gravekeeper"]
 const ELEMENT_TINTS := {"fire":Color(1.0,0.72,0.62),"ice":Color(0.7,0.86,1.0),"air":Color(1.0,0.96,0.6),"poison":Color(0.72,1.0,0.62),"will":Color(0.86,0.72,1.0)}
 const ELEMENT_MARKS := {"fire":Color("ff7a3a"),"ice":Color("7fc8ff"),"air":Color("ffe14a"),"poison":Color("7bd35a"),"will":Color("b889ff")}
 const MASTERY_IDS := ["sword","spear","mace","axe","bow","fire","ice","air","hex","summon"]
@@ -196,10 +205,6 @@ static func enemy_sprite(species_id: String) -> AtlasTexture:
 	var index := MONSTER_IDS.find(species_id)
 	if index < 0: index = MONSTER_IDS.find("kobold")
 	return whole(MONSTER_SPRITES[index],"monster/"+str(index))
-
-static func boss_sprite(pattern: int) -> AtlasTexture:
-	var index := posmod(pattern,BOSS_SPRITES.size())
-	return whole(BOSS_SPRITES[index],"boss/"+str(index))
 
 ## A paper-doll sprite drawn `scale` tiles wide, centred on the tile, feet on
 ## the tile's lower edge so a figure stands in its cell and rises above it.
@@ -286,11 +291,11 @@ static func paint_monster(canvas: CanvasItem, species_id: String, rect: Rect2, t
 	canvas.draw_circle(centre,radius+1.5,Color(0.1,0.08,0.07,tint.a))
 	canvas.draw_circle(centre,radius,Color(ELEMENT_MARKS[element],tint.a))
 
-static func paint_boss(canvas: CanvasItem, rect: Rect2, tint: Color = Color.WHITE, pattern: int = 0) -> void:
-	paint_standing(canvas,boss_sprite(pattern),rect,3.0,tint)
+static func paint_boss(canvas: CanvasItem, rect: Rect2, tint: Color = Color.WHITE, species_id: String = "goblin") -> void:
+	paint_standing(canvas,enemy_sprite(species_id),rect,3.0,tint)
 
 static func terrain(cell: Dictionary, point: Vector2i = Vector2i.ZERO, theme_id: String = "") -> AtlasTexture:
-	if theme_id in ["F1_RUINS","F2_MINES"]: return FirstFloor.terrain(cell,point,theme_id)
+	if theme_id in ["F1_RUINS","F2_MINES","F3_TEMPLE","F4_CRYPT"]: return FirstFloor.terrain(cell,point,theme_id)
 	if cell.terrain == "stone": return Masonry.floor_tile(point)
 	if cell.terrain == "wall": return Masonry.tile(4+posmod(point.x+point.y*3,4))
 	var palette: int = cell.get("palette",0)
@@ -318,8 +323,8 @@ static func skill(index: int) -> AtlasTexture:
 
 static func part_icon(id: String) -> AtlasTexture:
 	var icons := {"PUSH":10,"GUARD":10,"BOMB":12,"IRON_HIDE":8,
-		"THROWING_KNIFE":1,"KOBOLD_SLING":5,"GOBLIN_SHIV":1,
-		"HOB_CLUB":3,"ORC_CLEAVER":4,"GNOLL_SPEAR":2}
+		"KOBOLD_SLING":5,"GOBLIN_SHIV":1,"SERPENT_SHED":8,"BEETLE_CURL":8,"SHIELD_STANCE":10,"THORN_ARMOUR":8,"SKELETON_WALL":10,
+		"HOB_TAUNT":8,"ORE_SLAM":3,"ORC_CLEAVER":4,"GNOLL_SPEAR":2}
 	var index: int = int(icons.get(id,14))
 	return pixel_region(ITEM_SHEET,4,4,index,"flat/part/"+id)
 

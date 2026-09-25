@@ -22,6 +22,7 @@ func field(seed: int) -> Dictionary:
 	var foe: Dictionary = s.enemies[0]
 	foe.hp = 100; foe.max_hp = 100; foe.pos = hero.pos+Vector2i(1,0)
 	foe.alert = true; foe.role = "MELEE"; foe.part_id = ""
+	foe.species_id = "dcss_rat"; foe.first_acted = true; foe.speed = 100
 	foe.ready_at = s.time+100
 	# The ticks below are catalog weapon delays: the starting kit's rank in the
 	# axis is set aside so this suite measures the scheduler, not the mastery.

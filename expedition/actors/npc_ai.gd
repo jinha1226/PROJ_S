@@ -29,6 +29,9 @@ static func sense(s, npc: Dictionary) -> bool:
 ## utility table, a duo's cohesion coming before the mode's own step.
 static func turn(s, npc: Dictionary) -> void:
 	npc.ap = 1
+	if npc.get("fallen",false):
+		s.BossAI.turn(s,npc)
+		return
 	var seen: int = MonsterAI.sight(s)
 	if npc.get("hostile",false):
 		hostile_turn(s,npc,seen)

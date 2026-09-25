@@ -39,7 +39,7 @@ func run() -> void:
 	var hp: int = s.party[0].hp
 	check(s.descend() and s.depth == 2,"adjacent stairs descend")
 	check(s.party[0].hp == hp and s.food == old_food-1,"condition and food persist")
-	check(s.floor_state.layout.theme_id == "F2_MINES","second floor changes theme")
+	check(s.floor_state.layout.theme_id == "F1_RUINS","second floor keeps the zone theme")
 	s.party[0].hp = 1; s.damage(s.party[0],50,100,"IMPACT")
 	check(s.phase == "DEFEAT" and not s.descend(),"solo death ends the run")
 	var scene = load("res://expedition/ui/main.tscn").instantiate(); scene.session = s
@@ -164,7 +164,7 @@ func persistence() -> void:
 	check(actor.memory.to_dict() == memory,"the memories follow")
 	check(int(s.run_stats.kills) == kills,"the run tally keeps counting")
 	check(s.party.size() == 1 and s.party[0] == actor,"and it is the same hero, not a copy")
-	check(s.floor_state.layout.theme_id == "F2_MINES","the second floor is the mines")
+	check(s.floor_state.layout.theme_id == "F1_RUINS","the second floor remains in the ruins")
 
 ## Portrait screens: the HUD is compact, everything is a touch target and
 ## nothing hangs off the edge.

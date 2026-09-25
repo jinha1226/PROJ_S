@@ -13,6 +13,8 @@ var _pointer_dragged := false
 var touch_start := Vector2.ZERO
 var suppress_mouse_until := 0
 const Art = preload("res://expedition/art/mobile_art.gd")
+const Hazards = preload("res://expedition/level/hazards.gd")
+const THEME_TINT := {"F3_TEMPLE":Color(0.82,0.95,1.0),"F4_CRYPT":Color(0.86,0.8,0.95)}
 const MEMORY_TINT := Color(0.18,0.20,0.23)
 ## A dungeon npc is neither the party's green nor the monsters' red.
 const NPC_COLOR := Color("d8c98a")
@@ -418,19 +420,24 @@ func paint_terrain() -> void:
 			var cell: Dictionary = session.tile(point)
 			var rect := Rect2(project(Vector2(point)),Vector2.ONE*half_width*2)
 			var tint := MEMORY_TINT if visibility == 1 else Color.WHITE
+			tint *= THEME_TINT.get(session.floor_state.theme_id,Color.WHITE)
 			if cell.terrain == "wall":
 				draw_rect(rect,Color("090c10"))
 				walls.append({"point":point,"rect":rect,"tint":tint})
 			else:
 				if visibility == 1: draw_rect(rect,Color("151b22"))
 				else: draw_texture_rect(Art.terrain(cell,point,session.floor_state.theme_id if uses_pixel_floor_art() else ""),rect,false,tint)
+				if visibility != 1:
+					var wash: Color = Hazards.overlay(cell)
+					if wash.a > 0: draw_rect(rect,wash)
+					if bool(cell.get("fog",false)): draw_rect(rect,Hazards.FOG_COLOR)
 				Art.Masonry.paint_floor_shadow(self,rect,point,is_wall_tile)
 				# Single-slab art already marks its own edges; remembered cells keep one fine rim.
 				if visibility == 1: draw_rect(rect,Color(0,0,0,0.16),false,1.0)
 	Art.Masonry.paint_walls(self,walls,is_wall_tile,Art.FirstFloor.material(session.floor_state.theme_id) if uses_pixel_floor_art() else {})
 
 func uses_pixel_floor_art() -> bool:
-	return session.floor_state.theme_id in ["F1_RUINS","F2_MINES"]
+	return session.floor_state.theme_id in ["F1_RUINS","F2_MINES","F3_TEMPLE","F4_CRYPT"]
 
 func _draw() -> void:
 	for visual in actor_visuals.values():
@@ -493,11 +500,20 @@ func _draw() -> void:
 				elif not object_id.is_empty():
 					Art.FirstFloor.paint_object(self,object_id,Rect2(center-Vector2.ONE*half_width,Vector2.ONE*half_width*2),Color("777777") if bool(feature.get("used",false)) else Color.WHITE)
 				else:
-					Icons.paint(self,"entry" if feature.kind in ["entry","altar"] else icon,center,half_width*0.65,Color("655a43") if bool(feature.get("used",false)) else Color("9fe3ff") if feature.kind in ["stairs","pylon"] else Color("e4c98e"))
+					Icons.paint(self,"entry" if feature.kind in ["entry","altar"] else icon,center,half_width*0.65,Color("655a43") if bool(feature.get("used",false)) else Color("9fe3ff") if feature.kind in ["stairs","lever"] else Color("e4c98e"))
 			if point in attacks:
 				draw_colored_polygon(polygon,Color(0.95,0.15,0.18,0.3)); outline(polygon,Color("f37575"),2)
 			if point == target_cell: outline(polygon,Color.WHITE,3)
-			if cell.wet > 0 and cell.terrain != "water": outline(polygon,Color(0.3,0.6,0.8,0.6))
+			if cell.wet > 0 and cell.terrain not in Hazards.WATERY: outline(polygon,Color(0.3,0.6,0.8,0.6))
+			if bool(cell.get("ice",false)):
+				draw_colored_polygon(polygon,Color(0.78,0.92,1.0,0.55)); outline(polygon,Color("e8f7ff"),2)
+			if bool(cell.get("poison_pool",false)): draw_colored_polygon(polygon,Color(0.35,0.75,0.2,0.4))
+			if int(cell.get("steam_until",0)) > int(session.time): draw_colored_polygon(polygon,Color(0.9,0.9,0.92,0.55))
+			if bool(cell.get("gas",false)): draw_circle(center,half_width*0.3,Hazards.GAS_COLOR)
+			if cell.has("collapse"):
+				var armed: bool = bool(cell.collapse.get("armed",false))
+				outline(polygon,Hazards.COLLAPSE_ARMED if armed else Hazards.COLLAPSE_IDLE,3 if armed else 1)
+				if armed: draw_string(ui_font,center+Vector2(-4,4),"!",HORIZONTAL_ALIGNMENT_LEFT,-1,18,Color.WHITE)
 			for intent in (visual_state.intents if is_presenting() else session.intents):
 				if intent.cell == point:
 					draw_colored_polygon(polygon,Color(1,0.45,0.05,0.4)); outline(polygon,Color("ffb447"),3)
@@ -624,12 +640,20 @@ func _draw_foreground(canvas: Node2D) -> void:
 		canvas.draw_rect(box,Color(0.03,0.05,0.07,0.85))
 		canvas.draw_rect(box,Color("e5dfcf",0.68),false,1)
 		canvas.draw_string(ui_font,box.position+Vector2(2,13),str(row.text),HORIZONTAL_ALIGNMENT_CENTER,66,11,Color("fff6e1"))
+	for actor in actors:
+		if str(actor.get("boss_kind","")) != "golem" or int(actor.hp) <= 0 or not _label_visible(actor): continue
+		var above := cell_center(actor.pos)-Vector2(0,half_width*3.4)
+		var gauge := Rect2(above-Vector2(30,9),Vector2(60,18))
+		canvas.draw_rect(gauge,Color(0.2,0.05,0.02,0.85))
+		canvas.draw_string(ui_font,gauge.position+Vector2(2,13),"열기 %d" % int(actor.get("heat",0)),HORIZONTAL_ALIGNMENT_CENTER,56,11,Color("ffb36b"))
 	if not is_presenting(): draw_action_overlay(canvas)
 	for effect in effects:
 		var kind := str(effect.get("kind",""))
 		if kind == "ENEMY_ATTACK": draw_enemy_attack(effect,canvas)
 		elif kind == "ATTACK_SWING": draw_swing(effect,canvas)
 		elif kind == "MISS": draw_miss(effect,canvas)
+		elif kind == "SPEECH": draw_speech(effect,canvas)
+		elif kind == "REACTION": draw_reaction(effect,canvas)
 		elif effect.has("amount"): draw_hit(effect,canvas)
 	canvas.draw_set_transform(Vector2.ZERO)
 	# The edges of the screen flare red while the party is being hurt.
@@ -742,6 +766,23 @@ func draw_miss(effect: Dictionary, canvas: Node2D) -> void:
 	if t < 0 or t >= 0.8: return
 	var center := cell_center(effect.cell)-Vector2(0,half_width*(1.2+t*0.8))
 	draw_outlined(canvas,center,str(effect.get("text","회피")),int(18*(1.0+0.4*maxf(0,1.0-t/0.1))),Color(0.8,0.9,1.0,clampf((0.8-t)/0.3,0,1)))
+
+func draw_reaction(effect: Dictionary, canvas: Node2D) -> void:
+	var t := clock_of(effect)
+	if t < 0 or t >= 1.1: return
+	var center := cell_center(effect.cell)-Vector2(0,half_width*(1.6+t*0.9))
+	var grow := 1.0+0.6*maxf(0,1.0-t/0.12)
+	draw_outlined(canvas,center,str(effect.get("text","")),int(24*grow),Color(1.0,0.86,0.35,clampf((1.1-t)/0.35,0,1)))
+
+func draw_speech(effect: Dictionary, canvas: Node2D) -> void:
+	if clock_of(effect) >= 2.5: return
+	var text := str(effect.get("text",""))
+	var width := clampf(text.length()*11.0+8.0,70.0,220.0)
+	var center := cell_center(effect.cell)-Vector2(0,half_width*2.6)
+	var box := Rect2(Vector2(clampf(center.x-width/2.0,2,maxf(2,size.x-width-2)),maxf(origin.y,center.y-18)),Vector2(width,18))
+	canvas.draw_rect(box,Color(0.08,0.03,0.04,0.88))
+	canvas.draw_rect(box,Color("d98a8a",0.8),false,1)
+	canvas.draw_string(ui_font,box.position+Vector2(4,13),text,HORIZONTAL_ALIGNMENT_CENTER,width-8,11,Color("fff0e8"))
 
 func draw_enemy_attack(effect: Dictionary, canvas: Node2D) -> void:
 	var clock := clock_of(effect)

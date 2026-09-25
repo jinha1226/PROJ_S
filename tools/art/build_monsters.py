@@ -6,8 +6,7 @@ held items, and four facings with the light always from the top-left (west
 is drawn, never mirrored).
 
 Humanoids reuse the paper-doll torso and add species features (ears, snout,
-tusks, horns, spots). Beasts are a body, a head and a tail. Bosses are drawn
-on the same 64-unit grid and rasterised larger.
+tusks, horns, spots). Beasts are a body, a head and a tail. Every species is drawn on the same 64-unit grid.
 
 Run: python3 tools/art/build_monsters.py
 """
@@ -192,70 +191,6 @@ def beast(uid, facing, fur, ear_color, tail_color, size=1.0, frill=None, crest=N
     return wrap("".join(parts))
 
 
-# --- bosses ------------------------------------------------------------
-
-def mire(uid, facing):
-    """수렁 포식자: a mud mound with a wide toothed maw and three yellow eyes."""
-    turn = {"east": 1, "west": -1}.get(facing, 0)
-    parts = [shadow(26, 59)]
-    mound = "M5 58 Q3 34 18 26 Q32 16 46 26 Q61 34 59 58 Z"
-    parts.append(shaded(uid + "m", mound, "#6e7a3c", "#566130", 3.4, 2.6))
-    for i, (x0, y0) in enumerate(((14, 30), (48, 32), (30, 20))):
-        parts.append(shaded(f"{uid}k{i}", ellipse(x0, y0, 5, 4), "#7f8c46", "#6e7a3c", 1.2, 1))
-    if facing != "north":
-        mx = 32 + turn * 9
-        parts.append(f'<path d="M{mx - 14} 42 Q{mx} 58 {mx + 14} 42 Q{mx} 47 {mx - 14} 42 Z" fill="#2a1a1c" {LINE}/>')
-        for i in range(5):
-            tx = mx - 10 + i * 5
-            parts.append(f'<path d="M{tx - 2} 43.5 L{tx} 48 L{tx + 2} 43.5 Z" fill="#fbf6e6" stroke="{INK}" stroke-width="1.2" stroke-linejoin="round"/>')
-        for i, (ex, ey) in enumerate(((mx - 8, 33), (mx + 8, 33), (mx, 28))):
-            parts.append(f'<rect x="{ex - 1.8}" y="{ey - 3.4}" width="3.6" height="6.8" rx="1.8" fill="#ffd84a" stroke="{INK}" stroke-width="1.4"/>')
-    for x0 in (12, 50):
-        parts.append(f'<path d="M{x0} 52 Q{x0 + 1} 58 {x0 - 1} 60" fill="none" stroke="#566130" stroke-width="3" stroke-linecap="round"/>')
-    return wrap("".join(parts))
-
-
-def bomber(uid, facing):
-    """폭탄 암살자: a thin hooded figure, a void where the face should be."""
-    turn = {"east": 1, "west": -1}.get(facing, 0)
-    frame = (9.5, 9.0, 0.5, 30, 11.5)
-    s, h, b, top, r = frame
-    if turn:
-        s, h, b = s * 0.72, h * 0.78, b * 0.8
-    hx, hy = 32 + 2.5 * turn, top - r + 4
-    parts = [shadow(max(s, h) + 4)]
-    parts.append(shaded(uid + "b", doll.torso(32, top, s, h, b), "#4a3566", "#3a2952"))
-    parts.append(f'<path d="M{32 - s + 3} {top + 9} L{32 + s - 3} {top + 16}" stroke="#2a1d3c" stroke-width="3.2" stroke-linecap="round"/>')
-    hood = f"M{hx - r} {hy + 2} Q{hx - r} {hy - r - 2} {hx + turn * 3} {hy - r - 5} Q{hx + r} {hy - r - 1} {hx + r} {hy + 2} Q{hx + r} {hy + r} {hx} {hy + r} Q{hx - r} {hy + r} {hx - r} {hy + 2} Z"
-    parts.append(shaded(uid + "h", hood, "#5a4278", "#46325f", 2.4, 2))
-    if facing != "north":
-        fx = hx + turn * 3
-        parts.append(f'<ellipse cx="{fx}" cy="{hy + 1.5}" rx="{r * 0.62 if not turn else r * 0.5}" ry="{r * 0.55}" fill="#140c1c" {LINE}/>')
-        parts.append(pills(fx, hy + 1.2, facing, "#ff5a3a", gap=2.8, h=4.4))
-    return wrap("".join(parts))
-
-
-def giant(uid, facing):
-    """과부하 거인: a stone hulk with a small head and glowing overloaded cracks."""
-    turn = {"east": 1, "west": -1}.get(facing, 0)
-    s, h, b, top, r = (19.0, 14.0, 1.5, 26, 8.5)
-    if turn:
-        s, h, b = s * 0.72, h * 0.78, b * 0.8
-    hx, hy = 32 + 2.5 * turn, top - r + 3
-    glow = "#6ff3ff"
-    parts = [shadow(max(s, h) + 5, 59)]
-    torso = doll.torso(32, top, s, h, b).replace(f"{BOTTOM}", "58")
-    parts.append(shaded(uid + "b", torso, "#8d95a3", "#6f7786", 3.4, 2.6))
-    parts.append(f'<path d="M{32 - s * 0.6} {top + 8} L{32 - s * 0.2} {top + 14} L{32 - s * 0.5} {top + 22} M{32 + s * 0.5} {top + 6} L{32 + s * 0.25} {top + 13} L{32 + s * 0.55} {top + 20}" fill="none" stroke="{glow}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>')
-    if facing != "north":
-        cx0 = 32 + turn * 4
-        parts.append(f'<circle cx="{cx0}" cy="{top + 14}" r="5.4" fill="{glow}" {LINE}/>')
-        parts.append(f'<circle cx="{cx0 - 1.4}" cy="{top + 12.6}" r="1.8" fill="#ffffff"/>')
-    parts.append(shaded(uid + "h", ellipse(hx, hy, r, r * 0.9), "#9aa2b0", "#7c8494", 2, 1.8))
-    parts.append(pills(hx, hy, facing, glow, gap=2.8, h=5))
-    return wrap("".join(parts))
-
-
 def bat(uid, facing, fur, wing, glow="#ffe14a"):
     """A winged caster silhouette that stays legible at the game's tile size."""
     turn = {"east": 1, "west": -1}.get(facing, 0)
@@ -280,6 +215,11 @@ RUNE = f'<circle cx="32" cy="48" r="3.4" fill="none" stroke="#e7d36a" stroke-wid
 CHAIN = '<path d="M24 46 L40 50" stroke="#c9c9c9" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="3 2"/>'
 
 
+QUIVER = '<path d="M38 40 L42 52" stroke="#8a5a33" stroke-width="3" stroke-linecap="round"/>'
+BUCKLER = f'<circle cx="26" cy="46" r="5" fill="#b0b8c0" stroke="{INK}" stroke-width="1.6"/>'
+AXE = '<path d="M24 44 L30 38" stroke="#c9c9c9" stroke-width="3" stroke-linecap="round"/>'
+LANTERN = f'<circle cx="38" cy="48" r="3.4" fill="#ffd36a" stroke="{INK}" stroke-width="1.4"/>'
+BONE = ("#e8e2d0", "#c9c2ad")
 GOBLIN_SKIN = ("#78c24c", "#5ea338")
 MONSTERS = {
     # id: (display name, builder, raster scale)
@@ -306,9 +246,39 @@ MONSTERS = {
                                               ears="pointy", mark=RUNE), 2),
     "gnoll_summoner": ("놀 소환사", lambda f: humanoid("gsm" + f, f, (13.5, 11.5, 1.0, 31, 11.5), ("#d2a95e", "#b58c48"), ("#3f6b5a", "#31554a"),
                                               ears="round", snout=("#6a5040", "#553f32"), spots=[(-5, -4, 1.8), (4, -6, 1.5)], mark=CHAIN), 2),
-    "boss_mire": ("수렁 포식자", lambda f: mire("mire" + f, f), 3),
-    "boss_bomber": ("폭탄 암살자", lambda f: bomber("bomb" + f, f), 3),
-    "boss_giant": ("과부하 거인", lambda f: giant("giant" + f, f), 3),
+    "goblin_archer": ("고블린 궁수", lambda f: humanoid("gar" + f, f, (9.5, 8.5, 0.5, 33, 10.5), GOBLIN_SKIN, ("#5a7a3a", "#476030"),
+                                               ears="pointy", mark=QUIVER), 2),
+    "goblin_shield": ("고블린 방패병", lambda f: humanoid("gsh" + f, f, (10.5, 9.5, 1.0, 33, 10.5), GOBLIN_SKIN, ("#6d7680", "#565e66"),
+                                                ears="pointy", brows=True, mark=BUCKLER), 2),
+    "orc_thrower": ("오크 투척병", lambda f: humanoid("otr" + f, f, (15.0, 11.5, 1.0, 31, 11.0), ("#86a94c", "#6d8e3a"), ("#7a4a2c", "#603a22"),
+                                             tusks=True, mark=AXE), 2),
+    "cave_spider": ("동굴 거미", lambda f: beast("spd" + f, f, ("#3a3440", "#2a2530"), ("#6a2a3a", "#541f2d"), "#3a3440", 0.9,
+                                           crest="#8a2a3a", tail_len=0.4, snout_len=0.6), 2),
+    "rock_beetle": ("바위 딱정벌레", lambda f: beast("btl" + f, f, ("#7a746a", "#5f5a52"), ("#7a746a", "#5f5a52"), "#7a746a", 1.05,
+                                             crest="#a39d90", tail_len=0.3, snout_len=0.7), 2),
+    "ore_golem": ("광석 골렘", lambda f: humanoid("gol" + f, f, (17.0, 12.0, 1.0, 30, 11.5), ("#8a8680", "#6e6a64"), ("#5a5550", "#46423e"),
+                                         brows=True, eye="#ffb13a"), 2),
+    "giant_leech": ("거대 거머리", lambda f: beast("lee" + f, f, ("#5a3a4a", "#462d3a"), ("#5a3a4a", "#462d3a"), "#5a3a4a", 0.95,
+                                             tail_len=0.6, snout_len=0.5), 2),
+    "swamp_toad": ("늪 두꺼비", lambda f: beast("toad" + f, f, ("#6a8a3a", "#55702e"), ("#8aa84a", "#6d8a3a"), "#6a8a3a", 1.0,
+                                          tail_len=0.2, snout_len=1.2), 2),
+    "temple_serpent": ("신전 뱀", lambda f: beast("srp" + f, f, ("#3f7a6a", "#315f53"), ("#3f7a6a", "#315f53"), "#3f7a6a", 0.9,
+                                             crest="#d8c05a", tail_len=1.8, snout_len=1.4), 2),
+    "water_spirit": ("물의 정령", lambda f: humanoid("wsp" + f, f, (11.0, 9.5, 0.5, 32, 10.5), ("#7fc8ff", "#5fa8e0"), ("#4a8ad0", "#3a70b0"),
+                                            eye="#1d3a5c"), 2),
+    "skeleton_soldier": ("해골 병사", lambda f: humanoid("sks" + f, f, (13.0, 11.0, 1.0, 31, 11.0), BONE, ("#6a6a72", "#55555c"),
+                                                eye="#1a1a1a", mark=BUCKLER), 2),
+    "skeleton_archer": ("해골 궁수", lambda f: humanoid("ska" + f, f, (10.0, 8.5, 0.5, 31, 10.5), BONE, ("#5a4a3a", "#473a2d"),
+                                               eye="#1a1a1a", mark=QUIVER), 2),
+    "ghoul": ("구울", lambda f: humanoid("gho" + f, f, (12.0, 10.0, 1.0, 32, 11.0), ("#9aa88a", "#7e8c70"), ("#4a4038", "#3a322b"),
+                                    ears="pointy", ear_scale=0.5, brows=True), 2),
+    "vampire_bat": ("흡혈 박쥐", lambda f: bat("vbat" + f, f, ("#3a2030", "#2a1822"), ("#6a2a3a", "#541f2d"), glow="#ff4a5a"), 2),
+    "wraith_knight": ("망령 기사", lambda f: humanoid("wkn" + f, f, (16.0, 12.0, 1.0, 30, 11.5), ("#5a5a70", "#46465a"), ("#2f2f3a", "#22222b"),
+                                              horns=True, eye="#b889ff"), 2),
+    "wraith": ("원혼", lambda f: humanoid("wra" + f, f, (10.0, 8.5, 0.5, 31, 10.5), ("#c9c2e8", "#aaa2cc"), ("#8a80b0", "#6f6694"),
+                                     eye="#4a3a7a"), 2),
+    "gravekeeper": ("묘지기", lambda f: humanoid("grv" + f, f, (13.0, 11.0, 1.0, 31, 11.0), ("#b8a890", "#9a8c76"), ("#3a3a44", "#2c2c34"),
+                                         brows=True, mark=LANTERN), 2),
 }
 
 

@@ -1,4 +1,5 @@
 extends RefCounted
+const Hazards = preload("res://expedition/level/hazards.gd")
 ## The run's NPC roster and its placement on each floor.
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
@@ -60,7 +61,7 @@ static func situation(npc: Dictionary) -> String:
 ## Places three (the first floor) or four to five NPCs from the roster into the
 ## floor's npc rooms.
 static func place(s) -> void:
-	s.npcs = []
+	s.npcs = s.npcs.filter(func(n): return n.get("fallen",false) and n.hp > 0)
 	# Nobody from the last floor is still standing there with an offer open.
 	s.pending_offer = -1
 	# Re-placing on a live floor: the packs this function minted last time go with it.
@@ -98,7 +99,7 @@ static func place(s) -> void:
 		else:
 			room = s.floor_state.layout.rooms[rooms[room_i % rooms.size()]]
 			room_i += 1
-		var cells: Array = Generator.floor_cells(s.floor_state.layout.terrain,s.floor_state.layout.size,room.rect).filter(func(p): return s.at(p).is_empty() and not s.floor_state.features.has(p))
+		var cells: Array = Generator.floor_cells(s.floor_state.layout.terrain,s.floor_state.layout.size,room.rect).filter(func(p): return s.at(p).is_empty() and not s.floor_state.features.has(p) and s.tile(p).terrain not in Hazards.TERRAINS)
 		if partner_here:
 			var mate_pos: Vector2i = chosen.filter(func(m): return m.id == n.partner)[0].pos
 			cells = cells.filter(func(p): return s.distance(p,mate_pos) <= 2)

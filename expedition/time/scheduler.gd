@@ -8,6 +8,7 @@ const Rules = preload("res://expedition/combat/combat_rules.gd")
 const ElementRules = preload("res://sim/environment_rules.gd")
 const Statuses = preload("res://expedition/combat/statuses.gd")
 const Summons = preload("res://expedition/spells/summons.gd")
+const Hazards = preload("res://expedition/level/hazards.gd")
 
 static func actors(s) -> Array:
 	return s.party.slice(1).filter(func(a): return a.hp > 0) + s.npcs.filter(func(n): return n.hp > 0 and n.awake) + s.enemies.filter(func(e): return e.hp > 0)
@@ -39,7 +40,7 @@ static func flush_ready(s) -> bool:
 	awaken(s)
 	var complete: bool = Kernel.advance(now+1,
 		func(limit: int) -> Dictionary:
-			if s.phase == "DEFEAT": return {}
+			if s.phase in ["DEFEAT","VICTORY"]: return {}
 			var best: Dictionary = {}
 			if s.boundary < limit: best = {"at":s.boundary,"id":-1}
 			for actor in actors(s):
@@ -58,13 +59,14 @@ static func flush_ready(s) -> bool:
 	return complete
 
 static func advance(s, cost: int) -> bool:
+	if s.phase == "BATTLE": cost = s.Families.first_action_delay(s.party[0],cost)
 	var end: int = s.time + maxi(1, cost)
 	s.party[0].ready_at = end
 	s.floor_state.observe(s)
 	awaken(s)
 	var complete: bool = Kernel.advance(end,
 		func(limit: int) -> Dictionary:
-			if s.phase == "DEFEAT": return {}
+			if s.phase in ["DEFEAT","VICTORY"]: return {}
 			var best: Dictionary = {}
 			if s.boundary < limit: best = {"at":s.boundary, "id":-1}
 			for actor in actors(s):
@@ -92,6 +94,7 @@ static func advance(s, cost: int) -> bool:
 
 static func act(s, actor: Dictionary) -> void:
 	if actor.is_empty() or actor.hp <= 0: return
+	s.Reactions.begin_action(s)
 	var cost := 100
 	var was: Vector2i = actor.pos
 	if bool(actor.get("enemy", false)):
@@ -112,6 +115,7 @@ static func act(s, actor: Dictionary) -> void:
 		s.resolving_companions = false
 		s.note_explain(actor, choice)
 		if str(choice.get("mistake", "")) != "": s.note_mistake(actor, str(choice.mistake))
+	if s.phase == "BATTLE": cost = s.Families.first_action_delay(actor,cost)
 	actor.ready_at = s.time + maxi(40, cost)
 
 static func environment_tick(s) -> void:
@@ -120,6 +124,7 @@ static func environment_tick(s) -> void:
 		for x in range(s.BOARD_SIDE):
 			var point := Vector2i(x, y)
 			var cell: Dictionary = s.tile(point)
+			Hazards.tick_cell(s,point,cell)
 			# A conjured barrier holds its cells for the span the spell bought,
 			# then is simply gone; a wall of fire burns whoever stands in it.
 			if int(cell.get("wall_until",0)) > 0:
@@ -127,17 +132,22 @@ static func environment_tick(s) -> void:
 				elif bool(cell.get("wall_burn",false)):
 					var standing: Dictionary = s.at(point)
 					if not standing.is_empty(): Rules.damage(s,{},standing,4,"fire")
-			if cell.fire <= 0 and cell.wet <= 0: continue
-			var result: Dictionary = ElementRules.project_existing_fire_tick(cell.fire, cell.wet, 0, s.time)
-			cell.fire = result.fire_after_decay
-			cell.wet = maxi(0, result.wetness_after_suppression - ElementRules.WETNESS_DECAY_PER_ENVIRONMENT_TICK)
-			if result.known_damage > 0:
-				var victim: Dictionary = s.at(point)
-				if not victim.is_empty(): s.damage(victim, result.known_damage, 999, "FIRE")
+			var suppression := 0
+			if cell.fire > 0 or cell.wet > 0:
+				var result: Dictionary = ElementRules.project_existing_fire_tick(cell.fire, cell.wet, 0, s.time)
+				cell.fire = result.fire_after_decay
+				cell.wet = maxi(0, result.wetness_after_suppression - ElementRules.WETNESS_DECAY_PER_ENVIRONMENT_TICK)
+				suppression = int(result.suppression)
+				if result.known_damage > 0:
+					var victim: Dictionary = s.at(point)
+					if not victim.is_empty(): s.damage(victim, result.known_damage, 999, "FIRE")
+			if suppression > 0 or cell.has("steam_until") or bool(cell.get("ice",false)) or bool(cell.get("poison_pool",false)):
+				s.Reactions.tile_tick(s, point, cell, suppression)
 	for actor in s.party + s.npcs:
 		actor["guarded"] = false; actor["protected_by"] = -1
 		actor.iron_guard = false
 		for id in actor.cooldowns: actor.cooldowns[id] = maxi(0, int(actor.cooldowns[id]) - 1)
+	s.Reactions.refresh_wet(s)
 	Statuses.tick(s)
 	for actor in s.alive():
 		if not s.floor_state.safe(s): s.stress(actor, 2)

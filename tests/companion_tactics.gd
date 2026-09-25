@@ -243,7 +243,7 @@ func portrait_hold(scene, ui_s) -> void:
 func rule_editor(scene, ui_s) -> void:
 	scene.show_character(0,"파츠")
 	await process_frame
-	check(scene.details_popup.visible and scene.character_tab == "이능","the rule editor lives in the essence tab")
+	check(scene.details_popup.visible and scene.character_tab == "영혼석","the rule editor lives in the essence tab")
 	check(scene.details_popup.size.y <= root.size.y,"and fits the viewport")
 	scene.change_basic_target("LOWEST_HP")
 	await process_frame
@@ -256,9 +256,9 @@ func rule_editor(scene, ui_s) -> void:
 	scene.change_tactic_rule(0,"when","STATUS")
 	await process_frame
 	check(ui_s.party[0].rules[0].when == "STATUS","and changes it back")
-	scene.show_character(1,"이능")
+	scene.show_character(1,"영혼석")
 	await process_frame
-	check(scene.tactics_actor == 1 and scene.character_tab == "이능","the companion has its own essence tab")
+	check(scene.tactics_actor == 1 and scene.character_tab == "영혼석","the companion has its own essence tab")
 	check(scene.details_popup.size.y <= root.size.y,"which fits the viewport too")
 	scene.details_popup.hide(); await process_frame
 

@@ -12,6 +12,7 @@ const NpcHostility = preload("res://expedition/actors/npc_hostility.gd")
 const Recruit = preload("res://expedition/actors/npc_recruit.gd")
 var BOARD_SIDE := 64
 const Floor = preload("res://expedition/level/continuous_floor.gd")
+const Zones = preload("res://expedition/level/zones.gd")
 const Encounters = preload("res://expedition/level/encounter_builder.gd")
 var floor_state
 const Tactics = preload("res://expedition/ai/tactical_action_selector.gd")
@@ -25,10 +26,12 @@ const CombatRules = preload("res://expedition/combat/combat_rules.gd")
 const Scheduler = preload("res://expedition/time/scheduler.gd")
 const Spells = preload("res://expedition/spells/spells.gd")
 const Passives = preload("res://expedition/combat/passives.gd")
+const Families = preload("res://expedition/combat/families.gd")
 const Statuses = preload("res://expedition/combat/statuses.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const TagSets = preload("res://expedition/progression/tag_sets.gd")
+const Reactions = preload("res://expedition/combat/reactions.gd")
 const Hunt = preload("res://expedition/progression/hunt.gd")
 ## Run modules: the session keeps the state and hands each group of verbs to
 ## its own file. Every public name here stays on the session as a delegate.
@@ -45,7 +48,7 @@ var essence_seen: Dictionary = {}
 var events: Array = []
 ## Forwarded for callers that read it on the session; defined in `Camp`.
 const PREPARED_SLOTS := Camp.PREPARED_SLOTS
-const STARTING_PARTS := {"PUSH":1,"GUARD":1}
+const STARTING_PARTS := {}
 var party_command := "FOLLOW"
 ## Marching order: party indices in the order they follow the leader. The
 ## leader is the first living index in the order.
@@ -100,6 +103,7 @@ var time := 0
 var boundary := 100
 var turn_serial := 0
 var roll_serial := 0
+var action_serial := 0
 var gear_bag: Array = []
 var manual_mode := false
 var selected := 0
@@ -327,6 +331,7 @@ func item_label(kind: String) -> String: return Consumables.label(self,kind)
 
 func start_battle() -> void:
 	phase = "BATTLE"; round_number = 1
+	Families.battle_start(self)
 	for actor in party:
 		actor.reservation = {}; actor.ap = action_budget(actor)
 		actor["guarded"] = false; actor["protected_by"] = -1
@@ -527,7 +532,7 @@ func can_submit(actor: Dictionary, kind: String, target: Vector2i, value: String
 			var ally: Dictionary = at(target)
 			return not status_blocks(actor,"MOVE") and walk_reach(actor.pos,target) and ally in party and ally != actor
 		"ATTACK": return not status_blocks(actor,kind) and not attack_preview(target,0).is_empty()
-		"PYLON": return true
+		"LEVER": return BossAI.lever_ready(self,actor,target)
 		"FIRE", "WATER", "ELECTRIC": return distance(actor.pos,target) <= 4 and tile(target).terrain != "wall"
 	return false
 
@@ -556,6 +561,7 @@ func _presentation_action(actor: Dictionary, kind: String, target: Vector2i) -> 
 ## after the hero, round end on empty AP); auto_step passes false and drives
 ## the round itself.
 func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = true) -> bool:
+	Reactions.begin_action(self)
 	if not on_floor() or not inside(target): return false
 	if not pending_choice.is_empty(): return false
 	# A follower can round a corner outside the selected leader's sight.
@@ -566,8 +572,8 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 	var following: bool = (resolving_companions and kind == "MOVE") or wanderer(actor)
 	if not floor_state.visible.has(target) and not following: return false
 	var display_event := _presentation_action(actor,kind,target) if presentation != null else {}
-	if kind == "PYLON":
-		if not BossAI.disable_pylon(self,target): return false
+	if kind == "LEVER":
+		if not BossAI.pull_lever(self,actor,target): return false
 		if presentation != null: presentation.capture(self,actor.id,display_event)
 		if chain: finish_player_action()
 		return true
@@ -704,13 +710,16 @@ func update_rule(index: int, position: int, field: String, value: Variant) -> bo
 
 func reorder_rule(index: int, position: int, direction: int) -> bool: return Orders.reorder_rule(self,index,position,direction)
 
-func discharge(origin: Vector2i, source: int) -> void:
-	var queue: Array = [{"pos":origin, "power":18}]
+## Lightning running along wet and metal ground, six weaker each cell. It is a
+## reaction: it never sets off another.
+func discharge(origin: Vector2i, source: int, power: int = 18) -> void:
+	var queue: Array = [{"pos":origin, "power":power}]
 	var seen: Array = [origin]
+	var owner: Dictionary = actor_by_id(source)
 	while not queue.is_empty():
 		var row: Dictionary = queue.pop_front()
 		var victim := at(row.pos)
-		if not victim.is_empty(): damage(victim, row.power, source, "ELECTRIC")
+		if not victim.is_empty(): CombatRules.damage(self,owner,victim,int(row.power),"air",0,Reactions.REACTION_FORM)
 		if row.power <= 6 or not conductive(row.pos): continue
 		for direction in CARDINALS:
 			var next: Vector2i = row.pos + direction
@@ -719,7 +728,8 @@ func discharge(origin: Vector2i, source: int) -> void:
 	message("방전")
 
 func conductive(point: Vector2i) -> bool:
-	return tile(point).terrain in ["metal", "water"] or tile(point).wet >= 25
+	var ground: Dictionary = tile(point)
+	return ground.terrain in ["metal", "water", "deep_water", "bog"] or int(ground.wet) >= 25 or bool(ground.get("deep_water",false)) or bool(ground.get("bog",false))
 
 func roll_part(enemy: Dictionary, reward_actors: Variant = null) -> void: Gear.roll_part(self,enemy,reward_actors)
 
@@ -790,13 +800,14 @@ func actor_by_id(id: int) -> Dictionary:
 	return {}
 
 func damage(target: Dictionary, amount: int, source: int, form: String) -> int:
-	return CombatRules.damage(self,actor_by_id(source),target,amount,form)
+	var hit_form: String = form if form in Reactions.SECONDARY else Reactions.HIT_FORM
+	return CombatRules.damage(self,actor_by_id(source),target,amount,form,0,hit_form)
 
 func after_damage(target: Dictionary, amount: int, source: int, form: String) -> int:
 	if target.hp <= 0: return 0
 	var attacker: Dictionary = actor_by_id(source)
 	# Retaliation is plain damage: it never triggers passives again.
-	var passive_hit: bool = form != "RETALIATE"
+	var passive_hit: bool = form not in Reactions.SECONDARY
 	if passive_hit and not attacker.is_empty(): amount = Passives.outgoing(self,attacker,target,amount)
 	# 엄호: the protector steps in front. Counted and logged once, and only when
 	# the hit really lands on somebody else.
@@ -809,13 +820,14 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 		target = recipient
 	if target.get("shield",false):
 		message("보호막 · 피해 무효"); return 0
-	if target.get("iron_guard",false): amount = maxi(1,amount / 4)
-	elif target.get("guarded",false): amount = maxi(1,amount / 2)
+	var cut: int = Abilities.reduction(target)
+	if cut > 0: amount = maxi(1,amount*(100-cut)/100)
 	if passive_hit: amount = Passives.incoming(self,target,amount)
 	# A solo floor always grants one action; collapse instead exposes the hero
 	# to one extra point of damage. Calming supplies can prevent this penalty.
 	if party.size() == 1 and not target.enemy and target.stress >= 150 and amount > 0: amount += 1
 	serial += 1
+	amount = Families.lethal(self,target,amount)
 	var lost := mini(int(target.hp), amount)
 	if lost > 0 and bool(target.get("enemy",false)): target.sleep_until = 0
 	var source_cell: Vector2i = target.pos
@@ -831,6 +843,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 		taken_row.taken += lost
 		if covered: taken_row.redirected += lost
 	target.hp -= lost; Body.sync(target)
+	if lost > 0 and bool(target.get("boss",false)): BossAI.on_damaged(self,target,form)
 	if on_floor() and lost > 0: noise.append(target.pos)
 	if target.enemy and lost > 0: Floor.MonsterAI.on_hit(self,target)
 	if not target.enemy:
@@ -858,11 +871,13 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 				remember_important(ally,"ALLY_LOST",target.id+1,source+1,900)
 				stress(ally, 22)
 	message("%s %s에게 %d의 피해를 주었습니다.%s" % [subject_name(source_name),target.name,lost," "+subject_name(target.name)+" 쓰러졌습니다." if target.hp <= 0 else ""])
-	if passive_hit: Passives.after_hit(self,target,attacker,form)
+	if passive_hit: Passives.after_hit(self,target,attacker,form,lost)
 	if target.enemy and target.hp <= 0:
+		BossAI.on_monster_death(self,target,attacker)
 		var hunters: Array = hunt_recipients(target,attacker)
 		var party_hunted: bool = hunters.any(func(a): return a in party)
 		if not attacker.is_empty(): TagSets.on_kill(self,attacker)
+		if not attacker.is_empty(): Families.on_kill(self,attacker)
 		for actor in party+npcs: actor.get("usage",{}).erase(int(target.id))
 		if party_hunted:
 			battle_stats.kills = int(battle_stats.get("kills",0))+1
@@ -873,8 +888,13 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 		if target.get("boss",false):
 			if party_hunted:
 				grant_part(str(target.part_id)); score += 100
+			BossAI.on_boss_defeated(self,target)
+			if depth >= Zones.FINAL_DEPTH: victory()
 		else: roll_part(target,hunters)
 		NpcEssences.on_hunt(self,target,hunters)
+	if bool(target.get("fallen",false)) and target.hp <= 0 and not bool(target.get("defeated",false)):
+		target.defeated = true
+		BossAI.on_boss_defeated(self,target)
 	if not target.enemy and target.id == 0 and target.hp <= 0: check_battle_end()
 	return lost
 
@@ -884,6 +904,11 @@ func enemy_attack_turn(enemy: Dictionary) -> void: AutoBattle.enemy_attack_turn(
 
 
 func end_round() -> bool: return AutoBattle.end_round(self)
+
+func victory() -> void:
+	if phase == "VICTORY": return
+	phase = "VICTORY"; score += 500
+	message("원정 성공")
 
 func check_battle_end() -> void:
 	if on_floor() and party[0].hp <= 0: phase = "DEFEAT"; message("원정 종료")

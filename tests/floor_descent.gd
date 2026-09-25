@@ -17,7 +17,7 @@ func run() -> void:
 		for seed in range(3):
 			var layout: Dictionary = Generator.generate(deep,seed,depth)
 			check(Generator.validate(layout,deep).is_empty() and int(layout.stats.regenerations) < Generator.MAX_REGENERATIONS,"depth %d seed %d generates a valid floor" % [depth,seed])
-	check(Floor.theme_for(1).id == "F1_RUINS" and Floor.theme_for(2).id == "F2_MINES" and Floor.theme_for(3).id == "F1_RUINS","alternating themes")
+	check(Floor.theme_for(1).id == "F1_RUINS" and Floor.theme_for(2).id == "F1_RUINS" and Floor.theme_for(3).id == "F1_RUINS" and Floor.theme_for(4).id == "F2_MINES","three floors share a zone theme")
 	for id in ["F1_RUINS","F2_MINES"]:
 		var theme: Dictionary = Generator.theme(id)
 		check(theme.size == 80 and theme.corridor.width == 2 and theme.rooms.count == [13,16],"larger %s layout" % id)
@@ -32,6 +32,6 @@ func run() -> void:
 	s.party[0].pos = stairs; s.party[1].pos = stairs+Vector2i.RIGHT; s.party[2].pos = stairs+Vector2i.DOWN
 	s.floor_state.observe(s)
 	s.food = 4; s.party[1].hp = 12; s.party[2].stress = 60
-	check(s.descend() and s.depth == 2 and s.floor_state.layout.theme_id == "F2_MINES","descent builds next theme")
+	check(s.descend() and s.depth == 2 and s.floor_state.layout.theme_id == "F1_RUINS","descent stays in the zone theme")
 	check(s.food == 4 and s.party[1].hp == 12 and s.party[2].stress == 60,"state persists")
 	print("Floor descent: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)

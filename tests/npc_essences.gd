@@ -25,13 +25,13 @@ func stranger(s, index: int, facets: Dictionary, essences: Dictionary, level: in
 func run() -> void:
 	var s = Session.new_run(731)
 	var caster: String = str(Essences.CASTER_BY_SCHOOL.fire)
-	var pool := {"ORC_CLEAVER":1,"HOB_CLUB":1,"RAT_GNAW":1,caster:1}
+	var pool := {"ORC_CLEAVER":1,"HOB_TAUNT":1,"RAT_GNAW":1,caster:1}
 	var blunt: Dictionary = stranger(s,0,{"A":100,"C":500,"O":500},pool,1)
 	NpcEssences.choose(s,blunt)
 	check(blunt.equipped_abilities == ["ORC_CLEAVER"],"low agreeableness wears the berserker")
 	var careful: Dictionary = stranger(s,1,{"A":900,"C":950,"O":100},pool,1)
 	NpcEssences.choose(s,careful)
-	check(careful.equipped_abilities == ["HOB_CLUB"],"high conscientiousness wears the guard")
+	check(careful.equipped_abilities == ["HOB_TAUNT"],"high conscientiousness wears the guard")
 	var curious: Dictionary = stranger(s,2,{"A":900,"C":100,"O":950},pool,1)
 	NpcEssences.choose(s,curious)
 	check(curious.equipped_abilities == [caster],"high openness wears the caster")

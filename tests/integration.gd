@@ -48,7 +48,7 @@ func run() -> void:
 	run_session.floor_state.observe(run_session)
 	check(run_session.descend() and run_session.depth == 2,"stairs advance to floor two")
 	check(actor.hp == hp_before and actor.memory.to_dict() == memory_before,"descent keeps HP and memories")
-	check(run_session.food == food_before-1 and run_session.floor_state.layout.theme_id == "F2_MINES","food persists and theme changes")
+	check(run_session.food == food_before-1 and run_session.floor_state.layout.theme_id == "F1_RUINS","food persists within the zone")
 	run_session.damage(actor,1000,100,"IMPACT")
 	run_session.check_battle_end()
 	check(run_session.phase == "DEFEAT" and not run_session.descend(),"hero death ends run")

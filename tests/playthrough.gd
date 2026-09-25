@@ -31,7 +31,7 @@ func run() -> void:
 	s.party[0].pos = first_layout.stairs; s.floor_state.observe(s)
 	check(s.descend() and s.depth == 2,"stairs descend once")
 	check(s.food == food_before_camp-1 and s.party[0].stress == 25,"resources and condition persist")
-	check(s.floor_state.layout.theme_id == "F2_MINES" and s.floor_state.layout.stairs.x >= 0,"next floor is a new mine layout")
+	check(s.floor_state.layout.theme_id == "F1_RUINS" and s.floor_state.layout.stairs.x >= 0,"next floor keeps the zone layout")
 	s.damage(s.party[0],1000,100,"IMPACT")
 	s.check_battle_end()
 	check(s.phase == "DEFEAT" and not s.descend(),"hero death ends the run")

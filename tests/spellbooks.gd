@@ -130,12 +130,12 @@ func drops() -> void:
 	Fixture.arena(boss,10)
 	boss.depth = 6
 	var target: Dictionary = boss.enemies[0]
-	target.boss = true; target.part_id = "PUSH"
+	target.boss = true; target.part_id = "FURNACE_HEART"
 	target.hp = 60; target.max_hp = 60
 	boss.parts_bag.clear()
 	boss.damage(target,9999,0,"physical")
 	check(target.hp <= 0,"the boss falls")
-	check(int(boss.parts_bag.get("PUSH",0)) == 1,"a boss always leaves its essence")
+	check(int(boss.parts_bag.get("FURNACE_HEART",0)) == 1,"a boss always leaves its essence")
 	check(not boss.party[0].has("books"),"and never a book")
 	var found: Dictionary = {}
 	for key in range(40):

@@ -59,9 +59,9 @@ func failure() -> void:
 	var s = Session.new_run(7,"fire"); var hero: Dictionary = s.party[0]
 	hero.essences = {"FIRE_CALLER":2}; hero.equipped_abilities = ["FIRE_CALLER"]
 	check(Spells.failure(s,hero,"fire_6") == 8+54-16-20,"level six at tier two with sixteen mind")
-	hero.level = 3; hero.essences = {"FIRE_CALLER":2,"FROST_IMP":1,"STORM_BAT":1}
-	hero.equipped_abilities = ["FIRE_CALLER","FROST_IMP","STORM_BAT"]
-	check(Spells.failure(s,hero,"fire_6") == 8+54-19-20-10,"술사 3 takes ten more off")
+	hero.level = 3; hero.essences = {"FIRE_CALLER":2,"FROST_IMP":1,"GOBLIN_HEXER":1}
+	hero.equipped_abilities = ["FIRE_CALLER","FROST_IMP","GOBLIN_HEXER"]
+	check(Spells.failure(s,hero,"fire_6") == 8+54-20-20-10,"술사 3 takes ten more off")
 	hero.essences = {"FIRE_CALLER":3}; hero.equipped_abilities = ["FIRE_CALLER","",""]
 	check(Spells.failure(s,hero,"fire_1") == 0,"a mastered caster never fumbles an easy spell")
 	check(Spells.failure(s,hero,"ice_1") == clampi(8+9-18,0,85),"another school has no tier to lean on")

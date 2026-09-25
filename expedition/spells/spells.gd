@@ -161,6 +161,7 @@ static func on_ray(a: Vector2i, b: Vector2i) -> bool:
 
 static func cast(s, caster: Dictionary, id: String, target: Vector2i) -> bool:
 	if not can_cast(s,caster,id,target): return false
+	s.Reactions.begin_action(s)
 	var spell: Dictionary = definition(id)
 	caster.mp -= int(spell.mp)
 	if Rules.roll(s,caster,{},"spell_failure_"+id,100) < failure(s,caster,id):

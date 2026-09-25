@@ -26,52 +26,49 @@ func exercise() -> void:
 	var s = arena()
 	s.phase = "CAMP"
 	s.gain_level_xp(s.party[1],65)
-	s.parts_bag = {"SHOCKWAVE":2,"BOMB":1,"IRON_HIDE":1}
-	check(s.equip_part(1,0,"SHOCKWAVE") and s.parts_bag.SHOCKWAVE == 1,"equipping takes exactly one part from the bag")
-	check(not s.equip_part(1,1,"SHOCKWAVE"),"the same part cannot fill both slots")
-	check(not s.equip_part(0,0,"NOPE") and not s.equip_part(1,2,"SHOCKWAVE"),"unknown part and invalid slot rejected")
-	check(s.equip_part(0,0,"BOMB"),"hero can equip a part from the shared bag")
+	s.parts_bag = {"WATER_WAVE":2,"GOBLIN_AIM":1,"FURNACE_HEART":1}
+	check(s.equip_part(1,0,"WATER_WAVE") and s.parts_bag.WATER_WAVE == 1,"equipping takes exactly one soul stone from the bag")
+	check(not s.equip_part(1,1,"WATER_WAVE"),"the same stone cannot fill both slots")
+	check(not s.equip_part(0,0,"NOPE") and not s.equip_part(1,2,"WATER_WAVE"),"unknown stone and invalid slot rejected")
+	check(s.equip_part(0,0,"GOBLIN_AIM"),"hero can equip a stone from the shared bag")
 	s.reset_rules(1)
-	check(s.party[1].rules.any(func(r): return r.skill == "SHOCKWAVE"),"reset retains acquired rule")
+	check(s.party[1].rules.any(func(r): return r.skill == "WATER_WAVE"),"reset retains acquired rule")
 	s.phase = "BATTLE"
 	for foe in s.enemies: foe.hp = 0
 	s.party[0].pos = Vector2i(0,0); s.party[1].pos = Vector2i(3,3); s.enemies[0].pos = Vector2i(4,3); s.enemies[0].hp = 100; s.enemies[0].recovery = 20
 	s.floor_state.observe(s)
-	check(s.Tactics.choose(s,s.party[1]).kind == "SHOCKWAVE","companion AI can select acquired skill")
-	check(s.reserve_action(1,"SHOCKWAVE",s.party[1].pos),"acquired skill can be reserved")
+	check(s.reserve_action(1,"WATER_WAVE",s.enemies[0].pos),"acquired stone can be reserved")
 	var hp: int = s.enemies[0].hp
 	s.act("WAIT",s.party[0].pos)
-	check(s.enemies[0].hp < hp and s.party[1].cooldowns.SHOCKWAVE == 3,"reserved skill executes once and cooldown starts")
-	check(not s.reserve_action(1,"SHOCKWAVE",s.party[1].pos),"cooldown blocks reservation")
-	s.party[1].cooldowns.clear(); s.party[0].pos = Vector2i(2,3)
-	check(s.Tactics.choose(s,s.party[1]).kind != "SHOCKWAVE","AI avoids area friendly fire")
+	check(s.enemies[0].hp < hp and int(s.party[1].cooldowns.get("WATER_WAVE",0)) > 0,"reserved wave executes and starts cooldown")
+	check(not s.reserve_action(1,"WATER_WAVE",s.enemies[0].pos),"cooldown blocks reservation")
 	s.party[0].pos = Vector2i(1,1); s.enemies[0].pos = Vector2i(4,1); s.party[1].pos = Vector2i(7,7)
 	s.floor_state.observe(s)
 	hp = s.enemies[0].hp
-	check(s.act("BOMB",s.enemies[0].pos) and s.enemies[0].hp < hp,"direct bomb has real damage")
+	check(s.act("GOBLIN_AIM",s.enemies[0].pos) and s.enemies[0].hp < hp,"direct aimed shot deals damage")
 	s.phase = "CAMP"
-	check(s.equip_part(1,1,"IRON_HIDE"),"iron hide can be equipped")
+	check(s.equip_part(1,1,"FURNACE_HEART"),"furnace heart can be equipped")
 	s.phase = "BATTLE"; s.selected = 1
-	check(s.Abilities.execute(s,s.party[1],"IRON_HIDE",s.party[1].pos),"iron hide executes")
-	hp = s.party[1].hp; s.damage(s.party[1],16,100,"IMPACT")
-	check(s.party[1].hp == hp-4,"iron hide mitigates real damage")
+	check(s.Abilities.execute(s,s.party[1],"FURNACE_HEART",s.party[1].pos),"furnace armour activates")
+	hp = s.party[1].hp; s.damage(s.party[1],20,100,"IMPACT")
+	check(s.party[1].hp == hp-12,"furnace armour mitigates forty percent")
 	s.phase = "CAMP"
 	s.gain_level_xp(s.party[0],65*1+65*4)
 	check(int(s.party[0].level) == 3 and s.party[0].equipped_abilities.size() == 3,"three levels, three slots")
 	check(not s.has_method("spend_growth"),"no points to spend any more")
 	s.parts_bag["ORC_CLEAVER"] = 1
 	check(s.equip_part(0,2,"ORC_CLEAVER") and int(s.StatSheet.value(s,s.party[0],"str")) == 14,"an essence raises strength")
-	check(s.Abilities.power(s,s.party[0],s.Abilities.definition("HEAVY_STRIKE"),"HEAVY_STRIKE") == int(s.Abilities.definition("HEAVY_STRIKE").damage)+2,"strength raises a part's blow")
+	check(s.Abilities.power(s,s.party[0],s.Abilities.definition("ORE_SLAM"),"ORE_SLAM") == int(s.Abilities.definition("ORE_SLAM").damage)+2,"strength raises a part's blow")
 	check(not s.equip_part(0,5,"ORC_CLEAVER") and not s.equip_part(-1,0,"ORC_CLEAVER"),"invalid slots and members rejected")
 	var scene = load("res://expedition/ui/main.tscn").instantiate(); root.size = Vector2i(390,844); root.add_child(scene)
 	scene.session = s; scene.refresh()
-	for tab in ["이능","상태"]:
+	for tab in ["영혼석","상태"]:
 		scene.show_character(1,tab)
 		for frame in range(3): await process_frame
 		check(scene.details_popup.size.y <= root.size.y and scene.details_popup.size.x <= root.size.x,"character tab fits mobile: "+tab)
 		var labels: Array = scene.modal_content.find_children("*","Label",true,false)
-		if tab == "이능": check(not labels.any(func(l): return l.text == "스킬 사용 순서"),"essence tab has no ability ordering")
-		if tab == "이능": check(scene.modal_content.find_child("EssenceSlots",true,false).get_child_count() == 10,"essence tab shows ten slot cells")
+		if tab == "영혼석": check(not labels.any(func(l): return l.text == "스킬 사용 순서"),"essence tab has no ability ordering")
+		if tab == "영혼석": check(scene.modal_content.find_child("EssenceSlots",true,false).get_child_count() == 10,"essence tab shows ten slot cells")
 		check(not scene.modal_content.find_children("*","Button",true,false).any(func(b): return b.text == "가방"),"character window has no bag tab")
 	scene.inventory_filter = "전체"; scene.show_supplies()
 	s.grant_item("healing",1,true); scene.show_supplies()

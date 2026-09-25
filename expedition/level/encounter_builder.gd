@@ -2,6 +2,8 @@ extends RefCounted
 ## DCSS-style depth table + DD-style threat budget. Pure functions over the
 ## seeded RNG passed in; never touches the session.
 const Registry = preload("res://expedition/legacy/dcss_enemy_registry.gd")
+const Zones = preload("res://expedition/level/zones.gd")
+const FALLBACK_DEPTH := 6
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/floor_monsters.json"))
 const ROLE_BONUS := {"MELEE":0,"RANGED":1,"CASTER":2}
 const ROLE_WEIGHTS := {"MELEE":60,"RANGED":30,"CASTER":10}
@@ -29,7 +31,8 @@ static func curve(row: Dictionary, depth: int) -> float:
 		_: return 1.0
 
 static func weight(row: Dictionary, depth: int) -> float:
-	return float(row.rarity)*curve(row,depth)
+	if row.has("zone"): return float(row.rarity) if int(row.zone) == Zones.zone_of(depth) else 0.0
+	return float(row.rarity)*curve(row,mini(depth,FALLBACK_DEPTH))
 
 static func threat(member: Dictionary) -> int:
 	var row := species(member.species_id)
@@ -79,7 +82,10 @@ static func valid(members: Array, budget: int, max_members: int = MAX_MEMBERS) -
 	if total < budget-1: return "too weak (%d < %d)" % [total,budget-1]
 	if total > budget+1: return "too strong (%d > %d)" % [total,budget+1]
 	if members.filter(func(m): return m.role == "CASTER").size() > 1: return "two casters"
-	var gnoll_band: bool = members.any(func(m): return m.species_id == "dcss_gnoll") and members.filter(func(m): return m.species_id in ["dcss_rat","dcss_frilled_lizard"]).size() >= 2
+	var band: Variant = species("dcss_gnoll").get("band")
+	var followers: Array = band.get("followers",[]) if band is Dictionary else []
+	var gnoll_band: bool = members.any(func(m): return m.species_id == "dcss_gnoll") and members.filter(func(m): return m.species_id in followers).size() >= 2
+	if members.any(func(m): return m.species_id == "dcss_gnoll") and not gnoll_band: return "incomplete gnoll band"
 	if members.size() >= 3 and members.all(func(m): return m.role == "MELEE") and not gnoll_band: return "no backline"
 	var pairs: Dictionary = {}
 	for m in members:
@@ -92,7 +98,7 @@ static func attempt(rng: RandomNumberGenerator, depth: int, budget: int, ood: bo
 	var members: Array = []
 	var remaining := budget
 	var table_depth := depth
-	if ood and rng.randi_range(1,100) <= OOD_PERCENT: table_depth = depth+1
+	if ood and rng.randi_range(1,100) <= OOD_PERCENT: table_depth = mini(depth+1,Zones.last_floor(Zones.zone_of(depth)))
 	var draws := 0
 	while remaining >= 1 and members.size() < max_members:
 		# A bounded number of draws: a table whose guardrails saturate must not spin.

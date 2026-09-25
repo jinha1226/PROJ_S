@@ -29,8 +29,12 @@
       "sh": 0,
       "variants": [
         "poison",
-        "ice"
-      ]
+        "ice",
+        "bleed"
+      ],
+      "zone": 1,
+      "family": "rat",
+      "role": "PACK"
     },
     {
       "species_id": "dcss_frilled_lizard",
@@ -38,9 +42,9 @@
       "max_health": 20,
       "min_depth": 1,
       "max_depth": 3,
-      "rarity": 640,
+      "rarity": 600,
       "curve": "FALL",
-      "threat": 1,
+      "threat": 3,
       "roles": [
         "MELEE"
       ],
@@ -60,15 +64,18 @@
       "variants": [
         "poison",
         "fire"
-      ]
+      ],
+      "zone": 1,
+      "family": "reptile",
+      "role": "BERSERK"
     },
     {
       "species_id": "kobold",
       "display_name": "코볼트",
       "max_health": 28,
       "min_depth": 1,
-      "max_depth": 4,
-      "rarity": 1000,
+      "max_depth": 3,
+      "rarity": 700,
       "curve": "FLAT",
       "threat": 2,
       "roles": [
@@ -89,16 +96,19 @@
       "sh": 0,
       "variants": [
         "fire",
-        "air"
-      ]
+        "poison"
+      ],
+      "zone": 1,
+      "family": "kobold",
+      "role": "ARCHER"
     },
     {
       "species_id": "goblin",
       "display_name": "고블린",
       "max_health": 28,
       "min_depth": 1,
-      "max_depth": 4,
-      "rarity": 1000,
+      "max_depth": 3,
+      "rarity": 700,
       "curve": "FLAT",
       "threat": 2,
       "roles": [
@@ -119,17 +129,85 @@
       },
       "sh": 0,
       "variants": [
+        "poison",
+        "bleed"
+      ],
+      "zone": 1,
+      "family": "goblin",
+      "role": "AMBUSH"
+    },
+    {
+      "species_id": "goblin_archer",
+      "display_name": "고블린 궁수",
+      "zone": 1,
+      "family": "goblin",
+      "role": "ARCHER",
+      "variants": [
         "fire",
-        "poison"
-      ]
+        "poison",
+        "bleed"
+      ],
+      "min_depth": 1,
+      "max_depth": 3,
+      "threat": 2,
+      "rarity": 700,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 24,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "RANGED"
+      ],
+      "speed": 100
+    },
+    {
+      "species_id": "goblin_shield",
+      "display_name": "고블린 방패병",
+      "zone": 1,
+      "family": "goblin",
+      "role": "GUARD",
+      "variants": [
+        "ice",
+        "air"
+      ],
+      "min_depth": 1,
+      "max_depth": 3,
+      "threat": 3,
+      "rarity": 600,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 42,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "MELEE"
+      ],
+      "speed": 95
     },
     {
       "species_id": "dcss_hobgoblin",
       "display_name": "홉고블린",
       "max_health": 55,
       "min_depth": 1,
-      "max_depth": 5,
-      "rarity": 1000,
+      "max_depth": 3,
+      "rarity": 600,
       "curve": "PEAK",
       "threat": 3,
       "roles": [
@@ -148,19 +226,54 @@
       },
       "sh": 10,
       "variants": [
-        "ice",
+        "fire",
+        "ice"
+      ],
+      "zone": 1,
+      "family": "goblin",
+      "role": "GUARD"
+    },
+    {
+      "species_id": "goblin_hexer",
+      "display_name": "고블린 주술사",
+      "max_health": 30,
+      "min_depth": 1,
+      "max_depth": 3,
+      "rarity": 400,
+      "curve": "FLAT",
+      "threat": 3,
+      "roles": [
+        "RANGED",
+        "CASTER"
+      ],
+      "band": null,
+      "speed": 100,
+      "ac": 1,
+      "ev": 4,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 50
+      },
+      "variants": [
         "will"
-      ]
+      ],
+      "zone": 1,
+      "family": "goblin",
+      "role": "CASTER"
     },
     {
       "species_id": "dcss_orc",
       "display_name": "오크",
       "max_health": 70,
-      "min_depth": 1,
+      "min_depth": 4,
       "max_depth": 6,
-      "rarity": 1000,
+      "rarity": 600,
       "curve": "RISE",
-      "threat": 4,
+      "threat": 3,
       "roles": [
         "MELEE",
         "RANGED",
@@ -181,24 +294,389 @@
       "variants": [
         "fire",
         "ice"
-      ]
+      ],
+      "zone": 2,
+      "family": "orc",
+      "role": "BERSERK"
+    },
+    {
+      "species_id": "orc_thrower",
+      "display_name": "오크 투척병",
+      "zone": 2,
+      "family": "orc",
+      "role": "ARCHER",
+      "variants": [
+        "fire",
+        "bleed"
+      ],
+      "min_depth": 4,
+      "max_depth": 6,
+      "threat": 2,
+      "rarity": 700,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 56,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "RANGED"
+      ],
+      "speed": 100
+    },
+    {
+      "species_id": "cave_spider",
+      "display_name": "동굴 거미",
+      "zone": 2,
+      "family": "insect",
+      "role": "AMBUSH",
+      "variants": [
+        "poison",
+        "bleed"
+      ],
+      "min_depth": 4,
+      "max_depth": 6,
+      "threat": 2,
+      "rarity": 700,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 56,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "MELEE"
+      ],
+      "speed": 115,
+      "beast": true
+    },
+    {
+      "species_id": "rock_beetle",
+      "display_name": "바위 딱정벌레",
+      "zone": 2,
+      "family": "insect",
+      "role": "GUARD",
+      "variants": [
+        "fire",
+        "air"
+      ],
+      "min_depth": 4,
+      "max_depth": 6,
+      "threat": 3,
+      "rarity": 600,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 98,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "MELEE"
+      ],
+      "speed": 90,
+      "beast": true
+    },
+    {
+      "species_id": "ore_golem",
+      "display_name": "광석 골렘",
+      "zone": 2,
+      "family": "elemental",
+      "role": "BERSERK",
+      "variants": [
+        "fire",
+        "air"
+      ],
+      "min_depth": 4,
+      "max_depth": 6,
+      "threat": 3,
+      "rarity": 600,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 77,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "MELEE"
+      ],
+      "speed": 90
+    },
+    {
+      "species_id": "kobold_firecaller",
+      "display_name": "코볼트 화염술사",
+      "max_health": 26,
+      "min_depth": 4,
+      "max_depth": 6,
+      "rarity": 400,
+      "curve": "FLAT",
+      "threat": 3,
+      "roles": [
+        "RANGED",
+        "CASTER"
+      ],
+      "band": null,
+      "speed": 100,
+      "ac": 0,
+      "ev": 5,
+      "sh": 0,
+      "res": {
+        "fire": 50,
+        "ice": -25,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "variants": [
+        "fire"
+      ],
+      "zone": 2,
+      "family": "kobold",
+      "role": "CASTER"
+    },
+    {
+      "species_id": "storm_bat",
+      "display_name": "폭풍 박쥐",
+      "max_health": 24,
+      "min_depth": 4,
+      "max_depth": 6,
+      "rarity": 1000,
+      "curve": "PEAK",
+      "threat": 1,
+      "roles": [
+        "RANGED",
+        "CASTER"
+      ],
+      "band": null,
+      "beast": true,
+      "speed": 120,
+      "ac": 0,
+      "ev": 7,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 50,
+        "poison": 0,
+        "will": 0
+      },
+      "variants": [
+        "air",
+        "bleed"
+      ],
+      "zone": 2,
+      "family": "bat",
+      "role": "PACK"
+    },
+    {
+      "species_id": "dcss_river_rat",
+      "display_name": "강쥐",
+      "max_health": 110,
+      "min_depth": 7,
+      "max_depth": 9,
+      "rarity": 1000,
+      "curve": "RISE",
+      "threat": 1,
+      "roles": [
+        "MELEE"
+      ],
+      "band": null,
+      "beast": true,
+      "speed": 100,
+      "ac": 0,
+      "ev": 3,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 25,
+        "poison": 0,
+        "will": 0
+      },
+      "sh": 0,
+      "variants": [
+        "ice",
+        "poison",
+        "bleed"
+      ],
+      "zone": 3,
+      "family": "rat",
+      "role": "PACK"
+    },
+    {
+      "species_id": "giant_leech",
+      "display_name": "거대 거머리",
+      "zone": 3,
+      "family": "insect",
+      "role": "AMBUSH",
+      "variants": [
+        "poison",
+        "bleed"
+      ],
+      "min_depth": 7,
+      "max_depth": 9,
+      "threat": 2,
+      "rarity": 700,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 88,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "MELEE"
+      ],
+      "speed": 100,
+      "beast": true
+    },
+    {
+      "species_id": "swamp_toad",
+      "display_name": "늪 두꺼비",
+      "zone": 3,
+      "family": "reptile",
+      "role": "ARCHER",
+      "variants": [
+        "poison",
+        "ice"
+      ],
+      "min_depth": 7,
+      "max_depth": 9,
+      "threat": 2,
+      "rarity": 700,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 88,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "RANGED"
+      ],
+      "speed": 100,
+      "beast": true
+    },
+    {
+      "species_id": "temple_serpent",
+      "display_name": "신전 뱀",
+      "zone": 3,
+      "family": "reptile",
+      "role": "GUARD",
+      "variants": [
+        "poison",
+        "ice"
+      ],
+      "min_depth": 7,
+      "max_depth": 9,
+      "threat": 3,
+      "rarity": 600,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 154,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "MELEE"
+      ],
+      "speed": 105,
+      "beast": true
+    },
+    {
+      "species_id": "water_spirit",
+      "display_name": "물의 정령",
+      "zone": 3,
+      "family": "elemental",
+      "role": "PACK",
+      "variants": [
+        "ice",
+        "air"
+      ],
+      "min_depth": 7,
+      "max_depth": 9,
+      "threat": 1,
+      "rarity": 1000,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 66,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "MELEE",
+        "RANGED"
+      ],
+      "speed": 100
     },
     {
       "species_id": "dcss_gnoll",
       "display_name": "놀",
       "max_health": 130,
-      "min_depth": 1,
-      "max_depth": 8,
-      "rarity": 200,
+      "min_depth": 7,
+      "max_depth": 9,
+      "rarity": 600,
       "curve": "PEAK",
-      "threat": 5,
+      "threat": 3,
       "roles": [
         "MELEE"
       ],
       "band": {
         "followers": [
-          "dcss_rat",
-          "dcss_frilled_lizard"
+          "dcss_river_rat",
+          "giant_leech"
         ],
         "count": [
           2,
@@ -217,73 +695,19 @@
       },
       "sh": 0,
       "variants": [
-        "poison",
-        "air"
-      ]
-    },
-    {
-      "species_id": "dcss_river_rat",
-      "display_name": "강쥐",
-      "max_health": 110,
-      "min_depth": 2,
-      "max_depth": 6,
-      "rarity": 600,
-      "curve": "RISE",
-      "threat": 6,
-      "roles": [
-        "MELEE"
+        "ice",
+        "bleed"
       ],
-      "band": null,
-      "beast": true,
-      "speed": 100,
-      "ac": 0,
-      "ev": 3,
-      "res": {
-        "fire": 0,
-        "ice": 0,
-        "air": 25,
-        "poison": 0,
-        "will": 0
-      },
-      "sh": 0,
-      "variants": [
-        "air",
-        "ice"
-      ]
-    },
-    {
-      "species_id": "kobold_firecaller",
-      "display_name": "코볼트 화염술사",
-      "max_health": 26,
-      "min_depth": 1,
-      "max_depth": 4,
-      "rarity": 500,
-      "curve": "FLAT",
-      "threat": 2,
-      "roles": [
-        "RANGED",
-        "CASTER"
-      ],
-      "band": null,
-      "speed": 100,
-      "ac": 0,
-      "ev": 5,
-      "sh": 0,
-      "res": {
-        "fire": 50,
-        "ice": -25,
-        "air": 0,
-        "poison": 0,
-        "will": 0
-      },
-      "variants": []
+      "zone": 3,
+      "family": "gnoll",
+      "role": "BERSERK"
     },
     {
       "species_id": "frost_imp",
       "display_name": "서리 도깨비",
       "max_health": 30,
-      "min_depth": 2,
-      "max_depth": 5,
+      "min_depth": 7,
+      "max_depth": 9,
       "rarity": 400,
       "curve": "PEAK",
       "threat": 3,
@@ -303,72 +727,22 @@
         "poison": 0,
         "will": 0
       },
-      "variants": []
-    },
-    {
-      "species_id": "storm_bat",
-      "display_name": "폭풍 박쥐",
-      "max_health": 24,
-      "min_depth": 2,
-      "max_depth": 6,
-      "rarity": 400,
-      "curve": "PEAK",
-      "threat": 3,
-      "roles": [
-        "RANGED",
-        "CASTER"
+      "variants": [
+        "ice"
       ],
-      "band": null,
-      "beast": true,
-      "speed": 120,
-      "ac": 0,
-      "ev": 7,
-      "sh": 0,
-      "res": {
-        "fire": 0,
-        "ice": 0,
-        "air": 50,
-        "poison": 0,
-        "will": 0
-      },
-      "variants": []
-    },
-    {
-      "species_id": "goblin_hexer",
-      "display_name": "고블린 주술사",
-      "max_health": 30,
-      "min_depth": 1,
-      "max_depth": 5,
-      "rarity": 500,
-      "curve": "FLAT",
-      "threat": 3,
-      "roles": [
-        "RANGED",
-        "CASTER"
-      ],
-      "band": null,
-      "speed": 100,
-      "ac": 1,
-      "ev": 4,
-      "sh": 0,
-      "res": {
-        "fire": 0,
-        "ice": 0,
-        "air": 0,
-        "poison": 0,
-        "will": 50
-      },
-      "variants": []
+      "zone": 3,
+      "family": "elemental",
+      "role": "CASTER"
     },
     {
       "species_id": "gnoll_summoner",
       "display_name": "놀 소환사",
       "max_health": 90,
-      "min_depth": 3,
-      "max_depth": 8,
-      "rarity": 200,
+      "min_depth": 7,
+      "max_depth": 9,
+      "rarity": 400,
       "curve": "RISE",
-      "threat": 5,
+      "threat": 3,
       "roles": [
         "RANGED",
         "CASTER"
@@ -385,7 +759,239 @@
         "poison": 0,
         "will": 25
       },
-      "variants": []
+      "variants": [
+        "will"
+      ],
+      "zone": 3,
+      "family": "gnoll",
+      "role": "CASTER"
+    },
+    {
+      "species_id": "skeleton_soldier",
+      "display_name": "해골 병사",
+      "zone": 4,
+      "family": "undead",
+      "role": "PACK",
+      "variants": [
+        "ice",
+        "will"
+      ],
+      "min_depth": 10,
+      "max_depth": 12,
+      "threat": 1,
+      "rarity": 1000,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 96,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "MELEE"
+      ],
+      "speed": 95
+    },
+    {
+      "species_id": "skeleton_archer",
+      "display_name": "해골 궁수",
+      "zone": 4,
+      "family": "undead",
+      "role": "ARCHER",
+      "variants": [
+        "ice",
+        "fire",
+        "will"
+      ],
+      "min_depth": 10,
+      "max_depth": 12,
+      "threat": 2,
+      "rarity": 700,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 128,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "RANGED"
+      ],
+      "speed": 100
+    },
+    {
+      "species_id": "ghoul",
+      "display_name": "구울",
+      "zone": 4,
+      "family": "undead",
+      "role": "BERSERK",
+      "variants": [
+        "poison",
+        "bleed"
+      ],
+      "min_depth": 10,
+      "max_depth": 12,
+      "threat": 3,
+      "rarity": 600,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 176,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "MELEE"
+      ],
+      "speed": 105
+    },
+    {
+      "species_id": "vampire_bat",
+      "display_name": "흡혈 박쥐",
+      "zone": 4,
+      "family": "bat",
+      "role": "AMBUSH",
+      "variants": [
+        "bleed",
+        "will"
+      ],
+      "min_depth": 10,
+      "max_depth": 12,
+      "threat": 2,
+      "rarity": 700,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 128,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "MELEE"
+      ],
+      "speed": 125,
+      "beast": true
+    },
+    {
+      "species_id": "wraith_knight",
+      "display_name": "망령 기사",
+      "zone": 4,
+      "family": "undead",
+      "role": "GUARD",
+      "variants": [
+        "ice",
+        "will"
+      ],
+      "min_depth": 10,
+      "max_depth": 12,
+      "threat": 3,
+      "rarity": 600,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 224,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "MELEE"
+      ],
+      "speed": 95
+    },
+    {
+      "species_id": "wraith",
+      "display_name": "원혼",
+      "zone": 4,
+      "family": "undead",
+      "role": "CASTER",
+      "variants": [
+        "will"
+      ],
+      "min_depth": 10,
+      "max_depth": 12,
+      "threat": 3,
+      "rarity": 400,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 112,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "RANGED",
+        "CASTER"
+      ],
+      "speed": 110
+    },
+    {
+      "species_id": "gravekeeper",
+      "display_name": "묘지기",
+      "zone": 4,
+      "family": "undead",
+      "role": "CASTER",
+      "variants": [
+        "will",
+        "poison"
+      ],
+      "min_depth": 10,
+      "max_depth": 12,
+      "threat": 3,
+      "rarity": 400,
+      "curve": "FLAT",
+      "band": null,
+      "max_health": 112,
+      "ac": 0,
+      "ev": 3,
+      "sh": 0,
+      "res": {
+        "fire": 0,
+        "ice": 0,
+        "air": 0,
+        "poison": 0,
+        "will": 0
+      },
+      "roles": [
+        "RANGED",
+        "CASTER"
+      ],
+      "speed": 95
     }
   ]
 }

@@ -5,9 +5,11 @@ extends RefCounted
 const Templates = preload("res://expedition/level/floor_templates.gd")
 const Encounters = preload("res://expedition/level/encounter_builder.gd")
 const Consumables = preload("res://expedition/items/consumables.gd")
+const Zones = preload("res://expedition/level/zones.gd")
+const Hazards = preload("res://expedition/level/hazards.gd")
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/floor_themes.json"))
 const PLACE_TRIES := 200
-const MAX_REGENERATIONS := 5
+const MAX_REGENERATIONS := 12
 const ROOM_GAP := 2
 const DIRECTIONS4 := [Vector2i.UP,Vector2i.DOWN,Vector2i.LEFT,Vector2i.RIGHT]
 const DIRECTIONS8 := [Vector2i.UP,Vector2i.LEFT,Vector2i.RIGHT,Vector2i.DOWN,Vector2i(-1,-1),Vector2i(1,-1),Vector2i(-1,1),Vector2i(1,1)]
@@ -22,6 +24,10 @@ static func theme(id: String) -> Dictionary:
 	row.rooms.count = [int(row.rooms.count[0]),int(row.rooms.count[1])]
 	row.corridor.width = int(row.corridor.get("width",1))
 	return row
+
+static func relic_template(theme: Dictionary) -> String:
+	if theme.get("boss",false): return str(theme.get("boss_template",Zones.boss_template(Zones.zone_of(int(theme.get("depth",3))))))
+	return "descent"
 
 static func outer(rect: Rect2i) -> Rect2i:
 	return Rect2i(rect.position-Vector2i.ONE,rect.size+Vector2i(2,2))
@@ -85,7 +91,7 @@ static func random_origin(theme: Dictionary, rng: RandomNumberGenerator, interio
 	var size: int = theme.size
 	var min_x := 3; var max_x: int = size-3-interior.x-1
 	if template_id == "entry_camp": max_x = mini(max_x,size/3-interior.x)
-	elif template_id in ["descent","boss_lair"]: min_x = maxi(min_x,size*2/3)
+	elif template_id == "descent" or template_id in Zones.BOSS_TEMPLATES: min_x = maxi(min_x,size*2/3)
 	return Vector2i(rng.randi_range(min_x,maxi(min_x,max_x)),rng.randi_range(3,size-3-interior.y-1))
 
 static func center(room: Dictionary) -> Vector2:
@@ -402,13 +408,13 @@ static func graph_path(rooms: Array, edges: Array, from: int, to: int, blocked: 
 	return []
 
 static func is_fight_room(room: Dictionary, theme: Dictionary) -> bool:
-	return room.kind == "fight" or (room.kind == "template" and (room.template_id in theme.templates.fight_pool or room.template_id in ["descent","boss_lair"]))
+	return room.kind == "fight" or (room.kind == "template" and (room.template_id in theme.templates.fight_pool or room.template_id == "descent" or room.template_id in Zones.BOSS_TEMPLATES))
 
 ## Tiers by graph distance, spine rooms, mandatory (articulation -> shortest
 ## path) and optional (treasury neighbour, dead ends) encounter rooms.
 static func choose_encounter_rooms(rooms: Array, edges: Array, theme: Dictionary) -> Dictionary:
 	var entry := room_index(rooms,"entry_camp")
-	var relic := room_index(rooms,"boss_lair" if theme.get("boss",false) else "descent")
+	var relic := room_index(rooms,relic_template(theme))
 	var treasury := room_index(rooms,"sealed_treasury")
 	var dist := graph_distances(rooms,edges,entry)
 	var adj := adjacency(rooms,edges)
@@ -462,10 +468,10 @@ static func build_encounters(layout: Dictionary, theme: Dictionary, painted: Dic
 		reserved[p] = true
 	for id in chosen.mandatory+chosen.optional:
 		var room: Dictionary = rooms[id]
-		if theme.get("boss",false) and room.template_id == "boss_lair": continue
+		if theme.get("boss",false) and room.template_id == relic_template(theme): continue
 		var mandatory: bool = id in chosen.mandatory
 		var budget: int = theme.monsters.budget[room.tier] if mandatory else theme.monsters.budget.optional
-		var members := Encounters.fill(rng,mini(depth,6),budget,room.tier == "deep" or not mandatory,int(theme.monsters.get("max_members",Encounters.MAX_MEMBERS)))
+		var members := Encounters.fill(rng,depth,budget,room.tier == "deep" or not mandatory,int(theme.monsters.get("max_members",Encounters.MAX_MEMBERS)))
 		var obstacles: Dictionary = painted.get(id,{}).get("obstacles",{}).duplicate()
 		for p in reserved:
 			obstacles[p] = true
@@ -497,7 +503,7 @@ static func place_features(layout: Dictionary, theme: Dictionary, rng: RandomNum
 	var is_corner := func(room: Dictionary, p: Vector2i) -> bool:
 		return (p.x == room.rect.position.x or p.x == room.rect.end.x-1) and (p.y == room.rect.position.y or p.y == room.rect.end.y-1)
 	var free_cell := func(room: Dictionary, corner: bool, draw_rng: RandomNumberGenerator) -> Vector2i:
-		var cells: Array = floor_cells(layout.terrain,size,room.rect).filter(func(p): return not features.has(p) and room.doors.all(func(d): return maxi(absi(p.x-d.x),absi(p.y-d.y)) > 1))
+		var cells: Array = floor_cells(layout.terrain,size,room.rect).filter(func(p): return not features.has(p) and layout.terrain[index_of(size,p)] not in Hazards.TERRAINS and room.doors.all(func(d): return maxi(absi(p.x-d.x),absi(p.y-d.y)) > 1))
 		if corner:
 			var corners: Array = cells.filter(func(p): return is_corner.call(room,p))
 			if not corners.is_empty(): cells = corners
@@ -536,7 +542,7 @@ static func place_features(layout: Dictionary, theme: Dictionary, rng: RandomNum
 
 static func attempt_layout(theme: Dictionary, seed: int, depth: int) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = seed
+	rng.seed = seed+(maxi(1,depth)-1)*104729
 	var rooms := scatter_rooms(theme,rng)
 	if rooms.is_empty(): return {}
 	var edges := build_graph(rooms,theme,rng)
@@ -555,10 +561,11 @@ static func attempt_layout(theme: Dictionary, seed: int, depth: int) -> Dictiona
 				if DIRECTIONS4.all(func(d): return terrain[index_of(theme.size,point+d)] != "wall"):
 					pillars[point] = true
 	var layout := {"size":theme.size,"seed":seed,"theme_id":theme.get("id",""),"depth":depth,"terrain":terrain,"rooms":rooms,"edges":edges,
-		"entry":Vector2i(-1,-1),"stairs":Vector2i(-1,-1),"features":{},"encounters":[],"npc_rooms":[],"pillars":pillars,"stats":{"regenerations":0,"stairs_distance":0,"max_distance":0}}
+		"entry":Vector2i(-1,-1),"stairs":Vector2i(-1,-1),"features":{},"encounters":[],"npc_rooms":[],"hazards":{},"pillars":pillars,"stats":{"regenerations":0,"stairs_distance":0,"max_distance":0}}
 	choose_encounter_rooms(rooms,edges,theme) # sets tier/spine before features
 	place_features(layout,theme,rng)
 	layout.encounters = build_encounters(layout,theme,painted,rng,depth)
+	Hazards.place(layout,theme)
 	var reach := reachable_from(terrain,theme.size,layout.entry)
 	var farthest := 0
 	for v in reach.values():
@@ -578,7 +585,7 @@ static func empty_layout(theme: Dictionary, seed: int, depth: int) -> Dictionary
 	var terrain: Array = []
 	terrain.resize(size*size); terrain.fill("wall")
 	return {"size":size,"seed":seed,"theme_id":theme.get("id",""),"depth":depth,"terrain":terrain,"rooms":[],"edges":[],
-		"entry":Vector2i(-1,-1),"stairs":Vector2i(-1,-1),"features":{},"encounters":[],"npc_rooms":[],
+		"entry":Vector2i(-1,-1),"stairs":Vector2i(-1,-1),"features":{},"encounters":[],"npc_rooms":[],"hazards":{},
 		"stats":{"regenerations":MAX_REGENERATIONS,"stairs_distance":0,"max_distance":0}}
 
 ## Up to MAX_REGENERATIONS retries on seed+attempt; a failed scatter costs an
@@ -652,7 +659,7 @@ static func validate(layout: Dictionary, theme: Dictionary) -> String:
 	var blocked: Dictionary = {}
 	for e in mandatory:
 		blocked[e.room] = true
-	if (mandatory.size() > 0 if theme.get("boss",false) else mandatory.size() > 1) and not graph_path(rooms,layout.edges,room_index(rooms,"entry_camp"),room_index(rooms,"boss_lair" if theme.get("boss",false) else "descent"),blocked).is_empty(): return "route skips mandatory encounters"
+	if (mandatory.size() > 0 if theme.get("boss",false) else mandatory.size() > 1) and not graph_path(rooms,layout.edges,room_index(rooms,"entry_camp"),room_index(rooms,relic_template(theme)),blocked).is_empty(): return "route skips mandatory encounters"
 	var taken: Dictionary = {}
 	for p in layout.features:
 		taken[p] = true

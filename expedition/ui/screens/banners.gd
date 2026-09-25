@@ -1,10 +1,9 @@
 extends RefCounted
-## §4 알림: the big centre banners — a level gained, an essence found. They
+## The brief centre banners for level gains and boss introductions. They
 ## come from `session.events`, one at a time, and a tap on 확인 brings the next.
 const Essences = preload("res://expedition/progression/essences.gd")
-const EssenceTab = preload("res://expedition/ui/screens/essence_tab.gd")
-const KINDS := ["LEVEL_UP","ESSENCE"]
-const NODES := ["LevelUpBanner","EssenceBanner"]
+const KINDS := ["LEVEL_UP","BOSS"]
+const NODES := ["LevelUpBanner","BossBanner"]
 const GOLD := Color("c6a34c")
 
 static func showing(ui) -> bool:
@@ -28,8 +27,9 @@ static func show_next(ui) -> bool:
 			if actor.is_empty(): continue
 			level_banner(ui,actor,int(event.get("level",1)))
 			return true
-		essence_banner(ui,str(event.get("id","")),bool(event.get("new",true)))
-		return true
+		if str(event.kind) == "BOSS":
+			boss_banner(ui,str(event.get("name","")),str(event.get("hint","")))
+			return true
 	return false
 
 static func frame(ui, node_name: String, border: Color) -> VBoxContainer:
@@ -67,17 +67,11 @@ static func level_banner(ui, actor: Dictionary, level: int) -> void:
 	line(box,"레벨 %d" % level,36,Color("ffe0a3"))
 	line(box,str(actor.name),18)
 	line(box,"HP +4 · MP +2",16)
-	if level <= Essences.MAX_LEVEL: line(box,"이능 슬롯 +1",22,GOLD).name = "BannerSlotLine"
+	if level <= Essences.MAX_LEVEL: line(box,"영혼석 슬롯 +1",22,GOLD).name = "BannerSlotLine"
 	finish(ui,box)
 
-static func essence_banner(ui, id: String, is_new: bool) -> void:
-	var box := frame(ui,"EssenceBanner",EssenceTab.border_for(id,GOLD))
-	line(box,"새 이능" if is_new else "이능 획득",16,GOLD)
-	line(box,Essences.title(id),28,Color("ffe0a3"))
-	var tags: String = EssenceTab.tag_line(id)
-	if not tags.is_empty(): line(box,tags,16)
-	line(box,EssenceTab.stat_line(id,1),15)
-	line(box,EssenceTab.active_line(id),14)
-	var owners: Array = ui.session.party.filter(func(a): return Essences.tier(a,id) > 0 and Essences.tier(a,id) < Essences.MAX_TIER).map(func(a): return str(a.name))
-	if not owners.is_empty(): line(box,"단계 상승 가능 · "+", ".join(owners),16,GOLD).name = "BannerUpgrade"
+static func boss_banner(ui, boss_name: String, hint: String) -> void:
+	var box := frame(ui,"BossBanner",Color("b0413e"))
+	line(box,boss_name,30,Color("ffd9cf"))
+	if not hint.is_empty(): line(box,hint,15)
 	finish(ui,box)

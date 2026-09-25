@@ -49,7 +49,7 @@ func run() -> void:
 func write(rows: Array) -> void:
 	var json := FileAccess.open("res://docs/balance/difficulty-gate.json",FileAccess.WRITE)
 	json.store_string(JSON.stringify({"seeds":SEEDS,"rows":rows},"  ")); json.close()
-	var lines: Array = ["# 난이도 게이트","","`tests/difficulty_gate.gd`가 쓴다. 기준 주인공(1~N−1층을 모두 잡은 레벨과 이능)과 절반만 잡은 주인공이 N층 무리를 하나씩, 매번 HP를 채우고 싸운 결과다. 합격선: 기준 주인공의 전투당 HP 손실 25~40%, 야영 필요, 절반 주인공은 뚜렷하게 더 잃음.","","자동 전술 봇의 진단값이다. 매 전투 HP·MP를 채우고 첫 패배에서 중단하므로 실제 원정 완주율로 읽으면 안 된다.","","| 층 | 킷 | 기준 | 전투당 HP 손실 | 야영 필요 비율 | 승률 | 합격선 |","| --- | --- | --- | --- | --- | --- | --- |"]
+	var lines: Array = ["# 난이도 게이트","","`tests/difficulty_gate.gd`가 쓴다. 기준 주인공(1~N−1층을 모두 잡은 레벨과 영혼석)과 절반만 잡은 주인공이 N층 무리를 하나씩, 매번 HP를 채우고 싸운 결과다. 합격선: 기준 주인공의 전투당 HP 손실 25~40%, 야영 필요, 절반 주인공은 뚜렷하게 더 잃음.","","자동 전술 봇의 진단값이다. 매 전투 HP·MP를 채우고 첫 패배에서 중단하므로 실제 원정 완주율로 읽으면 안 된다.","","| 층 | 킷 | 기준 | 전투당 HP 손실 | 야영 필요 비율 | 승률 | 합격선 |","| --- | --- | --- | --- | --- | --- | --- |"]
 	for row in rows:
 		var verdict: String = "—" if row.share != 100 else ("통과" if float(row.mean_loss_percent) >= 25.0 and float(row.mean_loss_percent) <= 40.0 and float(row.camp_rate) > 0.0 else "조정 필요")
 		lines.append("| %d | %s | %s | %.1f%% | %.0f%% | %.0f%% | %s |" % [int(row.depth),str(row.kit),"다 잡음" if row.share == 100 else "절반",float(row.mean_loss_percent),float(row.camp_rate)*100.0,float(row.win_rate)*100.0,verdict])

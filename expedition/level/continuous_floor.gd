@@ -4,14 +4,16 @@ const MonsterAI = preload("res://expedition/actors/monster_ai.gd")
 const BossAI = preload("res://expedition/actors/boss_ai.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
 const Variants = preload("res://expedition/level/variants.gd")
+const Zones = preload("res://expedition/level/zones.gd")
+const Hazards = preload("res://expedition/level/hazards.gd")
+const Families = preload("res://expedition/combat/families.gd")
+const Bestiary = preload("res://expedition/progression/bestiary.gd")
 const THEME_ID := "F1_RUINS"
 ## Roster health was tuned for a pair; a lone hero meets the same groups at
 ## reduced health so each fight is decided in a few exchanges.
 const SOLO_HP_PERCENT := 45
 const SOLO_HP_MIN := 20
 const SOLO_HP_MAX := 32
-const DEEP_HP_STEP := 12
-const DEEP_ATTACK_STEP := 8
 var size := 64
 var theme_id := THEME_ID
 var layout: Dictionary
@@ -32,30 +34,20 @@ static func sight_side() -> int:
 	return ceili(SIGHT_RADIUS)*2+1
 
 static func theme_for(depth: int) -> Dictionary:
-	var theme: Dictionary = Generator.theme("F1_RUINS" if depth % 2 == 1 else "F2_MINES")
+	var zone: int = Zones.zone_of(depth)
+	var theme: Dictionary = Generator.theme(Zones.theme_id(depth))
 	if depth >= 3:
 		var scale: float = 1.0+0.25*(depth-2)
 		theme.monsters.max_members = mini(4,2+int(depth/3))
-		# Deep budgets are capped at what the catalog can actually fill: the
-		# generator draws from the mature rows (depth 6) and a pack obeys the
-		# builder's pair rule, so beyond ~80% of the strongest legal pack the
-		# random fill only fails and the floor never validates.
-		var cap: int = strongest_pack(6,int(theme.monsters.max_members))*4/5
+		var cap: int = strongest_pack(depth,int(theme.monsters.max_members))*4/5
 		for key in theme.monsters.budget: theme.monsters.budget[key] = mini(roundi(theme.monsters.budget[key]*scale),cap)
 	theme.depth = depth
-	theme.deep = deep_scale(depth)
-	theme.boss = depth % 3 == 0
-	if theme.boss: theme.templates.required = ["entry_camp","boss_lair","sealed_treasury"]
+	theme.zone = zone
+	theme.boss = Zones.is_boss_floor(depth)
+	if theme.boss:
+		theme.boss_template = Zones.boss_template(zone)
+		theme.templates.required = ["entry_camp",theme.boss_template,"sealed_treasury"]
 	return theme
-
-static func last_catalog_depth() -> int:
-	var deepest := 1
-	for row in Generator.Encounters.table(): deepest = maxi(deepest,int(row.max_depth))
-	return deepest
-
-static func deep_scale(depth: int) -> Dictionary:
-	var past: int = maxi(0,depth-last_catalog_depth())
-	return {"hp":100+DEEP_HP_STEP*past,"attack":100+DEEP_ATTACK_STEP*past}
 
 ## Threat total of the strongest pack the builder could legally assemble at
 ## `depth`: strongest rows first, at most two of one species/role, `max_members` units.
@@ -93,7 +85,9 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 	for y in range(side):
 		for x in range(side):
 			var terrain: String = layout.terrain[y*side+x]
-			s.tiles.append({"terrain":terrain,"source_terrain":terrain,"pillar":layout.get("pillars",{}).has(Vector2i(x,y)),"fire":0,"wet":70 if terrain == "water" else 0,"variant":posmod(x*13+y*7,3),"palette":0})
+			var start: Dictionary = Hazards.initial(terrain)
+			s.tiles.append({"terrain":terrain,"source_terrain":terrain,"pillar":layout.get("pillars",{}).has(Vector2i(x,y)),"fire":int(start.fire),"wet":int(start.wet),"variant":posmod(x*13+y*7,3),"palette":0})
+	for p in layout.get("hazards",{}): s.tile(p).merge((layout.hazards[p] as Dictionary).duplicate(true),true)
 	s.enemies = []
 	for e in range(layout.encounters.size()):
 		var encounter: Dictionary = layout.encounters[e]
@@ -113,17 +107,17 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 ## a lone hero), its group, home and role. Appended to `s.enemies` and returned.
 static func mint_enemy(s, member: Dictionary, group: String, tier: String, mandatory: bool) -> Dictionary:
 	var enemy: Dictionary = s.make_actor(100+s.enemies.size(),member.display_name,true)
-	enemy.pos = member.pos; enemy.hp = int(member.max_health)
-	if s.party.size() == 1: enemy.hp = clampi(enemy.hp*SOLO_HP_PERCENT/100,SOLO_HP_MIN,SOLO_HP_MAX)
-	var deep: Dictionary = deep_scale(int(s.depth))
-	enemy.hp = enemy.hp*int(deep.hp)/100
+	var stats: Dictionary = Bestiary.monster_stats(str(member.species_id),int(s.depth))
+	enemy.pos = member.pos
+	enemy.hp = int(stats.hp)*Bestiary.party_percent(s.party.size())/100
 	enemy.max_hp = enemy.hp
-	enemy.attack_percent = int(deep.attack)
+	enemy.attack_percent = int(stats.attack_percent)
+	enemy.basic_attack = int(stats.attack)
 	enemy.group = group; enemy.home = enemy.pos; enemy.alert = false
 	enemy.species_id = member.species_id; enemy.tier = tier; enemy.mandatory = mandatory
 	var species: Dictionary = s.Encounters.species(str(member.species_id))
 	enemy.speed = int(species.get("speed",100))
-	enemy.ac = int(species.get("ac",0)); enemy.ev = int(species.get("ev",3)); enemy.sh = int(species.get("sh",0))
+	enemy.ac = int(stats.ac); enemy.ev = int(stats.ev); enemy.sh = maxi(int(stats.sh),int(species.get("sh",0)))
 	enemy.res = species.get("res",{}).duplicate(true)
 	enemy.ready_at = int(s.time)+int(enemy.speed)
 	MonsterAI.configure(enemy,member.role)
@@ -137,10 +131,10 @@ func observer(s) -> Dictionary:
 
 func observe(s) -> void:
 	visible.clear()
-	var radius := SIGHT_RADIUS
+	var center := observer(s)
+	var radius: float = Hazards.sight_radius(s,center,SIGHT_RADIUS+float(Families.vision_bonus(center)))
 	var before := ceili(radius)
 	var side := before*2+1
-	var center := observer(s)
 	for actor in ([] if center.is_empty() else [center]):
 		for y in range(maxi(0,actor.pos.y-before),mini(size,actor.pos.y-before+side)):
 			for x in range(maxi(0,actor.pos.x-before),mini(size,actor.pos.x-before+side)):
@@ -149,7 +143,7 @@ func observe(s) -> void:
 				# Adjacent tiles stay readable so legal diagonal steps can be tapped at corners.
 				var adjacent: bool = maxi(absi(p.x-actor.pos.x),absi(p.y-actor.pos.y)) <= 1
 				if not adjacent and not s.TurnCore.Geometry.sees(actor.pos,p,
-					func(c): return s.tile(c).terrain == "wall" and not bool(s.tile(c).get("pillar",false)),before): continue
+					func(c): return (s.tile(c).terrain == "wall" and not bool(s.tile(c).get("pillar",false))) or int(s.tile(c).get("steam_until",0)) > int(s.time),before): continue
 				visible[p] = true
 				if not explored.has(p):
 					explored[p] = true
@@ -168,7 +162,9 @@ func observe(s) -> void:
 					explored[edge] = true
 					discoveries.append({"position":[edge.x,edge.y],"terrain_id":"wall","visibility_state":"MEMORY","marker":""})
 	if not s.simulation_arena and s.phase in ["EXPLORE","BATTLE"]:
+		var was: String = s.phase
 		s.phase = "EXPLORE" if safe(s) else "BATTLE"
+		if was == "EXPLORE" and s.phase == "BATTLE": Families.battle_start(s)
 
 ## Static markers are cached per epoch by the minimap; a state change rewrites
 ## the row and starts a new epoch so the next observation rebuilds once.
@@ -206,7 +202,7 @@ func interact(s, p: Vector2i) -> bool:
 	if s.phase != "EXPLORE" or s.party[s.selected].hp <= 0 or s.party[s.selected].ap <= 0: return false
 	if not visible.has(p) or not features.has(p) or s.distance(s.party[s.selected].pos,p) > 1: return false
 	var feature: Dictionary = features[p]
-	if feature.kind in ["curio","stairs","pylon","entry","camp","item"]: return false # Items are picked up by stepping onto them.
+	if feature.kind in ["curio","stairs","lever","channel","binding","entry","camp","item"]: return false # Items are picked up by stepping onto them.
 	if not safe(s): s.message("주변에 적 있음"); return false
 	if feature.used: return false
 	feature.used = true
