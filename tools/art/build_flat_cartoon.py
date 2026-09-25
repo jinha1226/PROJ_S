@@ -24,84 +24,88 @@ if not BOLD.exists():
 
 INK = "#1c1b22"
 LINE = f'stroke="{INK}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"'
-SHADOW = '<ellipse cx="32" cy="58" rx="15" ry="4" fill="#000" fill-opacity="0.22"/>'
 
 
 def svg(body: str, size: int = 64) -> str:
     return f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 {size} {size}">{body}</svg>'
 
 
-def bean(x0, y0, x1, y1, fill, shade):
-    """A rounded body: flat fill, one flat shade on the right, outline on top."""
-    r = (x1 - x0) / 2
-    path = f"M{x0} {y0 + r} A{r} {r} 0 0 1 {x1} {y0 + r} L{x1} {y1 - 4} Q{x1} {y1} {x1 - 4} {y1} L{x0 + 4} {y1} Q{x0} {y1} {x0} {y1 - 4} Z"
-    mid = x0 + (x1 - x0) * 0.62
-    shade_path = f"M{mid} {y0 + 1} A{r} {r} 0 0 1 {x1} {y0 + r} L{x1} {y1 - 4} Q{x1} {y1} {x1 - 4} {y1} L{mid} {y1} Z"
-    return (f'<path d="{path}" fill="{fill}"/><path d="{shade_path}" fill="{shade}"/>'
-            f'<path d="{path}" fill="none" {LINE}/>')
+def blob(cx, cy, r, fill, shade, uid):
+    """One Forge Master blob: a flat circle whose lower-left is a darker crescent
+    (the shade circle, with the fill circle nudged up-right over it)."""
+    return (f'<clipPath id="{uid}"><circle cx="{cx}" cy="{cy}" r="{r}"/></clipPath>'
+            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="{shade}"/>'
+            f'<circle cx="{cx + r * 0.22}" cy="{cy - r * 0.22}" r="{r}" fill="{fill}" clip-path="url(#{uid})"/>'
+            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" {LINE}/>')
 
 
-def feet(color="#4a3325"):
-    return (f'<rect x="23" y="51" width="7" height="6" rx="2.5" fill="{color}" {LINE}/>'
-            f'<rect x="34" y="51" width="7" height="6" rx="2.5" fill="{color}" {LINE}/>')
+def pills(cx, cy, gap=5.2, rx=1.8, ry=3.3):
+    """The eyes: two tall pills, set toward the way the figure faces (right)."""
+    return (f'<ellipse cx="{cx - gap / 2}" cy="{cy}" rx="{rx}" ry="{ry}" fill="{INK}"/>'
+            f'<ellipse cx="{cx + gap / 2}" cy="{cy}" rx="{rx}" ry="{ry}" fill="{INK}"/>')
 
 
-def eyes(cx, cy, gap=7, r=2.2, color=INK):
-    return f'<circle cx="{cx - gap / 2}" cy="{cy}" r="{r}" fill="{color}"/><circle cx="{cx + gap / 2}" cy="{cy}" r="{r}" fill="{color}"/>'
+def figure(uid, body, head, eyes="", hat="", weapon="", mark="", head_r=14.5, body_r=12.5):
+    """Head over body, no limbs: the whole Forge Master figure. The weapon
+    floats across the body in front of everything."""
+    body_fill, body_shade = body
+    head_fill, head_shade = head
+    return ('<ellipse cx="31" cy="58" rx="14" ry="3.6" fill="#000" fill-opacity="0.2"/>'
+            + blob(31, 45, body_r, body_fill, body_shade, uid + "b") + mark
+            + blob(32, 27, head_r, head_fill, head_shade, uid + "h") + eyes + hat + weapon)
 
+
+STITCH = f'<path d="M27 47 L31 51 M31 47 L27 51" stroke="{INK}" stroke-width="1.6" stroke-linecap="round"/>'
+SKIN = ("#f6c79a", "#e0a574")
 
 SPRITES = {
-    "hero": SHADOW + feet() + bean(20, 30, 44, 54, "#3b72db", "#2c58b0")
-    + f'<rect x="20" y="42" width="24" height="4" fill="#6b4524" {LINE}/>'
-    + f'<rect x="30" y="41" width="5" height="6" rx="1" fill="#f2c64b" {LINE}/>'
-    + f'<circle cx="32" cy="24" r="12" fill="#f5c28e" {LINE}/>'
-    + f'<path d="M19 26 Q18 10 32 9 Q46 10 45 26 L41 26 Q41 17 32 17 Q23 17 23 26 Z" fill="#2c58b0" {LINE}/>'
-    + eyes(33, 25)
-    + f'<g transform="rotate(35 48 34)"><rect x="46" y="12" width="5" height="24" rx="1.5" fill="#dfe6ef" {LINE}/>'
-    + f'<rect x="42" y="35" width="13" height="4" rx="2" fill="#f2c64b" {LINE}/>'
-    + f'<rect x="46.5" y="39" width="4" height="7" rx="1.5" fill="#6b4524" {LINE}/></g>',
+    "hero": figure(
+        "hero", ("#5d6b82", "#48546a"), SKIN, pills(37, 32.5, 5.2, 1.8, 3.0),
+        hat=(f'<path d="M16.5 25 Q16 10 32 10 Q48 10 47.5 25 Z" fill="#c9d2de" {LINE}/>'
+             '<path d="M36 11 Q47 13 47.5 25 L40 25 Z" fill="#aeb8c6"/>'
+             f'<path d="M16.5 25 Q16 10 32 10 Q48 10 47.5 25 Z" fill="none" {LINE}/>'
+             f'<rect x="14" y="23" width="36" height="5" rx="2.5" fill="#aeb8c6" {LINE}/>'
+             f'<path d="M30 11 Q24 2 16 5 Q22 7 25 13 Z" fill="#e0453a" {LINE}/>'),
+        weapon=(f'<g transform="rotate(-12 34 44)"><rect x="34" y="41" width="27" height="5.5" rx="1.5" fill="#e8eef5" {LINE}/>'
+                f'<rect x="31" y="36.5" width="5" height="14.5" rx="2" fill="#f2c64b" {LINE}/>'
+                f'<rect x="21" y="41.5" width="11" height="4.5" rx="2" fill="#7a4a26" {LINE}/></g>'),
+        mark=f'<path d="M20 41 Q31 47 42 41" fill="none" stroke="#c0392f" stroke-width="5" stroke-linecap="round"/>'),
 
-    "goblin": SHADOW + feet("#3a2a1c") + bean(21, 33, 43, 54, "#8a5a33", "#6f4526")
-    + f'<path d="M22 22 L8 15 L20 30 Z" fill="#6cc04a" {LINE}/><path d="M42 22 L56 15 L44 30 Z" fill="#6cc04a" {LINE}/>'
-    + f'<circle cx="32" cy="26" r="12" fill="#6cc04a" {LINE}/>'
-    + '<path d="M36 16 A12 12 0 0 1 44 26 L38 26 Z" fill="#56a33a"/>'
-    + f'<circle cx="32" cy="26" r="12" fill="none" {LINE}/>'
-    + eyes(31, 26, 8, 2.4, "#1c1b22")
-    + f'<path d="M27 32 Q32 35 37 32" fill="none" {LINE}/>'
-    + f'<g transform="rotate(-25 48 40)"><path d="M45 26 Q52 26 51 34 L49 50 L45 50 L44 34 Z" fill="#a0683a" {LINE}/></g>',
+    "goblin": figure(
+        "goblin", ("#8a5a33", "#6f4526"), ("#78c24c", "#5ea338"), pills(37, 29),
+        hat=(f'<path d="M19 26 L5 18 L18 34 Z" fill="#78c24c" {LINE}/>'
+             f'<path d="M45 22 L58 12 L47 31 Z" fill="#78c24c" {LINE}/>'),
+        weapon=(f'<g transform="rotate(-18 36 46)"><path d="M36 43 L56 44 L36 48 Z" fill="#dfe6ef" {LINE}/>'
+                f'<rect x="27" y="43" width="10" height="4.5" rx="2" fill="#5a3a22" {LINE}/></g>'),
+        mark=STITCH, head_r=13),
 
-    "skeleton": SHADOW + feet("#d8d2c0") + bean(22, 34, 42, 54, "#8e3a3a", "#722c2c")
-    + f'<path d="M27 38 L37 38 M27 43 L37 43 M27 48 L37 48" {LINE}/>'
-    + f'<circle cx="32" cy="24" r="12" fill="#f1ecdc" {LINE}/>'
-    + f'<rect x="26" y="31" width="12" height="7" rx="2" fill="#f1ecdc" {LINE}/>'
-    + '<path d="M36 13 A12 12 0 0 1 44 24 L38 26 Z" fill="#dcd5c0"/>'
-    + f'<circle cx="32" cy="24" r="12" fill="none" {LINE}/>'
-    + f'<ellipse cx="27.5" cy="24" rx="3" ry="3.4" fill="{INK}"/><ellipse cx="36.5" cy="24" rx="3" ry="3.4" fill="{INK}"/>'
-    + f'<path d="M30 34 L30 38 M34 34 L34 38" {LINE}/>'
-    + f'<g transform="rotate(30 48 40)"><rect x="45" y="26" width="5" height="22" rx="2.5" fill="#f1ecdc" {LINE}/>'
-    + f'<circle cx="45.5" cy="26" r="3" fill="#f1ecdc" {LINE}/><circle cx="50" cy="26" r="3" fill="#f1ecdc" {LINE}/></g>',
+    "skeleton": ('<ellipse cx="31" cy="58" rx="14" ry="3.6" fill="#000" fill-opacity="0.2"/>'
+        + blob(31, 45, 12.5, "#b8433b", "#963229", "skb") + STITCH
+        + '<clipPath id="skh"><path d="M19 27 Q19 12 33 12 Q47 12 47 27 L47 33 Q47 38 42 38 L24 38 Q19 38 19 33 Z"/></clipPath>'
+        + '<path d="M19 27 Q19 12 33 12 Q47 12 47 27 L47 33 Q47 38 42 38 L24 38 Q19 38 19 33 Z" fill="#e2d8bd"/>'
+        + '<path d="M22 24 Q22 14 36 13 Q49 14 49 27 L49 35 Q49 36 44 36 L24 36 Q22 36 22 33 Z" fill="#f4ecd6" clip-path="url(#skh)"/>'
+        + f'<path d="M19 27 Q19 12 33 12 Q47 12 47 27 L47 33 Q47 38 42 38 L24 38 Q19 38 19 33 Z" fill="none" {LINE}/>'
+        + f'<rect x="33.4" y="22" width="3.4" height="8" rx="1.7" fill="{INK}"/><rect x="39.6" y="22" width="3.4" height="8" rx="1.7" fill="{INK}"/>'
+        + f'<g transform="rotate(-14 30 46)"><path d="M10 43 Q9 39 13 39 L50 41 Q53 43.5 50 46 L13 47 Q9 47 10 43 Z" fill="#a8703e" {LINE}/>'
+        + f'<path d="M20 40 L16 34 Q15 32 17 32 L22 39" fill="#a8703e" {LINE}/>'
+        + '<ellipse cx="12.5" cy="43" rx="1.6" ry="2.6" fill="#d9a870"/></g>'),
 
-    "rat": '<ellipse cx="32" cy="57" rx="18" ry="4" fill="#000" fill-opacity="0.22"/>'
-    + f'<path d="M48 48 Q60 46 58 36" fill="none" stroke="{INK}" stroke-width="6" stroke-linecap="round"/>'
-    + '<path d="M48 48 Q60 46 58 36" fill="none" stroke="#e9a0a6" stroke-width="3" stroke-linecap="round"/>'
-    + f'<ellipse cx="34" cy="45" rx="16" ry="11" fill="#8a8a96" {LINE}/>'
-    + '<path d="M34 34 A16 11 0 0 1 50 45 A16 11 0 0 1 36 56 Z" fill="#72727f"/>'
-    + f'<ellipse cx="34" cy="45" rx="16" ry="11" fill="none" {LINE}/>'
-    + f'<circle cx="20" cy="33" r="5" fill="#e9a0a6" {LINE}/>'
-    + f'<path d="M26 40 Q12 38 9 46 Q12 51 22 51" fill="#8a8a96" {LINE}/>'
-    + f'<circle cx="9" cy="46" r="2" fill="{INK}"/><circle cx="18" cy="44" r="2.2" fill="{INK}"/>'
-    + f'<path d="M26 55 L26 58 M40 55 L40 58" {LINE}/>',
+    "rat": ('<ellipse cx="32" cy="58" rx="17" ry="3.6" fill="#000" fill-opacity="0.2"/>'
+        + f'<path d="M15 50 Q4 50 5 40" fill="none" stroke="{INK}" stroke-width="6" stroke-linecap="round"/>'
+        + '<path d="M15 50 Q4 50 5 40" fill="none" stroke="#e9a0a6" stroke-width="2.6" stroke-linecap="round"/>'
+        + blob(28, 46, 12, "#8f8f9c", "#737382", "ratb")
+        + blob(40, 40, 10.5, "#9d9daa", "#80808e", "rath")
+        + f'<circle cx="36" cy="29" r="5" fill="#e9a0a6" {LINE}/>'
+        + f'<ellipse cx="44" cy="38" rx="1.7" ry="3" fill="{INK}"/>'
+        + f'<circle cx="50.5" cy="42" r="2.2" fill="#e9a0a6" {LINE}/>'),
 
-    "orc": SHADOW + feet("#3a2a1c") + bean(17, 30, 47, 55, "#6e8c3a", "#5a7430")
-    + f'<rect x="17" y="42" width="30" height="5" fill="#5a3a22" {LINE}/>'
-    + f'<path d="M17 34 Q14 30 18 28 L26 32 Z" fill="#9aa3b3" {LINE}/><path d="M47 34 Q50 30 46 28 L38 32 Z" fill="#9aa3b3" {LINE}/>'
-    + f'<circle cx="32" cy="22" r="13" fill="#7fa447" {LINE}/>'
-    + '<path d="M37 10 A13 13 0 0 1 45 22 L39 22 Z" fill="#6a8c3a"/>'
-    + f'<circle cx="32" cy="22" r="13" fill="none" {LINE}/>'
-    + f'<path d="M24 16 L30 18.5 M40 16 L34 18.5" {LINE}/>' + eyes(32, 23, 9, 2.2)
-    + f'<path d="M26 31 L27 27 L29 31 M38 31 L37 27 L35 31" fill="#fbf6e6" {LINE}/>'
-    + f'<g transform="rotate(20 52 30)"><rect x="50" y="14" width="4" height="34" rx="2" fill="#8a5a33" {LINE}/>'
-    + f'<path d="M52 16 Q64 16 62 28 Q58 24 52 26 Z" fill="#c9d1dc" {LINE}/></g>',
+    "orc": figure(
+        "orc", ("#4d3a2c", "#3a2b20"), ("#86a94c", "#6d8e3a"), pills(38, 30, 5.6, 1.9, 3.1),
+        hat=(f'<path d="M31 25 L36 27 M41 27 L46 25" stroke="{INK}" stroke-width="2.4" stroke-linecap="round"/>'
+             f'<path d="M34 37 L35.5 32.5 L37.5 37 Z M42 37 L43 32.5 L45 37 Z" fill="#fbf6e6" {LINE}/>'),
+        weapon=(f'<g transform="rotate(-20 34 46)"><rect x="14" y="43" width="42" height="4.5" rx="2" fill="#8a5a33" {LINE}/>'
+                f'<path d="M50 44 Q50 32 60 30 Q63 40 60 50 Q56 56 50 49 Z" fill="#c9d1dc" {LINE}/></g>'),
+        mark=STITCH, head_r=16, body_r=14),
 }
 
 PROPS = {
@@ -164,14 +168,14 @@ def room_svg(width: int, height: int, cols: int, rows: int) -> str:
     tile = width / cols
     wall_h = tile * 1.6
     parts = [f'<rect width="{width}" height="{height}" fill="#2a2b36"/>']
-    parts.append(f'<rect x="{tile * 0.5}" y="{wall_h}" width="{width - tile}" height="{height - wall_h - tile * 0.5}" fill="#a9aebb"/>')
+    parts.append(f'<rect x="{tile * 0.5}" y="{wall_h}" width="{width - tile}" height="{height - wall_h - tile * 0.5}" fill="#cdb68a"/>')
     for c in range(1, cols):
         x = tile * 0.5 + (c - 0.5) * tile
-        parts.append(f'<path d="M{x} {wall_h} L{x} {height - tile * 0.5}" stroke="#979cab" stroke-width="3"/>')
+        parts.append(f'<path d="M{x} {wall_h} L{x} {height - tile * 0.5}" stroke="#bea77b" stroke-width="3"/>')
     for r in range(1, rows):
         y = wall_h + r * tile - tile * 0.35
         if y < height - tile * 0.5:
-            parts.append(f'<path d="M{tile * 0.5} {y} L{width - tile * 0.5} {y}" stroke="#979cab" stroke-width="3"/>')
+            parts.append(f'<path d="M{tile * 0.5} {y} L{width - tile * 0.5} {y}" stroke="#bea77b" stroke-width="3"/>')
     parts.append(f'<rect x="{tile * 0.5}" y="{wall_h}" width="{width - tile}" height="{height - wall_h - tile * 0.5}" fill="none" {LINE}/>')
     # Back wall: two courses of big flat blocks.
     parts.append(f'<rect x="{tile * 0.5}" y="{tile * 0.2}" width="{width - tile}" height="{wall_h - tile * 0.2}" fill="#7d8394" {LINE}/>')
@@ -196,7 +200,7 @@ def room_svg(width: int, height: int, cols: int, rows: int) -> str:
         px, py = width * x, height * y
         parts.append(f'<path d="M{px} {py} l4 -9 l4 9 l4 -12 l3 12" fill="none" stroke="{INK}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>')
     for x, y, r in ((0.35, 0.33, 6), (0.62, 0.72, 5), (0.22, 0.52, 4)):
-        parts.append(f'<ellipse cx="{width * x}" cy="{height * y}" rx="{r * 1.5}" ry="{r}" fill="#8a8f9e" {LINE}/>')
+        parts.append(f'<ellipse cx="{width * x}" cy="{height * y}" rx="{r * 1.5}" ry="{r}" fill="#a8946c" {LINE}/>')
     return svg("".join(parts)).replace('width="64" height="64" viewBox="0 0 64 64"', f'width="{width}" height="{height}" viewBox="0 0 {width} {height}"')
 
 
