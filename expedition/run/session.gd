@@ -184,7 +184,15 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 	return actor
 
 func message(value: String) -> void:
-	log_lines.append(value)
+	for raw_line in value.replace("\r","\n").split("\n",false):
+		var sentence := ""
+		for i in range(raw_line.length()):
+			var character: String = raw_line[i]
+			sentence += character
+			if character in [".","!","?"] and (i+1 == raw_line.length() or raw_line[i+1] == " "):
+				if not sentence.strip_edges().is_empty(): log_lines.append(sentence.strip_edges())
+				sentence = ""
+		if not sentence.strip_edges().is_empty(): log_lines.append(sentence.strip_edges())
 
 ## Persistent memories are landmarks, not a transcript of ordinary hits.
 func remember_important(actor: Dictionary, kind: String, subject: int, instigator: int, salience: int) -> void:
@@ -375,6 +383,13 @@ func walk_reach(a: Vector2i, b: Vector2i) -> bool:
 func can_step(a: Vector2i, b: Vector2i) -> bool:
 	return walk_reach(a,b) and is_free(b)
 
+func can_swap_with(actor: Dictionary, other: Dictionary) -> bool:
+	return actor in party and not other.is_empty() and other != actor and other.hp > 0 \
+		and (other in party or wanderer(other) and not bool(other.get("hostile",false)) and not bool(other.get("summoned",false)))
+
+func can_swap_step(actor: Dictionary, point: Vector2i) -> bool:
+	return not status_blocks(actor,"MOVE") and walk_reach(actor.pos,point) and can_swap_with(actor,at(point))
+
 func combat_enemies() -> Array:
 	return floor_state.threats(self)
 
@@ -535,8 +550,7 @@ func can_submit(actor: Dictionary, kind: String, target: Vector2i, value: String
 		"WAIT": return target == actor.pos
 		"MOVE": return not status_blocks(actor,kind) and target in movement_cells(0)
 		"SWAP":
-			var ally: Dictionary = at(target)
-			return not status_blocks(actor,"MOVE") and walk_reach(actor.pos,target) and ally in party and ally != actor
+			return can_swap_step(actor,target)
 		"RESCUE": return Downed.can_rescue(self,actor,downed_at(target))
 		"ATTACK": return not status_blocks(actor,kind) and not attack_preview(target,0).is_empty()
 		"LEVER": return BossAI.lever_ready(self,actor,target)
@@ -608,9 +622,10 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 			if actor in party: Consumables.pickup(self,actor)
 			actor.hit_and_run = false
 		"SWAP":
-			if status_blocks(actor,"MOVE") or actor not in party or victim not in party or victim == actor or not walk_reach(was,target): return false
+			if not can_swap_step(actor,target): return false
 			victim.pos = was
 			actor.pos = target
+			Consumables.pickup(self,actor)
 			actor.hit_and_run = false
 			victim.hit_and_run = false
 		"RESCUE":

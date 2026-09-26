@@ -66,6 +66,6 @@ static func gain_level_xp(s, actor: Dictionary, amount: int) -> int:
 		actor.level += 1
 		actor.max_hp += 4; actor.hp = mini(actor.max_hp,actor.hp+4)
 		actor.max_mp += 2; actor.mp = mini(actor.max_mp,actor.mp+2)
-		if actor in s.party: s.push_event({"kind":"LEVEL_UP","actor":int(actor.id),"level":int(actor.level)})
+		if actor in s.party: s.message("%s 레벨 %d" % [actor.name,int(actor.level)])
 	Essences.sync_slots(actor)
 	return int(actor.level)-before

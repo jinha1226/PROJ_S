@@ -16,7 +16,8 @@ func stop() -> void:
 func traversable(s, a: Vector2i, b: Vector2i) -> bool:
 	if not s.floor_state.explored.has(b) or not s.inside(b) or s.tile(b).terrain == "wall": return false
 	# Never inspect hidden actors or hazards while planning remembered ground.
-	if s.floor_state.visible.has(b) and (not s.is_free(b) or (automatic or s.phase != "BATTLE") and (s.tile(b).fire > 0 or s.Tactics.danger(s,b) > 0)): return false
+	if s.floor_state.visible.has(b) and not s.is_free(b) and not s.can_swap_with(s.party[s.selected],s.at(b)): return false
+	if s.floor_state.visible.has(b) and (automatic or s.phase != "BATTLE") and (s.tile(b).fire > 0 or s.Tactics.danger(s,b) > 0): return false
 	if not s.walk_reach(a,b): return false
 	return true
 
@@ -33,16 +34,39 @@ func start(s, target: Vector2i) -> bool:
 	if planned_path.size() < 2: return false
 	destination = target; active = true; return true
 
+func start_near(s, target: Vector2i) -> bool:
+	stop(); plan_builds = 0
+	if s.phase != "EXPLORE" or not s.party_enemies().is_empty() or not s.floor_state.visible.has(target): return false
+	var goals: Array = []
+	for direction in s.DIRECTIONS:
+		var point: Vector2i = target+direction
+		if s.inside(point) and s.floor_state.explored.has(point) and s.melee_reach(point,target): goals.append(point)
+	goals.append(target)
+	plan_builds += 1
+	var result: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,s.party[s.selected].pos,goals,
+		func(a,b): return traversable(s,a,b),func(_p): return 100)
+	if not result.found or result.path.size() < 2: return false
+	planned_path = result.path; destination = planned_path.back(); active = true; return true
+
 func explore(s) -> bool:
 	stop(); plan_builds = 0
 	if s.phase != "EXPLORE" or not s.party_enemies().is_empty() or s.party.any(func(a): return s.Downed.is_downed(a)): return false
+	s.Consumables.pickup(s,s.party[s.selected])
 	automatic = true; active = true; return true
 
 func frontier_path(s) -> Array:
+	var items: Array = s.floor_state.features.keys().filter(func(p): return s.floor_state.explored.has(p) and str(s.floor_state.features[p].get("kind","")) == "item")
+	items.sort_custom(func(a,b): return s.distance(s.party[s.selected].pos,a) < s.distance(s.party[s.selected].pos,b))
+	for item in items:
+		var item_path: Array = route(s,item)
+		if item_path.size() > 1:
+			destination = item
+			return item_path
 	var cells: Dictionary = {}
 	for p in s.floor_state.explored:
 		var live: bool = s.floor_state.visible.has(p)
-		cells["%d:%d" % [p.x,p.y]] = {"passable":s.tile(p).terrain != "wall","occupied":live and not s.at(p).is_empty(),"risk":s.tile(p).fire if live else 0,"move_time_cost":100,"visibility_state":"VISIBLE" if live else "MEMORY"}
+		var occupant: Dictionary = s.at(p) if live else {}
+		cells["%d:%d" % [p.x,p.y]] = {"passable":s.tile(p).terrain != "wall","occupied":live and not occupant.is_empty() and not s.can_swap_with(s.party[s.selected],occupant),"risk":s.tile(p).fire if live else 0,"move_time_cost":100,"visibility_state":"VISIBLE" if live else "MEMORY"}
 	var search = Search.new(); plan_builds += 1
 	var result: Dictionary = search.search({"width":s.BOARD_SIDE,"height":s.BOARD_SIDE},cells,s.party[s.selected].pos,exhausted)
 	last_search_expanded = search.expanded
@@ -51,6 +75,7 @@ func frontier_path(s) -> Array:
 
 func next_step(s) -> Vector2i:
 	if not active: return Vector2i(-1,-1)
+	if automatic: s.Consumables.pickup(s,s.party[s.selected])
 	if automatic and s.party.any(func(a): return s.Downed.is_downed(a)): stop(); return Vector2i(-1,-1)
 	if s.phase not in ["EXPLORE","BATTLE"] or automatic and (s.phase != "EXPLORE" or not s.party_enemies().is_empty()): stop(); return Vector2i(-1,-1)
 	var current: Vector2i = s.party[s.selected].pos
@@ -62,5 +87,6 @@ func next_step(s) -> Vector2i:
 	if planned_path.size() < 2 or planned_path[0] != current: stop(); return Vector2i(-1,-1)
 	var next: Vector2i = planned_path[1]
 	# Validate only the immediate hop; don't rebuild A* and all fog cells per turn.
-	if not s.floor_state.visible.has(next) or not traversable(s,current,next) or not s.can_step(current,next): stop(); return Vector2i(-1,-1)
+	if not s.floor_state.visible.has(next) or not traversable(s,current,next) or not (s.can_step(current,next) or s.can_swap_step(s.party[s.selected],next)):
+		stop(); return Vector2i(-1,-1)
 	return next

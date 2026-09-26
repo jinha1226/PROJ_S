@@ -86,7 +86,7 @@ func levels() -> void:
 	check(hero.equipped_abilities == [""],"a first-level hero has one slot")
 	s.events.clear()
 	check(s.gain_level_xp(hero,65) == 1 and hero.equipped_abilities.size() == 2,"level two opens a second slot")
-	check(s.events.any(func(e): return e.kind == "LEVEL_UP" and int(e.level) == 2 and int(e.actor) == int(hero.id)),"a level-up is announced")
+	check(s.log_lines[-1] == "%s 레벨 2" % hero.name and not s.events.any(func(e): return e.kind == "LEVEL_UP"),"a level-up appears only in the log")
 	s.gain_level_xp(hero,999999)
 	check(int(hero.level) == 10 and hero.equipped_abilities.size() == 10,"level ten is the top, with ten slots")
 	check(s.gain_level_xp(hero,999999) == 0,"nothing past ten")

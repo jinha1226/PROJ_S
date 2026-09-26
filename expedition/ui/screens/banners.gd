@@ -1,18 +1,11 @@
 extends RefCounted
-## The brief centre banners for level gains and boss introductions. They
+## The brief centre banner for boss introductions. They
 ## come from `session.events`, one at a time, and a tap on 확인 brings the next.
-const Essences = preload("res://expedition/progression/essences.gd")
-const KINDS := ["LEVEL_UP","BOSS"]
-const NODES := ["LevelUpBanner","BossBanner"]
-const GOLD := Color("c6a34c")
+const KINDS := ["BOSS"]
+const NODES := ["BossBanner"]
 
 static func showing(ui) -> bool:
 	return NODES.any(func(n): return ui.has_node(n))
-
-static func member(s, id: int) -> Dictionary:
-	for actor in s.party:
-		if int(actor.id) == id: return actor
-	return {}
 
 ## Pops the next banner-worthy event and shows it; false when nothing shows.
 static func show_next(ui) -> bool:
@@ -22,11 +15,6 @@ static func show_next(ui) -> bool:
 		var at: int = ui.session.events.find_custom(func(e): return str(e.get("kind","")) in KINDS)
 		if at < 0: return false
 		var event: Dictionary = ui.session.events.pop_at(at)
-		if str(event.kind) == "LEVEL_UP":
-			var actor: Dictionary = member(ui.session,int(event.get("actor",-1)))
-			if actor.is_empty(): continue
-			level_banner(ui,actor,int(event.get("level",1)))
-			return true
 		if str(event.kind) == "BOSS":
 			boss_banner(ui,str(event.get("name","")),str(event.get("hint","")))
 			return true
@@ -61,17 +49,6 @@ static func finish(ui, box: VBoxContainer) -> void:
 	var factor: float = minf(1.0,minf((ui.size.x-24.0)/panel.size.x,(ui.size.y-24.0)/panel.size.y))
 	panel.scale = Vector2.ONE*factor
 	panel.position = ((ui.size-panel.size*factor)/2).floor()
-
-static func level_banner(ui, actor: Dictionary, level: int) -> void:
-	var box := frame(ui,"LevelUpBanner",GOLD)
-	line(box,"레벨 %d" % level,36,Color("ffe0a3"))
-	line(box,str(actor.name),18)
-	line(box,"HP +4 · MP +2",16)
-	if level <= Essences.MAX_LEVEL: line(box,"영혼석 슬롯 +1",22,GOLD).name = "BannerSlotLine"
-	# A caster stone opens spells up to the character's level, not a tier.
-	var casting: bool = actor.get("essences",{}).keys().any(func(id): return not Essences.school(str(id)).is_empty())
-	if casting and level <= Essences.MAX_LEVEL: line(box,"주문 Lv.%d까지 선택 가능" % level,16).name = "BannerSpellLine"
-	finish(ui,box)
 
 static func boss_banner(ui, boss_name: String, hint: String) -> void:
 	var box := frame(ui,"BossBanner",Color("b0413e"))

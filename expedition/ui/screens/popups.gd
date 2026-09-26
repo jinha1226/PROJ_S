@@ -42,7 +42,7 @@ static func show_logs(ui) -> void:
 	var entries: Array = ui.session.log_lines
 	if ui.log_filter == "중요":
 		entries = entries.filter(func(entry): return ["합류","보스","쓰러","내려","동행","전사"].any(func(term): return str(entry).contains(term)))
-	history.text = "\n\n".join(entries)
+	history.text = "\n".join(entries)
 	history.scroll_following = true; box.add_child(history)
 	ui.button(box,"닫기",func(): ui.log_popup.hide())
 	ui.log_popup.popup_centered(Vector2i(ui.get_viewport_rect().size))
@@ -68,9 +68,11 @@ static func show_curio(ui, point: Vector2i) -> void:
 			var choice: Dictionary = def.options[id]
 			var caption: String = choice.label
 			var reason: String = Session.Curios.error(session,point,id)
-			ui.button(ui.modal_content,caption,func(): ui.details_popup.hide(); ui.run_action(func(): return Session.Curios.resolve(session,point,id)),reason.is_empty())
-			var hint = ui.label(ui.modal_content,reason if not reason.is_empty() else choice.get("warning",""),14)
-			hint.custom_minimum_size.x = ui.popup_width(); hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			ui.button(ui.modal_content,caption,func(): ui.details_popup.hide(); ui.collect_curio(point,id),reason in ["","거리 초과"])
+			var hint_text: String = "" if reason == "거리 초과" else reason if not reason.is_empty() else str(choice.get("warning",""))
+			if not hint_text.is_empty():
+				var hint = ui.label(ui.modal_content,hint_text,14)
+				hint.custom_minimum_size.x = ui.popup_width(); hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	ui.button(ui.modal_content,"지나가기",func(): ui.details_popup.hide())
 	ui.details_popup.popup_centered()
 

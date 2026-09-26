@@ -833,7 +833,7 @@ func draw_enemy_attack(effect: Dictionary, canvas: Node2D) -> void:
 		canvas.draw_line(start,tip,impact,5,true)
 		var slash := Vector2(half_width*0.5,-half_width*0.5)
 		canvas.draw_line(center-slash,center+slash,Color(1,0.85,0.65,fade),4,true)
-	var caption := "폭발!" if effect.area else "공격!"
+	var caption: String = str(effect.get("caption","범위 공격" if effect.area else "공격"))
 	var box := Rect2(Vector2(clampf(center.x-30,0,maxf(0,size.x-60)),center.y-half_width-20),Vector2(60,20))
 	canvas.draw_style_box(_preview_background(impact),box)
 	canvas.draw_string(ui_font,box.position+Vector2(2,15),caption,HORIZONTAL_ALIGNMENT_CENTER,56,13,Color(1,0.85,0.65,fade))

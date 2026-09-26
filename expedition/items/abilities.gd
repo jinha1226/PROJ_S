@@ -277,12 +277,12 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 			var spared: bool = not victim.is_empty() and not def.allies_hit and victim.enemy == actor.enemy
 			if victim.is_empty() or spared or cell == Vector2i(-1,-1): s.message(actor.name+"의 "+def.name+"가 빗나갔습니다.")
 			else:
-				s.effects.append({"kind":"ENEMY_ATTACK","from":actor.pos,"cell":target,"cells":[target],"area":false,"amount":0,"form":"SLASH"})
+				s.effects.append({"kind":"ENEMY_ATTACK","from":actor.pos,"cell":target,"cells":[target],"area":false,"amount":0,"form":"SLASH","caption":str(def.get("short",def.name))})
 				strike_victim(s,actor,victim,power(s,actor,def,id),"SLASH",def)
 		"DAMAGE":
 			var affected := cells(s,actor,id,target)
 			var amount: int = power(s,actor,def,id)
-			s.effects.append({"kind":"ENEMY_ATTACK","from":actor.pos,"cell":target,"cells":affected,"area":true,"amount":0,"form":"IMPACT"})
+			s.effects.append({"kind":"ENEMY_ATTACK","from":actor.pos,"cell":target,"cells":affected,"area":affected.size() > 1,"amount":0,"form":"IMPACT","caption":str(def.get("short",def.name))})
 			var hit := 0
 			for other in s.party+s.npcs+s.enemies:
 				if other.hp <= 0 or other.id == actor.id or other.pos not in affected: continue

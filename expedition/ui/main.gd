@@ -14,7 +14,8 @@ const Art = preload("res://expedition/art/mobile_art.gd")
 const Banners = preload("res://expedition/ui/screens/banners.gd")
 var portrait_gesture = preload("res://expedition/legacy/portrait_gesture.gd").new()
 var navigation = preload("res://expedition/level/exploration_navigation.gd").new()
-const NAVIGATION_STEP_SECONDS := 0.11
+var queued_curio: Dictionary = {}
+const NAVIGATION_STEP_SECONDS := 0.075
 var navigation_clock := 0.0
 var view_side := 11
 var log_popup: PopupPanel
@@ -135,6 +136,7 @@ func _ready() -> void:
 
 func stop_navigation() -> void:
 	navigation.stop(); navigation_clock = 0
+	queued_curio = {}
 	set_action_button_text(auto_explore_button,"탐색" if session != null and session.manual_mode else "자동탐험")
 
 func popup_open() -> bool:
@@ -190,15 +192,38 @@ func navigation_tick() -> void:
 	if navigation_camera_busy():
 		if navigation.automatic and (session.phase != "EXPLORE" or not session.party_enemies().is_empty()): stop_navigation()
 		return
+	if not queued_curio.is_empty():
+		if session.phase != "EXPLORE" or not session.party_enemies().is_empty(): stop_navigation(); return
+		var point: Vector2i = queued_curio.point
+		var option: String = str(queued_curio.option)
+		var reason: String = Session.Curios.error(session,point,option)
+		if reason.is_empty():
+			stop_navigation()
+			run_action(func(): return Session.Curios.resolve(session,point,option))
+			return
+		if reason != "거리 초과": stop_navigation(); return
 	var step: Vector2i = navigation.next_step(session)
 	if step.x < 0: stop_navigation(); return
 	var health: Array = session.party.map(func(a): return a.hp)
-	run_action(func(): return session.act("MOVE",step),true)
+	var action: String = "SWAP" if session.can_swap_step(session.party[session.selected],step) else "MOVE"
+	run_action(func(): return session.act(action,step),true)
 	if session.party.map(func(a): return a.hp) != health or not session.party_enemies().is_empty() or session.party[session.selected].pos != step:
 		stop_navigation()
+	elif not queued_curio.is_empty(): return
 	elif session.floor_state.features.keys().any(func(p): return session.floor_state.features[p].kind in ["curio","stairs"] and not session.floor_state.features[p].used and session.distance(step,p) <= 1):
 		stop_navigation()
 	elif not navigation.automatic and step == navigation.destination: stop_navigation()
+
+func collect_curio(point: Vector2i, option: String) -> void:
+	if session == null or not session.on_floor(): return
+	var reason: String = Session.Curios.error(session,point,option)
+	if reason.is_empty():
+		run_action(func(): return Session.Curios.resolve(session,point,option))
+		return
+	if reason != "거리 초과" or not navigation.start_near(session,point):
+		notice = "이동 불가"; refresh(); return
+	queued_curio = {"point":point,"option":option}
+	navigation_tick()
 
 func _input(event: InputEvent) -> void:
 	if session != null: portrait_gesture.handle(self,event)

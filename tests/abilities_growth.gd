@@ -15,7 +15,7 @@ func exercise() -> void:
 		var enemy: Dictionary = s.enemies[0]
 		s.log_lines.clear()
 		s.damage(enemy,999,0,"SLASH")
-		check(s.log_lines[0].contains("쓰러졌습니다"),"lethal damage and defeat are logged before XP and drops")
+		check(s.log_lines.size() >= 2 and s.log_lines[0].contains("피해를 주었습니다") and s.log_lines[1].contains("쓰러졌습니다"),"damage and defeat use separate log lines before XP and drops")
 		var count: int = s.parts_bag.get(enemy.part_id,0)
 		dropped += count
 		check(int(s.party[0].level_xp) == 18+s.depth*8 and int(s.party[1].level_xp) == 18+s.depth*8,"shared XP without last-hit competition")

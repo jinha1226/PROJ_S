@@ -243,6 +243,11 @@ func telegraph() -> void:
 	d.hero.pos = d.c+Vector2i(-1,0); hp = d.hero.hp
 	MonsterAI.turn(s,d.foe)
 	check(d.hero.hp == hp and s.log_lines[-1].contains("빗나갔습니다"),"an empty announced cell is a miss")
+	# A single-cell bite keeps its own action label instead of posing as an explosion.
+	d = duel(); s = d.s; give_part(d.foe,"RAT_GNAW")
+	Abilities.resolve(s,d.foe,"RAT_GNAW",d.hero.pos)
+	var bite_effects: Array = s.effects.filter(func(effect): return str(effect.get("kind","")) == "ENEMY_ATTACK")
+	check(not bite_effects.is_empty() and not bite_effects[0].area and bite_effects[0].caption == "물기","rat bite uses its own single-target effect label")
 	# Area part spares the caster's own side.
 	d = duel(); s = d.s; give_part(d.foe,"ORC_CLEAVER"); d.foe.cooldowns = {}
 	var mate: Dictionary = s.enemies[1]; mate.hp = 30; mate.max_hp = 30; mate.alert = true; mate.pos = d.c+Vector2i(1,1); mate.part_id = ""
