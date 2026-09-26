@@ -6,7 +6,9 @@ const Zones = preload("res://expedition/level/zones.gd")
 const FALLBACK_DEPTH := 6
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/floor_monsters.json"))
 const ROLE_BONUS := {"MELEE":0,"RANGED":1,"CASTER":2}
-const ROLE_WEIGHTS := {"MELEE":60,"RANGED":30,"CASTER":10}
+const ROLE_WEIGHTS := {"MELEE":70,"RANGED":20,"CASTER":10}
+## One archer per pack: two firing lines turn every approach into a gauntlet.
+const MAX_RANGED := 1
 const MAX_MEMBERS := 4
 const MAX_REROLLS := 20
 const MAX_DRAWS := 40
@@ -63,6 +65,7 @@ static func member(row: Dictionary, role: String) -> Dictionary:
 static func role_allowed(members: Array, row: Dictionary, role: String) -> bool:
 	if role not in row.roles: return false
 	if role == "CASTER" and members.any(func(m): return m.role == "CASTER"): return false
+	if role == "RANGED" and members.filter(func(m): return m.role == "RANGED").size() >= MAX_RANGED: return false
 	var same: int = members.filter(func(m): return m.species_id == row.species_id and m.role == role).size()
 	return same < 2
 
@@ -82,6 +85,7 @@ static func valid(members: Array, budget: int, max_members: int = MAX_MEMBERS) -
 	if total < budget-1: return "too weak (%d < %d)" % [total,budget-1]
 	if total > budget+1: return "too strong (%d > %d)" % [total,budget+1]
 	if members.filter(func(m): return m.role == "CASTER").size() > 1: return "two casters"
+	if members.filter(func(m): return m.role == "RANGED").size() > MAX_RANGED: return "too many archers"
 	var band: Variant = species("dcss_gnoll").get("band")
 	var followers: Array = band.get("followers",[]) if band is Dictionary else []
 	var gnoll_band: bool = members.any(func(m): return m.species_id == "dcss_gnoll") and members.filter(func(m): return m.species_id in followers).size() >= 2

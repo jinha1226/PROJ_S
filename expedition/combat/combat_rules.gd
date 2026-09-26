@@ -6,6 +6,10 @@ const Turns = preload("res://sim/turn_engine.gd")
 const Hunt = preload("res://expedition/progression/hunt.gd")
 const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
 const Forms = preload("res://expedition/combat/forms.gd")
+## A monster's shot loses aim with distance: each tile past contact adds this
+## much to the target's dodge, up to RANGED_DODGE_CAP.
+const RANGED_DODGE_PER_TILE := 6
+const RANGED_DODGE_CAP := 60
 
 static func roll(s, source: Dictionary, target: Dictionary, lane: String, modulus: int) -> int:
 	if modulus <= 1: return 0
@@ -25,6 +29,8 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 	# 왜곡 takes thirty points off whatever the attacker can still aim.
 	# 회피 % from the soul stones rides on the evasion's own two percent a point.
 	var dodge := clampi(int(defense.ev) * 2 + int(defense.get("dodge", 0)) - StoneEffects.modifier(s,"accuracy",source), 5, 45)
+	var gap: int = maxi(absi(source.pos.x - target.pos.x), absi(source.pos.y - target.pos.y))
+	if bool(source.get("enemy", false)) and gap > 1: dodge = mini(RANGED_DODGE_CAP, dodge + RANGED_DODGE_PER_TILE * (gap - 1))
 	if StoneEffects.modifier(s,"zero_dodge",target) > 0: dodge = 0
 	if source.get("statuses", {}).has("distort"): dodge = mini(95, dodge + 30)
 	if roll(s, source, target, "dodge", 100) < dodge:
