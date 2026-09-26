@@ -56,7 +56,7 @@ func catalog() -> void:
 	check(not Essences.absorbed(actor,"ORC_CLEAVER"),"an unknown essence is not held")
 	actor.essences = {"RAT_GNAW":1}
 	check(Essences.absorbed(actor,"RAT_GNAW"),"an absorbed essence is held")
-	check(Essences.equipped(actor) == ["RAT_GNAW"],"empty slots are not essences")
+	check(Essences.equipped(actor) == [Essences.canonical("RAT_GNAW")],"empty slots are not essences")
 	check(Essences.slot_count(actor) == 4 and Essences.slot_count({"level":15}) == 10 and Essences.slot_count({}) == 1,"slots follow the level, one to ten")
 
 func sets() -> void:
@@ -96,23 +96,23 @@ func absorbing() -> void:
 	s.phase = "CAMP"
 	s.parts_bag = {"ORC_CLEAVER":4}
 	var hp: int = hero.max_hp
-	check(s.absorb_essence(0,"ORC_CLEAVER") == "" and int(hero.essences.ORC_CLEAVER) == 1 and int(s.parts_bag.ORC_CLEAVER) == 3,"absorbing takes one from the bag")
-	check(s.absorb_essence(0,"ORC_CLEAVER") == "이미 흡수함" and int(hero.essences.ORC_CLEAVER) == 1,"absorbing again is refused: no tiers")
-	check(s.absorb_essence(0,"ORC_CLEAVER") == "이미 흡수함" and int(s.parts_bag.ORC_CLEAVER) == 3,"the copy stays in the bag for somebody else")
+	check(s.absorb_essence(0,"ORC_CLEAVER") == "" and int(hero.essences[Essences.canonical("ORC_CLEAVER")]) == 1 and int(s.parts_bag[Essences.canonical("ORC_CLEAVER")]) == 3,"absorbing takes one from the bag")
+	check(s.absorb_essence(0,"ORC_CLEAVER") == "이미 흡수함" and int(hero.essences[Essences.canonical("ORC_CLEAVER")]) == 1,"absorbing again is refused: no tiers")
+	check(s.absorb_essence(0,"ORC_CLEAVER") == "이미 흡수함" and int(s.parts_bag[Essences.canonical("ORC_CLEAVER")]) == 3,"the copy stays in the bag for somebody else")
 	check(s.absorb_essence(0,"GOBLIN_SHIV") == "가방에 없음","nothing absorbed from an empty bag")
 	check(int(hero.max_hp) == hp,"absorbing alone changes no pool")
-	check(s.equip_part(0,0,"ORC_CLEAVER") and hero.equipped_abilities == ["ORC_CLEAVER"],"an absorbed essence fills a slot")
+	check(s.equip_part(0,0,"ORC_CLEAVER") and hero.equipped_abilities == [Essences.canonical("ORC_CLEAVER")],"an absorbed essence fills a slot")
 	check(int(hero.max_hp) == hp+8,"an orc stone is eight HP")
 	check(not s.equip_part(0,1,"GOBLIN_SHIV"),"no second slot at level one")
-	check(s.unequip_part(0,0) and hero.equipped_abilities == [""] and int(s.parts_bag.ORC_CLEAVER) == 3,"taking it off keeps it absorbed, not bagged")
-	check(int(hero.max_hp) == hp and int(hero.essences.ORC_CLEAVER) == 1,"the pools drop, the stone stays absorbed")
+	check(s.unequip_part(0,0) and hero.equipped_abilities == [""] and int(s.parts_bag[Essences.canonical("ORC_CLEAVER")]) == 3,"taking it off keeps it absorbed, not bagged")
+	check(int(hero.max_hp) == hp and int(hero.essences[Essences.canonical("ORC_CLEAVER")]) == 1,"the pools drop, the stone stays absorbed")
 	s.parts_bag["GOBLIN_SHIV"] = 1
-	check(s.equip_part(0,0,"GOBLIN_SHIV") and int(hero.essences.GOBLIN_SHIV) == 1 and int(s.parts_bag.GOBLIN_SHIV) == 0,"equipping from the bag absorbs on the way")
+	check(s.equip_part(0,0,"GOBLIN_SHIV") and int(hero.essences[Essences.canonical("GOBLIN_SHIV")]) == 1 and int(s.parts_bag[Essences.canonical("GOBLIN_SHIV")]) == 0,"equipping from the bag absorbs on the way")
 	check(hero.rules.any(func(r): return r.skill == "GOBLIN_SHIV"),"a part essence brings its rule")
 	s.phase = "BATTLE"
 	s.parts_bag["RAT_GNAW"] = 1
 	check(s.absorb_essence(0,"RAT_GNAW") == "전투 중" and not s.unequip_part(0,0),"nothing changes hands in a fight")
-	check(Essences.put(hero,0,"ORC_CLEAVER") and hero.equipped_abilities[0] == "ORC_CLEAVER","the unchecked put works mid-fight, for NPCs")
+	check(Essences.put(hero,0,"ORC_CLEAVER") and hero.equipped_abilities[0] == Essences.canonical("ORC_CLEAVER"),"the unchecked put works mid-fight, for NPCs")
 	check(Essences.take(hero,0) and hero.equipped_abilities[0] == "","and so does take")
 	s.phase = "EXPLORE"
 	check(Essences.can_manage(s) == s.floor_state.safe(s),"a quiet corridor counts as safe")
@@ -124,7 +124,7 @@ func drops() -> void:
 	foe.part_id = "GOBLIN_SHIV"; foe.species_id = "goblin"
 	check(Essences.drop_chance(s,"goblin") == 100,"the first goblin always leaves its essence")
 	s.damage(foe,9999,int(hero.id),"SLASH")
-	check(int(s.parts_bag.get("GOBLIN_SHIV",0)) == 1,"the first kill drops it")
+	check(int(s.parts_bag.get(Essences.canonical("GOBLIN_SHIV"),0)) == 1,"the first kill drops it")
 	check(s.essence_seen.has("goblin") and Essences.drop_chance(s,"goblin") == 25,"after that, one in four")
 	check(not s.events.any(func(e): return e.kind == "ESSENCE") and s.log_lines[-1] == Essences.title("GOBLIN_SHIV")+" 획득","a new essence appears only in the log")
 	s.parts_bag.clear()
@@ -135,7 +135,7 @@ func drops() -> void:
 		var other: Dictionary = t.enemies[0]
 		other.part_id = "GOBLIN_SHIV"; other.species_id = "goblin"
 		t.damage(other,9999,int(t.party[0].id),"SLASH")
-		dropped += int(t.parts_bag.get("GOBLIN_SHIV",0))
+		dropped += int(t.parts_bag.get(Essences.canonical("GOBLIN_SHIV"),0))
 	check(dropped > 0 and dropped < 40,"repeat drops are seeded, not certain (%d of 40)" % dropped)
 	var npc_only = Session.new_run(733,"sword")
 	npc_only.parts_bag.clear()

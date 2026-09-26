@@ -132,16 +132,16 @@ func bag() -> void:
 	s.parts_bag["RAT_GNAW"] = 1; s.parts_bag["GOBLIN_SHIV"] = 1
 	s.phase = "CAMP"
 	check(not s.equip_part(0,1,"RAT_GNAW") and not s.equip_part(0,0,"GOBLIN_CHIEF") and not s.equip_part(0,0,"NOPE"),"closed slot, empty bag and unknown id refused")
-	check(s.equip_part(0,0,"RAT_GNAW") and s.party[0].equipped_abilities[0] == "RAT_GNAW" and s.parts_bag.RAT_GNAW == 0,"equip absorbs the part from the bag")
+	check(s.equip_part(0,0,"RAT_GNAW") and s.party[0].equipped_abilities[0] == Essences.canonical("RAT_GNAW") and s.parts_bag[Essences.canonical("RAT_GNAW")] == 0,"equip absorbs the part from the bag")
 	check(s.party[0].rules.size() == 1 and s.party[0].rules[0].skill == "RAT_GNAW","equip adds the default rule")
 	s.gain_level_xp(s.party[0],65)
 	check(not s.equip_part(0,1,"RAT_GNAW"),"same part twice on one member refused")
 	check(not s.equip_part(1,0,"RAT_GNAW"),"bag empty for the second member")
-	s.parts_bag.RAT_GNAW = 1
+	s.parts_bag[Essences.canonical("RAT_GNAW")] = 1
 	check(s.equip_part(1,0,"RAT_GNAW"),"another member may hold the same part")
-	check(s.equip_part(0,0,"GOBLIN_SHIV") and s.parts_bag.get("RAT_GNAW",0) == 0 and int(s.party[0].essences.RAT_GNAW) == 1 and s.party[0].equipped_abilities[0] == "GOBLIN_SHIV","replacing keeps the old part absorbed")
+	check(s.equip_part(0,0,"GOBLIN_SHIV") and s.parts_bag.get(Essences.canonical("RAT_GNAW"),0) == 0 and int(s.party[0].essences[Essences.canonical("RAT_GNAW")]) == 1 and s.party[0].equipped_abilities[0] == Essences.canonical("GOBLIN_SHIV"),"replacing keeps the old part absorbed")
 	check(s.party[0].rules.size() == 1 and s.party[0].rules[0].skill == "GOBLIN_SHIV","replacing swaps the rule")
-	check(s.unequip_part(0,0) and s.party[0].equipped_abilities[0] == "" and s.parts_bag.get("GOBLIN_SHIV",0) == 0 and s.party[0].rules.is_empty(),"unequip empties the slot without returning a part")
+	check(s.unequip_part(0,0) and s.party[0].equipped_abilities[0] == "" and s.parts_bag.get(Essences.canonical("GOBLIN_SHIV"),0) == 0 and s.party[0].rules.is_empty(),"unequip empties the slot without returning a part")
 	check(not s.unequip_part(0,0),"empty slot cannot be unequipped")
 	check(s.equip_part(0,0,"RAT_GNAW") and s.equip_part(0,1,"GOBLIN_SHIV"),"both slots use absorbed essences")
 	s.phase = "BATTLE"
@@ -153,7 +153,7 @@ func bag() -> void:
 	var tries := 0; var got := false
 	for enemy in s.enemies:
 		enemy.hp = 0; s.roll_part(enemy); tries += 1
-		if s.parts_bag.get(enemy.part_id,0) > 0: got = true
+		if s.parts_bag.get(Essences.canonical(str(enemy.part_id)),0) > 0: got = true
 	check(got,"some monster in the roster drops its part (%d tried)" % tries)
 	var carried: Dictionary = s.parts_bag.duplicate(true)
 	for enemy in s.enemies: enemy.hp = 0
@@ -161,14 +161,14 @@ func bag() -> void:
 	s.party[0].pos = s.floor_state.layout.stairs
 	check(s.descend() and s.parts_bag == carried,"descent keeps found parts")
 	check(s.depth == 2 and s.floor_state.layout.theme_id == "F1_RUINS","descent makes next floor in the zone")
-	s.parts_bag["ORE_SLAM"] = int(s.parts_bag.get("ORE_SLAM",0))+3
+	s.parts_bag["ORE_SLAM"] = int(s.parts_bag.get(Essences.canonical("ORE_SLAM"),0))+3
 	var fallen_bag: Dictionary = s.parts_bag.duplicate(true)
 	s.damage(s.party[0],999,999,"IMPACT"); s.check_battle_end()
 	check(s.phase == "DEFEAT" and s.parts_bag == fallen_bag,"defeat ends the run without rolling back the bag")
 	# Test loadout.
 	var t = Session.new(731,false,false,true)
 	check(t.grant_test_loadout() and t.log_lines[-1].begins_with("시험 로드아웃 · 영혼석"),"test loadout grants essences")
-	for id in Essences.content.rows: check(t.parts_bag.get(id,0) >= 1,"loadout has "+id)
+	for id in Essences.content.rows: check(t.parts_bag.get(Essences.canonical(str(id)),0) >= 1,"loadout has "+id)
 	var snapshot: Dictionary = t.parts_bag.duplicate(true)
 	check(t.grant_test_loadout() and t.parts_bag == snapshot,"loadout is idempotent")
 	t.depart(); check(t.grant_test_loadout() and t.parts_bag == snapshot,"loadout stays idempotent during the run")

@@ -30,7 +30,7 @@ static func comfortable(profile, stance: String) -> bool:
 
 ## The equipped part with reach, if any: what a skirmisher keeps its distance with.
 static func ranged_part(actor: Dictionary) -> String:
-	for id in actor.equipped_abilities:
+	for id in Abilities.held(actor):
 		var def: Dictionary = Abilities.definition(id)
 		if def.is_empty() or bool(def.get("monster_only",false)): continue
 		if def.effect in ["DAMAGE","LUNGE"] and int(def.range) >= 3: return id

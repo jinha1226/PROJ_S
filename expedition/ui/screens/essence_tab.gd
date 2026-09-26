@@ -15,6 +15,9 @@ const BORDER := Color("6d5b3f")
 const ELEMENT_COLORS := {"fire":Color("d9643a"),"ice":Color("6fb7e0"),"air":Color("e0cf52"),"poison":Color("79b84a"),"will":Color("a57ad6")}
 const SCHOOL_NAMES := {"fire":"화염","ice":"냉기","air":"전기","hex":"변이","summon":"소환"}
 
+static func node_key(id: String) -> String:
+	return Essences.canonical(id).replace("/","_").replace("@","_")
+
 ## A variant essence ("<BASE>@<element>") wears its element's colour.
 static func border_for(id: String, fallback: Color = BORDER) -> Color:
 	if not id.contains("@"): return fallback
@@ -48,7 +51,7 @@ static func effect_line(id: String) -> String:
 static func active_line(id: String) -> String:
 	var school: String = str(Essences.school(id))
 	if not school.is_empty(): return "주문 영혼석 · %s 계열 주문 하나를 액티브로 쓴다" % str(SCHOOL_NAMES.get(school,school))
-	var def: Dictionary = Abilities.DEFINITIONS.get(id.split("@")[0],{})
+	var def: Dictionary = Abilities.DEFINITIONS.get(Essences.base_of(id),{})
 	return str(def.get("description",""))
 
 static func surface(border: Color) -> StyleBoxFlat:
@@ -69,6 +72,7 @@ static func card(parent: Node, title: String, node_name: String) -> VBoxContaine
 	return box
 
 static func owned(actor: Dictionary) -> Array:
+	Essences.normalize_actor(actor)
 	var ids: Array = actor.get("essences",{}).keys()
 	ids.sort()
 	return ids
@@ -113,6 +117,7 @@ static func sets(list: VBoxContainer, actor: Dictionary) -> void:
 		else: label(box,"%s %d · %s" % [tag_name(str(row.tag)),int(row.level),str(row.text)],13)
 
 static func bag(ui, list: VBoxContainer, actor: Dictionary, editable: bool) -> void:
+	ui.session.parts_bag = Essences.normalize_keys(ui.session.parts_bag,true)
 	var index: int = ui.tactics_actor
 	var box := card(list,"가방의 영혼석","EssenceBag")
 	var ids: Array = ui.session.parts_bag.keys()
@@ -130,7 +135,7 @@ static func bag(ui, list: VBoxContainer, actor: Dictionary, editable: bool) -> v
 		label(info,"이미 흡수함 · 다른 파티원에게" if known else "새 영혼석 · "+stat_line(id),12)
 		if not known: label(info,effect_line(id),12)
 		var absorb: Button = ui.button(row,"흡수",func(): absorb_press(ui,index,id),editable and not known)
-		absorb.name = "EssenceAbsorb_"+id
+		absorb.name = "EssenceAbsorb_"+node_key(id)
 	if shown == 0: label(box,"가방에 영혼석 없음",13)
 
 static func absorb_press(ui, index: int, id: String) -> void:
@@ -153,7 +158,7 @@ static func absorbed(ui, list: VBoxContainer, actor: Dictionary, editable: bool)
 			var spell: Dictionary = ui.session.CombatStats.content.spells.get(spell_id,{})
 			label(box,"주문: %s" % str(spell.get("name","선택 안 함")),12)
 			var pick: Button = ui.button(box,"주문 선택",func(): pick_spell(ui,index,id),editable)
-			pick.name = "EssenceSpellPick_"+str(id)
+			pick.name = "EssenceSpellPick_"+node_key(str(id))
 
 ## The absorbed essences this member is not wearing yet, one tap each, with
 ## what each would change: "공격력 12 → 16".
@@ -170,7 +175,7 @@ static func chooser(ui, slot: int) -> void:
 		var pick: Button = ui.button(ui.item_detail,caption,func():
 			if ui.session.equip_part(index,slot,id):
 				ui.item_popup.hide(); ui.refresh(); ui.show_character(index,"영혼석"),Essences.can_manage(ui.session) and actor.hp > 0)
-		pick.name = "EssencePick_"+str(id)
+		pick.name = "EssencePick_"+node_key(str(id))
 	if shown == 0: label(ui.item_detail,"흡수한 영혼석 없음",14)
 	ui.button(ui.item_detail,"취소",func(): ui.item_popup.hide()); ui.item_popup.popup_centered()
 
@@ -185,7 +190,7 @@ static func slot_detail(ui, slot: int, id: String) -> void:
 	label(ui.item_detail,active_line(id),13).custom_minimum_size.x = ui.popup_width()
 	if not str(Essences.school(id)).is_empty():
 		var pick: Button = ui.button(ui.item_detail,"주문 선택",func(): pick_spell(ui,index,id),Essences.can_manage(ui.session))
-		pick.name = "EssenceSpellPick_"+id
+		pick.name = "EssenceSpellPick_"+node_key(id)
 	var off: Button = ui.button(ui.item_detail,"해제",func():
 		if ui.session.unequip_part(index,slot):
 			ui.item_popup.hide(); ui.refresh(); ui.show_character(index,"영혼석"),Essences.can_manage(ui.session) and actor.hp > 0)
@@ -194,6 +199,7 @@ static func slot_detail(ui, slot: int, id: String) -> void:
 
 ## The spells this caster essence opens up to the member's level; the chosen one is ticked.
 static func pick_spell(ui, index: int, id: String) -> void:
+	id = Essences.canonical(id)
 	var actor: Dictionary = ui.session.party[index]
 	ui.clear(ui.item_detail); label(ui.item_detail,"%s · 주문 선택" % Essences.title(id),18)
 	var chosen: String = str(actor.get("essence_spells",{}).get(id,""))

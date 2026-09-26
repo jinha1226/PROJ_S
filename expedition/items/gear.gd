@@ -45,6 +45,7 @@ static func grant_gear(s, item: Dictionary) -> void:
 	s.message(str(item.get("type","장비"))+" 획득")
 
 static func equip_part(s, index: int, slot: int, id: String) -> bool:
+	id = Essences.canonical(id)
 	if index < 0 or index >= s.party.size() or not Essences.has(id): return false
 	var actor: Dictionary = s.party[index]
 	if not Essences.can_manage(s) or int(actor.hp) <= 0: return false
@@ -77,7 +78,9 @@ static func choose_essence_spell(s, index: int, essence_id: String, spell_id: St
 	return Essences.choose_spell(s,s.party[index],essence_id,spell_id)
 
 static func grant_part(s, id: String) -> void:
-	if not Essences.has(id): return
+	id = Essences.canonical(id)
+	if id.is_empty(): return
+	s.parts_bag = Essences.normalize_keys(s.parts_bag,true)
 	s.parts_bag[id] = int(s.parts_bag.get(id,0))+1
 	s.message(Essences.title(id)+" 획득")
 
@@ -91,12 +94,13 @@ static func roll_part(s, enemy: Dictionary, reward_actors: Variant = null) -> vo
 		if s.gain_level_xp(actor,18+s.depth*8) > 0 and (actor in s.party or s.floor_state.visible.has(actor.pos)): s.message(actor.name+" · 레벨 %d" % actor.level)
 	if not recipients.any(func(a): return a in s.party): return
 	var id: String = str(enemy.get("part_id",""))
+	id = Essences.canonical(id)
 	if not Essences.has(id): return
 	var species: String = Abilities.kind_key(enemy)
 	var chance: int = Essences.drop_chance(s,species)
 	s.essence_seen[species] = true
 	if Hexaco.sample(s.seed_value,s.depth*10000+enemy.id,"essence",100) >= chance: return
-	# Record the part now; separate part stones are a later content stage.
+	# The physical part is recorded; actual three-way drops ship in stage a2.
 	enemy.part_kind = Forms.pick_part(str(enemy.get("last_form","")),Hexaco.sample(s.seed_value,s.depth*10000+enemy.id,"essence_part",100))
 	s.parts_bag[id] = int(s.parts_bag.get(id,0))+1
 	s.battle_stats.drops[id] = int(s.battle_stats.drops.get(id,0))+1
@@ -106,7 +110,8 @@ static func roll_part(s, enemy: Dictionary, reward_actors: Variant = null) -> vo
 static func grant_test_loadout(s) -> bool:
 	if s.party.is_empty(): return false
 	var added := 0
-	for id in Essences.content.rows:
+	s.parts_bag = Essences.normalize_keys(s.parts_bag,true)
+	for id in Essences.catalog():
 		if int(s.parts_bag.get(id,0)) > 0: continue
 		s.parts_bag[id] = 1; added += 1
 	s.message("시험 로드아웃 · 이미 전부 보유" if added == 0 else "시험 로드아웃 · 영혼석 %d종" % added)
@@ -115,7 +120,7 @@ static func grant_test_loadout(s) -> bool:
 static func reset_rules(s, index: int) -> void:
 	var actor: Dictionary = s.party[index]
 	actor.rules = Rules.defaults(); actor.basic_target = Rules.BASIC_TARGET_DEFAULT
-	for id in actor.equipped_abilities:
+	for id in Abilities.held(actor):
 		if Abilities.has(id): actor.rules.append(Abilities.default_rule(id))
 
 ## A slot change can move 무리 4's HP for the whole party: every pool is

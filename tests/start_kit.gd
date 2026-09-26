@@ -32,9 +32,9 @@ func run() -> void:
 		check(s.kit_id == id,"session remembers kit "+id)
 		check(str(hero.gear.weapon.type) == str(kit.weapon),"%s holds %s" % [id,kit.weapon])
 		check(str(hero.gear.armour.type) == "robe","%s wears a robe" % id)
-		var caster: String = str(Essences.CASTER_BY_SCHOOL.get(str(kit.axis),""))
+		var caster: String = Essences.canonical(str(Essences.CASTER_BY_SCHOOL.get(str(kit.axis),"")))
 		check(caster.is_empty() == str(kit.spell).is_empty(),"%s has a caster essence exactly when it has a spell" % id)
-		check(caster.is_empty() or int(hero.essences.get(caster,0)) == 1,"%s starts with its caster essence absorbed" % id)
+		check(caster.is_empty() or int(hero.essences.get(Essences.canonical(str(caster)),0)) == 1,"%s starts with its caster essence absorbed" % id)
 		var spell: String = str(kit.spell)
 		if spell.is_empty():
 			check(hero.spells.is_empty() and hero.prepared.is_empty(),"%s knows no spell" % id)

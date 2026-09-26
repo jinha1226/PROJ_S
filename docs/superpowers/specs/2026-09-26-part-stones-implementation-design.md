@@ -1,6 +1,6 @@
 # ④ 부위 영혼석 구현
 
-작성일: 2026-09-26 · 상태: **검토 반영·② 완료 후 ④-a 착수**
+작성일: 2026-09-26 · 상태: **②·④-a1 완료, ④-a2부터 후속 구현**
 근거: [공격 형태·부위 영혼석](2026-09-26-damage-forms-part-stones-design.md)(① 방향, 부위 판정) · [② 발동 엔진](2026-09-26-trigger-engine-design.md) · [③ 빌드군과 부위 효과](2026-09-26-build-families-part-effects-design.md)(효과 114개, 새 종족 8개)
 전제: ①(`Forms`, `enemy.part_kind`)과 ②(`stone_effects.json`, `EffectEngine`)가 먼저 끝나 있다.
 기존 코드: `expedition/progression/essences.gd`, `data/content/essences.json`, `expedition/items/gear.gd`(`roll_part`), `expedition/items/abilities.gd`, `expedition/actors/npc_essences.gd`, `expedition/ui/screens/essence_tab.gd`, `popups.gd`, `data/content/floor_monsters.json`, `expedition/legacy/dcss_enemy_registry.gd`, `assets/monsters-v1/png/<종족>_<방향>.png`
@@ -75,6 +75,7 @@
 ### 2.3 `expedition/items/abilities.gd`
 
 - 영혼석 ID와 액티브 ID를 분리한다. 같은 종족 부위 둘은 하나의 액티브·재사용 대기를 공유하고, UI 선택·AI 규칙도 액티브 ID를 쓴다. 마지막 해당 부위가 빠질 때만 규칙을 지운다.
+- 변종 부위가 섞이면 첫 봉인되지 않은 슬롯의 속성을 액티브에 쓴다(`BASE@element`). 재사용 대기 키는 종족 `BASE`로 공유한다. 같은 종족 부위의 주문 선택도 함께 바뀐다.
 
 
 - 액티브 조회는 `Essences.base_of(id)`로. 규칙(`rules`) 추가는 같은 `base_of`가 이미 있으면 건너뛴다(`Essences.put`).
@@ -106,6 +107,7 @@
 - 기존 테스트 61곳 이상이 맨 id(`RAT_GNAW` 등)를 쓴다. 맨 id = 대표 부위 별칭이므로 API 조회 검사는 유지한다. 맨 id로 딕셔너리를 직접 읽는 검사는 정규 키로 수정해야 한다. 대표 부위가 기존 효과를 가지도록 ③ 표의 ★를 정했다(기존 종족은 전부 기존 효과 부위가 ★).
 - `Essences.content.rows[id].effect`를 직접 읽는 곳은 `row(id).effect`로 바꾼다.
 - `battle_stats.drops`, `parts_bag`, `essence_seen`의 키: `parts_bag`와 `drops`는 정규 id, `essence_seen`은 지금처럼 종족 단위(`kind_key`).
+- 현재 런 파일 저장 기능은 없다. 딕셔너리 상태는 `Essences.normalize_run`으로 이식하며, 향후 파일 복원 직후에도 이 함수를 호출한다. 흡수는 한 번으로, 가방 수량은 합계로, 봉인·재사용 대기는 최댓값으로 합친다.
 
 ## 4. 몬스터
 

@@ -325,13 +325,13 @@ static func skill(index: int) -> AtlasTexture:
 ## before any "@element" of a variant; parts without one fall back to the old
 ## item sheet.
 static func part_icon(id: String) -> AtlasTexture:
-	var base: String = id.get_slice("@",0)
+	var base: String = id.get_slice("@",0).get_slice("/",0)
 	var path := "res://assets/items-v1/skills/%s.png" % base
 	if ResourceLoader.exists(path): return whole(load(path),"skill/"+base)
 	var icons := {"PUSH":10,"GUARD":10,"BOMB":12,"IRON_HIDE":8,
 		"KOBOLD_SLING":5,"GOBLIN_SHIV":1,"SERPENT_SHED":8,"BEETLE_CURL":8,"SHIELD_STANCE":10,"THORN_ARMOUR":8,"SKELETON_WALL":10,
 		"HOB_TAUNT":8,"ORE_SLAM":3,"ORC_CLEAVER":4,"GNOLL_SPEAR":2}
-	var index: int = int(icons.get(id,14))
+	var index: int = int(icons.get(base,14))
 	return pixel_region(ITEM_SHEET,4,4,index,"flat/part/"+id)
 
 static func navigation(index: int) -> AtlasTexture:

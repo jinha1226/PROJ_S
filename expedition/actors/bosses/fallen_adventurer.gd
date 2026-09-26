@@ -72,7 +72,8 @@ static func spawn(s, room: Dictionary, depth: int) -> void:
 ## Tops the essences up to ten with floor species' essences, each absorbed,
 ## chosen by the same nature-and-sets score an NPC uses for its own slots.
 static func fill(boss: Dictionary) -> void:
-	var pool: Array = Abilities.droppable().filter(func(id): return Essences.has(str(id)) and not boss.essences.has(str(id)))
+	Essences.normalize_actor(boss)
+	var pool: Array = Abilities.droppable().map(func(id): return Essences.canonical(str(id))).filter(func(id): return not str(id).is_empty() and not boss.essences.has(str(id)))
 	while boss.essences.size() < Essences.slot_count(boss) and not pool.is_empty():
 		var best := ""
 		var best_score := -(1 << 30)

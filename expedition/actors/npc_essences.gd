@@ -60,6 +60,7 @@ static func choose(s, npc: Dictionary) -> void:
 ## essence, later ones one time in four; then the loadout is chosen again.
 static func on_hunt(s, enemy: Dictionary, hunters: Array) -> void:
 	var id: String = str(enemy.get("part_id",""))
+	id = Essences.canonical(id)
 	if not Essences.has(id): return
 	for npc in hunters:
 		if npc in s.party or not bool(npc.get("npc",false)) or int(npc.hp) <= 0: continue

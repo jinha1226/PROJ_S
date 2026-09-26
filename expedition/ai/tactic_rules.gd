@@ -25,6 +25,8 @@ static func catalog() -> Dictionary:
 	return _catalog
 
 static func skill(id: String) -> Dictionary:
+	var abilities = load("res://expedition/items/abilities.gd")
+	if abilities.has(id): id = abilities.active_id(id)
 	var at := id.find("@")
 	if at < 0: return catalog().get(id,{})
 	var base: Dictionary = catalog().get(id.substr(0,at),{})
@@ -39,6 +41,8 @@ static func defaults() -> Array:
 	return []
 
 static func make_rule(id: String, target: String, when: String) -> Dictionary:
+	var abilities = load("res://expedition/items/abilities.gd")
+	if abilities.has(id): id = abilities.active_id(id)
 	return {"skill":id,"target":target,"when":when,"enabled":true,"subject":"SELF" if target == "SELF" else "TARGET","threshold":50,"comparison":"BELOW","status":"WET"}
 
 static func valid(rule: Dictionary) -> bool:

@@ -141,7 +141,7 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, we
 static func rule_grade(s, actor: Dictionary, action: Dictionary, ctx: Dictionary) -> float:
 	var index := 0
 	for rule in actor.rules:
-		if str(rule.get("skill","")) not in actor.equipped_abilities: continue
+		if not Abilities.holds(actor,str(rule.get("skill",""))): continue
 		if Rules.matches(s,actor,action,rule):
 			var base: float = 1.0-0.02*float(mini(index,4))
 			return base if preferred(s,actor,action,rule,ctx) else base*0.8

@@ -4,6 +4,7 @@ const Hazards = preload("res://expedition/level/hazards.gd")
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
+const Essences = preload("res://expedition/progression/essences.gd")
 const Generator = preload("res://expedition/level/floor_generator.gd")
 const Encounters = preload("res://expedition/level/encounter_builder.gd")
 static var names: Array = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/npc_names.json")).names
@@ -41,7 +42,7 @@ static func generate(s) -> Array:
 		actor.equipped_abilities = [""]; actor.rules = []; actor.essences = {}
 		if Hexaco.sample(s.seed_value,id,"npc_part",100) < 40:
 			var parts: Array = Abilities.droppable()
-			var part: String = parts[Hexaco.sample(s.seed_value,id,"npc_part_id",parts.size())]
+			var part: String = Essences.canonical(str(parts[Hexaco.sample(s.seed_value,id,"npc_part_id",parts.size())]))
 			actor.essences[part] = 1
 			actor.equipped_abilities[0] = part; actor.rules = [Abilities.default_rule(part)]
 		actor.merge({"npc":true,"awake":false,"hostile":false,"mode":"","mode_until":0,"hungry":false,"partner":-1,"bond":"",

@@ -52,7 +52,7 @@ func data() -> void:
 			check(not str(row.name).is_empty() and not str(row.note).is_empty(),"%s is named and described" % id)
 	check(not Stats.content.has("books"),"no books any more")
 	for school in SCHOOLS:
-		var caster: String = str(Essences.CASTER_BY_SCHOOL[school])
+		var caster: String = Essences.canonical(str(Essences.CASTER_BY_SCHOOL[school]))
 		for level in [1,5,10]:
 			var reach: Array = Essences.spell_choices({"level":level,"essences":{caster:1}},caster)
 			check(not reach.is_empty() and reach.all(func(id): return str(rows[id].school) == school),"%s at level %d reaches only its school" % [school,level])
@@ -77,7 +77,7 @@ func start() -> void:
 	for school in SCHOOLS:
 		var s = Session.new_run(7,school)
 		var hero: Dictionary = s.party[0]
-		check(hero.equipped_abilities[0] == Essences.CASTER_BY_SCHOOL[school],"the %s kit wears its caster essence" % school)
+		check(hero.equipped_abilities[0] == Essences.canonical(str(Essences.CASTER_BY_SCHOOL[school])),"the %s kit wears its caster essence" % school)
 		check(hero.spells == ["%s_1" % school],"the %s kit knows its first spell" % school)
 		check(hero.prepared == ["%s_1" % school],"the %s kit has it ready" % school)
 	var sword = Session.new_run(7,"sword")
@@ -93,13 +93,13 @@ func learning() -> void:
 	check("fire_3" in Essences.spell_choices(hero,"FIRE_CALLER"),"and the third")
 	check("fire_4" not in Essences.spell_choices(hero,"FIRE_CALLER"),"but not the fourth")
 	check(not s.choose_essence_spell(0,"FIRE_CALLER","fire_4"),"a spell out of reach is refused")
-	check(hero.essence_spells.FIRE_CALLER == "fire_1","and the choice stands")
+	check(hero.essence_spells[Essences.canonical("FIRE_CALLER")] == "fire_1","and the choice stands")
 	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_3"),"a spell in reach is chosen at camp")
 	check(hero.prepared == ["fire_3"],"and is the one ready")
 	check(hero.spells == ["fire_3"],"one essence, one spell")
 	s.parts_bag["FIRE_CALLER"] = 2
 	check(s.absorb_essence(0,"FIRE_CALLER") == "이미 흡수함","a second copy is refused")
-	check(int(s.parts_bag.FIRE_CALLER) == 2,"and stays in the bag for somebody else")
+	check(int(s.parts_bag[Essences.canonical("FIRE_CALLER")]) == 2,"and stays in the bag for somebody else")
 	hero.level = 6
 	check("fire_6" in Essences.spell_choices(hero,"FIRE_CALLER"),"level six reaches the sixth")
 	check("fire_7" not in Essences.spell_choices(hero,"FIRE_CALLER"),"not the seventh")
@@ -110,12 +110,12 @@ func learning() -> void:
 	check(not s.choose_essence_spell(0,"FROST_IMP","ice_1"),"another school needs its own essence")
 	s.parts_bag["FROST_IMP"] = 1
 	check(s.absorb_essence(0,"FROST_IMP") == "","found in the dungeon, it is absorbed")
-	check(hero.essence_spells.FROST_IMP == "ice_1","its first spell is chosen")
+	check(hero.essence_spells[Essences.canonical("FROST_IMP")] == "ice_1","its first spell is chosen")
 	check("ice_1" in hero.spells,"a second school begins")
 	check("ice_1" not in hero.prepared,"but only a slotted essence readies its spell")
 	s.phase = "BATTLE"
 	check(not s.choose_essence_spell(0,"FIRE_CALLER","fire_2"),"nothing is chosen in a fight")
-	check(hero.essence_spells.FIRE_CALLER == "fire_3","the choice stands")
+	check(hero.essence_spells[Essences.canonical("FIRE_CALLER")] == "fire_3","the choice stands")
 	s.phase = "CAMP"
 	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_2"),"back at camp it is chosen")
 	s.gain_level_xp(hero,65)
@@ -150,7 +150,7 @@ func drops() -> void:
 	var curio = Session.new_run(9,"fire")
 	var known: int = curio.party[0].spells.size()
 	curio.grant_part("GOBLIN_HEXER")
-	check(int(curio.parts_bag.GOBLIN_HEXER) == 1,"a found essence joins the bag")
+	check(int(curio.parts_bag[Essences.canonical("GOBLIN_HEXER")]) == 1,"a found essence joins the bag")
 	check(curio.party[0].spells.size() == known,"and teaches nothing on its own")
 
 func board(school: String, seed_value: int) -> Dictionary:
@@ -458,7 +458,7 @@ func turned() -> void:
 	var spare: Dictionary = board("hex",45)
 	spare.hero.spells.append_array(["hex_9","fire_3"])
 	spare.hero.prepared = ["hex_9","fire_3"]
-	spare.hero.essences.FIRE_CALLER = 1
+	spare.hero.essences[Essences.canonical("FIRE_CALLER")] = 1
 	check(spare.s.cast("hex_9",spare.foe.pos),"지배 again")
 	check(spare.s.dominated(spare.foe),"and it holds")
 	var untouched: int = spare.foe.hp

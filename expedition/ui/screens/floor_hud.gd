@@ -302,9 +302,9 @@ static func show_manual_skills(ui) -> void:
 		var part_id: String = str(id)
 		if part_id.is_empty() or not Session.Abilities.usable_by(actor,part_id): continue
 		var def: Dictionary = Session.Abilities.definition(part_id)
-		var available: bool = session.in_combat() and int(actor.cooldowns.get(part_id,0)) <= 0
+		var available: bool = session.in_combat() and Session.Abilities.cooldown(actor,part_id) <= 0
 		if def.target == "SELF": available = available and Session.Abilities.legal(session,actor,part_id,actor.pos)
-		var part = ui.button(choices,"%s   ·   %d턴" % [str(def.name),int(actor.cooldowns.get(part_id,0))],func(): choose_part(ui,part_id),available)
+		var part = ui.button(choices,"%s   ·   %d턴" % [str(def.name),Session.Abilities.cooldown(actor,part_id)],func(): choose_part(ui,part_id),available)
 		part.name = "Part_"+part_id
 		part.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR; part.icon = Art.part_icon(part_id); part.add_theme_constant_override("icon_max_width",28)
 		part.alignment = HORIZONTAL_ALIGNMENT_LEFT; part.custom_minimum_size.y = 54
@@ -332,7 +332,7 @@ static func show_part_actions(ui) -> void:
 	for id in Session.Abilities.held(actor):
 		if str(id).is_empty() or not Session.Abilities.usable_by(actor,str(id)): continue
 		var def: Dictionary = Session.Abilities.definition(id)
-		var available: bool = int(actor.cooldowns.get(id,0)) <= 0
+		var available: bool = Session.Abilities.cooldown(actor,str(id)) <= 0
 		if def.target == "SELF": available = Session.Abilities.legal(session,actor,str(id),actor.pos)
 		var choice = ui.button(box,str(def.name),func(): choose_part(ui,str(id)),available)
 		choice.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR; choice.icon = Art.part_icon(str(id)); choice.add_theme_constant_override("icon_max_width",28)

@@ -147,7 +147,7 @@ func _init(p_seed: int = 731, _p_boss_trial: bool = false, p_companions: bool = 
 	appearances = Consumables.shuffle_appearances(p_seed)
 	companions = (p_party_size > 1) if p_party_size > 0 else p_companions
 	floor_state = Floor.new(); BOARD_SIDE = floor_state.size
-	parts_bag = STARTING_PARTS.duplicate(true)
+	parts_bag = Essences.normalize_keys(STARTING_PARTS,true)
 	var count: int = clampi(p_party_size,1,3) if p_party_size > 0 else (2 if companions else 1)
 	for i in range(count): party.append(make_actor(i,["아린","브란","세라"][i],false))
 	formation = range(count)

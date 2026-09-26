@@ -2,6 +2,7 @@ extends RefCounted
 ## The battle-test arena: the rosters the simulator measures and the walk to
 ## first contact that opens the fight.
 const Abilities = preload("res://expedition/items/abilities.gd")
+const Essences = preload("res://expedition/progression/essences.gd")
 const Floor = preload("res://expedition/level/continuous_floor.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 
@@ -35,6 +36,7 @@ static func arena_test(s, p_seed: int, party_size: int, arena: Dictionary, membe
 			var id: String = str(parts[slot]) if slot < parts.size() else ""
 			if Abilities.has(id) and id not in actor.equipped_abilities:
 				actor.equipped_abilities[slot] = id; actor.rules.append(Abilities.default_rule(id))
+		Essences.normalize_actor(actor)
 	var spec: Dictionary = preload("res://expedition/sim/encounter_arena.gd").DEFAULT_SPEC.duplicate(true)
 	spec.members = arena.members.map(func(m): return {"species_id":m[0],"role":m[1]})
 	var theme: Dictionary = preload("res://expedition/level/floor_generator.gd").theme("F1_RUINS")

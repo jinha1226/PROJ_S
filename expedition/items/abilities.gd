@@ -66,20 +66,39 @@ const OPPOSITE := {"fire":"ice","ice":"fire"}
 static var variant_cache: Dictionary = {}
 
 static func base_id(id: String) -> String:
-	var at := id.find("@")
-	return id if at < 0 else id.substr(0,at)
+	return id.get_slice("@",0).get_slice("/",0)
+
+## Actions retain elemental variants but never a stone's /part suffix.
+static func active_id(id: String) -> String:
+	if id.contains("/") and not Essences.has(id): return ""
+	var element := element_of(id)
+	return base_id(id)+("@"+element if not element.is_empty() else "")
+
+## Slotted stones share a species cooldown. Monsters' intrinsic variants keep
+## their active ids: their turn driver and stolen techniques already use them.
+static func cooldown_id(id: String, actor: Dictionary = {}) -> String:
+	return active_id(id) if bool(actor.get("enemy",false)) else base_id(id)
+
+static func cooldown(actor: Dictionary, id: String) -> int:
+	var key := cooldown_id(id,actor)
+	var result := 0
+	for old in actor.get("cooldowns",{}):
+		if cooldown_id(str(old),actor) == key: result = maxi(result,int(actor.cooldowns[old]))
+	return result
 
 static func element_of(id: String) -> String:
 	var at := id.find("@")
 	return "" if at < 0 else id.substr(at+1)
 
 static func has(id: String) -> bool:
+	if id.count("@") > 1 or id.count("/") > 1 or (id.contains("/") and not Essences.has(id)): return false
 	var element := element_of(id)
-	return DEFINITIONS.has(base_id(id)) and (element.is_empty() or ELEMENT_NAMES.has(element))
+	return DEFINITIONS.has(base_id(id)) and (ELEMENT_NAMES.has(element) if id.contains("@") else true)
 
 ## The catalog row for `id`; a variant is a copy of its base with the element.
 static func definition(id: String) -> Dictionary:
 	if not has(id): return {}
+	id = active_id(id)
 	var element := element_of(id)
 	if element.is_empty(): return DEFINITIONS[id]
 	if not variant_cache.has(id):
@@ -125,6 +144,7 @@ static func badge(kind: String) -> String:
 	return str(definition(kind).short) if has(kind) else str(BASIC_BADGES.get(kind,kind))
 
 static func default_rule(id: String) -> Dictionary:
+	id = active_id(id)
 	var def: Dictionary = definition(id)
 	var target: String = {"SELF":"SELF","ALLY":"ALLY"}.get(def.target,"NEAREST")
 	return preload("res://expedition/ai/tactic_rules.gd").make_rule(id,target,def.rule_when)
@@ -166,19 +186,30 @@ static func power(s, actor: Dictionary, def: Dictionary, _id: String = "") -> in
 
 ## Whether `actor` holds the part: a slot for party members, the species signature for monsters.
 static func holds(actor: Dictionary, id: String) -> bool:
-	if actor.enemy: return str(actor.get("part_id","")) == id or id in actor.get("stolen",[])
+	if not has(id): return false
+	id = active_id(id)
+	if actor.enemy: return active_id(str(actor.get("part_id",""))) == id or id in actor.get("stolen",[])
 	if str(actor.get("borrowed","")) == id: return true
 	if id in BASIC: return true
-	return id in actor.equipped_abilities and not actor.get("sealed",{}).has(id) and usable_by(actor,id)
+	return id in held(actor) and usable_by(actor,id)
 
 static func held(actor: Dictionary) -> Array:
-	var result: Array = actor.get("equipped_abilities",[]).filter(func(id): return not str(id).is_empty() and not actor.get("sealed",{}).has(str(id)))
+	var result: Array = []; var species: Array = []
+	var stones: Array = Essences.equipped(actor)
+	# Legacy action fixtures (PUSH, GUARD, IRON_HIDE, BOMB) do not own stones.
+	for raw in actor.get("equipped_abilities",[]):
+		if has(str(raw)) and str(definition(str(raw)).get("species","")).is_empty() and not actor.get("sealed",{}).has(str(raw)): stones.append(str(raw))
+	for stone in stones:
+		if not has(str(stone)): continue
+		var id := active_id(str(stone)); var base := base_id(id)
+		if base in species: continue
+		species.append(base); result.append(id)
 	var borrowed: String = str(actor.get("borrowed",""))
 	if not borrowed.is_empty() and borrowed not in result: result.append(borrowed)
 	return result
 
 static func legal(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
-	if not has(id) or not usable_by(actor,id) or not holds(actor,id) or actor.cooldowns.get(id,0) > 0: return false
+	if not has(id) or not usable_by(actor,id) or not holds(actor,id) or cooldown(actor,id) > 0: return false
 	if s.phase != "BATTLE" or actor.hp <= 0 or not s.inside(target): return false
 	if not actor.enemy and actor.ap <= 0: return false
 	var def: Dictionary = definition(id)
@@ -200,6 +231,7 @@ static func legal(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 
 static func execute(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 	if not legal(s,actor,id,target): return false
+	id = active_id(id)
 	# Ranged and magical parts train only when they affect a hostile target.
 	# Record before resolving damage so a killing blow receives its XP share.
 	if not actor.enemy:
@@ -212,6 +244,7 @@ static func execute(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 ## Resolves the part on `target` without a legality check: a telegraphed
 ## monster part lands on the announced cell whoever stands there now.
 static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
+	id = active_id(id)
 	if Forms.attack_action(s,id): actor["physical_blow"] = true
 	var def: Dictionary = definition(id)
 	var victim: Dictionary = s.at(target)
@@ -296,7 +329,7 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 			for cell in affected:
 				if int(def.tile_wet) > 0: s.tile(cell).wet = maxi(int(s.tile(cell).wet),int(def.tile_wet))
 			if hit == 0 and def.target != "SELF": s.message(actor.name+"의 "+def.name+"가 빗나갔습니다.")
-	if int(def.cooldown) > 0: actor.cooldowns[id] = int(def.cooldown)+1
+	if int(def.cooldown) > 0: actor.cooldowns[cooldown_id(id,actor)] = int(def.cooldown)+1
 	# Who pressed what, for the battle report: the monsters' parts in one pot,
 	# each member's in their own row.
 	if actor.enemy: s.battle_stats.enemy_parts[id] = int(s.battle_stats.enemy_parts.get(id,0))+1

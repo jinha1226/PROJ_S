@@ -56,7 +56,7 @@ static func guard_options(s, actor: Dictionary, options: Array) -> void:
 ## The species parts: every legal target cell, minus the ones that would catch
 ## an ally or nobody at all.
 static func part_options(s, actor: Dictionary, options: Array) -> void:
-	for id in actor.equipped_abilities:
+	for id in Abilities.held(actor):
 		if not Abilities.usable_by(actor,id) or Abilities.definition(id).effect in ["PUSH","GUARD"]: continue
 		var def: Dictionary = Abilities.definition(id)
 		var targets: Array = [actor] if def.target == "SELF" else s.combat_enemies()

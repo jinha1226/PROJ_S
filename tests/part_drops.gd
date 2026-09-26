@@ -39,7 +39,7 @@ func recorded() -> void:
 	Gear.roll_part(d.s,d.foe)
 	var roll: int = Hexaco.sample(d.s.seed_value,d.s.depth*10000+int(d.foe.id),"essence_part",100)
 	check(str(d.foe.get("part_kind","")) == Forms.pick_part("SLASH",roll),"the dropped part follows the killing form and the roll")
-	check(int(d.s.parts_bag.get("RAT_GNAW",0)) == 1,"the old stone still drops")
+	check(int(d.s.parts_bag.get(Essences.canonical("RAT_GNAW"),0)) == 1,"the old stone still drops")
 
 func spread() -> void:
 	# Across many enemy ids a slash kill gives cut about half the time.
@@ -65,6 +65,6 @@ func unchanged_drop() -> void:
 	d.s.essence_seen["dcss_rat"] = true
 	var roll: int = Hexaco.sample(d.s.seed_value,d.s.depth*10000+int(d.foe.id),"essence",100)
 	Gear.roll_part(d.s,d.foe)
-	var dropped: bool = int(d.s.parts_bag.get("RAT_GNAW",0)) == 1
+	var dropped: bool = int(d.s.parts_bag.get(Essences.canonical("RAT_GNAW"),0)) == 1
 	check(dropped == (roll < Essences.REPEAT_PERCENT),"whether it drops is the old rule")
 	check(d.foe.has("part_kind") == dropped,"a part is picked only when a stone drops")

@@ -23,7 +23,7 @@ static func depart(s) -> bool:
 	hero.buffs = {}; hero.spells = []; hero.prepared = []
 	hero.essences = {}; hero.essence_spells = {}; hero.equipped_abilities = [""]
 	if not kit_spell.is_empty():
-		var essence: String = str(Essences.CASTER_BY_SCHOOL.get(str(kit.axis),""))
+		var essence: String = Essences.canonical(str(Essences.CASTER_BY_SCHOOL.get(str(kit.axis),"")))
 		hero.essences[essence] = 1
 		hero.essence_spells[essence] = kit_spell
 		Essences.sync_slots(hero)

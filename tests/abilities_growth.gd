@@ -1,4 +1,5 @@
 extends SceneTree
+const Essences = preload("res://expedition/progression/essences.gd")
 const Session = preload("res://expedition/run/session.gd")
 var failures := 0
 func check(ok: bool, why: String) -> void:
@@ -16,18 +17,18 @@ func exercise() -> void:
 		s.log_lines.clear()
 		s.damage(enemy,999,0,"SLASH")
 		check(s.log_lines.size() >= 2 and s.log_lines[0].contains("피해를 주었습니다") and s.log_lines[1].contains("쓰러졌습니다"),"damage and defeat use separate log lines before XP and drops")
-		var count: int = s.parts_bag.get(enemy.part_id,0)
+		var count: int = s.parts_bag.get(Essences.canonical(str(enemy.part_id)),0)
 		dropped += count
 		check(int(s.party[0].level_xp) == 18+s.depth*8 and int(s.party[1].level_xp) == 18+s.depth*8,"shared XP without last-hit competition")
 		check(int(s.party[0].level) == 1 and s.party[0].max_hp == 55,"one floor kill does not skip a level")
 		s.roll_part(enemy); s.damage(enemy,999,0,"SLASH")
-		check(s.parts_bag.get(enemy.part_id,0) == count and int(s.party[0].level_xp) == 18+s.depth*8,"death cannot reward twice")
+		check(s.parts_bag.get(Essences.canonical(str(enemy.part_id)),0) == count and int(s.party[0].level_xp) == 18+s.depth*8,"death cannot reward twice")
 	check(dropped == 30,"the first of a species always drops (%d of 30)" % dropped)
 	var s = arena()
 	s.phase = "CAMP"
 	s.gain_level_xp(s.party[1],65)
 	s.parts_bag = {"WATER_WAVE":2,"GOBLIN_AIM":1,"FURNACE_HEART":1}
-	check(s.equip_part(1,0,"WATER_WAVE") and s.parts_bag.WATER_WAVE == 1,"equipping takes exactly one soul stone from the bag")
+	check(s.equip_part(1,0,"WATER_WAVE") and s.parts_bag[Essences.canonical("WATER_WAVE")] == 1,"equipping takes exactly one soul stone from the bag")
 	check(not s.equip_part(1,1,"WATER_WAVE"),"the same stone cannot fill both slots")
 	check(not s.equip_part(0,0,"NOPE") and not s.equip_part(1,2,"WATER_WAVE"),"unknown stone and invalid slot rejected")
 	check(s.equip_part(0,0,"GOBLIN_AIM"),"hero can equip a stone from the shared bag")

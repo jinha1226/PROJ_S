@@ -14,7 +14,9 @@ static func effects(actor: Dictionary) -> Array:
 	if actor.is_empty() or bool(actor.get("boss",false)): return []
 	var ids: Array = Essences.equipped(actor)
 	if bool(actor.get("enemy",false)):
-		ids = [str(actor.get("part_id",""))]
+		# Monsters always use their species' headline, never a drop's other part.
+		var part: String = str(actor.get("part_id",""))
+		ids = [Essences.base_of(part)+("@"+Essences.variant_element(part) if not Essences.variant_element(part).is_empty() else "")]
 		if not Essences.has(str(ids[0])):
 			ids = []
 			for id in Essences.content.rows:

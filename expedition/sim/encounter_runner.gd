@@ -24,6 +24,7 @@ static func apply_build(s, id: String) -> void:
 		if not per_member.is_empty(): actor.equipped_abilities = (per_member[mini(i,per_member.size()-1)] as Array).duplicate()
 		else: actor.equipped_abilities = row.equipped.duplicate()
 		if row.has("rules"): actor.rules = row.rules.map(func(r): return Rules.make_rule(r[0],r[1],r[2]))
+		Session.Essences.normalize_actor(actor)
 		# A build measures the build: without knobs of its own it fights on the
 		# neutral defaults, not on whatever personality the seed rolled.
 		actor.knobs = row.knobs.duplicate() if row.has("knobs") else Knobs.DEFAULT.duplicate()

@@ -58,8 +58,8 @@ func run() -> void:
 	scene.session.party[1].essences = {"GOBLIN_SHIV":1,"RAT_GNAW":1}
 	scene.session.party[1].rules = [scene.Session.Abilities.default_rule("GOBLIN_SHIV"),scene.Session.Abilities.default_rule("RAT_GNAW")]
 	scene.session.parts_bag["ORC_CLEAVER"] = 1
-	check(scene.session.equip_part(1,0,"ORC_CLEAVER") and scene.session.party[1].equipped_abilities == ["ORC_CLEAVER","RAT_GNAW"] and scene.session.parts_bag.ORC_CLEAVER == 0,"equipping fills the chosen slot only")
-	check(scene.session.parts_bag.get("GOBLIN_SHIV",0) == 0 and scene.session.party[1].essences.has("GOBLIN_SHIV"),"the replaced essence stays absorbed")
+	check(scene.session.equip_part(1,0,"ORC_CLEAVER") and scene.session.party[1].equipped_abilities == [Essences.canonical("ORC_CLEAVER"),Essences.canonical("RAT_GNAW")] and scene.session.parts_bag[Essences.canonical("ORC_CLEAVER")] == 0,"equipping fills the chosen slot only")
+	check(scene.session.parts_bag.get(Essences.canonical("GOBLIN_SHIV"),0) == 0 and scene.session.party[1].essences.has(Essences.canonical("GOBLIN_SHIV")),"the replaced essence stays absorbed")
 	check(scene.session.party[0].equipped_abilities == [""],"other members keep their own slots")
 	# A rule for a part nobody has equipped stays out of the sheet.
 	scene.session.party[1].rules.append(scene.Session.Rules.make_rule("GOBLIN_SHIV","NEAREST","ALWAYS"))
@@ -69,16 +69,16 @@ func run() -> void:
 	check(scene.modal_content.find_children("*","Button",true,false).all(func(b): return not b.text.begins_with("사용 방침") and not b.text.begins_with("자동 ")),"the slot card carries no rule policy and no auto toggle")
 	# Camp equipping goes through the chooser the card opens.
 	scene.session.phase = "CAMP"
-	check(scene.session.unequip_part(1,0) and scene.session.parts_bag.ORC_CLEAVER == 0 and scene.session.party[1].essences.has("ORC_CLEAVER"),"unequipping keeps the essence absorbed")
+	check(scene.session.unequip_part(1,0) and scene.session.parts_bag[Essences.canonical("ORC_CLEAVER")] == 0 and scene.session.party[1].essences.has(Essences.canonical("ORC_CLEAVER")),"unequipping keeps the essence absorbed")
 	scene.show_character(1,"영혼석")
 	for frame in range(3): await process_frame
 	EssenceTab.chooser(scene,0)
 	for frame in range(3): await process_frame
-	var picks: Array = scene.item_detail.find_children("*","Button",true,false).filter(func(b): return b.name == "EssencePick_ORC_CLEAVER")
+	var picks: Array = scene.item_detail.find_children("*","Button",true,false).filter(func(b): return b.name == "EssencePick_"+Essences.canonical("ORC_CLEAVER").replace("/","_"))
 	check(picks.size() == 1 and not picks[0].disabled,"the chooser offers the bagged part in camp")
 	picks[0].pressed.emit()
 	for frame in range(3): await process_frame
-	check(scene.session.party[1].equipped_abilities[0] == "ORC_CLEAVER","the chooser equips into the chosen slot")
+	check(scene.session.party[1].equipped_abilities[0] == Essences.canonical("ORC_CLEAVER"),"the chooser equips into the chosen slot")
 	scene.item_popup.hide()
 	scene.queue_free(); await process_frame
 	print("Character UI: %d failures" % failures); quit(1 if failures else 0)

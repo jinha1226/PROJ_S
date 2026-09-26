@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "rows": {
     "RAT_GNAW": {
       "role": "PACK",
@@ -7,7 +7,21 @@
       "school": "",
       "species": "dcss_rat",
       "family": "rat",
-      "effect": "RAT_GNAW"
+      "headline": "cut",
+      "parts": {
+        "cut": {
+          "name": "쥐 꼬리",
+          "effect": "RAT_GNAW"
+        },
+        "broken": {
+          "name": "쥐 앞니",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "쥐 심장",
+          "effect": ""
+        }
+      }
     },
     "LIZARD_TAIL": {
       "role": "BERSERK",
@@ -15,7 +29,21 @@
       "school": "",
       "species": "dcss_frilled_lizard",
       "family": "reptile",
-      "effect": "LIZARD_TAIL"
+      "headline": "cut",
+      "parts": {
+        "cut": {
+          "name": "목도리 도마뱀 꼬리",
+          "effect": "LIZARD_TAIL"
+        },
+        "broken": {
+          "name": "목도리 도마뱀 목도리",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "목도리 도마뱀 눈",
+          "effect": ""
+        }
+      }
     },
     "KOBOLD_SLING": {
       "role": "ARCHER",
@@ -23,7 +51,21 @@
       "school": "",
       "species": "kobold",
       "family": "kobold",
-      "effect": "KOBOLD_SLING"
+      "headline": "broken",
+      "parts": {
+        "cut": {
+          "name": "코볼트 가죽",
+          "effect": ""
+        },
+        "broken": {
+          "name": "코볼트 손뼈",
+          "effect": "KOBOLD_SLING"
+        },
+        "pierced": {
+          "name": "코볼트 심장",
+          "effect": ""
+        }
+      }
     },
     "GOBLIN_SHIV": {
       "role": "AMBUSH",
@@ -31,7 +73,21 @@
       "school": "",
       "species": "goblin",
       "family": "goblin",
-      "effect": "GOBLIN_SHIV"
+      "headline": "pierced",
+      "parts": {
+        "cut": {
+          "name": "고블린 귀",
+          "effect": ""
+        },
+        "broken": {
+          "name": "고블린 이빨",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "고블린 심장",
+          "effect": "GOBLIN_SHIV"
+        }
+      }
     },
     "ORC_CLEAVER": {
       "role": "BERSERK",
@@ -39,7 +95,21 @@
       "school": "",
       "species": "dcss_orc",
       "family": "orc",
-      "effect": "ORC_CLEAVER"
+      "headline": "broken",
+      "parts": {
+        "cut": {
+          "name": "오크 가죽",
+          "effect": ""
+        },
+        "broken": {
+          "name": "오크 뼈",
+          "effect": "ORC_CLEAVER"
+        },
+        "pierced": {
+          "name": "오크 심장",
+          "effect": ""
+        }
+      }
     },
     "GNOLL_SPEAR": {
       "role": "BERSERK",
@@ -47,7 +117,21 @@
       "school": "",
       "species": "dcss_gnoll",
       "family": "gnoll",
-      "effect": "GNOLL_SPEAR"
+      "headline": "pierced",
+      "parts": {
+        "cut": {
+          "name": "놀 가죽",
+          "effect": ""
+        },
+        "broken": {
+          "name": "놀 뼈",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "놀 심장",
+          "effect": "GNOLL_SPEAR"
+        }
+      }
     },
     "RIVER_RAT_SPLASH": {
       "role": "PACK",
@@ -55,52 +139,131 @@
       "school": "",
       "species": "dcss_river_rat",
       "family": "rat",
-      "effect": "RIVER_RAT_SPLASH"
+      "headline": "cut",
+      "parts": {
+        "cut": {
+          "name": "강쥐 꼬리",
+          "effect": "RIVER_RAT_SPLASH"
+        },
+        "broken": {
+          "name": "강쥐 이빨",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "강쥐 심장",
+          "effect": ""
+        }
+      }
     },
     "FIRE_CALLER": {
-      "name": "화염술사의 불씨",
       "role": "CASTER",
       "element": "fire",
       "school": "fire",
       "species": "kobold_firecaller",
       "family": "kobold",
-      "effect": "FIRE_CALLER"
+      "headline": "pierced",
+      "parts": {
+        "cut": {
+          "name": "코볼트 화염술사 손",
+          "effect": ""
+        },
+        "broken": {
+          "name": "코볼트 화염술사 뼈",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "코볼트 화염술사 심장",
+          "effect": "FIRE_CALLER"
+        }
+      }
     },
     "FROST_IMP": {
-      "name": "서리 도깨비의 숨",
       "role": "CASTER",
       "element": "ice",
       "school": "ice",
       "species": "frost_imp",
       "family": "elemental",
-      "effect": "FROST_IMP"
+      "headline": "pierced",
+      "parts": {
+        "cut": {
+          "name": "서리 도깨비 발톱",
+          "effect": ""
+        },
+        "broken": {
+          "name": "서리 도깨비 뿔",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "서리 도깨비 심장",
+          "effect": "FROST_IMP"
+        }
+      }
     },
     "STORM_BAT": {
-      "name": "폭풍 박쥐의 날개",
       "role": "PACK",
       "element": "air",
       "school": "air",
       "species": "storm_bat",
       "family": "bat",
-      "effect": "STORM_BAT"
+      "headline": "cut",
+      "parts": {
+        "cut": {
+          "name": "폭풍 박쥐 날개",
+          "effect": "STORM_BAT"
+        },
+        "broken": {
+          "name": "폭풍 박쥐 뼈",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "폭풍 박쥐 귀",
+          "effect": ""
+        }
+      }
     },
     "GOBLIN_HEXER": {
-      "name": "주술사의 부적",
       "role": "CASTER",
       "element": "will",
       "school": "hex",
       "species": "goblin_hexer",
       "family": "goblin",
-      "effect": "GOBLIN_HEXER"
+      "headline": "pierced",
+      "parts": {
+        "cut": {
+          "name": "고블린 주술사 손",
+          "effect": ""
+        },
+        "broken": {
+          "name": "고블린 주술사 두개골",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "고블린 주술사 눈",
+          "effect": "GOBLIN_HEXER"
+        }
+      }
     },
     "GNOLL_SUMMONER": {
-      "name": "소환사의 뼈피리",
       "role": "CASTER",
       "element": "will",
       "school": "summon",
       "species": "gnoll_summoner",
       "family": "gnoll",
-      "effect": "GNOLL_SUMMONER"
+      "headline": "pierced",
+      "parts": {
+        "cut": {
+          "name": "놀 소환사 가죽",
+          "effect": ""
+        },
+        "broken": {
+          "name": "놀 소환사 뼈",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "놀 소환사 심장",
+          "effect": "GNOLL_SUMMONER"
+        }
+      }
     },
     "HOB_TAUNT": {
       "role": "GUARD",
@@ -108,7 +271,21 @@
       "school": "",
       "species": "dcss_hobgoblin",
       "family": "goblin",
-      "effect": "HOB_TAUNT"
+      "headline": "pierced",
+      "parts": {
+        "cut": {
+          "name": "홉고블린 가죽",
+          "effect": ""
+        },
+        "broken": {
+          "name": "홉고블린 턱뼈",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "홉고블린 심장",
+          "effect": "HOB_TAUNT"
+        }
+      }
     },
     "GOBLIN_AIM": {
       "role": "ARCHER",
@@ -116,7 +293,21 @@
       "family": "goblin",
       "species": "goblin_archer",
       "school": "",
-      "effect": "GOBLIN_AIM"
+      "headline": "cut",
+      "parts": {
+        "cut": {
+          "name": "고블린 궁수 깃",
+          "effect": "GOBLIN_AIM"
+        },
+        "broken": {
+          "name": "고블린 궁수 손가락뼈",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "고블린 궁수 눈",
+          "effect": ""
+        }
+      }
     },
     "SHIELD_STANCE": {
       "role": "GUARD",
@@ -124,7 +315,21 @@
       "family": "goblin",
       "species": "goblin_shield",
       "school": "",
-      "effect": "SHIELD_STANCE"
+      "headline": "broken",
+      "parts": {
+        "cut": {
+          "name": "고블린 방패병 가죽",
+          "effect": ""
+        },
+        "broken": {
+          "name": "고블린 방패병 팔뼈",
+          "effect": "SHIELD_STANCE"
+        },
+        "pierced": {
+          "name": "고블린 방패병 심장",
+          "effect": ""
+        }
+      }
     },
     "ORC_THROW": {
       "role": "ARCHER",
@@ -132,7 +337,21 @@
       "family": "orc",
       "species": "orc_thrower",
       "school": "",
-      "effect": "ORC_THROW"
+      "headline": "cut",
+      "parts": {
+        "cut": {
+          "name": "오크 투척병 팔",
+          "effect": "ORC_THROW"
+        },
+        "broken": {
+          "name": "오크 투척병 어깨뼈",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "오크 투척병 눈",
+          "effect": ""
+        }
+      }
     },
     "SPIDER_WEB": {
       "role": "AMBUSH",
@@ -140,7 +359,21 @@
       "family": "insect",
       "species": "cave_spider",
       "school": "",
-      "effect": "SPIDER_WEB"
+      "headline": "pierced",
+      "parts": {
+        "cut": {
+          "name": "동굴 거미 다리",
+          "effect": ""
+        },
+        "broken": {
+          "name": "동굴 거미 껍질",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "동굴 거미 실샘",
+          "effect": "SPIDER_WEB"
+        }
+      }
     },
     "BEETLE_CURL": {
       "role": "GUARD",
@@ -148,7 +381,21 @@
       "family": "insect",
       "species": "rock_beetle",
       "school": "",
-      "effect": "BEETLE_CURL"
+      "headline": "broken",
+      "parts": {
+        "cut": {
+          "name": "바위 딱정벌레 날개",
+          "effect": ""
+        },
+        "broken": {
+          "name": "바위 딱정벌레 껍질",
+          "effect": "BEETLE_CURL"
+        },
+        "pierced": {
+          "name": "바위 딱정벌레 핵",
+          "effect": ""
+        }
+      }
     },
     "ORE_SLAM": {
       "role": "BERSERK",
@@ -156,7 +403,21 @@
       "family": "elemental",
       "species": "ore_golem",
       "school": "",
-      "effect": "ORE_SLAM"
+      "headline": "broken",
+      "parts": {
+        "cut": {
+          "name": "광석 골렘 광맥",
+          "effect": ""
+        },
+        "broken": {
+          "name": "광석 골렘 몸돌",
+          "effect": "ORE_SLAM"
+        },
+        "pierced": {
+          "name": "광석 골렘 핵",
+          "effect": ""
+        }
+      }
     },
     "LEECH_LATCH": {
       "role": "AMBUSH",
@@ -164,7 +425,21 @@
       "family": "insect",
       "species": "giant_leech",
       "school": "",
-      "effect": "LEECH_LATCH"
+      "headline": "cut",
+      "parts": {
+        "cut": {
+          "name": "거대 거머리 입",
+          "effect": "LEECH_LATCH"
+        },
+        "broken": {
+          "name": "거대 거머리 몸마디",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "거대 거머리 흡반",
+          "effect": ""
+        }
+      }
     },
     "TOAD_SPIT": {
       "role": "ARCHER",
@@ -172,7 +447,21 @@
       "family": "reptile",
       "species": "swamp_toad",
       "school": "",
-      "effect": "TOAD_SPIT"
+      "headline": "pierced",
+      "parts": {
+        "cut": {
+          "name": "늪 두꺼비 혀",
+          "effect": ""
+        },
+        "broken": {
+          "name": "늪 두꺼비 뼈",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "늪 두꺼비 독샘",
+          "effect": "TOAD_SPIT"
+        }
+      }
     },
     "SERPENT_SHED": {
       "role": "GUARD",
@@ -180,7 +469,21 @@
       "family": "reptile",
       "species": "temple_serpent",
       "school": "",
-      "effect": "SERPENT_SHED"
+      "headline": "cut",
+      "parts": {
+        "cut": {
+          "name": "신전 뱀 허물",
+          "effect": "SERPENT_SHED"
+        },
+        "broken": {
+          "name": "신전 뱀 비늘",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "신전 뱀 독니",
+          "effect": ""
+        }
+      }
     },
     "WATER_WAVE": {
       "role": "PACK",
@@ -188,7 +491,21 @@
       "family": "elemental",
       "species": "water_spirit",
       "school": "",
-      "effect": "WATER_WAVE"
+      "headline": "pierced",
+      "parts": {
+        "cut": {
+          "name": "물의 정령 물살",
+          "effect": ""
+        },
+        "broken": {
+          "name": "물의 정령 물방울",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "물의 정령 핵",
+          "effect": "WATER_WAVE"
+        }
+      }
     },
     "SKELETON_WALL": {
       "role": "PACK",
@@ -196,7 +513,21 @@
       "family": "undead",
       "species": "skeleton_soldier",
       "school": "",
-      "effect": "SKELETON_WALL"
+      "headline": "broken",
+      "parts": {
+        "cut": {
+          "name": "해골 병사 팔",
+          "effect": ""
+        },
+        "broken": {
+          "name": "해골 병사 갈비뼈",
+          "effect": "SKELETON_WALL"
+        },
+        "pierced": {
+          "name": "해골 병사 두개골",
+          "effect": ""
+        }
+      }
     },
     "SKELETON_VOLLEY": {
       "role": "ARCHER",
@@ -204,7 +535,21 @@
       "family": "undead",
       "species": "skeleton_archer",
       "school": "",
-      "effect": "SKELETON_VOLLEY"
+      "headline": "broken",
+      "parts": {
+        "cut": {
+          "name": "해골 궁수 손가락",
+          "effect": ""
+        },
+        "broken": {
+          "name": "해골 궁수 등뼈",
+          "effect": "SKELETON_VOLLEY"
+        },
+        "pierced": {
+          "name": "해골 궁수 눈구멍",
+          "effect": ""
+        }
+      }
     },
     "GHOUL_CLAW": {
       "role": "BERSERK",
@@ -212,7 +557,21 @@
       "family": "undead",
       "species": "ghoul",
       "school": "",
-      "effect": "GHOUL_CLAW"
+      "headline": "cut",
+      "parts": {
+        "cut": {
+          "name": "구울 발톱",
+          "effect": "GHOUL_CLAW"
+        },
+        "broken": {
+          "name": "구울 턱",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "구울 심장",
+          "effect": ""
+        }
+      }
     },
     "VAMPIRE_BITE": {
       "role": "AMBUSH",
@@ -220,7 +579,21 @@
       "family": "bat",
       "species": "vampire_bat",
       "school": "",
-      "effect": "VAMPIRE_BITE"
+      "headline": "broken",
+      "parts": {
+        "cut": {
+          "name": "흡혈 박쥐 날개",
+          "effect": ""
+        },
+        "broken": {
+          "name": "흡혈 박쥐 이빨",
+          "effect": "VAMPIRE_BITE"
+        },
+        "pierced": {
+          "name": "흡혈 박쥐 심장",
+          "effect": ""
+        }
+      }
     },
     "THORN_ARMOUR": {
       "role": "GUARD",
@@ -228,7 +601,21 @@
       "family": "undead",
       "species": "wraith_knight",
       "school": "",
-      "effect": "THORN_ARMOUR"
+      "headline": "broken",
+      "parts": {
+        "cut": {
+          "name": "망령 기사 망토",
+          "effect": ""
+        },
+        "broken": {
+          "name": "망령 기사 갑주",
+          "effect": "THORN_ARMOUR"
+        },
+        "pierced": {
+          "name": "망령 기사 핵",
+          "effect": ""
+        }
+      }
     },
     "WRAITH": {
       "role": "CASTER",
@@ -236,8 +623,21 @@
       "family": "undead",
       "species": "wraith",
       "school": "hex",
-      "name": "원혼의 속삭임",
-      "effect": "WRAITH"
+      "headline": "pierced",
+      "parts": {
+        "cut": {
+          "name": "원혼 수의",
+          "effect": ""
+        },
+        "broken": {
+          "name": "원혼 뼈",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "원혼 핵",
+          "effect": "WRAITH"
+        }
+      }
     },
     "GRAVEKEEPER": {
       "role": "CASTER",
@@ -245,8 +645,21 @@
       "family": "undead",
       "species": "gravekeeper",
       "school": "summon",
-      "name": "묘지기의 등불",
-      "effect": "GRAVEKEEPER"
+      "headline": "pierced",
+      "parts": {
+        "cut": {
+          "name": "묘지기 손",
+          "effect": ""
+        },
+        "broken": {
+          "name": "묘지기 뼈",
+          "effect": ""
+        },
+        "pierced": {
+          "name": "묘지기 등불",
+          "effect": "GRAVEKEEPER"
+        }
+      }
     },
     "GOBLIN_CHIEF": {
       "name": "족장의 뿔나팔",

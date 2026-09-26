@@ -23,8 +23,8 @@ func run() -> void:
 func kits() -> void:
 	for school in Essences.CASTER_BY_SCHOOL:
 		var s = Session.new_run(7,school); var hero: Dictionary = s.party[0]
-		var essence: String = str(Essences.CASTER_BY_SCHOOL[school])
-		check(int(hero.essences.get(essence,0)) == 1 and hero.equipped_abilities[0] == essence,"the %s kit starts with its caster essence slotted" % school)
+		var essence: String = Essences.canonical(str(Essences.CASTER_BY_SCHOOL[school]))
+		check(int(hero.essences.get(Essences.canonical(str(essence)),0)) == 1 and hero.equipped_abilities[0] == essence,"the %s kit starts with its caster essence slotted" % school)
 		check(hero.prepared == ["%s_1" % school] and hero.spells == ["%s_1" % school],"the %s kit has its first spell ready" % school)
 		check(not hero.has("books"),"the %s kit carries no book" % school)
 	var sword = Session.new_run(7,"sword")
@@ -44,7 +44,7 @@ func tiers() -> void:
 	hero.level = 6
 	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_6") and hero.prepared == ["fire_6"],"at level six it reaches the sixth and takes it")
 	s.parts_bag["GOBLIN_HEXER"] = 1
-	check(s.absorb_essence(0,"GOBLIN_HEXER") == "" and hero.essence_spells.GOBLIN_HEXER == "hex_1","a new caster essence picks its first spell")
+	check(s.absorb_essence(0,"GOBLIN_HEXER") == "" and hero.essence_spells[Essences.canonical("GOBLIN_HEXER")] == "hex_1","a new caster essence picks its first spell")
 	check("hex_1" in hero.spells and "hex_1" not in hero.prepared,"known, but not ready until it is slotted")
 	s.gain_level_xp(hero,65)
 	check(s.equip_part(0,1,"GOBLIN_HEXER") and hero.prepared == ["fire_6","hex_1"],"slotted, it is ready in slot order")
@@ -52,7 +52,7 @@ func tiers() -> void:
 	check(not s.choose_essence_spell(0,"FROST_IMP","ice_1"),"an essence the hero never absorbed has no choice")
 	s.gain_level_xp(hero,999999)
 	for id in ["FIRE_CALLER","FROST_IMP","STORM_BAT","GNOLL_SUMMONER","FIRE_CALLER@ice","FROST_IMP@fire"]:
-		hero.essences[id] = maxi(1,int(hero.essences.get(id,0)))
+		hero.essences[id] = maxi(1,int(hero.essences.get(Essences.canonical(str(id)),0)))
 		hero.essence_spells[id] = Essences.spell_choices(hero,id)[0]
 	hero.equipped_abilities = ["FIRE_CALLER","FROST_IMP","STORM_BAT","GNOLL_SUMMONER","FIRE_CALLER@ice","FROST_IMP@fire","GOBLIN_HEXER","","",""]
 	Essences.sync_spells(hero)
@@ -77,7 +77,7 @@ func casting() -> void:
 	var foe: Dictionary = s.enemies[0]
 	foe.hp = 30; foe.max_hp = 30; foe.pos = c+Vector2i(2,0)
 	s.floor_state.observe(s)
-	hero.essences.FIRE_CALLER = 1
+	hero.essences[Essences.canonical("FIRE_CALLER")] = 1
 	check(Spells.can_cast(s,hero,"fire_1",foe.pos),"the kit spell casts with no book")
 	check(s.cast("fire_1",foe.pos) and int(foe.hp) < 30,"and burns the foe")
 
@@ -90,4 +90,4 @@ func no_books() -> void:
 	var source: String = FileAccess.get_file_as_string("res://expedition/spells/spells.gd")
 	check(not source.contains("func learnable") and not source.contains("func book"),"spells have no book helpers")
 	s.grant_part("FROST_IMP")
-	check(int(s.parts_bag.get("FROST_IMP",0)) == 1 and s.log_lines[-1].contains(Essences.title("FROST_IMP")),"a caster essence can be found like any other")
+	check(int(s.parts_bag.get(Essences.canonical("FROST_IMP"),0)) == 1 and s.log_lines[-1].contains(Essences.title("FROST_IMP")),"a caster essence can be found like any other")

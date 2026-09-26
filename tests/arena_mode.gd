@@ -1,4 +1,5 @@
 extends SceneTree
+const Essences = preload("res://expedition/progression/essences.gd")
 ## Battle test mode: a throwaway session dropped straight into an arena with
 ## freely chosen parts and stances; the town session is never touched.
 const Session = preload("res://expedition/run/session.gd")
@@ -22,8 +23,8 @@ func session() -> void:
 	var t = Session.arena_test(42,3,Session.ARENA_PRESETS.opt_archers,members)
 	check(t.phase == "BATTLE" and t.party.size() == 3 and t.in_combat(),"arena session is a floor battle")
 	check(t.enemies.size() == 3 and t.enemies.all(func(e): return e.hp > 0),"opt_archers roster spawned")
-	check(t.party[0].stance == "CHARGER" and t.party[0].equipped_abilities == ["ORE_SLAM","GUARD"] and t.party[0].rules.any(func(r): return r.skill == "ORE_SLAM"),"member setup applied with default rules")
-	check(t.party[1].equipped_abilities == ["KOBOLD_SLING",""],"empty slot allowed")
+	check(t.party[0].stance == "CHARGER" and t.party[0].equipped_abilities == [Essences.canonical("ORE_SLAM"),"GUARD"] and t.party[0].rules.any(func(r): return r.skill == "ORE_SLAM"),"member setup applied with default rules")
+	check(t.party[1].equipped_abilities == [Essences.canonical("KOBOLD_SLING"),""],"empty slot allowed")
 	check(t.party.all(func(a): return a.hp == a.max_hp),"full health")
 	check(t.auto_stop_reason() == "BATTLE_START","starts stopped at battle start")
 	var rounds := 0

@@ -413,10 +413,11 @@ static func inventory_rows(ui) -> Array:
 			if equipped.is_empty(): continue
 			var name: String = gear_name(ui,equipped,slot)
 			rows.append({"id":"equipped:%d:%s"%[i,slot],"label":name,"quantity":1,"category":"장비","equipped_member":i,"equipped_slot":slot,"gear_slot":slot,"description":actor.name+" · 장착 중","icon":Art.equipment_icon(slot,str(equipped.get("type","")))})
-	for id in Session.Abilities.DEFINITIONS:
+	session.parts_bag = Essences.normalize_keys(session.parts_bag,true)
+	for id in session.parts_bag:
 		if session.parts_bag.get(id,0) <= 0: continue
-		var def: Dictionary = Session.Abilities.definition(id)
-		rows.append({"id":id,"label":def.item,"quantity":session.parts_bag[id],"category":"파츠","description":def.description,"icon":Art.part_icon(id)})
+		if not Essences.has(str(id)): continue
+		rows.append({"id":id,"label":Essences.title(str(id)),"quantity":session.parts_bag[id],"category":"파츠","description":EssenceTab.stat_line(str(id))+"\n"+EssenceTab.effect_line(str(id)),"icon":Art.part_icon(id)})
 	rows.append({"id":"food","label":"식량","quantity":session.food,"category":"자원","description":"야영","icon":Art.food_icon()})
 	return rows
 
@@ -440,6 +441,7 @@ static func build_inventory(ui) -> void:
 	ui.button(ui.modal_content,"닫기",func(): ui.details_popup.hide()); ui.details_popup.popup_centered()
 
 static func show_item_detail(ui, id: String) -> void:
+	if Essences.has(id): id = Essences.canonical(id)
 	var session = ui.session
 	var matches: Array = inventory_rows(ui).filter(func(r): return r.id == id)
 	if matches.is_empty(): ui.item_popup.hide(); show_supplies(ui); return

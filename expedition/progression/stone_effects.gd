@@ -35,7 +35,7 @@ static var by_species: Dictionary = {}
 ## The headline effect a stone carries: its base row's, none for a boss stone.
 static func effect_of(id: String) -> String:
 	if not Essences.has(id): return ""
-	return str(Essences.content.rows[Essences.base_of(id)].get("effect",""))
+	return str(Essences.row(id).get("effect",""))
 
 static func species_effect(species_id: String) -> String:
 	if species_id.is_empty(): return ""
