@@ -36,6 +36,11 @@ static func line(s, a: Vector2i, b: Vector2i, reach: int) -> bool:
 static func distance(a: Vector2i, b: Vector2i) -> int:
 	return maxi(absi(a.x-b.x),absi(a.y-b.y))
 
+static func can_attack_target(s, enemy: Dictionary, target: Dictionary) -> bool:
+	# Monsters keep pursuing beyond the camera, but cannot hit the hero from
+	# a tile the player cannot see. Companions and NPCs still fight offscreen.
+	return s.party.is_empty() or target != s.party[0] or s.floor_state.visible.has(enemy.pos)
+
 ## Cancels any charge. 밀치기 reaches this directly; ordinary damage goes
 ## through on_hit(), which spares a part that is merely being wound up.
 static func interrupt(s, enemy: Dictionary) -> void:
@@ -116,7 +121,7 @@ static func turn(s, enemy: Dictionary) -> void:
 	if Abilities.has(part) and int(enemy.cooldowns.get(part,0)) <= 0 and not s.status_blocks(enemy,"MOVE"):
 		targets.sort_custom(func(a,b): return distance(enemy.pos,a.pos) < distance(enemy.pos,b.pos))
 		for target in targets:
-			if not line(s,enemy.pos,target.pos,seen) or not Abilities.legal(s,enemy,part,target.pos): continue
+			if not can_attack_target(s,enemy,target) or not line(s,enemy.pos,target.pos,seen) or not Abilities.legal(s,enemy,part,target.pos): continue
 			var prep: int = int(Abilities.definition(part).enemy.prep)
 			if prep <= 0: Abilities.execute(s,enemy,part,target.pos); return
 			enemy.charging = true; enemy.cast_id = part; enemy.cast_cell = target.pos; enemy.cast_left = prep
@@ -143,8 +148,9 @@ static func patrol(s, enemy: Dictionary) -> void:
 static func resolve_spell(s, enemy: Dictionary, cell: Vector2i) -> void:
 	enemy.cast_cooldown = 3
 	if not line(s,enemy.pos,cell,4): return
-	s.enemy_attack_effect(enemy,[cell],true)
 	var victim: Dictionary = s.at(cell)
+	if not victim.is_empty() and not can_attack_target(s,enemy,victim): return
+	s.enemy_attack_effect(enemy,[cell],true)
 	if not victim.is_empty() and (s.side_of(victim) != s.side_of(enemy) or s.wanderer(victim) and not s.dominated(enemy)): s.damage(victim,Abilities.scaled(enemy,SPELL_DAMAGE),enemy.id,"ELECTRIC")
 	s.message(enemy.name+"의 마법이 예고한 지점에 떨어졌습니다.")
 
@@ -167,10 +173,12 @@ static func role_turn(s, enemy: Dictionary, targets: Array, held: bool = false) 
 	var reloading: bool = role == "RANGED" and int(enemy.get("reload",0)) > 0
 	if reloading: enemy.reload = int(enemy.reload)-1
 	for target in targets:
+		if not can_attack_target(s,enemy,target): continue
 		if s.melee_reach(enemy.pos,target.pos):
 			strike(s,enemy,target,4); return # No endless retreat loop.
 	for target in targets:
 		if reloading: break
+		if not can_attack_target(s,enemy,target): continue
 		if not line(s,enemy.pos,target.pos,reach): continue
 		if role == "CASTER" and ready:
 			enemy.charging = true; enemy.cast_id = ""; enemy.cast_cell = target.pos; enemy.cast_left = 1; enemy.resolve_at = s.time+100; plan(s)
@@ -189,6 +197,7 @@ static func role_turn(s, enemy: Dictionary, targets: Array, held: bool = false) 
 	for y in range(maxi(0,target.pos.y-reach),mini(s.BOARD_SIDE,target.pos.y+reach+1)):
 		for x in range(maxi(0,target.pos.x-reach),mini(s.BOARD_SIDE,target.pos.x+reach+1)):
 			var p := Vector2i(x,y)
+			if target == s.party[0] and not s.floor_state.visible.has(p): continue
 			if s.is_free(p) and distance(p,target.pos) >= 2 and line(s,p,target.pos,reach): goals.append(p)
 	if goals.is_empty() or held: return
 	var route: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,enemy.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100,100,20)
@@ -197,6 +206,7 @@ static func role_turn(s, enemy: Dictionary, targets: Array, held: bool = false) 
 static func strike(s, enemy: Dictionary, target: Dictionary, amount: int) -> void:
 	amount = int(enemy.basic_attack) if enemy.has("basic_attack") else Abilities.scaled(enemy,amount)
 	if target.is_empty() or s.side_of(target) == s.side_of(enemy) and not (s.wanderer(target) and not s.dominated(enemy)): return
+	if not can_attack_target(s,enemy,target): return
 	s.enemy_attack_effect(enemy,[target.pos])
 	if s.manual_mode:
 		enemy.power = amount

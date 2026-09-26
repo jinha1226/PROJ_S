@@ -16,7 +16,7 @@ func stop() -> void:
 func traversable(s, a: Vector2i, b: Vector2i) -> bool:
 	if not s.floor_state.explored.has(b) or not s.inside(b) or s.tile(b).terrain == "wall": return false
 	# Never inspect hidden actors or hazards while planning remembered ground.
-	if s.floor_state.visible.has(b) and (not s.is_free(b) or s.tile(b).fire > 0 or s.Tactics.danger(s,b) > 0): return false
+	if s.floor_state.visible.has(b) and (not s.is_free(b) or (automatic or s.phase != "BATTLE") and (s.tile(b).fire > 0 or s.Tactics.danger(s,b) > 0)): return false
 	if not s.walk_reach(a,b): return false
 	return true
 
@@ -28,7 +28,7 @@ func route(s, target: Vector2i) -> Array:
 
 func start(s, target: Vector2i) -> bool:
 	stop(); plan_builds = 0
-	if s.phase != "EXPLORE" or not s.party_enemies().is_empty(): return false
+	if s.phase not in ["EXPLORE","BATTLE"]: return false
 	planned_path = route(s,target)
 	if planned_path.size() < 2: return false
 	destination = target; active = true; return true
@@ -52,7 +52,7 @@ func frontier_path(s) -> Array:
 func next_step(s) -> Vector2i:
 	if not active: return Vector2i(-1,-1)
 	if automatic and s.party.any(func(a): return s.Downed.is_downed(a)): stop(); return Vector2i(-1,-1)
-	if s.phase != "EXPLORE" or not s.party_enemies().is_empty(): stop(); return Vector2i(-1,-1)
+	if s.phase not in ["EXPLORE","BATTLE"] or automatic and (s.phase != "EXPLORE" or not s.party_enemies().is_empty()): stop(); return Vector2i(-1,-1)
 	var current: Vector2i = s.party[s.selected].pos
 	exhausted["%d:%d" % [current.x,current.y]] = true
 	if planned_path.size() > 1 and planned_path[1] == current: planned_path.pop_front()

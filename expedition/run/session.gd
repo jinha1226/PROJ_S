@@ -465,6 +465,7 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 		return {"actor":old_actor.id,"target":old_victim.id,"cell":target,"name":old_victim.name,"chance":100,"damage":old_amount,"damage_min":old_amount,"damage_max":old_amount,"time":100}
 	var victim := at(target)
 	if victim.is_empty() or not (victim.enemy or wanderer(victim) and not victim.get("summoned",false)): return {}
+	if not floor_state.visible.has(target): return {}
 	var actor: Dictionary = party[selected] if actor_index < 0 else (party[actor_index] if actor_index < party.size() else actor_by_id(actor_index))
 	if actor.is_empty(): return {}
 	var offense: Dictionary = CombatStats.stats(self,actor)

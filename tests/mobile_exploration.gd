@@ -57,6 +57,18 @@ func run() -> void:
 	s.enemies[0].pos = s.party[0].pos+Vector2i.RIGHT; s.floor_state.observe(s)
 	turns = s.round_number; scene.navigation_tick()
 	check(not scene.navigation.active and s.round_number == turns,"enemy contact stops before another action")
+	var battle_center: Vector2i = Fixture.arena(s,9)
+	s.party[0].pos = battle_center
+	s.enemies[0].hp = s.enemies[0].max_hp
+	s.enemies[0].pos = battle_center+Vector2i(0,3)
+	s.floor_state.observe(s)
+	turns = s.round_number
+	scene.on_cell(battle_center+Vector2i(3,0))
+	if scene.navigation.active and scene.navigation_camera_busy():
+		board._process(board.walk_duration)
+		scene.navigation_tick()
+	check(s.phase == "BATTLE" and s.party[0].pos != battle_center and s.round_number == turns+1,
+		"a distant tap still moves one step after auto exploration stops on an enemy")
 	s.enemies[0].pos = Vector2i(s.BOARD_SIDE-2,s.BOARD_SIDE-2); s.floor_state.observe(s)
 	scene.refresh(); await process_frame
 	board = scene.board

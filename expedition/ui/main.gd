@@ -188,7 +188,7 @@ func navigation_camera_busy() -> bool:
 
 func navigation_tick() -> void:
 	if navigation_camera_busy():
-		if session.phase != "EXPLORE" or not session.party_enemies().is_empty(): stop_navigation()
+		if navigation.automatic and (session.phase != "EXPLORE" or not session.party_enemies().is_empty()): stop_navigation()
 		return
 	var step: Vector2i = navigation.next_step(session)
 	if step.x < 0: stop_navigation(); return
@@ -460,7 +460,8 @@ func on_cell(point: Vector2i) -> void:
 	var feature: Dictionary = session.floor_state.features.get(point,{})
 	if feature.get("kind","") == "lever" and session.floor_state.visible.has(point):
 		run_action(func(): return session.act("LEVER",point)); return
-	if session.in_combat() and not session.manual_mode: focus_enemy(point); refresh(); return
+	if session.in_combat() and not session.manual_mode and session.at(point) in session.combat_enemies():
+		focus_enemy(point); refresh(); return
 	if session.floor_state.visible.has(point):
 		# A tap only reaches an npc the party can see, and only an adjacent one talks.
 		var wanderer: Dictionary = session.at(point)

@@ -186,6 +186,7 @@ static func legal(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 		return target == actor.pos
 	var victim: Dictionary = s.at(target)
 	if victim.is_empty() or victim.hp <= 0: return false
+	if actor.enemy and victim == s.party[0] and not s.floor_state.visible.has(actor.pos): return false
 	if def.target == "ALLY":
 		return victim.enemy == actor.enemy and victim.id != actor.id and s.melee_reach(actor.pos,target)
 	if victim.enemy == actor.enemy: return false
@@ -313,6 +314,7 @@ const ELEMENT_TICKS := 200
 ## One victim of a part: the damage (in the part's element when it has one),
 ## the element's mark, then what the part leaves behind. Returns the HP lost.
 static func strike_victim(s, actor: Dictionary, victim: Dictionary, amount: int, form: String, def: Dictionary) -> int:
+	if actor.enemy and victim == s.party[0] and not s.floor_state.visible.has(actor.pos): return 0
 	var element: String = str(def.get("element",""))
 	var damage_form: String = form if element in ["","bleed"] else str(ELEMENT_FORMS[element])
 	if element == "air" and int(s.tile(victim.pos).wet) > 0: amount += SHOCK_BONUS

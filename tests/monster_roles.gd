@@ -55,6 +55,12 @@ func _initialize() -> void:
 	e.species_id = "goblin_archer"
 	e.pos = c+Vector2i(6,0); e.alert = true; AI.turn(s,e)
 	check(s.party[0].hp < hp,"a goblin archer's 조준 reaches six tiles")
+	f = fixture("RANGED"); s = f.s; c = f.c; e = s.enemies[0]; hp = s.party[0].hp
+	e.species_id = "goblin_archer"
+	e.pos = c+Vector2i(7,0); e.alert = true; s.floor_state.observe(s)
+	check(not s.floor_state.visible.has(e.pos),"seven-cell archer starts outside the hero's sight")
+	AI.turn(s,e)
+	check(s.party[0].hp == hp and AI.distance(e.pos,c) < 7,"an unseen archer closes in instead of shooting from beyond sight")
 	f = fixture("MELEE"); s = f.s; c = f.c; e = s.enemies[0]
 	e.pos = c+Vector2i(16,0); e.alert = true; s.floor_state.observe(s)
 	check(not s.floor_state.visible.has(e.pos),"alert monster is outside the hero's sight")
