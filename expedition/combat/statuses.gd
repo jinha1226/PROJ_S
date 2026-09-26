@@ -41,6 +41,7 @@ static func apply(s, victim: Dictionary, status: String, ticks: int, source: Dic
 		"report_source":s.effect_source.duplicate() if not s.effect_source.is_empty() and int(s.effect_source.owner) == int(source.get("id",-1)) else {}}
 	if status == "burn": victim.get_or_add("status_power",{})["burn"] = BURN_DAMAGE
 	if status == "fracture": victim.get_or_add("status_power",{})["fracture_bonus"] = StoneEffects.modifier(s,"fracture_percent",source)
+	if not already: StoneEffects.Vfx.status(s,victim,status,source)
 	if status in HARMFUL:
 		StoneEffects.fire(s,"STATUS_GIVEN",{"source":source,"target":victim,"victim":victim,"status":status,"status_already":already})
 	Reactions.status_react(s,victim,source,"","STATUS")

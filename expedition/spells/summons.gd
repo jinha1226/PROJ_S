@@ -44,6 +44,7 @@ static func summon(s, caster: Dictionary, cell: Vector2i, kind: String = "hound"
 	pet.expires_at += s.StoneEffects.modifier(s,"summon_ticks",caster)
 	pet.expires_at = s.time+maxi(40,(int(pet.expires_at)-int(s.time))*(100+s.StoneEffects.modifier(s,"summon_ticks_percent",caster))/100)
 	s.npcs.append(pet)
+	s.StoneEffects.Vfx.emit(s,"summon",cell,caster.pos)
 	s.StoneEffects.fire(s,"SUMMON",{"caster":caster,"pet":pet})
 	return pet
 
@@ -52,6 +53,7 @@ static func expire(s) -> void:
 	for pet in s.npcs.duplicate():
 		if bool(pet.get("summoned",false)) and int(pet.get("expires_at",0)) <= s.time:
 			pet.hp = 0; s.npcs.erase(pet)
+			s.StoneEffects.Vfx.emit(s,"death",pet.pos,pet.pos)
 			if not bool(pet.get("summon_ended",false)):
 				pet.summon_ended = true
 				s.StoneEffects.fire(s,"SUMMON_END",{"caster":s.actor_by_id(int(pet.get("summoner",-1))),"pet":pet,"died":false})

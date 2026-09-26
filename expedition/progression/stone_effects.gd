@@ -2,6 +2,7 @@ extends RefCounted
 const EffectEngine = preload("res://expedition/progression/effect_engine.gd")
 const Stacks = preload("res://expedition/progression/stacks.gd")
 const Forms = preload("res://expedition/combat/forms.gd")
+const Vfx = preload("res://expedition/ui/effect_vfx.gd")
 ## The soul stones' headline effects and the role combos in a fight
 ## (2026-09-26 spec §2–3, §6). A member has the effect of every stone it
 ## wears, each once; a monster has its own species' stone's effect; a boss
@@ -68,11 +69,11 @@ static func chance(s, source: Dictionary, target: Dictionary, lane: String, perc
 
 ## A proc's notice over `cell`: drawn by the board like a reaction's name,
 ## smaller and in its tone's colour, never logged.
-static func proc(s, cell: Vector2i, text: String, tone: String) -> void:
-	s.effects.append({"kind":"PROC","from":cell,"cell":cell,"text":text,"tone":tone if tone in TONES else "buff"})
-	if s.presentation == null and s.effects.size() > 32: s.effects.pop_front()
+static func proc(s, cell: Vector2i, text: String, tone: String, visual: String = "", origin: Variant = null) -> void:
+	s.effects.append({"kind":"PROC","from":cell if origin == null else origin,"cell":cell,"text":text,"tone":tone if tone in TONES else "buff","vfx":visual})
+	Vfx.trim(s)
 
-static func heal(s, actor: Dictionary, amount: int, healer: Dictionary = {}, lifesteal: bool = false) -> int:
+static func heal(s, actor: Dictionary, amount: int, healer: Dictionary = {}, lifesteal: bool = false, drain_from: Dictionary = {}) -> int:
 	if not alive(actor) or amount <= 0: return 0
 	var heal_ctx := {"source":healer,"target":actor,"external_heal":not healer.is_empty() and healer != actor,"lifesteal":lifesteal}
 	amount = amount*(100+EffectEngine.modifier(s,"heal_taken_percent",actor,heal_ctx))/100
@@ -84,7 +85,7 @@ static func heal(s, actor: Dictionary, amount: int, healer: Dictionary = {}, lif
 		if gained > 0:
 			s.Body.heal(actor)
 			if not s.effect_source.is_empty(): s.EffectReport.note(s,int(s.effect_source.owner),str(s.effect_source.effect),"heal",gained)
-		proc(s,actor.pos,"+%d" % gained,"heal")
+		proc(s,actor.pos,"+%d" % gained,"heal",("lifesteal" if lifesteal else "heal") if gained > 0 else "",drain_from.get("pos",healer.get("pos",actor.pos)))
 		if not healer.is_empty(): fire(s,"HEALED",{"healer":healer,"target":actor,"amount":gained,"overheal":maxi(0,amount-gained),"lifesteal":lifesteal})
 	return gained
 
@@ -194,7 +195,7 @@ static func outgoing(s, attacker: Dictionary, target: Dictionary, amount: int, f
 		var exposed: bool = target.get("statuses",{}).has("exposed")
 		if chance(s,attacker,target,"crit",crit_chance(s,attacker,target)):
 			amount = amount*crit_percent(attacker,s)/100; result.critical = true
-			proc(s,target.pos,"치명타!","crit"); s.message("%s 치명타" % str(attacker.get("name","")))
+			proc(s,target.pos,"치명타!","crit","crit",attacker.pos); s.message("%s 치명타" % str(attacker.get("name","")))
 			fire(s,"CRIT",ctx)
 		if not bool(result.critical): amount = amount*(100+EffectEngine.modifier(s,"noncrit_percent",attacker,ctx))/100
 		if exposed: target.statuses.erase("exposed")
@@ -248,7 +249,7 @@ static func second_shot(s, attacker: Dictionary, target: Dictionary) -> void:
 	odds = EffectEngine.modifier(s,"second_shot_chance",attacker)
 	if TagSets.bracket(attacker,"RANGED") == 6: odds = 100-(100-odds)*85/100
 	if not chance(s,attacker,target,"double",odds) or not s.Reactions.once(s,attacker,"DOUBLE"): return
-	proc(s,attacker.pos,"연사!","buff")
+	proc(s,attacker.pos,"연사!","buff","haste")
 	s.CombatRules.attack(s,attacker,target)
 
 ## A felling blow on a 묘지기 stone: once a fight it rises at thirty percent.
@@ -280,7 +281,7 @@ static func round_start(s, actor: Dictionary) -> void:
 			var harmful: Array = ally.get("statuses",{}).keys().filter(func(k): return k in HARMFUL)
 			if harmful.is_empty() or not chance(s,actor,ally,"support_cleanse",25): continue
 			harmful.sort_custom(func(a,b): return int(ally.statuses[a]) > int(ally.statuses[b]) if int(ally.statuses[a]) != int(ally.statuses[b]) else str(a) < str(b))
-			ally.statuses.erase(harmful[0]); proc(s,ally.pos,"정화!","heal")
+			ally.statuses.erase(harmful[0]); proc(s,ally.pos,"정화!","heal","cleanse",actor.pos)
 
 ## 신전 뱀: half the harmful statuses that would land slide off.
 static func shed(s, victim: Dictionary, status: String, source: Dictionary) -> bool:

@@ -36,12 +36,12 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 	if roll(s, source, target, "dodge", 100) < dodge:
 		StoneEffects.fire(s,"DODGE",StoneEffects.context(s,source,target))
 		out.evaded = true; s.message(str(target.name) + " 회피")
-		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"회피","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
+		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"회피","vfx":"dodge","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
 		return out
 	if roll(s, source, target, "block", 100) < int(defense.sh):
 		StoneEffects.fire(s,"BLOCK",StoneEffects.context(s,source,target))
 		out.blocked = true; s.message(str(target.name) + " 방패 방어")
-		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"막음","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
+		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"막음","vfx":"shield","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
 		if StoneEffects.has(target,"SHIELD_STANCE"): StoneEffects.proc(s,target.pos,"막음!","buff")
 		return out
 	var form: String = Forms.of_actor(source)
@@ -92,7 +92,8 @@ static func damage(s, source: Dictionary, target: Dictionary, raw: int, element:
 	if target.get("statuses",{}).has("cracked") and element in ["physical","SLASH","IMPACT","PIERCE"]: amount = amount * 13 / 10
 	if target.get("statuses",{}).has("marked"): amount = amount * 12 / 10
 	var form: String = element if hit_form == Reactions.HIT_FORM else hit_form
-	var received: Dictionary = {}
+	var visual_element := hit_form if hit_form in [Reactions.COUNTER_FORM,"RETALIATE"] else element
+	var received: Dictionary = {"vfx":StoneEffects.Vfx.damage_style(visual_element,str(s.blow_form),source.is_empty()),"element":element}
 	var lost: int = s.after_damage(target, amount, int(source.get("id", 999)), form,received)
 	var victim: Dictionary = received.get("target",target)
 	if hit_form in [Reactions.HIT_FORM, Reactions.EXTRA_FORM]: Reactions.on_hit(s, source, victim, element, lost, hit_form)

@@ -826,7 +826,7 @@ func enemy_attack_effect(enemy: Dictionary, cells: Array, area: bool = false) ->
 	if cells.is_empty(): return
 	effects.append({"kind":"ENEMY_ATTACK","from":enemy.pos,"cell":cells[0],
 		"cells":cells.duplicate(),"area":area,"amount":0,"form":"IMPACT"})
-	if presentation == null and effects.size() > 32: effects.pop_front()
+	StoneEffects.Vfx.trim(self)
 
 static func subject_name(value: String) -> String:
 	var last := value.unicode_at(value.length()-1) if not value.is_empty() else 0
@@ -870,12 +870,14 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 	var recipient: Dictionary = protection_recipient(target)
 	var covered: bool = recipient.id != target.id
 	if covered:
+		StoneEffects.Vfx.emit(self,"shield",target.pos,recipient.pos)
 		var cover_row: Dictionary = member_stats(recipient.id)
 		if not cover_row.is_empty(): cover_row.covers += 1
 		message("%s %s 대신 맞습니다." % [subject_name(recipient.name),target.name])
 		target = recipient
 	received["target"] = target
 	if target.get("shield",false):
+		StoneEffects.Vfx.emit(self,"shield",target.pos,target.pos)
 		message("보호막 · 피해 무효"); return 0
 	received["victim_statuses"] = target.get("statuses",{}).duplicate(true)
 	if passive_hit and not attacker.is_empty(): amount = Passives.outgoing(self,attacker,target,amount,form,received)
@@ -893,6 +895,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 		if int(target.get("blood_ward_until",0)) > time:
 			var blocked: int = mini(amount,int(target.get("blood_ward",0)))
 			target.blood_ward = int(target.get("blood_ward",0))-blocked; amount -= blocked
+			if blocked > 0: StoneEffects.Vfx.emit(self,"shield",target.pos,target.pos)
 	serial += 1
 	if amount >= int(target.hp):
 		var danger := {"target":target,"ally":target,"attacker":attacker,"amount":amount}
@@ -909,8 +912,10 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 	var source_name: String = {"FIRE":"불길","ELECTRIC":"방전","POISON":"독"}.get(form,"함정")
 	if not attacker.is_empty(): source_cell = attacker.pos; source_name = attacker.name
 	var effect := {"from":source_cell,"cell":target.pos,"amount":lost,"form":form,"enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))}
+	effect["vfx"] = str(received.get("vfx",StoneEffects.Vfx.damage_style(form,str(blow_form))))
+	effect["element"] = str(received.get("element",form))
 	effects.append(effect)
-	if presentation == null and effects.size() > 32: effects.pop_front()
+	StoneEffects.Vfx.trim(self)
 	var dealt_row: Dictionary = member_stats(source) if not attacker.is_empty() and not attacker.enemy else {}
 	if not dealt_row.is_empty(): dealt_row.dealt += lost
 	var taken_row: Dictionary = member_stats(target.id) if not target.enemy else {}

@@ -40,6 +40,7 @@ var impact_time := 0.0
 var companion_previews: Array = []
 var touch_pressed_at := 0
 signal playback_finished
+const Vfx = preload("res://expedition/ui/effect_vfx.gd")
 const ActorVisual = preload("res://expedition/ui/battle_actor_visual.gd")
 var playback: Array = []
 var playback_clock := 0.0
@@ -150,7 +151,7 @@ var radial_light = preload("res://expedition/art/radial_light.gd").new()
 
 func injury_focus() -> Dictionary:
 	for effect in effects:
-		if effect.get("body_injury",false): return effect
+		if effect.get("body_injury",false) and effect_visible(effect): return effect
 	return {}
 
 func impact_transform() -> Dictionary:
@@ -165,7 +166,13 @@ func impact_transform() -> Dictionary:
 ## are staggered so each lands on its own beat.
 func clock_of(effect: Dictionary) -> float:
 	if is_presenting(): return effect_time
-	return effect_time-minf(effects.find(effect),6)*STAGGER
+	# Auxiliary visuals share the preceding blow's beat; adding particles or
+	# status notices must not delay the next attack.
+	var beat := -1
+	for row in effects:
+		if str(row.get("kind","")) in ["","ATTACK_SWING","ENEMY_ATTACK","MISS"]: beat += 1
+		if is_same(row,effect): break
+	return float(effect.get("visual_clock",effect_time-minf(maxi(0,beat),6)*STAGGER))
 
 ## A blow that took HP from somebody, and whether that somebody is ours.
 func is_hit(effect: Dictionary) -> bool:
@@ -174,11 +181,11 @@ func is_hit(effect: Dictionary) -> bool:
 func hits_party(effect: Dictionary) -> bool:
 	return is_hit(effect) and not bool(effect.get("enemy",true))
 
-## The board trembles when a blow lands: hard when it lands on the party.
+## Visible blows tremble briefly: hard when one lands on the party.
 func hit_shake() -> Vector2:
 	var strength := 0.0
 	for effect in effects:
-		if not is_hit(effect): continue
+		if not is_hit(effect) or not effect_visible(effect): continue
 		var t := clock_of(effect)
 		if t < 0 or t >= 0.24: continue
 		strength = maxf(strength,(1.0-t/0.24)*(7.0 if hits_party(effect) else 2.5))
@@ -191,7 +198,7 @@ func hit_offset(point: Vector2i) -> Vector2:
 	var lunged := false
 	for effect in effects:
 		var kind := str(effect.get("kind",""))
-		if kind == "ENEMY_ATTACK": continue
+		if kind not in ["","ATTACK_SWING","MISS"] or not effect_visible(effect): continue
 		var t := clock_of(effect)
 		if t < 0: continue
 		var direction := Vector2(effect.cell-effect.from).normalized()
@@ -208,7 +215,7 @@ func hit_offset(point: Vector2i) -> Vector2:
 ## The tint of someone just struck: white-hot for a blink, then hurt red.
 func hit_flash(point: Vector2i) -> Color:
 	for effect in effects:
-		if effect.cell != point or not is_hit(effect): continue
+		if effect.cell != point or not is_hit(effect) or not effect_visible(effect): continue
 		var t := clock_of(effect)
 		if t < 0: continue
 		if t < 0.07: return Color(4,4,4)
@@ -240,7 +247,7 @@ func _process(delta: float) -> void:
 	var slow_delta := minf(delta,maxf(0,0.3-impact_time)) if not injury_focus().is_empty() else 0.0
 	impact_time += delta
 	# Hit-stop: time crawls for the first instant of every blow.
-	var stopping := effects.any(func(e): return is_hit(e) and clock_of(e) >= 0 and clock_of(e) < 0.06)
+	var stopping := effects.any(func(e): return is_hit(e) and effect_visible(e) and clock_of(e) >= 0 and clock_of(e) < 0.06)
 	effect_time += (slow_delta*0.25+(delta-slow_delta))*(0.3 if stopping else 1.0)
 	if effect_time > 1.0+minf(effects.size()-1,6)*STAGGER: effects.clear()
 	queue_redraw()
@@ -655,8 +662,10 @@ func _draw_foreground(canvas: Node2D) -> void:
 		canvas.draw_string(ui_font,gauge.position+Vector2(2,13),"열기 %d" % int(actor.get("heat",0)),HORIZONTAL_ALIGNMENT_CENTER,56,11,Color("ffb36b"))
 	if not is_presenting(): draw_action_overlay(canvas)
 	for effect in effects:
+		if not effect_visible(effect): continue
 		var kind := str(effect.get("kind",""))
-		if kind == "ENEMY_ATTACK": draw_enemy_attack(effect,canvas)
+		if kind == "VFX": draw_effect_visual(effect,canvas)
+		elif kind == "ENEMY_ATTACK": draw_enemy_attack(effect,canvas)
 		elif kind == "ATTACK_SWING": draw_swing(effect,canvas)
 		elif kind == "MISS": draw_miss(effect,canvas)
 		elif kind == "SPEECH": draw_speech(effect,canvas)
@@ -666,7 +675,7 @@ func _draw_foreground(canvas: Node2D) -> void:
 	canvas.draw_set_transform(Vector2.ZERO)
 	# The edges of the screen flare red while the party is being hurt.
 	for effect in effects:
-		if not hits_party(effect): continue
+		if not hits_party(effect) or not effect_visible(effect): continue
 		var t := clock_of(effect)
 		if t < 0 or t >= 0.32: continue
 		var alpha := 0.22*(1.0-t/0.32)
@@ -686,16 +695,6 @@ func _draw_foreground(canvas: Node2D) -> void:
 			canvas.draw_line(point+direction*(12+impact_time*35),point+direction*(28+impact_time*80),Color(1,0.7,0.45,fade),3,true)
 		canvas.draw_string(ui_font,Vector2(clampf(point.x-65,2,maxf(2,size.x-132)),maxf(20,point.y-30)),str(injury.get("part","신체"))+" 손상!",HORIZONTAL_ALIGNMENT_CENTER,130,16,Color(1,0.85,0.7,fade))
 
-## The colours of a blow: hot red when the party is hurt, gold otherwise,
-## and the element's own colour for fire, frost, lightning and poison.
-func hit_colors(effect: Dictionary) -> Array:
-	match str(effect.get("form","")).to_upper():
-		"FIRE": return [Color("ff7a2a"),Color("ffe07a")]
-		"ICE": return [Color("6fc8ff"),Color("e8f8ff")]
-		"ELECTRIC": return [Color("5fd8ff"),Color("f0ffff")]
-		"POISON": return [Color("7cd04a"),Color("e0ffb0")]
-	return [Color("ff3a26"),Color("ffd0a0")] if hits_party(effect) else [Color("ffb02e"),Color("fff4c8")]
-
 ## Outlined text, the Forge Master way: an ink rim under a bright fill.
 func draw_outlined(canvas: Node2D, position: Vector2, text: String, font_size: int, color: Color) -> void:
 	if ui_font == null: return
@@ -704,49 +703,15 @@ func draw_outlined(canvas: Node2D, position: Vector2, text: String, font_size: i
 	canvas.draw_string_outline(ui_font,at,text,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size,maxi(4,font_size/4),Color(INK,color.a))
 	canvas.draw_string(ui_font,at,text,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size,color)
 
-func star_points(center: Vector2, outer: float, inner: float, points: int, turn: float) -> PackedVector2Array:
-	var result := PackedVector2Array()
-	for i in range(points*2):
-		var radius := outer if i % 2 == 0 else inner
-		result.append(center+Vector2.RIGHT.rotated(turn+i*PI/points)*radius)
-	return result
-
-## A blow that lands: a white-cored burst, sparks, a slash across the target,
-## debris that falls, and the damage popping out and floating up.
+## Actual damage keeps its semantic impact and a rising number.
 func draw_hit(effect: Dictionary, canvas: Node2D) -> void:
 	var t := clock_of(effect)
 	if t < 0 or t >= 0.95: return
-	var colors := hit_colors(effect)
-	var outer: Color = colors[0]
-	var core: Color = colors[1]
+	if int(effect.get("amount",0)) <= 0: return
+	draw_effect_visual(effect,canvas)
 	var party := hits_party(effect)
 	var center := cell_center(effect.cell)-Vector2(0,half_width*0.7)
-	var direction := Vector2(effect.cell-effect.from).normalized()
-	if direction == Vector2.ZERO: direction = Vector2.RIGHT
 	var seed := float((int(effect.cell.x)*73+int(effect.cell.y)*151+int(effect.get("amount",0))*17)%360)
-	if t < 0.26:
-		var grow := 1.0-pow(1.0-t/0.26,3)
-		var fade := 1.0-t/0.26
-		var radius := half_width*(0.45+(1.25 if party else 1.0)*grow)
-		var burst := star_points(center,radius,radius*0.48,8,deg_to_rad(seed))
-		canvas.draw_colored_polygon(burst,Color(outer,fade))
-		canvas.draw_polyline(burst+PackedVector2Array([burst[0]]),Color(INK,fade*0.9),2.5,true)
-		canvas.draw_circle(center,radius*0.36*fade+2,Color(core,fade))
-		for i in range(8):
-			var ray := Vector2.RIGHT.rotated(deg_to_rad(seed)+i*TAU/8+0.2)
-			var reach := radius*(0.9+0.6*grow)
-			canvas.draw_line(center+ray*radius*0.7,center+ray*reach,Color(core,fade),3,true)
-	if t < 0.17:
-		var slash := direction.rotated(PI/2+0.5)*half_width*0.95
-		var fade := 1.0-t/0.17
-		canvas.draw_line(center-slash,center+slash,Color(INK,fade),10,true)
-		canvas.draw_line(center-slash,center+slash,Color(1,1,1,fade),5,true)
-	if t < 0.55:
-		for i in range(6):
-			var angle := deg_to_rad(seed*1.7+i*61.0)
-			var velocity := Vector2(cos(angle),-absf(sin(angle))-0.4)*(90+i*14)+direction*40
-			var point := center+velocity*t+Vector2(0,260)*t*t
-			canvas.draw_circle(point,3.2-t*3,Color(outer.darkened(0.2),1.0-t/0.55))
 	var amount := int(effect.get("amount",0))
 	var pop := 1.0+0.7*maxf(0,1.0-t/0.1)
 	var font_size := int((26 if party else 22)*pop)
@@ -772,12 +737,14 @@ func draw_swing(effect: Dictionary, canvas: Node2D) -> void:
 func draw_miss(effect: Dictionary, canvas: Node2D) -> void:
 	var t := clock_of(effect)
 	if t < 0 or t >= 0.8: return
+	draw_effect_visual(effect,canvas)
 	var center := cell_center(effect.cell)-Vector2(0,half_width*(1.2+t*0.8))
 	draw_outlined(canvas,center,str(effect.get("text","회피")),int(18*(1.0+0.4*maxf(0,1.0-t/0.1))),Color(0.8,0.9,1.0,clampf((0.8-t)/0.3,0,1)))
 
 func draw_reaction(effect: Dictionary, canvas: Node2D) -> void:
 	var t := clock_of(effect)
 	if t < 0 or t >= 1.1: return
+	draw_effect_visual(effect,canvas)
 	var center := cell_center(effect.cell)-Vector2(0,half_width*(1.6+t*0.9))
 	var grow := 1.0+0.6*maxf(0,1.0-t/0.12)
 	draw_outlined(canvas,center,str(effect.get("text","")),int(24*grow),Color(1.0,0.86,0.35,clampf((1.1-t)/0.35,0,1)))
@@ -788,6 +755,7 @@ const PROC_COLORS := {"buff":Color("ffd35a"),"heal":Color("6fe07a"),"debuff":Col
 func draw_proc(effect: Dictionary, canvas: Node2D) -> void:
 	var t := clock_of(effect)
 	if t < 0 or t >= 1.0: return
+	draw_effect_visual(effect,canvas)
 	var stack := 0
 	for other in effects:
 		if is_same(other,effect): break
@@ -810,39 +778,46 @@ func draw_speech(effect: Dictionary, canvas: Node2D) -> void:
 	canvas.draw_string(ui_font,box.position+Vector2(4,13),text,HORIZONTAL_ALIGNMENT_CENTER,width-8,11,Color("fff0e8"))
 
 func draw_enemy_attack(effect: Dictionary, canvas: Node2D) -> void:
-	var clock := clock_of(effect)
-	if clock < 0: return
-	var fade := clampf(1.0-clock,0,1)
-	var impact := Color(1,0.25,0.12,fade)
-	var center := Vector2.ZERO
-	for cell in effect.cells:
-		var point := cell_center(cell)
-		center += point
-		var polygon := tile_polygon(Vector2(cell))
-		canvas.draw_colored_polygon(polygon,Color(1,0.12,0.04,fade*(0.55 if clock < 0.2 else 0.22)))
-		canvas.draw_polyline(PackedVector2Array([polygon[0],polygon[1],polygon[2],polygon[3],polygon[0]]),impact,3,true)
-		var radius := half_width*(0.25+minf(clock*3,0.7))
-		canvas.draw_arc(point,radius,0,TAU,20,Color(1,0.8,0.4,fade),2,true)
-		if clock < 0.4:
-			for direction in [Vector2.UP,Vector2.RIGHT,Vector2.DOWN,Vector2.LEFT]:
-				canvas.draw_line(point+direction*radius*0.45,point+direction*radius,impact,3,true)
-	center /= maxf(1,effect.cells.size())
-	if not effect.area:
-		var start := cell_center(effect.from)
-		var tip := start.lerp(center,clampf(clock*8,0,1))
-		canvas.draw_line(start,tip,impact,5,true)
-		var slash := Vector2(half_width*0.5,-half_width*0.5)
-		canvas.draw_line(center-slash,center+slash,Color(1,0.85,0.65,fade),4,true)
-	var caption: String = str(effect.get("caption","범위 공격" if effect.area else "공격"))
-	var box := Rect2(Vector2(clampf(center.x-30,0,maxf(0,size.x-60)),center.y-half_width-20),Vector2(60,20))
-	canvas.draw_style_box(_preview_background(impact),box)
-	canvas.draw_string(ui_font,box.position+Vector2(2,15),caption,HORIZONTAL_ALIGNMENT_CENTER,56,13,Color(1,0.85,0.65,fade))
+	# Empty affected cells still show the actual strike, never a generic blast.
+	# Occupied cells use their damage event, avoiding a double impact.
+	var visible: Dictionary = visual_state.get("visible",{}) if is_presenting() else session.floor_state.visible
+	for cell in effect.get("cells",[]):
+		if not visible.has(cell): continue
+		if effects.any(func(e): return e.get("kind","") == "" and e.get("cell") == cell and int(e.get("amount",0)) > 0): continue
+		var strike: Dictionary = effect.duplicate()
+		strike.cell = cell
+		strike.kind = "VFX"
+		strike.visual_clock = clock_of(effect)
+		strike.vfx = Vfx.damage_style(str(effect.get("element",effect.get("form","IMPACT"))),str(effect.get("form","IMPACT")))
+		draw_effect_visual(strike,canvas)
 
-func _preview_background(color: Color) -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = Color(0.04,0.07,0.1,0.95); box.border_color = color
-	box.set_border_width_all(1); box.set_corner_radius_all(3)
-	return box
+func effect_visible(effect: Dictionary) -> bool:
+	if session == null: return false
+	var seen: Dictionary = visual_state.get("visible",{}) if is_presenting() else session.floor_state.visible
+	if str(effect.get("kind","")) == "ENEMY_ATTACK":
+		return effect.get("cells",[]).any(func(cell): return seen.has(cell))
+	return seen.has(effect.get("cell",Vector2i(-1,-1)))
+
+func draw_effect_visual(effect: Dictionary, canvas) -> void:
+	if not effect_visible(effect): return
+	var style := str(effect.get("vfx",""))
+	if style.is_empty() and effect.get("kind","") == "": style = Vfx.damage_style(str(effect.get("element",effect.get("form",""))),str(effect.get("form","")))
+	var center := cell_center(effect.cell)-Vector2(0,half_width*0.7)
+	var seen: Dictionary = visual_state.get("visible",{}) if is_presenting() else session.floor_state.visible
+	var from: Vector2i = effect.get("from",effect.cell)
+	var start := center
+	# A trail is drawn only when every cell along it is visible, including its
+	# origin. Offscreen autonomous combat never leaks through fog.
+	var steps := maxi(absi(from.x-effect.cell.x),absi(from.y-effect.cell.y))
+	var path_visible := steps > 0
+	for i in range(steps+1):
+		var point := Vector2i(Vector2(from).lerp(Vector2(effect.cell),float(i)/maxi(1,steps)).round())
+		if not seen.has(point): path_visible = false; break
+	if path_visible: start = cell_center(from)-Vector2(0,half_width*0.7)
+	var t := clock_of(effect)
+	if steps > 1 and path_visible and effect.get("kind","") == "" and style in ["pierce","fire","ice","poison","hex"]:
+		Vfx.projectile(canvas,style,start,center,half_width,t)
+	Vfx.draw(canvas,style,center,start,half_width,t)
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:

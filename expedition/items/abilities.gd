@@ -256,20 +256,29 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 		"MARK":
 			if victim.is_empty(): s.message(actor.name+"의 "+def.name+"가 빗나갔습니다.")
 			else: s.Statuses.apply(s,victim,"marked",300,actor)
-		"FURNACE": actor.statuses["furnace"] = int(s.time)+200
-		"DEVOUR": actor.devour_ready = true
-		"SHIELD": actor.iron_guard = true
+		"FURNACE":
+			actor.statuses["furnace"] = int(s.time)+200
+			s.StoneEffects.Vfx.status(s,actor,"furnace",actor)
+		"DEVOUR":
+			actor.devour_ready = true
+			s.StoneEffects.Vfx.emit(s,"rage",actor.pos,actor.pos)
+		"SHIELD":
+			actor.iron_guard = true
+			s.StoneEffects.Vfx.emit(s,"shield",actor.pos,actor.pos)
 		"STANCE", "THORNS":
 			actor.statuses[str(def.status)] = s.time+int(def.status_ticks)
+			s.StoneEffects.Vfx.status(s,actor,str(def.status),actor)
 		"CLEANSE":
 			for status in actor.statuses.keys():
 				if status in s.Statuses.HARMFUL:
 					actor.statuses.erase(status); actor.get("status_power",{}).erase(status)
 			actor.statuses["immune"] = s.time+int(def.status_ticks)
+			s.StoneEffects.Vfx.emit(s,"cleanse",actor.pos,actor.pos)
 		"WARD_ALLIES":
 			for other in s.party+s.npcs+s.enemies:
 				if other.hp > 0 and s.side_of(other) == s.side_of(actor) and (other.id == actor.id or s.melee_reach(actor.pos,other.pos)):
 					other.statuses[str(def.status)] = s.time+int(def.status_ticks)
+					s.StoneEffects.Vfx.status(s,other,str(def.status),actor)
 		"TAUNT":
 			var taunted := 0
 			for other in s.party+s.npcs+s.enemies:
@@ -278,6 +287,7 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 				var ticks: int = int(def.status_ticks)/(2 if other.get("boss",false) else 1)
 				other.statuses["taunted"] = s.time+ticks
 				other.get_or_add("status_power",{})["taunted"] = int(actor.id)
+				s.StoneEffects.Vfx.status(s,other,"taunted",actor)
 				taunted += 1
 			if taunted == 0: s.message(actor.name+"의 도발에 아무도 응하지 않았습니다.")
 		"HEAL":
@@ -290,6 +300,7 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 			else:
 				actor["guarded"] = true
 				victim["protected_by"] = actor.id
+				s.StoneEffects.Vfx.emit(s,"shield",victim.pos,actor.pos)
 				var row: Dictionary = s.member_stats(actor.id)
 				if not row.is_empty(): row.guards += 1
 				s.message("%s · 엄호 → %s" % [actor.name,victim.name])
@@ -300,7 +311,9 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 				s.message("%s · 밀리지 않습니다" % victim.name)
 			else:
 				var destination: Vector2i = target+(target-actor.pos)
-				if s.can_step(target,destination): victim.pos = destination
+				if s.can_step(target,destination):
+					victim.pos = destination
+					s.StoneEffects.Vfx.emit(s,"push",destination,target)
 				else: s.damage(victim,power(s,actor,def,id),actor.id,"IMPACT")
 				s.intents = s.intents.filter(func(intent): return intent.id != victim.id)
 				s.Floor.MonsterAI.interrupt(s,victim)
@@ -318,7 +331,7 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 		"DAMAGE":
 			var affected := cells(s,actor,id,target)
 			var amount: int = power(s,actor,def,id)
-			s.effects.append({"kind":"ENEMY_ATTACK","from":actor.pos,"cell":target,"cells":affected,"area":affected.size() > 1,"amount":0,"form":"IMPACT","caption":str(def.get("short",def.name))})
+			s.effects.append({"kind":"ENEMY_ATTACK","from":actor.pos,"cell":target,"cells":affected,"area":affected.size() > 1,"amount":0,"form":Forms.of_part(def),"element":str(def.get("element","")),"caption":str(def.get("short",def.name))})
 			var hit := 0
 			for other in s.party+s.npcs+s.enemies:
 				if other.hp <= 0 or other.id == actor.id or other.pos not in affected: continue
@@ -366,7 +379,7 @@ static func strike_victim(s, actor: Dictionary, victim: Dictionary, amount: int,
 ## What a part leaves after its hit: blood drunk, a status, a shove.
 static func after_strike(s, actor: Dictionary, victim: Dictionary, lost: int, def: Dictionary) -> void:
 	if int(def.get("drain",0)) > 0 and lost > 0 and int(actor.hp) > 0:
-		s.StoneEffects.heal(s,actor,lost*int(def.drain)/100,actor,true)
+		s.StoneEffects.heal(s,actor,lost*int(def.drain)/100,actor,true,victim)
 	if int(victim.hp) <= 0: return
 	var status: String = str(def.get("status",""))
 	if not status.is_empty(): s.Statuses.apply(s,victim,status,int(def.get("status_ticks",200)),actor)

@@ -61,6 +61,7 @@ static func rescue(s, rescuer: Dictionary, actor: Dictionary) -> bool:
 	actor.ap = 0
 	if bool(actor.get("npc",false)): actor.state = "PARTY"
 	Body.heal(actor)
+	s.StoneEffects.Vfx.emit(s,"revive",actor.pos,rescuer.pos)
 	s.serial += 1
 	s.remember_important(actor,"RESCUED",int(rescuer.id)+1,int(rescuer.id)+1,850)
 	s.remember_important(rescuer,"ALLY_RESCUED",int(actor.id)+1,int(rescuer.id)+1,750)

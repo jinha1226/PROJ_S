@@ -163,6 +163,7 @@ static func tile_tick(s, point: Vector2i, cell: Dictionary, suppression: int) ->
 static func hang(s, victim: Dictionary, status: String, ticks: int) -> void:
 	ticks = s.Statuses.resisted_ticks(s,victim,status,ticks)
 	if ticks <= 0: return
+	if not victim.get("statuses",{}).has(status): s.StoneEffects.Vfx.status(s,victim,status)
 	victim.statuses[status] = int(s.time)+ticks
 	if status == "burn": victim.get_or_add("status_power",{})["burn"] = s.Statuses.BURN_DAMAGE
 
@@ -179,7 +180,7 @@ static func react_damage(s, source: Dictionary, target: Dictionary, amount: int,
 static func announce(s, cell: Vector2i, key: String, source: Dictionary) -> void:
 	source.repeat_reaction = false
 	var name: String = str(NAMES[key])
-	s.effects.append({"kind":"REACTION","from":cell,"cell":cell,"text":name})
+	s.effects.append({"kind":"REACTION","from":cell,"cell":cell,"text":name,"vfx":str(s.StoneEffects.Vfx.REACTION.get(key,"hex"))})
 	s.message("%s 반응" % name.trim_suffix("!"))
 	s.push_event({"kind":"REACTION","name":name,"cell":cell})
 	s.StoneEffects.fire(s,"REACTION",{"source":source,"target":s.at(cell),"reaction":key,"cell":cell})

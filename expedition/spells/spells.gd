@@ -228,6 +228,7 @@ static func shaped_cast(s, caster: Dictionary, id: String, target: Vector2i, spe
 				var tile: Dictionary = s.tile(cell)
 				tile["wall_until"] = s.time+maxi(100,ticks)
 				tile["wall_burn"] = str(spell.get("status","")) == "burn"
+				StoneEffects.Vfx.emit(s,StoneEffects.Vfx.damage_style(str(spell.get("element",school))),cell,cell)
 		_:
 			var centre: Vector2i = target
 			if bool(spell.get("sacrifice",false)):
@@ -274,6 +275,7 @@ static func strike(s, caster: Dictionary, victim: Dictionary, spell: Dictionary,
 	if status in STATUSES and ticks > 0: apply_status(s,victim,status,ticks,caster)
 	if status == "dominate" and ticks > 0: victim["dominated_until"] = s.time+Statuses.resisted_ticks(s,victim,"dominate",ticks)
 	if school == "ice" and caster.get("statuses",{}).has("ice_freeze") and Rules.roll(s,caster,victim,"ice_freeze",100) < 30:
+		if not victim.statuses.has("freeze"): StoneEffects.Vfx.status(s,victim,"freeze",caster)
 		victim.statuses["freeze"] = s.time+100
 
 ## A spell's damage: flagged as a spell's while it resolves, so no weapon
@@ -300,6 +302,7 @@ static func mark(s, caster: Dictionary, victim: Dictionary, spell: Dictionary, p
 	ticks = StoneEffects.status_ticks(caster,status,TagSets.status_ticks(caster,status,ticks),s)
 	match status:
 		"extend":
+			if not victim.statuses.is_empty(): StoneEffects.Vfx.emit(s,"hex",victim.pos,caster.pos)
 			for id in victim.statuses: victim.statuses[id] = int(victim.statuses[id])+ticks
 			if int(victim.get("dominated_until",0)) > s.time: victim.dominated_until = int(victim.dominated_until)+ticks
 		"spread_status", "spread_burn":
@@ -313,10 +316,12 @@ static func mark(s, caster: Dictionary, victim: Dictionary, spell: Dictionary, p
 				if s.side_of(other) == s.side_of(caster): continue
 				if not s.melee_reach(victim.pos,other.pos): continue
 				for id in carried:
+					if not other.statuses.has(id): StoneEffects.Vfx.status(s,other,str(id),caster)
 					other.statuses[id] = carried[id]
 					if id == "burn": other.get_or_add("status_power",{})["burn"] = BURN_DAMAGE
 		"dominate":
 			victim.statuses["dominate"] = s.time+ticks
+			StoneEffects.Vfx.status(s,victim,"dominate",caster)
 			victim["dominated_until"] = s.time+ticks
 			s.message(str(victim.name)+" 지배")
 		_:
@@ -331,6 +336,7 @@ static func apply_self(s, caster: Dictionary, spell: Dictionary) -> void:
 	if buff.is_empty(): return
 	var ticks: int = int(spell.get("ticks",0))
 	var value: int = int(spell.get("value",0))
+	StoneEffects.Vfx.status(s,caster,buff,caster)
 	if buff == "summon_power":
 		for pet in summons_of(s,caster): pet.statuses["summon_power"] = s.time+ticks
 		caster.statuses[buff] = s.time+ticks
@@ -394,7 +400,9 @@ static func relic_cast(s, caster: Dictionary, id: String, target: Vector2i, spel
 	match id:
 		"blink":
 			var choices: Array = blink_cells(s,caster)
+			StoneEffects.Vfx.emit(s,"summon",caster.pos,caster.pos)
 			caster.pos = choices[Rules.roll(s,caster,{},"blink",choices.size())]
+			StoneEffects.Vfx.emit(s,"summon",caster.pos,caster.pos)
 		"mend":
 			StoneEffects.heal(s,caster,power,caster)
 			caster.statuses["slow"] = s.time+300

@@ -47,11 +47,16 @@ static func run(s, owner: Dictionary, actions: Array, ctx: Dictionary) -> void:
 					var ticks: int = s.StoneEffects.status_ticks(owner,str(action[op]),int(action.get("ticks",100)),s)
 					if s.Statuses.apply(s,to,str(action[op]),ticks,owner): succeeded = true
 			"heal":
-				for to in targets: s.StoneEffects.heal(s,to,maxi(int(action.get("minimum",0)),amount(action[op],to,ctx)),owner,bool(action.get("lifesteal",false)))
-			"gain_mp": owner.mp = mini(int(owner.get("max_mp",0)),int(owner.get("mp",0))+int(action[op]))
+				for to in targets: s.StoneEffects.heal(s,to,maxi(int(action.get("minimum",0)),amount(action[op],to,ctx)),owner,bool(action.get("lifesteal",false)),Conditions.target(ctx))
+			"gain_mp":
+				var before: int = int(owner.get("mp",0))
+				owner.mp = mini(int(owner.get("max_mp",0)),before+int(action[op]))
+				if int(owner.mp) > before: s.StoneEffects.Vfx.emit(s,"mana",owner.pos,owner.pos)
 			"stack":
 				var cap: int = int(action.get("max",1))+s.StoneEffects.modifier(s,"stack_max",owner)+s.StoneEffects.modifier(s,"stack_max."+str(action[op]),owner)
+				var before: int = Stacks.count(owner,str(action[op]),int(s.time))
 				Stacks.add(owner,str(action[op]),int(action.get("add",1)),cap,action.get("until","battle"),int(s.time))
+				if Stacks.count(owner,str(action[op]),int(s.time)) > before: s.StoneEffects.Vfx.emit(s,str(s.StoneEffects.Vfx.STACK.get(str(action[op]),"buff")),owner.pos,owner.pos)
 			"modify":
 				for to in targets:
 					var mods: Dictionary = to.get_or_add("effect_mods",{})
@@ -60,6 +65,8 @@ static func run(s, owner: Dictionary, actions: Array, ctx: Dictionary) -> void:
 					var values: Dictionary = {}
 					for stat in action[op]: values[stat] = int(action[op][stat])*n
 					mods[key] = {"mods":values,"n":n,"until":int(s.time)+int(action.get("ticks",100))}
+					var visual := "shield" if int(values.get("armour",0)) > 0 else "fracture" if int(values.get("armour",0)) < 0 else "buff"
+					s.StoneEffects.Vfx.emit(s,visual,to.pos,owner.pos)
 			"clear_stack": Stacks.clear(owner,str(action[op]))
 			"cooldowns":
 				for key in owner.get("cooldowns",{}): owner.cooldowns[key] = maxi(0,int(owner.cooldowns[key])-int(action[op]))
@@ -89,11 +96,13 @@ static func run(s, owner: Dictionary, actions: Array, ctx: Dictionary) -> void:
 					if not owner.has("pos") or not to.has("pos") or int(to.get("hp",0)) <= 0: continue
 					var direction := Vector2i(signi(to.pos.x-owner.pos.x),signi(to.pos.y-owner.pos.y))
 					if direction == Vector2i.ZERO: continue
+					var before: Vector2i = to.pos
 					for step in range(int(action[op])):
 						var cell: Vector2i = to.pos+direction
 						if not s.is_free(cell):
 							s.CombatRules.damage(s,owner,to,int(action.get("blocked_damage",0)),"physical",0,s.Reactions.EXTRA_FORM); break
 						to.pos = cell
+					if to.pos != before: s.StoneEffects.Vfx.emit(s,"push",to.pos,before)
 			"redirect":
 				var ally: Dictionary = ctx.get("ally",{})
 				succeeded = ctx.get("when","") == "ALLY_LETHAL" and not ctx.has("redirector") and int(owner.get("hp",0)) > 0 and not ally.is_empty() and int(owner.id) != int(ally.id)

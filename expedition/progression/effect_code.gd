@@ -8,14 +8,16 @@ static func run(s, code: String, owner: Dictionary, rule: Dictionary, ctx: Dicti
 	match code:
 		"gear_special": gear_special(s,owner,ctx,str(rule.get("args",{}).get("effect","")))
 		"part_special": part_special(s,owner,ctx,str(rule.get("args",{}).get("effect","")))
-		"immune_poison": ctx.cancelled = true
+		"immune_poison":
+			ctx.cancelled = true
+			s.StoneEffects.Vfx.emit(s,"shield",owner.pos,owner.pos)
 		"revive_once":
 			if bool(owner.get("revived",false)) or int(ctx.get("amount",0)) < int(owner.get("hp",0)): return
 			if not s.Reactions.once(s,owner,"REVIVE"): return
 			var before: int = int(owner.hp)
 			owner.revived = true; owner.hp = maxi(1,int(owner.max_hp)*int(rule.get("args",{}).get("percent",30))/100)
 			if not s.effect_source.is_empty(): s.EffectReport.note(s,int(s.effect_source.owner),str(s.effect_source.effect),"heal",maxi(0,int(owner.hp)-before))
-			ctx.amount = 0; s.StoneEffects.proc(s,owner.pos,"부활!","heal")
+			ctx.amount = 0; s.StoneEffects.proc(s,owner.pos,"부활!","heal","revive")
 		"second_shot": s.StoneEffects.second_shot(s,owner,other)
 		"counter":
 			other = ctx.get("attacker",{})
@@ -31,23 +33,23 @@ static func run(s, code: String, owner: Dictionary, rule: Dictionary, ctx: Dicti
 		"cancel_status":
 			if s.StoneEffects.chance(s,ctx.get("source",{}),owner,"shed",50):
 				ctx.cancelled = true
-				if owner.has("pos"): s.StoneEffects.proc(s,owner.pos,"면역!","buff")
+				if owner.has("pos"): s.StoneEffects.proc(s,owner.pos,"면역!","buff","shield")
 		"leech_prepare":
 			var held: Dictionary = owner.get("latch",{})
 			var count := 0
 			if int(held.get("target",-1)) == int(other.get("id",-2)):
 				count = mini(4,Stacks.count(owner,"latch",int(s.time))+1)
-				if count > int(held.get("stacks",0)): s.StoneEffects.proc(s,other.pos,"+15%","buff")
+				if count > int(held.get("stacks",0)): s.StoneEffects.proc(s,other.pos,"+15%","buff","mark",owner.pos)
 			owner.latch = {"target":int(other.get("id",-1)),"stacks":count}
 			Stacks.clear(owner,"latch"); Stacks.add(owner,"latch",count,4,"battle",int(s.time))
 			ctx.attack_percent = int(ctx.get("attack_percent",0))+15*count
 		"gnoll_rage":
 			var active: bool = int(owner.hp)*2 <= int(owner.max_hp)
-			if active and not bool(owner.get("raging",false)): s.StoneEffects.proc(s,owner.pos,"분노!","buff")
+			if active and not bool(owner.get("raging",false)): s.StoneEffects.proc(s,owner.pos,"분노!","buff","rage")
 			owner.raging = active
 		"ambush":
 			ctx.amount = int(ctx.get("amount",0))*2
-			s.StoneEffects.proc(s,other.pos,"기습!","buff")
+			s.StoneEffects.proc(s,other.pos,"기습!","buff","pierce",owner.pos)
 		"wraith_kill":
 			if not other.has("pos"): return
 			for foe in s.party+s.npcs+s.enemies:
@@ -73,7 +75,10 @@ static func part_special(s, owner: Dictionary, ctx: Dictionary, id: String) -> v
 			ctx.amount = int(ctx.get("amount",0))*130/100
 		"ORC_HIDE": s.CombatRules.damage(s,owner,target,(2+s.StoneEffects.modifier(s,"bleed_tick",owner,{"target":target}))*3,"physical",0,s.Reactions.EXTRA_FORM)
 		"BEETLE_WING":
-			owner.get_or_add("effect_mods",{})[id] = {"mods":{"armour":s.StoneEffects.EffectEngine.Conditions.near(s,owner,false).size()*2},"until":int(s.time)+100}
+			var armour: int = s.StoneEffects.EffectEngine.Conditions.near(s,owner,false).size()*2
+			var old: int = int(owner.get("effect_mods",{}).get(id,{}).get("mods",{}).get("armour",0))
+			owner.get_or_add("effect_mods",{})[id] = {"mods":{"armour":armour},"until":int(s.time)+100}
+			if armour > old: s.StoneEffects.Vfx.emit(s,"shield",owner.pos,owner.pos)
 		"TOAD_TONGUE":
 			var power: Dictionary = target.get_or_add("status_power",{})
 			power.poison_bonus = mini(4+s.StoneEffects.modifier(s,"stack_max.poison",owner),int(power.get("poison_bonus",0))+1)
@@ -82,8 +87,10 @@ static func part_special(s, owner: Dictionary, ctx: Dictionary, id: String) -> v
 				if foe.hp > 0 and s.side_of(foe) != s.side_of(owner) and s.distance(foe.pos,target.pos) <= 1 and s.StoneEffects.chance(s,owner,foe,"frost_spread",20+s.StoneEffects.modifier(s,"kill_chance",owner)): s.Statuses.apply(s,foe,"freeze",100,owner)
 		"GHOUL_JAW": s.effect_delays.append({"at":int(s.time)+100,"source":int(owner.id),"pos":target.pos,"damage":maxi(1,int(target.max_hp)/10),"radius":1,"side":s.side_of(owner),"report_source":s.effect_source.duplicate()})
 		"VAMPIRE_HEART":
+			var old: int = int(owner.get("blood_ward",0))
 			owner.blood_ward = mini(int(owner.max_hp)*20/100,int(owner.get("blood_ward",0))+int(ctx.get("overheal",0)))
 			owner.blood_ward_until = int(s.time)+300
+			if int(owner.blood_ward) > old: s.StoneEffects.Vfx.emit(s,"shield",owner.pos,owner.pos)
 		"GRAVEKEEPER_BONE":
 			var pet: Dictionary = ctx.get("pet",{})
 			if pet.has("pos"): s.effect_delays.append({"at":int(s.time),"source":int(owner.id),"pos":pet.pos,"damage":10,"radius":1,"side":s.side_of(owner),"report_source":s.effect_source.duplicate()})
@@ -114,8 +121,12 @@ static func gear_special(s, owner: Dictionary, ctx: Dictionary, id: String) -> v
 			var foes: Array = s.StoneEffects.EffectEngine.Conditions.near(s,owner,false)
 			foes.sort_custom(func(a,b): return int(a.id) < int(b.id))
 			if not foes.is_empty(): s.StoneEffects.EffectEngine.Actions.run(s,owner,[{"push":1}],{"target":foes[0]})
-		"GEAR_COMP_OPENING": owner.get_or_add("effect_mods",{})[id] = {"mods":{"speed":30},"until":int(s.time)+100}
-		"GEAR_COMP_CLEANSE": ctx.cancelled = true
+		"GEAR_COMP_OPENING":
+			owner.get_or_add("effect_mods",{})[id] = {"mods":{"speed":30},"until":int(s.time)+100}
+			s.StoneEffects.Vfx.emit(s,"haste",owner.pos,owner.pos)
+		"GEAR_COMP_CLEANSE":
+			ctx.cancelled = true
+			s.StoneEffects.Vfx.emit(s,"cleanse",owner.pos,owner.pos)
 		"UNRAND_SHIELD": wound_roll(s,owner,ctx.get("attacker",{}),"IMPACT")
 		"UNRAND_ORB": owner.repeat_reaction = true
 		"COST_HEX":

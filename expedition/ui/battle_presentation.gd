@@ -24,6 +24,10 @@ func capture(s, actor_id: int = -1, executed_intent: Dictionary = {}) -> void:
 	var after := snapshot(s)
 	var hits: Array = s.effects.slice(effect_cursor).duplicate(true)
 	effect_cursor = s.effects.size()
+	# Autonomous offscreen procs must not create invisible playback pauses.
+	hits = hits.filter(func(e):
+		if e.get("kind","") == "ENEMY_ATTACK": return e.get("cells",[]).any(func(cell): return after.visible.has(cell))
+		return after.visible.has(e.get("cell",Vector2i(-1,-1))))
 	if previous != after or not hits.is_empty() or not executed_intent.is_empty():
 		frames.append({"before":previous,"after":after,"effects":hits,"actor":actor_id,"executed_intent":executed_intent.duplicate(true)})
 	previous = after

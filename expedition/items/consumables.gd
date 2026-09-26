@@ -121,10 +121,13 @@ static func drink(s, kind: String, actor: Dictionary) -> bool:
 	match kind:
 		"healing":
 			if actor.hp >= actor.max_hp and not actor.statuses.has("bleed"): return false
+			var visual := "heal" if actor.hp < actor.max_hp else "cleanse"
 			actor.hp = mini(actor.max_hp,actor.hp+20); actor.statuses.erase("bleed"); Body.heal(actor)
+			s.StoneEffects.Vfx.emit(s,visual,actor.pos,actor.pos)
 		"strength":
 			actor.str_bonus = int(actor.get("str_bonus",0))+3
 			actor.max_hp += 5; actor.hp += 5
+			s.StoneEffects.Vfx.emit(s,"buff",actor.pos,actor.pos)
 		"haste": Statuses.apply(s,actor,"haste",300)
 		"liquid_flame", "frost", "toxic_gas":
 			potion_area(s,kind,actor.pos,true)
@@ -134,6 +137,7 @@ static func drink(s, kind: String, actor: Dictionary) -> bool:
 		"calm":
 			if actor.stress <= 0: return false
 			s.stress(actor,-25)
+			s.StoneEffects.Vfx.emit(s,"cleanse",actor.pos,actor.pos)
 		_: return false
 	return true
 
@@ -188,7 +192,9 @@ static func read(s, kind: String, user: Dictionary) -> bool:
 						if s.is_free(p) and absi(p.x-user.pos.x)+absi(p.y-user.pos.y) == best: far.append(p)
 			if far.is_empty(): return false
 			var index: int = Hexaco.sample(s.seed_value,s.time+s.serial,"teleportation",far.size())
+			s.StoneEffects.Vfx.emit(s,"summon",user.pos,user.pos)
 			user.pos = far[index]
+			s.StoneEffects.Vfx.emit(s,"summon",user.pos,user.pos)
 			pickup(s,user)
 		"mirror_image":
 			var cells: Array = Summons.summon_cells(s,user)
@@ -197,12 +203,14 @@ static func read(s, kind: String, user: Dictionary) -> bool:
 			for enemy in s.enemies:
 				if enemy.hp > 0 and s.floor_state.visible.has(enemy.pos):
 					enemy.sleep_until = s.time+300; enemy.alert = false
+					s.StoneEffects.Vfx.emit(s,"sleep",enemy.pos,user.pos)
 		"rage":
 			for enemy in s.enemies:
 				if enemy.hp > 0: enemy.alert = true; Statuses.apply(s,enemy,"haste",200)
 		"recharging":
 			if user.mp >= user.max_mp: return false
 			user.mp = user.max_mp
+			s.StoneEffects.Vfx.emit(s,"mana",user.pos,user.pos)
 		_: return false
 	return true
 
