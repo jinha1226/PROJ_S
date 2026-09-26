@@ -7,10 +7,10 @@
 
 ## 0. 결정
 
-1. **역할군 5개**: 탱커, 근딜, 원딜, 마법, 지원. 파티 게임에서 가장 직관적인 말이다.
+1. **역할군 5개**: 탱커, 근접, 원거리, 마법, 지원. 파티 게임에서 가장 직관적인 말이다.
 2. **역할군은 영혼석(종족)에 붙는다.** 기본 스탯과 **역할군 조합(2·4·6개)**을 정한다. 보너스는 여기에만 있다.
 3. **세부 유형은 부위 효과에 붙는다.** 지금의 빌드군 12개 자리를 17개 세부 유형이 대신한다. **보너스 없음.** 쓰임새: 정체성 표시("방어 60%"), 동료 AI, 도감 거르기, 장비 증폭 옵션.
-4. 세부 유형은 역할군에 속하지만, **어느 역할군 영혼석에도 나올 수 있다.** 예: 원딜인 해골 궁수의 손가락은 근딜·분쇄 유형. 그래서 역할군과 세부 유형이 섞여 빌드가 생긴다.
+4. 세부 유형은 역할군에 속하지만, **어느 역할군 영혼석에도 나올 수 있다.** 예: 원거리인 해골 궁수의 손가락은 근접·분쇄 유형. 그래서 역할군과 세부 유형이 섞여 빌드가 생긴다.
 5. **몬스터 수치는 바뀌지 않는다.** 몬스터 체력·공격 배율(`ROLE_HP`·`ROLE_ATTACK`)은 `floor_monsters.json`의 `role`(옛 PACK 등)을 읽고, 이번 개편은 `essences.json`의 `role`만 바꾼다.
 
 ## 1. 세부 유형 17개
@@ -21,11 +21,11 @@
 | | `EVASION` | 회피 | 회피, 피하면 반격·치명 |
 | | `REGEN` | 재생 | 재생·흡혈·처치 회복 |
 | | `REFLECT` | 반사 | 반격·반사·막으면 되받아침 |
-| 근딜 `MELEE` | `BLEED` | 출혈 | 베기 → 출혈 누적 → 전이 |
+| 근접 `MELEE` | `BLEED` | 출혈 | 베기 → 출혈 누적 → 전이 |
 | | `CRUSH` | 분쇄 | 타격 → 골절·기절 |
 | | `VITAL` | 급소 | 찌르기 → 급소 노출 → 치명타 |
 | | `FURY` | 광폭 | 체력이 낮을수록·맞을수록 강함 |
-| 원딜 `RANGED` | `SNIPE` | 저격 | 조준, 먼 거리, 사거리 |
+| 원거리 `RANGED` | `SNIPE` | 저격 | 조준, 먼 거리, 사거리 |
 | | `VOLLEY` | 연사 | 추가 사격, 관통 |
 | | `VENOM` | 맹독 | 중독 누적, 독 폭발 |
 | 마법 `MAGIC` | `ELEMENT` | 원소 | 화염·냉기·전기·젖음 반응 |
@@ -35,7 +35,7 @@
 | | `HEX` | 저주 | 약화·해로운 상태 누적 |
 | | `BOOST` | 강화 | 동료와 함께일 때 강함, 속도·버프 |
 
-(17개: 탱커 4, 근딜 4, 원딜 3, 마법 3, 지원 3. 옛 빌드군 대응: 출혈→`BLEED`, 분쇄→`CRUSH`, 급소→`VITAL`, 광폭→`FURY`, 원소→`ELEMENT`, 저주→`HEX`, 독→`VENOM`, 소환→`SUMMON`, 사령→`DEATH`. 수호·사수·지원은 효과마다 §4 표로 나눈다.)
+(17개: 탱커 4, 근접 4, 원거리 3, 마법 3, 지원 3. 옛 빌드군 대응: 출혈→`BLEED`, 분쇄→`CRUSH`, 급소→`VITAL`, 광폭→`FURY`, 원소→`ELEMENT`, 저주→`HEX`, 독→`VENOM`, 소환→`SUMMON`, 사령→`DEATH`. 수호·사수·지원은 효과마다 §4 표로 나눈다.)
 
 ## 2. 역할군 기본 스탯과 조합
 
@@ -44,8 +44,8 @@
 | 역할군 | 기본 스탯 | 옛 역할에서 |
 | --- | --- | --- |
 | 탱커 | 최대 HP +20, 방어 +3 | 수호 |
-| 근딜 | 공격력 +4, 최대 HP +8 | 광폭 |
-| 원딜 | 공격력 +3, 행동 속도 +5% | 사수 |
+| 근접 | 공격력 +4, 최대 HP +8 | 광폭 |
+| 원거리 | 공격력 +3, 행동 속도 +5% | 사수 |
 | 마법 | 주문력 +4, 최대 MP +8 | 술사 |
 | 지원 | 최대 HP +10, 최대 MP +6 | (새) |
 
@@ -54,8 +54,8 @@
 | 역할군 | 2개 | 4개 | 6개 |
 | --- | --- | --- | --- |
 | 탱커 | 방어 +2 | 방어 +5, 막기 +10 | 방어 +6, 막기 +12, 인접 동료가 받는 피해 −10% |
-| 근딜 | 공격력 +12% | 공격력 +25%, 치명 +8 | 공격력 +30%, 치명 +10, 처치 시 HP 5% |
-| 원딜 | 사거리 +1 | 원거리 피해 +20% | 원거리 피해 +25%, 15% 확률 추가 사격 |
+| 근접 | 공격력 +12% | 공격력 +25%, 치명 +8 | 공격력 +30%, 치명 +10, 처치 시 HP 5% |
+| 원거리 | 사거리 +1 | 원거리 피해 +20% | 원거리 피해 +25%, 15% 확률 추가 사격 |
 | 마법 | 주문력 +12% | 주문력 +25%, 라운드마다 MP +2 | 주문력 +30%, 주문 실패 없음 |
 | 지원 | 내가 주는 회복·보호 +20% | 회복·보호 +30%, 파티 전원 공격력 +8% | 회복·보호 +40%, 공격력 +10%, 라운드 시작에 인접 동료 해로운 상태 하나 25% 해제 |
 
@@ -68,14 +68,14 @@
 | 역할군 | 종족 (영혼석 id) | 수 |
 | --- | --- | --- |
 | 탱커 | 목도리 도마뱀(`LIZARD_TAIL`), 홉고블린(`HOB_TAUNT`), 고블린 방패병(`SHIELD_STANCE`), 바위 딱정벌레(`BEETLE_CURL`), 신전 뱀(`SERPENT_SHED`), 해골 병사(`SKELETON_WALL`), 망령 기사(`THORN_ARMOUR`), 역병 좀비(새) | 8 |
-| 근딜 | 고블린(`GOBLIN_SHIV`), 오크(`ORC_CLEAVER`), 놀(`GNOLL_SPEAR`), 강쥐(`RIVER_RAT_SPLASH`), 광석 골렘(`ORE_SLAM`), 거대 거머리(`LEECH_LATCH`), 구울(`GHOUL_CLAW`), 흡혈 박쥐(`VAMPIRE_BITE`), 폐허 사냥개(새), 미믹(새) | 10 |
-| 원딜 | 코볼트(`KOBOLD_SLING`), 폭풍 박쥐(`STORM_BAT`), 고블린 궁수(`GOBLIN_AIM`), 오크 투척병(`ORC_THROW`), 늪 두꺼비(`TOAD_SPIT`), 해골 궁수(`SKELETON_VOLLEY`) | 6 |
+| 근접 | 고블린(`GOBLIN_SHIV`), 오크(`ORC_CLEAVER`), 놀(`GNOLL_SPEAR`), 강쥐(`RIVER_RAT_SPLASH`), 광석 골렘(`ORE_SLAM`), 거대 거머리(`LEECH_LATCH`), 구울(`GHOUL_CLAW`), 흡혈 박쥐(`VAMPIRE_BITE`), 폐허 사냥개(새), 미믹(새) | 10 |
+| 원거리 | 코볼트(`KOBOLD_SLING`), 폭풍 박쥐(`STORM_BAT`), 고블린 궁수(`GOBLIN_AIM`), 오크 투척병(`ORC_THROW`), 늪 두꺼비(`TOAD_SPIT`), 해골 궁수(`SKELETON_VOLLEY`) | 6 |
 | 마법 | 코볼트 화염술사(`FIRE_CALLER`), 서리 도깨비(`FROST_IMP`), 놀 소환사(`GNOLL_SUMMONER`), 묘지기(`GRAVEKEEPER`), 불도롱뇽(새), 광부 유령(새), 뼈 직조공(새) | 7 |
 | 지원 | 쥐(`RAT_GNAW`), 고블린 주술사(`GOBLIN_HEXER`), 동굴 거미(`SPIDER_WEB`), 물의 정령(`WATER_WAVE`), 원혼(`WRAITH`), 포자 버섯(새), 신전 시종(새) | 7 |
 | 보스 | 고블린 족장(`GOBLIN_CHIEF`) 지원, 용광로 심장(`FURNACE_HEART`) 탱커, 영혼 포식자(`SOUL_EATER`) 마법 | 3 |
 
 - 술사 학파 주문은 그대로 종족에 붙는다(역할군과 무관): 화염술사 화염, 서리 도깨비 냉기, 폭풍 박쥐 전기, 주술사 저주, 놀 소환사 소환 등. **지원 역할군인 주술사도 저주 주문을 준다.**
-- 새 종족 8개는 ④-b에서 들어온다. 그전에는 30종 기준: 탱커 7, 근딜 8, 원딜 6, 마법 4, 지원 5.
+- 새 종족 8개는 ④-b에서 들어온다. 그전에는 30종 기준: 탱커 7, 근접 8, 원거리 6, 마법 4, 지원 5.
 
 ## 4. 부위 효과의 세부 유형
 
@@ -85,40 +85,40 @@
 | --- | --- | --- | --- |
 | 쥐 (지원) | RAT_GNAW 강화 | RAT_INCISOR 출혈 | RAT_HEART 강화 |
 | 목도리 도마뱀 (탱커) | LIZARD_TAIL 반사 | LIZARD_FRILL 광폭 | LIZARD_EYE 회피 |
-| 코볼트 (원딜) | KOBOLD_HIDE 회피 | KOBOLD_SLING 저격 | KOBOLD_HEART 저격 |
-| 고블린 (근딜) | GOBLIN_EAR 급소 | GOBLIN_TOOTH 저주 | GOBLIN_SHIV 급소 |
-| 오크 (근딜) | ORC_HIDE 출혈 | ORC_CLEAVER 광폭 | ORC_HEART 광폭 |
-| 놀 (근딜) | GNOLL_HIDE 광폭 | GNOLL_BONE 재생 | GNOLL_SPEAR 광폭 |
-| 강쥐 (근딜) | RIVER_RAT_SPLASH 원소 | RIVER_RAT_TOOTH 출혈 | RIVER_RAT_HEART 회복 |
+| 코볼트 (원거리) | KOBOLD_HIDE 회피 | KOBOLD_SLING 저격 | KOBOLD_HEART 저격 |
+| 고블린 (근접) | GOBLIN_EAR 급소 | GOBLIN_TOOTH 저주 | GOBLIN_SHIV 급소 |
+| 오크 (근접) | ORC_HIDE 출혈 | ORC_CLEAVER 광폭 | ORC_HEART 광폭 |
+| 놀 (근접) | GNOLL_HIDE 광폭 | GNOLL_BONE 재생 | GNOLL_SPEAR 광폭 |
+| 강쥐 (근접) | RIVER_RAT_SPLASH 원소 | RIVER_RAT_TOOTH 출혈 | RIVER_RAT_HEART 회복 |
 | 코볼트 화염술사 (마법) | FIRECALLER_HAND 원소 | FIRECALLER_BONE 원소 | FIRE_CALLER 원소 |
 | 서리 도깨비 (마법) | FROST_CLAW 원소 | FROST_HORN 원소 | FROST_IMP 원소 |
-| 폭풍 박쥐 (원딜) | STORM_BAT 강화 | BAT_BONE 원소 | BAT_EAR 회피 |
+| 폭풍 박쥐 (원거리) | STORM_BAT 강화 | BAT_BONE 원소 | BAT_EAR 회피 |
 | 고블린 주술사 (지원) | HEXER_HAND 저주 | HEXER_SKULL 저주 | GOBLIN_HEXER 저주 |
 | 놀 소환사 (마법) | SUMMONER_HIDE 소환 | SUMMONER_BONE 소환 | GNOLL_SUMMONER 소환 |
 | 홉고블린 (탱커) | HOB_HIDE 광폭 | HOB_JAW 분쇄 | HOB_TAUNT 방어 |
-| 고블린 궁수 (원딜) | GOBLIN_AIM 저격 | ARCHER_KNUCKLE 연사 | ARCHER_EYE 저격 |
+| 고블린 궁수 (원거리) | GOBLIN_AIM 저격 | ARCHER_KNUCKLE 연사 | ARCHER_EYE 저격 |
 | 고블린 방패병 (탱커) | SHIELD_HIDE 반사 | SHIELD_STANCE 방어 | SHIELD_HEART 분쇄 |
-| 오크 투척병 (원딜) | ORC_THROW 연사 | THROWER_SHOULDER 분쇄 | THROWER_EYE 저주 |
+| 오크 투척병 (원거리) | ORC_THROW 연사 | THROWER_SHOULDER 분쇄 | THROWER_EYE 저주 |
 | 동굴 거미 (지원) | SPIDER_LEG 급소 | SPIDER_SHELL 저주 | SPIDER_WEB 저주 |
 | 바위 딱정벌레 (탱커) | BEETLE_WING 방어 | BEETLE_CURL 방어 | BEETLE_CORE 방어 |
-| 광석 골렘 (근딜) | GOLEM_VEIN 분쇄 | ORE_SLAM 분쇄 | GOLEM_CORE 분쇄 |
-| 거대 거머리 (근딜) | LEECH_LATCH 출혈 | LEECH_SEGMENT 출혈 | LEECH_SUCKER 재생 |
-| 늪 두꺼비 (원딜) | TOAD_TONGUE 맹독 | TOAD_BONE 맹독 | TOAD_SPIT 맹독 |
+| 광석 골렘 (근접) | GOLEM_VEIN 분쇄 | ORE_SLAM 분쇄 | GOLEM_CORE 분쇄 |
+| 거대 거머리 (근접) | LEECH_LATCH 출혈 | LEECH_SEGMENT 출혈 | LEECH_SUCKER 재생 |
+| 늪 두꺼비 (원거리) | TOAD_TONGUE 맹독 | TOAD_BONE 맹독 | TOAD_SPIT 맹독 |
 | 신전 뱀 (탱커) | SERPENT_SHED 방어 | SERPENT_SCALE 맹독 | SERPENT_FANG 맹독 |
 | 물의 정령 (지원) | SPIRIT_CURRENT 방어 | SPIRIT_DROP 회복 | WATER_WAVE 회복 |
 | 해골 병사 (탱커) | SKELETON_ARM 출혈 | SKELETON_WALL 방어 | SKELETON_SKULL 사령 |
-| 해골 궁수 (원딜) | BOWMAN_FINGER 분쇄 | SKELETON_VOLLEY 급소 | BOWMAN_SOCKET 분쇄 |
-| 구울 (근딜) | GHOUL_CLAW 재생 | GHOUL_JAW 사령 | GHOUL_HEART 재생 |
-| 흡혈 박쥐 (근딜) | VAMPIRE_WING 급소 | VAMPIRE_BITE 재생 | VAMPIRE_HEART 재생 |
+| 해골 궁수 (원거리) | BOWMAN_FINGER 분쇄 | SKELETON_VOLLEY 급소 | BOWMAN_SOCKET 분쇄 |
+| 구울 (근접) | GHOUL_CLAW 재생 | GHOUL_JAW 사령 | GHOUL_HEART 재생 |
+| 흡혈 박쥐 (근접) | VAMPIRE_WING 급소 | VAMPIRE_BITE 재생 | VAMPIRE_HEART 재생 |
 | 망령 기사 (탱커) | WRAITH_KNIGHT_CLOAK 저주 | THORN_ARMOUR 반사 | WRAITH_KNIGHT_CORE 분쇄 |
 | 원혼 (지원) | WRAITH_SHROUD 저주 | WRAITH_BONE 저주 | WRAITH 저주 |
 | 묘지기 (마법) | GRAVEKEEPER_HAND 소환 | GRAVEKEEPER_BONE 소환 | GRAVEKEEPER 사령 |
-| 폐허 사냥개 (근딜, 새) | HOUND_EAR 출혈 | HOUND_LEG 강화 | HOUND_NOSE 출혈 |
+| 폐허 사냥개 (근접, 새) | HOUND_EAR 출혈 | HOUND_LEG 강화 | HOUND_NOSE 출혈 |
 | 포자 버섯 (지원, 새) | SHROOM_CAP 맹독 | SHROOM_STEM 회복 | SHROOM_SAC 맹독 |
 | 불도롱뇽 (마법, 새) | SALAMANDER_TAIL 광폭 | SALAMANDER_SCALE 원소 | SALAMANDER_HEART 원소 |
 | 광부 유령 (마법, 새) | GHOST_HAND 사령 | GHOST_CHAIN 급소 | GHOST_CORE 사령 |
 | 신전 시종 (지원, 새) | ACOLYTE_HAND 회복 | ACOLYTE_BONE 방어 | ACOLYTE_HEART 회복 |
-| 미믹 (근딜, 새) | MIMIC_TONGUE 급소 | MIMIC_TOOTH 급소 | MIMIC_CORE 급소 |
+| 미믹 (근접, 새) | MIMIC_TONGUE 급소 | MIMIC_TOOTH 급소 | MIMIC_CORE 급소 |
 | 뼈 직조공 (마법, 새) | WEAVER_THREAD 소환 | WEAVER_BONE 소환 | WEAVER_CORE 소환 |
 | 역병 좀비 (탱커, 새) | ZOMBIE_FLESH 맹독 | ZOMBIE_BONE 재생 | ZOMBIE_HEART 반사 |
 
@@ -131,14 +131,14 @@
 | 곳 | 바뀌는 것 |
 | --- | --- |
 | `data/content/essences.json` | `role`을 새 역할군 id로(`floor_monsters.json`의 몬스터 `role`은 그대로) |
-| `expedition/progression/essences.gd` | `ROLES = {"TANK":"탱커","MELEE":"근딜","RANGED":"원딜","MAGIC":"마법","SUPPORT":"지원"}`. 옛 id 별칭은 두지 않고 테스트를 새 id로 옮긴다 |
+| `expedition/progression/essences.gd` | `ROLES = {"TANK":"탱커","MELEE":"근접","RANGED":"원거리","MAGIC":"마법","SUPPORT":"지원"}`. 옛 id 별칭은 두지 않고 테스트를 새 id로 옮긴다 |
 | `expedition/progression/bestiary.gd` | `ROLE_POINTS`를 §2.1로(새 id). `ROLE_HP`·`ROLE_ATTACK`은 몬스터 쪽이라 그대로 |
 | `expedition/progression/tag_sets.gd` | `ROLE_TEXT`를 §2.2로, 구간 계산은 그대로 |
 | `expedition/progression/stone_effects.gd` | 역할 조합 수치 상수를 새 역할군으로(§2.2). 지원 조합의 회복·보호 증가, 공격력, 정화 |
 | `data/content/stone_effects.json` | 효과마다 `families` → `subtype`(§4). 장비 효과도 가장 가까운 세부 유형 |
 | `expedition/ai/build_sense.gd` | 세부 유형 이름은 `Subtypes`에서 읽고 `subtype_profile`은 유형 비율. `profile`은 내부 전술 채널로 합산하며 탱커 네 유형은 자리 선호로 대응 |
-| 동료 태세 기본값 | 주 역할군으로 추천: 탱커 → 수호형, 근딜 → 돌격형, 원딜·마법 → 치고 빠지기, 지원 → 수호형(동료 곁). 추천만 하고 강제하지 않는다 |
-| `expedition/actors/npc_essences.gd` | 성격 선호를 역할군으로: 낮은 A → 근딜, 높은 C → 탱커·지원, 높은 O → 마법, 그 밖 → 원딜 |
+| 동료 태세 기본값 | 주 역할군으로 추천: 탱커 → 수호형, 근접 → 돌격형, 원거리·마법 → 치고 빠지기, 지원 → 수호형(동료 곁). 추천만 하고 강제하지 않는다 |
+| `expedition/actors/npc_essences.gd` | 성격 선호를 역할군으로: 낮은 A → 근접, 높은 C → 탱커·지원, 높은 O → 마법, 그 밖 → 원거리 |
 | 장비 증폭 옵션 | 빌드군 12개 → 세부 유형(있는 것부터). 얇은 유형(회피·연사·저격·강화) 옵션을 우선 추가 |
 | 도감 거르기 | 역할군 5 칩 + 누르면 그 아래 세부 유형 칩 |
 | 화면 문구 | 영혼석 카드 "탱커 · 방어", 캐릭터 화면 "방어 60% · 반사 30%", 역할군 조합 현황 |
@@ -154,6 +154,6 @@
 
 ## 7. 검토할 결정
 
-1. 종족 배정(§3), 특히 도마뱀(탱커), 흡혈 박쥐(근딜), 동굴 거미(지원), 강쥐(근딜), 폭풍 박쥐(원딜).
+1. 종족 배정(§3), 특히 도마뱀(탱커), 흡혈 박쥐(근접), 동굴 거미(지원), 강쥐(근접), 폭풍 박쥐(원거리).
 2. 지원 역할군의 기본 스탯과 조합 수치.
 3. 얇은 세부 유형(회피·연사·저격·강화) 보강을 장비로 먼저 할지.

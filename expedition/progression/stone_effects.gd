@@ -243,7 +243,7 @@ static func after_hit(s, target: Dictionary, attacker: Dictionary, form: String,
 	if not bool(ctx.spell) and form == "physical" and alive(target) and bool(ctx.ranged) and not has(attacker,"ORC_THROW"): second_shot(s,attacker,target)
 	fire(s,"STRUCK",ctx)
 
-## 오크 투척병 and 원딜 6: one more ranged attack, once an action.
+## 오크 투척병 and 원거리 6: one more ranged attack, once an action.
 static func second_shot(s, attacker: Dictionary, target: Dictionary) -> void:
 	var odds := 0
 	odds = EffectEngine.modifier(s,"second_shot_chance",attacker)
