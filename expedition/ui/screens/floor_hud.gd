@@ -305,11 +305,11 @@ static func show_manual_skills(ui) -> void:
 		var part_id: String = str(id)
 		if part_id.is_empty() or not Session.Abilities.usable_by(actor,part_id): continue
 		var def: Dictionary = Session.Abilities.definition(part_id)
-		var available: bool = session.in_combat() and Session.Abilities.cooldown(actor,part_id) <= 0
+		var available: bool = session.in_combat() and Session.Abilities.cooldown(actor,part_id) <= 0 and actor.mp >= int(def.get("mp",0))
 		if def.target == "SELF": available = available and Session.Abilities.legal(session,actor,part_id,actor.pos)
-		var part = ui.button(choices,"%s   ·   %d턴" % [str(def.name),Session.Abilities.cooldown(actor,part_id)],func(): choose_part(ui,part_id),available)
+		var part = ui.button(choices,"%s%s   ·   %d턴" % [str(def.name)," · MP %d" % int(def.mp) if int(def.get("mp",0)) > 0 else "",Session.Abilities.cooldown(actor,part_id)],func(): choose_part(ui,part_id),available)
 		part.name = "Part_"+part_id
-		part.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR; part.icon = Art.part_icon(part_id); part.add_theme_constant_override("icon_max_width",28)
+		part.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR; part.icon = Art.spell_icon("hound" if part_id == "BONE_CALL" else "mend") if part_id in ["BONE_CALL","SOUL_MEND"] else Art.part_icon(part_id); part.add_theme_constant_override("icon_max_width",28)
 		part.alignment = HORIZONTAL_ALIGNMENT_LEFT; part.custom_minimum_size.y = 54
 	ui.button(box,"전술",func(): show_manual_tactics(ui))
 	center_tactics_popup(ui,roundi(scroll.custom_minimum_size.y)+112)

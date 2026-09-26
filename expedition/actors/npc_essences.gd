@@ -43,34 +43,30 @@ static func continuing(picked: Array, id: String) -> int:
 		if same_role or same_element or same_build: count += 1
 	return count
 
-## Greedy loadout: each slot takes the best-scoring essence left, scored with a
-## bonus for every chosen essence it would make a set with. Ties go to the id.
+## Initial/legacy pools choose only empty slots. A hunt never replaces a stone.
 static func choose(s, npc: Dictionary) -> void:
 	Essences.sync_slots(npc)
-	var count: int = Essences.slot_count(npc)
-	var pool: Array = npc.get("essences",{}).keys()
-	var picked: Array = []
-	while picked.size() < mini(count,pool.size()):
+	var pool: Array = npc.get("essences",{}).keys().filter(func(id): return id not in npc.equipped_abilities)
+	# Pending legacy choices are not permanent until selected.
+	for id in pool: npc.essences.erase(id)
+	while Essences.free_slot(npc) >= 0 and not pool.is_empty():
 		var best := ""; var best_score := -(1 << 30)
+		var picked: Array = npc.equipped_abilities.filter(func(id): return not str(id).is_empty())
 		for entry in pool:
 			var id: String = str(entry)
-			if id in picked: continue
 			var score: int = preference(npc,id)+SET_BONUS*continuing(picked,id)
 			if score > best_score or (score == best_score and id < best): best = id; best_score = score
-		picked.append(best)
-	for slot in range(count):
-		if not str(npc.equipped_abilities[slot]).is_empty(): Essences.take(npc,slot)
-	for slot in range(picked.size()):
-		var id: String = picked[slot]
-		Essences.put(npc,slot,id)
-		if not str(Essences.school(id)).is_empty() and str(npc.get("essence_spells",{}).get(id,"")).is_empty():
-			var choices: Array = Essences.spell_choices(npc,id)
-			if not choices.is_empty(): npc.get_or_add("essence_spells",{})[id] = str(choices[choices.size()-1])
+		pool.erase(best)
+		Essences.bind(npc,best)
+		if not str(Essences.school(best)).is_empty():
+			var choices: Array = Essences.spell_choices(npc,best)
+			var core: Array = choices.filter(func(spell): return str(Essences.combat.spells[spell].shape) in ["bolt","line","cone","burst","mark","summon"] and not bool(Essences.combat.spells[spell].get("sacrifice",false)))
+			if not core.is_empty(): npc.get_or_add("essence_spells",{})[best] = str(core.back())
 	Essences.sync_spells(npc)
 	StatSheet.refresh_pools(s,npc)
 
 ## An independent NPC's own kill: the first of a species always gives its
-## essence, later ones one time in four; then the loadout is chosen again.
+## essence, later ones one time in four; only a free slot can absorb it.
 static func on_hunt(s, enemy: Dictionary, hunters: Array) -> void:
 	var id: String = str(enemy.get("part_id",""))
 	id = Essences.canonical(id)
@@ -85,5 +81,4 @@ static func on_hunt(s, enemy: Dictionary, hunters: Array) -> void:
 		enemy.part_kind = part
 		var stone: String = Essences.canonical(Essences.base_of(id)+"/"+part+("@"+Essences.variant_element(id) if not Essences.variant_element(id).is_empty() else "")) if not Essences.part_of(id).is_empty() else id
 		if Essences.absorbed(npc,stone): continue
-		npc.get_or_add("essences",{})[stone] = 1
-		choose(s,npc)
+		if Essences.bind(npc,stone).is_empty(): StatSheet.refresh_pools(s,npc)

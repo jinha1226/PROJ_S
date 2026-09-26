@@ -69,7 +69,7 @@ static func spawn(s, room: Dictionary, depth: int) -> void:
 	boss.ready_at = int(s.time)+100
 	s.npcs.append(boss)
 
-## Tops the essences up to ten with floor species' essences, each absorbed,
+## Tops the essences up to six with floor species' essences, each absorbed,
 ## chosen by the same nature-and-sets score an NPC uses for its own slots.
 static func fill(boss: Dictionary) -> void:
 	Essences.normalize_actor(boss)

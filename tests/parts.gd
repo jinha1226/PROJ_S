@@ -43,11 +43,11 @@ func ui() -> void:
 	var heading: Array = scene.modal_content.find_children("*","Label",true,false).filter(func(l): return l.text.begins_with("영혼석 슬롯"))
 	check(not heading.is_empty() and heading[0].text == "영혼석 슬롯 0 / 1","empty slots heading")
 	var cards: Array = scene.modal_content.find_children("EssenceSlot*","Button",true,false)
-	check(cards.size() == 10,"ten essence slot cells")
+	check(cards.size() == 6,"six essence slot cells")
 	scene.find_child("EssenceSlot0",true,false).pressed.emit()
 	for frame in range(3): await process_frame
-	check(scene.item_detail.find_children("*","Label",true,false).any(func(l): return l.text == "흡수한 영혼석 없음"),"chooser only lists absorbed essences")
-	check(scene.modal_content.find_children("EssenceAbsorb_*","Button",true,false).size() >= 2,"the tab offers bag absorption")
+	check(scene.item_detail.find_children("EssencePick_*","Button",true,false).is_empty(),"empty slots never open an equipment chooser")
+	check(scene.modal_content.find_children("EssenceAbsorb_*","Button",true,false).is_empty(),"bag absorption is absent from the folio")
 	scene.item_popup.hide()
 	check(s.equip_part(0,0,"RAT_GNAW"),"equip through the session")
 	scene.show_character(0,"파츠")
@@ -56,7 +56,7 @@ func ui() -> void:
 	check(heading[0].text == "영혼석 슬롯 1 / 1","heading counts equipped essences")
 	scene.find_child("EssenceSlot0",true,false).pressed.emit()
 	await process_frame
-	check(scene.item_detail.find_child("EssenceUnequip",true,false) != null,"equipped slot offers removal")
+	check(scene.item_detail.find_child("EssenceUnequip",true,false) == null,"absorbed slot offers no removal")
 	scene.details_popup.hide()
 	# The floor battle is automatic, so an empty slot no longer shows as a
 	# battle button: the parts tab above is where it reads 빈 슬롯.
@@ -69,7 +69,7 @@ func ui() -> void:
 	check(scene.inventory_slots.all(func(slot): return slot.row.is_empty() or slot.row.category == "파츠"),"parts filter")
 	scene.show_item_detail("GOBLIN_SHIV"); await process_frame
 	var detail: Array = scene.item_detail.find_children("*","Button",true,false)
-	check(detail.any(func(b): return b.text.contains("흡수") and b.disabled),"absorption is disabled outside camp")
+	check(detail.any(func(b): return b.name == "BagAbsorb0" and b.disabled),"absorption is disabled outside camp")
 	scene.item_popup.hide(); scene.details_popup.hide()
 	scene.queue_free(); await process_frame
 
@@ -79,7 +79,7 @@ func catalog() -> void:
 		var def: Dictionary = Abilities.DEFINITIONS[id]
 		for key in ["species","passive","enemy","allies_hit","tile_wet"]:
 			check(def.has(key),"%s has field %s" % [id,key])
-		check(def.effect in ["DAMAGE","SHIELD","HEAL","LUNGE","PUSH","GUARD","STANCE","TAUNT","CLEANSE","WARD_ALLIES","THORNS","MARK","FURNACE","DEVOUR"],"%s effect known" % id)
+		check(def.effect in ["DAMAGE","SHIELD","HEAL","LUNGE","PUSH","GUARD","STANCE","TAUNT","CLEANSE","WARD_ALLIES","THORNS","MARK","FURNACE","DEVOUR","SUMMON"],"%s effect known" % id)
 		check(def.target in ["ENEMY","SELF","ALLY"],"%s target known" % id)
 		check(int(def.enemy.get("prep",-1)) >= 0 and int(def.enemy.get("prep",-1)) <= 2,"%s prep in 0..2" % id)
 		check(Rules.catalog().has(id),"%s in the derived rule catalog" % id)
@@ -139,11 +139,10 @@ func bag() -> void:
 	check(not s.equip_part(1,0,"RAT_GNAW"),"bag empty for the second member")
 	s.parts_bag[Essences.canonical("RAT_GNAW")] = 1
 	check(s.equip_part(1,0,"RAT_GNAW"),"another member may hold the same part")
-	check(s.equip_part(0,0,"GOBLIN_SHIV") and s.parts_bag.get(Essences.canonical("RAT_GNAW"),0) == 0 and int(s.party[0].essences[Essences.canonical("RAT_GNAW")]) == 1 and s.party[0].equipped_abilities[0] == Essences.canonical("GOBLIN_SHIV"),"replacing keeps the old part absorbed")
-	check(s.party[0].rules.size() == 1 and s.party[0].rules[0].skill == "GOBLIN_SHIV","replacing swaps the rule")
-	check(s.unequip_part(0,0) and s.party[0].equipped_abilities[0] == "" and s.parts_bag.get(Essences.canonical("GOBLIN_SHIV"),0) == 0 and s.party[0].rules.is_empty(),"unequip empties the slot without returning a part")
-	check(not s.unequip_part(0,0),"empty slot cannot be unequipped")
-	check(s.equip_part(0,0,"RAT_GNAW") and s.equip_part(0,1,"GOBLIN_SHIV"),"both slots use absorbed essences")
+	check(not s.equip_part(0,0,"GOBLIN_SHIV"),"legacy equipment cannot replace a permanent stone")
+	check(s.absorb_essence(0,"GOBLIN_SHIV").is_empty() and s.party[0].equipped_abilities[1] == Essences.canonical("GOBLIN_SHIV"),"absorption fills the next empty slot")
+	check(s.party[0].rules.size() == 2,"both absorbed species keep their rules")
+	check(not s.unequip_part(0,0) and not s.unequip_part(0,1),"neither permanent stone can be removed")
 	s.phase = "BATTLE"
 	check(not s.equip_part(0,0,"RAT_GNAW") and not s.unequip_part(0,1),"slots are locked in a fight")
 	# Drops stay with the run across floors and after defeat.

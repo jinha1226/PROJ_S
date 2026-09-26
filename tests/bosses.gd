@@ -262,7 +262,7 @@ func fallen() -> void:
 	var d := arena(12,2,2); s = d.s
 	var boss: Dictionary = d.boss
 	check(bool(boss.get("fallen",false)) and bool(boss.hostile) and bool(boss.npc) and not bool(boss.enemy),"the last boss is a hostile NPC")
-	check(int(boss.level) == 10 and Essences.equipped(boss).size() == 10,"level ten, ten essences worn")
+	check(int(boss.level) == 10 and Essences.equipped(boss).size() == 6,"level ten, six permanent essences")
 	check(int(boss.max_hp) >= 160*6,"at least the zone-4 base times six")
 	check(s.stairs_sealed(),"while it lives the stairs stay shut")
 	var ally: Dictionary = s.party[1]

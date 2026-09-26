@@ -21,7 +21,7 @@ static func catalog() -> Dictionary:
 		for id in definitions:
 			var def: Dictionary = definitions[id]
 			_catalog[id] = {"name":str(def.name),"description":str(def.description),
-				"targets":TARGETS_BY_TARGET[def.target].duplicate(),"conditions":CONDITIONS_BY_TARGET[def.target].duplicate()}
+				"targets":TARGETS_BY_TARGET[def.target].duplicate(),"conditions":["HP","ALLY_LETHAL"] if def.target == "ALLY" and def.effect == "HEAL" else CONDITIONS_BY_TARGET[def.target].duplicate()}
 	return _catalog
 
 static func skill(id: String) -> Dictionary:
@@ -55,7 +55,9 @@ static func matches(s, source: Dictionary, candidate: Dictionary, rule: Dictiona
 	var target: Dictionary = source if rule.target == "SELF" else s.at(candidate.cell)
 	if target.is_empty() or target.hp <= 0: return false
 	# 엄호 targets a living ally other than the actor, never a foe and never self.
-	if rule.target == "ALLY" and (target.get("enemy",false) or target.id == source.id): return false
+	if rule.target == "ALLY":
+		if s.side_of(target) != s.side_of(source): return false
+		if target.id == source.id and load("res://expedition/items/abilities.gd").definition(str(rule.skill)).get("effect","") != "HEAL": return false
 	var subject: Dictionary = source if rule.subject == "SELF" else target
 	match rule.when:
 		"ALWAYS": return true

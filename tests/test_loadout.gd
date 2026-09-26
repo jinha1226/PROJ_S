@@ -59,12 +59,15 @@ func scene_layer() -> void:
 	scene.show_character(0,"영혼석")
 	for frame in range(4): await process_frame
 	var cards: Array = scene.modal_content.find_children("EssenceSlot*","Button",true,false)
-	check(cards.size() == 10,"the essence tab renders ten slot cells")
+	check(cards.size() == 6,"the essence tab renders six slot cells")
 	scene.find_child("EssenceSlot0",true,false).pressed.emit()
 	for frame in range(3): await process_frame
-	for id in Session.Essences.catalog():
-		if Essences.canonical(str(id)) in s.party[0].equipped_abilities: continue
-		check(scene.modal_content.find_child("EssenceAbsorb_"+Essences.canonical(str(id)).replace("/","_"),true,false) != null,"the granted bag offers absorption: "+id)
+	check(scene.modal_content.find_child("EssenceBag",true,false) == null,"the character tab excludes the shared bag")
+	check(scene.item_detail.find_child("EssenceUnequip",true,false) == null,"details have no removal control")
+	scene.item_popup.hide(); scene.details_popup.hide()
+	scene.inventory_filter = "파츠"; scene.show_supplies()
+	for frame in range(3): await process_frame
+	check(scene.inventory_filter == "파츠","the inventory retains the stone category")
 	scene.item_popup.hide()
 	scene.details_popup.hide()
 	s.phase = "BATTLE"

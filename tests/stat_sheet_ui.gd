@@ -20,7 +20,7 @@ func run() -> void:
 	s.phase = "CAMP"
 	var hero: Dictionary = s.party[0]
 	s.parts_bag["ORC_CLEAVER"] = 1
-	check(s.absorb_essence(0,"ORC_CLEAVER").is_empty() and s.equip_part(0,0,"ORC_CLEAVER"),"an orc essence is worn")
+	check(s.absorb_essence(0,"ORC_CLEAVER").is_empty(),"an orc essence is worn")
 	scene.show_character(0,"상태")
 	for _i in range(4): await process_frame
 	for group in ["능력치","영혼석 보정","공격 판정","방어 수치","속성 저항"]:

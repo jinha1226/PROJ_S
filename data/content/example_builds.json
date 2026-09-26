@@ -1,5 +1,5 @@
 {
- "version": 1,
+ "version": 2,
  "builds": [
   {
    "id": "wall",
@@ -15,20 +15,16 @@
     "HOB_TAUNT/pierced",
     "SHIELD_STANCE/broken",
     "SHIELD_STANCE/cut",
-    "BEETLE_CURL/cut",
-    "BEETLE_CURL/broken",
     "BEETLE_CURL/pierced",
     "SKELETON_WALL/broken",
-    "THORN_ARMOUR/broken",
-    "SERPENT_SHED/cut",
-    "WATER_WAVE/cut"
+    "THORN_ARMOUR/broken"
    ],
    "schools": {},
    "stance": "GUARDIAN",
    "flow": [
-    "맞을 때마다 방어가 쌓이고(딱정벌레 핵), 막기 확률이 높다(방패병 팔뼈).",
-    "막으면 되받아치고(방패병 가죽), 근접 피해는 반사된다(망령 기사 갑주).",
-    "곁의 동료가 받는 피해를 줄인다(해골 병사 갈비뼈)."
+    "피격될 때 방어가 쌓이고, 막기 확률이 높다.",
+    "막으면 반격하고, 근접 피해를 반사한다.",
+    "곁의 동료가 받는 피해를 줄인다."
    ]
   },
   {
@@ -47,18 +43,14 @@
     "VAMPIRE_BITE/broken",
     "VAMPIRE_BITE/pierced",
     "GNOLL_SPEAR/broken",
-    "LEECH_LATCH/pierced",
-    "HOB_TAUNT/pierced",
-    "BEETLE_CURL/broken",
-    "BEETLE_CURL/pierced",
-    "SKELETON_WALL/broken"
+    "LEECH_LATCH/pierced"
    ],
    "schools": {},
    "stance": "GUARDIAN",
    "flow": [
-    "주는 피해의 일부를 흡혈하고(흡혈 박쥐 이빨), 넘치는 회복은 보호가 된다(흡혈 박쥐 심장).",
-    "처치할 때마다 크게 회복한다(구울 발톱·심장).",
-    "외부 회복 대신 라운드마다 재생한다(놀 뼈)."
+    "피해를 흡혈하고, 넘치는 회복은 보호가 된다.",
+    "처치할 때마다 회복한다.",
+    "외부 회복 대신 라운드마다 재생한다."
    ]
   },
   {
@@ -75,20 +67,16 @@
     "RAT_GNAW/broken",
     "ORC_CLEAVER/cut",
     "RIVER_RAT_SPLASH/broken",
-    "LEECH_LATCH/cut",
     "LEECH_LATCH/broken",
     "LEECH_LATCH/pierced",
-    "SKELETON_WALL/cut",
-    "ORC_CLEAVER/broken",
-    "ORC_CLEAVER/pierced",
-    "GHOUL_CLAW/cut"
+    "SKELETON_WALL/cut"
    ],
    "schools": {},
    "stance": "CHARGER",
    "flow": [
-    "도끼 베기와 쥐 앞니로 출혈을 걸고, 휘말린 적도 부상 판정을 받는다.",
-    "출혈이 오래가고(해골 병사 팔) 틱이 세며(거머리 몸마디), 다시 걸면 터진다(오크 가죽).",
-    "출혈 대상에게서 흡혈하고(거머리 흡반), 처치하면 회복한다(구울 발톱)."
+    "베기와 찌르기에 출혈을 더 자주 건다.",
+    "출혈이 오래가고, 틱 피해가 강해지며, 다시 걸면 즉시 피해를 준다.",
+    "출혈 대상에게 피해를 주면 흡혈한다."
    ]
   },
   {
@@ -106,19 +94,15 @@
     "ORE_SLAM/cut",
     "ORE_SLAM/broken",
     "ORE_SLAM/pierced",
-    "SHIELD_STANCE/pierced",
     "ORC_THROW/broken",
-    "SKELETON_VOLLEY/cut",
-    "SKELETON_VOLLEY/pierced",
-    "THORN_ARMOUR/pierced",
-    "ORC_CLEAVER/broken"
+    "SKELETON_VOLLEY/cut"
    ],
    "schools": {},
    "stance": "CHARGER",
    "flow": [
-    "철퇴로 골절을 자주 걸고(홉고블린 턱), 방어를 완전히 무시한다(골렘 광맥).",
-    "기절(골렘 몸돌, 망령 기사 핵)과 밀치기(오크 투척병 어깨뼈)로 적을 묶는다.",
-    "골절·기절된 적에게 크게 들어간다(골렘 핵, 해골 궁수 손가락)."
+    "골절 확률을 높이고, 타격으로 방어를 무시한다.",
+    "기절과 밀치기로 적의 행동을 막는다.",
+    "골절·기절된 적에게 더 큰 피해를 준다."
    ]
   },
   {
@@ -137,18 +121,14 @@
     "SPIDER_WEB/cut",
     "SKELETON_VOLLEY/broken",
     "VAMPIRE_BITE/cut",
-    "LIZARD_TAIL/pierced",
-    "ORC_CLEAVER/broken",
-    "GNOLL_SPEAR/pierced",
-    "GNOLL_SPEAR/cut",
-    "ORC_CLEAVER/pierced"
+    "LIZARD_TAIL/pierced"
    ],
    "schools": {},
    "stance": "CHARGER",
    "flow": [
-    "전투의 첫 공격은 반드시 치명타이고(고블린 귀), 멀쩡한 적에게 첫 피해가 두 배다(고블린 심장).",
-    "치명타 확률·피해가 높고(해골 궁수 등뼈), 치명타가 나면 다음 행동이 빨라진다(거미 다리).",
-    "피하면 다음 공격이 치명타에 가까워진다(도마뱀 눈)."
+    "전투 첫 공격은 치명타이고, 멀쩡한 적에게 첫 피해가 두 배다.",
+    "치명타 확률과 피해가 높고, 치명타 뒤 행동이 빨라진다.",
+    "이동 뒤 공격과 회피 뒤 치명타가 강해진다."
    ]
   },
   {
@@ -163,22 +143,18 @@
    "rings": [],
    "stones": [
     "KOBOLD_SLING/cut",
-    "KOBOLD_SLING/broken",
     "KOBOLD_SLING/pierced",
     "GOBLIN_AIM/cut",
-    "GOBLIN_AIM/broken",
     "GOBLIN_AIM/pierced",
     "ORC_THROW/cut",
-    "ORC_THROW/pierced",
-    "SKELETON_VOLLEY/broken",
-    "STORM_BAT/cut"
+    "ORC_THROW/pierced"
    ],
    "schools": {},
    "stance": "SKIRMISHER",
    "flow": [
-    "가만히 조준할수록 강해지고(코볼트 심장), 사거리가 길다(고블린 궁수 깃).",
-    "먼 적에게 더 세고(고블린 궁수 눈), 표식을 걸어 받는 피해를 늘린다(오크 투척병 눈).",
-    "추가 사격(오크 투척병 팔)과 관통(고블린 궁수 손가락뼈)."
+    "가만히 조준할수록 강해지고, 사거리가 길다.",
+    "먼 적에게 더 큰 피해를 주고, 표식을 건다.",
+    "추가 사격으로 화력을 높인다."
    ]
   },
   {
@@ -197,18 +173,16 @@
     "TOAD_SPIT/pierced",
     "SERPENT_SHED/broken",
     "SERPENT_SHED/pierced",
-    "KOBOLD_SLING/broken",
-    "GOBLIN_AIM/cut",
-    "GOBLIN_AIM/pierced",
-    "GOBLIN_HEXER/cut",
-    "GOBLIN_HEXER/pierced"
+    "GOBLIN_HEXER/cut"
    ],
-   "schools": {},
+   "schools": {
+    "GOBLIN_HEXER/cut": "hex"
+   },
    "stance": "SKIRMISHER",
    "flow": [
-    "화살에 중독을 걸고(두꺼비 독샘), 다시 걸면 틱이 쌓인다(두꺼비 혀).",
-    "중독된 적에게 더 세고(뱀 독니), 그 적에게 받는 피해는 줄어든다(두꺼비 뼈).",
-    "상태가 길게 가고(주술사 눈), 상태가 많을수록 더 아프다(주술사 손)."
+    "공격에 중독을 걸고, 다시 걸면 틱 피해가 쌓인다.",
+    "중독된 적에게 더 세게 때리고, 덜 맞는다.",
+    "독을 견디고, 상태이상이 오래간다."
    ]
   },
   {
@@ -225,24 +199,23 @@
     "FIRE_CALLER/cut",
     "FIRE_CALLER/broken",
     "FIRE_CALLER/pierced",
-    "FROST_IMP/cut",
     "FROST_IMP/broken",
     "FROST_IMP/pierced",
-    "STORM_BAT/broken",
-    "RIVER_RAT_SPLASH/cut",
-    "WATER_WAVE/cut",
-    "STORM_BAT/cut"
+    "STORM_BAT/broken"
    ],
    "schools": {
     "FIRE_CALLER/pierced": "fire",
     "FROST_IMP/pierced": "ice",
-    "STORM_BAT/cut": "air"
+    "FIRE_CALLER/cut": "fire",
+    "FIRE_CALLER/broken": "fire",
+    "FROST_IMP/broken": "ice",
+    "STORM_BAT/broken": "air"
    },
    "stance": "SKIRMISHER",
    "flow": [
-    "화염·냉기·전기 주문을 섞어 반응을 일으키고, 반응할 때마다 MP가 돌아온다(화염술사 뼈).",
-    "화상 대상(화염술사 손)과 빙결 대상(서리 도깨비 발톱)을 노린다.",
-    "젖은 칸에서 더 세고(강쥐 꼬리) 덜 맞는다(물의 정령 물살)."
+    "화염·냉기·전기 피해가 강해지고, 반응할 때 MP를 회복한다.",
+    "화상 대상에게 더 큰 피해를 준다.",
+    "빙결된 적을 처치하면 주변에 빙결이 번진다."
    ]
   },
   {
@@ -259,22 +232,21 @@
     "GNOLL_SUMMONER/cut",
     "GNOLL_SUMMONER/broken",
     "GNOLL_SUMMONER/pierced",
-    "GRAVEKEEPER/cut",
     "GRAVEKEEPER/broken",
     "GRAVEKEEPER/pierced",
-    "SKELETON_WALL/pierced",
-    "GHOUL_CLAW/broken",
-    "GHOUL_CLAW/pierced",
-    "VAMPIRE_BITE/broken"
+    "SKELETON_WALL/pierced"
    ],
    "schools": {
-    "GNOLL_SUMMONER/pierced": "summon"
+    "GNOLL_SUMMONER/pierced": "summon",
+    "GNOLL_SUMMONER/cut": "summon",
+    "GNOLL_SUMMONER/broken": "summon"
    },
    "stance": "SKIRMISHER",
    "flow": [
-    "소환수를 하나 더 부르고 더 세게 만든다(놀 소환사 심장·뼈).",
-    "소환수 둘이 같은 적을 치면 더 아프고(놀 소환사 가죽), 처치하면 내가 회복한다(묘지기 손).",
-    "쓰러진 소환수는 터지고(묘지기 뼈), 처치한 적은 해골로 일어난다(해골 병사 두개골)."
+    "소환수 수·피해·체력을 늘린다.",
+    "소환수 둘이 같은 적을 치면 더 큰 피해를 준다.",
+    "소환수 처치로 회복하고, 소환수 사망은 폭발을 만든다.",
+    "처치한 적이 해골로 일어난다."
    ]
   },
   {
@@ -293,20 +265,18 @@
     "GOBLIN_HEXER/pierced",
     "WRAITH/cut",
     "WRAITH/broken",
-    "WRAITH/pierced",
-    "SPIDER_WEB/broken",
-    "SPIDER_WEB/pierced",
-    "GOBLIN_SHIV/broken",
-    "ORC_THROW/pierced"
+    "SPIDER_WEB/broken"
    ],
    "schools": {
-    "GOBLIN_HEXER/pierced": "hex"
+    "GOBLIN_HEXER/pierced": "hex",
+    "GOBLIN_HEXER/cut": "hex",
+    "GOBLIN_HEXER/broken": "hex"
    },
    "stance": "GUARDIAN",
    "flow": [
-    "저주 주문이 잘 걸리고(주술사 두개골) 오래간다(주술사 눈).",
-    "상태가 쌓일수록 동료의 공격이 세진다(주술사 손, 거미 껍질).",
-    "상태 걸린 적이 죽으면 저주가 옆 적에게 옮는다(원혼 수의)."
+    "저주가 잘 걸리고 오래간다.",
+    "상태이상이 쌓인 적에게 더 큰 피해를 준다.",
+    "처치한 적의 상태이상이 옆 적에게 옮는다."
    ]
   },
   {
@@ -322,21 +292,17 @@
    "stones": [
     "WATER_WAVE/pierced",
     "WATER_WAVE/broken",
-    "WATER_WAVE/cut",
     "RAT_GNAW/cut",
     "RAT_GNAW/pierced",
     "SERPENT_SHED/cut",
-    "RIVER_RAT_SPLASH/pierced",
-    "STORM_BAT/cut",
-    "HOB_TAUNT/pierced",
-    "SKELETON_WALL/broken"
+    "RIVER_RAT_SPLASH/pierced"
    ],
    "schools": {},
    "stance": "GUARDIAN",
    "flow": [
-    "라운드마다 자신과 곁의 동료를 회복하고(물의 정령 핵), 회복한 동료는 단단해진다(물의 정령 물방울).",
-    "상태이상을 절반은 흘려보낸다(뱀 허물).",
-    "동료 곁에 설수록 강하다(쥐 꼬리)."
+    "자신과 곁의 동료를 회복하고, 회복 대상은 단단해진다.",
+    "상태이상을 절반은 막는다.",
+    "동료 곁에서 더 강해지고, 피격되지 않은 라운드에는 MP를 회복한다."
    ]
   }
  ],

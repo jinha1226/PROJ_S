@@ -19,17 +19,17 @@ func run() -> void:
 	var mp_base: int = int(hero.max_mp)-int(hero.pool_bonus.get("mp",0))
 	check(Builds.data.builds.size() == 11 and Builds.data.parties.size() == 4,"eleven builds and four parties")
 	for b in Builds.data.builds:
-		check(b.stones.size() == 10,"ten stones: "+str(b.id))
+		check(b.stones.size() == 6,"six stones: "+str(b.id))
 		check(b.stones.all(func(id): return Essences.has(str(id)) and Essences.canonical(str(id)) == str(id)),"canonical real stones: "+str(b.id))
 		var unique := {}
 		for id in b.stones: unique[id] = true
-		check(unique.size() == 10,"unique stones: "+str(b.id))
+		check(unique.size() == 6,"unique stones: "+str(b.id))
 		check(Equipment.content.weapons.has(b.weapon) and Equipment.content.armours.has(b.armour),"legal gear: "+str(b.id))
 		check(str(b.offhand).is_empty() or Equipment.content.offhands.has(b.offhand),"legal offhand: "+str(b.id))
 		check(Equipment.hands({"type":b.weapon}) != 2 or str(b.offhand).is_empty(),"two hand loadout: "+str(b.id))
 		check(b.flow.size() >= 2,"flow documented: "+str(b.id))
 		check(Builds.apply(s,hero,str(b.id)),"loadout applies: "+str(b.id))
-		check(hero.level == 10 and Essences.equipped(hero).size() == 10,"ten usable slots: "+str(b.id))
+		check(hero.level == 10 and Essences.equipped(hero).size() == 6,"six usable slots: "+str(b.id))
 		check(int(hero.max_hp)-int(hero.pool_bonus.hp) == hp_base+36 and int(hero.max_mp)-int(hero.pool_bonus.mp) == mp_base+18,"level-ten growth applied exactly once: "+str(b.id))
 		check(Equipment.worn(hero).weapon.type == b.weapon and Equipment.worn(hero).armour.type == b.armour,"gear applied: "+str(b.id))
 		check(Equipment.hands(Equipment.worn(hero).weapon) != 2 or Equipment.worn(hero).offhand.is_empty(),"switching clears offhand: "+str(b.id))

@@ -100,18 +100,14 @@ func shared_actions() -> void:
 	check(int(TagSets.counts(hero).SUPPORT) == 3,"role counts each distinct part")
 	check(StoneEffects.effects(hero) == ["RAT_GNAW","RAT_INCISOR","RAT_HEART"],"unfinished parts do not repeat headline effects")
 	hero.rules[0].enabled = false
-	check(s.unequip_part(0,0) and hero.rules.size() == 1 and not hero.rules[0].enabled,"removing headline preserves configured active on another part")
-	check(StoneEffects.effects(hero) == ["RAT_INCISOR","RAT_HEART"] and Abilities.holds(hero,"RAT_GNAW"),"nonheadline part still grants active without headline passive")
-	check(s.unequip_part(0,1) and hero.rules.size() == 1,"second removal keeps shared rule")
-	check(s.unequip_part(0,2) and hero.rules.is_empty() and not Abilities.holds(hero,"RAT_GNAW"),"last part removes shared rule")
-	check(Essences.absorbed(hero,"RAT_GNAW/cut") and hero.essences.size() == 3,"removal retains all absorbed parts")
-	Essences.put(hero,0,"RAT_GNAW/cut"); hero.rules[0].enabled = false
-	check(Essences.put(hero,0,"RAT_GNAW/broken") and hero.rules.size() == 1 and not hero.rules[0].enabled,"same species replacement preserves configured rule")
-	Essences.take(hero,0)
+	check(not s.unequip_part(0,0) and not Essences.take(hero,1),"individual parts cannot be removed")
+	check(hero.rules.size() == 1 and not hero.rules[0].enabled,"rejected removal preserves the configured shared rule")
+	check(StoneEffects.effects(hero) == ["RAT_GNAW","RAT_INCISOR","RAT_HEART"],"all three distinct effects stay active")
+	check(not Essences.put(hero,0,"RAT_GNAW/broken") and hero.essences.size() == 3,"the internal replacement path is refused too")
 
 	Fixture.arena(s,8); s.phase = "CAMP"
-	hero.level = 2; hero.essences = {"KOBOLD_SLING/cut@fire":1,"KOBOLD_SLING/pierced@ice":1}; hero.equipped_abilities = []; hero.rules = []
-	Essences.put(hero,0,"KOBOLD_SLING/cut@fire"); Essences.put(hero,1,"KOBOLD_SLING/pierced@ice")
+	hero.level = 2; hero.essences = {}; hero.equipped_abilities = []; hero.rules = []
+	Essences.bind(hero,"KOBOLD_SLING/cut@fire"); Essences.bind(hero,"KOBOLD_SLING/pierced@ice")
 	check(Abilities.held(hero) == ["KOBOLD_SLING@fire"],"first unsealed species part determines active element")
 	var foe: Dictionary = s.enemies[0]; foe.pos = hero.pos+Vector2i(2,0); foe.hp = 200; foe.max_hp = 200
 	s.phase = "BATTLE"; hero.ap = 2; hero.cooldowns = {}
@@ -141,10 +137,10 @@ func spells() -> void:
 	check(hero.spells == ["fire_1"] and hero.prepared == ["fire_1"],"same species spell is not duplicated")
 	check(s.choose_essence_spell(0,"FIRE_CALLER/broken","fire_3") and hero.spells == ["fire_3"] and hero.prepared == ["fire_3"],"choosing on one part changes the shared species spell")
 	check(hero.essence_spells.values().all(func(id): return id == "fire_3"),"all absorbed parts remember the shared choice")
-	check(s.unequip_part(0,0) and hero.prepared == ["fire_3"],"removing representative keeps spell through another part")
-	check(s.unequip_part(0,1) and s.unequip_part(0,2) and hero.prepared.is_empty() and hero.spells == ["fire_3"],"last caster part unprepares spell but does not forget it")
+	check(not s.unequip_part(0,0) and hero.prepared == ["fire_3"],"removal cannot change the shared spell")
+	hero.level = 4
 	s.grant_part("FIRE_CALLER/cut@ice")
-	check(s.absorb_essence(0,"FIRE_CALLER/cut@ice").is_empty() and hero.spells == ["fire_3"] and hero.essence_spells.values().all(func(id): return id == "fire_3"),"absorbing a new unprepared part retains the chosen species spell")
+	check(s.absorb_essence(0,"FIRE_CALLER/cut@ice").is_empty() and hero.prepared == ["fire_3"] and hero.essence_spells.values().all(func(id): return id == "fire_3"),"absorbing a fourth part retains the chosen species spell")
 	var legacy := {"level":3,"essences":{"FIRE_CALLER":1},"equipped_abilities":["FIRE_CALLER"],"essence_spells":{"FIRE_CALLER":"fire_3"}}
 	Essences.sync_spells(legacy)
 	check(legacy.prepared == ["fire_3"] and legacy.essence_spells == {"FIRE_CALLER/pierced":"fire_3"},"old caster choice migrates without loss")

@@ -1,6 +1,8 @@
 # 읽히게 만들기 (최소판)
 
 작성일: 2026-09-26 · 상태: **구현 완료(최소 범위)**
+
+후속 사용자 결정: [6개 영구 흡수와 간결한 영혼석 효과 요약](../../soulstones.ko.md). 아래 범위 밖의 빌드 요약 제한은 현재 영혼석 탭의 실제 효과 요약에는 적용하지 않는다.
 앞: [도감](2026-09-26-codex-design.md)
 전제: ②(발동 엔진, 효과 `name`·`text`·`keywords`), ④(부위 영혼석), ①(무기 형태)
 기존 코드: `expedition/progression/effect_engine.gd`(`fire`), `expedition/run/session.gd`(`after_damage`), `expedition/progression/stone_effects.gd`(`heal`), `expedition/run/run_result.gd`(`battle_stats` 멤버 행), `expedition/ui/battle_hud.gd`(`BattleReport`), `expedition/ui/screens/character_folio.gd`, `essence_tab.gd`, `codex_screen.gd`

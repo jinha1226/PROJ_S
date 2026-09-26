@@ -191,7 +191,7 @@ func exercise() -> void:
 	scene.show_character(1,"상태")
 	check(scene.tactics_actor == 1 and scene.details_popup.visible,"companion sheet opens")
 	scene.show_character(1,"파츠")
-	check(scene.modal_content.find_child("EssenceSlots",true,false).get_child_count() == 10,"companion has an essence grid")
+	check(scene.modal_content.find_child("EssenceSlots",true,false).get_child_count() == 6,"companion has six permanent essence cells")
 	scene.details_popup.hide()
 	for viewport in [Vector2i(390,844),Vector2i(430,844),Vector2i(412,915)]:
 		root.size = viewport; scene.refresh()

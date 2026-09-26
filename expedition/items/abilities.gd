@@ -14,6 +14,8 @@ const DEFINITIONS = {
 	"SHOCKWAVE":{"name":"수렁 충격파","item":"수렁의 핵","description":"범위 2 · 피해 16 · 아군 피해 · 재사용 3턴","target":"SELF","range":0,"radius":2,"damage":16,"cooldown":3,"effect":"DAMAGE","axis":"MAGIC","rule_when":"ALWAYS","short":"충격파","shape":"CIRCLE","self_hit":false,"icon":4,"species":"","passive":NO_PASSIVE,"enemy":IMMEDIATE,"allies_hit":true,"tile_wet":0},
 	"BOMB":{"name":"폭탄 투척","item":"암살자의 화약낭","description":"사거리 4 · 범위 1 · 피해 16 · 아군 피해 · 재사용 3턴","target":"ENEMY","range":4,"radius":1,"damage":16,"cooldown":3,"effect":"DAMAGE","axis":"RANGED","rule_when":"ALWAYS","short":"폭탄","shape":"SQUARE","self_hit":true,"icon":3,"species":"","passive":NO_PASSIVE,"enemy":IMMEDIATE,"allies_hit":true,"tile_wet":0},
 	"IRON_HIDE":{"name":"철갑 방어","item":"거인의 철갑핵","description":"받는 피해 -75% · 1턴 · 재사용 3턴","target":"SELF","range":0,"radius":0,"damage":0,"cooldown":3,"effect":"SHIELD","axis":"","rule_when":"DANGER","short":"철갑","shape":"SQUARE","self_hit":false,"icon":5,"species":"","passive":NO_PASSIVE,"enemy":IMMEDIATE,"allies_hit":false,"tile_wet":0},
+	"BONE_CALL":{"name":"해골 소환","item":"사령술","description":"해골 하나 소환 · MP 6 · 재사용 3턴","target":"SELF","range":0,"radius":0,"damage":0,"mp":6,"cooldown":3,"effect":"SUMMON","summon":"skeleton","axis":"MAGIC","rule_when":"ALWAYS","short":"소환","shape":"SQUARE","self_hit":false,"icon":4,"species":"","passive":NO_PASSIVE,"enemy":IMMEDIATE,"allies_hit":false,"tile_wet":0},
+	"SOUL_MEND":{"name":"영혼 치유","item":"회복술","description":"자신·인접 아군 HP 12 회복 · MP 5 · 재사용 4턴","target":"ALLY","range":1,"radius":0,"damage":0,"heal":12,"mp":5,"cooldown":4,"effect":"HEAL","axis":"MAGIC","rule_when":"HP","short":"치유","shape":"SQUARE","self_hit":false,"icon":4,"species":"","passive":NO_PASSIVE,"enemy":IMMEDIATE,"allies_hit":false,"tile_wet":0},
 	"RAT_GNAW":{"name":"물어뜯기","item":"쥐 이빨","description":"물어뜯기: 인접 대상 피해 9 · 재사용 2턴","target":"ENEMY","range":1,"radius":0,"damage":9,"cooldown":2,"effect":"DAMAGE","axis":"MELEE","rule_when":"ALWAYS","short":"물기","shape":"SQUARE","self_hit":false,"icon":5,"species":"dcss_rat","passive":NO_PASSIVE,"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0},
 	"LIZARD_TAIL":{"name":"꼬리치기","item":"도마뱀 꼬리","description":"꼬리치기: 대상 주위 3×3 피해 6 · 재사용 3턴","target":"ENEMY","range":1,"radius":1,"damage":6,"cooldown":3,"effect":"DAMAGE","axis":"MELEE","rule_when":"ALWAYS","short":"꼬리","shape":"SQUARE","self_hit":false,"icon":5,"species":"dcss_frilled_lizard","passive":NO_PASSIVE,"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0},
 	"KOBOLD_SLING":{"name":"투석","item":"코볼트 투석끈","description":"투석: 사거리 4 피해 7 · 재사용 2턴","target":"ENEMY","range":4,"radius":0,"damage":7,"cooldown":2,"effect":"DAMAGE","axis":"RANGED","rule_when":"ALWAYS","short":"투석","shape":"SQUARE","self_hit":false,"icon":5,"species":"kobold","passive":NO_PASSIVE,"enemy":{"prep":1,"target":"NEAREST"},"allies_hit":false,"tile_wet":0},
@@ -204,6 +206,9 @@ static func held(actor: Dictionary) -> Array:
 		var id := active_id(str(stone)); var base := base_id(id)
 		if base in species: continue
 		species.append(base); result.append(id)
+	for stone in Essences.equipped(actor):
+		var granted: String = str(Essences.row(str(stone)).get("active",""))
+		if has(granted) and granted not in result: result.append(granted)
 	var borrowed: String = str(actor.get("borrowed",""))
 	if not borrowed.is_empty() and borrowed not in result: result.append(borrowed)
 	return result
@@ -213,6 +218,10 @@ static func legal(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 	if s.phase != "BATTLE" or actor.hp <= 0 or not s.inside(target): return false
 	if not actor.enemy and actor.ap <= 0: return false
 	var def: Dictionary = definition(id)
+	if int(actor.get("mp",0)) < int(def.get("mp",0)): return false
+	if def.effect == "SUMMON":
+		if preload("res://expedition/spells/summons.gd").summon_cells(s,actor).is_empty(): return false
+		if preload("res://expedition/spells/summons.gd").summons_of(s,actor).size() >= 1+s.StoneEffects.summon_extra(actor,s): return false
 	if def.target == "SELF":
 		if def.effect == "HEAL" and actor.hp >= actor.max_hp: return false
 		return target == actor.pos
@@ -220,6 +229,7 @@ static func legal(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 	if victim.is_empty() or victim.hp <= 0: return false
 	if actor.enemy and victim == s.party[0] and not s.floor_state.visible.has(actor.pos): return false
 	if def.target == "ALLY":
+		if def.effect == "HEAL": return s.side_of(victim) == s.side_of(actor) and victim.hp < victim.max_hp and (victim.id == actor.id or s.melee_reach(actor.pos,target))
 		return victim.enemy == actor.enemy and victim.id != actor.id and s.melee_reach(actor.pos,target)
 	if victim.enemy == actor.enemy: return false
 	# distance() is Manhattan, so a range-1 skill would miss the diagonals a
@@ -250,9 +260,13 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 		s.CombatStats.Equipment.attack_noise(s,actor)
 	var def: Dictionary = definition(id)
 	var victim: Dictionary = s.at(target)
+	if int(def.get("mp",0)) > 0: actor.mp -= int(def.mp)
 	# The use is logged first so that a miss is the last line the log shows.
 	if def.effect not in ["GUARD","PUSH"]: s.message(actor.name+" · "+def.name)
 	match def.effect:
+		"SUMMON":
+			var places: Array = preload("res://expedition/spells/summons.gd").summon_cells(s,actor)
+			if not places.is_empty(): preload("res://expedition/spells/summons.gd").summon(s,actor,places[0],str(def.summon))
 		"MARK":
 			if victim.is_empty(): s.message(actor.name+"의 "+def.name+"가 빗나갔습니다.")
 			else: s.Statuses.apply(s,victim,"marked",300,actor)
@@ -291,10 +305,12 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 				taunted += 1
 			if taunted == 0: s.message(actor.name+"의 도발에 아무도 응하지 않았습니다.")
 		"HEAL":
-			var before: int = int(actor.hp)
-			s.StoneEffects.heal(s,actor,int(def.heal),actor)
-			var row: Dictionary = s.member_stats(actor.id)
-			if not row.is_empty(): row.healed += int(actor.hp)-before
+			var recipient: Dictionary = victim if def.target == "ALLY" else actor
+			if not recipient.is_empty():
+				var before: int = int(recipient.hp)
+				s.StoneEffects.heal(s,recipient,int(def.heal),actor)
+				var row: Dictionary = s.member_stats(actor.id)
+				if not row.is_empty(): row.healed += int(recipient.hp)-before
 		"GUARD":
 			if victim.is_empty(): s.message(actor.name+"의 "+def.name+"가 빗나갔습니다.")
 			else:

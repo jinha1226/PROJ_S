@@ -61,7 +61,7 @@ func exercise() -> void:
 	s.parts_bag["ORC_CLEAVER"] = 1
 	var strength: int = int(s.StatSheet.value(s,s.party[0],"str"))
 	var attack: int = int(s.StatSheet.value(s,s.party[0],"atk"))
-	check(s.equip_part(0,2,"ORC_CLEAVER") and int(s.StatSheet.value(s,s.party[0],"atk")) == attack+4 and int(s.StatSheet.value(s,s.party[0],"str")) == strength,"an essence raises attack, not strength")
+	check(s.absorb_essence(0,"ORC_CLEAVER").is_empty() and int(s.StatSheet.value(s,s.party[0],"atk")) == attack+4 and int(s.StatSheet.value(s,s.party[0],"str")) == strength,"an essence raises attack, not strength")
 	check(s.Abilities.power(s,s.party[0],s.Abilities.definition("ORE_SLAM"),"ORE_SLAM") == int(s.Abilities.definition("ORE_SLAM").damage)+maxi(0,strength-10)/2,"a part's blow still reads strength")
 	check(not s.equip_part(0,5,"ORC_CLEAVER") and not s.equip_part(-1,0,"ORC_CLEAVER"),"invalid slots and members rejected")
 	var scene = load("res://expedition/ui/main.tscn").instantiate(); root.size = Vector2i(390,844); root.add_child(scene)
@@ -72,7 +72,7 @@ func exercise() -> void:
 		check(scene.details_popup.size.y <= root.size.y and scene.details_popup.size.x <= root.size.x,"character tab fits mobile: "+tab)
 		var labels: Array = scene.modal_content.find_children("*","Label",true,false)
 		if tab == "영혼석": check(not labels.any(func(l): return l.text == "스킬 사용 순서"),"essence tab has no ability ordering")
-		if tab == "영혼석": check(scene.modal_content.find_child("EssenceSlots",true,false).get_child_count() == 10,"essence tab shows ten slot cells")
+		if tab == "영혼석": check(scene.modal_content.find_child("EssenceSlots",true,false).get_child_count() == 6,"essence tab shows six slot cells")
 		check(not scene.modal_content.find_children("*","Button",true,false).any(func(b): return b.text == "가방"),"character window has no bag tab")
 	scene.inventory_filter = "전체"; scene.show_supplies()
 	s.grant_item("healing",1,true); scene.show_supplies()

@@ -9,6 +9,7 @@ const ELEMENTS := {"fire":"화염","ice":"냉기","air":"전기","poison":"독",
 ## switches all of it on, and a member absorbs a stone once.
 const MAX_TIER := 1
 const MAX_LEVEL := 10
+const MAX_SLOTS := 6
 ## How many spells stand ready at once: the floor HUD draws this many buttons.
 const READY_SPELLS := 5
 const FIRST_KILL_PERCENT := 100
@@ -124,7 +125,7 @@ static func row(id: String) -> Dictionary:
 	var stats: Dictionary = Bestiary.essence_stats(role,str(base.get("school",""))) if not role.is_empty() else (base.get("stats",{}) as Dictionary).duplicate()
 	var result := {"name":str(base.get("name","")),"stats":stats,"role":role,"element":str(base.get("element","")),
 		"school":str(base.get("school","")),"species":str(base.get("species","")),"family":str(base.get("family","")),
-		"part":part,"part_name":str(piece.get("name","")),"effect":str(piece.get("effect",base.get("effect","")))}
+		"part":part,"part_name":str(piece.get("name","")),"active":str(piece.get("active","")),"effect":str(piece.get("effect",base.get("effect","")))}
 	if not part.is_empty(): result.name = result.part_name
 	var element := variant_element(id)
 	if not element.is_empty():
@@ -167,14 +168,14 @@ static func absorbed(actor: Dictionary, id: String) -> bool:
 static func equipped(actor: Dictionary) -> Array:
 	var sealed: Dictionary = actor.get("sealed",{})
 	var result: Array = []
-	for raw in actor.get("equipped_abilities",[]):
+	for raw in actor.get("equipped_abilities",[]).slice(0,MAX_SLOTS):
 		var id: String = canonical(str(raw))
 		if id.is_empty() or id in result or sealed.keys().any(func(key): return canonical(str(key)) == id): continue
 		result.append(id)
 	return result
 
 static func slot_count(actor: Dictionary) -> int:
-	return clampi(int(actor.get("level",1)),1,MAX_LEVEL)
+	return clampi(int(actor.get("level",1)),1,MAX_SLOTS)
 
 ## The highest spell level a caster stone opens: the character's own level.
 static func spell_cap(actor: Dictionary) -> int:
@@ -184,80 +185,62 @@ static func can_manage(s) -> bool:
 	if s.phase in ["IDLE","CAMP"]: return true
 	return s.phase == "EXPLORE" and s.floor_state.safe(s)
 
-## Grows the slot row to the level. A level never falls, so slots never close.
+## The first six levels open one permanent absorption each.
 static func sync_slots(actor: Dictionary) -> void:
 	normalize_actor(actor)
 	var slots: Array = actor.get("equipped_abilities",[])
 	while slots.size() < slot_count(actor): slots.append("")
-	actor.equipped_abilities = slots
+	actor.equipped_abilities = slots.slice(0,MAX_SLOTS)
 
-## One from the bag into the member, once: a stone already absorbed stays in
-## the bag for somebody else. The bag loses it for good.
+## Sealed stones still occupy their permanent slots.
+static func free_slot(actor: Dictionary) -> int:
+	var slots: Array = actor.get("equipped_abilities",[])
+	for slot in range(slot_count(actor)):
+		if slot >= slots.size() or str(slots[slot]).is_empty(): return slot
+	return -1
+
+## Commits one permanent stone, shared by bag absorption and independent NPC hunts.
+## A rejected choice never changes ownership, rules, spells or reservations.
+static func bind(actor: Dictionary, id: String) -> String:
+	id = canonical(id)
+	if id.is_empty(): return "없는 영혼석"
+	if absorbed(actor,id): return "이미 흡수함"
+	var slot := free_slot(actor)
+	if slot < 0: return "영혼석 가득 참"
+	sync_slots(actor)
+	actor.get_or_add("essences",{})[id] = 1
+	actor.equipped_abilities[slot] = id
+	actor.reservation = {}
+	var chosen: Dictionary = actor.get_or_add("essence_spells",{})
+	if not school(id).is_empty():
+		var choices := spell_choices(actor,id)
+		var existing: Array = chosen.keys().filter(func(other): return base_of(str(other)) == base_of(id) and str(chosen[other]) in choices)
+		if not choices.is_empty(): chosen[id] = chosen[existing[0]] if not existing.is_empty() else choices[0]
+	sync_rules(actor)
+	sync_spells(actor)
+	return ""
+
+## One from the bag into an empty slot, immediately and permanently.
 static func absorb(s, actor: Dictionary, id: String) -> String:
 	id = canonical(id)
 	if id.is_empty(): return "없는 영혼석"
 	s.parts_bag = normalize_keys(s.parts_bag,true)
-	normalize_actor(actor)
 	if int(s.parts_bag.get(id,0)) <= 0: return "가방에 없음"
 	if int(actor.hp) <= 0: return "쓰러짐"
 	if not can_manage(s): return "전투 중"
-	var known: Dictionary = actor.get_or_add("essences",{})
-	if int(known.get(id,0)) > 0: return "이미 흡수함"
+	var reason := bind(actor,id)
+	if not reason.is_empty(): return reason
 	s.parts_bag[id] = int(s.parts_bag[id])-1
-	known[id] = 1
 	s.Codex.note_absorb(s,id)
-	var chosen: Dictionary = actor.get_or_add("essence_spells",{})
-	if not school(id).is_empty() and not chosen.has(id):
-		var choices := spell_choices(actor,id)
-		var existing: Array = chosen.keys().filter(func(other): return base_of(str(other)) == base_of(id) and str(chosen[other]) in choices)
-		if not choices.is_empty(): chosen[id] = chosen[existing[0]] if not existing.is_empty() else choices[0]
-	sync_spells(actor)
 	return ""
 
-static func equip(s, actor: Dictionary, slot: int, id: String) -> bool:
-	if not can_manage(s) or int(actor.hp) <= 0: return false
-	return put(actor,slot,id)
+## Compatibility entry points refuse the retired re-slotting operation.
+static func equip(_s, _actor: Dictionary, _slot: int, _id: String) -> bool: return false
+static func unequip(_s, _actor: Dictionary, _slot: int) -> bool: return false
+static func put(_actor: Dictionary, _slot: int, _id: String) -> bool: return false
+static func take(_actor: Dictionary, _slot: int) -> bool: return false
 
-static func unequip(s, actor: Dictionary, slot: int) -> bool:
-	if not can_manage(s) or int(actor.hp) <= 0: return false
-	return take(actor,slot)
-
-## The slot change itself, with no question of where or when: NPCs re-slot on
-## their own in the middle of a floor (plan 3/3), the player only through
-## `equip`/`unequip`.
-static func put(actor: Dictionary, slot: int, id: String) -> bool:
-	id = canonical(id)
-	if id.is_empty(): return false
-	sync_slots(actor)
-	if slot < 0 or slot >= slot_count(actor): return false
-	if int(actor.get("essences",{}).get(id,0)) <= 0 or id in actor.equipped_abilities: return false
-	var retained: Array = []
-	var previous: String = str(actor.equipped_abilities[slot])
-	if not previous.is_empty():
-		if base_of(previous) == base_of(id): retained = actor.get("rules",[]).filter(func(r): return Abilities.base_id(str(r.get("skill",""))) == base_of(id)).duplicate(true)
-		take(actor,slot)
-		for rule in retained:
-			if not actor.rules.any(func(r): return Abilities.base_id(str(r.get("skill",""))) == base_of(id)): actor.rules.append(rule)
-	actor.equipped_abilities[slot] = id
-	actor.reservation = {}
-	sync_rules(actor)
-	sync_spells(actor)
-	return true
-
-static func take(actor: Dictionary, slot: int) -> bool:
-	normalize_actor(actor)
-	var slots: Array = actor.get("equipped_abilities",[])
-	if slot < 0 or slot >= slots.size() or str(slots[slot]).is_empty(): return false
-	var old: String = str(slots[slot])
-	slots[slot] = ""
-	if not slots.any(func(id): return not str(id).is_empty() and base_of(str(id)) == base_of(old)):
-		actor.rules = actor.get("rules",[]).filter(func(r): return Abilities.base_id(str(r.get("skill",""))) != base_of(old))
-	sync_rules(actor)
-	actor.reservation = {}
-	sync_spells(actor)
-	return true
-
-## One rule per species; its configured condition survives removing one part.
+## One rule per species or granted build action; existing conditions survive absorption.
 ## If variants share a species, the first unsealed slot supplies the element.
 static func sync_rules(actor: Dictionary) -> void:
 	for id in Abilities.held(actor):

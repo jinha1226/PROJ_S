@@ -488,6 +488,8 @@ static func show_item_detail(ui, id: String) -> void:
 		Keywords.chips(ui,ui.item_detail,keywords)
 	elif row.category == "파츠":
 		Keywords.chips(ui,ui.item_detail,Equipment.effect_text.get(EssenceTab.StoneEffects.effect_of(id),{}).get("keywords",[]))
+		var active: String = str(Essences.row(id).get("active",""))
+		if Session.Abilities.has(active): EssenceTab.label(ui.item_detail,str(Session.Abilities.definition(active).description),13)
 	if row.category == "소모품":
 		var usable: bool = session.phase in ["EXPLORE","BATTLE","CAMP"]
 		if row["class"] == "potion":
@@ -514,8 +516,9 @@ static func show_item_detail(ui, id: String) -> void:
 		for i in range(session.party.size()):
 			var member: Dictionary = session.party[i]
 			var known: bool = Essences.absorbed(member,id)
-			var caption: String = "%s 흡수" % member.name if not known else "%s · 이미 흡수함" % member.name
-			var absorb = ui.button(ui.item_detail,caption,func(): absorb_from_bag(ui,i,id),Essences.can_manage(session) and member.hp > 0 and Essences.has(id) and not known)
+			var full: bool = Essences.free_slot(member) < 0
+			var caption: String = "%s · 이미 흡수함" % member.name if known else ("%s · 가득 참" % member.name if full else "%s 흡수" % member.name)
+			var absorb = ui.button(ui.item_detail,caption,func(): absorb_from_bag(ui,i,id),Essences.can_manage(session) and member.hp > 0 and Essences.has(id) and not known and not full)
 			absorb.name = "BagAbsorb%d" % i
 	ui.button(ui.item_detail,"닫기",func(): ui.item_popup.hide()); ui.item_popup.popup_centered(); ui.item_popup.grab_focus()
 

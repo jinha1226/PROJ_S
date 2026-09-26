@@ -43,6 +43,9 @@ static func predict(s, actor: Dictionary, action: Dictionary, before: Dictionary
 						enemies_hit += mini(damage,int(victim.hp))
 					intents = intents.filter(func(i): return i.id != victim.id)
 				elif def.effect == "GUARD" and not victim.is_empty(): protected[victim.id] = actor.id
+				elif def.effect == "HEAL":
+					var recipient: Dictionary = victim if def.target == "ALLY" else actor
+					if not recipient.is_empty(): hp_override[recipient.id] = mini(int(recipient.max_hp),int(recipient.hp)+int(def.heal))
 				elif def.effect in ["DAMAGE","LUNGE"]:
 					# Only foes are touched here: `parts_candidates.gd` never emits
 					# a DAMAGE candidate whose cells catch a living ally, or the
@@ -66,7 +69,7 @@ static func predict(s, actor: Dictionary, action: Dictionary, before: Dictionary
 	for member in s.friends():
 		if bool(rows.get(member.id,false)): before_lethal += 1
 		var now: int = threat_after(s,member,pos_override,hp_override,protected,intents)
-		if now >= int(member.hp): after_lethal += 1
+		if now >= int(hp_override.get(member.id,member.hp)): after_lethal += 1
 		if member.id == actor.id: self_hit = now
 		else: ally_hit += now
 	return {"self":self_hit,"allies":ally_hit,"enemies":enemies_hit,"lethal_saved":maxi(0,before_lethal-after_lethal)}

@@ -57,7 +57,7 @@ func catalog() -> void:
 	actor.essences = {"RAT_GNAW":1}
 	check(Essences.absorbed(actor,"RAT_GNAW"),"an absorbed essence is held")
 	check(Essences.equipped(actor) == [Essences.canonical("RAT_GNAW")],"empty slots are not essences")
-	check(Essences.slot_count(actor) == 4 and Essences.slot_count({"level":15}) == 10 and Essences.slot_count({}) == 1,"slots follow the level, one to ten")
+	check(Essences.slot_count(actor) == 4 and Essences.slot_count({"level":15}) == 6 and Essences.slot_count({}) == 1,"slots follow the level, one to six")
 
 func sets() -> void:
 	var actor := {"level":5,"essences":{},"equipped_abilities":["RAT_GNAW","SPIDER_WEB","FIRE_CALLER","",""]}
@@ -88,7 +88,7 @@ func levels() -> void:
 	check(s.gain_level_xp(hero,65) == 1 and hero.equipped_abilities.size() == 2,"level two opens a second slot")
 	check(s.log_lines[-1] == "%s 레벨 2" % hero.name and not s.events.any(func(e): return e.kind == "LEVEL_UP"),"a level-up appears only in the log")
 	s.gain_level_xp(hero,999999)
-	check(int(hero.level) == 10 and hero.equipped_abilities.size() == 10,"level ten is the top, with ten slots")
+	check(int(hero.level) == 10 and hero.equipped_abilities.size() == 6,"level ten is the top, with six slots")
 	check(s.gain_level_xp(hero,999999) == 0,"nothing past ten")
 
 func absorbing() -> void:
@@ -100,20 +100,33 @@ func absorbing() -> void:
 	check(s.absorb_essence(0,"ORC_CLEAVER") == "이미 흡수함" and int(hero.essences[Essences.canonical("ORC_CLEAVER")]) == 1,"absorbing again is refused: no tiers")
 	check(s.absorb_essence(0,"ORC_CLEAVER") == "이미 흡수함" and int(s.parts_bag[Essences.canonical("ORC_CLEAVER")]) == 3,"the copy stays in the bag for somebody else")
 	check(s.absorb_essence(0,"GOBLIN_SHIV") == "가방에 없음","nothing absorbed from an empty bag")
-	check(int(hero.max_hp) == hp,"absorbing alone changes no pool")
-	check(s.equip_part(0,0,"ORC_CLEAVER") and hero.equipped_abilities == [Essences.canonical("ORC_CLEAVER")],"an absorbed essence fills a slot")
-	check(int(hero.max_hp) == hp+8,"an orc stone is eight HP")
-	check(not s.equip_part(0,1,"GOBLIN_SHIV"),"no second slot at level one")
-	check(s.unequip_part(0,0) and hero.equipped_abilities == [""] and int(s.parts_bag[Essences.canonical("ORC_CLEAVER")]) == 3,"taking it off keeps it absorbed, not bagged")
-	check(int(hero.max_hp) == hp and int(hero.essences[Essences.canonical("ORC_CLEAVER")]) == 1,"the pools drop, the stone stays absorbed")
-	s.parts_bag["GOBLIN_SHIV"] = 1
-	check(s.equip_part(0,0,"GOBLIN_SHIV") and int(hero.essences[Essences.canonical("GOBLIN_SHIV")]) == 1 and int(s.parts_bag[Essences.canonical("GOBLIN_SHIV")]) == 0,"equipping from the bag absorbs on the way")
-	check(hero.rules.any(func(r): return r.skill == "GOBLIN_SHIV"),"a part essence brings its rule")
-	s.phase = "BATTLE"
-	s.parts_bag["RAT_GNAW"] = 1
-	check(s.absorb_essence(0,"RAT_GNAW") == "전투 중" and not s.unequip_part(0,0),"nothing changes hands in a fight")
-	check(Essences.put(hero,0,"ORC_CLEAVER") and hero.equipped_abilities[0] == Essences.canonical("ORC_CLEAVER"),"the unchecked put works mid-fight, for NPCs")
-	check(Essences.take(hero,0) and hero.equipped_abilities[0] == "","and so does take")
+	check(int(hero.max_hp) == hp+8 and hero.equipped_abilities == [Essences.canonical("ORC_CLEAVER")],"absorption immediately applies HP and fills the slot")
+	check(not s.unequip_part(0,0) and not Essences.take(hero,0),"permanent absorption cannot be removed")
+	s.parts_bag[Essences.canonical("GOBLIN_SHIV")] = 1
+	var before: Dictionary = hero.duplicate(true)
+	var bag: Dictionary = s.parts_bag.duplicate()
+	check(s.absorb_essence(0,"GOBLIN_SHIV") == "영혼석 가득 참" and hero == before and s.parts_bag == bag,"a full row rejects absorption atomically")
+	check(not s.equip_part(0,0,"GOBLIN_SHIV") and not Essences.put(hero,0,"GOBLIN_SHIV") and hero == before,"legacy entry points cannot replace a permanent stone")
+	s.gain_level_xp(hero,65)
+	check(s.absorb_essence(0,"GOBLIN_SHIV").is_empty() and hero.equipped_abilities[1] == Essences.canonical("GOBLIN_SHIV"),"a level opens room for the next permanent absorption")
+	check(hero.rules.any(func(r): return r.skill == "GOBLIN_SHIV"),"an absorbed stone immediately supplies its rule")
+	s.phase = "BATTLE"; s.parts_bag["RAT_GNAW"] = 1
+	check(s.absorb_essence(0,"RAT_GNAW") == "전투 중" and not s.unequip_part(0,0),"nothing changes in a fight")
+	s.phase = "CAMP"; s.gain_level_xp(hero,999999)
+	for id in ["RAT_GNAW","SPIDER_WEB","FIRE_CALLER","KOBOLD_SLING"]:
+		s.grant_part(id)
+		check(s.absorb_essence(0,id).is_empty(),"remaining slots absorb automatically: "+id)
+	check(hero.essences.size() == 6 and Essences.equipped(hero).size() == 6,"six permanent stones, even at level ten")
+	s.grant_part("BEETLE_CURL")
+	before = hero.duplicate(true); bag = s.parts_bag.duplicate()
+	check(s.absorb_essence(0,"BEETLE_CURL") == "영혼석 가득 참" and hero == before and s.parts_bag == bag,"a seventh stone changes no inventory, rules or spells")
+	hero.sealed = {Essences.canonical("ORC_CLEAVER"):9999}
+	check(Essences.free_slot(hero) == -1 and s.absorb_essence(0,"BEETLE_CURL") == "영혼석 가득 참","sealing a stone does not release a permanent slot")
+	hero.sealed = {}
+	s.party.append(s.party[0].duplicate(true)); s.party[1].id = 777
+	s.party[1].essences = {}; s.party[1].equipped_abilities = ["","","","","",""]; s.party[1].rules = []; s.party[1].essence_spells = {}
+	check(s.absorb_essence(1,"BEETLE_CURL").is_empty(),"a companion with space can use the rejected stone")
+	check(Essences.equipped(hero).size() == 6 and Essences.equipped(s.party[1]).size() == 1,"each member has its own capacity")
 	s.phase = "EXPLORE"
 	check(Essences.can_manage(s) == s.floor_state.safe(s),"a quiet corridor counts as safe")
 

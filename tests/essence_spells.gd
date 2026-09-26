@@ -45,16 +45,16 @@ func tiers() -> void:
 	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_6") and hero.prepared == ["fire_6"],"at level six it reaches the sixth and takes it")
 	s.parts_bag["GOBLIN_HEXER"] = 1
 	check(s.absorb_essence(0,"GOBLIN_HEXER") == "" and hero.essence_spells[Essences.canonical("GOBLIN_HEXER")] == "hex_1","a new caster essence picks its first spell")
-	check("hex_1" in hero.spells and "hex_1" not in hero.prepared,"known, but not ready until it is slotted")
+	check("hex_1" in hero.spells and "hex_1" in hero.prepared,"absorption immediately prepares the spell")
 	s.gain_level_xp(hero,65)
-	check(s.equip_part(0,1,"GOBLIN_HEXER") and hero.prepared == ["fire_6","hex_1"],"slotted, it is ready in slot order")
-	check(s.unequip_part(0,0) and hero.prepared == ["hex_1"],"unslotted, its spell goes")
+	check(hero.prepared == ["fire_6","hex_1"],"both permanent stones prepare spells in absorption order")
+	check(not s.unequip_part(0,0) and hero.prepared == ["fire_6","hex_1"],"removal is refused and both spells stay")
 	check(not s.choose_essence_spell(0,"FROST_IMP","ice_1"),"an essence the hero never absorbed has no choice")
 	s.gain_level_xp(hero,999999)
-	for id in ["FIRE_CALLER","FROST_IMP","STORM_BAT","GNOLL_SUMMONER","FIRE_CALLER@ice","FROST_IMP@fire"]:
+	for id in ["FIRE_CALLER","FROST_IMP","STORM_BAT","GNOLL_SUMMONER","GOBLIN_HEXER","FIRE_CALLER@ice"]:
 		hero.essences[id] = maxi(1,int(hero.essences.get(Essences.canonical(str(id)),0)))
 		hero.essence_spells[id] = Essences.spell_choices(hero,id)[0]
-	hero.equipped_abilities = ["FIRE_CALLER","FROST_IMP","STORM_BAT","GNOLL_SUMMONER","FIRE_CALLER@ice","FROST_IMP@fire","GOBLIN_HEXER","","",""]
+	hero.equipped_abilities = ["FIRE_CALLER","FROST_IMP","STORM_BAT","GNOLL_SUMMONER","GOBLIN_HEXER","FIRE_CALLER@ice"]
 	Essences.sync_spells(hero)
 	check(hero.prepared.size() == Essences.READY_SPELLS and s.PREPARED_SLOTS == Essences.READY_SPELLS,"no more than five stand ready")
 

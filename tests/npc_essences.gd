@@ -52,6 +52,11 @@ func run() -> void:
 	check(s.parts_bag == bag,"the party bag is untouched")
 	var variant: Dictionary = foe.duplicate(true)
 	variant.variant_element = "fire"; variant.part_id = str(foe.part_id)+"@fire"
+	check(Essences.free_slot(hunter) < 0,"one permanent stone fills the first-level NPC")
+	NpcEssences.on_hunt(s,variant,[hunter])
+	check(not Essences.absorbed(hunter,dropped+"@fire"),"full NPC cannot absorb or replace with a variant")
+	hunter.level = 2
+	hunter.essence_seen.erase(str(foe.species_id)+"@fire")
 	NpcEssences.on_hunt(s,variant,[hunter])
 	check(Essences.absorbed(hunter,dropped+"@fire") and hunter.essence_seen.has(str(foe.species_id)+"@fire"),"the variant has its own first kill")
 	var hero_before: Dictionary = s.party[0].get("essences",{}).duplicate()

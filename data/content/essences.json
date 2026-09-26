@@ -151,7 +151,8 @@
         },
         "pierced": {
           "name": "강쥐 심장",
-          "effect": "RIVER_RAT_HEART"
+          "effect": "RIVER_RAT_HEART",
+          "active": "SOUL_MEND"
         }
       }
     },
@@ -499,11 +500,13 @@
         },
         "broken": {
           "name": "물의 정령 물방울",
-          "effect": "SPIRIT_DROP"
+          "effect": "SPIRIT_DROP",
+          "active": "SOUL_MEND"
         },
         "pierced": {
           "name": "물의 정령 핵",
-          "effect": "WATER_WAVE"
+          "effect": "WATER_WAVE",
+          "active": "SOUL_MEND"
         }
       }
     },
@@ -525,7 +528,8 @@
         },
         "pierced": {
           "name": "해골 병사 두개골",
-          "effect": "SKELETON_SKULL"
+          "effect": "SKELETON_SKULL",
+          "active": "BONE_CALL"
         }
       }
     },
@@ -565,7 +569,8 @@
         },
         "broken": {
           "name": "구울 턱",
-          "effect": "GHOUL_JAW"
+          "effect": "GHOUL_JAW",
+          "active": "BONE_CALL"
         },
         "pierced": {
           "name": "구울 심장",
@@ -657,7 +662,8 @@
         },
         "pierced": {
           "name": "묘지기 등불",
-          "effect": "GRAVEKEEPER"
+          "effect": "GRAVEKEEPER",
+          "active": "BONE_CALL"
         }
       }
     },

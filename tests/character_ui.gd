@@ -36,7 +36,7 @@ func run() -> void:
 				check(scene.details_popup.size.x <= viewport.x,"popup fits portrait width: "+tab)
 				check(scene.details_popup.size.y <= viewport.y,"popup fits portrait height: "+tab)
 				check(scene.tactics_actor == member,"selected character retained")
-				if tab == "영혼석": check(scene.modal_content.find_child("EssenceSlots",true,false).get_child_count() == 10,"ten essence slots")
+				if tab == "영혼석": check(scene.modal_content.find_child("EssenceSlots",true,false).get_child_count() == 6,"six essence slots")
 				var folio: Control = scene.modal_content.find_child("CharacterFolio",true,false)
 				check(folio.size == Vector2(390,844),"approved design dimensions")
 				check(folio.get_node("CharacterTabs").position.y == 168,"mockup tab placement")
@@ -48,7 +48,7 @@ func run() -> void:
 	scene.show_character(1,"영혼석")
 	await process_frame
 	var slots: GridContainer = scene.modal_content.find_child("EssenceSlots",true,false)
-	check(slots.get_child_count() == 10,"a second level opens a second slot in the grid")
+	check(slots.get_child_count() == 6,"a second level opens a second slot in the grid")
 	var heading: Array = scene.modal_content.find_children("*","Label",true,false).filter(func(l): return l.text.begins_with("영혼석 슬롯"))
 	check(not heading.is_empty() and heading[0].text.ends_with("/ 2"),"the heading counts the open slots")
 	check(scene.session.party[1].equipped_abilities.size() == 2,"the companion's row grew")
@@ -58,27 +58,17 @@ func run() -> void:
 	scene.session.party[1].essences = {"GOBLIN_SHIV":1,"RAT_GNAW":1}
 	scene.session.party[1].rules = [scene.Session.Abilities.default_rule("GOBLIN_SHIV"),scene.Session.Abilities.default_rule("RAT_GNAW")]
 	scene.session.parts_bag["ORC_CLEAVER"] = 1
-	check(scene.session.equip_part(1,0,"ORC_CLEAVER") and scene.session.party[1].equipped_abilities == [Essences.canonical("ORC_CLEAVER"),Essences.canonical("RAT_GNAW")] and scene.session.parts_bag[Essences.canonical("ORC_CLEAVER")] == 0,"equipping fills the chosen slot only")
-	check(scene.session.parts_bag.get(Essences.canonical("GOBLIN_SHIV"),0) == 0 and scene.session.party[1].essences.has(Essences.canonical("GOBLIN_SHIV")),"the replaced essence stays absorbed")
+	check(not scene.session.equip_part(1,0,"ORC_CLEAVER") and scene.session.absorb_essence(1,"ORC_CLEAVER") == "영혼석 가득 참","a full companion cannot replace or absorb another stone")
+	check(scene.session.party[1].equipped_abilities == ["GOBLIN_SHIV","RAT_GNAW"] and int(scene.session.parts_bag[Essences.canonical("ORC_CLEAVER")]) == 1,"rejected replacement preserves both stones and inventory")
 	check(scene.session.party[0].equipped_abilities == [""],"other members keep their own slots")
-	# A rule for a part nobody has equipped stays out of the sheet.
-	scene.session.party[1].rules.append(scene.Session.Rules.make_rule("GOBLIN_SHIV","NEAREST","ALWAYS"))
-	scene.show_character(1,"영혼석")
-	check(scene.modal_content.find_child("EssenceSlots",true,false).get_child_count() == 10,"one card per slot, not per rule")
-	for frame in range(3): await process_frame
-	check(scene.modal_content.find_children("*","Button",true,false).all(func(b): return not b.text.begins_with("사용 방침") and not b.text.begins_with("자동 ")),"the slot card carries no rule policy and no auto toggle")
-	# Camp equipping goes through the chooser the card opens.
-	scene.session.phase = "CAMP"
-	check(scene.session.unequip_part(1,0) and scene.session.parts_bag[Essences.canonical("ORC_CLEAVER")] == 0 and scene.session.party[1].essences.has(Essences.canonical("ORC_CLEAVER")),"unequipping keeps the essence absorbed")
+	check(not scene.session.unequip_part(1,0),"permanent stone cannot be unequipped")
 	scene.show_character(1,"영혼석")
 	for frame in range(3): await process_frame
-	EssenceTab.chooser(scene,0)
+	check(scene.modal_content.find_child("EssenceSlots",true,false).get_child_count() == 6,"one card per permanent slot")
+	EssenceTab.pressed_slot(scene,0)
 	for frame in range(3): await process_frame
-	var picks: Array = scene.item_detail.find_children("*","Button",true,false).filter(func(b): return b.name == "EssencePick_"+Essences.canonical("ORC_CLEAVER").replace("/","_"))
-	check(picks.size() == 1 and not picks[0].disabled,"the chooser offers the bagged part in camp")
-	picks[0].pressed.emit()
-	for frame in range(3): await process_frame
-	check(scene.session.party[1].equipped_abilities[0] == Essences.canonical("ORC_CLEAVER"),"the chooser equips into the chosen slot")
+	check(scene.item_detail.find_child("EssenceUnequip",true,false) == null,"stone detail has no removal control")
+	check(scene.item_detail.find_children("EssencePick_*","Button",true,false).is_empty(),"stone detail has no replacement chooser")
 	scene.item_popup.hide()
 	scene.queue_free(); await process_frame
 	print("Character UI: %d failures" % failures); quit(1 if failures else 0)

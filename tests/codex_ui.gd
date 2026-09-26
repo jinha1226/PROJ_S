@@ -86,7 +86,7 @@ func run() -> void:
 	check(node(scene,"CodexBuild_wall") != null and node(scene,"CodexParty_classic") != null,"build and party examples are listed")
 	(node(scene,"CodexBuild_wall") as Button).pressed.emit()
 	for _i in range(4): await process_frame
-	check(node(scene,"CodexBuildDetail") != null and scene.modal_content.find_children("CodexBuildStone_*","Control",true,false).size() == 10,"build detail has all ten stones")
+	check(node(scene,"CodexBuildDetail") != null and scene.modal_content.find_children("CodexBuildStone_*","Control",true,false).size() == 6,"build detail has all six stones")
 	s.records_codex = true; Codex.note_affix(s,"GEAR_AMP_1")
 	(node(scene,"CodexTryBuild") as Button).pressed.emit()
 	for _i in range(4): await process_frame
@@ -94,7 +94,7 @@ func run() -> void:
 	check(scene.find_child("ArenaBuild_0",true,false) != null and scene.find_child("ArenaPart_0_0",true,false) == null,"selected build replaces two part pickers")
 	scene.start_arena()
 	for _i in range(4): await process_frame
-	check(scene.session.party[0].equipped_abilities.size() == 10 and scene.session.party[0].gear.offhand.type == "shield","starting equips the actual wall loadout")
+	check(scene.session.party[0].equipped_abilities.size() == 6 and scene.session.party[0].gear.offhand.type == "shield","starting equips the actual wall loadout")
 	check(not scene.session.records_codex,"arena examples never record collection")
 	scene._notification(scene.NOTIFICATION_APPLICATION_PAUSED)
 	check(int(Codex.read().affixes.get("GEAR_AMP_1",{}).get("found",0)) > 0 and not s.codex_dirty,"pausing in an arena flushes the parked run's codex")
@@ -106,7 +106,7 @@ func run() -> void:
 	check(scene.arena_config.size == 3 and scene.arena_config.members.map(func(m): return m.build) == ["wall","blood_hunter","elementalist"],"party trial selects all three builds")
 	scene.start_arena()
 	for _i in range(4): await process_frame
-	check(scene.session.party.size() == 3 and scene.session.party.all(func(a): return a.equipped_abilities.size() == 10),"all three members wear full example builds")
+	check(scene.session.party.size() == 3 and scene.session.party.all(func(a): return a.equipped_abilities.size() == 6),"all three members wear full example builds")
 	scene.leave_arena()
 	check(scene.session == s and int(s.time) == before,"trying builds restores the original run without advancing time")
 	scene.queue_free(); await process_frame

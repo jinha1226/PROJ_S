@@ -59,7 +59,7 @@ static func part_options(s, actor: Dictionary, options: Array) -> void:
 	for id in Abilities.held(actor):
 		if not Abilities.usable_by(actor,id) or Abilities.definition(id).effect in ["PUSH","GUARD"]: continue
 		var def: Dictionary = Abilities.definition(id)
-		var targets: Array = [actor] if def.target == "SELF" else s.combat_enemies()
+		var targets: Array = [actor] if def.target == "SELF" else (s.friends() if def.target == "ALLY" else s.combat_enemies())
 		for target in targets:
 			if not Abilities.legal(s,actor,id,target.pos): continue
 			if def.effect == "DAMAGE":

@@ -30,10 +30,12 @@ static func apply(s, actor: Dictionary, id: String) -> bool:
 	for i in range(b.stones.size()):
 		var stone: String = str(b.stones[i])
 		actor.essences[stone] = 1
-		Essences.put(actor,i,stone)
+		actor.equipped_abilities[i] = stone
 	for stone in b.stones:
 		var choices := Essences.spell_choices(actor,str(stone))
-		if not choices.is_empty(): actor.essence_spells[str(stone)] = str(choices.back())
+		var core: Array = choices.filter(func(spell): return str(Essences.combat.spells[spell].shape) in ["bolt","line","cone","burst","mark","summon"] and not bool(Essences.combat.spells[spell].get("sacrifice",false)))
+		if not core.is_empty(): actor.essence_spells[str(stone)] = str(core.back())
+	Essences.sync_rules(actor)
 	Essences.sync_spells(actor)
 	actor.gear = {}
 	var gear := Equipment.worn(actor)

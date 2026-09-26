@@ -57,25 +57,13 @@ static func grant_gear(s, item: Dictionary) -> void:
 	if not str(item.get("affix","")).is_empty(): s.Codex.note_affix(s,str(item.affix))
 	s.message(Equipment.title(item)+" 획득")
 
+## Legacy callers may absorb into the next empty slot, never replace or reorder.
 static func equip_part(s, index: int, slot: int, id: String) -> bool:
-	id = Essences.canonical(id)
-	if index < 0 or index >= s.party.size() or not Essences.has(id): return false
-	var actor: Dictionary = s.party[index]
-	if not Essences.can_manage(s) or int(actor.hp) <= 0: return false
-	Essences.sync_slots(actor)
-	if slot < 0 or slot >= Essences.slot_count(actor) or id in actor.equipped_abilities: return false
-	if int(actor.get("essences",{}).get(id,0)) <= 0 and not absorb_essence(s,index,id).is_empty(): return false
-	if not Essences.equip(s,actor,slot,id): return false
-	refresh_party(s)
-	return true
+	if index < 0 or index >= s.party.size() or slot < 0: return false
+	if slot != Essences.free_slot(s.party[index]): return false
+	return absorb_essence(s,index,id).is_empty()
 
-## The slot empties; the essence stays absorbed and can be slotted again.
-static func unequip_part(s, index: int, slot: int) -> bool:
-	if index < 0 or index >= s.party.size(): return false
-	var actor: Dictionary = s.party[index]
-	if not Essences.unequip(s,actor,slot): return false
-	refresh_party(s)
-	return true
+static func unequip_part(_s, _index: int, _slot: int) -> bool: return false
 
 static func absorb_essence(s, index: int, id: String) -> String:
 	if index < 0 or index >= s.party.size(): return "없는 인물"

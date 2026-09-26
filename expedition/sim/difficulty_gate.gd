@@ -44,10 +44,6 @@ static func prepare(seed: int, kit: String, depth: int, share: int = 100):
 		var stone: String = Essences.canonical(str(id))
 		s.parts_bag[stone] = int(s.parts_bag.get(stone,0))+1
 		s.absorb_essence(0,str(id))
-	for id in ids:
-		var free: int = hero.equipped_abilities.find("")
-		if free < 0: break
-		if Essences.canonical(str(id)) not in hero.equipped_abilities: s.equip_part(0,free,str(id))
 	s.phase = phase
 	hero.hp = hero.max_hp; hero.mp = hero.max_mp
 	s.events.clear()
