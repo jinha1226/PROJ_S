@@ -36,7 +36,7 @@ static func adapt(actor: Dictionary, choice: Dictionary, target_id: int = -1, de
 		resolved_target = int(choice.get("target_id", -1))
 	return {"actor_id":int(actor.get("id", -1)), "decision_id":decision_id, "kind":kind,
 		"from":actor.get("pos", Vector2i.ZERO), "cell":cell, "target_id":resolved_target,
-		"path":path, "intent":intent, "reason_code":str(choice.get("reason_code", "")),
+		"path":path, "intent":intent, "reason_text":str(choice.get("reason_text","")), "reason_code":str(choice.get("reason_code", "")),
 		"skill_id":kind if Abilities.has(kind) else "", "explain":choice.get("explain",[]).duplicate(true)}
 
 func preview(actor: Dictionary, choice: Dictionary, target_id: int = -1) -> Dictionary:
@@ -73,6 +73,7 @@ func transition_line(prior: Dictionary, current: Dictionary) -> String:
 	if new == "PROTECT" and (old != new or current.get("target_id",-1) != prior.get("target_id",-1)): return "엄호할게!"
 	if reason == "PRIORITY_TARGET_CHANGED" and int(current.get("target_id", -1)) != int(prior.get("target_id", -1)):
 		return "저쪽부터!"
+	if reason in ["BUILD_TARGET","BUILD_SETUP","BUILD_HOLD","FINISH_FORM","FINISH_YIELD"] and (reason != str(prior.get("reason_code","")) or current.get("target_id",-1) != prior.get("target_id",-1)): return str(current.get("reason_text",""))
 	return ""
 
 func tick(delta: float, paused: bool) -> void:

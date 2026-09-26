@@ -1,4 +1,5 @@
 extends RefCounted
+const Equipment = preload("res://expedition/items/equipment.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const TagSets = preload("res://expedition/progression/tag_sets.gd")
 const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
@@ -24,7 +25,7 @@ static func stats(session, actor: Dictionary) -> Dictionary:
 	if not bool(actor.get("enemy", false)):
 		var strength: int = int(sheet.str.total)
 		var dexterity: int = int(sheet.dex.total)
-		var gear: Dictionary = actor.get("gear", {})
+		var gear: Dictionary = Equipment.worn(actor)
 		var weapon: Dictionary = gear.get("weapon", {})
 		var weapon_def: Dictionary = content.weapons.get(str(weapon.get("type", "")), {})
 		# 공격력 from the soul stones adds to whatever the weapon hits for.
@@ -44,14 +45,13 @@ static func stats(session, actor: Dictionary) -> Dictionary:
 		var armour: Dictionary = gear.get("armour", {})
 		var armour_def: Dictionary = content.armours.get(str(armour.get("type", "")), {})
 		if not armour_def.is_empty(): result.enc = maxi(0, int(armour_def.enc) - strength / 5)
-		var shield_worn: bool = not gear.get("shield", {}).is_empty()
-		var shield: bool = shield_worn and result.trait not in ["ranged", "focus"]
-		if shield: result.enc += 2
-		var natural_block: int = maxi(0,int(sheet.sh.total)-(StatSheet.SHIELD_BLOCK if shield_worn else 0))
-		result.sh = mini(StatSheet.BLOCK_CAP,natural_block+StatSheet.SHIELD_BLOCK if shield else natural_block/2)
-		var ring: Dictionary = gear.get("ring", {})
-		var ring_def: Dictionary = content.rings.get(str(ring.get("type", "")), {})
-		if not ring_def.is_empty() and str(ring_def.stat) == "power": result.power += int(ring_def.value)
+		var offhand: Dictionary = Equipment.definition(gear.get("offhand",{})) if Equipment.hands(weapon) < 2 else {}
+		if int(offhand.get("block",0)) > 0: result.enc += 2
+		else: result.sh = int(result.sh)/2
+		result.power += int(offhand.get("spell",0))
+		for slot in ["ring1","ring2"]:
+			var ring_def: Dictionary = Equipment.definition(gear[slot])
+			if str(ring_def.get("stat","")) == "power": result.power += int(ring_def.value)
 		result.power += int(sheet.spell.total)
 	var statuses: Dictionary = actor.get("statuses", {})
 	if statuses.has("ward"): result.ac += 6
@@ -66,5 +66,6 @@ static func stats(session, actor: Dictionary) -> Dictionary:
 	if statuses.has("stormeye"): result.ev += 20
 	if statuses.has("shield_stance"): result.sh = mini(StatSheet.BLOCK_CAP,int(result.sh)+40)
 	if statuses.has("shield_wall"): result.ac += 3
+	result.ac = maxi(0,int(result.ac))
 	result["form"] = Forms.of_actor(actor)
 	return result

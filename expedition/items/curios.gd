@@ -1,4 +1,5 @@
 extends RefCounted
+const Randart = preload("res://expedition/items/randart.gd")
 ## Floor curios yield food and occasional parts or supplies without tools.
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/exploration_curios.json"))
 
@@ -52,7 +53,7 @@ static func resolve(s, point: Vector2i, option: String) -> bool:
 			if int(level) <= s.depth: tier = maxi(tier,int(level))
 		var options: Array = by_depth[str(tier)]
 		var id: String = str(options[s.Hexaco.sample(s.seed_value,key,"gear_id",options.size())])
-		s.grant_gear({"type":id.trim_prefix("ring:")})
+		s.grant_gear(Randart.make(s,key,id.trim_prefix("ring:")))
 	if got_food > 0: s.message("식량 %d 획득" % got_food)
 	s.score += 5
 	actor.ap -= 1; s.check_battle_end()

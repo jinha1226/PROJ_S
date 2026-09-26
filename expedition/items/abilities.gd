@@ -245,7 +245,9 @@ static func execute(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 ## monster part lands on the announced cell whoever stands there now.
 static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 	id = active_id(id)
-	if Forms.attack_action(s,id): actor["physical_blow"] = true
+	if Forms.attack_action(s,id):
+		actor["physical_blow"] = true
+		s.CombatStats.Equipment.attack_noise(s,actor)
 	var def: Dictionary = definition(id)
 	var victim: Dictionary = s.at(target)
 	# The use is logged first so that a miss is the last line the log shows.
@@ -253,7 +255,7 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 	match def.effect:
 		"MARK":
 			if victim.is_empty(): s.message(actor.name+"의 "+def.name+"가 빗나갔습니다.")
-			else: victim.statuses["marked"] = int(s.time)+300
+			else: s.Statuses.apply(s,victim,"marked",300,actor)
 		"FURNACE": actor.statuses["furnace"] = int(s.time)+200
 		"DEVOUR": actor.devour_ready = true
 		"SHIELD": actor.iron_guard = true
@@ -353,40 +355,40 @@ static func strike_victim(s, actor: Dictionary, victim: Dictionary, amount: int,
 	var damage_form: String = form if element in ["","bleed"] else str(ELEMENT_FORMS[element])
 	if element == "air" and int(s.tile(victim.pos).wet) > 0: amount += SHOCK_BONUS
 	var part_form: String = Forms.of_part(def)
-	if element in ["","bleed"]: amount = Forms.scale(amount,part_form,s.protection_recipient(victim))
+	if element in ["","bleed"]: amount = Forms.scale(amount,part_form,s.protection_recipient(victim),actor,s)
 	var was: String = Forms.begin(s,part_form)
 	var lost: int = int(s.damage(victim,amount,actor.id,damage_form))
 	Forms.end(s,was)
-	if not element.is_empty(): element_mark(s,victim,element)
+	if not element.is_empty(): element_mark(s,victim,element,actor)
 	after_strike(s,actor,victim,lost,def)
 	return lost
 
 ## What a part leaves after its hit: blood drunk, a status, a shove.
 static func after_strike(s, actor: Dictionary, victim: Dictionary, lost: int, def: Dictionary) -> void:
 	if int(def.get("drain",0)) > 0 and lost > 0 and int(actor.hp) > 0:
-		s.StoneEffects.heal(s,actor,lost*int(def.drain)/100,actor)
+		s.StoneEffects.heal(s,actor,lost*int(def.drain)/100,actor,true)
 	if int(victim.hp) <= 0: return
 	var status: String = str(def.get("status",""))
-	if not status.is_empty(): s.Statuses.apply(s,victim,status,int(def.get("status_ticks",200)))
+	if not status.is_empty(): s.Statuses.apply(s,victim,status,int(def.get("status_ticks",200)),actor)
 	if int(def.get("push",0)) > 0:
 		var step: Vector2i = (victim.pos-actor.pos).sign()
 		var destination: Vector2i = victim.pos+step
 		if step != Vector2i.ZERO and s.inside(destination) and s.can_step(victim.pos,destination) and s.at(destination).is_empty(): victim.pos = destination
 
 ## What an element leaves behind on whoever it hit.
-static func element_mark(s, victim: Dictionary, element: String) -> void:
+static func element_mark(s, victim: Dictionary, element: String, source: Dictionary = {}) -> void:
 	match element:
 		"fire":
 			var tile: Dictionary = s.tile(victim.pos)
 			if int(tile.wet) <= 0 and str(tile.terrain) != "water": tile.fire = mini(100,int(tile.fire)+FIRE_TILE_ADD)
 		"ice":
-			if victim.hp > 0: s.Statuses.apply(s,victim,"slow",ELEMENT_TICKS)
+			if victim.hp > 0: s.Statuses.apply(s,victim,"slow",ELEMENT_TICKS,source)
 		"poison":
-			if victim.hp > 0 and int(victim.get("res",{}).get("poison",0)) < 100: victim.statuses["poison"] = s.time+ELEMENT_TICKS+100
+			if victim.hp > 0 and int(victim.get("res",{}).get("poison",0)) < 100: s.Statuses.apply(s,victim,"poison",ELEMENT_TICKS+100,source)
 		"will":
-			if victim.hp > 0: s.Statuses.apply(s,victim,"confuse",ELEMENT_TICKS)
+			if victim.hp > 0: s.Statuses.apply(s,victim,"confuse",ELEMENT_TICKS,source)
 		"bleed":
-			if victim.hp > 0: s.Statuses.apply(s,victim,"bleed",ELEMENT_TICKS+100)
+			if victim.hp > 0: s.Statuses.apply(s,victim,"bleed",ELEMENT_TICKS+100,source)
 
 ## The one damage cut that applies to `actor`: the largest of 몸 말기 (75),
 ## 엄호 (50) and any `damage_cut` percent a status or boss set. Cuts never add up.

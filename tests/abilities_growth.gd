@@ -17,12 +17,13 @@ func exercise() -> void:
 		s.log_lines.clear()
 		s.damage(enemy,999,0,"SLASH")
 		check(s.log_lines.size() >= 2 and s.log_lines[0].contains("피해를 주었습니다") and s.log_lines[1].contains("쓰러졌습니다"),"damage and defeat use separate log lines before XP and drops")
-		var count: int = s.parts_bag.get(Essences.canonical(str(enemy.part_id)),0)
+		var dropped_id: String = Essences.base_of(str(enemy.part_id))+"/"+str(enemy.part_kind)
+		var count: int = s.parts_bag.get(dropped_id,0)
 		dropped += count
 		check(int(s.party[0].level_xp) == 18+s.depth*8 and int(s.party[1].level_xp) == 18+s.depth*8,"shared XP without last-hit competition")
 		check(int(s.party[0].level) == 1 and s.party[0].max_hp == 55,"one floor kill does not skip a level")
 		s.roll_part(enemy); s.damage(enemy,999,0,"SLASH")
-		check(s.parts_bag.get(Essences.canonical(str(enemy.part_id)),0) == count and int(s.party[0].level_xp) == 18+s.depth*8,"death cannot reward twice")
+		check(s.parts_bag.get(dropped_id,0) == count and int(s.party[0].level_xp) == 18+s.depth*8,"death cannot reward twice")
 	check(dropped == 30,"the first of a species always drops (%d of 30)" % dropped)
 	var s = arena()
 	s.phase = "CAMP"

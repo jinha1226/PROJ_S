@@ -1,4 +1,5 @@
 extends RefCounted
+const Equipment = preload("res://expedition/items/equipment.gd")
 ## The camp screen and the popups it opens — gear, prepared spells, reading —
 ## plus the stairs popup that ends a floor. Moved out of main.gd.
 const Session = preload("res://expedition/run/session.gd")
@@ -42,14 +43,18 @@ static func show_gear(ui, index: int) -> void:
 	var session = ui.session
 	if session.phase != "CAMP" or index < 0 or index >= session.party.size(): return
 	ui.clear(ui.modal_content)
-	var box := VBoxContainer.new(); box.name = "GearScreen"; ui.modal_content.add_child(box)
+	var list := Popups.popup_list(ui)
+	var box := VBoxContainer.new(); box.name = "GearScreen"; list.add_child(box)
 	var actor: Dictionary = session.party[index]
 	ui.label(box,actor.name+" · 장비",20)
-	for slot in ["weapon","armour","shield","ring"]:
-		var equipped: Dictionary = actor.gear[slot]
-		var name: String = str(equipped.get("type","—"))
+	for slot in Equipment.SLOTS:
+		var equipped: Dictionary = Equipment.worn(actor)[slot]
+		var name: String = Equipment.title(equipped)
 		var row := HBoxContainer.new(); box.add_child(row)
-		ui.label(row,slot+"  "+name,14)
+		var caption = ui.label(row,str(Equipment.SLOT_NAMES[slot])+"  "+name,14)
+		caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		caption.add_theme_color_override("font_color",Equipment.colour(equipped))
 		ui.button(row,"해제",func():
 			if session.unequip_gear(index,slot): show_gear(ui,index),not equipped.is_empty())
 	var current: Dictionary = Session.CombatStats.stats(session,actor)
@@ -57,14 +62,17 @@ static func show_gear(ui, index: int) -> void:
 		var item: Dictionary = session.gear_bag[i]
 		var slot: String = session.gear_slot(item)
 		if slot.is_empty(): continue
-		var probe: Dictionary = actor.duplicate(true); probe.gear[slot] = item
-		var next: Dictionary = Session.CombatStats.stats(session,probe)
-		var choice = ui.button(box,"%s  Δ피해 %+d  Δ시간 %+d  ΔAC %+d  ΔEV %+d" % [item.type,int(next.damage)-int(current.damage),int(next.delay)-int(current.delay),int(next.ac)-int(current.ac),int(next.ev)-int(current.ev)],func():
-			if session.equip_gear(index,item): ui.refresh(); show_gear(ui,index))
-		choice.icon = Art.equipment_icon(slot,str(item.get("type","")))
-		choice.add_theme_constant_override("icon_max_width",28)
-		choice.name = "GearOption%d" % i
-		choice.custom_minimum_size.y = 44
+		var slots: Array = ["ring1","ring2"] if slot == "ring1" else [slot]
+		for target_slot in slots:
+			var probe: Dictionary = actor.duplicate(true); Equipment.worn(probe)[target_slot] = item
+			var next: Dictionary = Session.CombatStats.stats(session,probe)
+			var choice = ui.button(box,"%s · %s" % [Equipment.title(item),Equipment.SLOT_NAMES[target_slot]],func():
+				if session.equip_gear(index,item,target_slot): ui.refresh(); show_gear(ui,index))
+			choice.clip_text = true
+			choice.add_theme_color_override("font_color",Equipment.colour(item))
+			choice.tooltip_text = Equipment.title(item)+"\n"+Equipment.description(item)+"\nΔ피해 %+d · Δ방어 %+d" % [int(next.damage)-int(current.damage),int(next.ac)-int(current.ac)]
+			choice.name = "GearOption%d_%s" % [i,target_slot]; choice.custom_minimum_size.y = 44
+
 	ui.button(box,"닫기",func(): ui.details_popup.hide())
 	ui.details_popup.popup_centered()
 

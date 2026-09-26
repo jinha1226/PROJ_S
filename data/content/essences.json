@@ -15,11 +15,11 @@
         },
         "broken": {
           "name": "쥐 앞니",
-          "effect": ""
+          "effect": "RAT_INCISOR"
         },
         "pierced": {
           "name": "쥐 심장",
-          "effect": ""
+          "effect": "RAT_HEART"
         }
       }
     },
@@ -37,11 +37,11 @@
         },
         "broken": {
           "name": "목도리 도마뱀 목도리",
-          "effect": ""
+          "effect": "LIZARD_FRILL"
         },
         "pierced": {
           "name": "목도리 도마뱀 눈",
-          "effect": ""
+          "effect": "LIZARD_EYE"
         }
       }
     },
@@ -55,7 +55,7 @@
       "parts": {
         "cut": {
           "name": "코볼트 가죽",
-          "effect": ""
+          "effect": "KOBOLD_HIDE"
         },
         "broken": {
           "name": "코볼트 손뼈",
@@ -63,7 +63,7 @@
         },
         "pierced": {
           "name": "코볼트 심장",
-          "effect": ""
+          "effect": "KOBOLD_HEART"
         }
       }
     },
@@ -77,11 +77,11 @@
       "parts": {
         "cut": {
           "name": "고블린 귀",
-          "effect": ""
+          "effect": "GOBLIN_EAR"
         },
         "broken": {
           "name": "고블린 이빨",
-          "effect": ""
+          "effect": "GOBLIN_TOOTH"
         },
         "pierced": {
           "name": "고블린 심장",
@@ -99,7 +99,7 @@
       "parts": {
         "cut": {
           "name": "오크 가죽",
-          "effect": ""
+          "effect": "ORC_HIDE"
         },
         "broken": {
           "name": "오크 뼈",
@@ -107,7 +107,7 @@
         },
         "pierced": {
           "name": "오크 심장",
-          "effect": ""
+          "effect": "ORC_HEART"
         }
       }
     },
@@ -121,11 +121,11 @@
       "parts": {
         "cut": {
           "name": "놀 가죽",
-          "effect": ""
+          "effect": "GNOLL_HIDE"
         },
         "broken": {
           "name": "놀 뼈",
-          "effect": ""
+          "effect": "GNOLL_BONE"
         },
         "pierced": {
           "name": "놀 심장",
@@ -147,11 +147,11 @@
         },
         "broken": {
           "name": "강쥐 이빨",
-          "effect": ""
+          "effect": "RIVER_RAT_TOOTH"
         },
         "pierced": {
           "name": "강쥐 심장",
-          "effect": ""
+          "effect": "RIVER_RAT_HEART"
         }
       }
     },
@@ -165,11 +165,11 @@
       "parts": {
         "cut": {
           "name": "코볼트 화염술사 손",
-          "effect": ""
+          "effect": "FIRECALLER_HAND"
         },
         "broken": {
           "name": "코볼트 화염술사 뼈",
-          "effect": ""
+          "effect": "FIRECALLER_BONE"
         },
         "pierced": {
           "name": "코볼트 화염술사 심장",
@@ -187,11 +187,11 @@
       "parts": {
         "cut": {
           "name": "서리 도깨비 발톱",
-          "effect": ""
+          "effect": "FROST_CLAW"
         },
         "broken": {
           "name": "서리 도깨비 뿔",
-          "effect": ""
+          "effect": "FROST_HORN"
         },
         "pierced": {
           "name": "서리 도깨비 심장",
@@ -213,11 +213,11 @@
         },
         "broken": {
           "name": "폭풍 박쥐 뼈",
-          "effect": ""
+          "effect": "BAT_BONE"
         },
         "pierced": {
           "name": "폭풍 박쥐 귀",
-          "effect": ""
+          "effect": "BAT_EAR"
         }
       }
     },
@@ -231,11 +231,11 @@
       "parts": {
         "cut": {
           "name": "고블린 주술사 손",
-          "effect": ""
+          "effect": "HEXER_HAND"
         },
         "broken": {
           "name": "고블린 주술사 두개골",
-          "effect": ""
+          "effect": "HEXER_SKULL"
         },
         "pierced": {
           "name": "고블린 주술사 눈",
@@ -253,11 +253,11 @@
       "parts": {
         "cut": {
           "name": "놀 소환사 가죽",
-          "effect": ""
+          "effect": "SUMMONER_HIDE"
         },
         "broken": {
           "name": "놀 소환사 뼈",
-          "effect": ""
+          "effect": "SUMMONER_BONE"
         },
         "pierced": {
           "name": "놀 소환사 심장",
@@ -275,11 +275,11 @@
       "parts": {
         "cut": {
           "name": "홉고블린 가죽",
-          "effect": ""
+          "effect": "HOB_HIDE"
         },
         "broken": {
           "name": "홉고블린 턱뼈",
-          "effect": ""
+          "effect": "HOB_JAW"
         },
         "pierced": {
           "name": "홉고블린 심장",
@@ -301,11 +301,11 @@
         },
         "broken": {
           "name": "고블린 궁수 손가락뼈",
-          "effect": ""
+          "effect": "ARCHER_KNUCKLE"
         },
         "pierced": {
           "name": "고블린 궁수 눈",
-          "effect": ""
+          "effect": "ARCHER_EYE"
         }
       }
     },
@@ -319,7 +319,7 @@
       "parts": {
         "cut": {
           "name": "고블린 방패병 가죽",
-          "effect": ""
+          "effect": "SHIELD_HIDE"
         },
         "broken": {
           "name": "고블린 방패병 팔뼈",
@@ -327,7 +327,7 @@
         },
         "pierced": {
           "name": "고블린 방패병 심장",
-          "effect": ""
+          "effect": "SHIELD_HEART"
         }
       }
     },
@@ -345,11 +345,11 @@
         },
         "broken": {
           "name": "오크 투척병 어깨뼈",
-          "effect": ""
+          "effect": "THROWER_SHOULDER"
         },
         "pierced": {
           "name": "오크 투척병 눈",
-          "effect": ""
+          "effect": "THROWER_EYE"
         }
       }
     },
@@ -363,11 +363,11 @@
       "parts": {
         "cut": {
           "name": "동굴 거미 다리",
-          "effect": ""
+          "effect": "SPIDER_LEG"
         },
         "broken": {
           "name": "동굴 거미 껍질",
-          "effect": ""
+          "effect": "SPIDER_SHELL"
         },
         "pierced": {
           "name": "동굴 거미 실샘",
@@ -385,7 +385,7 @@
       "parts": {
         "cut": {
           "name": "바위 딱정벌레 날개",
-          "effect": ""
+          "effect": "BEETLE_WING"
         },
         "broken": {
           "name": "바위 딱정벌레 껍질",
@@ -393,7 +393,7 @@
         },
         "pierced": {
           "name": "바위 딱정벌레 핵",
-          "effect": ""
+          "effect": "BEETLE_CORE"
         }
       }
     },
@@ -407,7 +407,7 @@
       "parts": {
         "cut": {
           "name": "광석 골렘 광맥",
-          "effect": ""
+          "effect": "GOLEM_VEIN"
         },
         "broken": {
           "name": "광석 골렘 몸돌",
@@ -415,7 +415,7 @@
         },
         "pierced": {
           "name": "광석 골렘 핵",
-          "effect": ""
+          "effect": "GOLEM_CORE"
         }
       }
     },
@@ -433,11 +433,11 @@
         },
         "broken": {
           "name": "거대 거머리 몸마디",
-          "effect": ""
+          "effect": "LEECH_SEGMENT"
         },
         "pierced": {
           "name": "거대 거머리 흡반",
-          "effect": ""
+          "effect": "LEECH_SUCKER"
         }
       }
     },
@@ -451,11 +451,11 @@
       "parts": {
         "cut": {
           "name": "늪 두꺼비 혀",
-          "effect": ""
+          "effect": "TOAD_TONGUE"
         },
         "broken": {
           "name": "늪 두꺼비 뼈",
-          "effect": ""
+          "effect": "TOAD_BONE"
         },
         "pierced": {
           "name": "늪 두꺼비 독샘",
@@ -477,11 +477,11 @@
         },
         "broken": {
           "name": "신전 뱀 비늘",
-          "effect": ""
+          "effect": "SERPENT_SCALE"
         },
         "pierced": {
           "name": "신전 뱀 독니",
-          "effect": ""
+          "effect": "SERPENT_FANG"
         }
       }
     },
@@ -495,11 +495,11 @@
       "parts": {
         "cut": {
           "name": "물의 정령 물살",
-          "effect": ""
+          "effect": "SPIRIT_CURRENT"
         },
         "broken": {
           "name": "물의 정령 물방울",
-          "effect": ""
+          "effect": "SPIRIT_DROP"
         },
         "pierced": {
           "name": "물의 정령 핵",
@@ -517,7 +517,7 @@
       "parts": {
         "cut": {
           "name": "해골 병사 팔",
-          "effect": ""
+          "effect": "SKELETON_ARM"
         },
         "broken": {
           "name": "해골 병사 갈비뼈",
@@ -525,7 +525,7 @@
         },
         "pierced": {
           "name": "해골 병사 두개골",
-          "effect": ""
+          "effect": "SKELETON_SKULL"
         }
       }
     },
@@ -539,7 +539,7 @@
       "parts": {
         "cut": {
           "name": "해골 궁수 손가락",
-          "effect": ""
+          "effect": "BOWMAN_FINGER"
         },
         "broken": {
           "name": "해골 궁수 등뼈",
@@ -547,7 +547,7 @@
         },
         "pierced": {
           "name": "해골 궁수 눈구멍",
-          "effect": ""
+          "effect": "BOWMAN_SOCKET"
         }
       }
     },
@@ -565,11 +565,11 @@
         },
         "broken": {
           "name": "구울 턱",
-          "effect": ""
+          "effect": "GHOUL_JAW"
         },
         "pierced": {
           "name": "구울 심장",
-          "effect": ""
+          "effect": "GHOUL_HEART"
         }
       }
     },
@@ -583,7 +583,7 @@
       "parts": {
         "cut": {
           "name": "흡혈 박쥐 날개",
-          "effect": ""
+          "effect": "VAMPIRE_WING"
         },
         "broken": {
           "name": "흡혈 박쥐 이빨",
@@ -591,7 +591,7 @@
         },
         "pierced": {
           "name": "흡혈 박쥐 심장",
-          "effect": ""
+          "effect": "VAMPIRE_HEART"
         }
       }
     },
@@ -605,7 +605,7 @@
       "parts": {
         "cut": {
           "name": "망령 기사 망토",
-          "effect": ""
+          "effect": "WRAITH_KNIGHT_CLOAK"
         },
         "broken": {
           "name": "망령 기사 갑주",
@@ -613,7 +613,7 @@
         },
         "pierced": {
           "name": "망령 기사 핵",
-          "effect": ""
+          "effect": "WRAITH_KNIGHT_CORE"
         }
       }
     },
@@ -627,11 +627,11 @@
       "parts": {
         "cut": {
           "name": "원혼 수의",
-          "effect": ""
+          "effect": "WRAITH_SHROUD"
         },
         "broken": {
           "name": "원혼 뼈",
-          "effect": ""
+          "effect": "WRAITH_BONE"
         },
         "pierced": {
           "name": "원혼 핵",
@@ -649,11 +649,11 @@
       "parts": {
         "cut": {
           "name": "묘지기 손",
-          "effect": ""
+          "effect": "GRAVEKEEPER_HAND"
         },
         "broken": {
           "name": "묘지기 뼈",
-          "effect": ""
+          "effect": "GRAVEKEEPER_BONE"
         },
         "pierced": {
           "name": "묘지기 등불",

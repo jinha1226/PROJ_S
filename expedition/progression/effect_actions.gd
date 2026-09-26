@@ -1,7 +1,7 @@
 extends RefCounted
 const Stacks = preload("res://expedition/progression/stacks.gd")
 const Conditions = preload("res://expedition/progression/effect_conditions.gd")
-const NAMES := ["damage_percent","extra_damage","apply_status","extend_status","spread_status","burst","push","heal","gain_mp","stack","clear_stack","buff","cooldowns","redirect","revive","raise_dead","summon","notice"]
+const NAMES := ["damage_percent","extra_damage","apply_status","extend_status","spread_status","burst","push","heal","gain_mp","stack","clear_stack","buff","cooldowns","redirect","revive","raise_dead","summon","notice","modify"]
 
 static func operation(action: Dictionary) -> String:
 	for key in action:
@@ -47,10 +47,19 @@ static func run(s, owner: Dictionary, actions: Array, ctx: Dictionary) -> void:
 					var ticks: int = s.StoneEffects.status_ticks(owner,str(action[op]),int(action.get("ticks",100)),s)
 					if s.Statuses.apply(s,to,str(action[op]),ticks,owner): succeeded = true
 			"heal":
-				for to in targets: s.StoneEffects.heal(s,to,maxi(int(action.get("minimum",0)),amount(action[op],to,ctx)),owner)
+				for to in targets: s.StoneEffects.heal(s,to,maxi(int(action.get("minimum",0)),amount(action[op],to,ctx)),owner,bool(action.get("lifesteal",false)))
 			"gain_mp": owner.mp = mini(int(owner.get("max_mp",0)),int(owner.get("mp",0))+int(action[op]))
 			"stack":
-				Stacks.add(owner,str(action[op]),int(action.get("add",1)),int(action.get("max",1)),action.get("until","battle"),int(s.time))
+				var cap: int = int(action.get("max",1))+s.StoneEffects.modifier(s,"stack_max",owner)+s.StoneEffects.modifier(s,"stack_max."+str(action[op]),owner)
+				Stacks.add(owner,str(action[op]),int(action.get("add",1)),cap,action.get("until","battle"),int(s.time))
+			"modify":
+				for to in targets:
+					var mods: Dictionary = to.get_or_add("effect_mods",{})
+					var key: String = str(ctx.get("effect_id","modify"))
+					var n: int = mini(int(action.get("cap",1)),int(mods.get(key,{}).get("n",0))+1) if int(mods.get(key,{}).get("until",0)) > int(s.time) else 1
+					var values: Dictionary = {}
+					for stat in action[op]: values[stat] = int(action[op][stat])*n
+					mods[key] = {"mods":values,"n":n,"until":int(s.time)+int(action.get("ticks",100))}
 			"clear_stack": Stacks.clear(owner,str(action[op]))
 			"cooldowns":
 				for key in owner.get("cooldowns",{}): owner.cooldowns[key] = maxi(0,int(owner.cooldowns[key])-int(action[op]))
@@ -64,15 +73,16 @@ static func run(s, owner: Dictionary, actions: Array, ctx: Dictionary) -> void:
 				succeeded = false
 				if not centre.has("pos"): continue
 				for to in s.party+s.npcs+s.enemies:
-					if int(to.hp) <= 0 or s.side_of(to) == s.side_of(owner) or Conditions.radius(centre.pos,to.pos) > int(action.get("radius",1)): continue
+					if int(to.hp) <= 0 or s.side_of(to) == s.side_of(owner) or Conditions.radius(centre.pos,to.pos) > (int(action.get("radius",1))+s.StoneEffects.modifier(s,"radius",owner)): continue
 					for status in worn:
 						if str(action[op]) == str(status) or (str(action[op]) == "harmful" and status in s.StoneEffects.HARMFUL):
 							if s.Statuses.apply(s,to,str(status),int(action.get("ticks",300)),owner): succeeded = true
+					if succeeded and bool(action.get("one",false)): break
 			"burst":
 				var centre := Conditions.target(ctx)
 				if not centre.has("pos"): continue
 				for to in s.party+s.npcs+s.enemies:
-					if int(to.hp) > 0 and s.side_of(to) != s.side_of(owner) and Conditions.radius(centre.pos,to.pos) <= int(action[op]):
+					if int(to.hp) > 0 and s.side_of(to) != s.side_of(owner) and Conditions.radius(centre.pos,to.pos) <= int(action[op])+s.StoneEffects.modifier(s,"radius",owner):
 						s.CombatRules.damage(s,owner,to,amount(action.get("damage",1),to,ctx),str(action.get("element","physical")),0,s.Reactions.REACTION_FORM)
 			"push":
 				for to in targets:
@@ -94,9 +104,12 @@ static func run(s, owner: Dictionary, actions: Array, ctx: Dictionary) -> void:
 				var places: Array = s.Spells.Summons.summon_cells(s,owner)
 				var corpse := Conditions.target(ctx)
 				if op == "raise_dead" and int(corpse.get("hp",1)) <= 0 and corpse.has("pos") and s.is_free(corpse.pos): places = [corpse.pos]
+				if s.Spells.Summons.summons_of(s,owner).filter(func(p): return int(p.get("summoner",-1)) == int(owner.id)).size() >= 3+s.StoneEffects.summon_extra(owner,s): continue
 				if not places.is_empty():
 					var pet: Dictionary = s.Spells.Summons.summon(s,owner,places[0],str(action[op]))
-					if action.has("ticks"): pet.expires_at = int(s.time)+int(action.ticks)
+					if action.has("ticks"):
+						var duration: int = int(action.ticks)+s.StoneEffects.modifier(s,"summon_ticks",owner)
+						pet.expires_at = int(s.time)+maxi(40,duration*(100+s.StoneEffects.modifier(s,"summon_ticks_percent",owner))/100)
 			"notice":
 				if succeeded:
 					var to: Dictionary = targets[0] if not targets.is_empty() else owner

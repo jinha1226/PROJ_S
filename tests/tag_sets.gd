@@ -43,10 +43,10 @@ func slot(actor: Dictionary, ids: Array) -> void:
 func pack() -> void:
 	var d := duo(); var s = d.s
 	slot(d.hero,["RIVER_RAT_SPLASH","RIVER_RAT_SPLASH@ice"])
-	check(Passives.outgoing(s,d.hero,d.foe,10) == 11,"무리 2: attack +10%")
+	check(Passives.outgoing(s,d.hero,d.foe,100) == 108,"무리 2: attack +8%")
 	slot(d.hero,["RIVER_RAT_SPLASH","RIVER_RAT_SPLASH@ice","RIVER_RAT_SPLASH@fire"])
-	check(Passives.outgoing(s,d.hero,d.foe,10) == 11,"무리 3 is still the two bracket")
-	check(Passives.outgoing(s,d.ally,d.foe,10) == 11,"the whole party reads it through the hook")
+	check(Passives.outgoing(s,d.hero,d.foe,100) == 108,"무리 3 is still the two bracket")
+	check(Passives.outgoing(s,d.ally,d.foe,100) == 108,"the whole party reads it through the hook")
 	check(TagSets.incoming(s,d.hero,5) == 5 and Passives.incoming(s,d.hero,5) == 5,"the combo does not cut incoming damage")
 	check(Passives.outgoing(s,d.foe,d.hero,10) == 10,"a monster wears no combo")
 
@@ -54,13 +54,13 @@ func ambush() -> void:
 	var d := duo(); var s = d.s
 	slot(d.hero,["SPIDER_WEB","SPIDER_WEB@fire"])
 	check(Passives.outgoing(s,d.hero,d.foe,10) == 10,"기습 2 no longer adds thirty percent to a fresh foe")
-	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 10,"기습 2: ten percent critical instead")
+	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 8,"기습 2: eight percent critical instead")
 	check(not d.hero.statuses.has("poised"),"기습 has no prepared critical")
 	slot(d.hero,["SPIDER_WEB","SPIDER_WEB@fire","SPIDER_WEB@ice"])
 	Rules.attack(s,d.foe,d.hero)
 	check(not d.hero.statuses.has("poised"),"a dodge readies nothing any more")
 	d.foe.hp = 39
-	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 10 and Passives.outgoing(s,d.hero,d.foe,10) == 10,"three stones are the two bracket")
+	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 8 and Passives.outgoing(s,d.hero,d.foe,10) == 10,"three stones are the two bracket")
 
 func elements() -> void:
 	var d := duo(); var s = d.s
@@ -91,9 +91,9 @@ func berserk() -> void:
 	check(cost == int(Stats.stats(s,d.hero).delay),"광폭 2 cuts no delay any more")
 	d.hero.hp = int(d.hero.max_hp)/2-1
 	check(int(s.action_cost(d.hero,"ATTACK",d.foe.pos)) == cost,"not even wounded")
-	check(Passives.outgoing(s,d.hero,d.foe,20) == 23,"광폭 2: attack +15%")
+	check(Passives.outgoing(s,d.hero,d.foe,20) == 22,"광폭 2: attack +12%")
 	slot(d.hero,["LIZARD_TAIL","LIZARD_TAIL@fire","LIZARD_TAIL@ice","LIZARD_TAIL@air"])
-	check(int(s.action_cost(d.hero,"ATTACK",d.foe.pos)) == cost*80/100,"광폭 4: wounded, a fifth quicker")
+	check(int(s.action_cost(d.hero,"ATTACK",d.foe.pos)) == cost*85/100,"광폭 4: wounded, fifteen percent quicker")
 
 func archer() -> void:
 	var d := duo(); var s = d.s
@@ -117,7 +117,7 @@ func casters() -> void:
 func guard() -> void:
 	var d := duo(); var s = d.s
 	slot(d.hero,["HOB_TAUNT","SHIELD_STANCE","HOB_TAUNT@fire"])
-	check(int(TagSets.stat_bonus(d.hero).ac) == 3 and not TagSets.stat_bonus(d.hero).has("sh"),"수호 3 is the two bracket: armour three, no block")
+	check(int(TagSets.stat_bonus(d.hero).ac) == 2 and not TagSets.stat_bonus(d.hero).has("sh"),"수호 3 is the two bracket: armour two, no block")
 	check(not TagSets.stat_bonus(d.ally).has("ac"),"the combo belongs to the wearer")
 	d.ally.pos = d.c+Vector2i(0,4)
 	check(not TagSets.stat_bonus(d.ally).has("ac"),"distance does not lend it to an ally")

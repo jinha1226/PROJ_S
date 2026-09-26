@@ -1,4 +1,5 @@
 extends RefCounted
+const BuildSense = preload("res://expedition/ai/build_sense.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 ## Stances: how a member uses whatever it has — charge in, keep range, or
 ## guard someone. Personality sets an aptitude per stance; the player may pick
@@ -215,6 +216,7 @@ static func candidates(s, actor: Dictionary, stance: String, knobs: Dictionary) 
 			var p := protectee(s,actor)
 			if p.is_empty(): charger(s,actor,target,knobs,options)
 			else: guardian(s,actor,p,target,knobs,options)
+	BuildSense.candidates(s,actor,options)
 	return options
 
 ## 돌격형: close on the shared target and stay on it.

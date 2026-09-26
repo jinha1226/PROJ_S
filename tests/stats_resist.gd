@@ -66,7 +66,7 @@ func defence() -> void:
 	hero.gear.shield = {"type":"shield"}
 	check(int(Stats.stats(s,hero).sh) == StatSheet.SHIELD_BLOCK+20,"a shield adds its fifteen")
 	slot(hero,["SHIELD_STANCE","HOB_TAUNT","HOB_TAUNT@fire","HOB_TAUNT@ice","HOB_TAUNT@air","HOB_TAUNT@poison"])
-	check(int(Stats.stats(s,hero).sh) == StatSheet.BLOCK_CAP,"block stops at fifty")
+	check(int(Stats.stats(s,hero).sh) == 47 and int(Stats.stats(s,hero).sh) <= StatSheet.BLOCK_CAP,"rebalanced guard six remains under the fifty-percent block cap")
 
 func resistance() -> void:
 	var s = hero_run(); var hero: Dictionary = s.party[0]

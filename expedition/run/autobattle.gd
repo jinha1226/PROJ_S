@@ -169,6 +169,7 @@ static func auto_step(s) -> bool:
 			s.active_intent_event = IntentUI.adapt(actor,choice,int(target.get("id",-1)),s.intent_decision_serial)
 			var acted: bool = s.act_as(actor,str(choice.get("kind","WAIT")),choice.get("cell",actor.pos),false)
 			if acted:
+				Tactics.BuildSense.committed(s,choice)
 				actor.last_action = str(choice.get("reason","대기"))
 			else:
 				var wait_choice := {"kind":"WAIT","cell":actor.pos,"reason":"대기"}

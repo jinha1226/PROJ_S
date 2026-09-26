@@ -112,6 +112,11 @@ var action_serial := 0
 var casting := 0
 var effect_depth := 0
 var gear_bag: Array = []
+var effect_delays: Array = []
+var unrands_seen: Dictionary = {}
+var part_wishes: Dictionary = {}
+var aim_parts := true
+var finish_yielded: Dictionary = {}
 var manual_mode := false
 var selected := 0
 var intents: Array = []
@@ -162,7 +167,7 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"equipped_abilities":[""],"cooldowns":{},"iron_guard":false,
 		"essences":{},"essence_spells":{},"pool_bonus":{"hp":0,"mp":0},
 		"protected_by":-1,
-		"gear":{"weapon":{},"armour":{},"shield":{},"ring":{}},
+		"gear":{"weapon":{},"armour":{},"offhand":{},"ring1":{},"ring2":{}},
 		"mp":18,"max_mp":18,"usage":{},"statuses":{},"spells":[],"prepared":[],
 		"buffs":{},"opinions":{},
 		"level":1,"level_xp":0,"str_bonus":0,"sleep_until":0,"ready_at":0,
@@ -492,9 +497,10 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 	if not attack_reach(actor,target,int(offense.range)): return {}
 	var form: String = Forms.of_actor(actor)
 	var recipient: Dictionary = protection_recipient(victim)
-	var raw: int = Forms.scale(int(offense.damage),form,recipient)
-	var ac: int = Forms.armour(int(CombatStats.stats(self,recipient).ac),form)
-	var dodge: int = clampi(int(defense.ev)*2+int(defense.get("dodge",0)),5,45)
+	var raw: int = Forms.scale(int(offense.damage),form,recipient,actor,self)
+	var ac: int = Forms.armour(int(CombatStats.stats(self,recipient).ac),form,actor,self)
+	var dodge: int = clampi(int(defense.ev)*2+int(defense.get("dodge",0))-StoneEffects.modifier(self,"accuracy",actor),5,45)
+	if StoneEffects.modifier(self,"zero_dodge",victim) > 0: dodge = 0
 	var block: int = int(defense.sh)
 	return {"actor":actor.id,"target":victim.id,"cell":target,"name":victim.name,"form":form,
 		"chance":maxi(0,(100-dodge)*(100-block)/100),"block":block,"damage":maxi(1,raw-ac),
@@ -543,13 +549,17 @@ func submit(kind: String, target: Vector2i, value: String = "") -> bool:
 	if not Scheduler.flush_ready(self) or actor.hp <= 0: return false
 	var cost := action_cost(actor,kind,target,value)
 	if kind == "CAST":
+		var previous_stacks: Dictionary = actor.get("stacks",{}).duplicate(true)
+		var previous_position: Vector2i = actor.pos
 		if not Spells.cast(self,actor,value,target): return false
+		record_action(actor,"CAST",target,previous_position,previous_stacks)
 		return Scheduler.advance(self,cost)
 	if not act_as(actor,kind,target,false): return false
 	actor.ap = 1
 	return Scheduler.advance(self,cost)
 
 func can_submit(actor: Dictionary, kind: String, target: Vector2i, value: String = "") -> bool:
+	if Forms.attack_action(self,kind) and int(actor.get("effect_moved_round",-1)) == time/100 and StoneEffects.modifier(self,"no_attack_after_move",actor) > 0: return false
 	if kind == "CAST": return Spells.can_cast(self,actor,value,target)
 	if not inside(target): return false
 	if Abilities.has(kind): return Abilities.legal(self,actor,kind,target)
@@ -573,7 +583,7 @@ func status_blocks(actor: Dictionary, kind: String) -> bool: return Statuses.blo
 
 func gear_slot(item: Dictionary) -> String: return Gear.gear_slot(self,item)
 
-func equip_gear(index: int, item: Dictionary) -> bool: return Gear.equip_gear(self,index,item)
+func equip_gear(index: int, item: Dictionary, slot: String = "") -> bool: return Gear.equip_gear(self,index,item,slot)
 
 func unequip_gear(index: int, slot: String) -> bool: return Gear.unequip_gear(self,index,slot)
 
@@ -589,6 +599,8 @@ func _presentation_action(actor: Dictionary, kind: String, target: Vector2i) -> 
 ## after the hero, round end on empty AP); auto_step passes false and drives
 ## the round itself.
 func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = true) -> bool:
+	var previous_stacks: Dictionary = actor.get("stacks",{}).duplicate(true)
+	if Forms.attack_action(self,kind) and int(actor.get("effect_moved_round",-1)) == time/100 and StoneEffects.modifier(self,"no_attack_after_move",actor) > 0: return false
 	Reactions.begin_action(self)
 	if not on_floor() or not inside(target): return false
 	if not pending_choice.is_empty(): return false
@@ -609,7 +621,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 	var was: Vector2i = actor.pos
 	if Abilities.has(kind):
 		if not Abilities.execute(self,actor,kind,target): return false
-		record_action(actor,kind,target,was)
+		record_action(actor,kind,target,was,previous_stacks)
 		actor.ap -= 1; check_battle_end()
 		if presentation != null: presentation.capture(self,actor.id,display_event)
 		if chain: finish_player_action()
@@ -662,7 +674,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 			elif kind == "WATER": tile(target).wet = mini(100, tile(target).wet + 70)
 			else: discharge(target, actor.id)
 		_: return false
-	record_action(actor,kind,target,was)
+	record_action(actor,kind,target,was,previous_stacks)
 	actor.ap -= 1
 	check_battle_end()
 	if presentation != null: presentation.capture(self,actor.id,display_event)
@@ -671,10 +683,12 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 
 ## What this member just did, for the utility selector's commitment term: a
 ## member that kept walking the same way is nudged to keep going.
-func record_action(actor: Dictionary, kind: String, target: Vector2i, was: Vector2i) -> void:
+func record_action(actor: Dictionary, kind: String, target: Vector2i, was: Vector2i, previous_stacks: Dictionary = {}) -> void:
+	for key in previous_stacks:
+		if str(previous_stacks[key].get("until","")) == "next_action" and int(actor.get("stacks",{}).get(key,{}).get("generation",-1)) == int(previous_stacks[key].generation): StoneEffects.Stacks.clear(actor,str(key))
 	if actor.pos != was:
 		actor.effect_move_action = int(action_serial)
-		actor.effect_moved_round = int(time)/100
+		actor.effect_moved_round = int(time)/100; actor.moved_since_attack = true
 		StoneEffects.fire(self,"MOVED",{"actor":actor,"from":was,"to":actor.pos})
 	actor.last_action_kind = kind
 	actor.last_action_dir = Vector2i(signi(target.x-was.x),signi(target.y-was.y)) if kind in ["MOVE","SWAP"] else Vector2i.ZERO
@@ -860,10 +874,17 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 	if target.hp <= 0: return 0
 	var cut: int = Abilities.reduction(target)
 	if cut > 0: amount = maxi(1,amount*(100-cut)/100)
-	if passive_hit: amount = Passives.incoming(self,target,amount)
+	if passive_hit:
+		amount = Passives.incoming(self,target,amount,attacker)
+		amount = StoneEffects.EffectEngine.Code.share_damage(self,target,attacker,amount)
 	# A solo floor always grants one action; collapse instead exposes the hero
 	# to one extra point of damage. Calming supplies can prevent this penalty.
 	if party.size() == 1 and not target.enemy and target.stress >= 150 and amount > 0: amount += 1
+	if amount > 0:
+		target.effect_struck_round = int(time)/100
+		if int(target.get("blood_ward_until",0)) > time:
+			var blocked: int = mini(amount,int(target.get("blood_ward",0)))
+			target.blood_ward = int(target.get("blood_ward",0))-blocked; amount -= blocked
 	serial += 1
 	if amount >= int(target.hp):
 		var danger := {"target":target,"ally":target,"attacker":attacker,"amount":amount}
@@ -893,6 +914,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 	if lost > 0: target.last_form = received.form
 	target.hp -= lost; Body.sync(target)
 	var fell: bool = target.hp <= 0
+	if fell: target.part_own_bonus = StoneEffects.modifier(self,"part_own_percent",attacker)
 	if lost > 0 and bool(target.get("boss",false)): BossAI.on_damaged(self,target,form)
 	if on_floor() and lost > 0: noise.append(target.pos)
 	if target.enemy and lost > 0: Floor.MonsterAI.on_hit(self,target)

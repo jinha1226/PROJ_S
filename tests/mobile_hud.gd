@@ -161,7 +161,7 @@ func quiet_log(scene, s) -> void:
 	scene.run_action(func(): s.roll_part(drop); return true)
 	await process_frame
 	check(scene.notice.is_empty() and not scene.toast.visible,"a part drop produces no toast")
-	check(s.log_lines[-1] == Session.Essences.title("GOBLIN_SHIV")+" 획득","a part drop uses the concise log line")
+	check(s.log_lines[-1] == Session.Essences.title("GOBLIN_SHIV/"+str(drop.part_kind))+" 획득","a part drop uses the concise log line")
 	check(scene.find_child("RecentLog",true,false).text.ends_with(s.log_lines[-1]),"the HUD shows the latest log line")
 	check(scene.find_child("RecentLog",true,false).get_theme_stylebox("normal") is StyleBoxEmpty,"recent log has no button border")
 

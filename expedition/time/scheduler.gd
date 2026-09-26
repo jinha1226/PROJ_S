@@ -112,7 +112,9 @@ static func act(s, actor: Dictionary) -> void:
 		var cell: Vector2i = choice.get("cell", actor.pos)
 		cost = s.action_cost(actor, kind, cell)
 		s.resolving_companions = true
-		if not s.act_as(actor, kind, cell, false):
+		var succeeded: bool = s.act_as(actor, kind, cell, false)
+		if succeeded: Tactics.BuildSense.committed(s,choice)
+		if not succeeded:
 			cost = 100; s.act_as(actor, "WAIT", actor.pos, false)
 		s.resolving_companions = false
 		s.note_explain(actor, choice)
@@ -121,12 +123,13 @@ static func act(s, actor: Dictionary) -> void:
 	if bool(actor.get("enemy",false)) or s.wanderer(actor):
 		if actor.pos != was or bool(actor.get("physical_blow",false)): cost = Forms.fracture_delay(actor,cost)
 	if actor.pos != was and int(actor.get("effect_move_action",-1)) != int(s.action_serial):
-		actor.effect_move_action = int(s.action_serial); actor.effect_moved_round = int(s.time)/100
+		actor.effect_move_action = int(s.action_serial); actor.effect_moved_round = int(s.time)/100; actor.moved_since_attack = true
 		s.StoneEffects.fire(s,"MOVED",{"actor":actor,"from":was,"to":actor.pos})
 	actor.ready_at = s.time + maxi(40, cost)
 
 static func environment_tick(s) -> void:
 	Summons.expire(s)
+	s.StoneEffects.EffectEngine.Code.delayed(s)
 	for y in range(s.BOARD_SIDE):
 		for x in range(s.BOARD_SIDE):
 			var point := Vector2i(x, y)

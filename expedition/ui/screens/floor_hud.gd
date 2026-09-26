@@ -272,9 +272,11 @@ static func show_manual_tactics(ui) -> void:
 				session.in_combat() or command in ["HOLD_POSITION","FOLLOW","STOP_ATTACK"])
 			pick.name = "Tactic_"+command
 			pick.toggle_mode = true; pick.button_pressed = session.party_command == command
+	var parts = ui.button(box,"부위 노리기",func(): session.aim_parts = not session.aim_parts; show_manual_tactics(ui))
+	parts.name = "TacticParts"; parts.toggle_mode = true; parts.button_pressed = session.aim_parts
 	var skills = ui.button(box,"기술",func(): show_manual_skills(ui),not actor.prepared.is_empty() or not Session.Abilities.held(actor).is_empty())
 	skills.name = "TacticSkills"
-	center_tactics_popup(ui,204 if session.party.size() == 1 else 348)
+	center_tactics_popup(ui,244 if session.party.size() == 1 else 388)
 
 static func show_manual_skills(ui) -> void:
 	var session = ui.session

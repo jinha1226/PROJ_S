@@ -141,10 +141,10 @@ func roles() -> void:
 		if bool(out.evaded): dodged = not d.hero.statuses.has("poised"); break
 	check(dodged,"a real dodge readies nothing any more")
 	d.foe.hp = 30
-	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 10,"기습 3 is the two bracket: ten percent critical")
+	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 8,"기습 3 is the two bracket: eight percent critical")
 	check(Passives.outgoing(s,d.hero,d.foe,10) == 10,"and the next blow carries no stored critical")
 	slot(d.hero,["SPIDER_WEB","SPIDER_WEB@fire","SPIDER_WEB@ice","SPIDER_WEB@air"])
-	check(StoneEffects.crit_percent(d.hero) == 200,"기습 4: critical damage +50%p")
+	check(StoneEffects.crit_percent(d.hero) == 190,"기습 4: critical damage +40%p")
 	# 수호: armour and block by bracket; a block strikes nothing back.
 	d = duo(); s = d.s
 	slot(d.hero,["HOB_TAUNT","HOB_TAUNT@fire","HOB_TAUNT@ice"])
@@ -156,12 +156,12 @@ func roles() -> void:
 		var out: Dictionary = Rules.attack(s,d.foe,d.hero)
 		if bool(out.blocked): blocked = int(d.foe.hp) == 40; break
 	check(blocked,"a real block no longer strikes back")
-	check(int(TagSets.stat_bonus(d.hero).ac) == 3,"수호 3 is the two bracket: armour three")
+	check(int(TagSets.stat_bonus(d.hero).ac) == 2,"수호 3 is the two bracket: armour two")
 	check(StatSheet.sheet(s,d.ally).ac.parts.all(func(p): return p.from != "수호 세트" and p.from != "세트"),"수호 lends the ally no armour")
 	slot(d.hero,["HOB_TAUNT","HOB_TAUNT@fire","HOB_TAUNT@ice","HOB_TAUNT@air"])
-	check(int(TagSets.stat_bonus(d.hero).ac) == 6 and int(TagSets.stat_bonus(d.hero).sh) == 10,"수호 4: armour six, block ten")
+	check(int(TagSets.stat_bonus(d.hero).ac) == 5 and int(TagSets.stat_bonus(d.hero).sh) == 10,"수호 4: armour five, block ten")
 	slot(d.hero,["HOB_TAUNT","HOB_TAUNT@fire","HOB_TAUNT@ice","HOB_TAUNT@air","HOB_TAUNT@poison","HOB_TAUNT@bleed"])
-	check(Passives.incoming(s,d.ally,20) == 17,"수호 6: the ally beside takes fifteen percent less")
+	check(Passives.incoming(s,d.ally,20) == 18,"수호 6: the ally beside takes ten percent less")
 	# 광폭 3: no heal on a kill, and no family takes a cooldown off.
 	d = duo(); s = d.s
 	slot(d.hero,["ORC_CLEAVER","GNOLL_SPEAR","ORC_CLEAVER@fire"])
@@ -193,7 +193,7 @@ func roles() -> void:
 	Reactions.tile_react(s,d.foe.pos,"ice",5,d.hero)
 	check(not d.ally.statuses.has("rally") and not d.hero.statuses.has("rally"),"a reaction rallies nobody any more")
 	d.foe.hp = 30
-	check(Passives.outgoing(s,d.ally,d.foe,10) == 11,"무리 2's party-wide attack replaces the rally")
+	check(Passives.outgoing(s,d.ally,d.foe,100) == 108,"무리 2's party-wide attack replaces the rally")
 	var source: String = FileAccess.get_file_as_string("res://expedition/progression/tag_sets.gd")
 	check(not ["func on_dodge","func on_block","func on_reaction","func on_kill","func attack_delay","poised","rally"].any(func(word): return source.contains(word)),"the old role triggers are gone")
 	StoneEffects.force = -1

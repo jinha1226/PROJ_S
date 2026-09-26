@@ -1,6 +1,6 @@
 extends RefCounted
 const Stacks = preload("res://expedition/progression/stacks.gd")
-const KEYS := ["form","element","ranged","spell","target_has","target_harmful_at_least","target_full","target_distance_at_least","self_hp_below","self_has","self_wet","status_is","adjacent_allies_at_least","adjacent_enemies_at_least","no_adjacent_enemy","stack_at_least","unarmed","first_attack","same_target_as_ally","moved_this_round","killer_is_crit","victim_had","owner_adjacent_to_target","status_already","chance","alive_target","alive_other","melee","damage_element","harmful","phase","primary","victim_enemy","reaction","school","died"]
+const KEYS := ["form","element","ranged","spell","target_has","target_harmful_at_least","target_full","target_distance_at_least","self_hp_below","self_has","self_wet","status_is","adjacent_allies_at_least","adjacent_enemies_at_least","no_adjacent_enemy","stack_at_least","unarmed","first_attack","same_target_as_ally","moved_this_round","killer_is_crit","victim_had","owner_adjacent_to_target","status_already","chance","alive_target","alive_other","melee","damage_element","harmful","phase","primary","victim_enemy","reaction","school","died","target_has_any","source_has","target_wet","not_hit_last_round","moved_since_attack","external_heal","lifesteal","same_pet_target","pet_alive","self_hp_above","not_moved_last_round"]
 
 static func radius(a: Vector2i, b: Vector2i) -> int:
 	return maxi(absi(a.x-b.x),absi(a.y-b.y))
@@ -33,6 +33,18 @@ static func test(s, key: String, value: Variant, owner: Dictionary, ctx: Diction
 	match key:
 		"form", "element", "phase", "damage_element", "reaction", "school": return str(ctx.get(key,"")) == str(value)
 		"spell", "ranged", "status_already", "killer_is_crit", "primary", "died": return bool(ctx.get(key,false)) == bool(value)
+		"target_has_any": return value.any(func(k): return to.get("statuses",{}).has(k))
+		"source_has": return ctx.get("source",{}).get("statuses",{}).has(str(value))
+		"target_wet": return s != null and s.Reactions.is_wet(s,to) == bool(value)
+		"not_hit_last_round": return (int(owner.get("effect_struck_round",-99)) < now/100-1) == bool(value)
+		"moved_since_attack": return bool(owner.get("moved_since_attack",false)) == bool(value)
+		"external_heal", "lifesteal": return bool(ctx.get(key,false)) == bool(value)
+		"pet_alive": return s != null and s.npcs.any(func(p): return p.get("summoned",false) and p.hp > 0 and int(p.get("summoner",-1)) == int(owner.id)) == bool(value)
+		"same_pet_target":
+			if s == null: return false
+			var source: Dictionary = ctx.get("source",{})
+			return s.npcs.filter(func(p): return p.get("summoned",false) and p.hp > 0 and int(p.get("summoner",-1)) == int(owner.id) and (p == source or int(p.get("effect_target",-2)) == int(to.get("id",-3)) and int(p.get("effect_hit_round",-99)) == now/100)).size() >= 2
+		"self_hp_above": return int(owner.hp)*100 > int(owner.max_hp)*int(value)
 		"target_has": return to.get("statuses",{}).has(str(value))
 		"target_harmful_at_least": return harmful_count(s,to) >= int(value)
 		"target_full": return (not to.is_empty() and int(to.get("hp",0)) >= int(to.get("max_hp",1))) == bool(value)
@@ -48,6 +60,7 @@ static func test(s, key: String, value: Variant, owner: Dictionary, ctx: Diction
 		"stack_at_least": return Stacks.count(owner,str(value[0]),now) >= int(value[1])
 		"unarmed": return owner.get("gear",{}).get("weapon",{}).is_empty() == bool(value)
 		"first_attack": return (int(owner.get("effect_attacks",0)) == 0) == bool(value)
+		"not_moved_last_round": return (now >= 100 and int(owner.get("effect_moved_round",-1)) != now/100-1) == bool(value)
 		"moved_this_round": return (int(owner.get("effect_moved_round",-1)) == now/100) == bool(value)
 		"same_target_as_ally":
 			if s == null: return false
@@ -60,5 +73,5 @@ static func test(s, key: String, value: Variant, owner: Dictionary, ctx: Diction
 		"alive_target": return (not to.is_empty() and int(to.get("hp",0)) > 0) == bool(value)
 		"alive_other": return (not counterpart.is_empty() and int(counterpart.get("hp",0)) > 0) == bool(value)
 		"melee": return s != null and owner.has("pos") and counterpart.has("pos") and s.melee_reach(owner.pos,counterpart.pos) == bool(value)
-		"chance": return s != null and s.StoneEffects.chance(s,owner,counterpart,lane,int(value))
+		"chance": return s != null and s.StoneEffects.chance(s,owner,counterpart,lane,int(value)+(s.StoneEffects.modifier(s,"kill_chance",owner) if str(ctx.get("when","")) == "KILL" else 0))
 	return false

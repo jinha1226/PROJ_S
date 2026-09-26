@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "rows": [
+    {
+      "id": "AXE",
+      "name": "피 먹는 도끼",
+      "type": "axe",
+      "affix": "UNRAND_AXE",
+      "cost_effect": "COST_AXE",
+      "families": [
+        1,
+        4
+      ]
+    },
+    {
+      "id": "SHIELD",
+      "name": "깨지지 않는 방패",
+      "type": "shield",
+      "affix": "UNRAND_SHIELD",
+      "cost_effect": "COST_SHIELD",
+      "families": [
+        2,
+        5
+      ]
+    },
+    {
+      "id": "DAGGER",
+      "name": "바늘 단검",
+      "type": "dagger",
+      "affix": "UNRAND_DAGGER",
+      "cost_effect": "COST_DAGGER",
+      "families": [
+        3
+      ]
+    },
+    {
+      "id": "CHAIN",
+      "name": "광전사의 사슬",
+      "type": "mail",
+      "affix": "UNRAND_CHAIN",
+      "cost_effect": "COST_CHAIN",
+      "families": [
+        4
+      ]
+    },
+    {
+      "id": "OATH",
+      "name": "탑 방패의 서약",
+      "type": "plate",
+      "affix": "UNRAND_OATH",
+      "cost_effect": "COST_OATH",
+      "families": [
+        5
+      ]
+    },
+    {
+      "id": "BOW",
+      "name": "멈춘 매의 활",
+      "type": "bow",
+      "affix": "UNRAND_BOW",
+      "cost_effect": "COST_BOW",
+      "families": [
+        6
+      ]
+    },
+    {
+      "id": "ORB",
+      "name": "끓는 오브",
+      "type": "orb",
+      "affix": "UNRAND_ORB",
+      "cost_effect": "COST_ORB",
+      "families": [
+        7
+      ]
+    },
+    {
+      "id": "HEX",
+      "name": "원한의 반지",
+      "type": "power",
+      "affix": "UNRAND_HEX",
+      "cost_effect": "COST_HEX",
+      "families": [
+        8
+      ]
+    },
+    {
+      "id": "PLAGUE",
+      "name": "역병 주머니",
+      "type": "orb",
+      "affix": "UNRAND_PLAGUE",
+      "cost_effect": "COST_PLAGUE",
+      "families": [
+        9
+      ]
+    },
+    {
+      "id": "HORN",
+      "name": "부름의 뿔",
+      "type": "power",
+      "affix": "UNRAND_HORN",
+      "cost_effect": "COST_HORN",
+      "families": [
+        10
+      ]
+    },
+    {
+      "id": "DEAD",
+      "name": "망자의 반지",
+      "type": "power",
+      "affix": "UNRAND_DEAD",
+      "cost_effect": "COST_DEAD",
+      "families": [
+        11
+      ]
+    },
+    {
+      "id": "MASK",
+      "name": "두 얼굴 가면",
+      "type": "robe",
+      "affix": "UNRAND_MASK",
+      "cost_effect": "COST_MASK",
+      "families": []
+    }
+  ]
+}

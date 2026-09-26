@@ -9,6 +9,8 @@ const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
 const Folio = preload("res://expedition/ui/screens/character_folio.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
+const BuildSense = preload("res://expedition/ai/build_sense.gd")
+const Forms = preload("res://expedition/combat/forms.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
 const COLUMNS := 5
 const BORDER := Color("6d5b3f")
@@ -42,9 +44,9 @@ static func stat_line(id: String) -> String:
 ## The stone's headline effect: its name and what it does.
 static func effect_line(id: String) -> String:
 	var effect: String = StoneEffects.effect_of(id)
-	if effect.is_empty(): return "대표 효과 없음"
+	if effect.is_empty(): return "효과 없음"
 	var row: Dictionary = StoneEffects.EFFECTS[effect]
-	return "대표 효과 · %s: %s" % [str(row.name),str(row.text)]
+	return "%s · %s" % [str(row.name),str(row.text)]
 
 ## The passive and the active, as the parts catalogue words them; a caster
 ## essence's active is its school's spell.
@@ -116,27 +118,61 @@ static func sets(list: VBoxContainer, actor: Dictionary) -> void:
 			label(box,"%s %s · %s" % [tag_name(str(row.tag)),tally,str(row.text) if int(row.level) > 0 else "구간 전"],13)
 		else: label(box,"%s %d · %s" % [tag_name(str(row.tag)),int(row.level),str(row.text)],13)
 
+	var builds: Dictionary = BuildSense.profile(actor)
+	if not builds.is_empty(): label(box,"빌드 · "+" · ".join(builds.keys().map(func(f): return "%s %d%%" % [BuildSense.NAMES[int(f)],roundi(float(builds[f])*100)])),12)
+
+static func group_key(id: String) -> String:
+	return Essences.base_of(id)+("@"+Essences.variant_element(id) if not Essences.variant_element(id).is_empty() else "")
+
+static func groups(ids: Array) -> Dictionary:
+	var result: Dictionary = {}
+	var ordered: Array = ids.duplicate(); ordered.sort()
+	for entry in ordered:
+		var id: String = Essences.canonical(str(entry))
+		if id.is_empty(): continue
+		var key := group_key(id)
+		if not result.has(key): result[key] = []
+		result[key].append(id)
+	return result
+
+static func siblings(id: String) -> Array:
+	var base := Essences.base_of(id)
+	if not Essences.content.rows.get(base,{}).has("parts"): return [Essences.canonical(id)]
+	var suffix: String = "@"+Essences.variant_element(id) if not Essences.variant_element(id).is_empty() else ""
+	return Forms.PARTS.map(func(part): return base+"/"+part+suffix)
+
+static func family_line(id: String) -> String:
+	var effect: String = StoneEffects.effect_of(id)
+	return " · ".join(StoneEffects.EFFECTS.get(effect,{}).get("families",[]).map(func(f): return str(BuildSense.NAMES.get(int(f),""))))
+
+static func collection(actor: Dictionary, id: String) -> String:
+	var count := 0
+	for part in siblings(id):
+		if Essences.absorbed(actor,str(part)): count += 1
+	return "같은 종족 %d/3" % count if siblings(id).size() == 3 else ""
+
 static func bag(ui, list: VBoxContainer, actor: Dictionary, editable: bool) -> void:
 	ui.session.parts_bag = Essences.normalize_keys(ui.session.parts_bag,true)
 	var index: int = ui.tactics_actor
 	var box := card(list,"가방의 영혼석","EssenceBag")
-	var ids: Array = ui.session.parts_bag.keys()
-	ids.sort()
-	var shown := 0
-	for entry in ids:
-		var id: String = str(entry)
-		if int(ui.session.parts_bag[id]) <= 0 or not Essences.has(id): continue
-		shown += 1
-		var known: bool = Essences.absorbed(actor,id)
-		var row := HBoxContainer.new(); box.add_child(row)
-		var info := VBoxContainer.new(); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(info)
-		label(info,"%s ×%d" % [Essences.title(id),int(ui.session.parts_bag[id])],15)
-		if not tag_line(id).is_empty(): label(info,tag_line(id),12)
-		label(info,"이미 흡수함 · 다른 파티원에게" if known else "새 영혼석 · "+stat_line(id),12)
-		if not known: label(info,effect_line(id),12)
-		var absorb: Button = ui.button(row,"흡수",func(): absorb_press(ui,index,id),editable and not known)
-		absorb.name = "EssenceAbsorb_"+node_key(id)
-	if shown == 0: label(box,"가방에 영혼석 없음",13)
+	var ids: Array = ui.session.parts_bag.keys().filter(func(id): return int(ui.session.parts_bag[id]) > 0)
+	for group in groups(ids):
+		label(box,Essences.title(str(group))+" · "+collection(actor,str(group)),14)
+		var row := HBoxContainer.new(); row.add_theme_constant_override("separation",4); box.add_child(row)
+		for entry in siblings(str(group)):
+			var id: String = str(entry)
+			var info := VBoxContainer.new(); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(info)
+			var amount: int = int(ui.session.parts_bag.get(id,0))
+			var known: bool = Essences.absorbed(actor,id)
+			var part_index := Forms.PARTS.find(Essences.part_of(id))
+			var hint: String = Forms.NAMES[Forms.FORMS[part_index]] if part_index >= 0 else ""
+			label(info,Essences.title(id),12)
+			label(info,"×%d" % amount if amount > 0 else hint,11)
+			if known: label(info,"이미 흡수함",11)
+			var absorb: Button = ui.button(info,"흡수",func(): absorb_press(ui,index,id),editable and not known and amount > 0)
+			absorb.name = "EssenceAbsorb_"+node_key(id); absorb.tooltip_text = stat_line(id)+"\n"+effect_line(id)
+			absorb.custom_minimum_size.x = 0; absorb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if ids.is_empty(): label(box,"가방에 영혼석 없음",13)
 
 static func absorb_press(ui, index: int, id: String) -> void:
 	var reason: String = ui.session.absorb_essence(index,id)
@@ -153,6 +189,7 @@ static func absorbed(ui, list: VBoxContainer, actor: Dictionary, editable: bool)
 		if not tag_line(id).is_empty(): label(box,tag_line(id),12)
 		label(box,stat_line(id),12)
 		label(box,effect_line(id),12)
+		label(box,family_line(id)+" · "+collection(actor,id),12)
 		if not str(Essences.school(id)).is_empty():
 			var spell_id: String = str(actor.get("essence_spells",{}).get(id,""))
 			var spell: Dictionary = ui.session.CombatStats.content.spells.get(spell_id,{})
@@ -186,8 +223,8 @@ static func slot_detail(ui, slot: int, id: String) -> void:
 	label(ui.item_detail,Essences.title(id),20)
 	if not tag_line(id).is_empty(): label(ui.item_detail,tag_line(id),13)
 	label(ui.item_detail,stat_line(id),13)
-	label(ui.item_detail,effect_line(id),13).custom_minimum_size.x = ui.popup_width()
-	label(ui.item_detail,active_line(id),13).custom_minimum_size.x = ui.popup_width()
+	label(ui.item_detail,effect_line(id),13).custom_minimum_size.x = minf(ui.popup_width(),ui.size.x-40)
+	label(ui.item_detail,active_line(id),13).custom_minimum_size.x = minf(ui.popup_width(),ui.size.x-40)
 	if not str(Essences.school(id)).is_empty():
 		var pick: Button = ui.button(ui.item_detail,"주문 선택",func(): pick_spell(ui,index,id),Essences.can_manage(ui.session))
 		pick.name = "EssenceSpellPick_"+node_key(id)

@@ -7,42 +7,53 @@ const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const Rules = preload("res://expedition/ai/tactic_rules.gd")
+const Equipment = preload("res://expedition/items/equipment.gd")
 const Forms = preload("res://expedition/combat/forms.gd")
 
-static func gear_slot(s, item: Dictionary) -> String:
-	var id: String = str(item.get("type",""))
-	if id == "shield": return "shield"
-	if CombatStats.content.weapons.has(id): return "weapon"
-	if CombatStats.content.armours.has(id): return "armour"
-	if CombatStats.content.rings.has(id): return "ring"
-	return ""
+static func gear_slot(_s, item: Dictionary) -> String:
+	return Equipment.slot(item)
 
-static func equip_gear(s, index: int, item: Dictionary) -> bool:
+static func equip_gear(s, index: int, item: Dictionary, requested: String = "") -> bool:
 	if s.phase != "CAMP" or index < 0 or index >= s.party.size() or item not in s.gear_bag: return false
-	var slot: String = s.gear_slot(item)
+	var slot: String = Equipment.slot(item)
 	if slot.is_empty(): return false
 	var actor: Dictionary = s.party[index]
-	if slot == "shield" and str(actor.gear.weapon.get("type","")) in ["bow","staff"]: return false
-	if slot == "weapon" and str(item.type) in ["bow","staff"] and not actor.gear.shield.is_empty(): return false
+	var worn: Dictionary = Equipment.worn(actor)
+	if slot == "ring1":
+		if requested in ["ring1","ring2"]: slot = requested
+		elif worn.ring1.is_empty(): slot = "ring1"
+		elif worn.ring2.is_empty(): slot = "ring2"
+		else: return false
+	elif not requested.is_empty() and requested != slot: return false
+	if slot == "offhand" and Equipment.hands(worn.weapon) == 2: return false
 	if slot == "armour" and actor.species_id == "elf" and str(item.type) == "plate": return false
-	var previous: Dictionary = actor.gear[slot]
+	var hp: int = int(actor.hp); var mp: int = int(actor.get("mp",0))
+	var previous: Dictionary = worn[slot]
 	s.gear_bag.erase(item)
 	if not previous.is_empty(): s.gear_bag.append(previous)
-	actor.gear[slot] = item.duplicate(true)
+	worn[slot] = item.duplicate(true)
+	if slot == "weapon" and Equipment.hands(item) == 2 and not worn.offhand.is_empty():
+		s.gear_bag.append(worn.offhand); worn.offhand = {}
+	StatSheet.refresh_pools(s,actor)
+	actor.hp = mini(hp,int(actor.max_hp)); actor.mp = mini(mp,int(actor.max_mp))
 	return true
 
 static func unequip_gear(s, index: int, slot: String) -> bool:
-	if s.phase != "CAMP" or index < 0 or index >= s.party.size() or slot not in ["weapon","armour","shield","ring"]: return false
+	slot = {"shield":"offhand","ring":"ring1"}.get(slot,slot)
+	if s.phase != "CAMP" or index < 0 or index >= s.party.size() or slot not in Equipment.SLOTS: return false
 	var actor: Dictionary = s.party[index]
-	if actor.gear[slot].is_empty(): return false
-	s.gear_bag.append(actor.gear[slot])
-	actor.gear[slot] = {}
+	var worn: Dictionary = Equipment.worn(actor)
+	if worn[slot].is_empty(): return false
+	var hp: int = int(actor.hp); var mp: int = int(actor.get("mp",0))
+	s.gear_bag.append(worn[slot]); worn[slot] = {}
+	StatSheet.refresh_pools(s,actor)
+	actor.hp = mini(hp,int(actor.max_hp)); actor.mp = mini(mp,int(actor.max_mp))
 	return true
 
 static func grant_gear(s, item: Dictionary) -> void:
 	if item.is_empty(): return
 	s.gear_bag.append(item.duplicate(true))
-	s.message(str(item.get("type","장비"))+" 획득")
+	s.message(Equipment.title(item)+" 획득")
 
 static func equip_part(s, index: int, slot: int, id: String) -> bool:
 	id = Essences.canonical(id)
@@ -100,8 +111,9 @@ static func roll_part(s, enemy: Dictionary, reward_actors: Variant = null) -> vo
 	var chance: int = Essences.drop_chance(s,species)
 	s.essence_seen[species] = true
 	if Hexaco.sample(s.seed_value,s.depth*10000+enemy.id,"essence",100) >= chance: return
-	# The physical part is recorded; actual three-way drops ship in stage a2.
-	enemy.part_kind = Forms.pick_part(str(enemy.get("last_form","")),Hexaco.sample(s.seed_value,s.depth*10000+enemy.id,"essence_part",100))
+	# Physical drops retain the species variant; bosses have no three-way parts.
+	enemy.part_kind = Forms.pick_part(str(enemy.get("last_form","")),Hexaco.sample(s.seed_value,s.depth*10000+enemy.id,"essence_part",100),int(enemy.get("part_own_bonus",0)))
+	if not Essences.part_of(id).is_empty(): id = Essences.canonical(Essences.base_of(id)+"/"+str(enemy.part_kind)+("@"+Essences.variant_element(id) if not Essences.variant_element(id).is_empty() else ""))
 	s.parts_bag[id] = int(s.parts_bag.get(id,0))+1
 	s.battle_stats.drops[id] = int(s.battle_stats.drops.get(id,0))+1
 	s.message(Essences.title(id)+" 획득")

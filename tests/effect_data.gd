@@ -9,7 +9,7 @@ func check(ok: bool, why: String) -> void:
 func _initialize() -> void: call_deferred("run")
 func run() -> void:
 	var data: Dictionary = EffectEngine.content
-	check(int(data.version) == 1 and data.effects.size() == 30,"thirty migrated effects")
+	check(int(data.version) == 1 and data.effects.values().filter(func(row): return row.get("source","") != "gear").size() == 90,"ninety parts and gear effects")
 	check(EffectEngine.validate(data).is_empty(),"production effect schema: "+str(EffectEngine.validate(data)))
 	for id in data.effects:
 		var row: Dictionary = data.effects[id]

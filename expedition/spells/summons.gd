@@ -14,7 +14,7 @@ static func summon_cells(s, caster: Dictionary) -> Array:
 
 ## The creatures this caster currently has standing.
 static func summons_of(s, caster: Dictionary) -> Array:
-	return s.npcs.filter(func(n): return bool(n.get("summoned",false)) and n.hp > 0 and bool(n.enemy) == bool(caster.get("enemy",false)))
+	return s.npcs.filter(func(n): return bool(n.get("summoned",false)) and n.hp > 0 and int(n.get("summoner",-1)) == int(caster.get("id",-2)))
 
 ## A summon: an allied dungeon actor that takes its turns through the same npc
 ## branch every wanderer uses, and fades when its time runs out. It never
@@ -29,7 +29,7 @@ static func summon(s, caster: Dictionary, cell: Vector2i, kind: String = "hound"
 		"mode":"","mode_until":0,"hungry":false,"partner":-1,"bond":"","situation":"RESTING",
 		"state":"MET","floor_seen":int(s.depth),"joined_floor":0,"activity":"","explains":[],
 		"noise_seen":s.npc_clock(),"declined_until":-99,"offered_until":-99},true)
-	pet.gear = {"weapon":{},"armour":{},"shield":{},"ring":{}}
+	pet.gear = {"weapon":{},"armour":{},"offhand":{},"ring1":{},"ring2":{}}
 	pet.equipped_abilities = []; pet.rules = []
 	pet.stance = "CHARGER"
 	pet.hp = int(row.hp)*int(buffs.get("summon_hp",100))/100
@@ -42,6 +42,7 @@ static func summon(s, caster: Dictionary, cell: Vector2i, kind: String = "hound"
 	pet.hp = int(pet.hp)*(100+s.StoneEffects.modifier(s,"summon_hp",caster))/100
 	pet.max_hp = pet.hp
 	pet.expires_at += s.StoneEffects.modifier(s,"summon_ticks",caster)
+	pet.expires_at = s.time+maxi(40,(int(pet.expires_at)-int(s.time))*(100+s.StoneEffects.modifier(s,"summon_ticks_percent",caster))/100)
 	s.npcs.append(pet)
 	s.StoneEffects.fire(s,"SUMMON",{"caster":caster,"pet":pet})
 	return pet

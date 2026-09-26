@@ -1,4 +1,5 @@
 extends RefCounted
+const Randart = preload("res://expedition/items/randart.gd")
 ## Four bosses, one a zone, each a test of that zone's own system (spec §7).
 ## This file is the shared frame: the spawn into the zone's boss room, the
 ## round each boss takes, the sealed room and its banner, the hooks the session
@@ -128,6 +129,9 @@ static func on_boss_defeated(s, boss: Dictionary) -> void:
 	unseal(s,boss)
 	if str(boss.get("boss_kind","")) == "eater": Eater.release(s,boss)
 	if str(boss.get("boss_kind","")) == "fallen": Fallen.defeated(s,boss)
+	if not bool(boss.get("gear_rewarded",false)):
+		boss.gear_rewarded = true
+		s.grant_gear(Randart.make(s,int(s.depth)*100000+int(boss.id),"sword","",true))
 	s.message("%s 처치" % boss.name)
 
 ## The party member a chief's order has marked for this minion, or {}.

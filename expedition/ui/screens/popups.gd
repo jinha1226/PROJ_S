@@ -7,6 +7,7 @@ const Session = preload("res://expedition/run/session.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
 const InventorySlot = preload("res://expedition/items/inventory_slot.gd")
 const CharacterUI = preload("res://expedition/ui/screens/character_folio.gd")
+const Equipment = preload("res://expedition/items/equipment.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const EssenceTab = preload("res://expedition/ui/screens/essence_tab.gd")
@@ -106,6 +107,14 @@ static func show_enemy_info(ui, enemy: Dictionary) -> void:
 		if not bool(enemy.get("boss",false)):
 			var effect = ui.label(ui.modal_content,EssenceTab.effect_line(essence),13)
 			effect.name = "EnemyEffect"; effect.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; effect.custom_minimum_size.x = ui.popup_width()
+	if Essences.has(essence) and not Essences.part_of(Essences.canonical(essence)).is_empty():
+		var names: Array = []
+		for id in EssenceTab.siblings(essence):
+			var part_index: int = Forms.PARTS.find(Essences.part_of(id))
+			var possessed: bool = session.party.any(func(a): return Essences.absorbed(a,id)) or int(session.parts_bag.get(id,0)) > 0
+			names.append("%s%s(%s)" % ["✓ " if possessed else "",Essences.title(id),Forms.NAMES[Forms.FORMS[part_index]]])
+		var parts = ui.label(ui.modal_content," · ".join(names),12); parts.name = "EnemyParts"
+		parts.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; parts.custom_minimum_size.x = minf(ui.popup_width(),ui.size.x-40)
 	var preview: Dictionary = session.attack_preview(enemy.pos)
 	if not preview.is_empty():
 		ui.label(ui.modal_content,"명중 %d%%   피해 %d–%d   %d tick" % [int(preview.chance),int(preview.damage_min),int(preview.damage_max),int(preview.time)],14)
@@ -298,15 +307,33 @@ static func build_manual_inventory(ui) -> void:
 	ui.label(box,"%s · %d종" % [ui.inventory_filter,rows.size()],13)
 	var scroll := ScrollContainer.new(); scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; box.add_child(scroll)
-	var grid := GridContainer.new(); grid.columns = columns; grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	grid.add_theme_constant_override("h_separation",6); grid.add_theme_constant_override("v_separation",6); scroll.add_child(grid)
 	ui.inventory_slots.clear()
-	var minimum_rows := 2 if ui.size.y < 700 else 4
-	for i in range(maxi(columns*minimum_rows,int(ceil(rows.size()/float(columns)))*columns)):
-		var slot = InventorySlot.new(); grid.add_child(slot)
-		var row: Dictionary = rows[i] if i < rows.size() else {}
-		slot.configure(row,row.get("id","") == ui.inventory_selected); ui.inventory_slots.append(slot)
-		if not row.is_empty(): slot.pressed.connect(func(): show_item_detail(ui,row.id))
+	if ui.inventory_filter == "파츠":
+		var list := VBoxContainer.new(); list.size_flags_horizontal = Control.SIZE_EXPAND_FILL; scroll.add_child(list)
+		var by_id: Dictionary = {}
+		for item in rows: by_id[str(item.id)] = item
+		for group in EssenceTab.groups(by_id.keys()):
+			ui.label(list,Essences.title(str(group)),13)
+			var parts := HBoxContainer.new(); parts.add_theme_constant_override("separation",4); list.add_child(parts)
+			for id in EssenceTab.siblings(str(group)):
+				var slot = InventorySlot.new(); slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parts.add_child(slot)
+				var item: Dictionary = by_id.get(str(id),{})
+				slot.configure(item,item.get("id","") == ui.inventory_selected); ui.inventory_slots.append(slot)
+				if not item.is_empty(): slot.pressed.connect(func(): show_item_detail(ui,str(id)))
+				else:
+					var hint: int = Forms.PARTS.find(Essences.part_of(str(id)))
+					if hint >= 0: slot.set_meta("missing_part",str(Forms.NAMES[Forms.FORMS[hint]]))
+					slot.tooltip_text = Essences.title(str(id))+" · "+str(Forms.NAMES[Forms.FORMS[hint]]) if hint >= 0 else Essences.title(str(id))
+	else:
+		var grid := GridContainer.new(); grid.columns = columns; grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_theme_constant_override("h_separation",6); grid.add_theme_constant_override("v_separation",6); scroll.add_child(grid)
+		ui.inventory_slots.clear()
+		var minimum_rows := 2 if ui.size.y < 700 else 4
+		for i in range(maxi(columns*minimum_rows,int(ceil(rows.size()/float(columns)))*columns)):
+			var slot = InventorySlot.new(); grid.add_child(slot)
+			var row: Dictionary = rows[i] if i < rows.size() else {}
+			slot.configure(row,row.get("id","") == ui.inventory_selected); ui.inventory_slots.append(slot)
+			if not row.is_empty(): slot.pressed.connect(func(): show_item_detail(ui,row.id))
 	var selected: Array = inventory_rows(ui).filter(func(r): return r.id == ui.inventory_selected)
 	var detail := PanelContainer.new(); detail.name = "InventorySelection"
 	detail.custom_minimum_size.y = 72
@@ -314,6 +341,7 @@ static func build_manual_inventory(ui) -> void:
 	var details := VBoxContainer.new(); detail.add_child(details)
 	if not selected.is_empty():
 		var item_name = ui.label(details,str(selected[0].label),16)
+		if str(selected[0].category) == "장비": item_name.add_theme_color_override("font_color",Equipment.colour(selected[0].item))
 		item_name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		var description = ui.label(details,str(selected[0].description),12)
 		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -330,12 +358,8 @@ static func build_manual_inventory(ui) -> void:
 			ui.details_popup.position = (Vector2i(ui.size)-popup_size)/2
 	,CONNECT_ONE_SHOT)
 
-static func gear_name(ui, item: Dictionary, slot: String) -> String:
-	if slot == "shield": return "방패"
-	var catalog: Dictionary = Session.CombatStats.content.weapons if slot == "weapon" else Session.CombatStats.content.armours if slot == "armour" else Session.CombatStats.content.rings if slot == "ring" else {}
-	var id: String = str(item.get("type",""))
-	var name: String = str(catalog.get(id,{}).get("name",id))
-	return Forms.weapon_label(name,id) if slot == "weapon" else name
+static func gear_name(_ui, item: Dictionary, slot: String) -> String:
+	return Forms.weapon_label(Equipment.title(item),str(item.type)) if slot == "weapon" else Equipment.title(item)
 
 static func build_equipped_header(ui, parent: VBoxContainer) -> void:
 	if ui.session.party.is_empty(): return
@@ -356,15 +380,15 @@ static func build_equipped_header(ui, parent: VBoxContainer) -> void:
 	var actor: Dictionary = ui.session.party[ui.inventory_actor]
 	var slots := HBoxContainer.new(); slots.name = "EquippedSlots"
 	slots.add_theme_constant_override("separation",3); equipped.add_child(slots)
-	for slot in ["weapon","armour","shield","ring"]:
-		var item: Dictionary = actor.gear.get(slot,{})
+	for slot in Equipment.SLOTS:
+		var item: Dictionary = Equipment.worn(actor).get(slot,{})
 		var occupied: bool = not item.is_empty()
 		var name: String = gear_name(ui,item,slot) if occupied else "없음"
 		var pick = ui.button(slots,"",func(): open_equipped_slot(ui,ui.inventory_actor,slot))
 		pick.name = "Equipped_"+slot
 		pick.custom_minimum_size.y = 72; pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		pick.clip_contents = true; pick.tooltip_text = (str(actor.name)+" · "+name) if occupied else "장비 보기"
-		var slot_label = ui.label(pick,{"weapon":"무기","armour":"방어구","shield":"방패","ring":"반지"}[slot],9)
+		var slot_label = ui.label(pick,Equipment.SLOT_NAMES[slot],9)
 		slot_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 		slot_label.offset_top = 2; slot_label.offset_bottom = 16
 		slot_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; slot_label.clip_text = true
@@ -379,6 +403,7 @@ static func build_equipped_header(ui, parent: VBoxContainer) -> void:
 		item_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 		item_label.offset_left = 2; item_label.offset_right = -2; item_label.offset_top = -20; item_label.offset_bottom = -3
 		item_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; item_label.clip_text = true
+		item_label.add_theme_color_override("font_color",Equipment.colour(item))
 
 static func open_equipped_slot(ui, index: int, slot: String) -> void:
 	if index < 0 or index >= ui.session.party.size(): return
@@ -405,14 +430,14 @@ static func inventory_rows(ui) -> Array:
 		var slot: String = session.gear_slot(item)
 		if slot.is_empty(): continue
 		var name: String = gear_name(ui,item,slot)
-		rows.append({"id":"gear:%d"%i,"label":name,"quantity":1,"category":"장비","gear_index":i,"gear_slot":slot,"description":name,"icon":Art.equipment_icon(slot,str(item.get("type","")))})
+		rows.append({"id":"gear:%d"%i,"label":name,"quantity":1,"category":"장비","item":item,"colour":Equipment.colour(item),"gear_index":i,"gear_slot":slot,"description":Equipment.description(item),"icon":Art.equipment_icon(slot,str(item.get("type","")))})
 	for i in range(session.party.size()):
 		var actor: Dictionary = session.party[i]
-		for slot in ["weapon","armour","shield","ring"]:
-			var equipped: Dictionary = actor.gear.get(slot,{})
+		for slot in Equipment.SLOTS:
+			var equipped: Dictionary = Equipment.worn(actor).get(slot,{})
 			if equipped.is_empty(): continue
 			var name: String = gear_name(ui,equipped,slot)
-			rows.append({"id":"equipped:%d:%s"%[i,slot],"label":name,"quantity":1,"category":"장비","equipped_member":i,"equipped_slot":slot,"gear_slot":slot,"description":actor.name+" · 장착 중","icon":Art.equipment_icon(slot,str(equipped.get("type","")))})
+			rows.append({"id":"equipped:%d:%s"%[i,slot],"label":name,"quantity":1,"category":"장비","item":equipped,"colour":Equipment.colour(equipped),"equipped_member":i,"equipped_slot":slot,"gear_slot":slot,"description":actor.name+" · 장착 중\n"+Equipment.description(equipped),"icon":Art.equipment_icon(slot,str(equipped.get("type","")))})
 	session.parts_bag = Essences.normalize_keys(session.parts_bag,true)
 	for id in session.parts_bag:
 		if session.parts_bag.get(id,0) <= 0: continue
@@ -448,7 +473,10 @@ static func show_item_detail(ui, id: String) -> void:
 	var row: Dictionary = matches[0]; ui.inventory_selected = id
 	for slot in ui.inventory_slots:
 		if is_instance_valid(slot): slot.selected = slot.row.get("id","") == id; slot.queue_redraw()
-	ui.clear(ui.item_detail); ui.label(ui.item_detail,"%s × %d" % [row.label,row.quantity],18)
+	ui.clear(ui.item_detail)
+	var title = ui.label(ui.item_detail,"%s × %d" % [row.label,row.quantity],18)
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if row.category == "장비": title.add_theme_color_override("font_color",Equipment.colour(row.item))
 	var info = ui.label(ui.item_detail,row.description,12); info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.custom_minimum_size.x = minf(290,ui.size.x-32)
 	if row.category == "소모품":
 		var usable: bool = session.phase in ["EXPLORE","BATTLE","CAMP"]
@@ -468,8 +496,10 @@ static func show_item_detail(ui, id: String) -> void:
 			var gear: Dictionary = session.gear_bag[int(row.gear_index)]
 			for i in range(session.party.size()):
 				var actor: Dictionary = session.party[i]
-				ui.button(ui.item_detail,actor.name+" 장착",func():
-					if session.equip_gear(i,gear): ui.item_popup.hide(); ui.refresh(); show_supplies(ui),session.phase == "CAMP" and actor.hp > 0)
+				var targets: Array = ["ring1","ring2"] if Equipment.slot(gear) == "ring1" else [Equipment.slot(gear)]
+				for target_slot in targets:
+					ui.button(ui.item_detail,actor.name+" · "+str(Equipment.SLOT_NAMES[target_slot])+" 장착",func():
+						if session.equip_gear(i,gear,target_slot): ui.item_popup.hide(); ui.refresh(); show_supplies(ui),session.phase == "CAMP" and actor.hp > 0)
 	elif row.category == "파츠":
 		for i in range(session.party.size()):
 			var member: Dictionary = session.party[i]

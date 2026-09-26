@@ -1,0 +1,5320 @@
+{
+  "baseline_commit": "358be17",
+  "quick": true,
+  "baseline": {
+    "commit": "unknown",
+    "elapsed_ms": 42275,
+    "generated": "2026-09-26",
+    "quick": true,
+    "seed_set": {
+      "count": 8,
+      "id": "S4",
+      "start": 8000
+    },
+    "table": [
+      {
+        "arena": "early_hob",
+        "build": "stance_mixed",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 5.5,
+            "median": 3.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 10.770329614269
+          },
+          "damage_wins_per_member": {
+            "mean": 5.5,
+            "median": 3.0,
+            "p90": 22.0,
+            "p95": 22.0,
+            "sd": 6.32455532033676
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {},
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 31,
+              "any_foe_adjacent": 13,
+              "closes_distance": 9,
+              "protectee_near": 2,
+              "same_as_last": 4
+            },
+            "GUARDIAN": {
+              "(무득점)": 22,
+              "any_foe_adjacent": 15,
+              "closes_distance": 5,
+              "protectee_near": 13
+            },
+            "SKIRMISHER": {
+              "(무득점)": 5,
+              "any_foe_adjacent": 8,
+              "closes_distance": 7,
+              "in_band": 13,
+              "la_ally_hit": 1,
+              "opens_distance": 7,
+              "protectee_near": 2,
+              "rule_ready": 11
+            }
+          },
+          "first_death": {
+            "mean": 16.0,
+            "median": 16.0,
+            "p90": 16.0,
+            "p95": 16.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 7.25,
+            "median": 8.0,
+            "p90": 13.0,
+            "p95": 13.0,
+            "sd": 4.32290411644765
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 0.25,
+            "median": 0.0,
+            "p90": 1.0,
+            "p95": 1.0,
+            "sd": 0.433012701892219
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 6,
+              "total": 30
+            },
+            "GUARDIAN": {
+              "in_role": 29,
+              "total": 30
+            },
+            "SKIRMISHER": {
+              "in_role": 20,
+              "total": 30
+            }
+          },
+          "rounds": {
+            "mean": 8.75,
+            "median": 7.0,
+            "p90": 20.0,
+            "p95": 20.0,
+            "sd": 4.32290411644765
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 7.25,
+            "KOBOLD_SLING": 1.375
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "early_pair",
+        "build": "stance_mixed",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 3.5,
+            "median": 0.0,
+            "p90": 8.0,
+            "p95": 10.0,
+            "sd": 4.59165910465197
+          },
+          "damage_wins_per_member": {
+            "mean": 3.5,
+            "median": 2.66666666666667,
+            "p90": 7.33333333333333,
+            "p95": 7.33333333333333,
+            "sd": 2.39791576165636
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "KOBOLD_SLING": 0.75,
+            "RAT_GNAW": 0.125
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 20,
+              "any_foe_adjacent": 17,
+              "closes_distance": 24,
+              "la_ally_hit": 2,
+              "protectee_near": 6,
+              "rule_ready": 2,
+              "same_as_last": 3
+            },
+            "GUARDIAN": {
+              "(무득점)": 11,
+              "any_foe_adjacent": 14,
+              "closes_distance": 10,
+              "la_ally_hit": 2,
+              "protectee_gap": 2,
+              "protectee_near": 31,
+              "rule_ready": 2
+            },
+            "SKIRMISHER": {
+              "(무득점)": 20,
+              "any_foe_adjacent": 2,
+              "closes_distance": 9,
+              "in_band": 23,
+              "opens_distance": 2,
+              "protectee_near": 6,
+              "rule_ready": 10
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 6.375,
+            "median": 4.0,
+            "p90": 15.0,
+            "p95": 15.0,
+            "sd": 4.1514304763539
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.625,
+          "redirects": {
+            "mean": 0.25,
+            "median": 0.0,
+            "p90": 1.0,
+            "p95": 1.0,
+            "sd": 0.433012701892219
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 12,
+              "total": 38
+            },
+            "GUARDIAN": {
+              "in_role": 36,
+              "total": 38
+            },
+            "SKIRMISHER": {
+              "in_role": 22,
+              "total": 38
+            }
+          },
+          "rounds": {
+            "mean": 7.625,
+            "median": 8.0,
+            "p90": 9.0,
+            "p95": 9.0,
+            "sd": 0.85695682505013
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 6.375,
+            "KOBOLD_SLING": 1.125,
+            "PUSH": 0.625
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "deep_mixed",
+        "build": "stance_mixed",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 25.9583333333333,
+            "median": 27.0,
+            "p90": 48.0,
+            "p95": 48.0,
+            "sd": 16.5415617125134
+          },
+          "damage_wins_per_member": {
+            "mean": 23.9444444444444,
+            "median": 24.6666666666667,
+            "p90": 36.0,
+            "p95": 36.0,
+            "sd": 7.38972426355395
+          },
+          "deaths": 2,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.875,
+            "KOBOLD_SLING": 1.5
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 4,
+              "any_foe_adjacent": 35,
+              "closes_distance": 22,
+              "protectee_near": 2,
+              "rule_ready": 3
+            },
+            "GUARDIAN": {
+              "(무득점)": 22,
+              "any_foe_adjacent": 14,
+              "closes_distance": 5,
+              "la_ally_hit": 18,
+              "protectee_gap": 3,
+              "protectee_near": 21,
+              "rule_ready": 1
+            },
+            "SKIRMISHER": {
+              "(무득점)": 23,
+              "any_foe_adjacent": 4,
+              "closes_distance": 10,
+              "in_band": 36,
+              "la_ally_hit": 4,
+              "la_self_hit": 1,
+              "opens_distance": 5,
+              "protectee_near": 6,
+              "rule_ready": 19
+            }
+          },
+          "first_death": {
+            "mean": 16.0,
+            "median": 5.0,
+            "p90": 27.0,
+            "p95": 27.0,
+            "sd": 11.0
+          },
+          "guards": {
+            "mean": 10.875,
+            "median": 9.0,
+            "p90": 25.0,
+            "p95": 25.0,
+            "sd": 7.37288105152931
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.75,
+          "redirects": {
+            "mean": 0.875,
+            "median": 1.0,
+            "p90": 2.0,
+            "p95": 2.0,
+            "sd": 0.7806247497998
+          },
+          "results": {
+            "DEFEAT": 2,
+            "WIN": 6
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 27,
+              "total": 84
+            },
+            "GUARDIAN": {
+              "in_role": 77,
+              "total": 84
+            },
+            "SKIRMISHER": {
+              "in_role": 48,
+              "total": 84
+            }
+          },
+          "rounds": {
+            "mean": 13.125,
+            "median": 8.0,
+            "p90": 29.0,
+            "p95": 29.0,
+            "sd": 8.14612638006556
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 10.875,
+            "KOBOLD_SLING": 2.75,
+            "PUSH": 0.875
+          },
+          "win_ci": [
+            0.409269879102589,
+            0.928522311141972
+          ],
+          "win_rate": 0.75
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "deep_caster",
+        "build": "stance_mixed",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 19.6666666666667,
+            "median": 18.0,
+            "p90": 41.0,
+            "p95": 41.0,
+            "sd": 16.3698571228408
+          },
+          "damage_wins_per_member": {
+            "mean": 19.6666666666667,
+            "median": 16.0,
+            "p90": 41.3333333333333,
+            "p95": 41.3333333333333,
+            "sd": 9.19238815542512
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.375
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 7,
+              "any_foe_adjacent": 33,
+              "cell_danger": 1,
+              "closes_distance": 38,
+              "damage": 2,
+              "la_ally_hit": 5,
+              "la_self_hit": 1,
+              "protectee_near": 7,
+              "rule_ready": 10,
+              "same_as_last": 2
+            },
+            "GUARDIAN": {
+              "(무득점)": 10,
+              "any_foe_adjacent": 4,
+              "cell_danger": 2,
+              "closes_distance": 10,
+              "la_ally_hit": 4,
+              "protectee_near": 53,
+              "rule_ready": 4
+            },
+            "SKIRMISHER": {
+              "(무득점)": 30,
+              "any_foe_adjacent": 1,
+              "cell_danger": 5,
+              "closes_distance": 17,
+              "in_band": 21,
+              "la_ally_hit": 4,
+              "la_self_hit": 2,
+              "opens_distance": 2,
+              "protectee_near": 5,
+              "rule_ready": 12
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 5.875,
+            "median": 5.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 2.61904085496962
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.625,
+          "redirects": {
+            "mean": 0.375,
+            "median": 0.0,
+            "p90": 1.0,
+            "p95": 1.0,
+            "sd": 0.484122918275927
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 25,
+              "total": 57
+            },
+            "GUARDIAN": {
+              "in_role": 45,
+              "total": 57
+            },
+            "SKIRMISHER": {
+              "in_role": 31,
+              "total": 57
+            }
+          },
+          "rounds": {
+            "mean": 10.25,
+            "median": 9.0,
+            "p90": 17.0,
+            "p95": 17.0,
+            "sd": 3.03108891324554
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 5.875,
+            "KOBOLD_SLING": 1.75,
+            "PUSH": 2.375
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "opt_archers",
+        "build": "stance_mixed",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 18.2916666666667,
+            "median": 16.0,
+            "p90": 38.0,
+            "p95": 42.0,
+            "sd": 15.6244444345676
+          },
+          "damage_wins_per_member": {
+            "mean": 18.2916666666667,
+            "median": 20.3333333333333,
+            "p90": 34.0,
+            "p95": 34.0,
+            "sd": 8.66416229841832
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.625,
+            "KOBOLD_SLING": 0.875
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 7,
+              "any_foe_adjacent": 44,
+              "closes_distance": 43,
+              "damage": 1,
+              "la_ally_hit": 1,
+              "protectee_near": 6,
+              "rule_ready": 10
+            },
+            "GUARDIAN": {
+              "(무득점)": 21,
+              "any_foe_adjacent": 4,
+              "closes_distance": 8,
+              "la_ally_hit": 11,
+              "protectee_near": 68
+            },
+            "SKIRMISHER": {
+              "(무득점)": 62,
+              "any_foe_adjacent": 2,
+              "closes_distance": 15,
+              "in_band": 14,
+              "la_ally_hit": 2,
+              "opens_distance": 3,
+              "rule_ready": 13
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 11.5,
+            "median": 10.0,
+            "p90": 22.0,
+            "p95": 22.0,
+            "sd": 4.94974746830583
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.375,
+          "redirects": {
+            "mean": 0.875,
+            "median": 0.0,
+            "p90": 3.0,
+            "p95": 3.0,
+            "sd": 1.1659223816361
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 27,
+              "total": 61
+            },
+            "GUARDIAN": {
+              "in_role": 56,
+              "total": 61
+            },
+            "SKIRMISHER": {
+              "in_role": 25,
+              "total": 61
+            }
+          },
+          "rounds": {
+            "mean": 9.75,
+            "median": 9.0,
+            "p90": 15.0,
+            "p95": 15.0,
+            "sd": 2.3318447632722
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 11.5,
+            "KOBOLD_SLING": 1.625,
+            "PUSH": 1.625
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "optional"
+      },
+      {
+        "arena": "opt_gnoll",
+        "build": "stance_mixed",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 5.625,
+            "median": 0.0,
+            "p90": 20.0,
+            "p95": 20.0,
+            "sd": 8.42027562890115
+          },
+          "damage_wins_per_member": {
+            "mean": 5.625,
+            "median": 4.33333333333333,
+            "p90": 11.0,
+            "p95": 11.0,
+            "sd": 3.12444439505295
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GNOLL_SPEAR": 0.25
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 9,
+              "any_foe_adjacent": 39,
+              "closes_distance": 28,
+              "la_ally_hit": 2,
+              "protectee_near": 6,
+              "rule_ready": 11
+            },
+            "GUARDIAN": {
+              "(무득점)": 24,
+              "any_foe_adjacent": 17,
+              "closes_distance": 3,
+              "protectee_near": 50
+            },
+            "SKIRMISHER": {
+              "(무득점)": 28,
+              "any_foe_adjacent": 3,
+              "closes_distance": 10,
+              "in_band": 29,
+              "opens_distance": 2,
+              "protectee_near": 8,
+              "rule_ready": 13
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 6.5,
+            "median": 5.0,
+            "p90": 13.0,
+            "p95": 13.0,
+            "sd": 4.0
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.375,
+          "redirects": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 20,
+              "total": 49
+            },
+            "GUARDIAN": {
+              "in_role": 48,
+              "total": 49
+            },
+            "SKIRMISHER": {
+              "in_role": 28,
+              "total": 49
+            }
+          },
+          "rounds": {
+            "mean": 8.5,
+            "median": 8.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 1.58113883008419
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 6.5,
+            "KOBOLD_SLING": 1.625,
+            "PUSH": 1.375
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "optional"
+      },
+      {
+        "arena": "early_hob",
+        "build": "stance_charger",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 4.25,
+            "median": 0.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 4.7368238303741
+          },
+          "damage_wins_per_member": {
+            "mean": 4.25,
+            "median": 4.0,
+            "p90": 6.0,
+            "p95": 6.0,
+            "sd": 0.661437827766148
+          },
+          "deaths": 0,
+          "distinct_outcomes": 5,
+          "enemy_skill_uses_mean": {},
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 32,
+              "any_foe_adjacent": 45,
+              "closes_distance": 54,
+              "la_ally_hit": 2,
+              "protectee_near": 5,
+              "same_as_last": 3
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 4.25,
+            "median": 4.0,
+            "p90": 9.0,
+            "p95": 9.0,
+            "sd": 2.38484800354236
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 0.25,
+            "median": 0.0,
+            "p90": 2.0,
+            "p95": 2.0,
+            "sd": 0.661437827766148
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 33,
+              "total": 75
+            }
+          },
+          "rounds": {
+            "mean": 6.5,
+            "median": 6.0,
+            "p90": 9.0,
+            "p95": 9.0,
+            "sd": 1.0
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 4.25
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "early_pair",
+        "build": "stance_charger",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 2.66666666666667,
+            "median": 0.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 4.2687494916219
+          },
+          "damage_wins_per_member": {
+            "mean": 2.66666666666667,
+            "median": 2.66666666666667,
+            "p90": 4.0,
+            "p95": 4.0,
+            "sd": 1.15470053837925
+          },
+          "deaths": 0,
+          "distinct_outcomes": 7,
+          "enemy_skill_uses_mean": {
+            "KOBOLD_SLING": 0.375
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 50,
+              "any_foe_adjacent": 40,
+              "closes_distance": 74,
+              "la_ally_hit": 4,
+              "protectee_near": 6,
+              "rule_ready": 9,
+              "same_as_last": 2
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 6.25,
+            "median": 5.0,
+            "p90": 14.0,
+            "p95": 14.0,
+            "sd": 3.38193731461717
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.25,
+          "redirects": {
+            "mean": 0.125,
+            "median": 0.0,
+            "p90": 1.0,
+            "p95": 1.0,
+            "sd": 0.330718913883074
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 29,
+              "total": 96
+            }
+          },
+          "rounds": {
+            "mean": 7.0,
+            "median": 7.0,
+            "p90": 8.0,
+            "p95": 8.0,
+            "sd": 0.5
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 6.25,
+            "PUSH": 1.25
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "deep_mixed",
+        "build": "stance_charger",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 14.4166666666667,
+            "median": 0.0,
+            "p90": 36.0,
+            "p95": 59.0,
+            "sd": 18.4817853274214
+          },
+          "damage_wins_per_member": {
+            "mean": 14.4166666666667,
+            "median": 12.0,
+            "p90": 27.6666666666667,
+            "p95": 27.6666666666667,
+            "sd": 8.43562221903175
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.625,
+            "KOBOLD_SLING": 0.5
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 33,
+              "any_foe_adjacent": 93,
+              "closes_distance": 95,
+              "la_ally_hit": 7,
+              "protectee_near": 4,
+              "rule_ready": 10
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 5.125,
+            "median": 5.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 2.42061459137964
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.25,
+          "redirects": {
+            "mean": 0.5,
+            "median": 0.0,
+            "p90": 2.0,
+            "p95": 2.0,
+            "sd": 0.707106781186548
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 60,
+              "total": 123
+            }
+          },
+          "rounds": {
+            "mean": 7.25,
+            "median": 7.0,
+            "p90": 9.0,
+            "p95": 9.0,
+            "sd": 0.82915619758885
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 5.125,
+            "PUSH": 1.25
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "deep_caster",
+        "build": "stance_charger",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 13.6666666666667,
+            "median": 0.0,
+            "p90": 39.0,
+            "p95": 44.0,
+            "sd": 15.7444875714927
+          },
+          "damage_wins_per_member": {
+            "mean": 13.6666666666667,
+            "median": 9.33333333333333,
+            "p90": 22.3333333333333,
+            "p95": 22.3333333333333,
+            "sd": 7.43116560320265
+          },
+          "deaths": 0,
+          "distinct_outcomes": 7,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.625
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 32,
+              "any_foe_adjacent": 53,
+              "cell_danger": 1,
+              "closes_distance": 83,
+              "la_ally_hit": 2,
+              "protectee_near": 2,
+              "rule_ready": 9,
+              "same_as_last": 3
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 4.125,
+            "median": 3.0,
+            "p90": 11.0,
+            "p95": 11.0,
+            "sd": 3.37036719067819
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.25,
+          "redirects": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 49,
+              "total": 105
+            }
+          },
+          "rounds": {
+            "mean": 7.375,
+            "median": 7.0,
+            "p90": 9.0,
+            "p95": 9.0,
+            "sd": 1.31695671910659
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 4.125,
+            "PUSH": 1.25
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "opt_archers",
+        "build": "stance_charger",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 10.2083333333333,
+            "median": 5.0,
+            "p90": 28.0,
+            "p95": 28.0,
+            "sd": 13.5091918295984
+          },
+          "damage_wins_per_member": {
+            "mean": 10.2083333333333,
+            "median": 7.66666666666667,
+            "p90": 25.0,
+            "p95": 25.0,
+            "sd": 6.27813113558132
+          },
+          "deaths": 0,
+          "distinct_outcomes": 7,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.75,
+            "KOBOLD_SLING": 0.875
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 38,
+              "any_foe_adjacent": 62,
+              "cell_danger": 1,
+              "closes_distance": 110,
+              "la_ally_hit": 4,
+              "protectee_gap": 1,
+              "protectee_near": 2,
+              "rule_ready": 7
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 5.25,
+            "median": 6.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 3.34477204006491
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.875,
+          "redirects": {
+            "mean": 0.375,
+            "median": 0.0,
+            "p90": 1.0,
+            "p95": 1.0,
+            "sd": 0.484122918275927
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 51,
+              "total": 117
+            }
+          },
+          "rounds": {
+            "mean": 7.0,
+            "median": 7.0,
+            "p90": 8.0,
+            "p95": 8.0,
+            "sd": 0.707106781186548
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 5.25,
+            "PUSH": 0.875
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "optional"
+      },
+      {
+        "arena": "opt_gnoll",
+        "build": "stance_charger",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 3.58333333333333,
+            "median": 0.0,
+            "p90": 13.0,
+            "p95": 13.0,
+            "sd": 6.80022466949112
+          },
+          "damage_wins_per_member": {
+            "mean": 3.58333333333333,
+            "median": 2.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 3.13913470030623
+          },
+          "deaths": 0,
+          "distinct_outcomes": 7,
+          "enemy_skill_uses_mean": {
+            "GNOLL_SPEAR": 0.375
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 46,
+              "any_foe_adjacent": 60,
+              "cell_danger": 1,
+              "closes_distance": 83,
+              "la_ally_hit": 10,
+              "protectee_gap": 2,
+              "protectee_near": 2,
+              "rule_ready": 13,
+              "same_as_last": 1
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 6.125,
+            "median": 5.0,
+            "p90": 9.0,
+            "p95": 9.0,
+            "sd": 2.31503239718152
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.625,
+          "redirects": {
+            "mean": 0.375,
+            "median": 0.0,
+            "p90": 2.0,
+            "p95": 2.0,
+            "sd": 0.695970545353753
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 46,
+              "total": 114
+            }
+          },
+          "rounds": {
+            "mean": 7.25,
+            "median": 7.0,
+            "p90": 8.0,
+            "p95": 8.0,
+            "sd": 0.661437827766148
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 6.125,
+            "PUSH": 1.75
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "optional"
+      },
+      {
+        "arena": "early_hob",
+        "build": "stance_skirmisher",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 3.75,
+            "median": 0.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 6.66614581298669
+          },
+          "damage_wins_per_member": {
+            "mean": 3.75,
+            "median": 2.0,
+            "p90": 14.0,
+            "p95": 14.0,
+            "sd": 4.17582327212252
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {},
+          "explain_top": {
+            "SKIRMISHER": {
+              "(무득점)": 33,
+              "any_foe_adjacent": 17,
+              "closes_distance": 27,
+              "in_band": 59,
+              "opens_distance": 49,
+              "protectee_near": 2,
+              "rule_ready": 38
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 4.125,
+            "median": 2.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 3.68908864084343
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 0.5,
+            "median": 0.0,
+            "p90": 4.0,
+            "p95": 4.0,
+            "sd": 1.3228756555323
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "SKIRMISHER": {
+              "in_role": 80,
+              "total": 126
+            }
+          },
+          "rounds": {
+            "mean": 8.5,
+            "median": 8.0,
+            "p90": 14.0,
+            "p95": 14.0,
+            "sd": 2.69258240356725
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 4.125,
+            "KOBOLD_SLING": 4.875
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "early_pair",
+        "build": "stance_skirmisher",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 3.83333333333333,
+            "median": 0.0,
+            "p90": 9.0,
+            "p95": 10.0,
+            "sd": 5.15320827791344
+          },
+          "damage_wins_per_member": {
+            "mean": 3.83333333333333,
+            "median": 2.66666666666667,
+            "p90": 8.33333333333333,
+            "p95": 8.33333333333333,
+            "sd": 2.04124145231932
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "KOBOLD_SLING": 1.125,
+            "RAT_GNAW": 0.5
+          },
+          "explain_top": {
+            "SKIRMISHER": {
+              "(무득점)": 39,
+              "any_foe_adjacent": 12,
+              "closes_distance": 39,
+              "in_band": 83,
+              "la_ally_hit": 4,
+              "opens_distance": 31,
+              "protectee_gap": 2,
+              "protectee_near": 16,
+              "rule_ready": 38,
+              "same_as_last": 1
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 5.0,
+            "median": 4.0,
+            "p90": 9.0,
+            "p95": 9.0,
+            "sd": 2.87228132326901
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 0.375,
+            "median": 0.0,
+            "p90": 1.0,
+            "p95": 1.0,
+            "sd": 0.484122918275927
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "SKIRMISHER": {
+              "in_role": 91,
+              "total": 141
+            }
+          },
+          "rounds": {
+            "mean": 9.125,
+            "median": 9.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 1.89983551919633
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 5.0,
+            "KOBOLD_SLING": 5.125
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "deep_mixed",
+        "build": "stance_skirmisher",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 28.2083333333333,
+            "median": 26.0,
+            "p90": 54.0,
+            "p95": 58.0,
+            "sd": 20.5547625597789
+          },
+          "damage_wins_per_member": {
+            "mean": 20.8888888888889,
+            "median": 22.6666666666667,
+            "p90": 33.6666666666667,
+            "p95": 33.6666666666667,
+            "sd": 11.1615521731335
+          },
+          "deaths": 3,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.875,
+            "KOBOLD_SLING": 1.5
+          },
+          "explain_top": {
+            "SKIRMISHER": {
+              "(무득점)": 27,
+              "any_foe_adjacent": 25,
+              "cell_danger": 4,
+              "closes_distance": 47,
+              "in_band": 116,
+              "la_ally_hit": 3,
+              "opens_distance": 33,
+              "protectee_near": 5,
+              "rule_ready": 58
+            }
+          },
+          "first_death": {
+            "mean": 28.5,
+            "median": 16.0,
+            "p90": 41.0,
+            "p95": 41.0,
+            "sd": 12.5
+          },
+          "guards": {
+            "mean": 14.125,
+            "median": 4.0,
+            "p90": 72.0,
+            "p95": 72.0,
+            "sd": 22.1440595871669
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 1.875,
+            "median": 1.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 3.13996417177012
+          },
+          "results": {
+            "DEFEAT": 2,
+            "WIN": 6
+          },
+          "role_rounds": {
+            "SKIRMISHER": {
+              "in_role": 197,
+              "total": 393
+            }
+          },
+          "rounds": {
+            "mean": 19.0,
+            "median": 15.0,
+            "p90": 41.0,
+            "p95": 41.0,
+            "sd": 11.1915146427997
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 14.125,
+            "KOBOLD_SLING": 9.75,
+            "PUSH": 0.25
+          },
+          "win_ci": [
+            0.409269879102589,
+            0.928522311141972
+          ],
+          "win_rate": 0.75
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "deep_caster",
+        "build": "stance_skirmisher",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 23.8333333333333,
+            "median": 27.0,
+            "p90": 42.0,
+            "p95": 49.0,
+            "sd": 15.9756759550957
+          },
+          "damage_wins_per_member": {
+            "mean": 23.8333333333333,
+            "median": 21.3333333333333,
+            "p90": 39.0,
+            "p95": 39.0,
+            "sd": 8.9162772500635
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.625,
+            "ORC_CLEAVER": 0.625
+          },
+          "explain_top": {
+            "SKIRMISHER": {
+              "(무득점)": 50,
+              "any_foe_adjacent": 16,
+              "cell_danger": 16,
+              "closes_distance": 62,
+              "in_band": 89,
+              "la_ally_hit": 6,
+              "la_self_hit": 3,
+              "opens_distance": 25,
+              "protectee_gap": 1,
+              "protectee_near": 12,
+              "rule_ready": 47
+            }
+          },
+          "first_death": {
+            "mean": 7.0,
+            "median": 7.0,
+            "p90": 7.0,
+            "p95": 7.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 7.375,
+            "median": 4.0,
+            "p90": 29.0,
+            "p95": 29.0,
+            "sd": 8.45484328654293
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 0.875,
+            "median": 0.0,
+            "p90": 6.0,
+            "p95": 6.0,
+            "sd": 1.96452920568771
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "SKIRMISHER": {
+              "in_role": 122,
+              "total": 225
+            }
+          },
+          "rounds": {
+            "mean": 12.5,
+            "median": 11.0,
+            "p90": 22.0,
+            "p95": 22.0,
+            "sd": 4.0
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 7.375,
+            "KOBOLD_SLING": 6.375
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "opt_archers",
+        "build": "stance_skirmisher",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 23.5,
+            "median": 23.0,
+            "p90": 45.0,
+            "p95": 46.0,
+            "sd": 13.5154232884755
+          },
+          "damage_wins_per_member": {
+            "mean": 20.7142857142857,
+            "median": 20.0,
+            "p90": 34.3333333333333,
+            "p95": 34.3333333333333,
+            "sd": 6.32813965347818
+          },
+          "deaths": 1,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 1.0,
+            "KOBOLD_SLING": 1.75
+          },
+          "explain_top": {
+            "SKIRMISHER": {
+              "(무득점)": 63,
+              "any_foe_adjacent": 14,
+              "cell_danger": 5,
+              "closes_distance": 80,
+              "damage": 2,
+              "in_band": 130,
+              "la_ally_hit": 4,
+              "la_self_hit": 1,
+              "opens_distance": 13,
+              "protectee_gap": 1,
+              "protectee_near": 17,
+              "rule_ready": 64,
+              "same_as_last": 1
+            }
+          },
+          "first_death": {
+            "mean": 10.0,
+            "median": 10.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 8.25,
+            "median": 7.0,
+            "p90": 16.0,
+            "p95": 16.0,
+            "sd": 4.32290411644765
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 1.25,
+            "median": 0.0,
+            "p90": 4.0,
+            "p95": 4.0,
+            "sd": 1.4790199457749
+          },
+          "results": {
+            "DEFEAT": 1,
+            "WIN": 7
+          },
+          "role_rounds": {
+            "SKIRMISHER": {
+              "in_role": 145,
+              "total": 243
+            }
+          },
+          "rounds": {
+            "mean": 13.0,
+            "median": 12.0,
+            "p90": 22.0,
+            "p95": 22.0,
+            "sd": 3.90512483795333
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 8.25,
+            "KOBOLD_SLING": 7.875,
+            "PUSH": 0.375
+          },
+          "win_ci": [
+            0.529105194230139,
+            0.977583091136704
+          ],
+          "win_rate": 0.875
+        },
+        "tier": "optional"
+      },
+      {
+        "arena": "opt_gnoll",
+        "build": "stance_skirmisher",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 6.16666666666667,
+            "median": 0.0,
+            "p90": 20.0,
+            "p95": 25.0,
+            "sd": 10.9645894689324
+          },
+          "damage_wins_per_member": {
+            "mean": 6.16666666666667,
+            "median": 4.33333333333333,
+            "p90": 15.0,
+            "p95": 15.0,
+            "sd": 5.3489355119604
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GNOLL_SPEAR": 0.5,
+            "RAT_GNAW": 0.625
+          },
+          "explain_top": {
+            "SKIRMISHER": {
+              "(무득점)": 44,
+              "any_foe_adjacent": 26,
+              "cell_danger": 3,
+              "closes_distance": 33,
+              "in_band": 122,
+              "la_ally_hit": 2,
+              "opens_distance": 44,
+              "protectee_gap": 3,
+              "protectee_near": 10,
+              "rule_ready": 54
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 4.875,
+            "median": 4.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 3.09989919190931
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "SKIRMISHER": {
+              "in_role": 122,
+              "total": 183
+            }
+          },
+          "rounds": {
+            "mean": 10.25,
+            "median": 10.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 1.92028643696715
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 4.875,
+            "KOBOLD_SLING": 7.0,
+            "PUSH": 0.375
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "optional"
+      },
+      {
+        "arena": "early_hob",
+        "build": "stance_guardian",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 3.375,
+            "median": 0.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 4.9228421668788
+          },
+          "damage_wins_per_member": {
+            "mean": 3.375,
+            "median": 3.0,
+            "p90": 6.0,
+            "p95": 6.0,
+            "sd": 1.86664806538351
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {},
+          "explain_top": {
+            "GUARDIAN": {
+              "(무득점)": 37,
+              "any_foe_adjacent": 48,
+              "closes_distance": 20,
+              "la_ally_hit": 44,
+              "la_self_hit": 3,
+              "protectee_near": 62
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 9.375,
+            "median": 8.0,
+            "p90": 22.0,
+            "p95": 22.0,
+            "sd": 5.93585503529188
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 1.125,
+            "median": 1.0,
+            "p90": 2.0,
+            "p95": 2.0,
+            "sd": 0.7806247497998
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "GUARDIAN": {
+              "in_role": 100,
+              "total": 114
+            }
+          },
+          "rounds": {
+            "mean": 8.125,
+            "median": 7.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 1.61535599791501
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 9.375,
+            "PUSH": 0.375
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "early_pair",
+        "build": "stance_guardian",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 4.83333333333333,
+            "median": 5.0,
+            "p90": 10.0,
+            "p95": 18.0,
+            "sd": 5.48988969733353
+          },
+          "damage_wins_per_member": {
+            "mean": 4.33333333333333,
+            "median": 5.33333333333333,
+            "p90": 6.33333333333333,
+            "p95": 6.33333333333333,
+            "sd": 2.10818510677892
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "KOBOLD_SLING": 0.875,
+            "RAT_GNAW": 0.375
+          },
+          "explain_top": {
+            "GUARDIAN": {
+              "(무득점)": 100,
+              "any_foe_adjacent": 35,
+              "closes_distance": 28,
+              "la_ally_hit": 34,
+              "la_self_hit": 8,
+              "protectee_gap": 2,
+              "protectee_near": 96,
+              "rule_ready": 12,
+              "same_as_last": 1
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 36.625,
+            "median": 12.0,
+            "p90": 200.0,
+            "p95": 200.0,
+            "sd": 62.5838187952765
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 2.125,
+          "redirects": {
+            "mean": 1.0,
+            "median": 0.0,
+            "p90": 4.0,
+            "p95": 4.0,
+            "sd": 1.3228756555323
+          },
+          "results": {
+            "TIMEOUT": 1,
+            "WIN": 7
+          },
+          "role_rounds": {
+            "GUARDIAN": {
+              "in_role": 318,
+              "total": 324
+            }
+          },
+          "rounds": {
+            "mean": 16.25,
+            "median": 8.0,
+            "p90": 61.0,
+            "p95": 61.0,
+            "sd": 17.2608661428099
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 36.625,
+            "PUSH": 6.0
+          },
+          "win_ci": [
+            0.529105194230139,
+            0.977583091136704
+          ],
+          "win_rate": 0.875
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "deep_mixed",
+        "build": "stance_guardian",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 31.2916666666667,
+            "median": 27.0,
+            "p90": 58.0,
+            "p95": 59.0,
+            "sd": 18.8447144814903
+          },
+          "damage_wins_per_member": {
+            "mean": 19.2666666666667,
+            "median": 19.0,
+            "p90": 31.6666666666667,
+            "p95": 31.6666666666667,
+            "sd": 7.59356452677017
+          },
+          "deaths": 4,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.625,
+            "KOBOLD_SLING": 1.625
+          },
+          "explain_top": {
+            "GUARDIAN": {
+              "(무득점)": 25,
+              "any_foe_adjacent": 50,
+              "closes_distance": 35,
+              "la_ally_hit": 63,
+              "la_self_hit": 1,
+              "protectee_gap": 2,
+              "protectee_near": 119,
+              "rule_ready": 17
+            }
+          },
+          "first_death": {
+            "mean": 37.6666666666667,
+            "median": 37.0,
+            "p90": 42.0,
+            "p95": 42.0,
+            "sd": 3.29983164553722
+          },
+          "guards": {
+            "mean": 40.25,
+            "median": 30.0,
+            "p90": 96.0,
+            "p95": 96.0,
+            "sd": 29.1021906391942
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 2.125,
+          "redirects": {
+            "mean": 4.75,
+            "median": 4.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 3.15238005322962
+          },
+          "results": {
+            "DEFEAT": 3,
+            "WIN": 5
+          },
+          "role_rounds": {
+            "GUARDIAN": {
+              "in_role": 438,
+              "total": 507
+            }
+          },
+          "rounds": {
+            "mean": 23.75,
+            "median": 16.0,
+            "p90": 48.0,
+            "p95": 48.0,
+            "sd": 13.7636296085008
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 40.25,
+            "PUSH": 6.75
+          },
+          "win_ci": [
+            0.305737854583802,
+            0.863158240538479
+          ],
+          "win_rate": 0.625
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "deep_caster",
+        "build": "stance_guardian",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 34.2083333333333,
+            "median": 39.0,
+            "p90": 50.0,
+            "p95": 52.0,
+            "sd": 14.4711758525545
+          },
+          "damage_wins_per_member": {
+            "mean": 22.25,
+            "median": 18.6666666666667,
+            "p90": 32.0,
+            "p95": 32.0,
+            "sd": 5.6636021125154
+          },
+          "deaths": 5,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.875,
+            "ORC_CLEAVER": 0.5
+          },
+          "explain_top": {
+            "GUARDIAN": {
+              "(무득점)": 26,
+              "any_foe_adjacent": 24,
+              "cell_danger": 4,
+              "closes_distance": 30,
+              "la_ally_hit": 74,
+              "la_self_hit": 1,
+              "protectee_gap": 3,
+              "protectee_near": 89,
+              "rule_ready": 9,
+              "same_as_last": 1
+            }
+          },
+          "first_death": {
+            "mean": 22.0,
+            "median": 26.0,
+            "p90": 28.0,
+            "p95": 28.0,
+            "sd": 8.17312669668102
+          },
+          "guards": {
+            "mean": 29.5,
+            "median": 22.0,
+            "p90": 70.0,
+            "p95": 70.0,
+            "sd": 18.0277563773199
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.875,
+          "redirects": {
+            "mean": 3.875,
+            "median": 4.0,
+            "p90": 8.0,
+            "p95": 8.0,
+            "sd": 1.96452920568771
+          },
+          "results": {
+            "DEFEAT": 4,
+            "WIN": 4
+          },
+          "role_rounds": {
+            "GUARDIAN": {
+              "in_role": 359,
+              "total": 437
+            }
+          },
+          "rounds": {
+            "mean": 21.875,
+            "median": 21.0,
+            "p90": 42.0,
+            "p95": 42.0,
+            "sd": 9.99296627633657
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 29.5,
+            "PUSH": 3.25
+          },
+          "win_ci": [
+            0.215212526824442,
+            0.784787473175558
+          ],
+          "win_rate": 0.5
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "opt_archers",
+        "build": "stance_guardian",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 25.75,
+            "median": 27.0,
+            "p90": 48.0,
+            "p95": 48.0,
+            "sd": 17.9124025933616
+          },
+          "damage_wins_per_member": {
+            "mean": 21.0,
+            "median": 19.6666666666667,
+            "p90": 33.3333333333333,
+            "p95": 33.3333333333333,
+            "sd": 9.6234666888347
+          },
+          "deaths": 4,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.5,
+            "KOBOLD_SLING": 1.125,
+            "RAT_GNAW": 0.125
+          },
+          "explain_top": {
+            "GUARDIAN": {
+              "(무득점)": 56,
+              "any_foe_adjacent": 29,
+              "closes_distance": 35,
+              "damage": 8,
+              "la_ally_hit": 79,
+              "la_self_hit": 7,
+              "protectee_gap": 3,
+              "protectee_near": 87,
+              "rule_ready": 6,
+              "same_as_last": 1
+            }
+          },
+          "first_death": {
+            "mean": 21.0,
+            "median": 13.0,
+            "p90": 36.0,
+            "p95": 36.0,
+            "sd": 11.5542200082913
+          },
+          "guards": {
+            "mean": 31.75,
+            "median": 21.0,
+            "p90": 76.0,
+            "p95": 76.0,
+            "sd": 25.4987744803549
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.125,
+          "redirects": {
+            "mean": 3.5,
+            "median": 2.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 3.3166247903554
+          },
+          "results": {
+            "DEFEAT": 4,
+            "WIN": 4
+          },
+          "role_rounds": {
+            "GUARDIAN": {
+              "in_role": 259,
+              "total": 342
+            }
+          },
+          "rounds": {
+            "mean": 16.625,
+            "median": 13.0,
+            "p90": 36.0,
+            "p95": 36.0,
+            "sd": 10.7812047100498
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 31.75,
+            "PUSH": 5.0
+          },
+          "win_ci": [
+            0.215212526824442,
+            0.784787473175558
+          ],
+          "win_rate": 0.5
+        },
+        "tier": "optional"
+      },
+      {
+        "arena": "opt_gnoll",
+        "build": "stance_guardian",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 7.91666666666667,
+            "median": 0.0,
+            "p90": 43.0,
+            "p95": 47.0,
+            "sd": 14.8742413438654
+          },
+          "damage_wins_per_member": {
+            "mean": 7.91666666666667,
+            "median": 2.66666666666667,
+            "p90": 32.0,
+            "p95": 32.0,
+            "sd": 10.4226649396613
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GNOLL_SPEAR": 0.375,
+            "RAT_GNAW": 0.375
+          },
+          "explain_top": {
+            "GUARDIAN": {
+              "(무득점)": 153,
+              "any_foe_adjacent": 59,
+              "closes_distance": 23,
+              "la_ally_hit": 31,
+              "la_self_hit": 2,
+              "protectee_near": 73,
+              "rule_ready": 22
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 37.25,
+            "median": 23.0,
+            "p90": 137.0,
+            "p95": 137.0,
+            "sd": 39.3819438321676
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 4.25,
+          "redirects": {
+            "mean": 1.125,
+            "median": 0.0,
+            "p90": 7.0,
+            "p95": 7.0,
+            "sd": 2.26039266500314
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "GUARDIAN": {
+              "in_role": 291,
+              "total": 297
+            }
+          },
+          "rounds": {
+            "mean": 14.75,
+            "median": 10.0,
+            "p90": 45.0,
+            "p95": 45.0,
+            "sd": 11.6054943884352
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 37.25,
+            "PUSH": 5.625
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "optional"
+      }
+    ],
+    "verdicts": {
+      "mixed_build": "stance_mixed",
+      "mixed_fail_arenas": [
+        "deep_mixed"
+      ],
+      "mixed_pass": 5,
+      "pass_all": false,
+      "per_build": {
+        "stance_charger": {
+          "ok": true,
+          "pass_arenas": [
+            "early_hob",
+            "early_pair",
+            "deep_mixed",
+            "deep_caster",
+            "opt_archers",
+            "opt_gnoll"
+          ]
+        },
+        "stance_guardian": {
+          "ok": true,
+          "pass_arenas": [
+            "early_hob",
+            "early_pair",
+            "deep_mixed",
+            "opt_gnoll"
+          ]
+        },
+        "stance_skirmisher": {
+          "ok": true,
+          "pass_arenas": [
+            "early_hob",
+            "early_pair",
+            "deep_mixed",
+            "deep_caster",
+            "opt_archers",
+            "opt_gnoll"
+          ]
+        }
+      }
+    }
+  },
+  "implemented": {
+    "commit": "unknown",
+    "elapsed_ms": 64424,
+    "generated": "2026-09-26",
+    "quick": true,
+    "seed_set": {
+      "count": 8,
+      "id": "S4",
+      "start": 8000
+    },
+    "table": [
+      {
+        "arena": "early_hob",
+        "build": "stance_mixed",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 5.5,
+            "median": 3.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 10.770329614269
+          },
+          "damage_wins_per_member": {
+            "mean": 5.5,
+            "median": 3.0,
+            "p90": 22.0,
+            "p95": 22.0,
+            "sd": 6.32455532033676
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {},
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 31,
+              "any_foe_adjacent": 13,
+              "closes_distance": 9,
+              "protectee_near": 2,
+              "same_as_last": 4
+            },
+            "GUARDIAN": {
+              "(무득점)": 22,
+              "any_foe_adjacent": 15,
+              "closes_distance": 5,
+              "protectee_near": 13
+            },
+            "SKIRMISHER": {
+              "(무득점)": 5,
+              "any_foe_adjacent": 8,
+              "closes_distance": 7,
+              "in_band": 13,
+              "la_ally_hit": 1,
+              "opens_distance": 7,
+              "protectee_near": 2,
+              "rule_ready": 11
+            }
+          },
+          "first_death": {
+            "mean": 16.0,
+            "median": 16.0,
+            "p90": 16.0,
+            "p95": 16.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 7.25,
+            "median": 8.0,
+            "p90": 13.0,
+            "p95": 13.0,
+            "sd": 4.32290411644765
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 0.25,
+            "median": 0.0,
+            "p90": 1.0,
+            "p95": 1.0,
+            "sd": 0.433012701892219
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 6,
+              "total": 30
+            },
+            "GUARDIAN": {
+              "in_role": 29,
+              "total": 30
+            },
+            "SKIRMISHER": {
+              "in_role": 20,
+              "total": 30
+            }
+          },
+          "rounds": {
+            "mean": 8.75,
+            "median": 7.0,
+            "p90": 20.0,
+            "p95": 20.0,
+            "sd": 4.32290411644765
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 7.25,
+            "KOBOLD_SLING": 1.375
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "early_pair",
+        "build": "stance_mixed",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 3.5,
+            "median": 0.0,
+            "p90": 8.0,
+            "p95": 10.0,
+            "sd": 4.59165910465197
+          },
+          "damage_wins_per_member": {
+            "mean": 3.5,
+            "median": 2.66666666666667,
+            "p90": 7.33333333333333,
+            "p95": 7.33333333333333,
+            "sd": 2.39791576165636
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "KOBOLD_SLING": 0.75,
+            "RAT_GNAW": 0.125
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 20,
+              "any_foe_adjacent": 17,
+              "closes_distance": 24,
+              "la_ally_hit": 2,
+              "protectee_near": 6,
+              "rule_ready": 2,
+              "same_as_last": 3
+            },
+            "GUARDIAN": {
+              "(무득점)": 11,
+              "any_foe_adjacent": 14,
+              "closes_distance": 10,
+              "la_ally_hit": 2,
+              "protectee_gap": 2,
+              "protectee_near": 31,
+              "rule_ready": 2
+            },
+            "SKIRMISHER": {
+              "(무득점)": 20,
+              "any_foe_adjacent": 2,
+              "closes_distance": 9,
+              "in_band": 23,
+              "opens_distance": 2,
+              "protectee_near": 6,
+              "rule_ready": 10
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 6.375,
+            "median": 4.0,
+            "p90": 15.0,
+            "p95": 15.0,
+            "sd": 4.1514304763539
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.625,
+          "redirects": {
+            "mean": 0.25,
+            "median": 0.0,
+            "p90": 1.0,
+            "p95": 1.0,
+            "sd": 0.433012701892219
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 12,
+              "total": 38
+            },
+            "GUARDIAN": {
+              "in_role": 36,
+              "total": 38
+            },
+            "SKIRMISHER": {
+              "in_role": 22,
+              "total": 38
+            }
+          },
+          "rounds": {
+            "mean": 7.625,
+            "median": 8.0,
+            "p90": 9.0,
+            "p95": 9.0,
+            "sd": 0.85695682505013
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 6.375,
+            "KOBOLD_SLING": 1.125,
+            "PUSH": 0.625
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "deep_mixed",
+        "build": "stance_mixed",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 25.9583333333333,
+            "median": 27.0,
+            "p90": 48.0,
+            "p95": 48.0,
+            "sd": 16.5415617125134
+          },
+          "damage_wins_per_member": {
+            "mean": 23.9444444444444,
+            "median": 24.6666666666667,
+            "p90": 36.0,
+            "p95": 36.0,
+            "sd": 7.38972426355395
+          },
+          "deaths": 2,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.875,
+            "KOBOLD_SLING": 1.5
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 4,
+              "any_foe_adjacent": 35,
+              "closes_distance": 22,
+              "protectee_near": 2,
+              "rule_ready": 3
+            },
+            "GUARDIAN": {
+              "(무득점)": 22,
+              "any_foe_adjacent": 14,
+              "closes_distance": 5,
+              "la_ally_hit": 18,
+              "protectee_gap": 3,
+              "protectee_near": 21,
+              "rule_ready": 1
+            },
+            "SKIRMISHER": {
+              "(무득점)": 23,
+              "any_foe_adjacent": 4,
+              "closes_distance": 10,
+              "in_band": 36,
+              "la_ally_hit": 4,
+              "la_self_hit": 1,
+              "opens_distance": 5,
+              "protectee_near": 6,
+              "rule_ready": 19
+            }
+          },
+          "first_death": {
+            "mean": 16.0,
+            "median": 5.0,
+            "p90": 27.0,
+            "p95": 27.0,
+            "sd": 11.0
+          },
+          "guards": {
+            "mean": 10.875,
+            "median": 9.0,
+            "p90": 25.0,
+            "p95": 25.0,
+            "sd": 7.37288105152931
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.75,
+          "redirects": {
+            "mean": 0.875,
+            "median": 1.0,
+            "p90": 2.0,
+            "p95": 2.0,
+            "sd": 0.7806247497998
+          },
+          "results": {
+            "DEFEAT": 2,
+            "WIN": 6
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 27,
+              "total": 84
+            },
+            "GUARDIAN": {
+              "in_role": 77,
+              "total": 84
+            },
+            "SKIRMISHER": {
+              "in_role": 48,
+              "total": 84
+            }
+          },
+          "rounds": {
+            "mean": 13.125,
+            "median": 8.0,
+            "p90": 29.0,
+            "p95": 29.0,
+            "sd": 8.14612638006556
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 10.875,
+            "KOBOLD_SLING": 2.75,
+            "PUSH": 0.875
+          },
+          "win_ci": [
+            0.409269879102589,
+            0.928522311141972
+          ],
+          "win_rate": 0.75
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "deep_caster",
+        "build": "stance_mixed",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 19.6666666666667,
+            "median": 18.0,
+            "p90": 41.0,
+            "p95": 41.0,
+            "sd": 16.3698571228408
+          },
+          "damage_wins_per_member": {
+            "mean": 19.6666666666667,
+            "median": 16.0,
+            "p90": 41.3333333333333,
+            "p95": 41.3333333333333,
+            "sd": 9.19238815542512
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.375
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 7,
+              "any_foe_adjacent": 33,
+              "cell_danger": 1,
+              "closes_distance": 38,
+              "damage": 2,
+              "la_ally_hit": 5,
+              "la_self_hit": 1,
+              "protectee_near": 7,
+              "rule_ready": 10,
+              "same_as_last": 2
+            },
+            "GUARDIAN": {
+              "(무득점)": 10,
+              "any_foe_adjacent": 4,
+              "cell_danger": 2,
+              "closes_distance": 10,
+              "la_ally_hit": 4,
+              "protectee_near": 53,
+              "rule_ready": 4
+            },
+            "SKIRMISHER": {
+              "(무득점)": 30,
+              "any_foe_adjacent": 1,
+              "cell_danger": 5,
+              "closes_distance": 17,
+              "in_band": 21,
+              "la_ally_hit": 4,
+              "la_self_hit": 2,
+              "opens_distance": 2,
+              "protectee_near": 5,
+              "rule_ready": 12
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 5.875,
+            "median": 5.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 2.61904085496962
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.625,
+          "redirects": {
+            "mean": 0.375,
+            "median": 0.0,
+            "p90": 1.0,
+            "p95": 1.0,
+            "sd": 0.484122918275927
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 25,
+              "total": 57
+            },
+            "GUARDIAN": {
+              "in_role": 45,
+              "total": 57
+            },
+            "SKIRMISHER": {
+              "in_role": 31,
+              "total": 57
+            }
+          },
+          "rounds": {
+            "mean": 10.25,
+            "median": 9.0,
+            "p90": 17.0,
+            "p95": 17.0,
+            "sd": 3.03108891324554
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 5.875,
+            "KOBOLD_SLING": 1.75,
+            "PUSH": 2.375
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "opt_archers",
+        "build": "stance_mixed",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 18.2916666666667,
+            "median": 16.0,
+            "p90": 38.0,
+            "p95": 42.0,
+            "sd": 15.6244444345676
+          },
+          "damage_wins_per_member": {
+            "mean": 18.2916666666667,
+            "median": 20.3333333333333,
+            "p90": 34.0,
+            "p95": 34.0,
+            "sd": 8.66416229841832
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.625,
+            "KOBOLD_SLING": 0.875
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 7,
+              "any_foe_adjacent": 44,
+              "closes_distance": 43,
+              "damage": 1,
+              "la_ally_hit": 1,
+              "protectee_near": 6,
+              "rule_ready": 10
+            },
+            "GUARDIAN": {
+              "(무득점)": 21,
+              "any_foe_adjacent": 4,
+              "closes_distance": 8,
+              "la_ally_hit": 11,
+              "protectee_near": 68
+            },
+            "SKIRMISHER": {
+              "(무득점)": 62,
+              "any_foe_adjacent": 2,
+              "closes_distance": 15,
+              "in_band": 14,
+              "la_ally_hit": 2,
+              "opens_distance": 3,
+              "rule_ready": 13
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 11.5,
+            "median": 10.0,
+            "p90": 22.0,
+            "p95": 22.0,
+            "sd": 4.94974746830583
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.375,
+          "redirects": {
+            "mean": 0.875,
+            "median": 0.0,
+            "p90": 3.0,
+            "p95": 3.0,
+            "sd": 1.1659223816361
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 27,
+              "total": 61
+            },
+            "GUARDIAN": {
+              "in_role": 56,
+              "total": 61
+            },
+            "SKIRMISHER": {
+              "in_role": 25,
+              "total": 61
+            }
+          },
+          "rounds": {
+            "mean": 9.75,
+            "median": 9.0,
+            "p90": 15.0,
+            "p95": 15.0,
+            "sd": 2.3318447632722
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 11.5,
+            "KOBOLD_SLING": 1.625,
+            "PUSH": 1.625
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "optional"
+      },
+      {
+        "arena": "opt_gnoll",
+        "build": "stance_mixed",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 5.625,
+            "median": 0.0,
+            "p90": 20.0,
+            "p95": 20.0,
+            "sd": 8.42027562890115
+          },
+          "damage_wins_per_member": {
+            "mean": 5.625,
+            "median": 4.33333333333333,
+            "p90": 11.0,
+            "p95": 11.0,
+            "sd": 3.12444439505295
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GNOLL_SPEAR": 0.25
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 9,
+              "any_foe_adjacent": 39,
+              "closes_distance": 28,
+              "la_ally_hit": 2,
+              "protectee_near": 6,
+              "rule_ready": 11
+            },
+            "GUARDIAN": {
+              "(무득점)": 24,
+              "any_foe_adjacent": 17,
+              "closes_distance": 3,
+              "protectee_near": 50
+            },
+            "SKIRMISHER": {
+              "(무득점)": 28,
+              "any_foe_adjacent": 3,
+              "closes_distance": 10,
+              "in_band": 29,
+              "opens_distance": 2,
+              "protectee_near": 8,
+              "rule_ready": 13
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 6.5,
+            "median": 5.0,
+            "p90": 13.0,
+            "p95": 13.0,
+            "sd": 4.0
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.375,
+          "redirects": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 20,
+              "total": 49
+            },
+            "GUARDIAN": {
+              "in_role": 48,
+              "total": 49
+            },
+            "SKIRMISHER": {
+              "in_role": 28,
+              "total": 49
+            }
+          },
+          "rounds": {
+            "mean": 8.5,
+            "median": 8.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 1.58113883008419
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 6.5,
+            "KOBOLD_SLING": 1.625,
+            "PUSH": 1.375
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "optional"
+      },
+      {
+        "arena": "early_hob",
+        "build": "stance_charger",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 4.25,
+            "median": 0.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 4.7368238303741
+          },
+          "damage_wins_per_member": {
+            "mean": 4.25,
+            "median": 4.0,
+            "p90": 6.0,
+            "p95": 6.0,
+            "sd": 0.661437827766148
+          },
+          "deaths": 0,
+          "distinct_outcomes": 5,
+          "enemy_skill_uses_mean": {},
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 32,
+              "any_foe_adjacent": 45,
+              "closes_distance": 54,
+              "la_ally_hit": 2,
+              "protectee_near": 5,
+              "same_as_last": 3
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 4.25,
+            "median": 4.0,
+            "p90": 9.0,
+            "p95": 9.0,
+            "sd": 2.38484800354236
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 0.25,
+            "median": 0.0,
+            "p90": 2.0,
+            "p95": 2.0,
+            "sd": 0.661437827766148
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 33,
+              "total": 75
+            }
+          },
+          "rounds": {
+            "mean": 6.5,
+            "median": 6.0,
+            "p90": 9.0,
+            "p95": 9.0,
+            "sd": 1.0
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 4.25
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "early_pair",
+        "build": "stance_charger",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 2.66666666666667,
+            "median": 0.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 4.2687494916219
+          },
+          "damage_wins_per_member": {
+            "mean": 2.66666666666667,
+            "median": 2.66666666666667,
+            "p90": 4.0,
+            "p95": 4.0,
+            "sd": 1.15470053837925
+          },
+          "deaths": 0,
+          "distinct_outcomes": 7,
+          "enemy_skill_uses_mean": {
+            "KOBOLD_SLING": 0.375
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 50,
+              "any_foe_adjacent": 40,
+              "closes_distance": 74,
+              "la_ally_hit": 4,
+              "protectee_near": 6,
+              "rule_ready": 9,
+              "same_as_last": 2
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 6.25,
+            "median": 5.0,
+            "p90": 14.0,
+            "p95": 14.0,
+            "sd": 3.38193731461717
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.25,
+          "redirects": {
+            "mean": 0.125,
+            "median": 0.0,
+            "p90": 1.0,
+            "p95": 1.0,
+            "sd": 0.330718913883074
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 29,
+              "total": 96
+            }
+          },
+          "rounds": {
+            "mean": 7.0,
+            "median": 7.0,
+            "p90": 8.0,
+            "p95": 8.0,
+            "sd": 0.5
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 6.25,
+            "PUSH": 1.25
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "deep_mixed",
+        "build": "stance_charger",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 14.4166666666667,
+            "median": 0.0,
+            "p90": 36.0,
+            "p95": 59.0,
+            "sd": 18.4817853274214
+          },
+          "damage_wins_per_member": {
+            "mean": 14.4166666666667,
+            "median": 12.0,
+            "p90": 27.6666666666667,
+            "p95": 27.6666666666667,
+            "sd": 8.43562221903175
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.625,
+            "KOBOLD_SLING": 0.5
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 33,
+              "any_foe_adjacent": 93,
+              "closes_distance": 95,
+              "la_ally_hit": 7,
+              "protectee_near": 4,
+              "rule_ready": 10
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 5.125,
+            "median": 5.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 2.42061459137964
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.25,
+          "redirects": {
+            "mean": 0.5,
+            "median": 0.0,
+            "p90": 2.0,
+            "p95": 2.0,
+            "sd": 0.707106781186548
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 60,
+              "total": 123
+            }
+          },
+          "rounds": {
+            "mean": 7.25,
+            "median": 7.0,
+            "p90": 9.0,
+            "p95": 9.0,
+            "sd": 0.82915619758885
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 5.125,
+            "PUSH": 1.25
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "deep_caster",
+        "build": "stance_charger",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 13.6666666666667,
+            "median": 0.0,
+            "p90": 39.0,
+            "p95": 44.0,
+            "sd": 15.7444875714927
+          },
+          "damage_wins_per_member": {
+            "mean": 13.6666666666667,
+            "median": 9.33333333333333,
+            "p90": 22.3333333333333,
+            "p95": 22.3333333333333,
+            "sd": 7.43116560320265
+          },
+          "deaths": 0,
+          "distinct_outcomes": 7,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.625
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 32,
+              "any_foe_adjacent": 53,
+              "cell_danger": 1,
+              "closes_distance": 83,
+              "la_ally_hit": 2,
+              "protectee_near": 2,
+              "rule_ready": 9,
+              "same_as_last": 3
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 4.125,
+            "median": 3.0,
+            "p90": 11.0,
+            "p95": 11.0,
+            "sd": 3.37036719067819
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.25,
+          "redirects": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 49,
+              "total": 105
+            }
+          },
+          "rounds": {
+            "mean": 7.375,
+            "median": 7.0,
+            "p90": 9.0,
+            "p95": 9.0,
+            "sd": 1.31695671910659
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 4.125,
+            "PUSH": 1.25
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "opt_archers",
+        "build": "stance_charger",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 10.2083333333333,
+            "median": 5.0,
+            "p90": 28.0,
+            "p95": 28.0,
+            "sd": 13.5091918295984
+          },
+          "damage_wins_per_member": {
+            "mean": 10.2083333333333,
+            "median": 7.66666666666667,
+            "p90": 25.0,
+            "p95": 25.0,
+            "sd": 6.27813113558132
+          },
+          "deaths": 0,
+          "distinct_outcomes": 7,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.75,
+            "KOBOLD_SLING": 0.875
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 38,
+              "any_foe_adjacent": 62,
+              "cell_danger": 1,
+              "closes_distance": 110,
+              "la_ally_hit": 4,
+              "protectee_gap": 1,
+              "protectee_near": 2,
+              "rule_ready": 7
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 5.25,
+            "median": 6.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 3.34477204006491
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.875,
+          "redirects": {
+            "mean": 0.375,
+            "median": 0.0,
+            "p90": 1.0,
+            "p95": 1.0,
+            "sd": 0.484122918275927
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 51,
+              "total": 117
+            }
+          },
+          "rounds": {
+            "mean": 7.0,
+            "median": 7.0,
+            "p90": 8.0,
+            "p95": 8.0,
+            "sd": 0.707106781186548
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 5.25,
+            "PUSH": 0.875
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "optional"
+      },
+      {
+        "arena": "opt_gnoll",
+        "build": "stance_charger",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 3.58333333333333,
+            "median": 0.0,
+            "p90": 13.0,
+            "p95": 13.0,
+            "sd": 6.80022466949112
+          },
+          "damage_wins_per_member": {
+            "mean": 3.58333333333333,
+            "median": 2.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 3.13913470030623
+          },
+          "deaths": 0,
+          "distinct_outcomes": 7,
+          "enemy_skill_uses_mean": {
+            "GNOLL_SPEAR": 0.375
+          },
+          "explain_top": {
+            "CHARGER": {
+              "(무득점)": 46,
+              "any_foe_adjacent": 60,
+              "cell_danger": 1,
+              "closes_distance": 83,
+              "la_ally_hit": 10,
+              "protectee_gap": 2,
+              "protectee_near": 2,
+              "rule_ready": 13,
+              "same_as_last": 1
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 6.125,
+            "median": 5.0,
+            "p90": 9.0,
+            "p95": 9.0,
+            "sd": 2.31503239718152
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.625,
+          "redirects": {
+            "mean": 0.375,
+            "median": 0.0,
+            "p90": 2.0,
+            "p95": 2.0,
+            "sd": 0.695970545353753
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "CHARGER": {
+              "in_role": 46,
+              "total": 114
+            }
+          },
+          "rounds": {
+            "mean": 7.25,
+            "median": 7.0,
+            "p90": 8.0,
+            "p95": 8.0,
+            "sd": 0.661437827766148
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 6.125,
+            "PUSH": 1.75
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "optional"
+      },
+      {
+        "arena": "early_hob",
+        "build": "stance_skirmisher",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 3.75,
+            "median": 0.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 6.66614581298669
+          },
+          "damage_wins_per_member": {
+            "mean": 3.75,
+            "median": 2.0,
+            "p90": 14.0,
+            "p95": 14.0,
+            "sd": 4.17582327212252
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {},
+          "explain_top": {
+            "SKIRMISHER": {
+              "(무득점)": 33,
+              "any_foe_adjacent": 17,
+              "closes_distance": 27,
+              "in_band": 59,
+              "opens_distance": 49,
+              "protectee_near": 2,
+              "rule_ready": 38
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 4.125,
+            "median": 2.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 3.68908864084343
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 0.5,
+            "median": 0.0,
+            "p90": 4.0,
+            "p95": 4.0,
+            "sd": 1.3228756555323
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "SKIRMISHER": {
+              "in_role": 80,
+              "total": 126
+            }
+          },
+          "rounds": {
+            "mean": 8.5,
+            "median": 8.0,
+            "p90": 14.0,
+            "p95": 14.0,
+            "sd": 2.69258240356725
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 4.125,
+            "KOBOLD_SLING": 4.875
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "early_pair",
+        "build": "stance_skirmisher",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 4.04166666666667,
+            "median": 0.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 5.26370565497561
+          },
+          "damage_wins_per_member": {
+            "mean": 4.04166666666667,
+            "median": 2.66666666666667,
+            "p90": 8.33333333333333,
+            "p95": 8.33333333333333,
+            "sd": 2.16305789206957
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "KOBOLD_SLING": 1.25,
+            "RAT_GNAW": 0.375
+          },
+          "explain_top": {
+            "SKIRMISHER": {
+              "(무득점)": 45,
+              "any_foe_adjacent": 10,
+              "closes_distance": 38,
+              "in_band": 85,
+              "la_ally_hit": 4,
+              "opens_distance": 33,
+              "protectee_gap": 2,
+              "protectee_near": 16,
+              "rule_ready": 37,
+              "same_as_last": 1
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 5.75,
+            "median": 4.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 3.76662979332984
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 0.5,
+            "median": 0.0,
+            "p90": 2.0,
+            "p95": 2.0,
+            "sd": 0.707106781186548
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "SKIRMISHER": {
+              "in_role": 92,
+              "total": 144
+            }
+          },
+          "rounds": {
+            "mean": 9.25,
+            "median": 10.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 1.92028643696715
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 5.75,
+            "KOBOLD_SLING": 5.0,
+            "PUSH": 0.375
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "deep_mixed",
+        "build": "stance_skirmisher",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 27.5416666666667,
+            "median": 26.0,
+            "p90": 49.0,
+            "p95": 51.0,
+            "sd": 17.4689705064596
+          },
+          "damage_wins_per_member": {
+            "mean": 20.8333333333333,
+            "median": 17.6666666666667,
+            "p90": 37.3333333333333,
+            "p95": 37.3333333333333,
+            "sd": 11.5353723310006
+          },
+          "deaths": 2,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.875,
+            "KOBOLD_SLING": 1.5
+          },
+          "explain_top": {
+            "SKIRMISHER": {
+              "(무득점)": 27,
+              "any_foe_adjacent": 27,
+              "build_target": 2,
+              "cell_danger": 4,
+              "closes_distance": 44,
+              "in_band": 120,
+              "la_ally_hit": 5,
+              "opens_distance": 16,
+              "protectee_gap": 1,
+              "protectee_near": 7,
+              "rule_ready": 49
+            }
+          },
+          "first_death": {
+            "mean": 26.5,
+            "median": 12.0,
+            "p90": 41.0,
+            "p95": 41.0,
+            "sd": 14.5
+          },
+          "guards": {
+            "mean": 14.0,
+            "median": 3.0,
+            "p90": 72.0,
+            "p95": 72.0,
+            "sd": 22.3103115173231
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 2.125,
+            "median": 1.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 3.13996417177012
+          },
+          "results": {
+            "DEFEAT": 2,
+            "WIN": 6
+          },
+          "role_rounds": {
+            "SKIRMISHER": {
+              "in_role": 164,
+              "total": 371
+            }
+          },
+          "rounds": {
+            "mean": 17.5,
+            "median": 13.0,
+            "p90": 41.0,
+            "p95": 41.0,
+            "sd": 10.2469507659596
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 14.0,
+            "KOBOLD_SLING": 8.375,
+            "PUSH": 1.75
+          },
+          "win_ci": [
+            0.409269879102589,
+            0.928522311141972
+          ],
+          "win_rate": 0.75
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "deep_caster",
+        "build": "stance_skirmisher",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 23.7083333333333,
+            "median": 19.0,
+            "p90": 42.0,
+            "p95": 49.0,
+            "sd": 16.2749274618626
+          },
+          "damage_wins_per_member": {
+            "mean": 20.8095238095238,
+            "median": 20.0,
+            "p90": 32.0,
+            "p95": 32.0,
+            "sd": 7.09092230519571
+          },
+          "deaths": 2,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.5,
+            "ORC_CLEAVER": 0.75
+          },
+          "explain_top": {
+            "SKIRMISHER": {
+              "(무득점)": 52,
+              "any_foe_adjacent": 11,
+              "cell_danger": 16,
+              "closes_distance": 59,
+              "in_band": 83,
+              "la_ally_hit": 6,
+              "opens_distance": 19,
+              "protectee_gap": 1,
+              "protectee_near": 10,
+              "rule_ready": 51,
+              "same_as_last": 1
+            }
+          },
+          "first_death": {
+            "mean": 9.5,
+            "median": 7.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 2.5
+          },
+          "guards": {
+            "mean": 8.375,
+            "median": 6.0,
+            "p90": 29.0,
+            "p95": 29.0,
+            "sd": 8.3357288223646
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.125,
+          "redirects": {
+            "mean": 1.375,
+            "median": 0.0,
+            "p90": 6.0,
+            "p95": 6.0,
+            "sd": 2.3946555075835
+          },
+          "results": {
+            "DEFEAT": 1,
+            "WIN": 7
+          },
+          "role_rounds": {
+            "SKIRMISHER": {
+              "in_role": 113,
+              "total": 218
+            }
+          },
+          "rounds": {
+            "mean": 12.125,
+            "median": 11.0,
+            "p90": 22.0,
+            "p95": 22.0,
+            "sd": 4.04467242184086
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 8.375,
+            "KOBOLD_SLING": 6.25,
+            "PUSH": 0.625
+          },
+          "win_ci": [
+            0.529105194230139,
+            0.977583091136704
+          ],
+          "win_rate": 0.875
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "opt_archers",
+        "build": "stance_skirmisher",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 22.5416666666667,
+            "median": 20.0,
+            "p90": 45.0,
+            "p95": 46.0,
+            "sd": 14.733689192535
+          },
+          "damage_wins_per_member": {
+            "mean": 19.6190476190476,
+            "median": 17.3333333333333,
+            "p90": 36.0,
+            "p95": 36.0,
+            "sd": 7.54337420065224
+          },
+          "deaths": 1,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 1.0,
+            "KOBOLD_SLING": 1.75
+          },
+          "explain_top": {
+            "SKIRMISHER": {
+              "(무득점)": 58,
+              "any_foe_adjacent": 11,
+              "build_target": 2,
+              "cell_danger": 4,
+              "closes_distance": 72,
+              "in_band": 118,
+              "la_ally_hit": 4,
+              "opens_distance": 11,
+              "protectee_gap": 1,
+              "protectee_near": 16,
+              "rule_ready": 56,
+              "same_as_last": 1
+            }
+          },
+          "first_death": {
+            "mean": 10.0,
+            "median": 10.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 8.0,
+            "median": 6.0,
+            "p90": 14.0,
+            "p95": 14.0,
+            "sd": 5.07444578254611
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 1.125,
+            "median": 0.0,
+            "p90": 3.0,
+            "p95": 3.0,
+            "sd": 1.26861144563653
+          },
+          "results": {
+            "DEFEAT": 1,
+            "WIN": 7
+          },
+          "role_rounds": {
+            "SKIRMISHER": {
+              "in_role": 128,
+              "total": 234
+            }
+          },
+          "rounds": {
+            "mean": 12.625,
+            "median": 12.0,
+            "p90": 22.0,
+            "p95": 22.0,
+            "sd": 4.27017271313468
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 8.0,
+            "KOBOLD_SLING": 7.5,
+            "PUSH": 1.25
+          },
+          "win_ci": [
+            0.529105194230139,
+            0.977583091136704
+          ],
+          "win_rate": 0.875
+        },
+        "tier": "optional"
+      },
+      {
+        "arena": "opt_gnoll",
+        "build": "stance_skirmisher",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 6.29166666666667,
+            "median": 0.0,
+            "p90": 20.0,
+            "p95": 25.0,
+            "sd": 11.0584777684614
+          },
+          "damage_wins_per_member": {
+            "mean": 6.29166666666667,
+            "median": 5.0,
+            "p90": 15.0,
+            "p95": 15.0,
+            "sd": 5.31621602060881
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GNOLL_SPEAR": 0.625,
+            "RAT_GNAW": 0.75
+          },
+          "explain_top": {
+            "SKIRMISHER": {
+              "(무득점)": 41,
+              "any_foe_adjacent": 23,
+              "cell_danger": 3,
+              "closes_distance": 33,
+              "in_band": 122,
+              "la_ally_hit": 4,
+              "opens_distance": 40,
+              "protectee_gap": 2,
+              "protectee_near": 4,
+              "rule_ready": 51
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 4.75,
+            "median": 4.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 3.11247489949718
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.125,
+          "redirects": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "SKIRMISHER": {
+              "in_role": 117,
+              "total": 174
+            }
+          },
+          "rounds": {
+            "mean": 9.875,
+            "median": 10.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 1.96452920568771
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 4.75,
+            "KOBOLD_SLING": 6.625,
+            "PUSH": 1.0
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "optional"
+      },
+      {
+        "arena": "early_hob",
+        "build": "stance_guardian",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 3.375,
+            "median": 0.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 4.9228421668788
+          },
+          "damage_wins_per_member": {
+            "mean": 3.375,
+            "median": 3.0,
+            "p90": 6.0,
+            "p95": 6.0,
+            "sd": 1.86664806538351
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {},
+          "explain_top": {
+            "GUARDIAN": {
+              "(무득점)": 37,
+              "any_foe_adjacent": 48,
+              "closes_distance": 20,
+              "la_ally_hit": 44,
+              "la_self_hit": 3,
+              "protectee_near": 62
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 9.375,
+            "median": 8.0,
+            "p90": 22.0,
+            "p95": 22.0,
+            "sd": 5.93585503529188
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 0.0,
+          "redirects": {
+            "mean": 1.125,
+            "median": 1.0,
+            "p90": 2.0,
+            "p95": 2.0,
+            "sd": 0.7806247497998
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "GUARDIAN": {
+              "in_role": 100,
+              "total": 114
+            }
+          },
+          "rounds": {
+            "mean": 8.125,
+            "median": 7.0,
+            "p90": 12.0,
+            "p95": 12.0,
+            "sd": 1.61535599791501
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 9.375,
+            "PUSH": 0.375
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "early_pair",
+        "build": "stance_guardian",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 4.83333333333333,
+            "median": 5.0,
+            "p90": 10.0,
+            "p95": 18.0,
+            "sd": 5.48988969733353
+          },
+          "damage_wins_per_member": {
+            "mean": 4.33333333333333,
+            "median": 5.33333333333333,
+            "p90": 6.33333333333333,
+            "p95": 6.33333333333333,
+            "sd": 2.10818510677892
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "KOBOLD_SLING": 0.875,
+            "RAT_GNAW": 0.375
+          },
+          "explain_top": {
+            "GUARDIAN": {
+              "(무득점)": 100,
+              "any_foe_adjacent": 35,
+              "closes_distance": 28,
+              "la_ally_hit": 34,
+              "la_self_hit": 8,
+              "protectee_gap": 2,
+              "protectee_near": 96,
+              "rule_ready": 12,
+              "same_as_last": 1
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 36.625,
+            "median": 12.0,
+            "p90": 200.0,
+            "p95": 200.0,
+            "sd": 62.5838187952765
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 2.125,
+          "redirects": {
+            "mean": 1.0,
+            "median": 0.0,
+            "p90": 4.0,
+            "p95": 4.0,
+            "sd": 1.3228756555323
+          },
+          "results": {
+            "TIMEOUT": 1,
+            "WIN": 7
+          },
+          "role_rounds": {
+            "GUARDIAN": {
+              "in_role": 318,
+              "total": 324
+            }
+          },
+          "rounds": {
+            "mean": 16.25,
+            "median": 8.0,
+            "p90": 61.0,
+            "p95": 61.0,
+            "sd": 17.2608661428099
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 36.625,
+            "PUSH": 6.0
+          },
+          "win_ci": [
+            0.529105194230139,
+            0.977583091136704
+          ],
+          "win_rate": 0.875
+        },
+        "tier": "early"
+      },
+      {
+        "arena": "deep_mixed",
+        "build": "stance_guardian",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 31.2916666666667,
+            "median": 27.0,
+            "p90": 58.0,
+            "p95": 59.0,
+            "sd": 18.8447144814903
+          },
+          "damage_wins_per_member": {
+            "mean": 19.2666666666667,
+            "median": 19.0,
+            "p90": 31.6666666666667,
+            "p95": 31.6666666666667,
+            "sd": 7.59356452677017
+          },
+          "deaths": 4,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.625,
+            "KOBOLD_SLING": 1.625
+          },
+          "explain_top": {
+            "GUARDIAN": {
+              "(무득점)": 25,
+              "any_foe_adjacent": 50,
+              "closes_distance": 35,
+              "la_ally_hit": 63,
+              "la_self_hit": 1,
+              "protectee_gap": 2,
+              "protectee_near": 119,
+              "rule_ready": 17
+            }
+          },
+          "first_death": {
+            "mean": 37.6666666666667,
+            "median": 37.0,
+            "p90": 42.0,
+            "p95": 42.0,
+            "sd": 3.29983164553722
+          },
+          "guards": {
+            "mean": 40.25,
+            "median": 30.0,
+            "p90": 96.0,
+            "p95": 96.0,
+            "sd": 29.1021906391942
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 2.125,
+          "redirects": {
+            "mean": 4.75,
+            "median": 4.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 3.15238005322962
+          },
+          "results": {
+            "DEFEAT": 3,
+            "WIN": 5
+          },
+          "role_rounds": {
+            "GUARDIAN": {
+              "in_role": 438,
+              "total": 507
+            }
+          },
+          "rounds": {
+            "mean": 23.75,
+            "median": 16.0,
+            "p90": 48.0,
+            "p95": 48.0,
+            "sd": 13.7636296085008
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 40.25,
+            "PUSH": 6.75
+          },
+          "win_ci": [
+            0.305737854583802,
+            0.863158240538479
+          ],
+          "win_rate": 0.625
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "deep_caster",
+        "build": "stance_guardian",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 34.2083333333333,
+            "median": 39.0,
+            "p90": 50.0,
+            "p95": 52.0,
+            "sd": 14.4711758525545
+          },
+          "damage_wins_per_member": {
+            "mean": 22.25,
+            "median": 18.6666666666667,
+            "p90": 32.0,
+            "p95": 32.0,
+            "sd": 5.6636021125154
+          },
+          "deaths": 5,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.875,
+            "ORC_CLEAVER": 0.5
+          },
+          "explain_top": {
+            "GUARDIAN": {
+              "(무득점)": 26,
+              "any_foe_adjacent": 24,
+              "cell_danger": 4,
+              "closes_distance": 30,
+              "la_ally_hit": 74,
+              "la_self_hit": 1,
+              "protectee_gap": 3,
+              "protectee_near": 89,
+              "rule_ready": 9,
+              "same_as_last": 1
+            }
+          },
+          "first_death": {
+            "mean": 22.0,
+            "median": 26.0,
+            "p90": 28.0,
+            "p95": 28.0,
+            "sd": 8.17312669668102
+          },
+          "guards": {
+            "mean": 29.5,
+            "median": 22.0,
+            "p90": 70.0,
+            "p95": 70.0,
+            "sd": 18.0277563773199
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.875,
+          "redirects": {
+            "mean": 3.875,
+            "median": 4.0,
+            "p90": 8.0,
+            "p95": 8.0,
+            "sd": 1.96452920568771
+          },
+          "results": {
+            "DEFEAT": 4,
+            "WIN": 4
+          },
+          "role_rounds": {
+            "GUARDIAN": {
+              "in_role": 359,
+              "total": 437
+            }
+          },
+          "rounds": {
+            "mean": 21.875,
+            "median": 21.0,
+            "p90": 42.0,
+            "p95": 42.0,
+            "sd": 9.99296627633657
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 29.5,
+            "PUSH": 3.25
+          },
+          "win_ci": [
+            0.215212526824442,
+            0.784787473175558
+          ],
+          "win_rate": 0.5
+        },
+        "tier": "deep"
+      },
+      {
+        "arena": "opt_archers",
+        "build": "stance_guardian",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 25.75,
+            "median": 27.0,
+            "p90": 48.0,
+            "p95": 48.0,
+            "sd": 17.9124025933616
+          },
+          "damage_wins_per_member": {
+            "mean": 21.0,
+            "median": 19.6666666666667,
+            "p90": 33.3333333333333,
+            "p95": 33.3333333333333,
+            "sd": 9.6234666888347
+          },
+          "deaths": 4,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GOBLIN_SHIV": 0.5,
+            "KOBOLD_SLING": 1.125,
+            "RAT_GNAW": 0.125
+          },
+          "explain_top": {
+            "GUARDIAN": {
+              "(무득점)": 56,
+              "any_foe_adjacent": 29,
+              "closes_distance": 35,
+              "damage": 8,
+              "la_ally_hit": 79,
+              "la_self_hit": 7,
+              "protectee_gap": 3,
+              "protectee_near": 87,
+              "rule_ready": 6,
+              "same_as_last": 1
+            }
+          },
+          "first_death": {
+            "mean": 21.0,
+            "median": 13.0,
+            "p90": 36.0,
+            "p95": 36.0,
+            "sd": 11.5542200082913
+          },
+          "guards": {
+            "mean": 31.75,
+            "median": 21.0,
+            "p90": 76.0,
+            "p95": 76.0,
+            "sd": 25.4987744803549
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 1.125,
+          "redirects": {
+            "mean": 3.5,
+            "median": 2.0,
+            "p90": 10.0,
+            "p95": 10.0,
+            "sd": 3.3166247903554
+          },
+          "results": {
+            "DEFEAT": 4,
+            "WIN": 4
+          },
+          "role_rounds": {
+            "GUARDIAN": {
+              "in_role": 259,
+              "total": 342
+            }
+          },
+          "rounds": {
+            "mean": 16.625,
+            "median": 13.0,
+            "p90": 36.0,
+            "p95": 36.0,
+            "sd": 10.7812047100498
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 31.75,
+            "PUSH": 5.0
+          },
+          "win_ci": [
+            0.215212526824442,
+            0.784787473175558
+          ],
+          "win_rate": 0.5
+        },
+        "tier": "optional"
+      },
+      {
+        "arena": "opt_gnoll",
+        "build": "stance_guardian",
+        "party": 3.0,
+        "stats": {
+          "before_first": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "damage": {
+            "mean": 7.91666666666667,
+            "median": 0.0,
+            "p90": 43.0,
+            "p95": 47.0,
+            "sd": 14.8742413438654
+          },
+          "damage_wins_per_member": {
+            "mean": 7.91666666666667,
+            "median": 2.66666666666667,
+            "p90": 32.0,
+            "p95": 32.0,
+            "sd": 10.4226649396613
+          },
+          "deaths": 0,
+          "distinct_outcomes": 8,
+          "enemy_skill_uses_mean": {
+            "GNOLL_SPEAR": 0.375,
+            "RAT_GNAW": 0.375
+          },
+          "explain_top": {
+            "GUARDIAN": {
+              "(무득점)": 153,
+              "any_foe_adjacent": 59,
+              "closes_distance": 23,
+              "la_ally_hit": 31,
+              "la_self_hit": 2,
+              "protectee_near": 73,
+              "rule_ready": 22
+            }
+          },
+          "first_death": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "guards": {
+            "mean": 37.25,
+            "median": 23.0,
+            "p90": 137.0,
+            "p95": 137.0,
+            "sd": 39.3819438321676
+          },
+          "heals": {
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "sd": 0.0
+          },
+          "interrupts_mean": 4.25,
+          "redirects": {
+            "mean": 1.125,
+            "median": 0.0,
+            "p90": 7.0,
+            "p95": 7.0,
+            "sd": 2.26039266500314
+          },
+          "results": {
+            "WIN": 8
+          },
+          "role_rounds": {
+            "GUARDIAN": {
+              "in_role": 291,
+              "total": 297
+            }
+          },
+          "rounds": {
+            "mean": 14.75,
+            "median": 10.0,
+            "p90": 45.0,
+            "p95": 45.0,
+            "sd": 11.6054943884352
+          },
+          "samples": 8,
+          "skill_uses_mean": {
+            "GUARD": 37.25,
+            "PUSH": 5.625
+          },
+          "win_ci": [
+            0.675584380489123,
+            1.0
+          ],
+          "win_rate": 1.0
+        },
+        "tier": "optional"
+      }
+    ],
+    "verdicts": {
+      "mixed_build": "stance_mixed",
+      "mixed_fail_arenas": [
+        "deep_mixed"
+      ],
+      "mixed_pass": 5,
+      "pass_all": false,
+      "per_build": {
+        "stance_charger": {
+          "ok": true,
+          "pass_arenas": [
+            "early_hob",
+            "early_pair",
+            "deep_mixed",
+            "deep_caster",
+            "opt_archers",
+            "opt_gnoll"
+          ]
+        },
+        "stance_guardian": {
+          "ok": true,
+          "pass_arenas": [
+            "early_hob",
+            "early_pair",
+            "deep_mixed",
+            "opt_gnoll"
+          ]
+        },
+        "stance_skirmisher": {
+          "ok": true,
+          "pass_arenas": [
+            "early_hob",
+            "early_pair",
+            "deep_mixed",
+            "deep_caster",
+            "opt_archers",
+            "opt_gnoll"
+          ]
+        }
+      }
+    }
+  }
+}

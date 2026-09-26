@@ -9,7 +9,7 @@ const TagSets = preload("res://expedition/progression/tag_sets.gd")
 const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
 const Reactions = preload("res://expedition/combat/reactions.gd")
 const Forms = preload("res://expedition/combat/forms.gd")
-const HARMFUL := ["confuse","slow","freeze","bind","burn","weak","brittle","distort","vulnerable","dominate","bleed","poison","taunted","stun","fracture","exposed"]
+const HARMFUL := ["confuse","slow","freeze","bind","burn","weak","brittle","distort","vulnerable","dominate","bleed","poison","taunted","stun","fracture","exposed","marked"]
 
 ## What a spell's own burn does per boundary tick, told apart from the single
 ## point the fire mastery's burn has always done.
@@ -39,6 +39,7 @@ static func apply(s, victim: Dictionary, status: String, ticks: int, source: Dic
 	victim.statuses[status] = s.time+ticks
 	victim.get_or_add("status_sources",{})[status] = {"id":int(source.get("id",-1)),"depth":int(s.depth)}
 	if status == "burn": victim.get_or_add("status_power",{})["burn"] = BURN_DAMAGE
+	if status == "fracture": victim.get_or_add("status_power",{})["fracture_bonus"] = StoneEffects.modifier(s,"fracture_percent",source)
 	if status in HARMFUL:
 		StoneEffects.fire(s,"STATUS_GIVEN",{"source":source,"target":victim,"victim":victim,"status":status,"status_already":already})
 	Reactions.status_react(s,victim,source,"","STATUS")
@@ -55,7 +56,10 @@ static func tick(s) -> void:
 			var until: int = int(actor.statuses[status])
 			if until < s.time:
 				if status == "furnace": furnace_burst(s,actor)
-				actor.statuses.erase(status); payload.erase(status); sources.erase(status); continue
+				actor.statuses.erase(status); payload.erase(status); sources.erase(status)
+				if status == "poison": payload.erase("poison_bonus")
+				if status == "fracture": payload.erase("fracture_bonus")
+				continue
 			var was: String = Forms.begin(s,Forms.of_dot(status))
 			var lost := 0
 			var origin: Dictionary = sources.get(status,{})
@@ -64,12 +68,14 @@ static func tick(s) -> void:
 			# A spell's burn says how hard it bites; the old mastery burn keeps
 			# the single point it always did.
 			elif status == "burn": lost = Rules.damage(s,{},actor,int(payload.get("burn",1)),"fire")
-			elif status == "poison": lost = Rules.damage(s,{},actor,2+StoneEffects.modifier(s,"poison_tick",source,{"target":actor}),"poison")
+			elif status == "poison": lost = Rules.damage(s,{},actor,2+int(payload.get("poison_bonus",0))+StoneEffects.modifier(s,"poison_tick",source,{"target":actor}),"poison")
 			if lost > 0: StoneEffects.fire(s,"DOT_TICK",{"target":actor,"victim":actor,"status":status,"amount":lost})
 			Forms.end(s,was)
 			if until <= s.time:
 				if status == "furnace": furnace_burst(s,actor)
 				actor.statuses.erase(status); payload.erase(status); sources.erase(status)
+				if status == "poison": payload.erase("poison_bonus")
+				if status == "fracture": payload.erase("fracture_bonus")
 
 static func furnace_burst(s, actor: Dictionary) -> void:
 	for other in s.party+s.npcs+s.enemies:

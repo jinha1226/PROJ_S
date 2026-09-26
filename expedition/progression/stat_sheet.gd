@@ -1,13 +1,14 @@
 extends RefCounted
 ## Every number a fight reads, each with where it came from: the species, the
 ## gear, the essences and their sets. A monster carries its own numbers.
+const Equipment = preload("res://expedition/items/equipment.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const TagSets = preload("res://expedition/progression/tag_sets.gd")
 const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
 static var combat: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/combat.json"))
-const KEYS := ["str","dex","int","con","atk","hp","spell","mp","speed","dodge","ac","ev","sh","res_fire","res_ice","res_air","res_poison","res_will"]
+const KEYS := ["str","dex","int","con","atk","hp","spell","mp","speed","dodge","ac","ev","sh","res_fire","res_ice","res_air","res_poison","res_will","accuracy","crit_chance","crit_damage"]
 const NAMES := {"str":"근력","dex":"민첩","int":"정신","con":"체력","atk":"공격력","hp":"최대 HP","spell":"주문력","mp":"최대 MP",
-	"speed":"행동 속도","dodge":"회피율","ac":"방어","ev":"회피","sh":"막기",
+	"accuracy":"명중","crit_chance":"치명타 확률","crit_damage":"치명타 피해","speed":"행동 속도","dodge":"회피율","ac":"방어","ev":"회피","sh":"막기",
 	"res_fire":"화염 저항","res_ice":"냉기 저항","res_air":"전기 저항","res_poison":"독 저항","res_will":"의지 저항"}
 const RES := ["fire","ice","air","poison","will"]
 const RES_CAP := 80
@@ -61,20 +62,22 @@ static func effects(result: Dictionary, actor: Dictionary, s = null) -> void:
 		if key in KEYS: add(result,key,"대표 효과",int(bonus[key]))
 
 static func gear(result: Dictionary, actor: Dictionary) -> void:
-	var worn: Dictionary = actor.get("gear",{})
-	var armour: Dictionary = worn.get("armour",{})
-	var armour_def: Dictionary = combat.armours.get(str(armour.get("type","")),{})
+	var worn: Dictionary = Equipment.worn(actor)
+	var armour: Dictionary = worn.armour
+	var armour_def: Dictionary = Equipment.definition(armour)
 	if not armour_def.is_empty():
-		var armour_name: String = str(armour_def.get("name","갑옷"))
-		add(result,"ac",armour_name,int(armour_def.ac)+int(armour.get("enchant",0)))
-		add(result,"ev",armour_name,-int(armour_def.ev_penalty))
-	if not worn.get("shield",{}).is_empty(): add(result,"sh","방패",SHIELD_BLOCK)
-	var ring: Dictionary = worn.get("ring",{})
-	var ring_def: Dictionary = combat.rings.get(str(ring.get("type","")),{})
-	if ring_def.is_empty(): return
-	var stat: String = str(ring_def.stat)
-	if stat == "ev": add(result,"ev",str(ring_def.name),int(ring_def.value))
-	elif stat in RES: add(result,"res_"+stat,str(ring_def.name),int(ring_def.value))
+		add(result,"ac",Equipment.title(armour),int(armour_def.ac)+int(armour.get("enchant",0)))
+		add(result,"ev",Equipment.title(armour),-int(armour_def.ev_penalty))
+	if Equipment.hands(worn.weapon) < 2:
+		add(result,"sh",Equipment.title(worn.offhand),int(Equipment.definition(worn.offhand).get("block",0)))
+	for slot in ["ring1","ring2"]:
+		var ring: Dictionary = worn[slot]
+		var definition: Dictionary = Equipment.definition(ring)
+		var stat: String = str(definition.get("stat",""))
+		if stat == "ev": add(result,"ev",Equipment.title(ring),int(definition.value))
+		elif stat in RES: add(result,"res_"+stat,Equipment.title(ring),int(definition.value))
+	for item in worn.values():
+		for key in KEYS: add(result,key,Equipment.title(item),Equipment.numeric(item,key))
 
 static func add(result: Dictionary, key: String, from: String, amount: int) -> void:
 	if amount != 0: result[key].parts.append({"from":from,"value":amount})
@@ -107,9 +110,10 @@ static func bonus(actor: Dictionary, key: String) -> int:
 static func refresh_pools(s, actor: Dictionary) -> void:
 	if bool(actor.get("enemy",false)): return
 	var old: Dictionary = actor.get("pool_bonus",{})
-	var hp_bonus: int = bonus(actor,"hp")
+	var hp_bonus: int = bonus(actor,"hp")+Equipment.bonus(actor,"hp")
 	hp_bonus += (int(actor.max_hp)-int(old.get("hp",0))+hp_bonus)*StoneEffects.hp_percent(s,actor)/100
-	var mp_bonus: int = bonus(actor,"mp")
+	var mp_bonus: int = bonus(actor,"mp")+Equipment.bonus(actor,"mp")
+	mp_bonus += (int(actor.get("max_mp",0))-int(old.get("mp",0))+mp_bonus)*StoneEffects.modifier(s,"max_mp_percent",actor)/100
 	var hp_change: int = hp_bonus-int(old.get("hp",0))
 	var mp_change: int = mp_bonus-int(old.get("mp",0))
 	actor.max_hp = maxi(1,int(actor.max_hp)+hp_change)

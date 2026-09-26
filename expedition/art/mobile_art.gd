@@ -229,6 +229,8 @@ static func spell_icon(id: String) -> AtlasTexture:
 ## (or book, scroll) and `kind` the combat.json id. Unknown ids fall back to
 ## the plainest piece of their slot.
 static func equipment_icon(slot: String, kind: String = "") -> AtlasTexture:
+	slot = "ring" if slot in ["ring1","ring2"] else "shield" if slot == "offhand" and kind == "shield" else "weapon" if slot == "offhand" else slot
+	kind = "staff" if kind == "orb" else kind.trim_prefix("off_")
 	match slot:
 		"weapon": return whole(WEAPON_ICONS.get(kind,WEAPON_ICONS.sword),"gear/weapon/"+kind)
 		"armour": return whole(ARMOUR_ICONS.get(kind,ARMOUR_ICONS.leather),"gear/armour/"+kind)

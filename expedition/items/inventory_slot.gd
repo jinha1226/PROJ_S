@@ -22,7 +22,7 @@ func _ready() -> void:
 func _draw() -> void:
 	var bounds := Rect2(Vector2.ONE,size-Vector2.ONE*2)
 	var plate := bounds.grow(-2)
-	var border := Color("dfba75") if selected else Color("ae9160") if is_hovered() else Color("65563e")
+	var border: Color = Color("dfba75") if selected else row.get("colour",Color("65563e")) if row.has("colour") else Color("ae9160") if is_hovered() else Color("65563e")
 	draw_rect(bounds,Color("0d0b09"))
 	draw_rect(plate,Color("25211b") if not row.is_empty() else Color("17140f"))
 	draw_line(plate.position,Vector2(plate.end.x,plate.position.y),border.lightened(0.12))
@@ -31,6 +31,10 @@ func _draw() -> void:
 	draw_line(Vector2(plate.end.x,plate.position.y),plate.end,Color("090706"),2)
 	if selected or is_hovered(): draw_rect(bounds,border,false,2)
 	if row.is_empty():
+		if has_meta("missing_part"):
+			var font := get_theme_default_font()
+			draw_string(font,Vector2(4,size.y/2+4),str(get_meta("missing_part")),HORIZONTAL_ALIGNMENT_CENTER,size.x-8,12,Color("8a7b66"))
+			return
 		draw_line(plate.get_center()-Vector2(4,0),plate.get_center()+Vector2(4,0),Color("65563e")); return
 	var icon: Texture2D = row.get("icon")
 	if icon != null:

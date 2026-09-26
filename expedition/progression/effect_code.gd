@@ -1,11 +1,14 @@
 extends RefCounted
 ## Only effects whose ordering/state is specific to the existing combat core.
 const Stacks = preload("res://expedition/progression/stacks.gd")
-const NAMES := ["revive_once","second_shot","counter","reflect","cancel_status","leech_prepare","gnoll_rage","ambush","wraith_kill"]
+const NAMES := ["revive_once","second_shot","counter","reflect","cancel_status","leech_prepare","gnoll_rage","ambush","wraith_kill","part_special","immune_poison","gear_special"]
 
 static func run(s, code: String, owner: Dictionary, rule: Dictionary, ctx: Dictionary) -> void:
 	var other: Dictionary = ctx.get("target",{})
 	match code:
+		"gear_special": gear_special(s,owner,ctx,str(rule.get("args",{}).get("effect","")))
+		"part_special": part_special(s,owner,ctx,str(rule.get("args",{}).get("effect","")))
+		"immune_poison": ctx.cancelled = true
 		"revive_once":
 			if bool(owner.get("revived",false)) or int(ctx.get("amount",0)) < int(owner.get("hp",0)): return
 			if not s.Reactions.once(s,owner,"REVIVE"): return
@@ -48,3 +51,78 @@ static func run(s, code: String, owner: Dictionary, rule: Dictionary, ctx: Dicti
 			for foe in s.party+s.npcs+s.enemies:
 				if int(foe.hp) <= 0 or s.side_of(foe) == s.side_of(owner) or maxi(absi(foe.pos.x-other.pos.x),absi(foe.pos.y-other.pos.y)) > 2: continue
 				if s.Statuses.apply(s,foe,"confuse",100,owner): s.StoneEffects.proc(s,foe.pos,"혼란!","debuff")
+
+## Effects needing a position snapshot, an overflow pool, or a delayed event.
+static func part_special(s, owner: Dictionary, ctx: Dictionary, id: String) -> void:
+	var target: Dictionary = ctx.get("target",{})
+	var attacker: Dictionary = ctx.get("attacker",{})
+	match id:
+		"ARCHER_KNUCKLE":
+			if not owner.has("pos") or not target.has("pos"): return
+			var delta: Vector2i = target.pos-owner.pos
+			var behind: Vector2i = target.pos+Vector2i(signi(delta.x),signi(delta.y))
+			var foe: Dictionary = s.at(behind)
+			if not foe.is_empty() and s.side_of(foe) != s.side_of(owner): s.CombatRules.damage(s,owner,foe,maxi(1,int(ctx.get("lost",0))/2),"physical",0,s.Reactions.EXTRA_FORM)
+		"SHIELD_HIDE":
+			if not attacker.is_empty(): s.CombatRules.damage(s,owner,attacker,maxi(1,int(s.CombatStats.stats(s,owner).damage)*60/100),"physical",0,s.Reactions.COUNTER_FORM)
+		"SHIELD_HEART": wound_roll(s,owner,attacker,"IMPACT")
+		"HOB_HIDE":
+			owner.hp = maxi(1,int(owner.hp)-maxi(1,int(owner.max_hp)*2/100))
+			ctx.amount = int(ctx.get("amount",0))*130/100
+		"ORC_HIDE": s.CombatRules.damage(s,owner,target,(2+s.StoneEffects.modifier(s,"bleed_tick",owner,{"target":target}))*3,"physical",0,s.Reactions.EXTRA_FORM)
+		"BEETLE_WING":
+			owner.get_or_add("effect_mods",{})[id] = {"mods":{"armour":s.StoneEffects.EffectEngine.Conditions.near(s,owner,false).size()*2},"until":int(s.time)+100}
+		"TOAD_TONGUE":
+			var power: Dictionary = target.get_or_add("status_power",{})
+			power.poison_bonus = mini(4+s.StoneEffects.modifier(s,"stack_max.poison",owner),int(power.get("poison_bonus",0))+1)
+		"FROST_CLAW":
+			for foe in s.party+s.npcs+s.enemies:
+				if foe.hp > 0 and s.side_of(foe) != s.side_of(owner) and s.distance(foe.pos,target.pos) <= 1 and s.StoneEffects.chance(s,owner,foe,"frost_spread",20+s.StoneEffects.modifier(s,"kill_chance",owner)): s.Statuses.apply(s,foe,"freeze",100,owner)
+		"GHOUL_JAW": s.effect_delays.append({"at":int(s.time)+100,"source":int(owner.id),"pos":target.pos,"damage":maxi(1,int(target.max_hp)/10),"radius":1,"side":s.side_of(owner)})
+		"VAMPIRE_HEART":
+			owner.blood_ward = mini(int(owner.max_hp)*20/100,int(owner.get("blood_ward",0))+int(ctx.get("overheal",0)))
+			owner.blood_ward_until = int(s.time)+300
+		"GRAVEKEEPER_BONE":
+			var pet: Dictionary = ctx.get("pet",{})
+			if pet.has("pos"): s.effect_delays.append({"at":int(s.time),"source":int(owner.id),"pos":pet.pos,"damage":10,"radius":1,"side":s.side_of(owner)})
+
+static func wound_roll(s, owner: Dictionary, target: Dictionary, form: String) -> void:
+	if target.is_empty() or int(target.get("hp",0)) <= 0: return
+	var chance: int = s.Forms.wound_chance(form,target)+s.StoneEffects.modifier(s,"wound_chance."+form,owner)
+	if not s.StoneEffects.chance(s,owner,target,"extra_wound",chance): return
+	s.Forms.apply_wound(s,owner,target,form)
+
+static func delayed(s) -> void:
+	var due: Array = s.effect_delays.filter(func(e): return int(e.at) <= int(s.time))
+	s.effect_delays = s.effect_delays.filter(func(e): return int(e.at) > int(s.time))
+	for event in due:
+		for target in (s.party+s.npcs+s.enemies).duplicate():
+			if target.hp > 0 and s.side_of(target) != event.side and s.distance(event.pos,target.pos) <= int(event.radius): s.CombatRules.damage(s,s.actor_by_id(int(event.source)),target,int(event.damage),"physical",0,s.Reactions.EXTRA_FORM)
+
+static func gear_special(s, owner: Dictionary, ctx: Dictionary, id: String) -> void:
+	match id:
+		"GEAR_COMP_CRISIS":
+			if owner.get("gear_crisis_used",false): return
+			owner.gear_crisis_used = true; s.Statuses.apply(s,owner,"ward",200,owner)
+		"GEAR_COMP_SHOVE":
+			var foes: Array = s.StoneEffects.EffectEngine.Conditions.near(s,owner,false)
+			foes.sort_custom(func(a,b): return int(a.id) < int(b.id))
+			if not foes.is_empty(): s.StoneEffects.EffectEngine.Actions.run(s,owner,[{"push":1}],{"target":foes[0]})
+		"GEAR_COMP_OPENING": owner.get_or_add("effect_mods",{})[id] = {"mods":{"speed":30},"until":int(s.time)+100}
+		"GEAR_COMP_CLEANSE": ctx.cancelled = true
+		"UNRAND_SHIELD": wound_roll(s,owner,ctx.get("attacker",{}),"IMPACT")
+		"UNRAND_ORB": owner.repeat_reaction = true
+		"COST_HEX":
+			if s.StoneEffects.EffectEngine.Conditions.harmful_count(s,ctx.get("target",{})) < 4: ctx.amount = int(ctx.get("amount",0))*85/100
+		"UNRAND_PLAGUE":
+			s.StoneEffects.EffectEngine.Actions.run(s,owner,[{"burst":2,"damage":4,"element":"poison"},{"spread_status":"poison","radius":2,"ticks":300}],ctx)
+
+static func share_damage(s, target: Dictionary, source: Dictionary, amount: int) -> int:
+	if amount <= 0: return amount
+	for guard in s.StoneEffects.allies_beside(s,target):
+		var percent: int = s.StoneEffects.modifier(s,"share_damage",guard)
+		if percent <= 0: continue
+		var split: int = amount*mini(100,percent)/100
+		if split > 0: s.CombatRules.damage(s,source,guard,split,"physical",0,s.Reactions.EXTRA_FORM)
+		return amount-split
+	return amount

@@ -38,9 +38,9 @@ func catalog() -> void:
 			check(Essences.stats(id) == Essences.stats(base) and Essences.school(id) == Essences.school(base),"parts inherit stats and school: "+id)
 			var effect: String = StoneEffects.effect_of(id)
 			if not effect.is_empty(): effects += 1
-			check(effect == (str(base) if part == row.headline else ""),"only headline keeps the original effect: "+id)
+			check(effect == str(row.parts[part].effect) and StoneEffects.EFFECTS.has(effect),"only headline keeps the original effect: "+id)
 			check(Abilities.definition(id) == Abilities.definition(base),"parts inherit their active: "+id)
-		check(effects == 1 and StoneEffects.species_effect(str(row.species)) == base,"species keeps exactly its original effect: "+str(base))
+		check(effects == 3 and StoneEffects.species_effect(str(row.species)) == base,"species keeps exactly its original effect: "+str(base))
 	check(ordinary == 30,"thirty ordinary species")
 	check(Art.part_icon("GOBLIN_SHIV/cut").atlas == Art.part_icon("GOBLIN_SHIV").atlas,"new ids reuse existing art")
 
@@ -98,10 +98,10 @@ func shared_actions() -> void:
 	check(not s.equip_part(0,1,"RAT_GNAW/cut"),"same stone cannot be slotted twice through an alias")
 	check(hero.rules.size() == 1 and Abilities.held(hero) == ["RAT_GNAW"],"three parts give one action and one rule")
 	check(int(TagSets.counts(hero).PACK) == 3,"role counts each distinct part")
-	check(StoneEffects.effects(hero) == ["RAT_GNAW"],"unfinished parts do not repeat headline effects")
+	check(StoneEffects.effects(hero) == ["RAT_GNAW","RAT_INCISOR","RAT_HEART"],"unfinished parts do not repeat headline effects")
 	hero.rules[0].enabled = false
 	check(s.unequip_part(0,0) and hero.rules.size() == 1 and not hero.rules[0].enabled,"removing headline preserves configured active on another part")
-	check(StoneEffects.effects(hero).is_empty() and Abilities.holds(hero,"RAT_GNAW"),"nonheadline part still grants active without headline passive")
+	check(StoneEffects.effects(hero) == ["RAT_INCISOR","RAT_HEART"] and Abilities.holds(hero,"RAT_GNAW"),"nonheadline part still grants active without headline passive")
 	check(s.unequip_part(0,1) and hero.rules.size() == 1,"second removal keeps shared rule")
 	check(s.unequip_part(0,2) and hero.rules.is_empty() and not Abilities.holds(hero,"RAT_GNAW"),"last part removes shared rule")
 	check(Essences.absorbed(hero,"RAT_GNAW/cut") and hero.essences.size() == 3,"removal retains all absorbed parts")

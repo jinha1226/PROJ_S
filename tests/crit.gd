@@ -56,9 +56,9 @@ func chances() -> void:
 	slot(d.hero,["SKELETON_VOLLEY"])
 	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 15,"해골 궁수 alone: 15")
 	slot(d.hero,["SKELETON_VOLLEY","SPIDER_WEB","SPIDER_WEB@fire"])
-	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 25,"with 기습 2: 25")
+	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 23,"with 기습 2: 23")
 	slot(d.hero,["SKELETON_VOLLEY","SPIDER_WEB","SPIDER_WEB@fire","SPIDER_WEB@ice","SPIDER_WEB@air"])
-	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 35,"with 기습 4: 35")
+	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 31,"with 기습 4: 31")
 	slot(d.hero,["SKELETON_VOLLEY","SKELETON_VOLLEY@fire"])
 	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 15,"two 해골 궁수 stones are one effect")
 
@@ -69,9 +69,9 @@ func multipliers() -> void:
 	slot(d.hero,["SKELETON_VOLLEY"])
 	check(StoneEffects.crit_percent(d.hero) == 200,"해골 궁수: +50%p")
 	slot(d.hero,["SPIDER_WEB","SPIDER_WEB@fire","SPIDER_WEB@ice","SPIDER_WEB@air"])
-	check(StoneEffects.crit_percent(d.hero) == 200,"기습 4: +50%p")
+	check(StoneEffects.crit_percent(d.hero) == 190,"기습 4: +40%p")
 	slot(d.hero,["SKELETON_VOLLEY","SPIDER_WEB","SPIDER_WEB@fire","SPIDER_WEB@ice","SPIDER_WEB@air"])
-	check(StoneEffects.crit_percent(d.hero) == 250,"both: +100%p")
+	check(StoneEffects.crit_percent(d.hero) == 240,"both: +90%p")
 
 func damage() -> void:
 	var d := duo(); var s = d.s
@@ -84,7 +84,7 @@ func damage() -> void:
 	check(hit(s,d.hero,d.foe,10,"IMPACT") == 20,"an active crits too")
 	check(hit(s,d.hero,d.foe,10,"physical") == 20,"so does a landed weapon hit")
 	slot(d.hero,["SKELETON_VOLLEY","SPIDER_WEB","SPIDER_WEB@fire","SPIDER_WEB@ice","SPIDER_WEB@air"])
-	check(hit(s,d.hero,d.foe,10) == 25,"the multipliers add up")
+	check(hit(s,d.hero,d.foe,10) == 24,"the multipliers add up")
 	slot(d.hero,[])
 	check(hit(s,d.hero,d.foe,10) == 10,"no chance, no critical however the roll falls")
 

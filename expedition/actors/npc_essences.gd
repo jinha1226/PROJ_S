@@ -8,6 +8,8 @@ const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const DROP_PERCENT := 25
 const SET_BONUS := 300
 const PLAIN := 300
+const Forms = preload("res://expedition/combat/forms.gd")
+const Effects = preload("res://expedition/progression/stone_effects.gd")
 
 ## Low A leans to 광폭·기습, high C to 수호, high O to 술사; a stone it has
 ## absorbed counts a little over one it has not.
@@ -19,6 +21,12 @@ static func preference(npc: Dictionary, id: String) -> int:
 		"GUARD": score += int(profile.value("C"))
 		"CASTER": score += int(profile.value("O"))
 		_: score += PLAIN
+	var effect: String = Effects.effect_of(id)
+	var families: Array = Effects.EFFECTS.get(effect,{}).get("families",[])
+	for family in families:
+		if int(family) in [1,2,4]: score += (1000-int(profile.value("A")))/2
+		elif int(family) in [5,12]: score += int(profile.value("C"))/2
+		elif int(family) in [7,8,10,11]: score += int(profile.value("O"))/2
 	return score
 
 ## How many already chosen essences share a role or an element with `id`.
@@ -27,7 +35,10 @@ static func continuing(picked: Array, id: String) -> int:
 	for other in picked:
 		var same_role: bool = not str(Essences.role(id)).is_empty() and Essences.role(id) == Essences.role(str(other))
 		var same_element: bool = not str(Essences.element(id)).is_empty() and Essences.element(id) == Essences.element(str(other))
-		if same_role or same_element: count += 1
+		var families: Array = Effects.EFFECTS.get(Effects.effect_of(id),{}).get("families",[])
+		var other_families: Array = Effects.EFFECTS.get(Effects.effect_of(str(other)),{}).get("families",[])
+		var same_build: bool = families.any(func(f): return f in other_families)
+		if same_role or same_element or same_build: count += 1
 	return count
 
 ## Greedy loadout: each slot takes the best-scoring essence left, scored with a
@@ -68,6 +79,9 @@ static func on_hunt(s, enemy: Dictionary, hunters: Array) -> void:
 		var species: String = Abilities.kind_key(enemy)
 		if seen.has(species) and Hexaco.sample(s.seed_value,int(s.depth)*100000+int(enemy.id)*100+int(npc.id)%100,"npc_essence",100) >= DROP_PERCENT: continue
 		seen[species] = true
-		if Essences.absorbed(npc,id): continue
-		npc.get_or_add("essences",{})[id] = 1
+		var part: String = Forms.pick_part(str(enemy.get("last_form","")),Hexaco.sample(s.seed_value,int(s.depth)*10000+int(enemy.id),"essence_part",100),int(enemy.get("part_own_bonus",0)))
+		enemy.part_kind = part
+		var stone: String = Essences.canonical(Essences.base_of(id)+"/"+part+("@"+Essences.variant_element(id) if not Essences.variant_element(id).is_empty() else "")) if not Essences.part_of(id).is_empty() else id
+		if Essences.absorbed(npc,stone): continue
+		npc.get_or_add("essences",{})[stone] = 1
 		choose(s,npc)

@@ -77,12 +77,15 @@ static func step(form: String, target: Dictionary) -> int:
 	return 0
 
 ## A quarter less against the tough step, a quarter more against the weak one.
-static func scale(raw: int, form: String, target: Dictionary) -> int:
+static func scale(raw: int, form: String, target: Dictionary, source: Dictionary = {}, s = null) -> int:
 	if raw <= 0 or form not in FORMS: return raw
-	return maxi(1,raw*(100-STEP_PERCENT*step(form,target))/100)
+	var penalty := STEP_PERCENT
+	if form == SLASH and skin(target) > 0 and s != null: penalty += s.StoneEffects.modifier(s,"skin_penalty_percent",source)
+	return maxi(1,raw*(100-penalty*step(form,target))/100)
 
-static func armour(ac: int, form: String) -> int:
-	return ac/2 if form == IMPACT else ac
+static func armour(ac: int, form: String, source: Dictionary = {}, s = null) -> int:
+	var percent: int = 50+(s.StoneEffects.modifier(s,"impact_armour_percent",source) if s != null else 0) if form == IMPACT else 100
+	return ac*clampi(percent,0,100)/100
 
 ## Hangs `form` on the blow now resolving; returns what was there before.
 static func begin(s, form: String) -> String:
@@ -109,7 +112,7 @@ static func fracture_percent(actor: Dictionary) -> int:
 	return FRACTURE_PERCENT/2 if bool(actor.get("boss",false)) else FRACTURE_PERCENT
 
 static func fracture_delay(actor: Dictionary, cost: int) -> int:
-	return cost*(100+fracture_percent(actor))/100 if actor.get("statuses",{}).has("fracture") else cost
+	return cost*(100+fracture_percent(actor)+int(actor.get("status_power",{}).get("fracture_bonus",0)))/100 if actor.get("statuses",{}).has("fracture") else cost
 
 static func attack_action(s, kind: String) -> bool:
 	if kind == "ATTACK": return true
@@ -119,11 +122,12 @@ static func attack_action(s, kind: String) -> bool:
 
 ## Which of the three parts a roll of 0..99 gives: the killing form's own part
 ## half the time, the next two a quarter each; no form spreads it evenly.
-static func pick_part(form: String, roll: int) -> String:
+static func pick_part(form: String, roll: int, own_bonus: int = 0) -> String:
 	var own := FORMS.find(form)
 	if own < 0: return PARTS[0] if roll < 34 else PARTS[1] if roll < 67 else PARTS[2]
-	if roll < 50: return PARTS[own]
-	if roll < 75: return PARTS[(own+1)%3]
+	var own_chance := clampi(50+own_bonus,0,100)
+	if roll < own_chance: return PARTS[own]
+	if roll < own_chance+(100-own_chance)/2: return PARTS[(own+1)%3]
 	return PARTS[(own+2)%3]
 
 static func form_name(form: String) -> String:
@@ -141,7 +145,18 @@ static func wound(s, source: Dictionary, target: Dictionary, lost: int) -> Strin
 	if target.is_empty() or int(target.get("hp",0)) <= 0: return ""
 	var odds := clampi(wound_chance(form,target)+s.StoneEffects.modifier(s,"wound_chance",source,{"target":target,"form":form})+s.StoneEffects.modifier(s,"wound_chance."+form,source,{"target":target,"form":form}),0,100)
 	var rolled: int = force if force >= 0 else int(s.CombatRules.roll(s,source,target,"wound",100))
+	var status: String = str(WOUNDS[form][0])
+	odds -= s.StoneEffects.modifier(s,"wound_resist."+status,target)
 	if rolled >= odds: return ""
+	return apply_wound(s,source,target,form)
+
+## "장검 · 베기": a weapon's name with its form, the bare name when it has none.
+static func weapon_label(name: String, weapon_id: String) -> String:
+	var form: String = str(combat.get("weapons",{}).get(weapon_id,{}).get("form",""))
+	return name if form not in FORMS else "%s · %s" % [name,form_name(form)]
+
+static func apply_wound(s, source: Dictionary, target: Dictionary, form: String) -> String:
+	if form not in FORMS or target.is_empty() or target.hp <= 0: return ""
 	var row: Array = WOUNDS[form]
 	var already: bool = target.get("statuses",{}).has(str(row[0]))
 	if not s.Statuses.apply(s,target,str(row[0]),s.StoneEffects.status_ticks(source,str(row[0]),int(row[1]),s),source): return ""
@@ -150,7 +165,14 @@ static func wound(s, source: Dictionary, target: Dictionary, lost: int) -> Strin
 	s.StoneEffects.fire(s,"WOUND",{"source":source,"target":target,"victim":target,"status":str(row[0]),"form":form,"status_already":already})
 	return str(row[0])
 
-## "장검 · 베기": a weapon's name with its form, the bare name when it has none.
-static func weapon_label(name: String, weapon_id: String) -> String:
-	var form: String = str(combat.get("weapons",{}).get(weapon_id,{}).get("form",""))
-	return name if form not in FORMS else "%s · %s" % [name,form_name(form)]
+static func supplemental(s, source: Dictionary, target: Dictionary, lost: int) -> void:
+	if lost <= 0 or source.is_empty() or int(target.hp) <= 0 or s.casting > 0: return
+	if str(s.blow_form) == PIERCE and s.StoneEffects.chance(s,source,target,"pierce_bleed",s.StoneEffects.modifier(s,"bleed_pierce_chance",source)): apply_wound(s,source,target,SLASH)
+	if bool(source.get("enemy",false)): return
+	var offhand: Dictionary = s.CombatStats.Equipment.worn(source).offhand
+	var def: Dictionary = s.CombatStats.Equipment.definition(offhand)
+	var extra: String = str(def.get("form",""))
+	if extra in FORMS:
+		var chance: int = (wound_chance(extra,target)+s.StoneEffects.modifier(s,"wound_chance."+extra,source)-s.StoneEffects.modifier(s,"wound_resist."+str(WOUNDS[extra][0]),target))/2
+		if s.StoneEffects.chance(s,source,target,"offhand_wound",chance): apply_wound(s,source,target,extra)
+	if s.StoneEffects.modifier(s,"extra_wound",source) > 0 and s.StoneEffects.chance(s,source,target,"saw_wound",wound_chance(SLASH,target)/2): apply_wound(s,source,target,SLASH)

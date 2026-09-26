@@ -40,7 +40,9 @@ static func round_of(s) -> int:
 static func begin_action(s) -> void:
 	s.action_serial += 1
 	s.effect_depth = 0
-	for actor in s.party+s.npcs+s.enemies: s.StoneEffects.Stacks.expire(actor,"action",int(s.time))
+	for actor in s.party+s.npcs+s.enemies:
+		actor.repeat_reaction = false
+		s.StoneEffects.Stacks.expire(actor,"action",int(s.time))
 
 ## True the first time `key` fires for `actor` in this action.
 static func once(s, actor: Dictionary, key: String) -> bool:
@@ -166,14 +168,16 @@ static func hang(s, victim: Dictionary, status: String, ticks: int) -> void:
 
 ## What a reaction bites for: its own number. (The old 술사 3 bonus went with
 ## the role sets; the role combos never touch secondary damage.)
-static func reaction_damage(_source: Dictionary, amount: int, s = null) -> int:
-	return amount if s == null else amount*(100+s.StoneEffects.modifier(s,"reaction_percent",_source))/100
+static func reaction_damage(source: Dictionary, amount: int, s = null) -> int:
+	var value: int = amount if s == null else amount*(100+s.StoneEffects.modifier(s,"reaction_percent",source))/100
+	return value*2 if bool(source.get("repeat_reaction",false)) else value
 
 static func react_damage(s, source: Dictionary, target: Dictionary, amount: int, element: String) -> int:
 	return s.CombatRules.damage(s,source,target,reaction_damage(source,amount,s),element,0,REACTION_FORM)
 
 ## The reaction's name, big over the cell, in the log and in the event queue.
 static func announce(s, cell: Vector2i, key: String, source: Dictionary) -> void:
+	source.repeat_reaction = false
 	var name: String = str(NAMES[key])
 	s.effects.append({"kind":"REACTION","from":cell,"cell":cell,"text":name})
 	s.message("%s 반응" % name.trim_suffix("!"))

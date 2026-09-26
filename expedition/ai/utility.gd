@@ -1,4 +1,5 @@
 extends RefCounted
+const BuildSense = preload("res://expedition/ai/build_sense.gd")
 ## Utility selector: every candidate action is scored as Σ weight × curve(input)
 ## over a closed catalogue of considerations; the stance picks the weights,
 ## personality knobs shift them, and the top three terms explain the choice.
@@ -129,6 +130,12 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, we
 		# Only a genuinely ranged part is holstered in contact: a MELEE dash part
 		# (돌진·기습) reaches three cells precisely in order to close.
 		if str(def.get("axis","")) == "RANGED" and int(def.range) >= 3 and s.combat_enemies().any(func(e): return s.melee_reach(actor.pos,e.pos)): result.contact_penalty = 1.0
+	var build_inputs: Dictionary = BuildSense.inputs(s,actor,action)
+	# Build preferences cannot reward a configured part outside its rule condition.
+	if Abilities.has(kind) and actor.rules.any(func(r): return Abilities.active_id(str(r.get("skill",""))) == Abilities.active_id(kind)) and float(result.rule_ready) <= 0.0:
+		for key in build_inputs: build_inputs[key] = 0.0
+	result.merge(build_inputs,true)
+	if str(action.get("tag","")) == "WAIT:yield": result.finish_form = 1.0
 	return result
 
 ## 설계 §2 `rule_ready`, Task 2 판정: 등급형이다. The rule list used to be a
@@ -191,4 +198,7 @@ static func score(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, sta
 		total += contrib
 		terms.append({"id":cid,"input":inp.get(cid,0.0),"weight":weight,"contrib":int(round(contrib))})
 	terms.sort_custom(func(a,b): return a.contrib > b.contrib if a.contrib != b.contrib else a.id < b.id)
-	return {"score":int(round(total)),"explain":terms.slice(0,3)}
+	var build_bonus := 0.0
+	for term in terms:
+		if str(term.id) in BuildSense.IDS: build_bonus += float(term.contrib)
+	return {"score":int(round(total)),"base_score":int(round(total-build_bonus)),"explain":terms.slice(0,3),"build_terms":terms.filter(func(t): return str(t.id) in BuildSense.IDS)}

@@ -8,7 +8,8 @@
       "axis": "melee",
       "range": 1,
       "trait": "balanced",
-      "form": "SLASH"
+      "form": "SLASH",
+      "hands": 1
     },
     "axe": {
       "name": "도끼",
@@ -17,7 +18,8 @@
       "axis": "melee",
       "range": 1,
       "trait": "cleave",
-      "form": "SLASH"
+      "form": "SLASH",
+      "hands": 1
     },
     "mace": {
       "name": "철퇴",
@@ -26,7 +28,8 @@
       "axis": "melee",
       "range": 1,
       "trait": "",
-      "form": "IMPACT"
+      "form": "IMPACT",
+      "hands": 1
     },
     "spear": {
       "name": "창",
@@ -35,7 +38,8 @@
       "axis": "melee",
       "range": 2,
       "trait": "reach",
-      "form": "PIERCE"
+      "form": "PIERCE",
+      "hands": 1
     },
     "bow": {
       "name": "활",
@@ -44,7 +48,8 @@
       "axis": "ranged",
       "range": 6,
       "trait": "ranged",
-      "form": "PIERCE"
+      "form": "PIERCE",
+      "hands": 2
     },
     "dagger": {
       "name": "단검",
@@ -53,7 +58,8 @@
       "axis": "melee",
       "range": 1,
       "trait": "stab",
-      "form": "PIERCE"
+      "form": "PIERCE",
+      "hands": 1
     },
     "staff": {
       "name": "지팡이",
@@ -62,7 +68,8 @@
       "axis": "melee",
       "range": 1,
       "trait": "focus",
-      "form": "IMPACT"
+      "form": "IMPACT",
+      "hands": 2
     }
   },
   "armours": {
@@ -1093,32 +1100,629 @@
     "gear_by_depth": {
       "1": [
         "dagger",
-        "robe"
+        "robe",
+        "shield",
+        "off_dagger",
+        "off_sword",
+        "off_mace",
+        "orb"
       ],
       "2": [
         "sword",
         "spear",
-        "leather"
+        "leather",
+        "shield",
+        "off_dagger",
+        "off_sword",
+        "off_mace",
+        "orb"
       ],
       "3": [
         "axe",
         "mace",
         "bow",
         "leather",
-        "ring:poison"
+        "ring:poison",
+        "shield",
+        "off_dagger",
+        "off_sword",
+        "off_mace",
+        "orb"
       ],
       "5": [
         "mail",
         "ring:fire",
         "ring:ice",
-        "staff"
+        "staff",
+        "shield",
+        "off_dagger",
+        "off_sword",
+        "off_mace",
+        "orb"
       ],
       "7": [
         "plate",
         "ring:power",
-        "ring:ev"
+        "ring:ev",
+        "shield",
+        "off_dagger",
+        "off_sword",
+        "off_mace",
+        "orb"
       ]
-    }
+    },
+    "tiers_by_zone": {
+      "1": [
+        90,
+        10,
+        0
+      ],
+      "2": [
+        75,
+        23,
+        2
+      ],
+      "3": [
+        60,
+        36,
+        4
+      ],
+      "4": [
+        45,
+        49,
+        6
+      ]
+    },
+    "randart_props": [
+      {
+        "key": "atk",
+        "ranges": [
+          [
+            1,
+            1
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            3,
+            4
+          ]
+        ],
+        "slots": [
+          "weapon",
+          "ring1"
+        ]
+      },
+      {
+        "key": "ac",
+        "ranges": [
+          [
+            1,
+            1
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            3,
+            4
+          ]
+        ],
+        "slots": [
+          "armour",
+          "offhand",
+          "ring1"
+        ]
+      },
+      {
+        "key": "sh",
+        "ranges": [
+          [
+            3,
+            3
+          ],
+          [
+            3,
+            5
+          ],
+          [
+            5,
+            8
+          ],
+          [
+            8,
+            10
+          ]
+        ],
+        "slots": [
+          "shield"
+        ]
+      },
+      {
+        "key": "ev",
+        "ranges": [
+          [
+            1,
+            1
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            2,
+            2
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "slots": [
+          "armour",
+          "ring1"
+        ]
+      },
+      {
+        "key": "hp",
+        "ranges": [
+          [
+            5,
+            5
+          ],
+          [
+            5,
+            8
+          ],
+          [
+            8,
+            12
+          ],
+          [
+            12,
+            15
+          ]
+        ],
+        "slots": [
+          "armour",
+          "ring1"
+        ]
+      },
+      {
+        "key": "mp",
+        "ranges": [
+          [
+            3,
+            3
+          ],
+          [
+            3,
+            5
+          ],
+          [
+            5,
+            7
+          ],
+          [
+            7,
+            9
+          ]
+        ],
+        "slots": [
+          "orb",
+          "ring1"
+        ]
+      },
+      {
+        "key": "spell",
+        "ranges": [
+          [
+            1,
+            1
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            3,
+            4
+          ]
+        ],
+        "slots": [
+          "orb",
+          "ring1"
+        ]
+      },
+      {
+        "key": "speed",
+        "ranges": [
+          [
+            3,
+            3
+          ],
+          [
+            3,
+            5
+          ],
+          [
+            5,
+            5
+          ],
+          [
+            5,
+            8
+          ]
+        ],
+        "slots": [
+          "ring1"
+        ]
+      },
+      {
+        "key": "res_fire",
+        "ranges": [
+          [
+            20,
+            20
+          ],
+          [
+            20,
+            30
+          ],
+          [
+            30,
+            40
+          ],
+          [
+            40,
+            40
+          ]
+        ],
+        "slots": [
+          "armour",
+          "offhand",
+          "ring1"
+        ]
+      },
+      {
+        "key": "res_ice",
+        "ranges": [
+          [
+            20,
+            20
+          ],
+          [
+            20,
+            30
+          ],
+          [
+            30,
+            40
+          ],
+          [
+            40,
+            40
+          ]
+        ],
+        "slots": [
+          "armour",
+          "offhand",
+          "ring1"
+        ]
+      },
+      {
+        "key": "res_air",
+        "ranges": [
+          [
+            20,
+            20
+          ],
+          [
+            20,
+            30
+          ],
+          [
+            30,
+            40
+          ],
+          [
+            40,
+            40
+          ]
+        ],
+        "slots": [
+          "armour",
+          "offhand",
+          "ring1"
+        ]
+      },
+      {
+        "key": "res_poison",
+        "ranges": [
+          [
+            20,
+            20
+          ],
+          [
+            20,
+            30
+          ],
+          [
+            30,
+            40
+          ],
+          [
+            40,
+            40
+          ]
+        ],
+        "slots": [
+          "armour",
+          "offhand",
+          "ring1"
+        ]
+      },
+      {
+        "key": "res_will",
+        "ranges": [
+          [
+            20,
+            20
+          ],
+          [
+            20,
+            30
+          ],
+          [
+            30,
+            40
+          ],
+          [
+            40,
+            40
+          ]
+        ],
+        "slots": [
+          "armour",
+          "offhand",
+          "ring1"
+        ]
+      },
+      {
+        "key": "wound_resist.bleed",
+        "ranges": [
+          [
+            5,
+            5
+          ],
+          [
+            5,
+            10
+          ],
+          [
+            10,
+            10
+          ],
+          [
+            10,
+            15
+          ]
+        ],
+        "slots": [
+          "armour",
+          "offhand"
+        ]
+      },
+      {
+        "key": "wound_resist.fracture",
+        "ranges": [
+          [
+            5,
+            5
+          ],
+          [
+            5,
+            10
+          ],
+          [
+            10,
+            10
+          ],
+          [
+            10,
+            15
+          ]
+        ],
+        "slots": [
+          "armour",
+          "offhand"
+        ]
+      },
+      {
+        "key": "wound_resist.exposed",
+        "ranges": [
+          [
+            5,
+            5
+          ],
+          [
+            5,
+            10
+          ],
+          [
+            10,
+            10
+          ],
+          [
+            10,
+            15
+          ]
+        ],
+        "slots": [
+          "armour",
+          "offhand"
+        ]
+      },
+      {
+        "key": "accuracy",
+        "ranges": [
+          [
+            2,
+            3
+          ],
+          [
+            3,
+            5
+          ],
+          [
+            5,
+            7
+          ],
+          [
+            7,
+            9
+          ]
+        ],
+        "slots": [
+          "weapon"
+        ]
+      },
+      {
+        "key": "crit_chance",
+        "ranges": [
+          [
+            2,
+            3
+          ],
+          [
+            3,
+            5
+          ],
+          [
+            5,
+            7
+          ],
+          [
+            7,
+            9
+          ]
+        ],
+        "slots": [
+          "weapon"
+        ]
+      },
+      {
+        "key": "crit_damage",
+        "ranges": [
+          [
+            5,
+            10
+          ],
+          [
+            10,
+            15
+          ],
+          [
+            15,
+            20
+          ],
+          [
+            20,
+            25
+          ]
+        ],
+        "slots": [
+          "weapon"
+        ]
+      }
+    ],
+    "randart_flaws": [
+      {
+        "key": "taken_percent",
+        "range": [
+          5,
+          10
+        ]
+      },
+      {
+        "key": "heal_taken_percent",
+        "range": [
+          -30,
+          -20
+        ]
+      },
+      {
+        "key": "noise",
+        "range": [
+          4,
+          4
+        ]
+      },
+      {
+        "key": "speed",
+        "range": [
+          -5,
+          -5
+        ]
+      },
+      {
+        "key": "max_hp_percent",
+        "range": [
+          -10,
+          -5
+        ]
+      },
+      {
+        "key": "res_fire",
+        "range": [
+          -30,
+          -20
+        ]
+      },
+      {
+        "key": "res_ice",
+        "range": [
+          -30,
+          -20
+        ]
+      },
+      {
+        "key": "res_air",
+        "range": [
+          -30,
+          -20
+        ]
+      },
+      {
+        "key": "res_poison",
+        "range": [
+          -30,
+          -20
+        ]
+      },
+      {
+        "key": "res_will",
+        "range": [
+          -30,
+          -20
+        ]
+      }
+    ]
   },
   "kill_xp": {
     "base": 18,
@@ -1164,6 +1768,36 @@
       "speed": 90,
       "duration": 350,
       "form": "PIERCE"
+    },
+    "skeleton": {
+      "name": "해골",
+      "hp": 18,
+      "power": 6,
+      "speed": 100,
+      "duration": 300,
+      "form": "IMPACT"
+    }
+  },
+  "offhands": {
+    "shield": {
+      "name": "방패",
+      "block": 15
+    },
+    "off_dagger": {
+      "name": "보조 단검",
+      "form": "PIERCE"
+    },
+    "off_sword": {
+      "name": "보조 장검",
+      "form": "SLASH"
+    },
+    "off_mace": {
+      "name": "보조 철퇴",
+      "form": "IMPACT"
+    },
+    "orb": {
+      "name": "오브",
+      "spell": 3
     }
   }
 }

@@ -21,8 +21,8 @@ static func outgoing(s, attacker: Dictionary, target: Dictionary, amount: int, f
 	return StoneEffects.outgoing(s,attacker,target,TagSets.outgoing(s,attacker,target,amount),form,result)
 
 ## Damage `target` finally takes, after guards and defence.
-static func incoming(s, target: Dictionary, amount: int) -> int:
-	return StoneEffects.incoming(s,target,TagSets.incoming(s,target,amount))
+static func incoming(s, target: Dictionary, amount: int, source: Dictionary = {}) -> int:
+	return StoneEffects.incoming(s,target,TagSets.incoming(s,target,amount),source)
 
 ## After the hit landed: the stones' procs, then 가시 갑옷 returns thirty
 ## percent of what an adjacent attacker dealt, as retaliation that triggers

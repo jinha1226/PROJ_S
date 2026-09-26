@@ -23,7 +23,10 @@
           }
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        12
+      ]
     },
     "LIZARD_TAIL": {
       "name": "꼬리 반격",
@@ -51,7 +54,10 @@
           "code": "counter"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        5
+      ]
     },
     "KOBOLD_SLING": {
       "name": "투석",
@@ -75,7 +81,10 @@
           }
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        6
+      ]
     },
     "GOBLIN_SHIV": {
       "name": "기습",
@@ -95,7 +104,10 @@
           "phase": "scaled"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        3
+      ]
     },
     "GOBLIN_AIM": {
       "name": "조준",
@@ -112,7 +124,10 @@
           }
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        6
+      ]
     },
     "SHIELD_STANCE": {
       "name": "방패 태세",
@@ -129,13 +144,16 @@
           }
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        5
+      ]
     },
     "HOB_TAUNT": {
       "name": "거구",
       "text": "최대 HP +20%",
       "keywords": [
-        "분쇄"
+        "수호"
       ],
       "rules": [
         {
@@ -146,7 +164,10 @@
           }
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        5
+      ]
     },
     "GOBLIN_HEXER": {
       "name": "저주 연장",
@@ -167,7 +188,10 @@
           }
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        8
+      ]
     },
     "ORC_CLEAVER": {
       "name": "난폭",
@@ -195,7 +219,10 @@
           }
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        4
+      ]
     },
     "ORC_THROW": {
       "name": "연속 투척",
@@ -231,7 +258,10 @@
           "phase": "after"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        6
+      ]
     },
     "SPIDER_WEB": {
       "name": "거미줄",
@@ -267,13 +297,16 @@
           "phase": "proc"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        8
+      ]
     },
     "BEETLE_CURL": {
       "name": "껍질",
       "text": "받는 피해 −15%",
       "keywords": [
-        "분쇄"
+        "수호"
       ],
       "rules": [
         {
@@ -284,7 +317,10 @@
           }
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        5
+      ]
     },
     "ORE_SLAM": {
       "name": "강타",
@@ -320,7 +356,10 @@
           "phase": "proc"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        2
+      ]
     },
     "FIRE_CALLER": {
       "name": "불씨",
@@ -367,13 +406,16 @@
           "phase": "proc"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        7
+      ]
     },
     "STORM_BAT": {
       "name": "질풍",
       "text": "행동 속도 +20%",
       "keywords": [
-        "원소"
+        "지원"
       ],
       "rules": [
         {
@@ -384,7 +426,10 @@
           }
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        12
+      ]
     },
     "RIVER_RAT_SPLASH": {
       "name": "물장구",
@@ -405,7 +450,10 @@
           }
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        7
+      ]
     },
     "LEECH_LATCH": {
       "name": "달라붙기",
@@ -421,7 +469,10 @@
           "phase": "prepare"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        1
+      ]
     },
     "TOAD_SPIT": {
       "name": "독침",
@@ -457,13 +508,16 @@
           "phase": "proc"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        9
+      ]
     },
     "SERPENT_SHED": {
       "name": "탈피",
       "text": "걸리는 상태이상을 50% 확률로 막음",
       "keywords": [
-        "독"
+        "지원"
       ],
       "rules": [
         {
@@ -476,7 +530,10 @@
           "code": "cancel_status"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        12
+      ]
     },
     "WATER_WAVE": {
       "name": "치유의 물결",
@@ -499,7 +556,10 @@
           ]
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        12
+      ]
     },
     "GNOLL_SPEAR": {
       "name": "분노",
@@ -533,7 +593,10 @@
           "phase": "prepare"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        4
+      ]
     },
     "FROST_IMP": {
       "name": "서리",
@@ -580,7 +643,10 @@
           "phase": "proc"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        7
+      ]
     },
     "GNOLL_SUMMONER": {
       "name": "무리 부르기",
@@ -605,7 +671,10 @@
           "scope": "summoner"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        10
+      ]
     },
     "SKELETON_WALL": {
       "name": "뼈 방벽",
@@ -628,7 +697,10 @@
           "group": "SKELETON_WALL"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        5
+      ]
     },
     "SKELETON_VOLLEY": {
       "name": "급소 사격",
@@ -652,13 +724,16 @@
           }
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        3
+      ]
     },
     "GHOUL_CLAW": {
       "name": "포식",
       "text": "처치하면 최대 HP의 15% 회복",
       "keywords": [
-        "사령"
+        "광폭"
       ],
       "rules": [
         {
@@ -681,13 +756,16 @@
           ]
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        4
+      ]
     },
     "VAMPIRE_BITE": {
       "name": "흡혈",
       "text": "준 피해의 15%를 흡혈",
       "keywords": [
-        "광폭"
+        "사령"
       ],
       "rules": [
         {
@@ -698,13 +776,17 @@
               "heal": {
                 "dealt%": 15
               },
-              "target": "self"
+              "target": "self",
+              "lifesteal": true
             }
           ],
           "phase": "after"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        11
+      ]
     },
     "THORN_ARMOUR": {
       "name": "가시 갑주",
@@ -732,13 +814,16 @@
           "code": "reflect"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        5
+      ]
     },
     "WRAITH": {
       "name": "원한",
       "text": "공격에 20% 확률로 약화, 처치하면 반경 2 적 혼란 1라운드",
       "keywords": [
-        "사령"
+        "저주"
       ],
       "rules": [
         {
@@ -780,7 +865,10 @@
           "phase": "proc"
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        8
+      ]
     },
     "GRAVEKEEPER": {
       "name": "무덤 지기",
@@ -798,7 +886,2858 @@
           }
         }
       ],
-      "limit": "event"
+      "limit": "event",
+      "families": [
+        11
+      ]
+    },
+    "RAT_INCISOR": {
+      "name": "쥐 앞니",
+      "text": "베기·찌르기 공격의 출혈 확률 +10%p",
+      "keywords": [
+        "출혈"
+      ],
+      "families": [
+        1
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "wound_chance.SLASH": 10
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "bleed_pierce_chance": 10
+          }
+        }
+      ]
+    },
+    "RAT_HEART": {
+      "name": "쥐 심장",
+      "text": "동료가 적을 처치하면 내 다음 공격 +20%",
+      "keywords": [
+        "지원"
+      ],
+      "families": [
+        12
+      ],
+      "rules": [
+        {
+          "when": "ALLY_KILL",
+          "do": [
+            {
+              "stack": "ally_kill",
+              "max": 1,
+              "until": "attack",
+              "target": "self",
+              "add": 1
+            },
+            {
+              "notice": "쥐 심장",
+              "target": "self"
+            }
+          ]
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": {
+              "value": 20,
+              "per_stack": [
+                "ally_kill",
+                1
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "LIZARD_FRILL": {
+      "name": "목도리 도마뱀 목도리",
+      "text": "피격될 때마다 분노 +1(최대 5), 분노당 공격력 +5%, 내가 공격하면 분노 초기화",
+      "keywords": [
+        "광폭"
+      ],
+      "families": [
+        4
+      ],
+      "rules": [
+        {
+          "when": "STRUCK",
+          "do": [
+            {
+              "stack": "rage_hits",
+              "max": 5,
+              "until": "attack",
+              "target": "self",
+              "add": 1
+            },
+            {
+              "notice": "목도리 도마뱀 목도리",
+              "target": "self"
+            }
+          ]
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": {
+              "value": 5,
+              "per_stack": [
+                "rage_hits",
+                1
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "LIZARD_EYE": {
+      "name": "목도리 도마뱀 눈",
+      "text": "공격을 피하면 다음 공격 치명타 확률 +30",
+      "keywords": [
+        "급소"
+      ],
+      "families": [
+        3
+      ],
+      "rules": [
+        {
+          "when": "DODGE",
+          "do": [
+            {
+              "stack": "dodge_crit",
+              "max": 1,
+              "until": "attack",
+              "target": "self",
+              "add": 1
+            },
+            {
+              "notice": "목도리 도마뱀 눈",
+              "target": "self"
+            }
+          ]
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "crit_chance": {
+              "value": 30,
+              "per_stack": [
+                "dodge_crit",
+                1
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "KOBOLD_HIDE": {
+      "name": "코볼트 가죽",
+      "text": "인접한 적이 없으면 회피 +10",
+      "keywords": [
+        "사수"
+      ],
+      "families": [
+        6
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "dodge": 10
+          },
+          "if": [
+            {
+              "no_adjacent_enemy": true
+            }
+          ]
+        }
+      ]
+    },
+    "KOBOLD_HEART": {
+      "name": "코볼트 심장",
+      "text": "이동하지 않은 라운드마다 조준 +1(최대 3), 조준당 원거리 피해 +10%, 이동하면 초기화",
+      "keywords": [
+        "사수"
+      ],
+      "families": [
+        6
+      ],
+      "rules": [
+        {
+          "when": "ROUND_START",
+          "if": [
+            {
+              "not_moved_last_round": true
+            }
+          ],
+          "do": [
+            {
+              "stack": "aim",
+              "max": 3,
+              "until": "battle",
+              "target": "self",
+              "add": 1
+            },
+            {
+              "notice": "코볼트 심장",
+              "target": "self"
+            }
+          ]
+        },
+        {
+          "when": "MOVED",
+          "do": [
+            {
+              "clear_stack": "aim"
+            }
+          ]
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": {
+              "value": 10,
+              "per_stack": [
+                "aim",
+                1
+              ]
+            }
+          },
+          "if": [
+            {
+              "ranged": true
+            }
+          ]
+        }
+      ]
+    },
+    "GOBLIN_EAR": {
+      "name": "고블린 귀",
+      "text": "전투의 첫 공격은 반드시 치명타",
+      "keywords": [
+        "급소"
+      ],
+      "families": [
+        3
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "crit_chance": 100
+          },
+          "if": [
+            {
+              "first_attack": true
+            }
+          ]
+        }
+      ]
+    },
+    "GOBLIN_TOOTH": {
+      "name": "고블린 이빨",
+      "text": "해로운 상태를 걸 때마다 대상 방어 −1(누적 최대 −5, 300 tick)",
+      "keywords": [
+        "저주"
+      ],
+      "families": [
+        8
+      ],
+      "rules": [
+        {
+          "when": "STATUS_GIVEN",
+          "if": [
+            {
+              "harmful": true
+            }
+          ],
+          "do": [
+            {
+              "modify": {
+                "armour": -1
+              },
+              "cap": 5,
+              "ticks": 300
+            }
+          ]
+        }
+      ]
+    },
+    "ARCHER_KNUCKLE": {
+      "name": "고블린 궁수 손가락뼈",
+      "text": "원거리 명중 시 20% 확률로 대상 뒤 한 칸의 적에게도 피해 50%",
+      "keywords": [
+        "사수"
+      ],
+      "families": [
+        6
+      ],
+      "rules": [
+        {
+          "when": "HIT",
+          "code": "part_special",
+          "args": {
+            "effect": "ARCHER_KNUCKLE"
+          },
+          "if": [
+            {
+              "ranged": true,
+              "chance": 20
+            }
+          ]
+        }
+      ]
+    },
+    "ARCHER_EYE": {
+      "name": "고블린 궁수 눈",
+      "text": "4칸 이상 떨어진 대상에게 피해 +20%",
+      "keywords": [
+        "사수"
+      ],
+      "families": [
+        6
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": 20
+          },
+          "if": [
+            {
+              "target_distance_at_least": 4
+            }
+          ]
+        }
+      ]
+    },
+    "SHIELD_HIDE": {
+      "name": "고블린 방패병 가죽",
+      "text": "막으면 공격자에게 반격(공격력의 60%)",
+      "keywords": [
+        "수호"
+      ],
+      "families": [
+        5
+      ],
+      "rules": [
+        {
+          "when": "BLOCK",
+          "code": "part_special",
+          "args": {
+            "effect": "SHIELD_HIDE"
+          }
+        }
+      ]
+    },
+    "SHIELD_HEART": {
+      "name": "고블린 방패병 심장",
+      "text": "막으면 공격자에게 골절 판정(타격 부상 확률 그대로)",
+      "keywords": [
+        "분쇄"
+      ],
+      "families": [
+        2
+      ],
+      "rules": [
+        {
+          "when": "BLOCK",
+          "code": "part_special",
+          "args": {
+            "effect": "SHIELD_HEART"
+          }
+        }
+      ]
+    },
+    "HOB_HIDE": {
+      "name": "홉고블린 가죽",
+      "text": "공격할 때 내 HP 2% 소모, 공격력 +30%",
+      "keywords": [
+        "광폭"
+      ],
+      "families": [
+        4
+      ],
+      "rules": [
+        {
+          "when": "ATTACK",
+          "code": "part_special",
+          "args": {
+            "effect": "HOB_HIDE"
+          },
+          "if": [
+            {
+              "spell": false
+            }
+          ]
+        }
+      ]
+    },
+    "HOB_JAW": {
+      "name": "홉고블린 턱뼈",
+      "text": "타격 공격의 골절 확률 +10%p",
+      "keywords": [
+        "분쇄"
+      ],
+      "families": [
+        2
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "wound_chance.IMPACT": 10
+          }
+        }
+      ]
+    },
+    "HEXER_HAND": {
+      "name": "고블린 주술사 손",
+      "text": "대상에게 걸린 해로운 상태 1개당 주는 피해 +8%",
+      "keywords": [
+        "저주"
+      ],
+      "families": [
+        8
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": {
+              "value": 8,
+              "per_harmful": true
+            }
+          }
+        }
+      ]
+    },
+    "HEXER_SKULL": {
+      "name": "고블린 주술사 두개골",
+      "text": "저주 학파 주문의 의지 판정 −20(더 잘 걸림)",
+      "keywords": [
+        "저주"
+      ],
+      "families": [
+        8
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "will_save": 20
+          },
+          "if": [
+            {
+              "school": "hex"
+            }
+          ]
+        }
+      ]
+    },
+    "ORC_HIDE": {
+      "name": "오크 가죽",
+      "text": "이미 출혈 중인 대상에게 출혈을 다시 걸면 출혈 틱 3번 분량의 피해를 바로 줌",
+      "keywords": [
+        "출혈"
+      ],
+      "families": [
+        1
+      ],
+      "rules": [
+        {
+          "when": "WOUND",
+          "code": "part_special",
+          "args": {
+            "effect": "ORC_HIDE"
+          },
+          "if": [
+            {
+              "status_is": "bleed",
+              "status_already": true
+            }
+          ]
+        }
+      ]
+    },
+    "ORC_HEART": {
+      "name": "오크 심장",
+      "text": "체력 30% 이하에서 받는 피해 −25%",
+      "keywords": [
+        "광폭"
+      ],
+      "families": [
+        4
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "taken_percent": -25
+          },
+          "if": [
+            {
+              "self_hp_below": 30
+            }
+          ]
+        }
+      ]
+    },
+    "THROWER_SHOULDER": {
+      "name": "오크 투척병 어깨뼈",
+      "text": "타격 명중 시 15% 확률로 대상을 한 칸 밀침, 밀 곳이 막혀 있으면 추가 피해 8",
+      "keywords": [
+        "분쇄"
+      ],
+      "families": [
+        2
+      ],
+      "rules": [
+        {
+          "when": "HIT",
+          "if": [
+            {
+              "form": "IMPACT",
+              "chance": 15
+            }
+          ],
+          "do": [
+            {
+              "push": 1,
+              "blocked_damage": 8
+            },
+            {
+              "notice": "오크 투척병 어깨뼈",
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    "THROWER_EYE": {
+      "name": "오크 투척병 눈",
+      "text": "원거리 명중 시 20% 확률로 표식(받는 피해 +20%, 300 tick)",
+      "keywords": [
+        "사수",
+        "저주"
+      ],
+      "families": [
+        6,
+        8
+      ],
+      "rules": [
+        {
+          "when": "HIT",
+          "if": [
+            {
+              "ranged": true,
+              "chance": 20
+            }
+          ],
+          "do": [
+            {
+              "apply_status": "marked",
+              "ticks": 300
+            },
+            {
+              "notice": "오크 투척병 눈",
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    "SPIDER_LEG": {
+      "name": "동굴 거미 다리",
+      "text": "치명타를 내면 다음 행동 지연 −30%",
+      "keywords": [
+        "급소"
+      ],
+      "families": [
+        3
+      ],
+      "rules": [
+        {
+          "when": "CRIT",
+          "do": [
+            {
+              "stack": "quick",
+              "max": 1,
+              "until": "next_action",
+              "target": "self",
+              "add": 1
+            },
+            {
+              "notice": "동굴 거미 다리",
+              "target": "self"
+            }
+          ]
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "speed": {
+              "value": 30,
+              "per_stack": [
+                "quick",
+                1
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "SPIDER_SHELL": {
+      "name": "동굴 거미 껍질",
+      "text": "해로운 상태가 3개 이상인 대상에게 피해 +30%",
+      "keywords": [
+        "저주"
+      ],
+      "families": [
+        8
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": 30
+          },
+          "if": [
+            {
+              "target_harmful_at_least": 3
+            }
+          ]
+        }
+      ]
+    },
+    "BEETLE_WING": {
+      "name": "바위 딱정벌레 날개",
+      "text": "라운드 시작에 인접한 적 1명당 방어 +2(그 라운드)",
+      "keywords": [
+        "수호"
+      ],
+      "families": [
+        5
+      ],
+      "rules": [
+        {
+          "when": "ROUND_START",
+          "code": "part_special",
+          "args": {
+            "effect": "BEETLE_WING"
+          }
+        }
+      ]
+    },
+    "BEETLE_CORE": {
+      "name": "바위 딱정벌레 핵",
+      "text": "피격될 때마다 방어 +1(전투 동안, 최대 +8)",
+      "keywords": [
+        "수호"
+      ],
+      "families": [
+        5
+      ],
+      "rules": [
+        {
+          "when": "STRUCK",
+          "do": [
+            {
+              "stack": "guard",
+              "max": 8,
+              "until": "battle",
+              "target": "self",
+              "add": 1
+            },
+            {
+              "notice": "바위 딱정벌레 핵",
+              "target": "self"
+            }
+          ]
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "armour": {
+              "value": 1,
+              "per_stack": [
+                "guard",
+                1
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "GOLEM_VEIN": {
+      "name": "광석 골렘 광맥",
+      "text": "타격 공격이 방어를 완전히 무시",
+      "keywords": [
+        "분쇄"
+      ],
+      "families": [
+        2
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "impact_armour_percent": -50
+          }
+        }
+      ]
+    },
+    "GOLEM_CORE": {
+      "name": "광석 골렘 핵",
+      "text": "기절·빙결·골절 대상에게 피해 +30%",
+      "keywords": [
+        "분쇄"
+      ],
+      "families": [
+        2
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": 30
+          },
+          "if": [
+            {
+              "target_has_any": [
+                "stun",
+                "freeze",
+                "fracture"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "FIRECALLER_HAND": {
+      "name": "코볼트 화염술사 손",
+      "text": "화상 중인 대상에게 주는 피해 +20%",
+      "keywords": [
+        "원소"
+      ],
+      "families": [
+        7
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": 20
+          },
+          "if": [
+            {
+              "target_has": "burn"
+            }
+          ]
+        }
+      ]
+    },
+    "FIRECALLER_BONE": {
+      "name": "코볼트 화염술사 뼈",
+      "text": "원소 반응을 일으키면 MP +2",
+      "keywords": [
+        "원소"
+      ],
+      "families": [
+        7
+      ],
+      "rules": [
+        {
+          "when": "REACTION",
+          "do": [
+            {
+              "gain_mp": 2
+            }
+          ]
+        }
+      ]
+    },
+    "BAT_BONE": {
+      "name": "폭풍 박쥐 뼈",
+      "text": "전기 피해 +30%, 젖은 대상에게 전기 피해 시 20% 확률로 기절 1라운드",
+      "keywords": [
+        "원소"
+      ],
+      "families": [
+        7
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": 30
+          },
+          "if": [
+            {
+              "element": "air"
+            }
+          ]
+        },
+        {
+          "when": "HIT",
+          "if": [
+            {
+              "element": "air",
+              "target_wet": true,
+              "chance": 20
+            }
+          ],
+          "do": [
+            {
+              "apply_status": "stun",
+              "ticks": 100
+            },
+            {
+              "notice": "폭풍 박쥐 뼈",
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    "BAT_EAR": {
+      "name": "폭풍 박쥐 귀",
+      "text": "이번 라운드에 이동했으면 회피 +15",
+      "keywords": [
+        "지원"
+      ],
+      "families": [
+        12
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "dodge": 15
+          },
+          "if": [
+            {
+              "moved_this_round": true
+            }
+          ]
+        }
+      ]
+    },
+    "RIVER_RAT_TOOTH": {
+      "name": "강쥐 이빨",
+      "text": "출혈을 걸 때 대상 방어 −2(300 tick)",
+      "keywords": [
+        "출혈"
+      ],
+      "families": [
+        1
+      ],
+      "rules": [
+        {
+          "when": "WOUND",
+          "if": [
+            {
+              "status_is": "bleed"
+            }
+          ],
+          "do": [
+            {
+              "modify": {
+                "armour": -2
+              },
+              "ticks": 300
+            }
+          ]
+        }
+      ]
+    },
+    "RIVER_RAT_HEART": {
+      "name": "강쥐 심장",
+      "text": "피격되지 않은 라운드마다 MP +1",
+      "keywords": [
+        "지원"
+      ],
+      "families": [
+        12
+      ],
+      "rules": [
+        {
+          "when": "ROUND_START",
+          "if": [
+            {
+              "not_hit_last_round": true
+            }
+          ],
+          "do": [
+            {
+              "gain_mp": 1
+            }
+          ]
+        }
+      ]
+    },
+    "LEECH_SEGMENT": {
+      "name": "거대 거머리 몸마디",
+      "text": "출혈 틱 피해 +2",
+      "keywords": [
+        "출혈"
+      ],
+      "families": [
+        1
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "bleed_tick": 2
+          }
+        }
+      ]
+    },
+    "LEECH_SUCKER": {
+      "name": "거대 거머리 흡반",
+      "text": "출혈 중인 대상에게 준 피해의 10% 흡혈",
+      "keywords": [
+        "출혈"
+      ],
+      "families": [
+        1
+      ],
+      "rules": [
+        {
+          "when": "HIT",
+          "if": [
+            {
+              "target_has": "bleed"
+            }
+          ],
+          "do": [
+            {
+              "heal": {
+                "dealt%": 10
+              },
+              "target": "self",
+              "lifesteal": true
+            }
+          ]
+        }
+      ]
+    },
+    "TOAD_TONGUE": {
+      "name": "늪 두꺼비 혀",
+      "text": "이미 중독된 대상에게 다시 중독을 걸면 틱 피해 +1(최대 +4)",
+      "keywords": [
+        "독"
+      ],
+      "families": [
+        9
+      ],
+      "rules": [
+        {
+          "when": "STATUS_GIVEN",
+          "code": "part_special",
+          "args": {
+            "effect": "TOAD_TONGUE"
+          },
+          "if": [
+            {
+              "status_is": "poison",
+              "status_already": true
+            }
+          ]
+        }
+      ]
+    },
+    "TOAD_BONE": {
+      "name": "늪 두꺼비 뼈",
+      "text": "중독된 적에게 받는 피해 −15%",
+      "keywords": [
+        "독"
+      ],
+      "families": [
+        9
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "taken_percent": -15
+          },
+          "if": [
+            {
+              "source_has": "poison"
+            }
+          ]
+        }
+      ]
+    },
+    "SERPENT_SCALE": {
+      "name": "신전 뱀 비늘",
+      "text": "독 저항 +50, 중독에 걸리지 않음",
+      "keywords": [
+        "독"
+      ],
+      "families": [
+        9
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "res.poison": 50
+          }
+        },
+        {
+          "when": "STATUS_TAKEN",
+          "code": "immune_poison",
+          "if": [
+            {
+              "status_is": "poison"
+            }
+          ]
+        }
+      ]
+    },
+    "SERPENT_FANG": {
+      "name": "신전 뱀 독니",
+      "text": "중독된 대상에게 주는 피해 +15%",
+      "keywords": [
+        "독"
+      ],
+      "families": [
+        9
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": 15
+          },
+          "if": [
+            {
+              "target_has": "poison"
+            }
+          ]
+        }
+      ]
+    },
+    "SPIRIT_CURRENT": {
+      "name": "물의 정령 물살",
+      "text": "젖은 칸에 서 있으면 받는 피해 −15%",
+      "keywords": [
+        "수호",
+        "원소"
+      ],
+      "families": [
+        5,
+        7
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "taken_percent": -15
+          },
+          "if": [
+            {
+              "self_wet": true
+            }
+          ]
+        }
+      ]
+    },
+    "SPIRIT_DROP": {
+      "name": "물의 정령 물방울",
+      "text": "내가 누군가를 회복시키면 그 대상 방어 +3(200 tick)",
+      "keywords": [
+        "지원"
+      ],
+      "families": [
+        12
+      ],
+      "rules": [
+        {
+          "when": "HEALED",
+          "do": [
+            {
+              "modify": {
+                "armour": 3
+              },
+              "ticks": 200
+            }
+          ]
+        }
+      ]
+    },
+    "GNOLL_HIDE": {
+      "name": "놀 가죽",
+      "text": "잃은 체력 10%당 행동 속도 +3%",
+      "keywords": [
+        "광폭"
+      ],
+      "families": [
+        4
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "speed": {
+              "value": 3,
+              "per_lost_hp": 10
+            }
+          }
+        }
+      ]
+    },
+    "GNOLL_BONE": {
+      "name": "놀 뼈",
+      "text": "외부 회복을 받지 못하는 대신 라운드마다 최대 HP 4% 재생",
+      "keywords": [
+        "광폭"
+      ],
+      "families": [
+        4
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "heal_taken_percent": -100
+          },
+          "if": [
+            {
+              "external_heal": true
+            }
+          ]
+        },
+        {
+          "when": "ROUND_START",
+          "do": [
+            {
+              "heal": {
+                "max_hp%": 4
+              },
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    "FROST_CLAW": {
+      "name": "서리 도깨비 발톱",
+      "text": "빙결 중인 대상을 처치하면 반경 1의 적에게 20% 확률로 빙결 1라운드",
+      "keywords": [
+        "원소"
+      ],
+      "families": [
+        7
+      ],
+      "rules": [
+        {
+          "when": "KILL",
+          "code": "part_special",
+          "args": {
+            "effect": "FROST_CLAW"
+          },
+          "if": [
+            {
+              "victim_had": "freeze"
+            }
+          ]
+        }
+      ]
+    },
+    "FROST_HORN": {
+      "name": "서리 도깨비 뿔",
+      "text": "내가 거는 화상·빙결 지속 +50%",
+      "keywords": [
+        "원소"
+      ],
+      "families": [
+        7
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "status_ticks.burn": 50
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "status_ticks.freeze": 50
+          }
+        }
+      ]
+    },
+    "SUMMONER_HIDE": {
+      "name": "놀 소환사 가죽",
+      "text": "내 소환수 둘 이상이 같은 대상을 치면 그 피해 +15%",
+      "keywords": [
+        "소환"
+      ],
+      "families": [
+        10
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "summon_power": 15
+          },
+          "scope": "summoner",
+          "if": [
+            {
+              "same_pet_target": true
+            }
+          ]
+        }
+      ]
+    },
+    "SUMMONER_BONE": {
+      "name": "놀 소환사 뼈",
+      "text": "소환수 최대 HP +50%",
+      "keywords": [
+        "소환"
+      ],
+      "families": [
+        10
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "summon_hp": 50
+          }
+        }
+      ]
+    },
+    "SKELETON_ARM": {
+      "name": "해골 병사 팔",
+      "text": "내가 거는 출혈 지속 +50%",
+      "keywords": [
+        "출혈"
+      ],
+      "families": [
+        1
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "status_ticks.bleed": 50
+          }
+        }
+      ]
+    },
+    "SKELETON_SKULL": {
+      "name": "해골 병사 두개골",
+      "text": "내가 처치한 적이 20% 확률로 해골 소환수로 일어남(300 tick)",
+      "keywords": [
+        "사령"
+      ],
+      "families": [
+        11
+      ],
+      "rules": [
+        {
+          "when": "KILL",
+          "if": [
+            {
+              "chance": 20
+            }
+          ],
+          "do": [
+            {
+              "raise_dead": "skeleton",
+              "ticks": 300
+            },
+            {
+              "notice": "해골 병사 두개골",
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    "BOWMAN_FINGER": {
+      "name": "해골 궁수 손가락",
+      "text": "골절 중인 대상에게 주는 피해 +20%",
+      "keywords": [
+        "분쇄"
+      ],
+      "families": [
+        2
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": 20
+          },
+          "if": [
+            {
+              "target_has": "fracture"
+            }
+          ]
+        }
+      ]
+    },
+    "BOWMAN_SOCKET": {
+      "name": "해골 궁수 눈구멍",
+      "text": "원거리 명중이 형태와 관계없이 10% 확률로 골절",
+      "keywords": [
+        "분쇄",
+        "사수"
+      ],
+      "families": [
+        2,
+        6
+      ],
+      "rules": [
+        {
+          "when": "HIT",
+          "if": [
+            {
+              "ranged": true,
+              "chance": 10
+            }
+          ],
+          "do": [
+            {
+              "apply_status": "fracture",
+              "ticks": 300
+            },
+            {
+              "notice": "해골 궁수 눈구멍",
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    "GHOUL_JAW": {
+      "name": "구울 턱",
+      "text": "내가 처치한 적이 1라운드 뒤 반경 1로 터짐(피해 = 그 적 최대 HP의 10%)",
+      "keywords": [
+        "사령"
+      ],
+      "families": [
+        11
+      ],
+      "rules": [
+        {
+          "when": "KILL",
+          "code": "part_special",
+          "args": {
+            "effect": "GHOUL_JAW"
+          }
+        }
+      ]
+    },
+    "GHOUL_HEART": {
+      "name": "구울 심장",
+      "text": "해로운 상태가 걸린 적을 처치하면 HP 5% 회복",
+      "keywords": [
+        "사령"
+      ],
+      "families": [
+        11
+      ],
+      "rules": [
+        {
+          "when": "KILL",
+          "if": [
+            {
+              "victim_had": "harmful"
+            }
+          ],
+          "do": [
+            {
+              "heal": {
+                "max_hp%": 5
+              },
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    "VAMPIRE_WING": {
+      "name": "흡혈 박쥐 날개",
+      "text": "이동한 뒤 첫 공격 피해 +20%",
+      "keywords": [
+        "급소"
+      ],
+      "families": [
+        3
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": 20
+          },
+          "if": [
+            {
+              "moved_since_attack": true
+            }
+          ]
+        }
+      ]
+    },
+    "VAMPIRE_HEART": {
+      "name": "흡혈 박쥐 심장",
+      "text": "흡혈로 HP가 넘치면 넘친 만큼 보호(최대 최대 HP의 20%, 300 tick)",
+      "keywords": [
+        "사령"
+      ],
+      "families": [
+        11
+      ],
+      "rules": [
+        {
+          "when": "HEALED",
+          "code": "part_special",
+          "args": {
+            "effect": "VAMPIRE_HEART"
+          },
+          "if": [
+            {
+              "lifesteal": true
+            }
+          ]
+        }
+      ]
+    },
+    "WRAITH_KNIGHT_CLOAK": {
+      "name": "망령 기사 망토",
+      "text": "근접 공격을 받으면 20% 확률로 공격자 약화",
+      "keywords": [
+        "저주"
+      ],
+      "families": [
+        8
+      ],
+      "rules": [
+        {
+          "when": "STRUCK",
+          "if": [
+            {
+              "melee": true,
+              "chance": 20
+            }
+          ],
+          "do": [
+            {
+              "apply_status": "weak",
+              "ticks": 300,
+              "target": "attacker"
+            },
+            {
+              "notice": "망령 기사 망토",
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    "WRAITH_KNIGHT_CORE": {
+      "name": "망령 기사 핵",
+      "text": "골절을 걸 때 20% 확률로 기절 1라운드",
+      "keywords": [
+        "분쇄"
+      ],
+      "families": [
+        2
+      ],
+      "rules": [
+        {
+          "when": "WOUND",
+          "if": [
+            {
+              "status_is": "fracture",
+              "chance": 20
+            }
+          ],
+          "do": [
+            {
+              "apply_status": "stun",
+              "ticks": 100
+            },
+            {
+              "notice": "망령 기사 핵",
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    "WRAITH_SHROUD": {
+      "name": "원혼 수의",
+      "text": "해로운 상태가 걸린 적을 처치하면 그 상태들을 반경 2의 다른 적 하나에게 옮김",
+      "keywords": [
+        "저주"
+      ],
+      "families": [
+        8
+      ],
+      "rules": [
+        {
+          "when": "KILL",
+          "if": [
+            {
+              "victim_had": "harmful"
+            }
+          ],
+          "do": [
+            {
+              "spread_status": "harmful",
+              "radius": 2,
+              "ticks": 300,
+              "one": true
+            },
+            {
+              "notice": "원혼 수의",
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    "WRAITH_BONE": {
+      "name": "원혼 뼈",
+      "text": "해로운 상태를 걸 때마다 HP 2 회복",
+      "keywords": [
+        "저주"
+      ],
+      "families": [
+        8
+      ],
+      "rules": [
+        {
+          "when": "STATUS_GIVEN",
+          "if": [
+            {
+              "harmful": true
+            }
+          ],
+          "do": [
+            {
+              "heal": 2,
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    "GRAVEKEEPER_HAND": {
+      "name": "묘지기 손",
+      "text": "내 소환수가 처치하면 내 HP 5% 회복",
+      "keywords": [
+        "소환"
+      ],
+      "families": [
+        10
+      ],
+      "rules": [
+        {
+          "when": "PET_KILL",
+          "do": [
+            {
+              "heal": {
+                "max_hp%": 5
+              },
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    "GRAVEKEEPER_BONE": {
+      "name": "묘지기 뼈",
+      "text": "내 소환수가 쓰러지면 그 자리에 반경 1 폭발(피해 10)",
+      "keywords": [
+        "소환",
+        "사령"
+      ],
+      "families": [
+        10,
+        11
+      ],
+      "rules": [
+        {
+          "when": "SUMMON_END",
+          "code": "part_special",
+          "args": {
+            "effect": "GRAVEKEEPER_BONE"
+          },
+          "if": [
+            {
+              "died": true
+            }
+          ]
+        }
+      ]
+    },
+    "GEAR_AMP_1": {
+      "name": "출혈",
+      "text": "출혈 증폭",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        1
+      ],
+      "slots": [
+        "ring1"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "bleed_tick": 2
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "status_ticks.bleed": 50
+          }
+        }
+      ]
+    },
+    "GEAR_AMP_2": {
+      "name": "분쇄",
+      "text": "분쇄 증폭",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        2
+      ],
+      "slots": [
+        "ring1"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "fracture_percent": 15
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "wound_chance.IMPACT": 10
+          }
+        }
+      ]
+    },
+    "GEAR_AMP_3": {
+      "name": "급소",
+      "text": "급소 증폭",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        3
+      ],
+      "slots": [
+        "ring1"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "crit_damage": 50
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "exposed_bonus": 15
+          }
+        }
+      ]
+    },
+    "GEAR_AMP_4": {
+      "name": "광폭",
+      "text": "광폭 증폭",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        4
+      ],
+      "slots": [
+        "ring1"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "stack_max": 2
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": 10
+          },
+          "if": [
+            {
+              "self_hp_below": 50
+            }
+          ]
+        }
+      ]
+    },
+    "GEAR_AMP_5": {
+      "name": "수호",
+      "text": "수호 증폭",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        5
+      ],
+      "slots": [
+        "ring1"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "block": 10
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "stack_max.guard": 4
+          }
+        }
+      ]
+    },
+    "GEAR_AMP_6": {
+      "name": "사수",
+      "text": "사수 증폭",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        6
+      ],
+      "slots": [
+        "ring1"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "range": 1
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "stack_max.aim": 2
+          }
+        }
+      ]
+    },
+    "GEAR_AMP_7": {
+      "name": "원소",
+      "text": "원소 증폭",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        7
+      ],
+      "slots": [
+        "ring1"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "reaction_percent": 40
+          }
+        },
+        {
+          "when": "REACTION",
+          "do": [
+            {
+              "gain_mp": 1
+            }
+          ]
+        }
+      ]
+    },
+    "GEAR_AMP_8": {
+      "name": "저주",
+      "text": "저주 증폭",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        8
+      ],
+      "slots": [
+        "ring1"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": {
+              "value": 4,
+              "per_harmful": true
+            }
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "status_ticks": 25
+          },
+          "if": [
+            {
+              "harmful": true
+            }
+          ]
+        }
+      ]
+    },
+    "GEAR_AMP_9": {
+      "name": "독",
+      "text": "독 증폭",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        9
+      ],
+      "slots": [
+        "ring1"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "poison_tick": 2
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "stack_max.poison": 2
+          }
+        }
+      ]
+    },
+    "GEAR_AMP_10": {
+      "name": "소환",
+      "text": "소환 증폭",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        10
+      ],
+      "slots": [
+        "ring1"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "summon_count": 1
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "summon_ticks_percent": 25
+          }
+        }
+      ]
+    },
+    "GEAR_AMP_11": {
+      "name": "사령",
+      "text": "사령 증폭",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        11
+      ],
+      "slots": [
+        "ring1"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "radius": 1
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "kill_chance": 10
+          }
+        }
+      ]
+    },
+    "GEAR_AMP_12": {
+      "name": "지원",
+      "text": "지원 증폭",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        12
+      ],
+      "slots": [
+        "ring1"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "heal_given_percent": 30
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "status_ticks.ward": 50
+          }
+        }
+      ]
+    },
+    "GEAR_FORM_SAW": {
+      "name": "톱날",
+      "text": "명중 시 베기 부상 추가 판정(절반 확률)",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [
+        "weapon",
+        "offhand"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "extra_wound": 1
+          }
+        }
+      ]
+    },
+    "GEAR_FORM_TIP": {
+      "name": "꿰뚫는 촉",
+      "text": "급소 노출 확률 +10%p",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [
+        "weapon",
+        "offhand"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "wound_chance.PIERCE": 10
+          }
+        }
+      ]
+    },
+    "GEAR_FORM_WEIGHT": {
+      "name": "무게추",
+      "text": "타격 시 방어 1/4 적용",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [
+        "weapon",
+        "offhand"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "impact_armour_percent": -25
+          }
+        }
+      ]
+    },
+    "GEAR_FORM_EDGE": {
+      "name": "날 선 가장자리",
+      "text": "질긴 피부 베기 불리함 −12%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [
+        "weapon",
+        "offhand"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "skin_penalty_percent": -13
+          }
+        }
+      ]
+    },
+    "GEAR_FORM_BALANCE": {
+      "name": "균형추",
+      "text": "마무리 형태에 맞는 부위 확률 65%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [
+        "weapon",
+        "offhand"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "part_own_percent": 15
+          }
+        }
+      ]
+    },
+    "GEAR_COMP_CRISIS": {
+      "name": "긴급 보호",
+      "text": "전투당 한 번 체력 25% 이하에서 보호",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [
+        "armour",
+        "offhand"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ROUND_START",
+          "code": "gear_special",
+          "args": {
+            "effect": "GEAR_COMP_CRISIS"
+          },
+          "if": [
+            {
+              "self_hp_below": 25
+            }
+          ]
+        },
+        {
+          "when": "STRUCK",
+          "if": [
+            {
+              "self_hp_below": 25
+            }
+          ],
+          "code": "gear_special",
+          "args": {
+            "effect": "GEAR_COMP_CRISIS"
+          }
+        }
+      ]
+    },
+    "GEAR_COMP_SHOVE": {
+      "name": "거리 확보",
+      "text": "인접 적이 있으면 라운드마다 30% 확률로 밀침",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [
+        "armour",
+        "offhand"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ROUND_START",
+          "code": "gear_special",
+          "args": {
+            "effect": "GEAR_COMP_SHOVE"
+          },
+          "if": [
+            {
+              "adjacent_enemies_at_least": 1,
+              "chance": 30
+            }
+          ]
+        }
+      ]
+    },
+    "GEAR_COMP_PETS": {
+      "name": "소환수 보호",
+      "text": "내 소환수가 있으면 받는 피해 −15%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [
+        "armour",
+        "offhand"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "taken_percent": -15
+          },
+          "if": [
+            {
+              "pet_alive": true
+            }
+          ]
+        }
+      ]
+    },
+    "GEAR_COMP_OPENING": {
+      "name": "빠른 준비",
+      "text": "전투 첫 라운드 행동 속도 +30%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [
+        "armour",
+        "offhand"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "BATTLE_START",
+          "code": "gear_special",
+          "args": {
+            "effect": "GEAR_COMP_OPENING"
+          }
+        }
+      ]
+    },
+    "GEAR_COMP_MELEE": {
+      "name": "근접 완충",
+      "text": "받는 근접 피해 −2",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [
+        "armour",
+        "offhand"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "melee_flat_cut": 2
+          }
+        }
+      ]
+    },
+    "GEAR_COMP_BLOCK": {
+      "name": "방패 반격",
+      "text": "막을 때 다음 공격 +20%(최대 3)",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [
+        "armour",
+        "offhand"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "BLOCK",
+          "do": [
+            {
+              "stack": "block_attack",
+              "max": 3,
+              "until": "attack"
+            },
+            {
+              "notice": "방패 반격",
+              "target": "self"
+            }
+          ]
+        },
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": {
+              "value": 20,
+              "per_stack": [
+                "block_attack",
+                1
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "GEAR_COMP_CLEANSE": {
+      "name": "상태 방어",
+      "text": "해로운 상태 20% 확률 차단",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [
+        "armour",
+        "offhand"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "STATUS_TAKEN",
+          "code": "gear_special",
+          "args": {
+            "effect": "GEAR_COMP_CLEANSE"
+          },
+          "if": [
+            {
+              "harmful": true,
+              "chance": 20
+            }
+          ]
+        }
+      ]
+    },
+    "GEAR_COMP_MP": {
+      "name": "마력 보존",
+      "text": "피격되지 않은 라운드 MP +1",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [
+        "armour",
+        "offhand"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ROUND_START",
+          "if": [
+            {
+              "not_hit_last_round": true
+            }
+          ],
+          "do": [
+            {
+              "gain_mp": 1
+            }
+          ]
+        }
+      ]
+    },
+    "UNRAND_AXE": {
+      "name": "피 먹는 도끼",
+      "text": "출혈 대상 처치 시 HP 5% 회복",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        1,
+        4
+      ],
+      "slots": [],
+      "gear_kind": "unrand",
+      "rules": [
+        {
+          "when": "KILL",
+          "if": [
+            {
+              "victim_had": "bleed"
+            }
+          ],
+          "do": [
+            {
+              "heal": {
+                "max_hp%": 5
+              },
+              "target": "self"
+            }
+          ]
+        }
+      ]
+    },
+    "COST_AXE": {
+      "name": "피 먹는 도끼 대가",
+      "text": "외부 회복 절반",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [],
+      "gear_kind": "cost",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "heal_taken_percent": -50
+          },
+          "if": [
+            {
+              "external_heal": true
+            }
+          ]
+        }
+      ]
+    },
+    "UNRAND_SHIELD": {
+      "name": "깨지지 않는 방패",
+      "text": "막기 +15, 막으면 골절 판정",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        2,
+        5
+      ],
+      "slots": [],
+      "gear_kind": "unrand",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "block": 15
+          }
+        },
+        {
+          "when": "BLOCK",
+          "code": "gear_special",
+          "args": {
+            "effect": "UNRAND_SHIELD"
+          }
+        }
+      ]
+    },
+    "COST_SHIELD": {
+      "name": "깨지지 않는 방패 대가",
+      "text": "이동 지연 +15%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [],
+      "gear_kind": "cost",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "move_delay_percent": 15
+          }
+        }
+      ]
+    },
+    "UNRAND_DAGGER": {
+      "name": "바늘 단검",
+      "text": "급소 노출 대상은 항상 치명타",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        3
+      ],
+      "slots": [],
+      "gear_kind": "unrand",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "crit_chance": 100
+          },
+          "if": [
+            {
+              "target_has": "exposed"
+            }
+          ]
+        }
+      ]
+    },
+    "COST_DAGGER": {
+      "name": "바늘 단검 대가",
+      "text": "비치명타 피해 −25%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [],
+      "gear_kind": "cost",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "noncrit_percent": -25
+          }
+        }
+      ]
+    },
+    "UNRAND_CHAIN": {
+      "name": "광전사의 사슬",
+      "text": "체력 30% 이하 공격력 +40%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        4
+      ],
+      "slots": [],
+      "gear_kind": "unrand",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": 40
+          },
+          "if": [
+            {
+              "self_hp_below": 30
+            }
+          ]
+        }
+      ]
+    },
+    "COST_CHAIN": {
+      "name": "광전사의 사슬 대가",
+      "text": "체력 30% 초과 받는 피해 +10%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [],
+      "gear_kind": "cost",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "taken_percent": 10
+          },
+          "if": [
+            {
+              "self_hp_above": 30
+            }
+          ]
+        }
+      ]
+    },
+    "UNRAND_OATH": {
+      "name": "탑 방패의 서약",
+      "text": "인접 동료 피해 20% 대신 받음",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        5
+      ],
+      "slots": [],
+      "gear_kind": "unrand",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "share_damage": 20
+          }
+        }
+      ]
+    },
+    "COST_OATH": {
+      "name": "탑 방패의 서약 대가",
+      "text": "회피 0",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [],
+      "gear_kind": "cost",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "zero_dodge": 1
+          }
+        }
+      ]
+    },
+    "UNRAND_BOW": {
+      "name": "멈춘 매의 활",
+      "text": "조준 최대 6",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        6
+      ],
+      "slots": [],
+      "gear_kind": "unrand",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "stack_max.aim": 3
+          }
+        }
+      ]
+    },
+    "COST_BOW": {
+      "name": "멈춘 매의 활 대가",
+      "text": "이동한 라운드에 물리 공격 불가",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [],
+      "gear_kind": "cost",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "no_attack_after_move": 1
+          }
+        }
+      ]
+    },
+    "UNRAND_ORB": {
+      "name": "끓는 오브",
+      "text": "원소 반응 피해 20% 확률로 한 번 더",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        7
+      ],
+      "slots": [],
+      "gear_kind": "unrand",
+      "rules": [
+        {
+          "when": "REACTION",
+          "code": "gear_special",
+          "args": {
+            "effect": "UNRAND_ORB"
+          },
+          "if": [
+            {
+              "chance": 20
+            }
+          ]
+        }
+      ]
+    },
+    "COST_ORB": {
+      "name": "끓는 오브 대가",
+      "text": "최대 MP −25%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [],
+      "gear_kind": "cost",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "max_mp_percent": -25
+          }
+        }
+      ]
+    },
+    "UNRAND_HEX": {
+      "name": "원한의 반지",
+      "text": "해로운 상태 4개 이상 대상 피해 ×2",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        8
+      ],
+      "slots": [],
+      "gear_kind": "unrand",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "attack_percent": 100
+          },
+          "if": [
+            {
+              "target_harmful_at_least": 4
+            }
+          ]
+        }
+      ]
+    },
+    "COST_HEX": {
+      "name": "원한의 반지 대가",
+      "text": "해로운 상태 3개 이하 대상 피해 −15%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [],
+      "gear_kind": "cost",
+      "rules": [
+        {
+          "when": "ATTACK",
+          "code": "gear_special",
+          "args": {
+            "effect": "COST_HEX"
+          }
+        }
+      ]
+    },
+    "UNRAND_PLAGUE": {
+      "name": "역병 주머니",
+      "text": "중독 대상 처치 시 반경 2 독 폭발",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        9
+      ],
+      "slots": [],
+      "gear_kind": "unrand",
+      "rules": [
+        {
+          "when": "KILL",
+          "code": "gear_special",
+          "args": {
+            "effect": "UNRAND_PLAGUE"
+          },
+          "if": [
+            {
+              "victim_had": "poison"
+            }
+          ]
+        }
+      ]
+    },
+    "COST_PLAGUE": {
+      "name": "역병 주머니 대가",
+      "text": "독 저항 −50",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [],
+      "gear_kind": "cost",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "res.poison": -50
+          }
+        }
+      ]
+    },
+    "UNRAND_HORN": {
+      "name": "부름의 뿔",
+      "text": "소환수 상한 +2",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        10
+      ],
+      "slots": [],
+      "gear_kind": "unrand",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "summon_count": 2
+          }
+        }
+      ]
+    },
+    "COST_HORN": {
+      "name": "부름의 뿔 대가",
+      "text": "소환수 지속 −50%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [],
+      "gear_kind": "cost",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "summon_ticks_percent": -50
+          }
+        }
+      ]
+    },
+    "UNRAND_DEAD": {
+      "name": "망자의 반지",
+      "text": "처치한 적이 1라운드 해골로 소생",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [
+        11
+      ],
+      "slots": [],
+      "gear_kind": "unrand",
+      "rules": [
+        {
+          "when": "KILL",
+          "do": [
+            {
+              "raise_dead": "skeleton",
+              "ticks": 100
+            }
+          ]
+        }
+      ]
+    },
+    "COST_DEAD": {
+      "name": "망자의 반지 대가",
+      "text": "최대 HP −20%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [],
+      "gear_kind": "cost",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "max_hp_percent": -20
+          }
+        }
+      ]
+    },
+    "UNRAND_MASK": {
+      "name": "두 얼굴 가면",
+      "text": "마무리 형태에 맞는 부위 확률 80%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [],
+      "gear_kind": "unrand",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "part_own_percent": 30
+          }
+        }
+      ]
+    },
+    "COST_MASK": {
+      "name": "두 얼굴 가면 대가",
+      "text": "받는 피해 +10%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "families": [],
+      "slots": [],
+      "gear_kind": "cost",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "taken_percent": 10
+          }
+        }
+      ]
     }
   }
 }

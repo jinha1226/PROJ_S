@@ -71,7 +71,7 @@ func sets() -> void:
 	check(pack.size() == 1 and int(pack[0].level) == 2 and int(pack[0].count) == 3 and int(pack[0].next) == 4 and str(pack[0].text).contains("공격력"),"the combo list carries count, next bracket and text")
 	var guard := {"level":3,"essences":{},"equipped_abilities":["HOB_TAUNT","SHIELD_STANCE",""]}
 	var bonus: Dictionary = TagSets.stat_bonus(guard)
-	check(int(bonus.ac) == 3 and not bonus.has("sh"),"수호 2 gives armour three, block only from four")
+	check(int(bonus.ac) == 2 and not bonus.has("sh"),"수호 2 gives armour two, block only from four")
 	var burning := {"level":3,"essences":{},"equipped_abilities":["HOB_TAUNT@fire","SHIELD_STANCE@fire",""]}
 	check(int(TagSets.stat_bonus(burning).res_fire) == 20,"화염 2 gives fire resistance")
 	var casters := {"level":2,"essences":{},"equipped_abilities":["FIRE_CALLER","FROST_IMP"]}
@@ -124,9 +124,10 @@ func drops() -> void:
 	foe.part_id = "GOBLIN_SHIV"; foe.species_id = "goblin"
 	check(Essences.drop_chance(s,"goblin") == 100,"the first goblin always leaves its essence")
 	s.damage(foe,9999,int(hero.id),"SLASH")
-	check(int(s.parts_bag.get(Essences.canonical("GOBLIN_SHIV"),0)) == 1,"the first kill drops it")
+	var dropped_id: String = "GOBLIN_SHIV/"+str(foe.part_kind)
+	check(int(s.parts_bag.get(dropped_id,0)) == 1,"the first kill drops its finishing-form part")
 	check(s.essence_seen.has("goblin") and Essences.drop_chance(s,"goblin") == 25,"after that, one in four")
-	check(not s.events.any(func(e): return e.kind == "ESSENCE") and s.log_lines[-1] == Essences.title("GOBLIN_SHIV")+" 획득","a new essence appears only in the log")
+	check(not s.events.any(func(e): return e.kind == "ESSENCE") and s.log_lines[-1] == Essences.title(dropped_id)+" 획득","a new essence appears only in the log")
 	s.parts_bag.clear()
 	var dropped := 0
 	for seed_value in range(40):
@@ -135,7 +136,8 @@ func drops() -> void:
 		var other: Dictionary = t.enemies[0]
 		other.part_id = "GOBLIN_SHIV"; other.species_id = "goblin"
 		t.damage(other,9999,int(t.party[0].id),"SLASH")
-		dropped += int(t.parts_bag.get(Essences.canonical("GOBLIN_SHIV"),0))
+		for id in t.parts_bag:
+			if Essences.base_of(str(id)) == "GOBLIN_SHIV": dropped += int(t.parts_bag[id])
 	check(dropped > 0 and dropped < 40,"repeat drops are seeded, not certain (%d of 40)" % dropped)
 	var npc_only = Session.new_run(733,"sword")
 	npc_only.parts_bag.clear()

@@ -23,14 +23,14 @@ func run() -> void:
 	check(s.absorb_essence(0,"ORC_CLEAVER").is_empty() and s.equip_part(0,0,"ORC_CLEAVER"),"an orc essence is worn")
 	scene.show_character(0,"상태")
 	for _i in range(4): await process_frame
-	for group in ["능력치","영혼석 보정","방어 수치","속성 저항"]:
+	for group in ["능력치","영혼석 보정","공격 판정","방어 수치","속성 저항"]:
 		check(scene.modal_content.find_child("StatGroup_"+group,true,false) != null,"the status tab has the %s card" % group)
 	var sheet: Dictionary = StatSheet.sheet(s,hero)
 	for key in StatSheet.KEYS:
 		var cell: Button = scene.modal_content.find_child("Stat_"+key,true,false)
 		check(cell != null,"a button for "+key)
 		if cell == null: continue
-		var shown: String = ("%d%%" if key.begins_with("res_") or key in ["speed","dodge"] else "%d") % int(sheet[key].total)
+		var shown: String = ("%d%%" if key.begins_with("res_") or key in CharacterUI.PERCENT_KEYS else "%d") % int(sheet[key].total)
 		check(cell.text.ends_with(shown),"%s shows its total %s" % [key,shown])
 	var attack: Button = scene.modal_content.find_child("Stat_atk",true,false)
 	attack.pressed.emit()

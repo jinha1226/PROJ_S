@@ -3,8 +3,9 @@ const Forms = preload("res://expedition/combat/forms.gd")
 ## Adapted from ../playtest status folio and mastery cards, using expedition data.
 const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
-const STAT_GROUPS := [["능력치",["str","dex","int","con"]],["영혼석 보정",["atk","hp","spell","mp","speed","dodge"]],["방어 수치",["ac","ev","sh"]],["속성 저항",["res_fire","res_ice","res_air","res_poison","res_will"]]]
-const PERCENT_KEYS := ["speed","dodge"]
+const STAT_GROUPS := [["능력치",["str","dex","int","con"]],["영혼석 보정",["atk","hp","spell","mp","speed","dodge"]],["공격 판정",["accuracy","crit_chance","crit_damage"]],["방어 수치",["ac","ev","sh"]],["속성 저항",["res_fire","res_ice","res_air","res_poison","res_will"]]]
+const PERCENT_KEYS := ["speed","dodge","crit_chance","crit_damage"]
+const Equipment = preload("res://expedition/items/equipment.gd")
 const CombatStats = preload("res://expedition/combat/combat_stats.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
@@ -112,14 +113,12 @@ static func status(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		var stat := card(stats,str(entry[0])); text(stat,str(entry[1]),20)
 	sheet_cards(ui,list,actor)
 	var equipped := card(list,"장비")
-	var gear: Dictionary = actor.get("gear",{})
-	var slot_names := {"weapon":"무기","armour":"갑옷","shield":"방패","ring":"반지"}
-	for slot in ["weapon","armour","shield","ring"]:
+	var gear: Dictionary = Equipment.worn(actor)
+	var slot_names := Equipment.SLOT_NAMES
+	for slot in Equipment.SLOTS:
 		var item: Dictionary = gear.get(slot,{})
-		var catalogue: Dictionary = CombatStats.content.weapons if slot == "weapon" else CombatStats.content.armours if slot == "armour" else CombatStats.content.rings if slot == "ring" else {}
-		var item_id: String = str(item.get("type",""))
-		var item_name: String = "—" if item.is_empty() else "방패" if slot == "shield" else str(catalogue.get(item_id,{}).get("name",item_id))
-		if slot == "weapon" and not item.is_empty(): item_name = Forms.weapon_label(item_name,item_id)
+		var item_name: String = Equipment.title(item)
+		if slot == "weapon" and not item.is_empty(): item_name = Forms.weapon_label(item_name,str(item.get("type","")))
 		text(equipped,"%s   %s" % [slot_names[slot],item_name],13)
 
 ## The twelve numbers of §2, grouped; a tap opens where each one came from.

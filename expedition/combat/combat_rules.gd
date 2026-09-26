@@ -17,13 +17,15 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 	var out := {"hit":false, "evaded":false, "blocked":false, "damage":0}
 	if target.is_empty() or int(target.hp) <= 0: return out
 	source["physical_blow"] = true
+	Stats.Equipment.attack_noise(s,source)
 	if not bool(source.get("enemy",false)) and bool(target.get("enemy",false)):
 		Hunt.record(source,int(target.id))
 	var offense: Dictionary = Stats.stats(s, source)
 	var defense: Dictionary = Stats.stats(s, target)
 	# 왜곡 takes thirty points off whatever the attacker can still aim.
 	# 회피 % from the soul stones rides on the evasion's own two percent a point.
-	var dodge := clampi(int(defense.ev) * 2 + int(defense.get("dodge", 0)), 5, 45)
+	var dodge := clampi(int(defense.ev) * 2 + int(defense.get("dodge", 0)) - StoneEffects.modifier(s,"accuracy",source), 5, 45)
+	if StoneEffects.modifier(s,"zero_dodge",target) > 0: dodge = 0
 	if source.get("statuses", {}).has("distort"): dodge = mini(95, dodge + 30)
 	if roll(s, source, target, "dodge", 100) < dodge:
 		StoneEffects.fire(s,"DODGE",StoneEffects.context(s,source,target))
@@ -39,9 +41,9 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 	var form: String = Forms.of_actor(source)
 	var unscaled := int(offense.damage)
 	var recipient: Dictionary = s.protection_recipient(target)
-	var raw := Forms.scale(unscaled,form,recipient)
+	var raw := Forms.scale(unscaled,form,recipient,source,s)
 	if offense.trait == "stab" and (target.get("statuses", {}).has("confuse") or not bool(target.get("alert", true))): raw *= 2
-	var ac := Forms.armour(int(Stats.stats(s,recipient).ac),form)
+	var ac := Forms.armour(int(Stats.stats(s,recipient).ac),form,source,s)
 	var physical: Dictionary = Turns.physical(raw, 950, 0, roll(s, source, target, "absorb", ac + 1))
 	out.hit = true
 	var was: String = Forms.begin(s,form)
@@ -50,14 +52,14 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 		match str(offense.brand):
 			"fire", "ice": out.damage += damage(s, source, target, 4, str(offense.brand),0,Reactions.EXTRA_FORM)
 			"venom":
-				if int(defense.res.get("poison", 0)) < 100: target.statuses["poison"] = s.time + 300
-			"drain": source.hp = mini(int(source.max_hp), int(source.hp) + 3)
+				if int(defense.res.get("poison", 0)) < 100: s.Statuses.apply(s,target,"poison",StoneEffects.status_ticks(source,"poison",300,s),source)
+			"drain": StoneEffects.heal(s,source,3,source,true)
 		if offense.trait == "cleave":
 			for other in s.party + s.npcs + s.enemies:
 				if other.id != target.id and other.hp > 0 and s.side_of(other) != s.side_of(source) and s.melee_reach(source.pos, other.pos):
 					var taker: Dictionary = s.protection_recipient(other)
-					var cleave_raw := Forms.scale(unscaled/2,form,taker)
-					damage(s,source,other,maxi(1,cleave_raw-Forms.armour(int(Stats.stats(s,taker).ac),form)),"physical")
+					var cleave_raw := Forms.scale(unscaled/2,form,taker,source,s)
+					damage(s,source,other,maxi(1,cleave_raw-Forms.armour(int(Stats.stats(s,taker).ac),form,source,s)),"physical")
 	Forms.end(s,was)
 	return out
 
@@ -93,6 +95,7 @@ static func damage(s, source: Dictionary, target: Dictionary, raw: int, element:
 	if hit_form == Reactions.HIT_FORM:
 		StoneEffects.procs(s, source, victim, lost,element,received)
 		Forms.wound(s,source,victim,lost)
+		Forms.supplemental(s,source,victim,lost)
 	Forms.end(s,previous)
 	return lost
 

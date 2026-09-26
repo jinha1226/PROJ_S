@@ -8,6 +8,7 @@ extends RefCounted
 ## against the stance's profile, and the knobs shift those weights (§4). Only the
 ## retreat line keeps hand numbers — it is the stage above the utility pool.
 ##   hp% <= retreat_hp    태세를 건너뛰고 거리를 벌리는 MOVE 150, 회복 파츠 190
+const BuildSense = preload("res://expedition/ai/build_sense.gd")
 const Knobs = preload("res://expedition/ai/knobs.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const Utility = preload("res://expedition/ai/utility.gd")
@@ -89,12 +90,26 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 ## which `rule_ready` reads to tell a rule's preferred target from its siblings.
 static func best(s, actor: Dictionary, options: Array, stance: String, knobs: Dictionary) -> Dictionary:
 	var ctx := Utility.context(s,actor,options)
+	options = BuildSense.safe_options(s,actor,options,ctx)
 	for o in options:
 		var scored: Dictionary = Utility.score(s,actor,o,ctx,stance,knobs)
-		o.score = scored.score
-		o.explain = scored.explain
+		o.score = scored.score; o.base_score = scored.base_score
+		o.explain = scored.explain; o.build_terms = scored.build_terms
+	var baseline: Array = options.duplicate()
+	baseline.sort_custom(func(a,b): return int(a.base_score) > int(b.base_score) if int(a.base_score) != int(b.base_score) else str(a.kind)+str(a.cell) < str(b.kind)+str(b.cell))
 	options.sort_custom(rank)
-	return options[0]
+	var chosen: Dictionary = options[0]
+	if str(chosen.kind)+str(chosen.cell) != str(baseline[0].kind)+str(baseline[0].cell):
+		var terms: Array = chosen.build_terms
+		terms.sort_custom(func(a,b): return int(a.contrib) > int(b.contrib) if int(a.contrib) != int(b.contrib) else str(a.id) < str(b.id))
+		if str(chosen.get("tag","")) == "WAIT:yield": chosen.reason_code = "FINISH_YIELD"
+		elif not terms.is_empty(): chosen.reason_code = {"build_target":"BUILD_TARGET","build_setup":"BUILD_SETUP","build_hold":"BUILD_HOLD","finish_form":"FINISH_FORM"}.get(str(terms[0].id),"")
+		if str(chosen.get("reason_code","")) == "BUILD_TARGET":
+			var families: Array = BuildSense.main(actor)
+			families.sort_custom(func(a,b): return BuildSense.fit(s,actor,chosen,int(a)) > BuildSense.fit(s,actor,chosen,int(b)))
+			chosen.reason_text = str(BuildSense.NAMES.get(families[0],"빌드"))+" 대상 우선"
+		else: chosen.reason_text = {"BUILD_SETUP":"동료 지원","BUILD_HOLD":"자리 유지","FINISH_FORM":"부위 노리기","FINISH_YIELD":"마무리 양보"}.get(str(chosen.get("reason_code","")),"")
+	return chosen
 
 ## Score first, then a stable name so that two equal candidates never flip.
 static func rank(a, b) -> bool:

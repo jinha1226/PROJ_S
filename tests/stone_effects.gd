@@ -68,7 +68,7 @@ func logged(s, text: String) -> bool:
 	return s.log_lines.any(func(l): return str(l).contains(text))
 
 func catalogue() -> void:
-	check(StoneEffects.EFFECTS.size() == 30,"thirty headline effects")
+	check(StoneEffects.EFFECTS.values().filter(func(row): return row.get("source","") != "gear").size() == 90,"ninety ordinary part effects")
 	var bases := 0
 	for id in Essences.content.rows:
 		if id in ["GOBLIN_CHIEF","FURNACE_HEART","SOUL_EATER"]:

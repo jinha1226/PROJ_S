@@ -1,12 +1,13 @@
 extends RefCounted
 ## Data effects own their rules; combat owns the immutable event facts.
+const Equipment = preload("res://expedition/items/equipment.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const Conditions = preload("res://expedition/progression/effect_conditions.gd")
 const Actions = preload("res://expedition/progression/effect_actions.gd")
 const Code = preload("res://expedition/progression/effect_code.gd")
 const Stacks = preload("res://expedition/progression/stacks.gd")
 const EVENTS := ["ATTACK","HIT","STRUCK","DODGE","BLOCK","CRIT","KILL","ALLY_KILL","DEATH_NEAR","LETHAL","ALLY_LETHAL","STATUS_GIVEN","STATUS_TAKEN","WOUND","REACTION","CAST","SUMMON","SUMMON_END","PET_KILL","ALLY_CRISIS","ROUND_START","BATTLE_START","MOVED","DOT_TICK","HEALED"]
-const MODIFIERS := ["attack_percent","taken_percent","crit_chance","crit_damage","wound_chance","wound_chance.SLASH","wound_chance.IMPACT","wound_chance.PIERCE","status_ticks","speed","range","max_hp_percent","block","armour","dodge","res.fire","res.ice","res.air","res.poison","res.will","summon_count","summon_power","summon_hp","summon_ticks","reaction_percent","bleed_tick","poison_tick","heal_taken_percent","will_save","second_shot_chance"]
+const MODIFIERS := ["accuracy","attack_percent","taken_percent","crit_chance","crit_damage","wound_chance","wound_chance.SLASH","wound_chance.IMPACT","wound_chance.PIERCE","status_ticks","speed","range","max_hp_percent","block","armour","dodge","res.fire","res.ice","res.air","res.poison","res.will","summon_count","summon_power","summon_hp","summon_ticks","reaction_percent","bleed_tick","poison_tick","heal_taken_percent","will_save","second_shot_chance","bleed_pierce_chance","impact_armour_percent","skin_penalty_percent","part_own_percent","fracture_percent","exposed_bonus","stack_max","stack_max.guard","stack_max.aim","stack_max.poison","harmful_bonus_step","radius","kill_chance","heal_given_percent","extra_wound","wound_resist.bleed","wound_resist.fracture","wound_resist.exposed","status_ticks.bleed","status_ticks.poison","status_ticks.burn","status_ticks.freeze","status_ticks.ward","summon_ticks_percent","move_delay_percent","no_attack_after_move","max_mp_percent","melee_flat_cut","noncrit_percent","share_damage","zero_dodge"]
 const MAX_DEPTH := 2
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/stone_effects.json"))
 
@@ -25,6 +26,9 @@ static func effects(actor: Dictionary) -> Array:
 	for id in ids:
 		var effect: String = str(Essences.row(str(id)).get("effect",""))
 		if not effect.is_empty() and effect not in result: result.append(effect)
+	if not bool(actor.get("enemy",false)):
+		for effect in Equipment.effects(actor):
+			if effect not in result: result.append(effect)
 	return result
 
 static func owners(s, when: String, ctx: Dictionary) -> Array:
@@ -66,6 +70,7 @@ static func fire(s, when: String, ctx: Dictionary) -> void:
 			if eligible.is_empty(): continue
 			var limited: bool = str(row.get("limit","action")) != "event"
 			if limited and not s.Reactions.once(s,owner,"fx:"+str(effect)+":"+when): continue
+			ctx.effect_id = str(effect)
 			for rule in eligible:
 				if rule.has("code"): Code.run(s,str(rule.code),owner,rule,ctx)
 				else: Actions.run(s,owner,rule.get("do",[]),ctx)
@@ -83,7 +88,9 @@ static func modifier(s, key: String, actor: Dictionary, ctx: Dictionary = {}) ->
 			if not caster.is_empty(): candidates.append(caster)
 	var seen: Dictionary = {}
 	var groups: Dictionary = {}
-	var total := 0
+	var total := Equipment.bonus(actor,key) if key not in ["speed","dodge","hp","mp","atk","ac","ev","sh","spell"] else 0
+	for buff in actor.get("effect_mods",{}).values():
+		if s != null and int(buff.get("until",0)) > int(s.time): total += int(buff.get("mods",{}).get(key,0))
 	for owner in candidates:
 		var identity: int = int(owner.get("id",-1))
 		if seen.has(identity): continue
@@ -96,14 +103,14 @@ static func modifier(s, key: String, actor: Dictionary, ctx: Dictionary = {}) ->
 				if scope == "allies" and owner == actor: continue
 				if scope == "summoner" and (not bool(actor.get("summoned",false)) or identity != int(actor.get("summoner",-2))): continue
 				if not Conditions.matches(s,rule.get("if",[]),owner,context): continue
-				var amount := value(s,rule.mod[key],owner,rule.mod)
+				var amount := value(s,rule.mod[key],owner,rule.mod,context)
 				var group: String = str(rule.get("group",""))
 				if group.is_empty(): total += amount
 				elif not groups.has(group) or absi(amount) > absi(int(groups[group])): groups[group] = amount
 	for amount in groups.values(): total += int(amount)
 	return total
 
-static func value(s, spec: Variant, owner: Dictionary, mods: Dictionary = {}) -> int:
+static func value(s, spec: Variant, owner: Dictionary, mods: Dictionary = {}, ctx: Dictionary = {}) -> int:
 	var definition: Dictionary = spec if spec is Dictionary else mods
 	var amount: int = int(spec.get("value",0)) if spec is Dictionary else int(spec)
 	if definition.has("per_count"):
@@ -111,6 +118,7 @@ static func value(s, spec: Variant, owner: Dictionary, mods: Dictionary = {}) ->
 	if definition.has("per_stack"):
 		var stack: Array = definition.per_stack
 		amount *= Stacks.count(owner,str(stack[0]),int(s.time) if s != null else 0)*int(stack[1])
+	if definition.get("per_harmful",false): amount *= Conditions.harmful_count(s,Conditions.target(ctx))
 	if definition.has("per_lost_hp"): amount *= (100-int(owner.get("hp",0))*100/maxi(1,int(owner.get("max_hp",1))))/maxi(1,int(definition.per_lost_hp))
 	return amount
 

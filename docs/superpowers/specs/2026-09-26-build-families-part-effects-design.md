@@ -1,6 +1,6 @@
 # ③ 빌드군과 부위 효과
 
-작성일: 2026-09-26 · 상태: **검토 반영·② 완료 후 빌드군별 구현** · 수치는 모두 첫 값이며 난이도 게이트로 다시 맞춘다
+작성일: 2026-09-26 · 상태: **기존 30종의 90부위 및 역할 조합 구현, 새 8종은 후속** · 수치는 모두 첫 값이며 난이도 게이트로 다시 맞춘다
 근거: [공격 형태·부위 영혼석](2026-09-26-damage-forms-part-stones-design.md) · [② 발동 엔진](2026-09-26-trigger-engine-design.md)(키워드 사전) · 참고 [`docs/reference/barbarian-abilities.ko.md`](../../reference/barbarian-abilities.ko.md)
 구현: [④ 부위 영혼석 구현](2026-09-26-part-stones-implementation-design.md)
 

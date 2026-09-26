@@ -52,6 +52,7 @@ static func descend(s) -> bool:
 	var stairs: Vector2i = s.floor_state.layout.get("stairs",Vector2i(-1,-1))
 	if stairs.x < 0 or not s.alive().any(func(a): return s.distance(a.pos,stairs) <= 1): return false
 	s.depth += 1; s.score += 20
+	s.effect_delays.clear(); s.finish_yielded.clear()
 	for actor in s.party: actor.reservation = {}; actor.hit_and_run = false
 	s.end_battle_orders(); s.reset_battle_stats()
 	s.floor_state.build(s)
