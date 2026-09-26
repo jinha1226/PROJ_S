@@ -1,4 +1,5 @@
 extends RefCounted
+const Keywords = preload("res://expedition/ui/screens/keyword_popup.gd")
 const Forms = preload("res://expedition/combat/forms.gd")
 ## Every popup the HUD opens over a screen: the menu, the log, the map, curios,
 ## enemy info, npcs and their offers, the shared bag, the folio and the tactic
@@ -84,6 +85,7 @@ static func show_enemy_info(ui, enemy: Dictionary) -> void:
 	ui.clear(ui.modal_content)
 	var values: Dictionary = Session.CombatStats.stats(session,enemy)
 	var title = ui.label(ui.modal_content,str(enemy.name),20); title.name = "EnemyInfo"
+	ui.button(ui.modal_content,"도감",func(): ui.show_codex("monsters",Session.Codex.monster_key(enemy))).name = "EnemyCodex"
 	ui.label(ui.modal_content,"HP %d/%d   AC %d   EV %d   속도 %d" % [int(enemy.hp),int(enemy.max_hp),int(values.ac),int(values.ev),int(values.delay)],14)
 	var sheet: Dictionary = StatSheet.sheet(session,enemy)
 	var defence = ui.label(ui.modal_content,"방어 %d   회피 %d   막기 %d" % [int(sheet.ac.total),int(sheet.ev.total),int(sheet.sh.total)],14)
@@ -478,6 +480,14 @@ static func show_item_detail(ui, id: String) -> void:
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if row.category == "장비": title.add_theme_color_override("font_color",Equipment.colour(row.item))
 	var info = ui.label(ui.item_detail,row.description,12); info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.custom_minimum_size.x = minf(290,ui.size.x-32)
+	if row.category == "장비":
+		var keywords: Array = []
+		for effect_id in [row.item.get("affix",""),row.item.get("cost_effect","")]:
+			for word in Equipment.effect_text.get(str(effect_id),{}).get("keywords",[]):
+				if word not in keywords: keywords.append(word)
+		Keywords.chips(ui,ui.item_detail,keywords)
+	elif row.category == "파츠":
+		Keywords.chips(ui,ui.item_detail,Equipment.effect_text.get(EssenceTab.StoneEffects.effect_of(id),{}).get("keywords",[]))
 	if row.category == "소모품":
 		var usable: bool = session.phase in ["EXPLORE","BATTLE","CAMP"]
 		if row["class"] == "potion":

@@ -22,6 +22,7 @@ static func camp(s) -> bool:
 		s.stress(actor,-30)
 		for id in actor.cooldowns: actor.cooldowns[id] = 0
 	s.phase = "CAMP"; s.intents.clear()
+	s.Codex.flush(s)
 	s.message("야영 · 식량 -%d" % s.alive().size()); return true
 
 static func end_camp(s) -> bool:

@@ -4,6 +4,7 @@ extends RefCounted
 
 static func build_result_card(ui) -> void:
 	var session = ui.session
+	session.Codex.note_run_end(session); session.Codex.flush(session)
 	var card := VBoxContainer.new(); card.name = "ResultCard"; card.size_flags_vertical = Control.SIZE_EXPAND_FILL; ui.root_layout.add_child(card)
 	var won: bool = session.phase == "VICTORY"
 	ui.label(card,"승리 · %d층" % session.depth if won else "%d층에서 쓰러졌다" % session.depth,24)

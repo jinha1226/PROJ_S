@@ -3,6 +3,7 @@ extends RefCounted
 ## absorbed, the role combos and element sets and, for a caster essence, its
 ## spell. A stone has no tiers: its base stats, headline effect and active are
 ## fixed. The text helpers are shared with the banners and the monster inspection.
+const Keywords = preload("res://expedition/ui/screens/keyword_popup.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const TagSets = preload("res://expedition/progression/tag_sets.gd")
 const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
@@ -189,6 +190,7 @@ static func absorbed(ui, list: VBoxContainer, actor: Dictionary, editable: bool)
 		if not tag_line(id).is_empty(): label(box,tag_line(id),12)
 		label(box,stat_line(id),12)
 		label(box,effect_line(id),12)
+		Keywords.chips(ui,box,StoneEffects.EFFECTS.get(StoneEffects.effect_of(id),{}).get("keywords",[]))
 		label(box,family_line(id)+" · "+collection(actor,id),12)
 		if not str(Essences.school(id)).is_empty():
 			var spell_id: String = str(actor.get("essence_spells",{}).get(id,""))
@@ -224,6 +226,7 @@ static func slot_detail(ui, slot: int, id: String) -> void:
 	if not tag_line(id).is_empty(): label(ui.item_detail,tag_line(id),13)
 	label(ui.item_detail,stat_line(id),13)
 	label(ui.item_detail,effect_line(id),13).custom_minimum_size.x = minf(ui.popup_width(),ui.size.x-40)
+	Keywords.chips(ui,ui.item_detail,StoneEffects.EFFECTS.get(StoneEffects.effect_of(id),{}).get("keywords",[]))
 	label(ui.item_detail,active_line(id),13).custom_minimum_size.x = minf(ui.popup_width(),ui.size.x-40)
 	if not str(Essences.school(id)).is_empty():
 		var pick: Button = ui.button(ui.item_detail,"주문 선택",func(): pick_spell(ui,index,id),Essences.can_manage(ui.session))

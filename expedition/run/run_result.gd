@@ -28,7 +28,7 @@ static func reset_battle_stats(s) -> void:
 		actor.last_action_kind = ""
 		actor.last_action_dir = Vector2i.ZERO
 		s.battle_stats.members[actor.id] = {"dealt":0,"taken":0,"guards":0,"covers":0,"redirected":0,
-			"parts":{},"healed":0,"downed":false,"conflict":bool(actor.get("conflicted",false)),
+			"parts":{},"effects":{},"healed":0,"downed":false,"conflict":bool(actor.get("conflicted",false)),
 			"mistakes":0,"role_rounds":{"in_role":0,"total":0},"explains":[]}
 
 ## The row of one member, empty for an id that is not in the party — which is

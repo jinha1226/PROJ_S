@@ -37,7 +37,8 @@ static func apply(s, victim: Dictionary, status: String, ticks: int, source: Dic
 	if ticks <= 0 or StoneEffects.shed(s,victim,status,source): return false
 	var already: bool = victim.get("statuses",{}).has(status)
 	victim.statuses[status] = s.time+ticks
-	victim.get_or_add("status_sources",{})[status] = {"id":int(source.get("id",-1)),"depth":int(s.depth)}
+	victim.get_or_add("status_sources",{})[status] = {"id":int(source.get("id",-1)),"depth":int(s.depth),
+		"report_source":s.effect_source.duplicate() if not s.effect_source.is_empty() and int(s.effect_source.owner) == int(source.get("id",-1)) else {}}
 	if status == "burn": victim.get_or_add("status_power",{})["burn"] = BURN_DAMAGE
 	if status == "fracture": victim.get_or_add("status_power",{})["fracture_bonus"] = StoneEffects.modifier(s,"fracture_percent",source)
 	if status in HARMFUL:
@@ -64,11 +65,15 @@ static func tick(s) -> void:
 			var lost := 0
 			var origin: Dictionary = sources.get(status,{})
 			var source: Dictionary = s.actor_by_id(int(origin.get("id",-1))) if int(origin.get("depth",-1)) == int(s.depth) else {}
+			var previous: Dictionary = s.effect_source
+			s.effect_source = origin.get("report_source",{}).duplicate() if int(origin.get("depth",-1)) == int(s.depth) else {}
+			if not s.effect_source.is_empty(): s.effect_source.indirect = true
 			if status == "bleed": lost = Rules.damage(s,{},actor,2+StoneEffects.modifier(s,"bleed_tick",source,{"target":actor}),"physical")
 			# A spell's burn says how hard it bites; the old mastery burn keeps
 			# the single point it always did.
 			elif status == "burn": lost = Rules.damage(s,{},actor,int(payload.get("burn",1)),"fire")
 			elif status == "poison": lost = Rules.damage(s,{},actor,2+int(payload.get("poison_bonus",0))+StoneEffects.modifier(s,"poison_tick",source,{"target":actor}),"poison")
+			s.effect_source = previous
 			if lost > 0: StoneEffects.fire(s,"DOT_TICK",{"target":actor,"victim":actor,"status":status,"amount":lost})
 			Forms.end(s,was)
 			if until <= s.time:

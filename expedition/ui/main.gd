@@ -536,7 +536,14 @@ func focus_enemy(point: Vector2i) -> void:
 
 ## The screens keep their entry points on the node: the tests, the signals and
 ## the sibling screens all reach them through `main`.
-func new_run() -> void: StartScreen.new_run(self)
+const CodexScreen = preload("res://expedition/ui/screens/codex_screen.gd")
+func show_codex(tab: String = "monsters", focus: String = "") -> void: CodexScreen.show(self,tab,focus)
+
+func _notification(what: int) -> void:
+	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_WM_CLOSE_REQUEST] and session != null:
+		session.Codex.flush(session)
+
+func new_run(record_codex: bool = false) -> void: StartScreen.new_run(self,record_codex)
 func depart() -> void: StartScreen.depart(self)
 func select_actor(index: int) -> void: FloorHud.select_actor(self,index)
 func choose_item(kind: String) -> void: FloorHud.choose_item(self,kind)

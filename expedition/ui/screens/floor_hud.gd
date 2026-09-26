@@ -276,7 +276,8 @@ static func show_manual_tactics(ui) -> void:
 	parts.name = "TacticParts"; parts.toggle_mode = true; parts.button_pressed = session.aim_parts
 	var skills = ui.button(box,"기술",func(): show_manual_skills(ui),not actor.prepared.is_empty() or not Session.Abilities.held(actor).is_empty())
 	skills.name = "TacticSkills"
-	center_tactics_popup(ui,244 if session.party.size() == 1 else 388)
+	ui.button(box,"도감",func(): ui.show_codex()).name = "TacticCodex"
+	center_tactics_popup(ui,292 if session.party.size() == 1 else 436)
 
 static func show_manual_skills(ui) -> void:
 	var session = ui.session

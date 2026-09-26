@@ -12,6 +12,7 @@ func check(ok: bool, reason: String) -> void:
 func _initialize() -> void: call_deferred("run")
 
 func run() -> void:
+	preload("res://expedition/progression/codex.gd").path = "user://test_codex_mobile_hud.json"
 	check(Art.ACTOR_SPRITES.size() == Art.ACTOR_IDS.size() and Art.ACTOR_SPRITES.all(func(t): return t.resource_path.begins_with("res://assets/sprites-v1/actors/")),"one paper-doll sprite per actor look")
 	check(Art.actor_texture(0).atlas.resource_path.ends_with("actors/human.png") and Art.actor_texture(0).get_width() >= 128,"the hero wears the paper-doll sprite")
 	check(Art.actor_portrait({"id":1000,"npc":true}).atlas == Art.actor_texture(1).atlas and Art.actor_portrait({"id":1000,"npc":true}).region.position.x > Art.actor_texture(1).region.position.x,"NPC portrait is a larger crop of the map sprite")

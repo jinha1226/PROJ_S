@@ -26,7 +26,8 @@
       "limit": "event",
       "families": [
         12
-      ]
+      ],
+      "roles": {}
     },
     "LIZARD_TAIL": {
       "name": "꼬리 반격",
@@ -57,7 +58,8 @@
       "limit": "event",
       "families": [
         5
-      ]
+      ],
+      "roles": {}
     },
     "KOBOLD_SLING": {
       "name": "투석",
@@ -84,7 +86,8 @@
       "limit": "event",
       "families": [
         6
-      ]
+      ],
+      "roles": {}
     },
     "GOBLIN_SHIV": {
       "name": "기습",
@@ -107,7 +110,8 @@
       "limit": "event",
       "families": [
         3
-      ]
+      ],
+      "roles": {}
     },
     "GOBLIN_AIM": {
       "name": "조준",
@@ -127,7 +131,8 @@
       "limit": "event",
       "families": [
         6
-      ]
+      ],
+      "roles": {}
     },
     "SHIELD_STANCE": {
       "name": "방패 태세",
@@ -147,7 +152,8 @@
       "limit": "event",
       "families": [
         5
-      ]
+      ],
+      "roles": {}
     },
     "HOB_TAUNT": {
       "name": "거구",
@@ -167,13 +173,15 @@
       "limit": "event",
       "families": [
         5
-      ]
+      ],
+      "roles": {}
     },
     "GOBLIN_HEXER": {
       "name": "저주 연장",
       "text": "내가 거는 상태이상 지속 +50%",
       "keywords": [
-        "저주"
+        "저주",
+        "해로운 상태"
       ],
       "rules": [
         {
@@ -191,7 +199,10 @@
       "limit": "event",
       "families": [
         8
-      ]
+      ],
+      "roles": {
+        "해로운 상태": "payoff"
+      }
     },
     "ORC_CLEAVER": {
       "name": "난폭",
@@ -222,7 +233,8 @@
       "limit": "event",
       "families": [
         4
-      ]
+      ],
+      "roles": {}
     },
     "ORC_THROW": {
       "name": "연속 투척",
@@ -261,13 +273,15 @@
       "limit": "event",
       "families": [
         6
-      ]
+      ],
+      "roles": {}
     },
     "SPIDER_WEB": {
       "name": "거미줄",
       "text": "공격에 25% 확률로 속박 1라운드",
       "keywords": [
-        "저주"
+        "저주",
+        "속박"
       ],
       "rules": [
         {
@@ -300,7 +314,10 @@
       "limit": "event",
       "families": [
         8
-      ]
+      ],
+      "roles": {
+        "속박": "setup"
+      }
     },
     "BEETLE_CURL": {
       "name": "껍질",
@@ -320,13 +337,15 @@
       "limit": "event",
       "families": [
         5
-      ]
+      ],
+      "roles": {}
     },
     "ORE_SLAM": {
       "name": "강타",
       "text": "공격에 20% 확률로 기절 1라운드",
       "keywords": [
-        "분쇄"
+        "분쇄",
+        "기절"
       ],
       "rules": [
         {
@@ -359,13 +378,17 @@
       "limit": "event",
       "families": [
         2
-      ]
+      ],
+      "roles": {
+        "기절": "setup"
+      }
     },
     "FIRE_CALLER": {
       "name": "불씨",
       "text": "화염 피해 +30%, 공격에 15% 확률로 화상",
       "keywords": [
-        "원소"
+        "원소",
+        "화상"
       ],
       "rules": [
         {
@@ -409,7 +432,10 @@
       "limit": "event",
       "families": [
         7
-      ]
+      ],
+      "roles": {
+        "화상": "setup"
+      }
     },
     "STORM_BAT": {
       "name": "질풍",
@@ -429,7 +455,8 @@
       "limit": "event",
       "families": [
         12
-      ]
+      ],
+      "roles": {}
     },
     "RIVER_RAT_SPLASH": {
       "name": "물장구",
@@ -453,13 +480,14 @@
       "limit": "event",
       "families": [
         7
-      ]
+      ],
+      "roles": {}
     },
     "LEECH_LATCH": {
       "name": "달라붙기",
       "text": "같은 대상을 연달아 칠 때마다 피해 +15%(최대 +60%)",
       "keywords": [
-        "출혈"
+        "연속 공격"
       ],
       "rules": [
         {
@@ -472,13 +500,15 @@
       "limit": "event",
       "families": [
         1
-      ]
+      ],
+      "roles": {}
     },
     "TOAD_SPIT": {
       "name": "독침",
       "text": "공격에 30% 확률로 중독",
       "keywords": [
-        "독"
+        "독",
+        "중독"
       ],
       "rules": [
         {
@@ -511,13 +541,17 @@
       "limit": "event",
       "families": [
         9
-      ]
+      ],
+      "roles": {
+        "중독": "setup"
+      }
     },
     "SERPENT_SHED": {
       "name": "탈피",
       "text": "걸리는 상태이상을 50% 확률로 막음",
       "keywords": [
-        "지원"
+        "지원",
+        "해로운 상태"
       ],
       "rules": [
         {
@@ -533,7 +567,10 @@
       "limit": "event",
       "families": [
         12
-      ]
+      ],
+      "roles": {
+        "해로운 상태": "payoff"
+      }
     },
     "WATER_WAVE": {
       "name": "치유의 물결",
@@ -559,7 +596,8 @@
       "limit": "event",
       "families": [
         12
-      ]
+      ],
+      "roles": {}
     },
     "GNOLL_SPEAR": {
       "name": "분노",
@@ -596,13 +634,15 @@
       "limit": "event",
       "families": [
         4
-      ]
+      ],
+      "roles": {}
     },
     "FROST_IMP": {
       "name": "서리",
       "text": "냉기 피해 +30%, 공격에 10% 확률로 빙결 1라운드",
       "keywords": [
-        "원소"
+        "원소",
+        "빙결"
       ],
       "rules": [
         {
@@ -646,7 +686,10 @@
       "limit": "event",
       "families": [
         7
-      ]
+      ],
+      "roles": {
+        "빙결": "setup"
+      }
     },
     "GNOLL_SUMMONER": {
       "name": "무리 부르기",
@@ -674,7 +717,8 @@
       "limit": "event",
       "families": [
         10
-      ]
+      ],
+      "roles": {}
     },
     "SKELETON_WALL": {
       "name": "뼈 방벽",
@@ -700,7 +744,8 @@
       "limit": "event",
       "families": [
         5
-      ]
+      ],
+      "roles": {}
     },
     "SKELETON_VOLLEY": {
       "name": "급소 사격",
@@ -727,7 +772,8 @@
       "limit": "event",
       "families": [
         3
-      ]
+      ],
+      "roles": {}
     },
     "GHOUL_CLAW": {
       "name": "포식",
@@ -759,7 +805,8 @@
       "limit": "event",
       "families": [
         4
-      ]
+      ],
+      "roles": {}
     },
     "VAMPIRE_BITE": {
       "name": "흡혈",
@@ -786,7 +833,8 @@
       "limit": "event",
       "families": [
         11
-      ]
+      ],
+      "roles": {}
     },
     "THORN_ARMOUR": {
       "name": "가시 갑주",
@@ -817,13 +865,16 @@
       "limit": "event",
       "families": [
         5
-      ]
+      ],
+      "roles": {}
     },
     "WRAITH": {
       "name": "원한",
       "text": "공격에 20% 확률로 약화, 처치하면 반경 2 적 혼란 1라운드",
       "keywords": [
-        "저주"
+        "저주",
+        "약화",
+        "혼란"
       ],
       "rules": [
         {
@@ -868,7 +919,11 @@
       "limit": "event",
       "families": [
         8
-      ]
+      ],
+      "roles": {
+        "약화": "setup",
+        "혼란": "setup"
+      }
     },
     "GRAVEKEEPER": {
       "name": "무덤 지기",
@@ -889,7 +944,8 @@
       "limit": "event",
       "families": [
         11
-      ]
+      ],
+      "roles": {}
     },
     "RAT_INCISOR": {
       "name": "쥐 앞니",
@@ -913,7 +969,10 @@
             "bleed_pierce_chance": 10
           }
         }
-      ]
+      ],
+      "roles": {
+        "출혈": "setup"
+      }
     },
     "RAT_HEART": {
       "name": "쥐 심장",
@@ -953,7 +1012,8 @@
             }
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "LIZARD_FRILL": {
       "name": "목도리 도마뱀 목도리",
@@ -993,7 +1053,8 @@
             }
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "LIZARD_EYE": {
       "name": "목도리 도마뱀 눈",
@@ -1033,7 +1094,8 @@
             }
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "KOBOLD_HIDE": {
       "name": "코볼트 가죽",
@@ -1056,7 +1118,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "KOBOLD_HEART": {
       "name": "코볼트 심장",
@@ -1114,7 +1177,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "GOBLIN_EAR": {
       "name": "고블린 귀",
@@ -1137,13 +1201,15 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "GOBLIN_TOOTH": {
       "name": "고블린 이빨",
       "text": "해로운 상태를 걸 때마다 대상 방어 −1(누적 최대 −5, 300 tick)",
       "keywords": [
-        "저주"
+        "저주",
+        "해로운 상태"
       ],
       "families": [
         8
@@ -1166,7 +1232,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "해로운 상태": "payoff"
+      }
     },
     "ARCHER_KNUCKLE": {
       "name": "고블린 궁수 손가락뼈",
@@ -1191,7 +1260,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "ARCHER_EYE": {
       "name": "고블린 궁수 눈",
@@ -1214,7 +1284,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "SHIELD_HIDE": {
       "name": "고블린 방패병 가죽",
@@ -1233,13 +1304,15 @@
             "effect": "SHIELD_HIDE"
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "SHIELD_HEART": {
       "name": "고블린 방패병 심장",
       "text": "막으면 공격자에게 골절 판정(타격 부상 확률 그대로)",
       "keywords": [
-        "분쇄"
+        "분쇄",
+        "골절"
       ],
       "families": [
         2
@@ -1252,7 +1325,10 @@
             "effect": "SHIELD_HEART"
           }
         }
-      ]
+      ],
+      "roles": {
+        "골절": "setup"
+      }
     },
     "HOB_HIDE": {
       "name": "홉고블린 가죽",
@@ -1276,13 +1352,15 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "HOB_JAW": {
       "name": "홉고블린 턱뼈",
       "text": "타격 공격의 골절 확률 +10%p",
       "keywords": [
-        "분쇄"
+        "분쇄",
+        "골절"
       ],
       "families": [
         2
@@ -1294,7 +1372,10 @@
             "wound_chance.IMPACT": 10
           }
         }
-      ]
+      ],
+      "roles": {
+        "골절": "setup"
+      }
     },
     "HEXER_HAND": {
       "name": "고블린 주술사 손",
@@ -1315,7 +1396,8 @@
             }
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "HEXER_SKULL": {
       "name": "고블린 주술사 두개골",
@@ -1338,7 +1420,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "ORC_HIDE": {
       "name": "오크 가죽",
@@ -1363,7 +1446,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "출혈": "payoff"
+      }
     },
     "ORC_HEART": {
       "name": "오크 심장",
@@ -1386,7 +1472,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "THROWER_SHOULDER": {
       "name": "오크 투척병 어깨뼈",
@@ -1417,14 +1504,16 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "THROWER_EYE": {
       "name": "오크 투척병 눈",
       "text": "원거리 명중 시 20% 확률로 표식(받는 피해 +20%, 300 tick)",
       "keywords": [
         "사수",
-        "저주"
+        "저주",
+        "표식"
       ],
       "families": [
         6,
@@ -1450,7 +1539,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "표식": "setup"
+      }
     },
     "SPIDER_LEG": {
       "name": "동굴 거미 다리",
@@ -1490,13 +1582,15 @@
             }
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "SPIDER_SHELL": {
       "name": "동굴 거미 껍질",
       "text": "해로운 상태가 3개 이상인 대상에게 피해 +30%",
       "keywords": [
-        "저주"
+        "저주",
+        "해로운 상태"
       ],
       "families": [
         8
@@ -1513,7 +1607,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "해로운 상태": "payoff"
+      }
     },
     "BEETLE_WING": {
       "name": "바위 딱정벌레 날개",
@@ -1532,7 +1629,8 @@
             "effect": "BEETLE_WING"
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "BEETLE_CORE": {
       "name": "바위 딱정벌레 핵",
@@ -1572,7 +1670,8 @@
             }
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GOLEM_VEIN": {
       "name": "광석 골렘 광맥",
@@ -1590,13 +1689,17 @@
             "impact_armour_percent": -50
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GOLEM_CORE": {
       "name": "광석 골렘 핵",
       "text": "기절·빙결·골절 대상에게 피해 +30%",
       "keywords": [
-        "분쇄"
+        "분쇄",
+        "골절",
+        "기절",
+        "빙결"
       ],
       "families": [
         2
@@ -1617,13 +1720,19 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "골절": "payoff",
+        "기절": "payoff",
+        "빙결": "payoff"
+      }
     },
     "FIRECALLER_HAND": {
       "name": "코볼트 화염술사 손",
       "text": "화상 중인 대상에게 주는 피해 +20%",
       "keywords": [
-        "원소"
+        "원소",
+        "화상"
       ],
       "families": [
         7
@@ -1640,7 +1749,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "화상": "payoff"
+      }
     },
     "FIRECALLER_BONE": {
       "name": "코볼트 화염술사 뼈",
@@ -1660,13 +1772,15 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "BAT_BONE": {
       "name": "폭풍 박쥐 뼈",
       "text": "전기 피해 +30%, 젖은 대상에게 전기 피해 시 20% 확률로 기절 1라운드",
       "keywords": [
-        "원소"
+        "원소",
+        "기절"
       ],
       "families": [
         7
@@ -1703,7 +1817,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "기절": "setup"
+      }
     },
     "BAT_EAR": {
       "name": "폭풍 박쥐 귀",
@@ -1726,7 +1843,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "RIVER_RAT_TOOTH": {
       "name": "강쥐 이빨",
@@ -1754,7 +1872,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "출혈": "payoff"
+      }
     },
     "RIVER_RAT_HEART": {
       "name": "강쥐 심장",
@@ -1779,7 +1900,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "LEECH_SEGMENT": {
       "name": "거대 거머리 몸마디",
@@ -1797,7 +1919,10 @@
             "bleed_tick": 2
           }
         }
-      ]
+      ],
+      "roles": {
+        "출혈": "payoff"
+      }
     },
     "LEECH_SUCKER": {
       "name": "거대 거머리 흡반",
@@ -1826,13 +1951,17 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "출혈": "payoff"
+      }
     },
     "TOAD_TONGUE": {
       "name": "늪 두꺼비 혀",
       "text": "이미 중독된 대상에게 다시 중독을 걸면 틱 피해 +1(최대 +4)",
       "keywords": [
-        "독"
+        "독",
+        "중독"
       ],
       "families": [
         9
@@ -1851,7 +1980,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "중독": "payoff"
+      }
     },
     "TOAD_BONE": {
       "name": "늪 두꺼비 뼈",
@@ -1874,13 +2006,15 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "SERPENT_SCALE": {
       "name": "신전 뱀 비늘",
       "text": "독 저항 +50, 중독에 걸리지 않음",
       "keywords": [
-        "독"
+        "독",
+        "중독"
       ],
       "families": [
         9
@@ -1901,13 +2035,17 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "중독": "payoff"
+      }
     },
     "SERPENT_FANG": {
       "name": "신전 뱀 독니",
       "text": "중독된 대상에게 주는 피해 +15%",
       "keywords": [
-        "독"
+        "독",
+        "중독"
       ],
       "families": [
         9
@@ -1924,7 +2062,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "중독": "payoff"
+      }
     },
     "SPIRIT_CURRENT": {
       "name": "물의 정령 물살",
@@ -1949,7 +2090,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "SPIRIT_DROP": {
       "name": "물의 정령 물방울",
@@ -1972,7 +2114,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "GNOLL_HIDE": {
       "name": "놀 가죽",
@@ -1993,7 +2136,8 @@
             }
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GNOLL_BONE": {
       "name": "놀 뼈",
@@ -2027,13 +2171,15 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "FROST_CLAW": {
       "name": "서리 도깨비 발톱",
       "text": "빙결 중인 대상을 처치하면 반경 1의 적에게 20% 확률로 빙결 1라운드",
       "keywords": [
-        "원소"
+        "원소",
+        "빙결"
       ],
       "families": [
         7
@@ -2051,13 +2197,18 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "빙결": "both"
+      }
     },
     "FROST_HORN": {
       "name": "서리 도깨비 뿔",
       "text": "내가 거는 화상·빙결 지속 +50%",
       "keywords": [
-        "원소"
+        "원소",
+        "빙결",
+        "화상"
       ],
       "families": [
         7
@@ -2075,7 +2226,11 @@
             "status_ticks.freeze": 50
           }
         }
-      ]
+      ],
+      "roles": {
+        "빙결": "setup",
+        "화상": "setup"
+      }
     },
     "SUMMONER_HIDE": {
       "name": "놀 소환사 가죽",
@@ -2099,7 +2254,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "SUMMONER_BONE": {
       "name": "놀 소환사 뼈",
@@ -2117,7 +2273,8 @@
             "summon_hp": 50
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "SKELETON_ARM": {
       "name": "해골 병사 팔",
@@ -2135,7 +2292,10 @@
             "status_ticks.bleed": 50
           }
         }
-      ]
+      ],
+      "roles": {
+        "출혈": "setup"
+      }
     },
     "SKELETON_SKULL": {
       "name": "해골 병사 두개골",
@@ -2165,13 +2325,15 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "BOWMAN_FINGER": {
       "name": "해골 궁수 손가락",
       "text": "골절 중인 대상에게 주는 피해 +20%",
       "keywords": [
-        "분쇄"
+        "분쇄",
+        "골절"
       ],
       "families": [
         2
@@ -2188,14 +2350,18 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "골절": "payoff"
+      }
     },
     "BOWMAN_SOCKET": {
       "name": "해골 궁수 눈구멍",
       "text": "원거리 명중이 형태와 관계없이 10% 확률로 골절",
       "keywords": [
         "분쇄",
-        "사수"
+        "사수",
+        "골절"
       ],
       "families": [
         2,
@@ -2221,7 +2387,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "골절": "setup"
+      }
     },
     "GHOUL_JAW": {
       "name": "구울 턱",
@@ -2240,7 +2409,8 @@
             "effect": "GHOUL_JAW"
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GHOUL_HEART": {
       "name": "구울 심장",
@@ -2268,7 +2438,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "VAMPIRE_WING": {
       "name": "흡혈 박쥐 날개",
@@ -2291,7 +2462,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "VAMPIRE_HEART": {
       "name": "흡혈 박쥐 심장",
@@ -2315,13 +2487,15 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "WRAITH_KNIGHT_CLOAK": {
       "name": "망령 기사 망토",
       "text": "근접 공격을 받으면 20% 확률로 공격자 약화",
       "keywords": [
-        "저주"
+        "저주",
+        "약화"
       ],
       "families": [
         8
@@ -2347,13 +2521,18 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "약화": "setup"
+      }
     },
     "WRAITH_KNIGHT_CORE": {
       "name": "망령 기사 핵",
       "text": "골절을 걸 때 20% 확률로 기절 1라운드",
       "keywords": [
-        "분쇄"
+        "분쇄",
+        "골절",
+        "기절"
       ],
       "families": [
         2
@@ -2378,13 +2557,18 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "골절": "payoff",
+        "기절": "setup"
+      }
     },
     "WRAITH_SHROUD": {
       "name": "원혼 수의",
       "text": "해로운 상태가 걸린 적을 처치하면 그 상태들을 반경 2의 다른 적 하나에게 옮김",
       "keywords": [
-        "저주"
+        "저주",
+        "해로운 상태"
       ],
       "families": [
         8
@@ -2410,13 +2594,17 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "해로운 상태": "setup"
+      }
     },
     "WRAITH_BONE": {
       "name": "원혼 뼈",
       "text": "해로운 상태를 걸 때마다 HP 2 회복",
       "keywords": [
-        "저주"
+        "저주",
+        "해로운 상태"
       ],
       "families": [
         8
@@ -2436,7 +2624,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "해로운 상태": "payoff"
+      }
     },
     "GRAVEKEEPER_HAND": {
       "name": "묘지기 손",
@@ -2459,7 +2650,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "GRAVEKEEPER_BONE": {
       "name": "묘지기 뼈",
@@ -2485,13 +2677,15 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_AMP_1": {
       "name": "출혈",
       "text": "출혈 증폭",
       "keywords": [
-        "장비"
+        "장비",
+        "출혈"
       ],
       "source": "gear",
       "families": [
@@ -2514,13 +2708,17 @@
             "status_ticks.bleed": 50
           }
         }
-      ]
+      ],
+      "roles": {
+        "출혈": "both"
+      }
     },
     "GEAR_AMP_2": {
       "name": "분쇄",
       "text": "분쇄 증폭",
       "keywords": [
-        "장비"
+        "장비",
+        "골절"
       ],
       "source": "gear",
       "families": [
@@ -2543,7 +2741,10 @@
             "wound_chance.IMPACT": 10
           }
         }
-      ]
+      ],
+      "roles": {
+        "골절": "setup"
+      }
     },
     "GEAR_AMP_3": {
       "name": "급소",
@@ -2572,7 +2773,8 @@
             "exposed_bonus": 15
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_AMP_4": {
       "name": "광폭",
@@ -2606,7 +2808,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_AMP_5": {
       "name": "수호",
@@ -2635,7 +2838,8 @@
             "stack_max.guard": 4
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_AMP_6": {
       "name": "사수",
@@ -2664,7 +2868,8 @@
             "stack_max.aim": 2
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_AMP_7": {
       "name": "원소",
@@ -2695,13 +2900,15 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_AMP_8": {
       "name": "저주",
       "text": "저주 증폭",
       "keywords": [
-        "장비"
+        "장비",
+        "해로운 상태"
       ],
       "source": "gear",
       "families": [
@@ -2732,13 +2939,17 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "해로운 상태": "payoff"
+      }
     },
     "GEAR_AMP_9": {
       "name": "독",
       "text": "독 증폭",
       "keywords": [
-        "장비"
+        "장비",
+        "중독"
       ],
       "source": "gear",
       "families": [
@@ -2761,7 +2972,10 @@
             "stack_max.poison": 2
           }
         }
-      ]
+      ],
+      "roles": {
+        "중독": "payoff"
+      }
     },
     "GEAR_AMP_10": {
       "name": "소환",
@@ -2790,7 +3004,8 @@
             "summon_ticks_percent": 25
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_AMP_11": {
       "name": "사령",
@@ -2819,7 +3034,8 @@
             "kill_chance": 10
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_AMP_12": {
       "name": "지원",
@@ -2848,7 +3064,8 @@
             "status_ticks.ward": 50
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_FORM_SAW": {
       "name": "톱날",
@@ -2870,13 +3087,15 @@
             "extra_wound": 1
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_FORM_TIP": {
       "name": "꿰뚫는 촉",
       "text": "급소 노출 확률 +10%p",
       "keywords": [
-        "장비"
+        "장비",
+        "급소 노출"
       ],
       "source": "gear",
       "families": [],
@@ -2892,7 +3111,10 @@
             "wound_chance.PIERCE": 10
           }
         }
-      ]
+      ],
+      "roles": {
+        "급소 노출": "setup"
+      }
     },
     "GEAR_FORM_WEIGHT": {
       "name": "무게추",
@@ -2914,7 +3136,8 @@
             "impact_armour_percent": -25
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_FORM_EDGE": {
       "name": "날 선 가장자리",
@@ -2936,7 +3159,8 @@
             "skin_penalty_percent": -13
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_FORM_BALANCE": {
       "name": "균형추",
@@ -2958,7 +3182,8 @@
             "part_own_percent": 15
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_COMP_CRISIS": {
       "name": "긴급 보호",
@@ -2998,7 +3223,8 @@
             "effect": "GEAR_COMP_CRISIS"
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_COMP_SHOVE": {
       "name": "거리 확보",
@@ -3027,7 +3253,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_COMP_PETS": {
       "name": "소환수 보호",
@@ -3054,7 +3281,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_COMP_OPENING": {
       "name": "빠른 준비",
@@ -3077,7 +3305,8 @@
             "effect": "GEAR_COMP_OPENING"
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_COMP_MELEE": {
       "name": "근접 완충",
@@ -3099,7 +3328,8 @@
             "melee_flat_cut": 2
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_COMP_BLOCK": {
       "name": "방패 반격",
@@ -3141,13 +3371,15 @@
             }
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "GEAR_COMP_CLEANSE": {
       "name": "상태 방어",
       "text": "해로운 상태 20% 확률 차단",
       "keywords": [
-        "장비"
+        "장비",
+        "해로운 상태"
       ],
       "source": "gear",
       "families": [],
@@ -3170,7 +3402,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "해로운 상태": "payoff"
+      }
     },
     "GEAR_COMP_MP": {
       "name": "마력 보존",
@@ -3199,13 +3434,15 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "UNRAND_AXE": {
       "name": "피 먹는 도끼",
       "text": "출혈 대상 처치 시 HP 5% 회복",
       "keywords": [
-        "장비"
+        "장비",
+        "출혈"
       ],
       "source": "gear",
       "families": [
@@ -3231,7 +3468,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "출혈": "payoff"
+      }
     },
     "COST_AXE": {
       "name": "피 먹는 도끼 대가",
@@ -3255,13 +3495,15 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "UNRAND_SHIELD": {
       "name": "깨지지 않는 방패",
       "text": "막기 +15, 막으면 골절 판정",
       "keywords": [
-        "장비"
+        "장비",
+        "골절"
       ],
       "source": "gear",
       "families": [
@@ -3284,7 +3526,10 @@
             "effect": "UNRAND_SHIELD"
           }
         }
-      ]
+      ],
+      "roles": {
+        "골절": "setup"
+      }
     },
     "COST_SHIELD": {
       "name": "깨지지 않는 방패 대가",
@@ -3303,13 +3548,15 @@
             "move_delay_percent": 15
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "UNRAND_DAGGER": {
       "name": "바늘 단검",
       "text": "급소 노출 대상은 항상 치명타",
       "keywords": [
-        "장비"
+        "장비",
+        "급소 노출"
       ],
       "source": "gear",
       "families": [
@@ -3329,7 +3576,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "급소 노출": "payoff"
+      }
     },
     "COST_DAGGER": {
       "name": "바늘 단검 대가",
@@ -3348,7 +3598,8 @@
             "noncrit_percent": -25
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "UNRAND_CHAIN": {
       "name": "광전사의 사슬",
@@ -3374,7 +3625,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "COST_CHAIN": {
       "name": "광전사의 사슬 대가",
@@ -3398,7 +3650,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "UNRAND_OATH": {
       "name": "탑 방패의 서약",
@@ -3419,7 +3672,8 @@
             "share_damage": 20
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "COST_OATH": {
       "name": "탑 방패의 서약 대가",
@@ -3438,7 +3692,8 @@
             "zero_dodge": 1
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "UNRAND_BOW": {
       "name": "멈춘 매의 활",
@@ -3459,7 +3714,8 @@
             "stack_max.aim": 3
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "COST_BOW": {
       "name": "멈춘 매의 활 대가",
@@ -3478,7 +3734,8 @@
             "no_attack_after_move": 1
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "UNRAND_ORB": {
       "name": "끓는 오브",
@@ -3505,7 +3762,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "COST_ORB": {
       "name": "끓는 오브 대가",
@@ -3524,13 +3782,15 @@
             "max_mp_percent": -25
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "UNRAND_HEX": {
       "name": "원한의 반지",
       "text": "해로운 상태 4개 이상 대상 피해 ×2",
       "keywords": [
-        "장비"
+        "장비",
+        "해로운 상태"
       ],
       "source": "gear",
       "families": [
@@ -3550,7 +3810,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "해로운 상태": "payoff"
+      }
     },
     "COST_HEX": {
       "name": "원한의 반지 대가",
@@ -3570,13 +3833,15 @@
             "effect": "COST_HEX"
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "UNRAND_PLAGUE": {
       "name": "역병 주머니",
       "text": "중독 대상 처치 시 반경 2 독 폭발",
       "keywords": [
-        "장비"
+        "장비",
+        "중독"
       ],
       "source": "gear",
       "families": [
@@ -3597,7 +3862,10 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {
+        "중독": "both"
+      }
     },
     "COST_PLAGUE": {
       "name": "역병 주머니 대가",
@@ -3616,7 +3884,8 @@
             "res.poison": -50
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "UNRAND_HORN": {
       "name": "부름의 뿔",
@@ -3637,7 +3906,8 @@
             "summon_count": 2
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "COST_HORN": {
       "name": "부름의 뿔 대가",
@@ -3656,7 +3926,8 @@
             "summon_ticks_percent": -50
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "UNRAND_DEAD": {
       "name": "망자의 반지",
@@ -3680,7 +3951,8 @@
             }
           ]
         }
-      ]
+      ],
+      "roles": {}
     },
     "COST_DEAD": {
       "name": "망자의 반지 대가",
@@ -3699,7 +3971,8 @@
             "max_hp_percent": -20
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "UNRAND_MASK": {
       "name": "두 얼굴 가면",
@@ -3718,7 +3991,8 @@
             "part_own_percent": 30
           }
         }
-      ]
+      ],
+      "roles": {}
     },
     "COST_MASK": {
       "name": "두 얼굴 가면 대가",
@@ -3737,7 +4011,8 @@
             "taken_percent": 10
           }
         }
-      ]
+      ],
+      "roles": {}
     }
   }
 }

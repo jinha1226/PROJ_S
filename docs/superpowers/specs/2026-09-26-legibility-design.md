@@ -1,6 +1,6 @@
 # 읽히게 만들기 (최소판)
 
-작성일: 2026-09-26 · 상태: **합의됨(최소 범위)**
+작성일: 2026-09-26 · 상태: **구현 완료(최소 범위)**
 앞: [도감](2026-09-26-codex-design.md)
 전제: ②(발동 엔진, 효과 `name`·`text`·`keywords`), ④(부위 영혼석), ①(무기 형태)
 기존 코드: `expedition/progression/effect_engine.gd`(`fire`), `expedition/run/session.gd`(`after_damage`), `expedition/progression/stone_effects.gd`(`heal`), `expedition/run/run_result.gd`(`battle_stats` 멤버 행), `expedition/ui/battle_hud.gd`(`BattleReport`), `expedition/ui/screens/character_folio.gd`, `essence_tab.gd`, `codex_screen.gd`
@@ -63,3 +63,5 @@ Path of Achra처럼 **다 보여주고 스스로 파악하게** 한다. Achra의
 ## 5. 범위 밖 (하지 않음)
 
 빌드 요약 카드와 경고, 다음 부위 추천, 처음 한 번 안내, 쉰 영혼석 표시, 원정 결과 요약, 상시 % 효과의 몫 나누기. 플레이 뒤 필요하면 그때 하나씩 더한다.
+
+지연 폭발·효과가 건 지속 피해는 소유자와 효과 ID를 보존해 기여를 집계한다. 키워드 설명은 원래 카드를 유지하는 자식 팝업이며, 전투 리포트는 화면에 맞춘 스크롤 카드다.

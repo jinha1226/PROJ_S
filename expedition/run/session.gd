@@ -47,6 +47,14 @@ const ArenaTest = preload("res://expedition/run/arena_test.gd")
 const RunResult = preload("res://expedition/run/run_result.gd")
 var parts_bag: Dictionary = {}
 var essence_seen: Dictionary = {}
+const Codex = preload("res://expedition/progression/codex.gd")
+const EffectReport = preload("res://expedition/progression/effect_report.gd")
+var codex: Dictionary = {}
+var records_codex := false
+var codex_dirty := false
+var codex_run_ended := false
+var codex_test_stones: Dictionary = {}
+var effect_source: Dictionary = {}
 var events: Array = []
 ## Forwarded for callers that read it on the session; defined in `Camp`.
 const PREPARED_SLOTS := Camp.PREPARED_SLOTS
@@ -913,6 +921,8 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 	received["damage_element"] = form
 	if lost > 0: target.last_form = received.form
 	target.hp -= lost; Body.sync(target)
+	if lost > 0 and not effect_source.is_empty() and (int(effect_source.owner) == source or bool(effect_source.get("indirect",false))):
+		EffectReport.note(self,int(effect_source.owner),str(effect_source.effect),"damage",lost)
 	var fell: bool = target.hp <= 0
 	if fell: target.part_own_bonus = StoneEffects.modifier(self,"part_own_percent",attacker)
 	if lost > 0 and bool(target.get("boss",false)): BossAI.on_damaged(self,target,form)
@@ -959,6 +969,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 			battle_stats.kills = int(battle_stats.get("kills",0))+1
 			run_stats.kills = int(run_stats.kills)+1
 			score += 10
+			Codex.note_kill(self,target)
 		if party_hunted and bool(Encounters.species(str(target.get("species_id",""))).get("beast",false)) and Hexaco.sample(seed_value,depth*1000+target.id,"beast_food",100) < 25:
 			food += 1; message("고기 획득 · 식량 +1")
 		if target.get("boss",false):
@@ -969,6 +980,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 		else: roll_part(target,hunters)
 		NpcEssences.on_hunt(self,target,hunters)
 	if bool(target.get("fallen",false)) and target.hp <= 0 and not bool(target.get("defeated",false)):
+		if hunt_recipients(target,attacker).any(func(a): return a in party): Codex.note_kill(self,target)
 		target.defeated = true
 		BossAI.on_boss_defeated(self,target)
 	if not target.enemy and target.id == 0 and target.hp <= 0: check_battle_end()

@@ -5,6 +5,8 @@ const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const STAT_GROUPS := [["능력치",["str","dex","int","con"]],["영혼석 보정",["atk","hp","spell","mp","speed","dodge"]],["공격 판정",["accuracy","crit_chance","crit_damage"]],["방어 수치",["ac","ev","sh"]],["속성 저항",["res_fire","res_ice","res_air","res_poison","res_will"]]]
 const PERCENT_KEYS := ["speed","dodge","crit_chance","crit_damage"]
+const EffectLinks = preload("res://expedition/progression/effect_links.gd")
+const Keywords = preload("res://expedition/ui/screens/keyword_popup.gd")
 const Equipment = preload("res://expedition/items/equipment.gd")
 const CombatStats = preload("res://expedition/combat/combat_stats.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
@@ -120,6 +122,13 @@ static func status(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		var item_name: String = Equipment.title(item)
 		if slot == "weapon" and not item.is_empty(): item_name = Forms.weapon_label(item_name,str(item.get("type","")))
 		text(equipped,"%s   %s" % [slot_names[slot],item_name],13)
+	var links := card(list,"영혼석 연계"); links.get_parent().name = "EffectLinks"
+	var groups := EffectLinks.groups(actor)
+	if groups.is_empty(): text(links,"연계 없음",12)
+	for group in groups:
+		Keywords.chips(ui,links,[group.keyword])
+		for entry in group.lines:
+			text(links,"%s · %s — %s" % [EffectLinks.SIDE_NAMES[entry.side],entry.name,entry.text],12)
 
 ## The twelve numbers of §2, grouped; a tap opens where each one came from.
 static func sheet_cards(ui, list: VBoxContainer, actor: Dictionary) -> void:

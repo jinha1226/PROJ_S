@@ -1,6 +1,6 @@
 # 도감
 
-작성일: 2026-09-26 · 상태: **초안(검토 전)**
+작성일: 2026-09-26 · 상태: **구현 완료**
 다음: [읽히게 만들기](2026-09-26-legibility-design.md)
 전제: ①(`Forms` 형태·몸 단계), ②(`stone_effects.json`의 `text`·`keywords`·`families`), ④-a1(정규 영혼석 id `BASE/part[@elem]`, 부위 이름). 장비 탭은 [장비 설계](2026-09-26-gear-affixes-design.md)의 고정 아티팩트가 들어온 뒤 켠다.
 기존 코드: `expedition/progression/essences.gd`(`canonical`, `title`, `row`), `expedition/progression/bestiary.gd`(종족 표), `expedition/items/gear.gd`(`roll_part`), `expedition/run/session.gd`(`essence_seen`은 원정 단위), `expedition/ui/screens/start_screen.gd`, `camp_screen.gd`, `character_folio.gd`, `popups.gd`, `expedition/art/mobile_art.gd`, `assets/monsters-v1/png/<종족>_south.png`
@@ -51,7 +51,7 @@
 | 함수 | 뜻 |
 | --- | --- |
 | `static var path := "user://codex.json"` | 테스트가 임시 경로로 바꾼다 |
-| `load() -> Dictionary`, `save(data)` | 읽기·쓰기 |
+| `read() -> Dictionary`, `write(data) -> bool` | 읽기·쓰기 |
 | `note_seen(s, enemy)`, `note_kill(s, enemy)`, `note_stone(s, id)`, `note_absorb(s, id)`, `note_unrand(s, id)`, `note_run_end(s)` | 기록. `s.records_codex`가 거짓이면 아무것도 안 함 |
 | `flush(s)` | 바뀐 것이 있으면 파일에 쓴다 |
 | `monster_entry(data, species) -> Dictionary`, `stone_entry(data, id) -> Dictionary` | 화면이 읽는 모양(알려짐 여부, 문구, 힌트) |
@@ -128,3 +128,5 @@
 1. 수집 보상을 두지 않는 것.
 2. 진입점 네 곳(시작, 야영, 전술 메뉴, 적 정보 창).
 3. 영혼석 탭에서 못 본 종족의 부위를 "???"로 숨길지, 부위 이름까지는 보여줄지.
+
+구현 계약은 [수정한 구현 계획](../plans/2026-09-26-codex.md)의 첫 절을 따른다. 데이터 표기는 현재 아티팩트 배열과 보스 NPC 구조를 기준으로 갱신했다.

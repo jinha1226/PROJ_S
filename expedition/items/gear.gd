@@ -53,6 +53,7 @@ static func unequip_gear(s, index: int, slot: String) -> bool:
 static func grant_gear(s, item: Dictionary) -> void:
 	if item.is_empty(): return
 	s.gear_bag.append(item.duplicate(true))
+	if not str(item.get("unrand","")).is_empty(): s.Codex.note_unrand(s,str(item.unrand))
 	s.message(Equipment.title(item)+" 획득")
 
 static func equip_part(s, index: int, slot: int, id: String) -> bool:
@@ -93,6 +94,8 @@ static func grant_part(s, id: String) -> void:
 	if id.is_empty(): return
 	s.parts_bag = Essences.normalize_keys(s.parts_bag,true)
 	s.parts_bag[id] = int(s.parts_bag.get(id,0))+1
+	s.codex_test_stones.erase(id)
+	s.Codex.note_stone(s,id)
 	s.message(Essences.title(id)+" 획득")
 
 ## Level XP to every hunter; the essence only to a hunt the party joined. The
@@ -115,6 +118,8 @@ static func roll_part(s, enemy: Dictionary, reward_actors: Variant = null) -> vo
 	enemy.part_kind = Forms.pick_part(str(enemy.get("last_form","")),Hexaco.sample(s.seed_value,s.depth*10000+enemy.id,"essence_part",100),int(enemy.get("part_own_bonus",0)))
 	if not Essences.part_of(id).is_empty(): id = Essences.canonical(Essences.base_of(id)+"/"+str(enemy.part_kind)+("@"+Essences.variant_element(id) if not Essences.variant_element(id).is_empty() else ""))
 	s.parts_bag[id] = int(s.parts_bag.get(id,0))+1
+	s.codex_test_stones.erase(id)
+	s.Codex.note_stone(s,id)
 	s.battle_stats.drops[id] = int(s.battle_stats.drops.get(id,0))+1
 	s.message(Essences.title(id)+" 획득")
 
@@ -126,6 +131,7 @@ static func grant_test_loadout(s) -> bool:
 	for id in Essences.catalog():
 		if int(s.parts_bag.get(id,0)) > 0: continue
 		s.parts_bag[id] = 1; added += 1
+		s.codex_test_stones[id] = true
 	s.message("시험 로드아웃 · 이미 전부 보유" if added == 0 else "시험 로드아웃 · 영혼석 %d종" % added)
 	return true
 

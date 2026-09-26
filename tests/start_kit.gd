@@ -16,6 +16,7 @@ func check(ok: bool, reason: String) -> void:
 	if not ok: failures += 1; push_error(reason)
 
 func run() -> void:
+	preload("res://expedition/progression/codex.gd").path = "user://test_codex_start_kit.json"
 	var kits: Array = Stats.kits()
 	check(kits.size() == 10,"ten kits")
 	check(kits.map(func(k): return str(k.id)) == ["sword","spear","mace","axe","bow","fire","ice","air","hex","summon"],"ten kits in their old order")
@@ -64,6 +65,8 @@ func run() -> void:
 	await summoned_hound()
 	await start_screen()
 	print("Start kit: %d checks, %d failures" % [checks,failures])
+	for suffix in ["",".tmp"]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(preload("res://expedition/progression/codex.gd").path+suffix))
 	quit(1 if failures else 0)
 
 ## Each magic kit's first spell, cast at a foe two cells east in an open arena.

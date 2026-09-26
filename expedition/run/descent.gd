@@ -51,6 +51,7 @@ static func descend(s) -> bool:
 	if s.party.any(func(actor): return s.Downed.is_downed(actor)): return false
 	var stairs: Vector2i = s.floor_state.layout.get("stairs",Vector2i(-1,-1))
 	if stairs.x < 0 or not s.alive().any(func(a): return s.distance(a.pos,stairs) <= 1): return false
+	s.Codex.flush(s)
 	s.depth += 1; s.score += 20
 	s.effect_delays.clear(); s.finish_yielded.clear()
 	for actor in s.party: actor.reservation = {}; actor.hit_and_run = false

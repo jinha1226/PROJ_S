@@ -32,6 +32,12 @@ static func build_start_screen(ui) -> void:
 	var actions := HBoxContainer.new(); box.add_child(actions)
 	var start = ui.button(actions,"새 탐험",func(): new_run(ui)); start.name = "NewRun"; start.custom_minimum_size.y = 56
 	var arena = ui.button(actions,"전투 시험",ui.show_arena_setup); arena.name = "ArenaButton"; arena.custom_minimum_size.y = 56
+	var book := Session.Codex.read()
+	var counts := Session.Codex.completion(book)
+	var total: int = counts.monsters[1]+counts.stones[1]+counts.unrands[1]
+	var collected: int = counts.monsters[0]+counts.stones[0]+counts.unrands[0]
+	var codex = ui.button(actions,"도감 %d%%" % (collected*100/maxi(1,total)),func(): ui.show_codex())
+	codex.name = "CodexButton"; codex.custom_minimum_size.y = 56
 
 ## Ten kits, one per mastery axis: five weapons on the first row, five staves
 ## on the second. One is chosen at a time, and the chosen one wears the same
@@ -73,8 +79,11 @@ static func kit_detail(kit: Dictionary) -> String:
 static func choose_kit(ui, id: String) -> void:
 	ui.kit_choice = id; ui.refresh()
 
-static func new_run(ui) -> void:
+static func new_run(ui, record_codex: bool = true) -> void:
 	ui.session = Session.new_run(randi(),ui.kit_choice)
+	if record_codex:
+		ui.session.codex = Session.Codex.read(); ui.session.records_codex = true
+		ui.session.floor_state.observe(ui.session)
 	ui.stop_text = ""; ui.battle_reported = false
 	ui.mode_arena_setup = false; ui.mode_arena_active = false; ui.mode = ""; ui.pending_item = ""; ui.pending_attack = {}; ui.show_attack_range = false; ui.action_effects = []; ui.reset_effects = true
 	AutoBattleHud.check_stop(ui); ui.refresh()

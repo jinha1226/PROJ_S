@@ -80,7 +80,9 @@ static func heal(s, actor: Dictionary, amount: int, healer: Dictionary = {}, lif
 	actor.hp = mini(int(actor.max_hp),before+amount)
 	var gained: int = int(actor.hp)-before
 	if gained > 0 or (lifesteal and amount > 0):
-		if gained > 0: s.Body.heal(actor)
+		if gained > 0:
+			s.Body.heal(actor)
+			if not s.effect_source.is_empty(): s.EffectReport.note(s,int(s.effect_source.owner),str(s.effect_source.effect),"heal",gained)
 		proc(s,actor.pos,"+%d" % gained,"heal")
 		if not healer.is_empty(): fire(s,"HEALED",{"healer":healer,"target":actor,"amount":gained,"overheal":maxi(0,amount-gained),"lifesteal":lifesteal})
 	return gained

@@ -36,7 +36,9 @@ static func build_camp_screen(ui) -> void:
 		if session.manual_mode:
 			ui.button(actions,"장비",func(): show_gear(ui,i))
 	var spacer := Control.new(); spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL; box.add_child(spacer)
-	ui.button(box,"가방",func(): Popups.show_supplies(ui))
+	var menu := HBoxContainer.new(); box.add_child(menu)
+	ui.button(menu,"가방",func(): Popups.show_supplies(ui))
+	ui.button(menu,"도감",func(): ui.show_codex()).name = "CampCodex"
 	var end = ui.button(box,"야영 끝",func(): ui.run_action(session.end_camp)); end.name = "CampEnd"
 
 static func show_gear(ui, index: int) -> void:

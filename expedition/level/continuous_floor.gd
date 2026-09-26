@@ -171,6 +171,10 @@ func observe(s) -> void:
 		if was == "BATTLE" and s.phase == "EXPLORE":
 			for member in s.party+s.npcs+s.enemies: StoneEffects.Stacks.expire(member,"battle",int(s.time))
 
+	if s.records_codex:
+		for enemy in s.enemies+s.npcs:
+			if enemy.hp > 0 and (bool(enemy.get("enemy",false)) or bool(enemy.get("boss",false))) and visible.has(enemy.pos): s.Codex.note_seen(s,enemy)
+
 ## Static markers are cached per epoch by the minimap; a state change rewrites
 ## the row and starts a new epoch so the next observation rebuilds once.
 func clear_marker(p: Vector2i) -> void:

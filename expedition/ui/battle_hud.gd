@@ -11,7 +11,11 @@ static func report(ui) -> void:
 	ui.clear(ui.modal_content); ui.modal_content.custom_minimum_size.y = 0
 	var card := PanelContainer.new(); card.name = "BattleReport"
 	card.add_theme_stylebox_override("panel",CharacterUI.surface(Color("151c24")))
-	ui.modal_content.add_child(card)
+	var scroll := ScrollContainer.new(); scroll.name = "ReportScroll"
+	scroll.custom_minimum_size = Vector2(ui.popup_width(),minf(480,ui.get_viewport_rect().size.y-48))
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	ui.modal_content.add_child(scroll); scroll.add_child(card)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var list := VBoxContainer.new(); list.add_theme_constant_override("separation",4); card.add_child(list)
 	var stats: Dictionary = s.battle_stats
 	var downed: int = s.party.filter(func(a): return s.Downed.is_downed(a)).size()
@@ -24,6 +28,10 @@ static func report(ui) -> void:
 		text += role(actor,row)
 		text += " · 실수 %d" % int(row.get("mistakes",0))
 		var entry := line(ui,list,text,13)
+		var worked: Array = s.EffectReport.top(row.get("effects",{}),5)
+		if not worked.is_empty():
+			var summary := line(ui,list,"   ".join(worked.map(func(e): return s.EffectReport.line(e))),12)
+			summary.name = "ReportEffects_%d" % int(actor.id)
 		if bool(row.downed) or actor.hp <= 0: entry.add_theme_color_override("font_color",Color("d1685f"))
 	line(ui,list,"적 파츠: %s · 끊김 %d" % [used(ui,stats.get("enemy_parts",{})),int(stats.get("interrupts",0))],12)
 	line(ui,list,"획득: %s" % used(ui,stats.get("drops",{})),12)

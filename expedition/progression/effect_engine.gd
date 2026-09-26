@@ -70,10 +70,17 @@ static func fire(s, when: String, ctx: Dictionary) -> void:
 			if eligible.is_empty(): continue
 			var limited: bool = str(row.get("limit","action")) != "event"
 			if limited and not s.Reactions.once(s,owner,"fx:"+str(effect)+":"+when): continue
+			var previous: Dictionary = s.effect_source
+			var previous_id: Variant = ctx.get("effect_id",null)
 			ctx.effect_id = str(effect)
+			s.effect_source = {"owner":int(owner.get("id",-1)),"effect":str(effect)}
+			s.EffectReport.note(s,int(owner.get("id",-1)),str(effect),"procs",1)
 			for rule in eligible:
 				if rule.has("code"): Code.run(s,str(rule.code),owner,rule,ctx)
 				else: Actions.run(s,owner,rule.get("do",[]),ctx)
+			s.effect_source = previous
+			if previous_id == null: ctx.erase("effect_id")
+			else: ctx.effect_id = previous_id
 	s.effect_depth -= 1
 
 static func modifier(s, key: String, actor: Dictionary, ctx: Dictionary = {}) -> int:

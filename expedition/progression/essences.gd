@@ -205,6 +205,7 @@ static func absorb(s, actor: Dictionary, id: String) -> String:
 	if int(known.get(id,0)) > 0: return "이미 흡수함"
 	s.parts_bag[id] = int(s.parts_bag[id])-1
 	known[id] = 1
+	s.Codex.note_absorb(s,id)
 	var chosen: Dictionary = actor.get_or_add("essence_spells",{})
 	if not school(id).is_empty() and not chosen.has(id):
 		var choices := spell_choices(actor,id)

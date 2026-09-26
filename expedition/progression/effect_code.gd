@@ -12,7 +12,9 @@ static func run(s, code: String, owner: Dictionary, rule: Dictionary, ctx: Dicti
 		"revive_once":
 			if bool(owner.get("revived",false)) or int(ctx.get("amount",0)) < int(owner.get("hp",0)): return
 			if not s.Reactions.once(s,owner,"REVIVE"): return
+			var before: int = int(owner.hp)
 			owner.revived = true; owner.hp = maxi(1,int(owner.max_hp)*int(rule.get("args",{}).get("percent",30))/100)
+			if not s.effect_source.is_empty(): s.EffectReport.note(s,int(s.effect_source.owner),str(s.effect_source.effect),"heal",maxi(0,int(owner.hp)-before))
 			ctx.amount = 0; s.StoneEffects.proc(s,owner.pos,"부활!","heal")
 		"second_shot": s.StoneEffects.second_shot(s,owner,other)
 		"counter":
@@ -78,13 +80,13 @@ static func part_special(s, owner: Dictionary, ctx: Dictionary, id: String) -> v
 		"FROST_CLAW":
 			for foe in s.party+s.npcs+s.enemies:
 				if foe.hp > 0 and s.side_of(foe) != s.side_of(owner) and s.distance(foe.pos,target.pos) <= 1 and s.StoneEffects.chance(s,owner,foe,"frost_spread",20+s.StoneEffects.modifier(s,"kill_chance",owner)): s.Statuses.apply(s,foe,"freeze",100,owner)
-		"GHOUL_JAW": s.effect_delays.append({"at":int(s.time)+100,"source":int(owner.id),"pos":target.pos,"damage":maxi(1,int(target.max_hp)/10),"radius":1,"side":s.side_of(owner)})
+		"GHOUL_JAW": s.effect_delays.append({"at":int(s.time)+100,"source":int(owner.id),"pos":target.pos,"damage":maxi(1,int(target.max_hp)/10),"radius":1,"side":s.side_of(owner),"report_source":s.effect_source.duplicate()})
 		"VAMPIRE_HEART":
 			owner.blood_ward = mini(int(owner.max_hp)*20/100,int(owner.get("blood_ward",0))+int(ctx.get("overheal",0)))
 			owner.blood_ward_until = int(s.time)+300
 		"GRAVEKEEPER_BONE":
 			var pet: Dictionary = ctx.get("pet",{})
-			if pet.has("pos"): s.effect_delays.append({"at":int(s.time),"source":int(owner.id),"pos":pet.pos,"damage":10,"radius":1,"side":s.side_of(owner)})
+			if pet.has("pos"): s.effect_delays.append({"at":int(s.time),"source":int(owner.id),"pos":pet.pos,"damage":10,"radius":1,"side":s.side_of(owner),"report_source":s.effect_source.duplicate()})
 
 static func wound_roll(s, owner: Dictionary, target: Dictionary, form: String) -> void:
 	if target.is_empty() or int(target.get("hp",0)) <= 0: return
@@ -96,8 +98,12 @@ static func delayed(s) -> void:
 	var due: Array = s.effect_delays.filter(func(e): return int(e.at) <= int(s.time))
 	s.effect_delays = s.effect_delays.filter(func(e): return int(e.at) > int(s.time))
 	for event in due:
+		var previous: Dictionary = s.effect_source
+		s.effect_source = event.get("report_source",{})
 		for target in (s.party+s.npcs+s.enemies).duplicate():
 			if target.hp > 0 and s.side_of(target) != event.side and s.distance(event.pos,target.pos) <= int(event.radius): s.CombatRules.damage(s,s.actor_by_id(int(event.source)),target,int(event.damage),"physical",0,s.Reactions.EXTRA_FORM)
+
+		s.effect_source = previous
 
 static func gear_special(s, owner: Dictionary, ctx: Dictionary, id: String) -> void:
 	match id:
