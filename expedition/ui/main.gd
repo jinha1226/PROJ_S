@@ -29,6 +29,7 @@ var inventory_selected := ""
 var inventory_slots: Array = []
 var item_popup: PopupPanel
 var item_detail: VBoxContainer
+var item_scroll: ScrollContainer
 const FONT = preload("res://assets/fonts/NanumSquareR.ttf")
 const SKILLS = [["PUSH","GUARD"],["ATTACK","GUARD"],["WATER","ELECTRIC"]]
 const SKILL_NAMES = [["밀쳐내기","엄호"],["강타","엄호"],["물","방전"]]
@@ -120,7 +121,11 @@ func _ready() -> void:
 	# Popup content is rebuilt by every show_* on open; clearing on hide raced with a same-frame rebuild.
 	item_popup = PopupPanel.new(); details_popup.add_child(item_popup)
 	item_popup.transient = true; item_popup.exclusive = true
-	item_detail = VBoxContainer.new(); item_detail.custom_minimum_size = Vector2(300,200); item_popup.add_child(item_detail)
+	item_scroll = ScrollContainer.new(); item_scroll.name = "ItemDetailScroll"
+	item_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	item_popup.add_child(item_scroll)
+	item_detail = VBoxContainer.new(); item_detail.custom_minimum_size = Vector2(0,200)
+	item_detail.size_flags_horizontal = SIZE_EXPAND_FILL; item_scroll.add_child(item_detail)
 	offer_popup = PopupPanel.new(); offer_popup.name = "OfferPopup"; add_child(offer_popup)
 	offer_content = VBoxContainer.new(); offer_content.custom_minimum_size = Vector2(popup_width(),160); offer_popup.add_child(offer_content)
 	log_popup = PopupPanel.new(); add_child(log_popup)
@@ -280,6 +285,25 @@ func toggle_explore() -> void:
 const POPUP_MAX_WIDTH := 288.0
 func popup_width() -> float:
 	return minf(POPUP_MAX_WIDTH,get_viewport_rect().size.x-32)
+
+## Long stone spell lists scroll inside a window bounded by the game viewport.
+func popup_item_detail() -> void:
+	for child in item_detail.get_children():
+		if child is Button: child.clip_text = true
+	var screen := get_viewport_rect().size
+	var height := minf(maxf(200,item_detail.get_combined_minimum_size().y),screen.y-48)
+	item_scroll.custom_minimum_size = Vector2(popup_width(),height)
+	item_scroll.scroll_vertical = 0
+	item_popup.popup_centered(Vector2i(roundi(popup_width()+16),roundi(height+16)))
+	call_deferred("fit_item_detail")
+
+func fit_item_detail() -> void:
+	if not item_popup.visible: return
+	var screen := get_viewport_rect().size
+	var height := minf(maxf(200,item_detail.get_combined_minimum_size().y),screen.y-48)
+	item_scroll.custom_minimum_size = Vector2(popup_width(),height)
+	item_popup.size = Vector2i(roundi(popup_width()+16),roundi(height+16))
+	item_popup.position = Vector2i((screen-Vector2(item_popup.size))/2)
 
 func clear(node: Node) -> void:
 	if node == modal_content:

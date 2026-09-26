@@ -4,7 +4,7 @@ const CombatStats = preload("res://expedition/combat/combat_stats.gd")
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 ## How many spells a caster may hold ready at once, chosen at camp.
-const PREPARED_SLOTS := Essences.READY_SPELLS
+const PREPARED_SLOTS := Essences.QUICK_SPELLS
 
 static func can_camp(s) -> String:
 	if s.phase != "EXPLORE": return "지금은 불가"

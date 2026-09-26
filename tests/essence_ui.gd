@@ -75,7 +75,7 @@ func run() -> void:
 	check(button(scene,"BagAbsorb0").disabled,"a seventh stone is disabled at maximum capacity")
 	EssenceTab.pick_spell(scene,0,"FIRE_CALLER"); await frames(3)
 	var options: Array = scene.item_detail.find_children("EssenceSpell_*","Button",true,false)
-	check(options.size() == Essences.spell_choices(hero,"FIRE_CALLER").size(),"spells keep their character-level progression")
+	check(options.size() == Essences.spell_catalog("FIRE_CALLER").size(),"spells keep their character-level progression")
 	if not options.is_empty():
 		var chosen: String = str(options[-1].name).trim_prefix("EssenceSpell_")
 		options[-1].pressed.emit(); await frames(3)

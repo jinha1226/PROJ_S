@@ -180,7 +180,7 @@ static func changes(session, actor: Dictionary, slot: int, id: String) -> Packed
 
 static func detail(ui, title: String, message: String) -> void:
 	ui.clear(ui.item_detail); text(ui.item_detail,title,20); text(ui.item_detail,message)
-	ui.button(ui.item_detail,"닫기",func(): ui.item_popup.hide()); ui.item_popup.popup_centered()
+	ui.button(ui.item_detail,"닫기",func(): ui.item_popup.hide()); ui.popup_item_detail()
 
 static func personality(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	var box := card(list,actor.profile.style_summary().label)

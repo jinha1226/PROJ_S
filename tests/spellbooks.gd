@@ -56,7 +56,7 @@ func data() -> void:
 		for level in [1,5,10]:
 			var reach: Array = Essences.spell_choices({"level":level,"essences":{caster:1}},caster)
 			check(not reach.is_empty() and reach.all(func(id): return str(rows[id].school) == school),"%s at level %d reaches only its school" % [school,level])
-			check(reach.size() == Essences.spell_cap({"level":level}),"%s at level %d reaches up to its level" % [school,level])
+			check(reach == Essences.spell_catalog(caster).filter(func(id): return int(rows[id].level) <= level),"%s at level %d reaches its linked spells" % [school,level])
 	# The relics stay in the data and out of every book: nothing drops them.
 	for id in ["blast","blink","mend","passwall","ward","turret","ignite"]:
 		check(Stats.content.spells.has(id),"the relic %s is still in the table" % id)
@@ -89,19 +89,19 @@ func learning() -> void:
 	s.phase = "CAMP"
 	hero.level = 3
 	check("fire_1" in Essences.spell_choices(hero,"FIRE_CALLER"),"the kit spell is in reach")
-	check("fire_2" in Essences.spell_choices(hero,"FIRE_CALLER"),"so is the second")
-	check("fire_3" in Essences.spell_choices(hero,"FIRE_CALLER"),"and the third")
+	check("fire_2" not in Essences.spell_choices(hero,"FIRE_CALLER"),"heart does not grant the bone's charge")
+	check("fire_3" not in Essences.spell_choices(hero,"FIRE_CALLER"),"heart does not grant the hand's explosion")
 	check("fire_4" not in Essences.spell_choices(hero,"FIRE_CALLER"),"but not the fourth")
 	check(not s.choose_essence_spell(0,"FIRE_CALLER","fire_4"),"a spell out of reach is refused")
 	check(hero.essence_spells[Essences.canonical("FIRE_CALLER")] == "fire_1","and the choice stands")
-	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_3"),"a spell in reach is chosen at camp")
-	check(hero.prepared == ["fire_3"],"and is the one ready")
-	check(hero.spells == ["fire_3"],"one essence, one spell")
+	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_1"),"a spell in reach is chosen at camp")
+	check(hero.prepared == ["fire_1"],"and is the one ready")
+	check(hero.spells == ["fire_1"],"one essence, one spell")
 	s.parts_bag["FIRE_CALLER"] = 2
 	check(s.absorb_essence(0,"FIRE_CALLER") == "이미 흡수함","a second copy is refused")
 	check(int(s.parts_bag[Essences.canonical("FIRE_CALLER")]) == 2,"and stays in the bag for somebody else")
 	hero.level = 6
-	check("fire_6" in Essences.spell_choices(hero,"FIRE_CALLER"),"level six reaches the sixth")
+	check("fire_4" in Essences.spell_choices(hero,"FIRE_CALLER"),"level six unlocks the linked burn")
 	check("fire_7" not in Essences.spell_choices(hero,"FIRE_CALLER"),"not the seventh")
 	check(s.absorb_essence(0,"FIRE_CALLER") == "이미 흡수함","a third copy is refused too")
 	hero.level = 10
@@ -114,18 +114,18 @@ func learning() -> void:
 	check("ice_1" in hero.spells,"a second school begins")
 	check("ice_1" in hero.prepared,"absorption immediately readies its spell")
 	s.phase = "BATTLE"
-	check(not s.choose_essence_spell(0,"FIRE_CALLER","fire_2"),"nothing is chosen in a fight")
-	check(hero.essence_spells[Essences.canonical("FIRE_CALLER")] == "fire_3","the choice stands")
+	check(not s.choose_essence_spell(0,"FIRE_CALLER","fire_4"),"nothing is chosen in a fight")
+	check(hero.essence_spells[Essences.canonical("FIRE_CALLER")] == "fire_1","the choice stands")
 	s.phase = "CAMP"
-	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_2"),"back at camp it is chosen")
+	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_4"),"back at camp it is chosen")
 	s.gain_level_xp(hero,65)
 	check(hero.equipped_abilities[1] == Essences.canonical("FROST_IMP"),"absorption already filled the second slot")
-	check(hero.prepared == ["fire_2","ice_1"],"two spells ready, in slot order")
+	check(hero.prepared == ["fire_4","ice_1"],"two spells ready, in slot order")
 	check(not s.unequip_part(0,1),"permanent stone cannot be removed")
-	check(hero.prepared == ["fire_2","ice_1"],"both spells remain ready")
+	check(hero.prepared == ["fire_4","ice_1"],"both spells remain ready")
 	check(hero.spells.has("ice_1"),"but it is still known")
 	check(s.PREPARED_SLOTS == 5,"five stand ready at most")
-	check(Essences.READY_SPELLS == 5,"the essences agree")
+	check(Essences.READY_SPELLS == 6,"every permanent stone can supply a ready spell")
 
 func drops() -> void:
 	var boss = Session.new_run(5,"fire")

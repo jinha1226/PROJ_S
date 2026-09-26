@@ -230,7 +230,7 @@ static func open_rule(ui, index: int) -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; ui.item_detail.add_child(scroll)
 	var list := VBoxContainer.new(); list.size_flags_horizontal = Control.SIZE_EXPAND_FILL; scroll.add_child(list)
 	build_skill_rules(ui,list)
-	ui.item_popup.popup_centered()
+	ui.popup_item_detail()
 
 static func build_skill_rules(ui, list: VBoxContainer) -> void:
 	var session = ui.session
@@ -490,6 +490,7 @@ static func show_item_detail(ui, id: String) -> void:
 		Keywords.chips(ui,ui.item_detail,Equipment.effect_text.get(EssenceTab.StoneEffects.effect_of(id),{}).get("keywords",[]))
 		var active: String = str(Essences.row(id).get("active",""))
 		if Session.Abilities.has(active): EssenceTab.label(ui.item_detail,str(Session.Abilities.definition(active).description),13)
+		EssenceTab.spell_preview(ui.item_detail,id)
 	if row.category == "소모품":
 		var usable: bool = session.phase in ["EXPLORE","BATTLE","CAMP"]
 		if row["class"] == "potion":
@@ -520,7 +521,7 @@ static func show_item_detail(ui, id: String) -> void:
 			var caption: String = "%s · 이미 흡수함" % member.name if known else ("%s · 가득 참" % member.name if full else "%s 흡수" % member.name)
 			var absorb = ui.button(ui.item_detail,caption,func(): absorb_from_bag(ui,i,id),Essences.can_manage(session) and member.hp > 0 and Essences.has(id) and not known and not full)
 			absorb.name = "BagAbsorb%d" % i
-	ui.button(ui.item_detail,"닫기",func(): ui.item_popup.hide()); ui.item_popup.popup_centered(); ui.item_popup.grab_focus()
+	ui.button(ui.item_detail,"닫기",func(): ui.item_popup.hide()); ui.popup_item_detail(); ui.item_popup.grab_focus()
 
 static func popup_list(ui) -> VBoxContainer:
 	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(ui.popup_width(),minf(330,ui.size.y-300)); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; ui.modal_content.add_child(scroll)

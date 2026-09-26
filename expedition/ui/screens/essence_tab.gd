@@ -47,13 +47,24 @@ static func effect_line(id: String) -> String:
 	var row: Dictionary = StoneEffects.EFFECTS[effect]
 	return "%s · %s" % [str(row.name),str(row.text)]
 
-## The passive and the active, as the parts catalogue words them; a caster
-## essence's active is its school's spell.
+## Exact linked spell names also appear in monster inspection.
 static func active_line(id: String) -> String:
-	var school: String = str(Essences.school(id))
-	if not school.is_empty(): return "주문 영혼석 · %s 계열 주문 하나를 액티브로 쓴다" % str(SCHOOL_NAMES.get(school,school))
+	var spells := Essences.spell_catalog(id)
+	if not spells.is_empty(): return "주문 · "+" · ".join(spells.map(func(spell): return str(Essences.combat.spells[spell].name)))
 	var def: Dictionary = Abilities.DEFINITIONS.get(Essences.base_of(id),{})
 	return str(def.get("description",""))
+
+## Preview every linked spell before a permanent choice, including later unlocks.
+static func spell_preview(parent: Node, id: String, actor: Dictionary = {}) -> void:
+	var spells := Essences.spell_catalog(id)
+	if spells.is_empty(): return
+	label(parent,"주문",15)
+	var chosen := str(actor.get("essence_spells",{}).get(Essences.canonical(id),""))
+	for spell_id in spells:
+		var spell: Dictionary = Essences.combat.spells[spell_id]
+		var line := label(parent,"%s%s · Lv%d · MP %d\n%s" % ["✓ " if spell_id == chosen else "",str(spell.name),int(spell.level),int(spell.mp),str(spell.get("note",""))],13)
+		line.name = "EssenceSpellPreview_"+str(spell_id)
+		if not actor.is_empty() and int(spell.level) > Essences.spell_cap(actor): line.modulate = Color("9b9487")
 
 static func surface(border: Color) -> StyleBoxFlat:
 	var skin := StyleBoxFlat.new(); skin.bg_color = Color("1b1916"); skin.border_color = border
@@ -159,18 +170,13 @@ static func slot_detail(ui, slot: int, id: String) -> void:
 	Keywords.chips(ui,ui.item_detail,StoneEffects.EFFECTS.get(StoneEffects.effect_of(id),{}).get("keywords",[]))
 	var extra: String = str(Essences.row(id).get("active",""))
 	if Abilities.has(extra): label(ui.item_detail,str(Abilities.definition(extra).description),13)
-	if not str(Essences.school(id)).is_empty():
-		var chosen: String = str(actor.get("essence_spells",{}).get(Essences.canonical(id),""))
-		var spell: Dictionary = Essences.combat.spells.get(chosen,{})
-		if not spell.is_empty():
-			label(ui.item_detail,"%s · MP %d" % [str(spell.name),int(spell.mp)],13)
-			label(ui.item_detail,str(spell.get("note","")),13)
-	elif Abilities.usable_by(actor,id):
-		label(ui.item_detail,active_line(id),13).custom_minimum_size.x = minf(ui.popup_width(),ui.size.x-40)
-	if not str(Essences.school(id)).is_empty():
-		var pick: Button = ui.button(ui.item_detail,"주문 선택",func(): pick_spell(ui,index,id),Essences.can_manage(ui.session))
+	if not Essences.spell_catalog(id).is_empty(): spell_preview(ui.item_detail,id,actor)
+	if Abilities.usable_by(actor,id):
+		label(ui.item_detail,str(Abilities.definition(id).get("description","")),13).custom_minimum_size.x = minf(ui.popup_width(),ui.size.x-40)
+	if not Essences.spell_catalog(id).is_empty():
+		var pick: Button = ui.button(ui.item_detail,"주문 선택",func(): pick_spell(ui,index,id),Essences.can_manage(ui.session) and not Essences.spell_choices(actor,id).is_empty())
 		pick.name = "EssenceSpellPick_"+node_key(id)
-	ui.button(ui.item_detail,"닫기",func(): ui.item_popup.hide()); ui.item_popup.popup_centered()
+	ui.button(ui.item_detail,"닫기",func(): ui.item_popup.hide()); ui.popup_item_detail()
 
 ## The spells this caster essence opens up to the member's level; the chosen one is ticked.
 static func pick_spell(ui, index: int, id: String) -> void:
@@ -179,14 +185,15 @@ static func pick_spell(ui, index: int, id: String) -> void:
 	ui.clear(ui.item_detail); label(ui.item_detail,"%s · 주문 선택" % Essences.title(id),18)
 	var chosen: String = str(actor.get("essence_spells",{}).get(id,""))
 	var catalogue: Dictionary = ui.session.CombatStats.content.spells
-	for entry in Essences.spell_choices(actor,id):
+	for entry in Essences.spell_catalog(id):
 		var spell_id: String = str(entry)
 		var row: Dictionary = catalogue.get(spell_id,{})
 		var caption: String = "%s%s · Lv%d · %dMP" % ["✓ " if spell_id == chosen else "",str(row.get("name",spell_id)),int(row.get("level",1)),int(row.get("mp",0))]
 		var pick: Button = ui.button(ui.item_detail,caption,func():
 			if ui.session.choose_essence_spell(index,id,spell_id):
-				ui.item_popup.hide(); ui.show_character(index,"영혼석"),Essences.can_manage(ui.session))
+				ui.item_popup.hide(); ui.show_character(index,"영혼석"),Essences.can_manage(ui.session) and spell_id in Essences.spell_choices(actor,id))
 		pick.name = "EssenceSpell_"+spell_id
 		pick.icon = Art.spell_icon(spell_id); pick.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		pick.add_theme_constant_override("icon_max_width",28)
-	ui.button(ui.item_detail,"취소",func(): ui.item_popup.hide()); ui.item_popup.popup_centered()
+		label(ui.item_detail,str(row.get("note","")),13)
+	ui.button(ui.item_detail,"취소",func(): ui.item_popup.hide()); ui.popup_item_detail()

@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "rows": {
     "RAT_GNAW": {
       "role": "SUPPORT",
@@ -166,15 +166,33 @@
       "parts": {
         "cut": {
           "name": "코볼트 화염술사 손",
-          "effect": "FIRECALLER_HAND"
+          "effect": "FIRECALLER_HAND",
+          "spells": [
+            "fire_1",
+            "fire_3",
+            "fire_8"
+          ]
         },
         "broken": {
           "name": "코볼트 화염술사 뼈",
-          "effect": "FIRECALLER_BONE"
+          "effect": "FIRECALLER_BONE",
+          "spells": [
+            "fire_1",
+            "fire_2",
+            "fire_5",
+            "fire_6"
+          ]
         },
         "pierced": {
           "name": "코볼트 화염술사 심장",
-          "effect": "FIRE_CALLER"
+          "effect": "FIRE_CALLER",
+          "spells": [
+            "fire_1",
+            "fire_4",
+            "fire_7",
+            "fire_9",
+            "fire_10"
+          ]
         }
       }
     },
@@ -188,15 +206,33 @@
       "parts": {
         "cut": {
           "name": "서리 도깨비 발톱",
-          "effect": "FROST_CLAW"
+          "effect": "FROST_CLAW",
+          "spells": [
+            "ice_1",
+            "ice_4",
+            "ice_7",
+            "ice_9"
+          ]
         },
         "broken": {
           "name": "서리 도깨비 뿔",
-          "effect": "FROST_HORN"
+          "effect": "FROST_HORN",
+          "spells": [
+            "ice_1",
+            "ice_2",
+            "ice_6",
+            "ice_10"
+          ]
         },
         "pierced": {
           "name": "서리 도깨비 심장",
-          "effect": "FROST_IMP"
+          "effect": "FROST_IMP",
+          "spells": [
+            "ice_1",
+            "ice_3",
+            "ice_5",
+            "ice_8"
+          ]
         }
       }
     },
@@ -210,15 +246,33 @@
       "parts": {
         "cut": {
           "name": "폭풍 박쥐 날개",
-          "effect": "STORM_BAT"
+          "effect": "STORM_BAT",
+          "spells": [
+            "air_1",
+            "air_3",
+            "air_6",
+            "air_8"
+          ]
         },
         "broken": {
           "name": "폭풍 박쥐 뼈",
-          "effect": "BAT_BONE"
+          "effect": "BAT_BONE",
+          "spells": [
+            "air_1",
+            "air_2",
+            "air_5",
+            "air_10"
+          ]
         },
         "pierced": {
           "name": "폭풍 박쥐 귀",
-          "effect": "BAT_EAR"
+          "effect": "BAT_EAR",
+          "spells": [
+            "air_1",
+            "air_4",
+            "air_7",
+            "air_9"
+          ]
         }
       }
     },
@@ -232,15 +286,33 @@
       "parts": {
         "cut": {
           "name": "고블린 주술사 손",
-          "effect": "HEXER_HAND"
+          "effect": "HEXER_HAND",
+          "spells": [
+            "hex_1",
+            "hex_3",
+            "hex_4",
+            "hex_8"
+          ]
         },
         "broken": {
           "name": "고블린 주술사 두개골",
-          "effect": "HEXER_SKULL"
+          "effect": "HEXER_SKULL",
+          "spells": [
+            "hex_1",
+            "hex_2",
+            "hex_5",
+            "hex_10"
+          ]
         },
         "pierced": {
           "name": "고블린 주술사 눈",
-          "effect": "GOBLIN_HEXER"
+          "effect": "GOBLIN_HEXER",
+          "spells": [
+            "hex_1",
+            "hex_6",
+            "hex_7",
+            "hex_9"
+          ]
         }
       }
     },
@@ -254,15 +326,33 @@
       "parts": {
         "cut": {
           "name": "놀 소환사 가죽",
-          "effect": "SUMMONER_HIDE"
+          "effect": "SUMMONER_HIDE",
+          "spells": [
+            "summon_1",
+            "summon_2",
+            "summon_4",
+            "summon_8"
+          ]
         },
         "broken": {
           "name": "놀 소환사 뼈",
-          "effect": "SUMMONER_BONE"
+          "effect": "SUMMONER_BONE",
+          "spells": [
+            "summon_1",
+            "summon_3",
+            "summon_5",
+            "summon_6"
+          ]
         },
         "pierced": {
           "name": "놀 소환사 심장",
-          "effect": "GNOLL_SUMMONER"
+          "effect": "GNOLL_SUMMONER",
+          "spells": [
+            "summon_1",
+            "summon_7",
+            "summon_9",
+            "summon_10"
+          ]
         }
       }
     },
@@ -372,7 +462,11 @@
         },
         "pierced": {
           "name": "동굴 거미 실샘",
-          "effect": "SPIDER_WEB"
+          "effect": "SPIDER_WEB",
+          "spells": [
+            "hex_3",
+            "hex_8"
+          ]
         }
       }
     },
@@ -482,7 +576,12 @@
         },
         "pierced": {
           "name": "신전 뱀 독니",
-          "effect": "SERPENT_FANG"
+          "effect": "SERPENT_FANG",
+          "spells": [
+            "hex_2",
+            "hex_5",
+            "hex_6"
+          ]
         }
       }
     },
@@ -496,17 +595,32 @@
       "parts": {
         "cut": {
           "name": "물의 정령 물살",
-          "effect": "SPIRIT_CURRENT"
+          "effect": "SPIRIT_CURRENT",
+          "spells": [
+            "ice_1",
+            "ice_6",
+            "ice_9"
+          ]
         },
         "broken": {
           "name": "물의 정령 물방울",
           "effect": "SPIRIT_DROP",
-          "active": "SOUL_MEND"
+          "active": "SOUL_MEND",
+          "spells": [
+            "ice_3",
+            "ice_6",
+            "ice_8"
+          ]
         },
         "pierced": {
           "name": "물의 정령 핵",
           "effect": "WATER_WAVE",
-          "active": "SOUL_MEND"
+          "active": "SOUL_MEND",
+          "spells": [
+            "ice_1",
+            "ice_4",
+            "ice_7"
+          ]
         }
       }
     },
@@ -529,7 +643,11 @@
         "pierced": {
           "name": "해골 병사 두개골",
           "effect": "SKELETON_SKULL",
-          "active": "BONE_CALL"
+          "active": "BONE_CALL",
+          "spells": [
+            "hex_2",
+            "hex_6"
+          ]
         }
       }
     },
@@ -570,7 +688,11 @@
         "broken": {
           "name": "구울 턱",
           "effect": "GHOUL_JAW",
-          "active": "BONE_CALL"
+          "active": "BONE_CALL",
+          "spells": [
+            "hex_2",
+            "hex_6"
+          ]
         },
         "pierced": {
           "name": "구울 심장",
@@ -618,7 +740,12 @@
         },
         "pierced": {
           "name": "망령 기사 핵",
-          "effect": "WRAITH_KNIGHT_CORE"
+          "effect": "WRAITH_KNIGHT_CORE",
+          "spells": [
+            "hex_2",
+            "hex_5",
+            "hex_9"
+          ]
         }
       }
     },
@@ -632,15 +759,32 @@
       "parts": {
         "cut": {
           "name": "원혼 수의",
-          "effect": "WRAITH_SHROUD"
+          "effect": "WRAITH_SHROUD",
+          "spells": [
+            "hex_1",
+            "hex_5",
+            "hex_9"
+          ]
         },
         "broken": {
           "name": "원혼 뼈",
-          "effect": "WRAITH_BONE"
+          "effect": "WRAITH_BONE",
+          "spells": [
+            "hex_1",
+            "hex_2",
+            "hex_4",
+            "hex_8"
+          ]
         },
         "pierced": {
           "name": "원혼 핵",
-          "effect": "WRAITH"
+          "effect": "WRAITH",
+          "spells": [
+            "hex_1",
+            "hex_6",
+            "hex_7",
+            "hex_10"
+          ]
         }
       }
     },
@@ -654,16 +798,32 @@
       "parts": {
         "cut": {
           "name": "묘지기 손",
-          "effect": "GRAVEKEEPER_HAND"
+          "effect": "GRAVEKEEPER_HAND",
+          "spells": [
+            "hex_1",
+            "hex_2",
+            "hex_9"
+          ],
+          "active": "BONE_CALL"
         },
         "broken": {
           "name": "묘지기 뼈",
-          "effect": "GRAVEKEEPER_BONE"
+          "effect": "GRAVEKEEPER_BONE",
+          "spells": [
+            "summon_2",
+            "summon_4",
+            "summon_8"
+          ],
+          "active": "BONE_CALL"
         },
         "pierced": {
           "name": "묘지기 등불",
           "effect": "GRAVEKEEPER",
-          "active": "BONE_CALL"
+          "active": "BONE_CALL",
+          "spells": [
+            "summon_2",
+            "summon_10"
+          ]
         }
       }
     },
@@ -681,7 +841,12 @@
       "element": "fire",
       "school": "",
       "species": "furnace_golem",
-      "family": "elemental"
+      "family": "elemental",
+      "spells": [
+        "fire_3",
+        "fire_6",
+        "fire_9"
+      ]
     },
     "SOUL_EATER": {
       "name": "포식자의 핵",
@@ -689,7 +854,12 @@
       "element": "will",
       "school": "",
       "species": "soul_eater",
-      "family": "undead"
+      "family": "undead",
+      "spells": [
+        "hex_6",
+        "hex_8",
+        "hex_9"
+      ]
     }
   }
 }

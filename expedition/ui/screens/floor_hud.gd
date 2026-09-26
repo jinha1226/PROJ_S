@@ -109,6 +109,7 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 			var spell = ui.button(spells,caption,func(): choose_spell(ui,id),not id.is_empty())
 			if not id.is_empty(): spell.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR; spell.icon = Art.spell_icon(id); spell.add_theme_constant_override("icon_max_width",22)
 			spell.name = "Spell%d" % slot; spell.custom_minimum_size.y = 44
+			spell.clip_text = true
 	var nav := GridContainer.new(); nav.name = "BottomActions"; nav.columns = 4; ui.root_layout.add_child(nav)
 	var attack = ui.action_button(nav,"공격",Art.ui_icon(0),func():
 		if session.manual_mode:
@@ -141,6 +142,8 @@ static func build_manual_controls(ui) -> void:
 			if not id.is_empty(): spell.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR; spell.icon = Art.spell_icon(id); spell.add_theme_constant_override("icon_max_width",22)
 			spell.name = "Spell%d" % slot; spell.custom_minimum_size.y = 44
 			spell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			spell.clip_text = true
+			if not id.is_empty(): spell.tooltip_text = "%s · MP %d" % [caption,int(Session.CombatStats.content.spells[id].mp)]
 	var portraits := HBoxContainer.new(); portraits.name = "PortraitRow"
 	portraits.add_theme_constant_override("separation",4); ui.root_layout.add_child(portraits)
 	for i in range(session.party.size()):
@@ -357,7 +360,8 @@ static func choose_part(ui, id: String) -> void:
 
 static func choose_spell(ui, id: String) -> void:
 	if id.is_empty(): return
-	if id in ["blink","mend"]:
+	var definition: Dictionary = Session.Spells.definition(id)
+	if id in ["blink","mend"] or str(definition.get("shape","")) in ["self","summon"]:
 		ui.run_action(func(): return ui.session.cast(id,ui.session.party[0].pos)); return
 	ui.mode = "CAST:"+id; ui.notice = "대상 선택"; ui.refresh()
 

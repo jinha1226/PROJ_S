@@ -58,7 +58,7 @@ static func choose(s, npc: Dictionary) -> void:
 			if score > best_score or (score == best_score and id < best): best = id; best_score = score
 		pool.erase(best)
 		Essences.bind(npc,best)
-		if not str(Essences.school(best)).is_empty():
+		if not Essences.spell_catalog(best).is_empty():
 			var choices: Array = Essences.spell_choices(npc,best)
 			var core: Array = choices.filter(func(spell): return str(Essences.combat.spells[spell].shape) in ["bolt","line","cone","burst","mark","summon"] and not bool(Essences.combat.spells[spell].get("sacrifice",false)))
 			if not core.is_empty(): npc.get_or_add("essence_spells",{})[best] = str(core.back())

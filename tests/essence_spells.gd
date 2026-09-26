@@ -38,25 +38,26 @@ func tiers() -> void:
 	check(Essences.spell_choices(hero,"FIRE_CALLER") == ["fire_1"],"a first-level hero reaches the first level")
 	check(not s.choose_essence_spell(0,"FIRE_CALLER","fire_4"),"the fourth is out of reach")
 	hero.level = 3
-	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_3") and hero.prepared == ["fire_3"],"at level three a chosen third-level spell is the one ready")
+	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_1") and hero.prepared == ["fire_1"],"the heart keeps its linked basic attack at level three")
 	s.parts_bag["FIRE_CALLER"] = 1
-	check(s.absorb_essence(0,"FIRE_CALLER") == "이미 흡수함" and Essences.spell_choices(hero,"FIRE_CALLER").size() == 3,"a second copy is refused: the level alone sets the reach")
+	check(s.absorb_essence(0,"FIRE_CALLER") == "이미 흡수함" and Essences.spell_choices(hero,"FIRE_CALLER").size() == 1,"a second copy is refused: the level alone sets the reach")
 	hero.level = 6
-	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_6") and hero.prepared == ["fire_6"],"at level six it reaches the sixth and takes it")
+	check(s.choose_essence_spell(0,"FIRE_CALLER","fire_4") and hero.prepared == ["fire_4"],"the heart unlocks its linked burn rather than an unrelated wall")
 	s.parts_bag["GOBLIN_HEXER"] = 1
 	check(s.absorb_essence(0,"GOBLIN_HEXER") == "" and hero.essence_spells[Essences.canonical("GOBLIN_HEXER")] == "hex_1","a new caster essence picks its first spell")
 	check("hex_1" in hero.spells and "hex_1" in hero.prepared,"absorption immediately prepares the spell")
 	s.gain_level_xp(hero,65)
-	check(hero.prepared == ["fire_6","hex_1"],"both permanent stones prepare spells in absorption order")
-	check(not s.unequip_part(0,0) and hero.prepared == ["fire_6","hex_1"],"removal is refused and both spells stay")
+	check(hero.prepared == ["fire_4","hex_1"],"both permanent stones prepare spells in absorption order")
+	check(not s.unequip_part(0,0) and hero.prepared == ["fire_4","hex_1"],"removal is refused and both spells stay")
 	check(not s.choose_essence_spell(0,"FROST_IMP","ice_1"),"an essence the hero never absorbed has no choice")
 	s.gain_level_xp(hero,999999)
+	hero.essences = {}; hero.essence_spells = {}
 	for id in ["FIRE_CALLER","FROST_IMP","STORM_BAT","GNOLL_SUMMONER","GOBLIN_HEXER","FIRE_CALLER@ice"]:
 		hero.essences[id] = maxi(1,int(hero.essences.get(Essences.canonical(str(id)),0)))
 		hero.essence_spells[id] = Essences.spell_choices(hero,id)[0]
 	hero.equipped_abilities = ["FIRE_CALLER","FROST_IMP","STORM_BAT","GNOLL_SUMMONER","GOBLIN_HEXER","FIRE_CALLER@ice"]
 	Essences.sync_spells(hero)
-	check(hero.prepared.size() == Essences.READY_SPELLS and s.PREPARED_SLOTS == Essences.READY_SPELLS,"no more than five stand ready")
+	check(hero.prepared.size() == 5 and s.PREPARED_SLOTS == Essences.QUICK_SPELLS,"duplicate chosen spells share a button; the HUD has five quick slots")
 
 func failure() -> void:
 	var s = Session.new_run(7,"fire"); var hero: Dictionary = s.party[0]

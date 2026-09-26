@@ -133,17 +133,18 @@ func spells() -> void:
 	var s = Session.new_run(731,"fire"); s.phase = "CAMP"
 	var hero: Dictionary = s.party[0]; hero.level = 3
 	s.grant_part("FIRE_CALLER/cut"); s.grant_part("FIRE_CALLER/broken")
-	check(s.equip_part(0,1,"FIRE_CALLER/cut") and s.equip_part(0,2,"FIRE_CALLER/broken"),"three caster parts can be worn")
-	check(hero.spells == ["fire_1"] and hero.prepared == ["fire_1"],"same species spell is not duplicated")
-	check(s.choose_essence_spell(0,"FIRE_CALLER/broken","fire_3") and hero.spells == ["fire_3"] and hero.prepared == ["fire_3"],"choosing on one part changes the shared species spell")
-	check(hero.essence_spells.values().all(func(id): return id == "fire_3"),"all absorbed parts remember the shared choice")
-	check(not s.unequip_part(0,0) and hero.prepared == ["fire_3"],"removal cannot change the shared spell")
+	check(s.equip_part(0,1,"FIRE_CALLER/cut") and s.equip_part(0,2,"FIRE_CALLER/broken"),"three caster parts can be absorbed")
+	check(hero.spells == ["fire_1"] and hero.prepared == ["fire_1"],"identical selected spells are not duplicated")
+	check(s.choose_essence_spell(0,"FIRE_CALLER/cut","fire_3") and hero.prepared == ["fire_1","fire_3"],"the hand chooses an explosion independently")
+	check(s.choose_essence_spell(0,"FIRE_CALLER/broken","fire_2") and hero.prepared == ["fire_1","fire_3","fire_2"],"the bone keeps its own charge")
+	check(not s.choose_essence_spell(0,"FIRE_CALLER/broken","fire_3"),"same school does not grant unlinked spells")
+	check(not s.unequip_part(0,0) and hero.prepared == ["fire_1","fire_3","fire_2"],"permanent stones cannot be removed")
 	hero.level = 4
 	s.grant_part("FIRE_CALLER/cut@ice")
-	check(s.absorb_essence(0,"FIRE_CALLER/cut@ice").is_empty() and hero.prepared == ["fire_3"] and hero.essence_spells.values().all(func(id): return id == "fire_3"),"absorbing a fourth part retains the chosen species spell")
+	check(s.absorb_essence(0,"FIRE_CALLER/cut@ice").is_empty() and hero.essence_spells["FIRE_CALLER/cut@ice"] == "fire_1" and hero.essence_spells["FIRE_CALLER/cut"] == "fire_3","a variant is an independent choice without overwriting other parts")
 	var legacy := {"level":3,"essences":{"FIRE_CALLER":1},"equipped_abilities":["FIRE_CALLER"],"essence_spells":{"FIRE_CALLER":"fire_3"}}
 	Essences.sync_spells(legacy)
-	check(legacy.prepared == ["fire_3"] and legacy.essence_spells == {"FIRE_CALLER/pierced":"fire_3"},"old caster choice migrates without loss")
+	check(legacy.prepared == ["fire_1"] and legacy.essence_spells == {"FIRE_CALLER/pierced":"fire_1"},"an old unlinked choice falls back to the stone's own spell")
 
 func monster_effects() -> void:
 	check(StoneEffects.effects({"enemy":true,"part_id":"GOBLIN_SHIV/cut","species_id":"goblin"}) == ["GOBLIN_SHIV"],"monster has headline even if supplied another physical part")

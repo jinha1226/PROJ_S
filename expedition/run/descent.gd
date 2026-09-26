@@ -70,4 +70,5 @@ static func gain_level_xp(s, actor: Dictionary, amount: int) -> int:
 		actor.max_mp += 2; actor.mp = mini(actor.max_mp,actor.mp+2)
 		if actor in s.party: s.message("%s 레벨 %d" % [actor.name,int(actor.level)])
 	Essences.sync_slots(actor)
+	if int(actor.level) > before: Essences.sync_spells(actor)
 	return int(actor.level)-before

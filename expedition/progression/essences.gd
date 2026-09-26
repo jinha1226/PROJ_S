@@ -10,8 +10,9 @@ const ELEMENTS := {"fire":"화염","ice":"냉기","air":"전기","poison":"독",
 const MAX_TIER := 1
 const MAX_LEVEL := 10
 const MAX_SLOTS := 6
-## How many spells stand ready at once: the floor HUD draws this many buttons.
-const READY_SPELLS := 5
+## Every permanent stone can supply a spell; the HUD keeps five quick buttons.
+const READY_SPELLS := MAX_SLOTS
+const QUICK_SPELLS := 5
 const FIRST_KILL_PERCENT := 100
 const REPEAT_PERCENT := 25
 const CASTER_BY_SCHOOL := {"fire":"FIRE_CALLER","ice":"FROST_IMP","air":"STORM_BAT","hex":"GOBLIN_HEXER","summon":"GNOLL_SUMMONER"}
@@ -125,7 +126,8 @@ static func row(id: String) -> Dictionary:
 	var stats: Dictionary = Bestiary.essence_stats(role,str(base.get("school",""))) if not role.is_empty() else (base.get("stats",{}) as Dictionary).duplicate()
 	var result := {"name":str(base.get("name","")),"stats":stats,"role":role,"element":str(base.get("element","")),
 		"school":str(base.get("school","")),"species":str(base.get("species","")),"family":str(base.get("family","")),
-		"part":part,"part_name":str(piece.get("name","")),"active":str(piece.get("active","")),"effect":str(piece.get("effect",base.get("effect","")))}
+		"part":part,"part_name":str(piece.get("name","")),"active":str(piece.get("active","")),"effect":str(piece.get("effect",base.get("effect",""))),
+		"spells":piece.get("spells",base.get("spells",[])).duplicate()}
 	if not part.is_empty(): result.name = result.part_name
 	var element := variant_element(id)
 	if not element.is_empty():
@@ -212,10 +214,8 @@ static func bind(actor: Dictionary, id: String) -> String:
 	actor.equipped_abilities[slot] = id
 	actor.reservation = {}
 	var chosen: Dictionary = actor.get_or_add("essence_spells",{})
-	if not school(id).is_empty():
-		var choices := spell_choices(actor,id)
-		var existing: Array = chosen.keys().filter(func(other): return base_of(str(other)) == base_of(id) and str(chosen[other]) in choices)
-		if not choices.is_empty(): chosen[id] = chosen[existing[0]] if not existing.is_empty() else choices[0]
+	var choices := spell_choices(actor,id)
+	if not choices.is_empty(): chosen[id] = choices[0]
 	sync_rules(actor)
 	sync_spells(actor)
 	return ""
@@ -249,18 +249,20 @@ static func sync_rules(actor: Dictionary) -> void:
 		if existing.is_empty(): actor.get_or_add("rules",[]).append(Abilities.default_rule(str(id)))
 		else: existing[0].skill = str(id)
 
-## The school's spells up to the member's level, lowest level first.
-static func spell_choices(actor: Dictionary, id: String) -> Array:
-	var wanted := school(id)
-	if wanted.is_empty(): return []
-	var cap := spell_cap(actor)
+## Only the spells explicitly attached to this concrete stone, never a whole school.
+static func spell_catalog(id: String) -> Array:
 	var result: Array = []
-	for spell_id in combat.spells:
-		var spell: Dictionary = combat.spells[spell_id]
-		if str(spell.get("shape","")).is_empty(): continue
-		if str(spell.get("school","")) == wanted and int(spell.level) <= cap: result.append(str(spell_id))
+	for entry in row(id).get("spells",[]):
+		var spell_id := str(entry)
+		var spell: Dictionary = combat.spells.get(spell_id,{})
+		if str(spell.get("shape","")).is_empty() or spell_id in result: continue
+		result.append(spell_id)
 	result.sort_custom(func(a,b): return int(combat.spells[a].level) < int(combat.spells[b].level) or int(combat.spells[a].level) == int(combat.spells[b].level) and a < b)
 	return result
+
+static func spell_choices(actor: Dictionary, id: String) -> Array:
+	var cap := spell_cap(actor)
+	return spell_catalog(id).filter(func(spell): return int(combat.spells[spell].level) <= cap)
 
 static func choose_spell(s, actor: Dictionary, id: String, spell_id: String) -> bool:
 	id = canonical(id)
@@ -268,42 +270,36 @@ static func choose_spell(s, actor: Dictionary, id: String, spell_id: String) -> 
 	if not can_manage(s) or int(actor.get("essences",{}).get(id,0)) <= 0: return false
 	if spell_id not in spell_choices(actor,id): return false
 	actor.get_or_add("essence_spells",{})[id] = spell_id
-	for other in actor.essences:
-		if base_of(str(other)) == base_of(id): actor.essence_spells[other] = spell_id
 	sync_spells(actor)
 	return true
 
-## `spells` is every spell an absorbed caster essence has chosen; `prepared`
-## is the ones in a slot now, at most READY_SPELLS, in slot order.
+## Each part keeps its own choice. Invalid legacy choices fall back to the
+## first linked unlocked spell; level-up also activates previously locked stones.
 static func sync_spells(actor: Dictionary) -> void:
 	normalize_actor(actor)
 	var chosen: Dictionary = actor.get("essence_spells",{})
-	var shared: Dictionary = {}
-	# Preserve the first equipped part's choice when migrating conflicting old selections.
 	var order: Array = equipped(actor)
-	order.append_array(actor.get("essences",{}).keys())
-	for id in order:
-		var base: String = base_of(str(id))
-		var spell: String = str(chosen.get(id,""))
-		if not school(str(id)).is_empty() and not shared.has(base) and spell in spell_choices(actor,str(id)): shared[base] = spell
 	for id in actor.get("essences",{}):
-		var base: String = base_of(str(id))
-		if shared.has(base): chosen[id] = shared[base]
-	actor.essence_spells = chosen
+		if id not in order: order.append(id)
 	var known: Array = []
-	for id in actor.get("essences",{}):
-		var spell: String = str(shared.get(base_of(str(id)),""))
-		if not school(str(id)).is_empty() and not spell.is_empty() and spell not in known: known.append(spell)
+	for id in order:
+		var choices := spell_choices(actor,str(id))
+		var spell: String = str(chosen.get(id,""))
+		if spell not in choices:
+			if choices.is_empty(): chosen.erase(id); continue
+			spell = str(choices[0]); chosen[id] = spell
+		if spell not in known: known.append(spell)
+	actor.essence_spells = chosen
 	var ready: Array = []
 	for id in equipped(actor):
-		var spell: String = str(shared.get(base_of(str(id)),""))
-		if not school(str(id)).is_empty() and not spell.is_empty() and spell not in ready and ready.size() < READY_SPELLS: ready.append(spell)
+		var spell: String = str(chosen.get(id,""))
+		if not spell.is_empty() and spell not in ready and ready.size() < READY_SPELLS: ready.append(spell)
 	actor.spells = known
 	actor.prepared = ready
 
 ## Whether a caster stone of that school is slotted.
 static func school_slotted(actor: Dictionary, wanted: String) -> bool:
-	return equipped(actor).any(func(id): return school(str(id)) == wanted)
+	return equipped(actor).any(func(id): return spell_catalog(str(id)).any(func(spell): return str(combat.spells[spell].school) == wanted))
 
 static func drop_chance(s, species_id: String) -> int:
 	return REPEAT_PERCENT if s.essence_seen.has(species_id) else FIRST_KILL_PERCENT
