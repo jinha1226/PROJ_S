@@ -1,0 +1,381 @@
+{
+ "version": 1,
+ "builds": [
+  {
+   "id": "wall",
+   "name": "철벽",
+   "group": "TANK",
+   "subtype": "DEFENSE",
+   "level": 10,
+   "weapon": "mace",
+   "offhand": "shield",
+   "armour": "plate",
+   "rings": [],
+   "stones": [
+    "HOB_TAUNT/pierced",
+    "SHIELD_STANCE/broken",
+    "SHIELD_STANCE/cut",
+    "BEETLE_CURL/cut",
+    "BEETLE_CURL/broken",
+    "BEETLE_CURL/pierced",
+    "SKELETON_WALL/broken",
+    "THORN_ARMOUR/broken",
+    "SERPENT_SHED/cut",
+    "WATER_WAVE/cut"
+   ],
+   "schools": {},
+   "stance": "GUARDIAN",
+   "flow": [
+    "맞을 때마다 방어가 쌓이고(딱정벌레 핵), 막기 확률이 높다(방패병 팔뼈).",
+    "막으면 되받아치고(방패병 가죽), 근접 피해는 반사된다(망령 기사 갑주).",
+    "곁의 동료가 받는 피해를 줄인다(해골 병사 갈비뼈)."
+   ]
+  },
+  {
+   "id": "blood_giant",
+   "name": "피의 거인",
+   "group": "TANK",
+   "subtype": "REGEN",
+   "level": 10,
+   "weapon": "axe",
+   "offhand": "shield",
+   "armour": "mail",
+   "rings": [],
+   "stones": [
+    "GHOUL_CLAW/cut",
+    "GHOUL_CLAW/pierced",
+    "VAMPIRE_BITE/broken",
+    "VAMPIRE_BITE/pierced",
+    "GNOLL_SPEAR/broken",
+    "LEECH_LATCH/pierced",
+    "HOB_TAUNT/pierced",
+    "BEETLE_CURL/broken",
+    "BEETLE_CURL/pierced",
+    "SKELETON_WALL/broken"
+   ],
+   "schools": {},
+   "stance": "GUARDIAN",
+   "flow": [
+    "주는 피해의 일부를 흡혈하고(흡혈 박쥐 이빨), 넘치는 회복은 보호가 된다(흡혈 박쥐 심장).",
+    "처치할 때마다 크게 회복한다(구울 발톱·심장).",
+    "외부 회복 대신 라운드마다 재생한다(놀 뼈)."
+   ]
+  },
+  {
+   "id": "blood_hunter",
+   "name": "피의 사냥꾼",
+   "group": "MELEE",
+   "subtype": "BLEED",
+   "level": 10,
+   "weapon": "axe",
+   "offhand": "",
+   "armour": "leather",
+   "rings": [],
+   "stones": [
+    "RAT_GNAW/broken",
+    "ORC_CLEAVER/cut",
+    "RIVER_RAT_SPLASH/broken",
+    "LEECH_LATCH/cut",
+    "LEECH_LATCH/broken",
+    "LEECH_LATCH/pierced",
+    "SKELETON_WALL/cut",
+    "ORC_CLEAVER/broken",
+    "ORC_CLEAVER/pierced",
+    "GHOUL_CLAW/cut"
+   ],
+   "schools": {},
+   "stance": "CHARGER",
+   "flow": [
+    "도끼 베기와 쥐 앞니로 출혈을 걸고, 휘말린 적도 부상 판정을 받는다.",
+    "출혈이 오래가고(해골 병사 팔) 틱이 세며(거머리 몸마디), 다시 걸면 터진다(오크 가죽).",
+    "출혈 대상에게서 흡혈하고(거머리 흡반), 처치하면 회복한다(구울 발톱)."
+   ]
+  },
+  {
+   "id": "bone_breaker",
+   "name": "뼈 부수는 자",
+   "group": "MELEE",
+   "subtype": "CRUSH",
+   "level": 10,
+   "weapon": "mace",
+   "offhand": "off_mace",
+   "armour": "mail",
+   "rings": [],
+   "stones": [
+    "HOB_TAUNT/broken",
+    "ORE_SLAM/cut",
+    "ORE_SLAM/broken",
+    "ORE_SLAM/pierced",
+    "SHIELD_STANCE/pierced",
+    "ORC_THROW/broken",
+    "SKELETON_VOLLEY/cut",
+    "SKELETON_VOLLEY/pierced",
+    "THORN_ARMOUR/pierced",
+    "ORC_CLEAVER/broken"
+   ],
+   "schools": {},
+   "stance": "CHARGER",
+   "flow": [
+    "철퇴로 골절을 자주 걸고(홉고블린 턱), 방어를 완전히 무시한다(골렘 광맥).",
+    "기절(골렘 몸돌, 망령 기사 핵)과 밀치기(오크 투척병 어깨뼈)로 적을 묶는다.",
+    "골절·기절된 적에게 크게 들어간다(골렘 핵, 해골 궁수 손가락)."
+   ]
+  },
+  {
+   "id": "vital_hunter",
+   "name": "급소 사냥꾼",
+   "group": "MELEE",
+   "subtype": "VITAL",
+   "level": 10,
+   "weapon": "dagger",
+   "offhand": "off_dagger",
+   "armour": "leather",
+   "rings": [],
+   "stones": [
+    "GOBLIN_SHIV/cut",
+    "GOBLIN_SHIV/pierced",
+    "SPIDER_WEB/cut",
+    "SKELETON_VOLLEY/broken",
+    "VAMPIRE_BITE/cut",
+    "LIZARD_TAIL/pierced",
+    "ORC_CLEAVER/broken",
+    "GNOLL_SPEAR/pierced",
+    "GNOLL_SPEAR/cut",
+    "ORC_CLEAVER/pierced"
+   ],
+   "schools": {},
+   "stance": "CHARGER",
+   "flow": [
+    "전투의 첫 공격은 반드시 치명타이고(고블린 귀), 멀쩡한 적에게 첫 피해가 두 배다(고블린 심장).",
+    "치명타 확률·피해가 높고(해골 궁수 등뼈), 치명타가 나면 다음 행동이 빨라진다(거미 다리).",
+    "피하면 다음 공격이 치명타에 가까워진다(도마뱀 눈)."
+   ]
+  },
+  {
+   "id": "hawk_eye",
+   "name": "매의 눈",
+   "group": "RANGED",
+   "subtype": "SNIPE",
+   "level": 10,
+   "weapon": "bow",
+   "offhand": "",
+   "armour": "leather",
+   "rings": [],
+   "stones": [
+    "KOBOLD_SLING/cut",
+    "KOBOLD_SLING/broken",
+    "KOBOLD_SLING/pierced",
+    "GOBLIN_AIM/cut",
+    "GOBLIN_AIM/broken",
+    "GOBLIN_AIM/pierced",
+    "ORC_THROW/cut",
+    "ORC_THROW/pierced",
+    "SKELETON_VOLLEY/broken",
+    "STORM_BAT/cut"
+   ],
+   "schools": {},
+   "stance": "SKIRMISHER",
+   "flow": [
+    "가만히 조준할수록 강해지고(코볼트 심장), 사거리가 길다(고블린 궁수 깃).",
+    "먼 적에게 더 세고(고블린 궁수 눈), 표식을 걸어 받는 피해를 늘린다(오크 투척병 눈).",
+    "추가 사격(오크 투척병 팔)과 관통(고블린 궁수 손가락뼈)."
+   ]
+  },
+  {
+   "id": "plague_archer",
+   "name": "역병 궁수",
+   "group": "RANGED",
+   "subtype": "VENOM",
+   "level": 10,
+   "weapon": "bow",
+   "offhand": "",
+   "armour": "leather",
+   "rings": [],
+   "stones": [
+    "TOAD_SPIT/cut",
+    "TOAD_SPIT/broken",
+    "TOAD_SPIT/pierced",
+    "SERPENT_SHED/broken",
+    "SERPENT_SHED/pierced",
+    "KOBOLD_SLING/broken",
+    "GOBLIN_AIM/cut",
+    "GOBLIN_AIM/pierced",
+    "GOBLIN_HEXER/cut",
+    "GOBLIN_HEXER/pierced"
+   ],
+   "schools": {},
+   "stance": "SKIRMISHER",
+   "flow": [
+    "화살에 중독을 걸고(두꺼비 독샘), 다시 걸면 틱이 쌓인다(두꺼비 혀).",
+    "중독된 적에게 더 세고(뱀 독니), 그 적에게 받는 피해는 줄어든다(두꺼비 뼈).",
+    "상태가 길게 가고(주술사 눈), 상태가 많을수록 더 아프다(주술사 손)."
+   ]
+  },
+  {
+   "id": "elementalist",
+   "name": "원소술사",
+   "group": "MAGIC",
+   "subtype": "ELEMENT",
+   "level": 10,
+   "weapon": "staff",
+   "offhand": "",
+   "armour": "robe",
+   "rings": [],
+   "stones": [
+    "FIRE_CALLER/cut",
+    "FIRE_CALLER/broken",
+    "FIRE_CALLER/pierced",
+    "FROST_IMP/cut",
+    "FROST_IMP/broken",
+    "FROST_IMP/pierced",
+    "STORM_BAT/broken",
+    "RIVER_RAT_SPLASH/cut",
+    "WATER_WAVE/cut",
+    "STORM_BAT/cut"
+   ],
+   "schools": {
+    "FIRE_CALLER/pierced": "fire",
+    "FROST_IMP/pierced": "ice",
+    "STORM_BAT/cut": "air"
+   },
+   "stance": "SKIRMISHER",
+   "flow": [
+    "화염·냉기·전기 주문을 섞어 반응을 일으키고, 반응할 때마다 MP가 돌아온다(화염술사 뼈).",
+    "화상 대상(화염술사 손)과 빙결 대상(서리 도깨비 발톱)을 노린다.",
+    "젖은 칸에서 더 세고(강쥐 꼬리) 덜 맞는다(물의 정령 물살)."
+   ]
+  },
+  {
+   "id": "lord_of_dead",
+   "name": "망자의 군주",
+   "group": "MAGIC",
+   "subtype": "SUMMON",
+   "level": 10,
+   "weapon": "staff",
+   "offhand": "",
+   "armour": "robe",
+   "rings": [],
+   "stones": [
+    "GNOLL_SUMMONER/cut",
+    "GNOLL_SUMMONER/broken",
+    "GNOLL_SUMMONER/pierced",
+    "GRAVEKEEPER/cut",
+    "GRAVEKEEPER/broken",
+    "GRAVEKEEPER/pierced",
+    "SKELETON_WALL/pierced",
+    "GHOUL_CLAW/broken",
+    "GHOUL_CLAW/pierced",
+    "VAMPIRE_BITE/broken"
+   ],
+   "schools": {
+    "GNOLL_SUMMONER/pierced": "summon"
+   },
+   "stance": "SKIRMISHER",
+   "flow": [
+    "소환수를 하나 더 부르고 더 세게 만든다(놀 소환사 심장·뼈).",
+    "소환수 둘이 같은 적을 치면 더 아프고(놀 소환사 가죽), 처치하면 내가 회복한다(묘지기 손).",
+    "쓰러진 소환수는 터지고(묘지기 뼈), 처치한 적은 해골로 일어난다(해골 병사 두개골)."
+   ]
+  },
+  {
+   "id": "hexer",
+   "name": "저주술사",
+   "group": "SUPPORT",
+   "subtype": "HEX",
+   "level": 10,
+   "weapon": "staff",
+   "offhand": "",
+   "armour": "robe",
+   "rings": [],
+   "stones": [
+    "GOBLIN_HEXER/cut",
+    "GOBLIN_HEXER/broken",
+    "GOBLIN_HEXER/pierced",
+    "WRAITH/cut",
+    "WRAITH/broken",
+    "WRAITH/pierced",
+    "SPIDER_WEB/broken",
+    "SPIDER_WEB/pierced",
+    "GOBLIN_SHIV/broken",
+    "ORC_THROW/pierced"
+   ],
+   "schools": {
+    "GOBLIN_HEXER/pierced": "hex"
+   },
+   "stance": "GUARDIAN",
+   "flow": [
+    "저주 주문이 잘 걸리고(주술사 두개골) 오래간다(주술사 눈).",
+    "상태가 쌓일수록 동료의 공격이 세진다(주술사 손, 거미 껍질).",
+    "상태 걸린 적이 죽으면 저주가 옆 적에게 옮는다(원혼 수의)."
+   ]
+  },
+  {
+   "id": "water_priest",
+   "name": "물의 사제",
+   "group": "SUPPORT",
+   "subtype": "HEAL",
+   "level": 10,
+   "weapon": "mace",
+   "offhand": "shield",
+   "armour": "robe",
+   "rings": [],
+   "stones": [
+    "WATER_WAVE/pierced",
+    "WATER_WAVE/broken",
+    "WATER_WAVE/cut",
+    "RAT_GNAW/cut",
+    "RAT_GNAW/pierced",
+    "SERPENT_SHED/cut",
+    "RIVER_RAT_SPLASH/pierced",
+    "STORM_BAT/cut",
+    "HOB_TAUNT/pierced",
+    "SKELETON_WALL/broken"
+   ],
+   "schools": {},
+   "stance": "GUARDIAN",
+   "flow": [
+    "라운드마다 자신과 곁의 동료를 회복하고(물의 정령 핵), 회복한 동료는 단단해진다(물의 정령 물방울).",
+    "상태이상을 절반은 흘려보낸다(뱀 허물).",
+    "동료 곁에 설수록 강하다(쥐 꼬리)."
+   ]
+  }
+ ],
+ "parties": [
+  {
+   "id": "classic",
+   "name": "정석 파티",
+   "members": [
+    "wall",
+    "blood_hunter",
+    "elementalist"
+   ]
+  },
+  {
+   "id": "crushers",
+   "name": "분쇄 파티",
+   "members": [
+    "bone_breaker",
+    "hawk_eye",
+    "hexer"
+   ]
+  },
+  {
+   "id": "undying",
+   "name": "불사 파티",
+   "members": [
+    "blood_giant",
+    "vital_hunter",
+    "lord_of_dead"
+   ]
+  },
+  {
+   "id": "sustain",
+   "name": "버티기 파티",
+   "members": [
+    "wall",
+    "plague_archer",
+    "water_priest"
+   ]
+  }
+ ]
+}
