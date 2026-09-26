@@ -154,7 +154,7 @@ static func crit_percent(attacker: Dictionary, s = null) -> int:
 static func spell_percent(_s, caster: Dictionary) -> int:
 	return int(MAGIC_SPELL.get(TagSets.bracket(caster,"MAGIC"),0))
 
-## 마딜 6: no spell fails.
+## 마법 6: no spell fails.
 static func sure_casting(caster: Dictionary) -> bool:
 	return TagSets.bracket(caster,"MAGIC") == 6
 

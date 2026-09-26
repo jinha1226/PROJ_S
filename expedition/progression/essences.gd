@@ -3,7 +3,7 @@ extends RefCounted
 ## Boss stones have no parts. Storage uses canonical ids, actions use species ids.
 const Abilities = preload("res://expedition/items/abilities.gd")
 const Bestiary = preload("res://expedition/progression/bestiary.gd")
-const ROLES := {"TANK":"탱커","MELEE":"근딜","RANGED":"원딜","MAGIC":"마딜","SUPPORT":"지원"}
+const ROLES := {"TANK":"탱커","MELEE":"근딜","RANGED":"원딜","MAGIC":"마법","SUPPORT":"지원"}
 const ELEMENTS := {"fire":"화염","ice":"냉기","air":"전기","poison":"독","will":"의지","bleed":"출혈"}
 ## A soul stone has no tiers any more (2026-09-26 spec §4): one absorption
 ## switches all of it on, and a member absorbs a stone once.
