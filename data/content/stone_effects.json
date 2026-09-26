@@ -1,0 +1,804 @@
+{
+  "version": 1,
+  "effects": {
+    "RAT_GNAW": {
+      "name": "떼 물기",
+      "text": "인접 아군 1명당 공격력 +10%",
+      "keywords": [
+        "지원"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [
+            {
+              "spell": false
+            }
+          ],
+          "mod": {
+            "attack_percent": {
+              "value": 10,
+              "per_count": "adjacent_allies"
+            }
+          }
+        }
+      ],
+      "limit": "event"
+    },
+    "LIZARD_TAIL": {
+      "name": "꼬리 반격",
+      "text": "근접 공격을 받으면 25% 확률로 반격(공격력의 60%)",
+      "keywords": [
+        "수호"
+      ],
+      "rules": [
+        {
+          "when": "STRUCK",
+          "if": [
+            {
+              "spell": false
+            },
+            {
+              "alive_target": true
+            },
+            {
+              "alive_other": true
+            },
+            {
+              "melee": true
+            }
+          ],
+          "code": "counter"
+        }
+      ],
+      "limit": "event"
+    },
+    "KOBOLD_SLING": {
+      "name": "투석",
+      "text": "원거리 피해 +25%",
+      "keywords": [
+        "사수"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [
+            {
+              "spell": false
+            },
+            {
+              "ranged": true
+            }
+          ],
+          "mod": {
+            "attack_percent": 25
+          }
+        }
+      ],
+      "limit": "event"
+    },
+    "GOBLIN_SHIV": {
+      "name": "기습",
+      "text": "체력이 가득한 대상에게 주는 첫 피해 ×2",
+      "keywords": [
+        "급소"
+      ],
+      "rules": [
+        {
+          "when": "ATTACK",
+          "if": [
+            {
+              "target_full": true
+            }
+          ],
+          "code": "ambush",
+          "phase": "scaled"
+        }
+      ],
+      "limit": "event"
+    },
+    "GOBLIN_AIM": {
+      "name": "조준",
+      "text": "원거리 사거리 +2",
+      "keywords": [
+        "사수"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [],
+          "mod": {
+            "range": 2
+          }
+        }
+      ],
+      "limit": "event"
+    },
+    "SHIELD_STANCE": {
+      "name": "방패 태세",
+      "text": "막기 확률 +20",
+      "keywords": [
+        "수호"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [],
+          "mod": {
+            "block": 20
+          }
+        }
+      ],
+      "limit": "event"
+    },
+    "HOB_TAUNT": {
+      "name": "거구",
+      "text": "최대 HP +20%",
+      "keywords": [
+        "분쇄"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [],
+          "mod": {
+            "max_hp_percent": 20
+          }
+        }
+      ],
+      "limit": "event"
+    },
+    "GOBLIN_HEXER": {
+      "name": "저주 연장",
+      "text": "내가 거는 상태이상 지속 +50%",
+      "keywords": [
+        "저주"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [
+            {
+              "harmful": true
+            }
+          ],
+          "mod": {
+            "status_ticks": 50
+          }
+        }
+      ],
+      "limit": "event"
+    },
+    "ORC_CLEAVER": {
+      "name": "난폭",
+      "text": "공격력 +20%, 받는 피해 +10%",
+      "keywords": [
+        "광폭"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [
+            {
+              "spell": false
+            }
+          ],
+          "mod": {
+            "attack_percent": 20
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "if": [],
+          "mod": {
+            "taken_percent": 10
+          }
+        }
+      ],
+      "limit": "event"
+    },
+    "ORC_THROW": {
+      "name": "연속 투척",
+      "text": "원거리 공격이 20% 확률로 한 번 더",
+      "keywords": [
+        "사수"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [],
+          "mod": {
+            "second_shot_chance": 20
+          }
+        },
+        {
+          "when": "HIT",
+          "if": [
+            {
+              "spell": false
+            },
+            {
+              "damage_element": "physical"
+            },
+            {
+              "alive_target": true
+            },
+            {
+              "ranged": true
+            }
+          ],
+          "code": "second_shot",
+          "phase": "after"
+        }
+      ],
+      "limit": "event"
+    },
+    "SPIDER_WEB": {
+      "name": "거미줄",
+      "text": "공격에 25% 확률로 속박 1라운드",
+      "keywords": [
+        "저주"
+      ],
+      "rules": [
+        {
+          "when": "HIT",
+          "if": [
+            {
+              "spell": false
+            },
+            {
+              "alive_target": true
+            },
+            {
+              "chance": 25
+            }
+          ],
+          "do": [
+            {
+              "apply_status": "bind",
+              "ticks": 100
+            },
+            {
+              "notice": "속박!",
+              "tone": "debuff"
+            }
+          ],
+          "lane": "SPIDER_WEB",
+          "phase": "proc"
+        }
+      ],
+      "limit": "event"
+    },
+    "BEETLE_CURL": {
+      "name": "껍질",
+      "text": "받는 피해 −15%",
+      "keywords": [
+        "분쇄"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [],
+          "mod": {
+            "taken_percent": -15
+          }
+        }
+      ],
+      "limit": "event"
+    },
+    "ORE_SLAM": {
+      "name": "강타",
+      "text": "공격에 20% 확률로 기절 1라운드",
+      "keywords": [
+        "분쇄"
+      ],
+      "rules": [
+        {
+          "when": "HIT",
+          "if": [
+            {
+              "spell": false
+            },
+            {
+              "alive_target": true
+            },
+            {
+              "chance": 20
+            }
+          ],
+          "do": [
+            {
+              "apply_status": "stun",
+              "ticks": 100
+            },
+            {
+              "notice": "기절!",
+              "tone": "debuff"
+            }
+          ],
+          "lane": "ORE_SLAM",
+          "phase": "proc"
+        }
+      ],
+      "limit": "event"
+    },
+    "FIRE_CALLER": {
+      "name": "불씨",
+      "text": "화염 피해 +30%, 공격에 15% 확률로 화상",
+      "keywords": [
+        "원소"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [
+            {
+              "element": "fire"
+            }
+          ],
+          "mod": {
+            "attack_percent": 30
+          }
+        },
+        {
+          "when": "HIT",
+          "if": [
+            {
+              "spell": false
+            },
+            {
+              "alive_target": true
+            },
+            {
+              "chance": 15
+            }
+          ],
+          "do": [
+            {
+              "apply_status": "burn",
+              "ticks": 300
+            },
+            {
+              "notice": "화상!",
+              "tone": "debuff"
+            }
+          ],
+          "lane": "FIRE_CALLER",
+          "phase": "proc"
+        }
+      ],
+      "limit": "event"
+    },
+    "STORM_BAT": {
+      "name": "질풍",
+      "text": "행동 속도 +20%",
+      "keywords": [
+        "원소"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [],
+          "mod": {
+            "speed": 20
+          }
+        }
+      ],
+      "limit": "event"
+    },
+    "RIVER_RAT_SPLASH": {
+      "name": "물장구",
+      "text": "젖은 칸(또는 물)에 서 있으면 모든 피해 +25%",
+      "keywords": [
+        "원소"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [
+            {
+              "self_wet": true
+            }
+          ],
+          "mod": {
+            "attack_percent": 25
+          }
+        }
+      ],
+      "limit": "event"
+    },
+    "LEECH_LATCH": {
+      "name": "달라붙기",
+      "text": "같은 대상을 연달아 칠 때마다 피해 +15%(최대 +60%)",
+      "keywords": [
+        "출혈"
+      ],
+      "rules": [
+        {
+          "when": "ATTACK",
+          "if": [],
+          "code": "leech_prepare",
+          "phase": "prepare"
+        }
+      ],
+      "limit": "event"
+    },
+    "TOAD_SPIT": {
+      "name": "독침",
+      "text": "공격에 30% 확률로 중독",
+      "keywords": [
+        "독"
+      ],
+      "rules": [
+        {
+          "when": "HIT",
+          "if": [
+            {
+              "spell": false
+            },
+            {
+              "alive_target": true
+            },
+            {
+              "chance": 30
+            }
+          ],
+          "do": [
+            {
+              "apply_status": "poison",
+              "ticks": 300
+            },
+            {
+              "notice": "중독!",
+              "tone": "debuff"
+            }
+          ],
+          "lane": "TOAD_SPIT",
+          "phase": "proc"
+        }
+      ],
+      "limit": "event"
+    },
+    "SERPENT_SHED": {
+      "name": "탈피",
+      "text": "걸리는 상태이상을 50% 확률로 막음",
+      "keywords": [
+        "독"
+      ],
+      "rules": [
+        {
+          "when": "STATUS_TAKEN",
+          "if": [
+            {
+              "harmful": true
+            }
+          ],
+          "code": "cancel_status"
+        }
+      ],
+      "limit": "event"
+    },
+    "WATER_WAVE": {
+      "name": "치유의 물결",
+      "text": "라운드마다 자신과 인접 아군 HP 3% 회복",
+      "keywords": [
+        "지원"
+      ],
+      "rules": [
+        {
+          "when": "ROUND_START",
+          "if": [],
+          "do": [
+            {
+              "heal": {
+                "max_hp%": 3
+              },
+              "minimum": 1,
+              "target": "self_and_allies"
+            }
+          ]
+        }
+      ],
+      "limit": "event"
+    },
+    "GNOLL_SPEAR": {
+      "name": "분노",
+      "text": "체력 절반 이하일 때 공격력 +35%",
+      "keywords": [
+        "광폭"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [
+            {
+              "spell": false
+            },
+            {
+              "self_hp_below": 50
+            }
+          ],
+          "mod": {
+            "attack_percent": 35
+          }
+        },
+        {
+          "when": "ATTACK",
+          "if": [
+            {
+              "spell": false
+            }
+          ],
+          "code": "gnoll_rage",
+          "phase": "prepare"
+        }
+      ],
+      "limit": "event"
+    },
+    "FROST_IMP": {
+      "name": "서리",
+      "text": "냉기 피해 +30%, 공격에 10% 확률로 빙결 1라운드",
+      "keywords": [
+        "원소"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [
+            {
+              "element": "ice"
+            }
+          ],
+          "mod": {
+            "attack_percent": 30
+          }
+        },
+        {
+          "when": "HIT",
+          "if": [
+            {
+              "spell": false
+            },
+            {
+              "alive_target": true
+            },
+            {
+              "chance": 10
+            }
+          ],
+          "do": [
+            {
+              "apply_status": "freeze",
+              "ticks": 100
+            },
+            {
+              "notice": "빙결!",
+              "tone": "debuff"
+            }
+          ],
+          "lane": "FROST_IMP",
+          "phase": "proc"
+        }
+      ],
+      "limit": "event"
+    },
+    "GNOLL_SUMMONER": {
+      "name": "무리 부르기",
+      "text": "동시에 부를 수 있는 소환수 +1, 소환수 피해 +50%",
+      "keywords": [
+        "소환"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [],
+          "mod": {
+            "summon_count": 1
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "if": [],
+          "mod": {
+            "summon_power": 50
+          },
+          "scope": "summoner"
+        }
+      ],
+      "limit": "event"
+    },
+    "SKELETON_WALL": {
+      "name": "뼈 방벽",
+      "text": "인접 아군이 받는 피해 −10%",
+      "keywords": [
+        "수호"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [
+            {
+              "owner_adjacent_to_target": true
+            }
+          ],
+          "mod": {
+            "taken_percent": -10
+          },
+          "scope": "allies",
+          "group": "SKELETON_WALL"
+        }
+      ],
+      "limit": "event"
+    },
+    "SKELETON_VOLLEY": {
+      "name": "급소 사격",
+      "text": "치명타 확률 +15%, 치명타 피해 +50%",
+      "keywords": [
+        "급소"
+      ],
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "if": [],
+          "mod": {
+            "crit_chance": 15
+          }
+        },
+        {
+          "when": "ALWAYS",
+          "if": [],
+          "mod": {
+            "crit_damage": 50
+          }
+        }
+      ],
+      "limit": "event"
+    },
+    "GHOUL_CLAW": {
+      "name": "포식",
+      "text": "처치하면 최대 HP의 15% 회복",
+      "keywords": [
+        "사령"
+      ],
+      "rules": [
+        {
+          "when": "KILL",
+          "if": [
+            {
+              "primary": true
+            },
+            {
+              "victim_enemy": true
+            }
+          ],
+          "do": [
+            {
+              "heal": {
+                "max_hp%": 15
+              },
+              "target": "self"
+            }
+          ]
+        }
+      ],
+      "limit": "event"
+    },
+    "VAMPIRE_BITE": {
+      "name": "흡혈",
+      "text": "준 피해의 15%를 흡혈",
+      "keywords": [
+        "광폭"
+      ],
+      "rules": [
+        {
+          "when": "HIT",
+          "if": [],
+          "do": [
+            {
+              "heal": {
+                "dealt%": 15
+              },
+              "target": "self"
+            }
+          ],
+          "phase": "after"
+        }
+      ],
+      "limit": "event"
+    },
+    "THORN_ARMOUR": {
+      "name": "가시 갑주",
+      "text": "받은 근접 피해의 30% 반사",
+      "keywords": [
+        "수호"
+      ],
+      "rules": [
+        {
+          "when": "STRUCK",
+          "if": [
+            {
+              "spell": false
+            },
+            {
+              "alive_target": true
+            },
+            {
+              "alive_other": true
+            },
+            {
+              "melee": true
+            }
+          ],
+          "code": "reflect"
+        }
+      ],
+      "limit": "event"
+    },
+    "WRAITH": {
+      "name": "원한",
+      "text": "공격에 20% 확률로 약화, 처치하면 반경 2 적 혼란 1라운드",
+      "keywords": [
+        "사령"
+      ],
+      "rules": [
+        {
+          "when": "KILL",
+          "if": [
+            {
+              "primary": true
+            },
+            {
+              "victim_enemy": true
+            }
+          ],
+          "code": "wraith_kill"
+        },
+        {
+          "when": "HIT",
+          "if": [
+            {
+              "spell": false
+            },
+            {
+              "alive_target": true
+            },
+            {
+              "chance": 20
+            }
+          ],
+          "do": [
+            {
+              "apply_status": "weak",
+              "ticks": 300
+            },
+            {
+              "notice": "약화!",
+              "tone": "debuff"
+            }
+          ],
+          "lane": "WRAITH",
+          "phase": "proc"
+        }
+      ],
+      "limit": "event"
+    },
+    "GRAVEKEEPER": {
+      "name": "무덤 지기",
+      "text": "전투마다 한 번, 쓰러질 피해를 받으면 HP 30%로 일어남",
+      "keywords": [
+        "사령"
+      ],
+      "rules": [
+        {
+          "when": "LETHAL",
+          "if": [],
+          "code": "revive_once",
+          "args": {
+            "percent": 30
+          }
+        }
+      ],
+      "limit": "event"
+    }
+  }
+}

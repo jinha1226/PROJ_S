@@ -26,10 +26,12 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 	var dodge := clampi(int(defense.ev) * 2 + int(defense.get("dodge", 0)), 5, 45)
 	if source.get("statuses", {}).has("distort"): dodge = mini(95, dodge + 30)
 	if roll(s, source, target, "dodge", 100) < dodge:
+		StoneEffects.fire(s,"DODGE",StoneEffects.context(s,source,target))
 		out.evaded = true; s.message(str(target.name) + " 회피")
 		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"회피","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
 		return out
 	if roll(s, source, target, "block", 100) < int(defense.sh):
+		StoneEffects.fire(s,"BLOCK",StoneEffects.context(s,source,target))
 		out.blocked = true; s.message(str(target.name) + " 방패 방어")
 		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"막음","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
 		if StoneEffects.has(target,"SHIELD_STANCE"): StoneEffects.proc(s,target.pos,"막음!","buff")
@@ -89,7 +91,7 @@ static func damage(s, source: Dictionary, target: Dictionary, raw: int, element:
 	# The stones' status procs come after the reactions, like the element sets'
 	# own, so a blow never shatters the ice its own proc just laid.
 	if hit_form == Reactions.HIT_FORM:
-		StoneEffects.procs(s, source, victim, lost)
+		StoneEffects.procs(s, source, victim, lost,element,received)
 		Forms.wound(s,source,victim,lost)
 	Forms.end(s,previous)
 	return lost

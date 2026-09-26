@@ -35,8 +35,12 @@ static func apply(s, victim: Dictionary, status: String, ticks: int, source: Dic
 	if status in HARMFUL and victim.get("statuses",{}).has("immune"): return false
 	ticks = resisted_ticks(s,victim,status,ticks)
 	if ticks <= 0 or StoneEffects.shed(s,victim,status,source): return false
+	var already: bool = victim.get("statuses",{}).has(status)
 	victim.statuses[status] = s.time+ticks
+	victim.get_or_add("status_sources",{})[status] = {"id":int(source.get("id",-1)),"depth":int(s.depth)}
 	if status == "burn": victim.get_or_add("status_power",{})["burn"] = BURN_DAMAGE
+	if status in HARMFUL:
+		StoneEffects.fire(s,"STATUS_GIVEN",{"source":source,"target":victim,"victim":victim,"status":status,"status_already":already})
 	Reactions.status_react(s,victim,source,"","STATUS")
 	return true
 
@@ -46,21 +50,26 @@ static func tick(s) -> void:
 	for actor in s.party + s.npcs + s.enemies:
 		if actor.hp <= 0: continue
 		var payload: Dictionary = actor.get("status_power",{})
+		var sources: Dictionary = actor.get("status_sources",{})
 		for status in actor.get("statuses",{}).keys():
 			var until: int = int(actor.statuses[status])
 			if until < s.time:
 				if status == "furnace": furnace_burst(s,actor)
-				actor.statuses.erase(status); payload.erase(status); continue
+				actor.statuses.erase(status); payload.erase(status); sources.erase(status); continue
 			var was: String = Forms.begin(s,Forms.of_dot(status))
-			if status == "bleed": Rules.damage(s,{},actor,2,"physical")
+			var lost := 0
+			var origin: Dictionary = sources.get(status,{})
+			var source: Dictionary = s.actor_by_id(int(origin.get("id",-1))) if int(origin.get("depth",-1)) == int(s.depth) else {}
+			if status == "bleed": lost = Rules.damage(s,{},actor,2+StoneEffects.modifier(s,"bleed_tick",source,{"target":actor}),"physical")
 			# A spell's burn says how hard it bites; the old mastery burn keeps
 			# the single point it always did.
-			elif status == "burn": Rules.damage(s,{},actor,int(payload.get("burn",1)),"fire")
-			elif status == "poison": Rules.damage(s,{},actor,2,"poison")
+			elif status == "burn": lost = Rules.damage(s,{},actor,int(payload.get("burn",1)),"fire")
+			elif status == "poison": lost = Rules.damage(s,{},actor,2+StoneEffects.modifier(s,"poison_tick",source,{"target":actor}),"poison")
+			if lost > 0: StoneEffects.fire(s,"DOT_TICK",{"target":actor,"victim":actor,"status":status,"amount":lost})
 			Forms.end(s,was)
 			if until <= s.time:
 				if status == "furnace": furnace_burst(s,actor)
-				actor.statuses.erase(status); payload.erase(status)
+				actor.statuses.erase(status); payload.erase(status); sources.erase(status)
 
 static func furnace_burst(s, actor: Dictionary) -> void:
 	for other in s.party+s.npcs+s.enemies:

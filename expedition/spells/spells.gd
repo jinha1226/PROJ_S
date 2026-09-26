@@ -178,6 +178,7 @@ static func cast(s, caster: Dictionary, id: String, target: Vector2i) -> bool:
 	var was: String = Forms.begin(s,Forms.of_spell(spell))
 	if shape_of(spell).is_empty(): relic_cast(s,caster,id,target,spell)
 	else: shaped_cast(s,caster,id,target,spell)
+	StoneEffects.fire(s,"CAST",{"caster":caster,"spell":spell,"spell_id":id,"school":str(spell.get("school",""))})
 	Forms.end(s,was)
 	s.message(str(spell.name)+" 사용")
 	return true
@@ -216,7 +217,7 @@ static func shaped_cast(s, caster: Dictionary, id: String, target: Vector2i, spe
 		"summon":
 			var kind: String = str(spell.get("summon","hound"))
 			var places: Array = summon_cells(s,caster)
-			for i in range(mini(int(spell.get("count",1))+StoneEffects.summon_extra(caster),places.size())):
+			for i in range(mini(int(spell.get("count",1))+StoneEffects.summon_extra(caster,s),places.size())):
 				summon(s,caster,places[i],kind)
 		"mark":
 			var victim: Dictionary = s.at(target)
@@ -234,6 +235,8 @@ static func shaped_cast(s, caster: Dictionary, id: String, target: Vector2i, spe
 				if pets.is_empty(): return
 				centre = pets[0].pos
 				pets[0].hp = 0; s.npcs.erase(pets[0])
+				pets[0].summon_ended = true
+				StoneEffects.fire(s,"SUMMON_END",{"caster":caster,"pet":pets[0],"died":false})
 			var struck: Array = []
 			for cell in cells(s,caster,id,centre):
 				var victim: Dictionary = s.at(cell)
@@ -267,8 +270,8 @@ static func strike(s, caster: Dictionary, victim: Dictionary, spell: Dictionary,
 	if power > 0: hurt(s,caster,victim,power,str(spell.get("element","physical")),penetration)
 	if victim.hp <= 0: return
 	var status: String = str(spell.get("status",""))
-	ticks = StoneEffects.status_ticks(caster,status,TagSets.status_ticks(caster,status,ticks))
-	if status in STATUSES and ticks > 0: apply_status(s,victim,status,ticks)
+	ticks = StoneEffects.status_ticks(caster,status,TagSets.status_ticks(caster,status,ticks),s)
+	if status in STATUSES and ticks > 0: apply_status(s,victim,status,ticks,caster)
 	if status == "dominate" and ticks > 0: victim["dominated_until"] = s.time+Statuses.resisted_ticks(s,victim,"dominate",ticks)
 	if school == "ice" and caster.get("statuses",{}).has("ice_freeze") and Rules.roll(s,caster,victim,"ice_freeze",100) < 30:
 		victim.statuses["freeze"] = s.time+100
@@ -282,7 +285,7 @@ static func hurt(s, caster: Dictionary, victim: Dictionary, power: int, element:
 	return lost
 
 ## A status a spell hangs on somebody; `Statuses` holds the body.
-static func apply_status(s, victim: Dictionary, status: String, ticks: int) -> void: Statuses.apply(s,victim,status,ticks)
+static func apply_status(s, victim: Dictionary, status: String, ticks: int, source: Dictionary = {}) -> void: Statuses.apply(s,victim,status,ticks,source)
 
 ## The hex marks: a will save, then the status the row names. Four of them are
 ## not a status at all but something done to the statuses already there.
@@ -290,11 +293,11 @@ static func mark(s, caster: Dictionary, victim: Dictionary, spell: Dictionary, p
 	var school: String = str(spell.school)
 	# Only the hex school argues with a will; a fire mark simply burns.
 	var force: int = power + mind_bonus(s,caster) + int(Stats.stats(s,caster).power)
-	if school == "hex" and Rules.roll(s,caster,victim,"mark_"+str(spell.name),100)+force < int(victim.get("will",80)):
+	if school == "hex" and Rules.roll(s,caster,victim,"mark_"+str(spell.name),100)+force < int(victim.get("will",80))-StoneEffects.modifier(s,"will_save",caster,{"target":victim,"school":school}):
 		s.message(str(victim.name)+" 저항"); return
 	if bool(victim.enemy): Hunt.record(caster,int(victim.id))
 	var status: String = str(spell.get("status",""))
-	ticks = StoneEffects.status_ticks(caster,status,TagSets.status_ticks(caster,status,ticks))
+	ticks = StoneEffects.status_ticks(caster,status,TagSets.status_ticks(caster,status,ticks),s)
 	match status:
 		"extend":
 			for id in victim.statuses: victim.statuses[id] = int(victim.statuses[id])+ticks
@@ -304,7 +307,7 @@ static func mark(s, caster: Dictionary, victim: Dictionary, spell: Dictionary, p
 			if status == "spread_burn": carried["burn"] = s.time+ticks
 			else:
 				for id in victim.statuses: carried[id] = victim.statuses[id]
-			if status == "spread_burn": apply_status(s,victim,"burn",ticks)
+			if status == "spread_burn": apply_status(s,victim,"burn",ticks,caster)
 			for other in s.enemies+s.npcs:
 				if other.hp <= 0 or int(other.id) == int(victim.id): continue
 				if s.side_of(other) == s.side_of(caster): continue
@@ -317,7 +320,7 @@ static func mark(s, caster: Dictionary, victim: Dictionary, spell: Dictionary, p
 			victim["dominated_until"] = s.time+ticks
 			s.message(str(victim.name)+" 지배")
 		_:
-			if status in STATUSES: apply_status(s,victim,status,ticks)
+			if status in STATUSES: apply_status(s,victim,status,ticks,caster)
 	if str(spell.get("element","")) != "" and int(spell.power) > 0:
 		hurt(s,caster,victim,power,str(spell.element))
 
@@ -393,7 +396,7 @@ static func relic_cast(s, caster: Dictionary, id: String, target: Vector2i, spel
 			var choices: Array = blink_cells(s,caster)
 			caster.pos = choices[Rules.roll(s,caster,{},"blink",choices.size())]
 		"mend":
-			caster.hp = mini(caster.max_hp,caster.hp+power)
+			StoneEffects.heal(s,caster,power,caster)
 			caster.statuses["slow"] = s.time+300
 		"blast":
 			var penetration := 0

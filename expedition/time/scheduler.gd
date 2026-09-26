@@ -120,6 +120,9 @@ static func act(s, actor: Dictionary) -> void:
 	# Monsters and independent NPCs use a fixed turn cost, bypassing action_cost.
 	if bool(actor.get("enemy",false)) or s.wanderer(actor):
 		if actor.pos != was or bool(actor.get("physical_blow",false)): cost = Forms.fracture_delay(actor,cost)
+	if actor.pos != was and int(actor.get("effect_move_action",-1)) != int(s.action_serial):
+		actor.effect_move_action = int(s.action_serial); actor.effect_moved_round = int(s.time)/100
+		s.StoneEffects.fire(s,"MOVED",{"actor":actor,"from":was,"to":actor.pos})
 	actor.ready_at = s.time + maxi(40, cost)
 
 static func environment_tick(s) -> void:

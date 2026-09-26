@@ -165,7 +165,7 @@ static func role_turn(s, enemy: Dictionary, targets: Array, held: bool = false) 
 		return
 	targets.sort_custom(func(a,b): return distance(enemy.pos,a.pos) < distance(enemy.pos,b.pos))
 	# 고블린 궁수: its own stone's headline effect shoots two farther.
-	var reach: int = mini(int(ROLES[role].range),sight(s))+StoneEffects.range_bonus(enemy)
+	var reach: int = mini(int(ROLES[role].range),sight(s))+StoneEffects.range_bonus(enemy,s)
 	var ready: bool = enemy.get("cast_cooldown",2) <= 0
 	enemy.cast_cooldown = maxi(0,int(enemy.get("cast_cooldown",2))-1)
 	# An archer reloads for a round after every shot: half the volleys, and the

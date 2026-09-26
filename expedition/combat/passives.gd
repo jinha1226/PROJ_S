@@ -17,8 +17,8 @@ static func under_half(actor: Dictionary) -> bool:
 	return int(actor.hp)*2 < int(actor.max_hp)
 
 ## Damage `attacker` is about to deal to the actual recipient after 엄호.
-static func outgoing(s, attacker: Dictionary, target: Dictionary, amount: int, form: String = "HIT") -> int:
-	return StoneEffects.outgoing(s,attacker,target,TagSets.outgoing(s,attacker,target,amount),form)
+static func outgoing(s, attacker: Dictionary, target: Dictionary, amount: int, form: String = "HIT", result: Dictionary = {}) -> int:
+	return StoneEffects.outgoing(s,attacker,target,TagSets.outgoing(s,attacker,target,amount),form,result)
 
 ## Damage `target` finally takes, after guards and defence.
 static func incoming(s, target: Dictionary, amount: int) -> int:

@@ -139,13 +139,15 @@ static func wound(s, source: Dictionary, target: Dictionary, lost: int) -> Strin
 	var form: String = str(s.blow_form)
 	if lost <= 0 or source.is_empty() or form not in FORMS or int(s.casting) > 0: return ""
 	if target.is_empty() or int(target.get("hp",0)) <= 0: return ""
-	var odds := wound_chance(form,target)
+	var odds := clampi(wound_chance(form,target)+s.StoneEffects.modifier(s,"wound_chance",source,{"target":target,"form":form})+s.StoneEffects.modifier(s,"wound_chance."+form,source,{"target":target,"form":form}),0,100)
 	var rolled: int = force if force >= 0 else int(s.CombatRules.roll(s,source,target,"wound",100))
 	if rolled >= odds: return ""
 	var row: Array = WOUNDS[form]
-	if not s.Statuses.apply(s,target,str(row[0]),s.StoneEffects.status_ticks(source,str(row[0]),int(row[1])),source): return ""
+	var already: bool = target.get("statuses",{}).has(str(row[0]))
+	if not s.Statuses.apply(s,target,str(row[0]),s.StoneEffects.status_ticks(source,str(row[0]),int(row[1]),s),source): return ""
 	if not target.get("statuses",{}).has(str(row[0])): return ""
 	s.StoneEffects.proc(s,target.pos,str(row[2]),"debuff")
+	s.StoneEffects.fire(s,"WOUND",{"source":source,"target":target,"victim":target,"status":str(row[0]),"form":form,"status_already":already})
 	return str(row[0])
 
 ## "장검 · 베기": a weapon's name with its form, the bare name when it has none.

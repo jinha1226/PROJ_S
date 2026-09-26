@@ -33,7 +33,7 @@ static func sheet(s, actor: Dictionary) -> Dictionary:
 		add(result,"int","몬스터",int(actor.get("int",MONSTER_MIND)))
 		var res: Dictionary = actor.get("res",{})
 		for element in RES: add(result,"res_"+element,"몬스터",int(res.get(element,0)))
-		effects(result,actor)
+		effects(result,actor,s)
 		finish(result)
 		return result
 	var spec := species_row(actor)
@@ -48,15 +48,15 @@ static func sheet(s, actor: Dictionary) -> Dictionary:
 	var sets: Dictionary = TagSets.stat_bonus(actor)
 	for key in sets:
 		if key in KEYS: add(result,key,"세트",int(sets[key]))
-	effects(result,actor)
+	effects(result,actor,s)
 	# Dexterity lends evasion: one point for every three.
 	add(result,"ev","민첩",total_of(result,"dex")/3)
 	finish(result)
 	return result
 
 ## What the headline effects put on the sheet (방패병's block).
-static func effects(result: Dictionary, actor: Dictionary) -> void:
-	var bonus: Dictionary = StoneEffects.stat_bonus(actor)
+static func effects(result: Dictionary, actor: Dictionary, s = null) -> void:
+	var bonus: Dictionary = StoneEffects.stat_bonus(actor,s)
 	for key in bonus:
 		if key in KEYS: add(result,key,"대표 효과",int(bonus[key]))
 

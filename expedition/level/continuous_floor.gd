@@ -168,6 +168,8 @@ func observe(s) -> void:
 		var was: String = s.phase
 		s.phase = "EXPLORE" if safe(s) else "BATTLE"
 		if was == "EXPLORE" and s.phase == "BATTLE": StoneEffects.battle_start(s)
+		if was == "BATTLE" and s.phase == "EXPLORE":
+			for member in s.party+s.npcs+s.enemies: StoneEffects.Stacks.expire(member,"battle",int(s.time))
 
 ## Static markers are cached per epoch by the minimap; a state change rewrites
 ## the row and starts a new epoch so the next observation rebuilds once.

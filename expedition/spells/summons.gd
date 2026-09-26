@@ -39,7 +39,11 @@ static func summon(s, caster: Dictionary, cell: Vector2i, kind: String = "hound"
 	pet.enemy = bool(caster.get("enemy",false))
 	pet.summoner = int(caster.get("id",-1))
 	if caster.get("statuses",{}).has("summon_power"): pet.statuses["summon_power"] = int(caster.statuses.summon_power)
+	pet.hp = int(pet.hp)*(100+s.StoneEffects.modifier(s,"summon_hp",caster))/100
+	pet.max_hp = pet.hp
+	pet.expires_at += s.StoneEffects.modifier(s,"summon_ticks",caster)
 	s.npcs.append(pet)
+	s.StoneEffects.fire(s,"SUMMON",{"caster":caster,"pet":pet})
 	return pet
 
 ## A summon lasts the span its spell bought it and then simply is not there.
@@ -47,3 +51,6 @@ static func expire(s) -> void:
 	for pet in s.npcs.duplicate():
 		if bool(pet.get("summoned",false)) and int(pet.get("expires_at",0)) <= s.time:
 			pet.hp = 0; s.npcs.erase(pet)
+			if not bool(pet.get("summon_ended",false)):
+				pet.summon_ended = true
+				s.StoneEffects.fire(s,"SUMMON_END",{"caster":s.actor_by_id(int(pet.get("summoner",-1))),"pet":pet,"died":false})

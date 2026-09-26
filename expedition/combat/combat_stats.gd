@@ -35,7 +35,7 @@ static func stats(session, actor: Dictionary) -> Dictionary:
 			var drive: int = dexterity if result.trait == "ranged" else strength
 			result.damage = int(weapon_def.damage) + int(weapon.get("enchant", 0)) + drive / 6 + attack
 			result.delay = int(weapon_def.delay)
-			result.range = int(weapon_def.range) + (TagSets.range_bonus(actor)+StoneEffects.range_bonus(actor) if result.trait == "ranged" else 0)
+			result.range = int(weapon_def.range) + (TagSets.range_bonus(actor)+StoneEffects.range_bonus(actor,session) if result.trait == "ranged" else 0)
 			result.brand = str(weapon.get("brand", ""))
 			if result.trait == "focus": result.power += 4
 		# A summoned creature carries no gear at all: it fights with the power

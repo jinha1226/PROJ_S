@@ -110,6 +110,7 @@ var blow_form := ""
 var action_serial := 0
 ## Above zero while a spell resolves: its damage is a spell's, never a weapon's.
 var casting := 0
+var effect_depth := 0
 var gear_bag: Array = []
 var manual_mode := false
 var selected := 0
@@ -671,6 +672,10 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 ## What this member just did, for the utility selector's commitment term: a
 ## member that kept walking the same way is nudged to keep going.
 func record_action(actor: Dictionary, kind: String, target: Vector2i, was: Vector2i) -> void:
+	if actor.pos != was:
+		actor.effect_move_action = int(action_serial)
+		actor.effect_moved_round = int(time)/100
+		StoneEffects.fire(self,"MOVED",{"actor":actor,"from":was,"to":actor.pos})
 	actor.last_action_kind = kind
 	actor.last_action_dir = Vector2i(signi(target.x-was.x),signi(target.y-was.y)) if kind in ["MOVE","SWAP"] else Vector2i.ZERO
 
@@ -850,7 +855,9 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 	received["target"] = target
 	if target.get("shield",false):
 		message("보호막 · 피해 무효"); return 0
-	if passive_hit and not attacker.is_empty(): amount = Passives.outgoing(self,attacker,target,amount,form)
+	received["victim_statuses"] = target.get("statuses",{}).duplicate(true)
+	if passive_hit and not attacker.is_empty(): amount = Passives.outgoing(self,attacker,target,amount,form,received)
+	if target.hp <= 0: return 0
 	var cut: int = Abilities.reduction(target)
 	if cut > 0: amount = maxi(1,amount*(100-cut)/100)
 	if passive_hit: amount = Passives.incoming(self,target,amount)
@@ -858,8 +865,16 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 	# to one extra point of damage. Calming supplies can prevent this penalty.
 	if party.size() == 1 and not target.enemy and target.stress >= 150 and amount > 0: amount += 1
 	serial += 1
+	if amount >= int(target.hp):
+		var danger := {"target":target,"ally":target,"attacker":attacker,"amount":amount}
+		StoneEffects.fire(self,"ALLY_LETHAL",danger)
+		if danger.has("redirector"):
+			target = danger.redirector; received["target"] = target
+			received["victim_statuses"] = target.get("statuses",{}).duplicate(true)
+			if target.get("shield",false): return 0
 	if passive_hit: amount = StoneEffects.lethal(self,target,amount)
 	var lost := mini(int(target.hp), amount)
+	received["lost"] = lost
 	if lost > 0 and bool(target.get("enemy",false)): target.sleep_until = 0
 	var source_cell: Vector2i = target.pos
 	var source_name: String = {"FIRE":"불길","ELECTRIC":"방전","POISON":"독"}.get(form,"함정")
@@ -873,14 +888,18 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 	if not taken_row.is_empty():
 		taken_row.taken += lost
 		if covered: taken_row.redirected += lost
-	if lost > 0: target.last_form = Forms.kill_form(self,form,Reactions.SECONDARY)
+	received["form"] = Forms.kill_form(self,form,Reactions.SECONDARY)
+	received["damage_element"] = form
+	if lost > 0: target.last_form = received.form
 	target.hp -= lost; Body.sync(target)
+	var fell: bool = target.hp <= 0
 	if lost > 0 and bool(target.get("boss",false)): BossAI.on_damaged(self,target,form)
 	if on_floor() and lost > 0: noise.append(target.pos)
 	if target.enemy and lost > 0: Floor.MonsterAI.on_hit(self,target)
 	if not target.enemy:
 		var entered_crisis: bool = (target.hp+lost)*4 > target.max_hp and target.hp*4 <= target.max_hp
 		if entered_crisis:
+			StoneEffects.fire(self,"ALLY_CRISIS",{"target":target,"ally":target,"attacker":attacker})
 			remember_important(target,"SELF_HARM",target.id+1,source+1,800 if target.hp <= 0 else 750)
 		stress(target, 5 + lost / 2)
 		if target.hp <= 0 and wanderer(target):
@@ -903,11 +922,16 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 	elif target.hp <= 0: fall_text = " "+subject_name(target.name)+" 쓰러졌습니다."
 	message("%s %s에게 %d의 피해를 주었습니다.%s" % [subject_name(source_name),target.name,lost,fall_text])
 	if passive_hit: Passives.after_hit(self,target,attacker,form,lost)
-	if target.enemy and target.hp <= 0:
-		BossAI.on_monster_death(self,target,attacker)
+	if fell:
+		if target.enemy: BossAI.on_monster_death(self,target,attacker)
+		received["primary"] = passive_hit
+		StoneEffects.on_kill(self,attacker,target,received)
+		if bool(target.get("summoned",false)) and not bool(target.get("summon_ended",false)):
+			target.summon_ended = true
+			StoneEffects.fire(self,"SUMMON_END",{"caster":actor_by_id(int(target.get("summoner",-1))),"pet":target,"died":true})
+	if target.enemy and fell:
 		var hunters: Array = hunt_recipients(target,attacker)
 		var party_hunted: bool = hunters.any(func(a): return a in party)
-		if passive_hit and not attacker.is_empty(): StoneEffects.on_kill(self,attacker,target)
 		for actor in party+npcs: actor.get("usage",{}).erase(int(target.id))
 		if party_hunted:
 			battle_stats.kills = int(battle_stats.get("kills",0))+1

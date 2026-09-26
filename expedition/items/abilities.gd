@@ -247,8 +247,7 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 			if taunted == 0: s.message(actor.name+"의 도발에 아무도 응하지 않았습니다.")
 		"HEAL":
 			var before: int = int(actor.hp)
-			actor.hp = mini(int(actor.max_hp),int(actor.hp)+int(def.heal))
-			s.Body.heal(actor)
+			s.StoneEffects.heal(s,actor,int(def.heal),actor)
 			var row: Dictionary = s.member_stats(actor.id)
 			if not row.is_empty(): row.healed += int(actor.hp)-before
 		"GUARD":
@@ -332,7 +331,7 @@ static func strike_victim(s, actor: Dictionary, victim: Dictionary, amount: int,
 ## What a part leaves after its hit: blood drunk, a status, a shove.
 static func after_strike(s, actor: Dictionary, victim: Dictionary, lost: int, def: Dictionary) -> void:
 	if int(def.get("drain",0)) > 0 and lost > 0 and int(actor.hp) > 0:
-		actor.hp = mini(int(actor.max_hp),int(actor.hp)+lost*int(def.drain)/100)
+		s.StoneEffects.heal(s,actor,lost*int(def.drain)/100,actor)
 	if int(victim.hp) <= 0: return
 	var status: String = str(def.get("status",""))
 	if not status.is_empty(): s.Statuses.apply(s,victim,status,int(def.get("status_ticks",200)))

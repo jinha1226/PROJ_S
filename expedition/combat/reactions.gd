@@ -39,6 +39,8 @@ static func round_of(s) -> int:
 ## Every action opens a new window for the once-per-action triggers.
 static func begin_action(s) -> void:
 	s.action_serial += 1
+	s.effect_depth = 0
+	for actor in s.party+s.npcs+s.enemies: s.StoneEffects.Stacks.expire(actor,"action",int(s.time))
 
 ## True the first time `key` fires for `actor` in this action.
 static func once(s, actor: Dictionary, key: String) -> bool:
@@ -126,7 +128,7 @@ static func tile_react(s, cell: Vector2i, element: String, amount: int, source: 
 		"air":
 			if amount <= 0 or not conductive(s,cell) or not fresh_cell(s,ground,"discharge"): return
 			announce(s,cell,"discharge",source)
-			s.discharge(cell,int(source.get("id",999)),maxi(1,reaction_damage(source,amount*DISCHARGE_PERCENT/100)))
+			s.discharge(cell,int(source.get("id",999)),maxi(1,reaction_damage(source,amount*DISCHARGE_PERCENT/100,s)))
 		"poison":
 			if bool(ground.get("poison_pool",false)) or water_level(ground) < WET_LEVEL: return
 			ground.poison_pool = true
@@ -164,11 +166,11 @@ static func hang(s, victim: Dictionary, status: String, ticks: int) -> void:
 
 ## What a reaction bites for: its own number. (The old 술사 3 bonus went with
 ## the role sets; the role combos never touch secondary damage.)
-static func reaction_damage(_source: Dictionary, amount: int) -> int:
-	return amount
+static func reaction_damage(_source: Dictionary, amount: int, s = null) -> int:
+	return amount if s == null else amount*(100+s.StoneEffects.modifier(s,"reaction_percent",_source))/100
 
 static func react_damage(s, source: Dictionary, target: Dictionary, amount: int, element: String) -> int:
-	return s.CombatRules.damage(s,source,target,reaction_damage(source,amount),element,0,REACTION_FORM)
+	return s.CombatRules.damage(s,source,target,reaction_damage(source,amount,s),element,0,REACTION_FORM)
 
 ## The reaction's name, big over the cell, in the log and in the event queue.
 static func announce(s, cell: Vector2i, key: String, source: Dictionary) -> void:
@@ -176,6 +178,7 @@ static func announce(s, cell: Vector2i, key: String, source: Dictionary) -> void
 	s.effects.append({"kind":"REACTION","from":cell,"cell":cell,"text":name})
 	s.message("%s 반응" % name.trim_suffix("!"))
 	s.push_event({"kind":"REACTION","name":name,"cell":cell})
+	s.StoneEffects.fire(s,"REACTION",{"source":source,"target":s.at(cell),"reaction":key,"cell":cell})
 
 ## What the statuses a target already wears do with each other and with the
 ## element that just struck it. `form` is "HIT", "EXTRA" or "STATUS" (a status
