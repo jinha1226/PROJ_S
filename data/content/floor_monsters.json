@@ -34,7 +34,10 @@
       ],
       "zone": 1,
       "family": "rat",
-      "role": "PACK"
+      "role": "PACK",
+      "form": "PIERCE",
+      "skin": -1,
+      "bone": -1
     },
     {
       "species_id": "dcss_frilled_lizard",
@@ -67,7 +70,10 @@
       ],
       "zone": 1,
       "family": "reptile",
-      "role": "BERSERK"
+      "role": "BERSERK",
+      "form": "PIERCE",
+      "skin": 0,
+      "bone": 0
     },
     {
       "species_id": "kobold",
@@ -100,7 +106,10 @@
       ],
       "zone": 1,
       "family": "kobold",
-      "role": "ARCHER"
+      "role": "ARCHER",
+      "form": "PIERCE",
+      "skin": 0,
+      "bone": 0
     },
     {
       "species_id": "goblin",
@@ -134,7 +143,10 @@
       ],
       "zone": 1,
       "family": "goblin",
-      "role": "AMBUSH"
+      "role": "AMBUSH",
+      "form": "PIERCE",
+      "skin": -1,
+      "bone": 0
     },
     {
       "species_id": "goblin_archer",
@@ -167,7 +179,10 @@
       "roles": [
         "RANGED"
       ],
-      "speed": 100
+      "speed": 100,
+      "form": "PIERCE",
+      "skin": -1,
+      "bone": 0
     },
     {
       "species_id": "goblin_shield",
@@ -199,7 +214,10 @@
       "roles": [
         "MELEE"
       ],
-      "speed": 95
+      "speed": 95,
+      "form": "IMPACT",
+      "skin": 0,
+      "bone": 0
     },
     {
       "species_id": "dcss_hobgoblin",
@@ -231,7 +249,10 @@
       ],
       "zone": 1,
       "family": "goblin",
-      "role": "GUARD"
+      "role": "GUARD",
+      "form": "IMPACT",
+      "skin": 0,
+      "bone": 1
     },
     {
       "species_id": "goblin_hexer",
@@ -263,7 +284,10 @@
       ],
       "zone": 1,
       "family": "goblin",
-      "role": "CASTER"
+      "role": "CASTER",
+      "form": "IMPACT",
+      "skin": -1,
+      "bone": -1
     },
     {
       "species_id": "dcss_orc",
@@ -297,7 +321,10 @@
       ],
       "zone": 2,
       "family": "orc",
-      "role": "BERSERK"
+      "role": "BERSERK",
+      "form": "SLASH",
+      "skin": 1,
+      "bone": 0
     },
     {
       "species_id": "orc_thrower",
@@ -329,7 +356,10 @@
       "roles": [
         "RANGED"
       ],
-      "speed": 100
+      "speed": 100,
+      "form": "SLASH",
+      "skin": 1,
+      "bone": 0
     },
     {
       "species_id": "cave_spider",
@@ -362,7 +392,10 @@
         "MELEE"
       ],
       "speed": 115,
-      "beast": true
+      "beast": true,
+      "form": "PIERCE",
+      "skin": -1,
+      "bone": -1
     },
     {
       "species_id": "rock_beetle",
@@ -395,7 +428,10 @@
         "MELEE"
       ],
       "speed": 90,
-      "beast": true
+      "beast": true,
+      "form": "IMPACT",
+      "skin": 1,
+      "bone": 1
     },
     {
       "species_id": "ore_golem",
@@ -427,7 +463,10 @@
       "roles": [
         "MELEE"
       ],
-      "speed": 90
+      "speed": 90,
+      "form": "IMPACT",
+      "skin": 1,
+      "bone": 1
     },
     {
       "species_id": "kobold_firecaller",
@@ -459,7 +498,10 @@
       ],
       "zone": 2,
       "family": "kobold",
-      "role": "CASTER"
+      "role": "CASTER",
+      "form": "IMPACT",
+      "skin": 0,
+      "bone": -1
     },
     {
       "species_id": "storm_bat",
@@ -493,7 +535,10 @@
       ],
       "zone": 2,
       "family": "bat",
-      "role": "PACK"
+      "role": "PACK",
+      "form": "PIERCE",
+      "skin": -1,
+      "bone": -1
     },
     {
       "species_id": "dcss_river_rat",
@@ -527,7 +572,10 @@
       ],
       "zone": 3,
       "family": "rat",
-      "role": "PACK"
+      "role": "PACK",
+      "form": "PIERCE",
+      "skin": -1,
+      "bone": -1
     },
     {
       "species_id": "giant_leech",
@@ -560,7 +608,10 @@
         "MELEE"
       ],
       "speed": 100,
-      "beast": true
+      "beast": true,
+      "form": "PIERCE",
+      "skin": -1,
+      "bone": 1
     },
     {
       "species_id": "swamp_toad",
@@ -593,7 +644,10 @@
         "RANGED"
       ],
       "speed": 100,
-      "beast": true
+      "beast": true,
+      "form": "IMPACT",
+      "skin": -1,
+      "bone": 0
     },
     {
       "species_id": "temple_serpent",
@@ -626,7 +680,10 @@
         "MELEE"
       ],
       "speed": 105,
-      "beast": true
+      "beast": true,
+      "form": "PIERCE",
+      "skin": 1,
+      "bone": 0
     },
     {
       "species_id": "water_spirit",
@@ -659,7 +716,10 @@
         "MELEE",
         "RANGED"
       ],
-      "speed": 100
+      "speed": 100,
+      "form": "IMPACT",
+      "skin": -1,
+      "bone": 1
     },
     {
       "species_id": "dcss_gnoll",
@@ -700,7 +760,10 @@
       ],
       "zone": 3,
       "family": "gnoll",
-      "role": "BERSERK"
+      "role": "BERSERK",
+      "form": "PIERCE",
+      "skin": 0,
+      "bone": 0
     },
     {
       "species_id": "frost_imp",
@@ -732,7 +795,10 @@
       ],
       "zone": 3,
       "family": "elemental",
-      "role": "CASTER"
+      "role": "CASTER",
+      "form": "SLASH",
+      "skin": 0,
+      "bone": 0
     },
     {
       "species_id": "gnoll_summoner",
@@ -764,7 +830,10 @@
       ],
       "zone": 3,
       "family": "gnoll",
-      "role": "CASTER"
+      "role": "CASTER",
+      "form": "IMPACT",
+      "skin": 0,
+      "bone": 0
     },
     {
       "species_id": "skeleton_soldier",
@@ -796,7 +865,10 @@
       "roles": [
         "MELEE"
       ],
-      "speed": 95
+      "speed": 95,
+      "form": "SLASH",
+      "skin": -1,
+      "bone": -1
     },
     {
       "species_id": "skeleton_archer",
@@ -829,7 +901,10 @@
       "roles": [
         "RANGED"
       ],
-      "speed": 100
+      "speed": 100,
+      "form": "PIERCE",
+      "skin": -1,
+      "bone": -1
     },
     {
       "species_id": "ghoul",
@@ -861,7 +936,10 @@
       "roles": [
         "MELEE"
       ],
-      "speed": 105
+      "speed": 105,
+      "form": "SLASH",
+      "skin": 0,
+      "bone": 0
     },
     {
       "species_id": "vampire_bat",
@@ -894,7 +972,10 @@
         "MELEE"
       ],
       "speed": 125,
-      "beast": true
+      "beast": true,
+      "form": "PIERCE",
+      "skin": -1,
+      "bone": -1
     },
     {
       "species_id": "wraith_knight",
@@ -926,7 +1007,10 @@
       "roles": [
         "MELEE"
       ],
-      "speed": 95
+      "speed": 95,
+      "form": "SLASH",
+      "skin": 1,
+      "bone": 0
     },
     {
       "species_id": "wraith",
@@ -958,7 +1042,10 @@
         "RANGED",
         "CASTER"
       ],
-      "speed": 110
+      "speed": 110,
+      "form": "SLASH",
+      "skin": -1,
+      "bone": 1
     },
     {
       "species_id": "gravekeeper",
@@ -991,7 +1078,10 @@
         "RANGED",
         "CASTER"
       ],
-      "speed": 95
+      "speed": 95,
+      "form": "IMPACT",
+      "skin": 0,
+      "bone": 0
     }
   ]
 }

@@ -15,7 +15,7 @@ static func portrait_state(actor: Dictionary) -> String:
 	if bool(actor.get("downed",false)): return "빈사 · %d턴" % int(actor.get("bleedout_turns",0))
 	if int(actor.hp) <= 0: return "사망"
 	var details: Array[String] = ["스트레스 %d" % int(actor.stress)]
-	var names := {"burn":"화상","poison":"중독","bleed":"출혈","freeze":"빙결","bind":"속박","slow":"둔화","haste":"가속","stun":"기절","silence":"침묵"}
+	var names := {"burn":"화상","poison":"중독","bleed":"출혈","fracture":"골절","exposed":"급소 노출","freeze":"빙결","bind":"속박","slow":"둔화","haste":"가속","stun":"기절","silence":"침묵"}
 	for status in actor.get("statuses",{}): details.append(str(names.get(status,status)))
 	var condition: String = str(actor.get("condition",""))
 	if not condition.is_empty() and condition != "평온": details.append(condition)

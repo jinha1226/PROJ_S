@@ -2,6 +2,7 @@ extends SceneTree
 const Essences = preload("res://expedition/progression/essences.gd")
 const Session = preload("res://expedition/run/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
+const Forms = preload("res://expedition/combat/forms.gd")
 var checks := 0
 var failures := 0
 
@@ -45,8 +46,9 @@ func run() -> void:
 	scene.session = s; root.size = Vector2i(390,844); root.add_child(scene)
 	await process_frame
 	scene.inventory_filter = "장비"; scene.show_supplies(); await process_frame
-	check(scene.inventory_slots.any(func(slot): return slot.row.get("category","") == "장비" and slot.row.get("label","") == "장검"),"bag equipment tab shows named gear")
-	var sword_row: Dictionary = scene.inventory_rows().filter(func(row): return row.get("label","") == "장검")[0]
+	var sword_name := Forms.weapon_label("장검","sword")
+	check(scene.inventory_slots.any(func(slot): return slot.row.get("category","") == "장비" and slot.row.get("label","") == sword_name),"bag equipment tab shows named gear with damage form")
+	var sword_row: Dictionary = scene.inventory_rows().filter(func(row): return row.get("label","") == sword_name)[0]
 	scene.show_item_detail(sword_row.id); await process_frame
 	var equip_button: Button = scene.item_detail.find_children("*","Button",true,false).filter(func(entry): return entry.text.contains("장착"))[0]
 	check(not equip_button.disabled,"bag can equip gear at camp")

@@ -12,6 +12,7 @@ const Rules = preload("res://expedition/combat/combat_rules.gd")
 const Statuses = preload("res://expedition/combat/statuses.gd")
 const Passives = preload("res://expedition/combat/passives.gd")
 const Spells = preload("res://expedition/spells/spells.gd")
+const Forms = preload("res://expedition/combat/forms.gd")
 var failures := 0
 var checks := 0
 
@@ -22,12 +23,15 @@ func check(ok: bool, reason: String) -> void:
 func _initialize() -> void: call_deferred("run")
 
 func run() -> void:
+	# This suite isolates stone procs; form wounds have their own suite.
+	Forms.force = 99
 	catalogue(); base_stats()
 	rat(); lizard(); kobold(); goblin(); goblin_aim(); shield(); hobgoblin(); hexer(); orc(); thrower()
 	spider(); beetle(); golem(); fire_caller(); storm_bat(); river_rat(); leech(); toad(); serpent(); water()
 	gnoll(); frost(); summoner(); skeleton_wall(); volley(); ghoul(); vampire(); thorns(); wraith(); gravekeeper()
 	secondary(); monsters()
 	StoneEffects.force = -1
+	Forms.force = -1
 	print("Stone effects: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 ## Hero at c, ally beside at c+(0,1), a fresh foe at c+(1,0) with no part.

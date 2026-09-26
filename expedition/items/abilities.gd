@@ -4,6 +4,7 @@ extends RefCounted
 ## owning species), the active is executed by `resolve` for either side.
 const Essences = preload("res://expedition/progression/essences.gd")
 const Hunt = preload("res://expedition/progression/hunt.gd")
+const Forms = preload("res://expedition/combat/forms.gd")
 const DROP_PERCENT := 50
 const NO_PASSIVE := {}
 const IMMEDIATE := {"prep":0,"target":"NEAREST"}
@@ -211,6 +212,7 @@ static func execute(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 ## Resolves the part on `target` without a legality check: a telegraphed
 ## monster part lands on the announced cell whoever stands there now.
 static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
+	if Forms.attack_action(s,id): actor["physical_blow"] = true
 	var def: Dictionary = definition(id)
 	var victim: Dictionary = s.at(target)
 	# The use is logged first so that a miss is the last line the log shows.
@@ -318,7 +320,11 @@ static func strike_victim(s, actor: Dictionary, victim: Dictionary, amount: int,
 	var element: String = str(def.get("element",""))
 	var damage_form: String = form if element in ["","bleed"] else str(ELEMENT_FORMS[element])
 	if element == "air" and int(s.tile(victim.pos).wet) > 0: amount += SHOCK_BONUS
+	var part_form: String = Forms.of_part(def)
+	if element in ["","bleed"]: amount = Forms.scale(amount,part_form,s.protection_recipient(victim))
+	var was: String = Forms.begin(s,part_form)
 	var lost: int = int(s.damage(victim,amount,actor.id,damage_form))
+	Forms.end(s,was)
 	if not element.is_empty(): element_mark(s,victim,element)
 	after_strike(s,actor,victim,lost,def)
 	return lost

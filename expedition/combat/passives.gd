@@ -16,7 +16,7 @@ static func adjacent_allies(s, actor: Dictionary) -> int:
 static func under_half(actor: Dictionary) -> bool:
 	return int(actor.hp)*2 < int(actor.max_hp)
 
-## Damage `attacker` is about to deal to `target`, before 엄호 redirects it.
+## Damage `attacker` is about to deal to the actual recipient after 엄호.
 static func outgoing(s, attacker: Dictionary, target: Dictionary, amount: int, form: String = "HIT") -> int:
 	return StoneEffects.outgoing(s,attacker,target,TagSets.outgoing(s,attacker,target,amount),form)
 

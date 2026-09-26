@@ -1,4 +1,5 @@
 extends RefCounted
+const Forms = preload("res://expedition/combat/forms.gd")
 ## The soul stones' headline effects and the role combos in a fight
 ## (2026-09-26 spec §2–3, §6). A member has the effect of every stone it
 ## wears, each once; a monster has its own species' stone's effect; a boss
@@ -51,10 +52,10 @@ const STATUS_PROCS := {
 	"FROST_IMP":["freeze",10,100,"빙결!"],
 	"WRAITH":["weak",20,300,"약화!"]}
 ## The statuses a hexer lengthens and a serpent sheds (`Statuses.HARMFUL`).
-const HARMFUL := ["confuse","slow","freeze","bind","burn","weak","brittle","distort","vulnerable","dominate","bleed","poison","taunted","stun"]
+const HARMFUL := ["confuse","slow","freeze","bind","burn","weak","brittle","distort","vulnerable","dominate","bleed","poison","taunted","stun","fracture","exposed"]
 ## The blows that can be critical: weapon attacks (a landed hit, the old
 ## slash) and actives. Spells never are, and the secondary forms never get here.
-const CRIT_FORMS := ["physical","SLASH","IMPACT"]
+const CRIT_FORMS := ["physical","SLASH","IMPACT","PIERCE"]
 const CRIT_BASE := 150
 const CRIT_STEP := 50
 const SPEED_CAP := 40
@@ -166,15 +167,18 @@ static func speed(s, actor: Dictionary) -> int:
 	if TagSets.bracket(actor,"BERSERK") == 4 and under_half(actor): total += 20
 	return clampi(total,0,SPEED_CAP)
 
-static func delay(s, actor: Dictionary, cost: int) -> int:
+static func delay(s, actor: Dictionary, cost: int, kind: String = "ATTACK") -> int:
 	var cut := speed(s,actor)
-	return cost if cut <= 0 else cost*(100-cut)/100
+	var result: int = cost if cut <= 0 else cost*(100-cut)/100
+	if kind in ["MOVE","SWAP"] or Forms.attack_action(s,kind): result = Forms.fracture_delay(actor,result)
+	return result
 
 static func crit_chance(_s, attacker: Dictionary, target: Dictionary) -> int:
 	var total := 15 if has(attacker,"SKELETON_VOLLEY") else 0
 	var ambush := TagSets.bracket(attacker,"AMBUSH")
 	total += int(AMBUSH_CRIT.get(ambush,0))
 	if ambush == 6 and not target.is_empty() and fresh(target): total = 100
+	if not target.is_empty() and target.get("statuses",{}).has("exposed"): total += 25
 	return mini(100,total)
 
 ## A critical's damage in percent: ×1.5, fifty more from each of 해골 궁수 and 기습 4·6.
@@ -233,10 +237,13 @@ static func outgoing(s, attacker: Dictionary, target: Dictionary, amount: int, f
 	amount = amount*(100+percent)/100
 	if has(attacker,"GOBLIN_SHIV") and fresh(target):
 		amount *= 2; proc(s,target.pos,"기습!","buff")
-	if not spell and form in CRIT_FORMS and chance(s,attacker,target,"crit",crit_chance(s,attacker,target)):
-		amount = amount*crit_percent(attacker)/100
-		proc(s,target.pos,"치명타!","crit")
-		s.message("%s 치명타" % str(attacker.get("name","")))
+	if not spell and form in CRIT_FORMS:
+		var exposed: bool = target.get("statuses",{}).has("exposed")
+		if chance(s,attacker,target,"crit",crit_chance(s,attacker,target)):
+			amount = amount*crit_percent(attacker)/100
+			proc(s,target.pos,"치명타!","crit")
+			s.message("%s 치명타" % str(attacker.get("name","")))
+		if exposed: target.statuses.erase("exposed")
 	return amount
 
 ## 거머리: fifteen percent more for every blow in a row on the same target.

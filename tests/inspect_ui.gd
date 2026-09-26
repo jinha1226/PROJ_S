@@ -4,6 +4,7 @@ extends SceneTree
 const Session = preload("res://expedition/run/session.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
+const Forms = preload("res://expedition/combat/forms.gd")
 var failures := 0
 var checks := 0
 
@@ -33,6 +34,7 @@ func run() -> void:
 	check(scene.details_popup.visible and label(scene,"EnemyInfo") != null,"a long press opens the monster's card")
 	var sheet: Dictionary = StatSheet.sheet(s,foe)
 	check(label(scene,"EnemyDefence") != null and label(scene,"EnemyDefence").text == "방어 %d   회피 %d   막기 %d" % [int(sheet.ac.total),int(sheet.ev.total),int(sheet.sh.total)],"defence numbers from the stat sheet")
+	check(label(scene,"EnemyBody") != null and label(scene,"EnemyBody").text == Forms.body_line(foe),"the monster card shows attack form and body steps")
 	check(label(scene,"EnemyResist") != null and label(scene,"EnemyResist").text.contains("%d%%" % int(sheet.res_fire.total)),"its resistance is listed")
 	check(label(scene,"EnemyEssence") != null and label(scene,"EnemyEssence").text == "영혼석 · "+Essences.title(str(foe.part_id)),"its essence is named")
 	scene.details_popup.hide()

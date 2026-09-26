@@ -1,4 +1,5 @@
 extends RefCounted
+const Forms = preload("res://expedition/combat/forms.gd")
 ## Adapted from ../playtest status folio and mastery cards, using expedition data.
 const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
@@ -118,6 +119,7 @@ static func status(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		var catalogue: Dictionary = CombatStats.content.weapons if slot == "weapon" else CombatStats.content.armours if slot == "armour" else CombatStats.content.rings if slot == "ring" else {}
 		var item_id: String = str(item.get("type",""))
 		var item_name: String = "—" if item.is_empty() else "방패" if slot == "shield" else str(catalogue.get(item_id,{}).get("name",item_id))
+		if slot == "weapon" and not item.is_empty(): item_name = Forms.weapon_label(item_name,item_id)
 		text(equipped,"%s   %s" % [slot_names[slot],item_name],13)
 
 ## The twelve numbers of §2, grouped; a tap opens where each one came from.

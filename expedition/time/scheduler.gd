@@ -5,6 +5,7 @@ const Kernel = preload("res://sim/combat_kernel.gd")
 const Tactics = preload("res://expedition/ai/tactical_action_selector.gd")
 const NpcAI = preload("res://expedition/actors/npc_ai.gd")
 const Rules = preload("res://expedition/combat/combat_rules.gd")
+const Forms = preload("res://expedition/combat/forms.gd")
 const ElementRules = preload("res://sim/environment_rules.gd")
 const Statuses = preload("res://expedition/combat/statuses.gd")
 const Summons = preload("res://expedition/spells/summons.gd")
@@ -97,6 +98,7 @@ static func act(s, actor: Dictionary) -> void:
 	s.Reactions.begin_action(s)
 	var cost := 100
 	var was: Vector2i = actor.pos
+	actor["physical_blow"] = false
 	if bool(actor.get("enemy", false)):
 		s.enemy_attack_turn(actor)
 		if actor.pos != was: cost = Rules.move_time(s, actor, actor.pos)
@@ -115,6 +117,9 @@ static func act(s, actor: Dictionary) -> void:
 		s.resolving_companions = false
 		s.note_explain(actor, choice)
 		if str(choice.get("mistake", "")) != "": s.note_mistake(actor, str(choice.mistake))
+	# Monsters and independent NPCs use a fixed turn cost, bypassing action_cost.
+	if bool(actor.get("enemy",false)) or s.wanderer(actor):
+		if actor.pos != was or bool(actor.get("physical_blow",false)): cost = Forms.fracture_delay(actor,cost)
 	actor.ready_at = s.time + maxi(40, cost)
 
 static func environment_tick(s) -> void:

@@ -1,4 +1,5 @@
 extends RefCounted
+const Forms = preload("res://expedition/combat/forms.gd")
 const TagSets = preload("res://expedition/progression/tag_sets.gd")
 ## Fifty spells in five schools, all of them built from eight shapes. A row in
 ## `combat.json.spells` says which shape a spell is and what it carries; the
@@ -174,8 +175,10 @@ static func cast(s, caster: Dictionary, id: String, target: Vector2i) -> bool:
 	if Rules.roll(s,caster,{},"spell_failure_"+id,100) < failure(s,caster,id):
 		s.message(str(spell.name)+" 실패")
 		return true
+	var was: String = Forms.begin(s,Forms.of_spell(spell))
 	if shape_of(spell).is_empty(): relic_cast(s,caster,id,target,spell)
 	else: shaped_cast(s,caster,id,target,spell)
+	Forms.end(s,was)
 	s.message(str(spell.name)+" 사용")
 	return true
 

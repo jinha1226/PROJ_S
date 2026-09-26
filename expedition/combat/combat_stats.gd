@@ -2,6 +2,7 @@ extends RefCounted
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const TagSets = preload("res://expedition/progression/tag_sets.gd")
 const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
+const Forms = preload("res://expedition/combat/forms.gd")
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/combat.json"))
 
 ## The ten starting kits: five weapons and five spell schools.
@@ -65,4 +66,5 @@ static func stats(session, actor: Dictionary) -> Dictionary:
 	if statuses.has("stormeye"): result.ev += 20
 	if statuses.has("shield_stance"): result.sh = mini(StatSheet.BLOCK_CAP,int(result.sh)+40)
 	if statuses.has("shield_wall"): result.ac += 3
+	result["form"] = Forms.of_actor(actor)
 	return result

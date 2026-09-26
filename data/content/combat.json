@@ -7,7 +7,8 @@
       "delay": 120,
       "axis": "melee",
       "range": 1,
-      "trait": "balanced"
+      "trait": "balanced",
+      "form": "SLASH"
     },
     "axe": {
       "name": "도끼",
@@ -15,7 +16,8 @@
       "delay": 140,
       "axis": "melee",
       "range": 1,
-      "trait": "cleave"
+      "trait": "cleave",
+      "form": "SLASH"
     },
     "mace": {
       "name": "철퇴",
@@ -23,7 +25,8 @@
       "delay": 145,
       "axis": "melee",
       "range": 1,
-      "trait": "pierce"
+      "trait": "",
+      "form": "IMPACT"
     },
     "spear": {
       "name": "창",
@@ -31,7 +34,8 @@
       "delay": 115,
       "axis": "melee",
       "range": 2,
-      "trait": "reach"
+      "trait": "reach",
+      "form": "PIERCE"
     },
     "bow": {
       "name": "활",
@@ -39,7 +43,8 @@
       "delay": 125,
       "axis": "ranged",
       "range": 6,
-      "trait": "ranged"
+      "trait": "ranged",
+      "form": "PIERCE"
     },
     "dagger": {
       "name": "단검",
@@ -47,7 +52,8 @@
       "delay": 75,
       "axis": "melee",
       "range": 1,
-      "trait": "stab"
+      "trait": "stab",
+      "form": "PIERCE"
     },
     "staff": {
       "name": "지팡이",
@@ -55,7 +61,8 @@
       "delay": 110,
       "axis": "melee",
       "range": 1,
-      "trait": "focus"
+      "trait": "focus",
+      "form": "IMPACT"
     }
   },
   "armours": {
@@ -1123,35 +1130,40 @@
       "hp": 12,
       "power": 6,
       "speed": 100,
-      "duration": 300
+      "duration": 300,
+      "form": "SLASH"
     },
     "hound": {
       "name": "사냥개",
       "hp": 20,
       "power": 7,
       "speed": 100,
-      "duration": 300
+      "duration": 300,
+      "form": "PIERCE"
     },
     "imp": {
       "name": "임프",
       "hp": 12,
       "power": 5,
       "speed": 90,
-      "duration": 250
+      "duration": 250,
+      "form": "SLASH"
     },
     "rat": {
       "name": "쥐",
       "hp": 8,
       "power": 4,
       "speed": 80,
-      "duration": 200
+      "duration": 200,
+      "form": "PIERCE"
     },
     "wolf": {
       "name": "늑대",
       "hp": 40,
       "power": 10,
       "speed": 90,
-      "duration": 350
+      "duration": 350,
+      "form": "PIERCE"
     }
   }
 }

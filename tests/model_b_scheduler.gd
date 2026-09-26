@@ -2,6 +2,7 @@ extends SceneTree
 const Session = preload("res://expedition/run/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Scheduler = preload("res://expedition/time/scheduler.gd")
+const Forms = preload("res://expedition/combat/forms.gd")
 var checks := 0
 var failures := 0
 
@@ -30,6 +31,8 @@ func field(seed: int) -> Dictionary:
 	return {"s":s,"h":hero,"e":foe}
 
 func run() -> void:
+	# Measure weapon intervals without random fractures changing actor costs.
+	Forms.force = 99
 	var row := field(5501)
 	var s = row.s
 	var hero: Dictionary = row.h
@@ -58,4 +61,5 @@ func run() -> void:
 		Scheduler.awaken(waking.s)
 		check(npc.awake and npc.ready_at == waking.s.time,"waking NPC cannot catch up missed turns")
 	print("Model B scheduler: %d checks, %d failures" % [checks,failures])
+	Forms.force = -1
 	quit(1 if failures else 0)

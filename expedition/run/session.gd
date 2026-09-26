@@ -32,6 +32,7 @@ const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const TagSets = preload("res://expedition/progression/tag_sets.gd")
 const Reactions = preload("res://expedition/combat/reactions.gd")
+const Forms = preload("res://expedition/combat/forms.gd")
 const Downed = preload("res://expedition/combat/downed.gd")
 const Hunt = preload("res://expedition/progression/hunt.gd")
 ## Run modules: the session keeps the state and hands each group of verbs to
@@ -104,6 +105,8 @@ var time := 0
 var boundary := 100
 var turn_serial := 0
 var roll_serial := 0
+## The current blow's form; nested attacks restore their parent's context.
+var blow_form := ""
 var action_serial := 0
 ## Above zero while a spell resolves: its damage is a spell's, never a weapon's.
 var casting := 0
@@ -486,12 +489,15 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 	var offense: Dictionary = CombatStats.stats(self,actor)
 	var defense: Dictionary = CombatStats.stats(self,victim)
 	if not attack_reach(actor,target,int(offense.range)): return {}
-	var ac: int = int(defense.ac)/2 if offense.trait == "pierce" else int(defense.ac)
+	var form: String = Forms.of_actor(actor)
+	var recipient: Dictionary = protection_recipient(victim)
+	var raw: int = Forms.scale(int(offense.damage),form,recipient)
+	var ac: int = Forms.armour(int(CombatStats.stats(self,recipient).ac),form)
 	var dodge: int = clampi(int(defense.ev)*2+int(defense.get("dodge",0)),5,45)
 	var block: int = int(defense.sh)
-	return {"actor":actor.id,"target":victim.id,"cell":target,"name":victim.name,
-		"chance":maxi(0,(100-dodge)*(100-block)/100),"block":block,"damage":maxi(1,int(offense.damage)-ac),
-		"damage_min":maxi(1,int(offense.damage)-ac),"damage_max":int(offense.damage),"time":action_cost(actor,"ATTACK",target)}
+	return {"actor":actor.id,"target":victim.id,"cell":target,"name":victim.name,"form":form,
+		"chance":maxi(0,(100-dodge)*(100-block)/100),"block":block,"damage":maxi(1,raw-ac),
+		"damage_min":maxi(1,raw-ac),"damage_max":raw,"time":action_cost(actor,"ATTACK",target)}
 
 func attack_reach(actor: Dictionary, target: Vector2i, attack_range: int) -> bool:
 	if attack_range <= 1: return melee_reach(actor.pos,target)
@@ -515,7 +521,7 @@ func action_cost(actor: Dictionary, kind: String, target: Vector2i, _value: Stri
 	if kind != "MOVE":
 		if statuses.has("slow"): cost = cost*3/2
 		if statuses.has("haste"): cost = cost*2/3
-	return maxi(40,StoneEffects.delay(self,actor,cost))
+	return maxi(40,StoneEffects.delay(self,actor,cost,kind))
 
 func submit(kind: String, target: Vector2i, value: String = "") -> bool:
 	if not pending_choice.is_empty(): return false
@@ -827,12 +833,11 @@ func damage(target: Dictionary, amount: int, source: int, form: String) -> int:
 	var hit_form: String = form if form in Reactions.SECONDARY else Reactions.HIT_FORM
 	return CombatRules.damage(self,actor_by_id(source),target,amount,form,0,hit_form)
 
-func after_damage(target: Dictionary, amount: int, source: int, form: String) -> int:
+func after_damage(target: Dictionary, amount: int, source: int, form: String, received: Dictionary = {}) -> int:
 	if target.hp <= 0: return 0
 	var attacker: Dictionary = actor_by_id(source)
 	# Retaliation is plain damage: it never triggers passives again.
 	var passive_hit: bool = form not in Reactions.SECONDARY
-	if passive_hit and not attacker.is_empty(): amount = Passives.outgoing(self,attacker,target,amount,form)
 	# 엄호: the protector steps in front. Counted and logged once, and only when
 	# the hit really lands on somebody else.
 	var recipient: Dictionary = protection_recipient(target)
@@ -842,8 +847,10 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 		if not cover_row.is_empty(): cover_row.covers += 1
 		message("%s %s 대신 맞습니다." % [subject_name(recipient.name),target.name])
 		target = recipient
+	received["target"] = target
 	if target.get("shield",false):
 		message("보호막 · 피해 무효"); return 0
+	if passive_hit and not attacker.is_empty(): amount = Passives.outgoing(self,attacker,target,amount,form)
 	var cut: int = Abilities.reduction(target)
 	if cut > 0: amount = maxi(1,amount*(100-cut)/100)
 	if passive_hit: amount = Passives.incoming(self,target,amount)
@@ -866,6 +873,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String) ->
 	if not taken_row.is_empty():
 		taken_row.taken += lost
 		if covered: taken_row.redirected += lost
+	if lost > 0: target.last_form = Forms.kill_form(self,form,Reactions.SECONDARY)
 	target.hp -= lost; Body.sync(target)
 	if lost > 0 and bool(target.get("boss",false)): BossAI.on_damaged(self,target,form)
 	if on_floor() and lost > 0: noise.append(target.pos)

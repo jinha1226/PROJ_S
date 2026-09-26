@@ -1,4 +1,5 @@
 extends RefCounted
+const Forms = preload("res://expedition/combat/forms.gd")
 ## Every popup the HUD opens over a screen: the menu, the log, the map, curios,
 ## enemy info, npcs and their offers, the shared bag, the folio and the tactic
 ## rules. Moved out of main.gd; the popup nodes still live on `ui`.
@@ -86,6 +87,8 @@ static func show_enemy_info(ui, enemy: Dictionary) -> void:
 	var sheet: Dictionary = StatSheet.sheet(session,enemy)
 	var defence = ui.label(ui.modal_content,"방어 %d   회피 %d   막기 %d" % [int(sheet.ac.total),int(sheet.ev.total),int(sheet.sh.total)],14)
 	defence.name = "EnemyDefence"
+	var body = ui.label(ui.modal_content,Forms.body_line(enemy),13)
+	body.name = "EnemyBody"
 	var resists: Array = []
 	for key in ["res_fire","res_ice","res_air","res_poison","res_will"]:
 		if int(sheet[key].total) != 0: resists.append("%s %d%%" % [StatSheet.NAMES[key],int(sheet[key].total)])
@@ -331,7 +334,8 @@ static func gear_name(ui, item: Dictionary, slot: String) -> String:
 	if slot == "shield": return "방패"
 	var catalog: Dictionary = Session.CombatStats.content.weapons if slot == "weapon" else Session.CombatStats.content.armours if slot == "armour" else Session.CombatStats.content.rings if slot == "ring" else {}
 	var id: String = str(item.get("type",""))
-	return str(catalog.get(id,{}).get("name",id))
+	var name: String = str(catalog.get(id,{}).get("name",id))
+	return Forms.weapon_label(name,id) if slot == "weapon" else name
 
 static func build_equipped_header(ui, parent: VBoxContainer) -> void:
 	if ui.session.party.is_empty(): return

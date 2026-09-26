@@ -7,6 +7,7 @@ const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const Rules = preload("res://expedition/ai/tactic_rules.gd")
+const Forms = preload("res://expedition/combat/forms.gd")
 
 static func gear_slot(s, item: Dictionary) -> String:
 	var id: String = str(item.get("type",""))
@@ -95,6 +96,8 @@ static func roll_part(s, enemy: Dictionary, reward_actors: Variant = null) -> vo
 	var chance: int = Essences.drop_chance(s,species)
 	s.essence_seen[species] = true
 	if Hexaco.sample(s.seed_value,s.depth*10000+enemy.id,"essence",100) >= chance: return
+	# Record the part now; separate part stones are a later content stage.
+	enemy.part_kind = Forms.pick_part(str(enemy.get("last_form","")),Hexaco.sample(s.seed_value,s.depth*10000+enemy.id,"essence_part",100))
 	s.parts_bag[id] = int(s.parts_bag.get(id,0))+1
 	s.battle_stats.drops[id] = int(s.battle_stats.drops.get(id,0))+1
 	s.message(Essences.title(id)+" 획득")

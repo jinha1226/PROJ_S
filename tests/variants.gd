@@ -6,6 +6,7 @@ const Abilities = preload("res://expedition/items/abilities.gd")
 const Encounters = preload("res://expedition/level/encounter_builder.gd")
 const Variants = preload("res://expedition/level/variants.gd")
 const CombatRules = preload("res://expedition/combat/combat_rules.gd")
+const Forms = preload("res://expedition/combat/forms.gd")
 const Rules = preload("res://expedition/ai/tactic_rules.gd")
 const CASTERS := ["kobold_firecaller","frost_imp","storm_bat","goblin_hexer","gnoll_summoner"]
 var failures := 0
@@ -18,11 +19,13 @@ func check(ok: bool, reason: String) -> void:
 func _initialize() -> void: call_deferred("run")
 
 func run() -> void:
+	Forms.force = 99 # Element checks isolate variant effects from random wounds.
 	resolution()
 	data()
 	effects()
 	weakness()
 	floors()
+	Forms.force = -1
 	print("Variants: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func resolution() -> void:
