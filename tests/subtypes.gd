@@ -22,6 +22,6 @@ func run() -> void:
 	for id in {"RAT_GNAW":"BOOST","LIZARD_TAIL":"REFLECT","HOB_TAUNT":"DEFENSE","ORC_THROW":"VOLLEY","TOAD_SPIT":"VENOM","GRAVEKEEPER":"DEATH","VAMPIRE_BITE":"REGEN","LEECh":""}:
 		var expected: String = {"RAT_GNAW":"BOOST","LIZARD_TAIL":"REFLECT","HOB_TAUNT":"DEFENSE","ORC_THROW":"VOLLEY","TOAD_SPIT":"VENOM","GRAVEKEEPER":"DEATH","VAMPIRE_BITE":"REGEN","LEECh":""}[id]
 		check(Subtypes.of(id) == expected,"explicit subtype mapping "+id)
-	check(Subtypes.long_label("DEFENSE") == "탱커 · 방어탱","readable subtype name")
+	check(Subtypes.long_label("DEFENSE") == "탱커 · 방어","readable subtype name")
 	check(Subtypes.of("COST_AXE") == "" and Subtypes.label("unknown") == "","unclassified and unknown effects are safe")
 	print("Subtypes: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)

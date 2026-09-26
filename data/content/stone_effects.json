@@ -2620,7 +2620,7 @@
       "subtype": "FURY"
     },
     "GEAR_AMP_5": {
-      "name": "방어탱",
+      "name": "방어",
       "text": "막기 +10",
       "keywords": [
         "장비"
@@ -3769,7 +3769,7 @@
       "roles": {}
     },
     "GEAR_AMP_EVASION": {
-      "name": "회피탱",
+      "name": "회피",
       "text": "회피 +8%",
       "keywords": [
         "장비"

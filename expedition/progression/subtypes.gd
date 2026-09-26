@@ -1,7 +1,7 @@
 extends RefCounted
 ## One descriptive subtype per effect. These labels never grant a bonus.
 const IDS := ["DEFENSE","EVASION","REGEN","REFLECT","BLEED","CRUSH","VITAL","FURY","SNIPE","VOLLEY","VENOM","ELEMENT","SUMMON","DEATH","HEAL","HEX","BOOST"]
-const NAMES := {"DEFENSE":"방어탱","EVASION":"회피탱","REGEN":"재생탱","REFLECT":"반사탱","BLEED":"출혈","CRUSH":"분쇄","VITAL":"급소","FURY":"광폭","SNIPE":"저격","VOLLEY":"연사","VENOM":"맹독","ELEMENT":"원소","SUMMON":"소환","DEATH":"사령","HEAL":"회복","HEX":"저주","BOOST":"강화"}
+const NAMES := {"DEFENSE":"방어","EVASION":"회피","REGEN":"재생","REFLECT":"반사","BLEED":"출혈","CRUSH":"분쇄","VITAL":"급소","FURY":"광폭","SNIPE":"저격","VOLLEY":"연사","VENOM":"맹독","ELEMENT":"원소","SUMMON":"소환","DEATH":"사령","HEAL":"회복","HEX":"저주","BOOST":"강화"}
 const GROUP := {"DEFENSE":"TANK","EVASION":"TANK","REGEN":"TANK","REFLECT":"TANK","BLEED":"MELEE","CRUSH":"MELEE","VITAL":"MELEE","FURY":"MELEE","SNIPE":"RANGED","VOLLEY":"RANGED","VENOM":"RANGED","ELEMENT":"MAGIC","SUMMON":"MAGIC","DEATH":"MAGIC","HEAL":"SUPPORT","HEX":"SUPPORT","BOOST":"SUPPORT"}
 const GROUP_NAMES := {"TANK":"탱커","MELEE":"근딜","RANGED":"원딜","MAGIC":"마딜","SUPPORT":"지원"}
 ## Internal tactical fit channels remain numeric; display and loot use subtype ids.
