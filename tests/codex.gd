@@ -28,6 +28,26 @@ func run() -> void:
 	wipe()
 	fresh(); round_trip(); broken(); unknown_keys(); keys(); records(); off(); real_run(); not_real(); entries(); extended()
 	wipe()
+	var affix_session = Session.new_run(44)
+	affix_session.records_codex = true; affix_session.codex = Codex.empty()
+	Codex.note_affix(affix_session,"GEAR_AMP_1")
+	check(int(affix_session.codex.affixes.GEAR_AMP_1.found) == 1,"an acquired gear option is recorded")
+	var groups := Codex.item_rows(affix_session.codex)
+	check(groups.filter(func(g): return g.group == "affixes")[0].rows.size() == 1,"only discovered options are shown")
+	affix_session.records_codex = false; Codex.note_affix(affix_session,"GEAR_AMP_2")
+	check(not affix_session.codex.affixes.has("GEAR_AMP_2"),"test gear never records an option")
+	var legacy: Dictionary = Codex.empty(); legacy.erase("affixes"); legacy.future = {"keep":true}
+	check(Codex.write(legacy),"a legacy version-one codex writes")
+	var migrated := Codex.read()
+	check(migrated.affixes.is_empty() and bool(migrated.future.keep),"old codex adds an empty affix section and preserves unknown keys")
+	check(Codex.write(affix_session.codex) and int(Codex.read().affixes.GEAR_AMP_1.found) == 1,"options persist across runs")
+	var bosses_book := Codex.empty()
+	bosses_book.monsters["boss:golem"] = {"seen":true}
+	var boss_stone := Codex.stone_entry(bosses_book,"FURNACE_HEART")
+	check(boss_stone.species_known and boss_stone.name == "용광로 심장" and boss_stone.group == "TANK","boss stones have a name and filter group after discovery")
+	check(boss_stone.text.contains("최대 HP +20") and boss_stone.text.contains("방어 +3"),"effectless boss stones show their actual base stats")
+	wipe()
+
 	print("Codex: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func wipe() -> void:
@@ -155,7 +175,7 @@ func entries() -> void:
 	check(not hidden.species_known and hidden.name == "???","a part of an unseen species hides its name")
 	data.stones["RAT_GNAW/cut"] = {"found":1,"absorbed":false,"variants":[]}
 	var got := Codex.stone_entry(data,"RAT_GNAW/cut")
-	check(got.found and not got.text.is_empty() and not got.families.is_empty(),"a found part shows its effect and families")
+	check(got.found and not got.text.is_empty() and not got.subtype.is_empty(),"a found part shows its effect and subtype")
 	var done := Codex.completion(data)
 	check(int(done.monsters[0]) == 1 and int(done.monsters[1]) == Codex.monster_list().size(),"monster completion")
 	check(int(done.stones[0]) == 1 and int(done.stones[1]) == Codex.stone_list().size(),"stone completion")

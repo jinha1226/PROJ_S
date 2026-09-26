@@ -9,6 +9,7 @@ const DROP_PERCENT := 25
 const SET_BONUS := 300
 const PLAIN := 300
 const Forms = preload("res://expedition/combat/forms.gd")
+const Subtypes = preload("res://expedition/progression/subtypes.gd")
 const Effects = preload("res://expedition/progression/stone_effects.gd")
 
 ## Low A leans to 광폭·기습, high C to 수호, high O to 술사; a stone it has
@@ -17,16 +18,18 @@ static func preference(npc: Dictionary, id: String) -> int:
 	var profile = npc.profile
 	var score: int = 100 if Essences.absorbed(npc,id) else 0
 	match str(Essences.role(id)):
-		"BERSERK", "AMBUSH": score += 1000-int(profile.value("A"))
-		"GUARD": score += int(profile.value("C"))
-		"CASTER": score += int(profile.value("O"))
+		"MELEE": score += 1000-int(profile.value("A"))
+		"TANK", "SUPPORT": score += int(profile.value("C"))
+		"MAGIC": score += int(profile.value("O"))
 		_: score += PLAIN
 	var effect: String = Effects.effect_of(id)
-	var families: Array = Effects.EFFECTS.get(effect,{}).get("families",[])
-	for family in families:
-		if int(family) in [1,2,4]: score += (1000-int(profile.value("A")))/2
-		elif int(family) in [5,12]: score += int(profile.value("C"))/2
-		elif int(family) in [7,8,10,11]: score += int(profile.value("O"))/2
+	var subtype := Subtypes.of(effect)
+	var group: String = str(Subtypes.GROUP.get(subtype,""))
+	match group:
+		"MELEE": score += (1000-int(profile.value("A")))/2
+		"TANK", "SUPPORT": score += int(profile.value("C"))/2
+		"MAGIC": score += int(profile.value("O"))/2
+
 	return score
 
 ## How many already chosen essences share a role or an element with `id`.
@@ -35,9 +38,8 @@ static func continuing(picked: Array, id: String) -> int:
 	for other in picked:
 		var same_role: bool = not str(Essences.role(id)).is_empty() and Essences.role(id) == Essences.role(str(other))
 		var same_element: bool = not str(Essences.element(id)).is_empty() and Essences.element(id) == Essences.element(str(other))
-		var families: Array = Effects.EFFECTS.get(Effects.effect_of(id),{}).get("families",[])
-		var other_families: Array = Effects.EFFECTS.get(Effects.effect_of(str(other)),{}).get("families",[])
-		var same_build: bool = families.any(func(f): return f in other_families)
+		var subtype := Subtypes.of(Effects.effect_of(id))
+		var same_build: bool = not subtype.is_empty() and subtype == Subtypes.of(Effects.effect_of(str(other)))
 		if same_role or same_element or same_build: count += 1
 	return count
 

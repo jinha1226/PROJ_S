@@ -2,7 +2,7 @@
   "version": 2,
   "rows": {
     "RAT_GNAW": {
-      "role": "PACK",
+      "role": "SUPPORT",
       "element": "",
       "school": "",
       "species": "dcss_rat",
@@ -24,7 +24,7 @@
       }
     },
     "LIZARD_TAIL": {
-      "role": "BERSERK",
+      "role": "TANK",
       "element": "",
       "school": "",
       "species": "dcss_frilled_lizard",
@@ -46,7 +46,7 @@
       }
     },
     "KOBOLD_SLING": {
-      "role": "ARCHER",
+      "role": "RANGED",
       "element": "",
       "school": "",
       "species": "kobold",
@@ -68,7 +68,7 @@
       }
     },
     "GOBLIN_SHIV": {
-      "role": "AMBUSH",
+      "role": "MELEE",
       "element": "",
       "school": "",
       "species": "goblin",
@@ -90,7 +90,7 @@
       }
     },
     "ORC_CLEAVER": {
-      "role": "BERSERK",
+      "role": "MELEE",
       "element": "",
       "school": "",
       "species": "dcss_orc",
@@ -112,7 +112,7 @@
       }
     },
     "GNOLL_SPEAR": {
-      "role": "BERSERK",
+      "role": "MELEE",
       "element": "",
       "school": "",
       "species": "dcss_gnoll",
@@ -134,7 +134,7 @@
       }
     },
     "RIVER_RAT_SPLASH": {
-      "role": "PACK",
+      "role": "MELEE",
       "element": "",
       "school": "",
       "species": "dcss_river_rat",
@@ -156,7 +156,7 @@
       }
     },
     "FIRE_CALLER": {
-      "role": "CASTER",
+      "role": "MAGIC",
       "element": "fire",
       "school": "fire",
       "species": "kobold_firecaller",
@@ -178,7 +178,7 @@
       }
     },
     "FROST_IMP": {
-      "role": "CASTER",
+      "role": "MAGIC",
       "element": "ice",
       "school": "ice",
       "species": "frost_imp",
@@ -200,7 +200,7 @@
       }
     },
     "STORM_BAT": {
-      "role": "PACK",
+      "role": "RANGED",
       "element": "air",
       "school": "air",
       "species": "storm_bat",
@@ -222,7 +222,7 @@
       }
     },
     "GOBLIN_HEXER": {
-      "role": "CASTER",
+      "role": "SUPPORT",
       "element": "will",
       "school": "hex",
       "species": "goblin_hexer",
@@ -244,7 +244,7 @@
       }
     },
     "GNOLL_SUMMONER": {
-      "role": "CASTER",
+      "role": "MAGIC",
       "element": "will",
       "school": "summon",
       "species": "gnoll_summoner",
@@ -266,7 +266,7 @@
       }
     },
     "HOB_TAUNT": {
-      "role": "GUARD",
+      "role": "TANK",
       "element": "",
       "school": "",
       "species": "dcss_hobgoblin",
@@ -288,7 +288,7 @@
       }
     },
     "GOBLIN_AIM": {
-      "role": "ARCHER",
+      "role": "RANGED",
       "element": "",
       "family": "goblin",
       "species": "goblin_archer",
@@ -310,7 +310,7 @@
       }
     },
     "SHIELD_STANCE": {
-      "role": "GUARD",
+      "role": "TANK",
       "element": "",
       "family": "goblin",
       "species": "goblin_shield",
@@ -332,7 +332,7 @@
       }
     },
     "ORC_THROW": {
-      "role": "ARCHER",
+      "role": "RANGED",
       "element": "",
       "family": "orc",
       "species": "orc_thrower",
@@ -354,7 +354,7 @@
       }
     },
     "SPIDER_WEB": {
-      "role": "AMBUSH",
+      "role": "SUPPORT",
       "element": "",
       "family": "insect",
       "species": "cave_spider",
@@ -376,7 +376,7 @@
       }
     },
     "BEETLE_CURL": {
-      "role": "GUARD",
+      "role": "TANK",
       "element": "",
       "family": "insect",
       "species": "rock_beetle",
@@ -398,7 +398,7 @@
       }
     },
     "ORE_SLAM": {
-      "role": "BERSERK",
+      "role": "MELEE",
       "element": "",
       "family": "elemental",
       "species": "ore_golem",
@@ -420,7 +420,7 @@
       }
     },
     "LEECH_LATCH": {
-      "role": "AMBUSH",
+      "role": "MELEE",
       "element": "",
       "family": "insect",
       "species": "giant_leech",
@@ -442,7 +442,7 @@
       }
     },
     "TOAD_SPIT": {
-      "role": "ARCHER",
+      "role": "RANGED",
       "element": "",
       "family": "reptile",
       "species": "swamp_toad",
@@ -464,7 +464,7 @@
       }
     },
     "SERPENT_SHED": {
-      "role": "GUARD",
+      "role": "TANK",
       "element": "",
       "family": "reptile",
       "species": "temple_serpent",
@@ -486,7 +486,7 @@
       }
     },
     "WATER_WAVE": {
-      "role": "PACK",
+      "role": "SUPPORT",
       "element": "",
       "family": "elemental",
       "species": "water_spirit",
@@ -508,7 +508,7 @@
       }
     },
     "SKELETON_WALL": {
-      "role": "PACK",
+      "role": "TANK",
       "element": "",
       "family": "undead",
       "species": "skeleton_soldier",
@@ -530,7 +530,7 @@
       }
     },
     "SKELETON_VOLLEY": {
-      "role": "ARCHER",
+      "role": "RANGED",
       "element": "",
       "family": "undead",
       "species": "skeleton_archer",
@@ -552,7 +552,7 @@
       }
     },
     "GHOUL_CLAW": {
-      "role": "BERSERK",
+      "role": "MELEE",
       "element": "",
       "family": "undead",
       "species": "ghoul",
@@ -574,7 +574,7 @@
       }
     },
     "VAMPIRE_BITE": {
-      "role": "AMBUSH",
+      "role": "MELEE",
       "element": "",
       "family": "bat",
       "species": "vampire_bat",
@@ -596,7 +596,7 @@
       }
     },
     "THORN_ARMOUR": {
-      "role": "GUARD",
+      "role": "TANK",
       "element": "",
       "family": "undead",
       "species": "wraith_knight",
@@ -618,7 +618,7 @@
       }
     },
     "WRAITH": {
-      "role": "CASTER",
+      "role": "SUPPORT",
       "element": "will",
       "family": "undead",
       "species": "wraith",
@@ -640,7 +640,7 @@
       }
     },
     "GRAVEKEEPER": {
-      "role": "CASTER",
+      "role": "MAGIC",
       "element": "will",
       "family": "undead",
       "species": "gravekeeper",
@@ -663,7 +663,7 @@
     },
     "GOBLIN_CHIEF": {
       "name": "족장의 뿔나팔",
-      "role": "PACK",
+      "role": "SUPPORT",
       "element": "",
       "school": "",
       "species": "goblin_chief",
@@ -671,7 +671,7 @@
     },
     "FURNACE_HEART": {
       "name": "용광로 심장",
-      "role": "GUARD",
+      "role": "TANK",
       "element": "fire",
       "school": "",
       "species": "furnace_golem",
@@ -679,7 +679,7 @@
     },
     "SOUL_EATER": {
       "name": "포식자의 핵",
-      "role": "CASTER",
+      "role": "MAGIC",
       "element": "will",
       "school": "",
       "species": "soul_eater",

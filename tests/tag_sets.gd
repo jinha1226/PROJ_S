@@ -42,25 +42,25 @@ func slot(actor: Dictionary, ids: Array) -> void:
 
 func pack() -> void:
 	var d := duo(); var s = d.s
-	slot(d.hero,["RIVER_RAT_SPLASH","RIVER_RAT_SPLASH@ice"])
-	check(Passives.outgoing(s,d.hero,d.foe,100) == 108,"무리 2: attack +8%")
-	slot(d.hero,["RIVER_RAT_SPLASH","RIVER_RAT_SPLASH@ice","RIVER_RAT_SPLASH@fire"])
-	check(Passives.outgoing(s,d.hero,d.foe,100) == 108,"무리 3 is still the two bracket")
-	check(Passives.outgoing(s,d.ally,d.foe,100) == 108,"the whole party reads it through the hook")
-	check(TagSets.incoming(s,d.hero,5) == 5 and Passives.incoming(s,d.hero,5) == 5,"the combo does not cut incoming damage")
+	slot(d.hero,["SPIDER_WEB","SPIDER_WEB@ice"])
+	check(Passives.outgoing(s,d.hero,d.foe,100) == 100,"support two lends no attack")
+	slot(d.hero,["SPIDER_WEB","SPIDER_WEB@ice","SPIDER_WEB@fire"])
+	check(Passives.outgoing(s,d.hero,d.foe,100) == 100,"support three remains bracket two")
+	check(Passives.outgoing(s,d.ally,d.foe,100) == 100,"no party attack until four")
+	check(TagSets.incoming(s,d.hero,5) == 5 and Passives.incoming(s,d.hero,5) == 5,"support does not reduce incoming damage")
 	check(Passives.outgoing(s,d.foe,d.hero,10) == 10,"a monster wears no combo")
 
 func ambush() -> void:
 	var d := duo(); var s = d.s
-	slot(d.hero,["SPIDER_WEB","SPIDER_WEB@fire"])
-	check(Passives.outgoing(s,d.hero,d.foe,10) == 10,"기습 2 no longer adds thirty percent to a fresh foe")
-	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 8,"기습 2: eight percent critical instead")
-	check(not d.hero.statuses.has("poised"),"기습 has no prepared critical")
-	slot(d.hero,["SPIDER_WEB","SPIDER_WEB@fire","SPIDER_WEB@ice"])
+	slot(d.hero,["RIVER_RAT_SPLASH","RIVER_RAT_SPLASH@fire"])
+	check(Passives.outgoing(s,d.hero,d.foe,100) == 112,"melee two adds twelve percent")
+	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 0,"melee two grants no critical chance")
+	check(not d.hero.statuses.has("poised"),"no prepared critical")
+	slot(d.hero,["RIVER_RAT_SPLASH","RIVER_RAT_SPLASH@fire","RIVER_RAT_SPLASH@ice"])
 	Rules.attack(s,d.foe,d.hero)
-	check(not d.hero.statuses.has("poised"),"a dodge readies nothing any more")
+	check(not d.hero.statuses.has("poised"),"a dodge readies nothing")
 	d.foe.hp = 39
-	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 8 and Passives.outgoing(s,d.hero,d.foe,10) == 10,"three stones are the two bracket")
+	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 0 and Passives.outgoing(s,d.hero,d.foe,100) == 112,"three stones remain bracket two")
 
 func elements() -> void:
 	var d := duo(); var s = d.s
@@ -86,14 +86,14 @@ func elements() -> void:
 
 func berserk() -> void:
 	var d := duo(); var s = d.s
-	slot(d.hero,["LIZARD_TAIL","GHOUL_CLAW"])
+	slot(d.hero,["RIVER_RAT_SPLASH","RIVER_RAT_SPLASH@fire"])
 	var cost: int = int(s.action_cost(d.hero,"ATTACK",d.foe.pos))
 	check(cost == int(Stats.stats(s,d.hero).delay),"광폭 2 cuts no delay any more")
 	d.hero.hp = int(d.hero.max_hp)/2-1
 	check(int(s.action_cost(d.hero,"ATTACK",d.foe.pos)) == cost,"not even wounded")
 	check(Passives.outgoing(s,d.hero,d.foe,20) == 22,"광폭 2: attack +12%")
-	slot(d.hero,["LIZARD_TAIL","LIZARD_TAIL@fire","LIZARD_TAIL@ice","LIZARD_TAIL@air"])
-	check(int(s.action_cost(d.hero,"ATTACK",d.foe.pos)) == cost*85/100,"광폭 4: wounded, fifteen percent quicker")
+	slot(d.hero,["RIVER_RAT_SPLASH","RIVER_RAT_SPLASH@fire","RIVER_RAT_SPLASH@ice","RIVER_RAT_SPLASH@air"])
+	check(int(s.action_cost(d.hero,"ATTACK",d.foe.pos)) == cost,"melee four no longer changes action delay")
 
 func archer() -> void:
 	var d := duo(); var s = d.s

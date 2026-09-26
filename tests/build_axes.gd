@@ -141,10 +141,10 @@ func roles() -> void:
 		if bool(out.evaded): dodged = not d.hero.statuses.has("poised"); break
 	check(dodged,"a real dodge readies nothing any more")
 	d.foe.hp = 30
-	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 8,"기습 3 is the two bracket: eight percent critical")
+	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 0,"support three grants no critical chance")
 	check(Passives.outgoing(s,d.hero,d.foe,10) == 10,"and the next blow carries no stored critical")
 	slot(d.hero,["SPIDER_WEB","SPIDER_WEB@fire","SPIDER_WEB@ice","SPIDER_WEB@air"])
-	check(StoneEffects.crit_percent(d.hero) == 190,"기습 4: critical damage +40%p")
+	check(StoneEffects.crit_percent(d.hero) == 150,"support four does not change critical damage")
 	# 수호: armour and block by bracket; a block strikes nothing back.
 	d = duo(); s = d.s
 	slot(d.hero,["HOB_TAUNT","HOB_TAUNT@fire","HOB_TAUNT@ice"])
@@ -186,14 +186,14 @@ func roles() -> void:
 	check(Reactions.reaction_damage(d.hero,10) == 10 and Reactions.reaction_damage(d.ally,10) == 10,"술사 3 no longer strengthens reactions")
 	# 무리 3: no rally; the whole party hits a tenth harder instead.
 	d = duo(); s = d.s
-	slot(d.hero,["RAT_GNAW","RIVER_RAT_SPLASH","RAT_GNAW@ice"])
+	slot(d.hero,["SPIDER_WEB","SPIDER_WEB@fire","SPIDER_WEB@ice","SPIDER_WEB@air"])
 	check(TagSets.incoming(s,d.hero,5) == 5,"무리 3 no longer takes one less")
 	s.tile(d.foe.pos).wet = 50
 	Reactions.begin_action(s)
 	Reactions.tile_react(s,d.foe.pos,"ice",5,d.hero)
 	check(not d.ally.statuses.has("rally") and not d.hero.statuses.has("rally"),"a reaction rallies nobody any more")
 	d.foe.hp = 30
-	check(Passives.outgoing(s,d.ally,d.foe,100) == 108,"무리 2's party-wide attack replaces the rally")
+	check(Passives.outgoing(s,d.ally,d.foe,100) == 108,"support four lends party attack without rally")
 	var source: String = FileAccess.get_file_as_string("res://expedition/progression/tag_sets.gd")
 	check(not ["func on_dodge","func on_block","func on_reaction","func on_kill","func attack_delay","poised","rally"].any(func(word): return source.contains(word)),"the old role triggers are gone")
 	StoneEffects.force = -1

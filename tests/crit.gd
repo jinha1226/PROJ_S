@@ -55,23 +55,23 @@ func chances() -> void:
 	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 0,"no stone, no critical")
 	slot(d.hero,["SKELETON_VOLLEY"])
 	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 15,"해골 궁수 alone: 15")
-	slot(d.hero,["SKELETON_VOLLEY","SPIDER_WEB","SPIDER_WEB@fire"])
-	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 23,"with 기습 2: 23")
-	slot(d.hero,["SKELETON_VOLLEY","SPIDER_WEB","SPIDER_WEB@fire","SPIDER_WEB@ice","SPIDER_WEB@air"])
-	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 31,"with 기습 4: 31")
+	slot(d.hero,["SKELETON_VOLLEY","GOBLIN_SHIV","GOBLIN_SHIV@fire"])
+	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 15,"melee two adds no critical chance")
+	slot(d.hero,["SKELETON_VOLLEY","GOBLIN_SHIV","GOBLIN_SHIV@fire","GOBLIN_SHIV@ice","GOBLIN_SHIV@air"])
+	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 23,"melee four adds eight points")
 	slot(d.hero,["SKELETON_VOLLEY","SKELETON_VOLLEY@fire"])
 	check(StoneEffects.crit_chance(s,d.hero,d.foe) == 15,"two 해골 궁수 stones are one effect")
 
 func multipliers() -> void:
 	var d := duo()
-	slot(d.hero,["SPIDER_WEB","SPIDER_WEB@fire"])
+	slot(d.hero,["GOBLIN_SHIV","GOBLIN_SHIV@fire"])
 	check(StoneEffects.crit_percent(d.hero) == 150,"a plain critical is ×1.5")
 	slot(d.hero,["SKELETON_VOLLEY"])
 	check(StoneEffects.crit_percent(d.hero) == 200,"해골 궁수: +50%p")
-	slot(d.hero,["SPIDER_WEB","SPIDER_WEB@fire","SPIDER_WEB@ice","SPIDER_WEB@air"])
-	check(StoneEffects.crit_percent(d.hero) == 190,"기습 4: +40%p")
-	slot(d.hero,["SKELETON_VOLLEY","SPIDER_WEB","SPIDER_WEB@fire","SPIDER_WEB@ice","SPIDER_WEB@air"])
-	check(StoneEffects.crit_percent(d.hero) == 240,"both: +90%p")
+	slot(d.hero,["GOBLIN_SHIV","GOBLIN_SHIV@fire","GOBLIN_SHIV@ice","GOBLIN_SHIV@air"])
+	check(StoneEffects.crit_percent(d.hero) == 150,"melee four keeps critical damage unchanged")
+	slot(d.hero,["SKELETON_VOLLEY","GOBLIN_SHIV","GOBLIN_SHIV@fire","GOBLIN_SHIV@ice","GOBLIN_SHIV@air"])
+	check(StoneEffects.crit_percent(d.hero) == 200,"only the effect adds critical damage")
 
 func damage() -> void:
 	var d := duo(); var s = d.s
@@ -83,8 +83,8 @@ func damage() -> void:
 	check(s.log_lines.filter(func(l): return str(l).contains("치명타")).size() == 1,"one line in the log")
 	check(hit(s,d.hero,d.foe,10,"IMPACT") == 20,"an active crits too")
 	check(hit(s,d.hero,d.foe,10,"physical") == 20,"so does a landed weapon hit")
-	slot(d.hero,["SKELETON_VOLLEY","SPIDER_WEB","SPIDER_WEB@fire","SPIDER_WEB@ice","SPIDER_WEB@air"])
-	check(hit(s,d.hero,d.foe,10) == 24,"the multipliers add up")
+	slot(d.hero,["SKELETON_VOLLEY","GOBLIN_SHIV","GOBLIN_SHIV@fire","GOBLIN_SHIV@ice","GOBLIN_SHIV@air"])
+	check(hit(s,d.hero,d.foe,10) == 24,"melee four scales the blow before its critical")
 	slot(d.hero,[])
 	check(hit(s,d.hero,d.foe,10) == 10,"no chance, no critical however the roll falls")
 
@@ -117,5 +117,5 @@ func monsters() -> void:
 	check(StoneEffects.crit_chance(s,d.foe,d.hero) == 15 and StoneEffects.crit_percent(d.foe) == 200,"a skeleton archer crits like its stone")
 	StoneEffects.force = 0
 	check(hit(s,d.foe,d.hero,10) == 20,"and hits that hard")
-	d.foe.part_id = "SPIDER_WEB"
+	d.foe.part_id = "GOBLIN_SHIV"
 	check(StoneEffects.crit_chance(s,d.foe,d.hero) == 0,"a monster has no 기습 combo")

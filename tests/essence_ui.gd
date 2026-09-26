@@ -28,7 +28,7 @@ func run() -> void:
 	s.phase = "CAMP"
 	var hero: Dictionary = s.party[0]
 	s.parts_bag["RAT_GNAW"] = 2
-	s.parts_bag["RIVER_RAT_SPLASH"] = 1
+	s.parts_bag["SPIDER_WEB"] = 1
 	scene.show_character(0,"영혼석")
 	await frames(4)
 	var tabs: Array = scene.modal_content.find_child("CharacterTabs",true,false).get_children().map(func(b): return b.text)
@@ -57,15 +57,15 @@ func run() -> void:
 	# Not while enemies are awake.
 	s.phase = "BATTLE"
 	scene.show_character(0,"영혼석"); await frames(3)
-	check(button(scene,"EssenceAbsorb_"+Essences.canonical("RIVER_RAT_SPLASH").replace("/","_")).disabled,"흡수 is refused in battle")
+	check(button(scene,"EssenceAbsorb_"+Essences.canonical("SPIDER_WEB").replace("/","_")).disabled,"흡수 is refused in battle")
 	s.phase = "CAMP"
 	# A second slot and a set.
 	s.gain_level_xp(hero,65)
 	check(Essences.slot_count(hero) == 2,"level two opens a second slot")
-	check(s.absorb_essence(0,"RIVER_RAT_SPLASH").is_empty() and s.equip_part(0,1,"RIVER_RAT_SPLASH"),"a second pack essence is worn")
+	check(s.absorb_essence(0,"SPIDER_WEB").is_empty() and s.equip_part(0,1,"SPIDER_WEB"),"a second support essence is worn")
 	scene.show_character(0,"영혼석"); await frames(3)
 	var sets: Node = scene.modal_content.find_child("EssenceSets",true,false)
-	check(sets != null and sets.find_children("*","Label",true,false).any(func(l): return l.text.begins_with("무리 2")),"the pack set shows under the grid")
+	check(sets != null and sets.find_children("*","Label",true,false).any(func(l): return l.text.begins_with("지원 2")),"the support set shows under the grid")
 	# A caster essence and its spell.
 	var caster: String = Essences.canonical(str(Essences.CASTER_BY_SCHOOL.fire))
 	s.parts_bag[caster] = 1

@@ -37,10 +37,11 @@ var session = null
 ## fights, the setup screen's own state, and whether that screen is showing.
 
 var arena_config := {"arena":"early_hob","seed":0,"fixed_seed":false,"size":1,
-	"members":[{"stance":"CHARGER","parts":["",""]},{"stance":"CHARGER","parts":["",""]},{"stance":"CHARGER","parts":["",""]}],
+	"members":[{"stance":"CHARGER","parts":["",""],"build":""},{"stance":"CHARGER","parts":["",""],"build":""},{"stance":"CHARGER","parts":["",""],"build":""}],
 	"custom":[["",""],["",""],["",""]]}
 var mode_arena_setup := false
 var mode_arena_active := false
+var arena_return_session = null
 var mode := ""
 var reservation_actor := -1
 var pending_item := ""
@@ -145,9 +146,19 @@ func popup_open() -> bool:
 ## Battle test mode (§3): the setup screen, a throwaway arena session started
 ## from it, and the way back to the town session it set aside.
 func show_arena_setup() -> void:
+	if not mode_arena_active and not mode_arena_setup: arena_return_session = session
 	stop_navigation(); details_popup.hide()
 	if session != null: session.auto.running = false
 	mode_arena_setup = true; refresh()
+
+func show_arena_setup_with(ids: Array) -> void:
+	var Builds = preload("res://expedition/progression/example_builds.gd")
+	if ids.is_empty() or ids.size() > 3 or ids.any(func(id): return Builds.build(str(id)).is_empty()): return
+	arena_config.size = ids.size()
+	for i in range(ids.size()):
+		arena_config.members[i].build = str(ids[i])
+		arena_config.members[i].stance = str(Builds.build(str(ids[i])).get("stance","CHARGER"))
+	show_arena_setup()
 
 func start_arena() -> void:
 	mode_arena_setup = false
@@ -165,7 +176,9 @@ func start_arena() -> void:
 	refresh()
 
 func leave_arena() -> void:
-	mode_arena_setup = false; mode_arena_active = false; details_popup.hide(); session = null
+	mode_arena_setup = false; mode_arena_active = false; details_popup.hide()
+	session = arena_return_session; arena_return_session = null
+	mode = ""; pending_attack = {}; show_attack_range = false
 	stop_text = ""; battle_reported = false; action_effects = []; reset_effects = true
 	refresh()
 
@@ -537,11 +550,12 @@ func focus_enemy(point: Vector2i) -> void:
 ## The screens keep their entry points on the node: the tests, the signals and
 ## the sibling screens all reach them through `main`.
 const CodexScreen = preload("res://expedition/ui/screens/codex_screen.gd")
-func show_codex(tab: String = "monsters", focus: String = "") -> void: CodexScreen.show(self,tab,focus)
+func show_codex(tab: String = "stones", focus: String = "") -> void: CodexScreen.show(self,tab,focus)
 
 func _notification(what: int) -> void:
-	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_WM_CLOSE_REQUEST] and session != null:
-		session.Codex.flush(session)
+	if what not in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_WM_CLOSE_REQUEST]: return
+	if session != null: session.Codex.flush(session)
+	if arena_return_session != null: arena_return_session.Codex.flush(arena_return_session)
 
 func new_run(record_codex: bool = false) -> void: StartScreen.new_run(self,record_codex)
 func depart() -> void: StartScreen.depart(self)

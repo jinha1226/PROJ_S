@@ -3,12 +3,14 @@ extends RefCounted
 ## kept across runs in one file. Only a real run records; every note marks the
 ## session dirty and `flush` writes it at the few moments the spec names.
 const Essences = preload("res://expedition/progression/essences.gd")
+const Subtypes = preload("res://expedition/progression/subtypes.gd")
+const Equipment = preload("res://expedition/items/equipment.gd")
 const VERSION := 1
-const SECTIONS := ["monsters","stones","unrands","tips"]
+const SECTIONS := ["monsters","stones","unrands","tips","affixes"]
 static var path := "user://codex.json"
 
 static func empty() -> Dictionary:
-	return {"version":VERSION,"runs":0,"deepest":0,"monsters":{},"stones":{},"unrands":{},"tips":{}}
+	return {"version":VERSION,"runs":0,"deepest":0,"monsters":{},"stones":{},"unrands":{},"tips":{},"affixes":{}}
 
 static func bad_path() -> String:
 	return path.get_basename()+".bad.json"
@@ -102,6 +104,11 @@ static func note_unrand(s, id: String) -> void:
 	var row := entry(s,"unrands",id,{"found":0})
 	row.found = int(row.get("found",0))+1; s.codex_dirty = true
 
+static func note_affix(s, id: String) -> void:
+	if not recording(s) or not effects.has(id) or str(effects[id].get("gear_kind","")) != "affix": return
+	var row := entry(s,"affixes",id,{"found":0})
+	row.found = int(row.get("found",0))+1; s.codex_dirty = true
+
 static func note_run_end(s) -> void:
 	if not recording(s) or s.codex_run_ended: return
 	s.codex_run_ended = true
@@ -147,9 +154,9 @@ static func monster_entry(data: Dictionary, key: String) -> Dictionary:
 		return result
 	var species: Dictionary = Encounters.species(key)
 	result.name = str(species.get("display_name",key))
-	result.role = {"MELEE":"근접","RANGED":"원거리","CASTER":"술사"}.get(str(species.get("role","")),"")
 	result.body_line = Forms.body_line({"enemy":true,"species_id":key})
 	var base := species_stone(key)
+	result.role = str(Essences.ROLES.get(Essences.role(base),""))
 	result.effect_text = str(effects.get(Essences.row(base).get("effect",""),{}).get("text","")) if not base.is_empty() else ""
 	result.active_text = str(Essences.Abilities.definition(base).get("description","")) if not base.is_empty() else ""
 	for i in range(Forms.PARTS.size()):
@@ -175,13 +182,22 @@ static func stone_entry(data: Dictionary, key: String) -> Dictionary:
 	var row: Dictionary = data.get("stones",{}).get(key,{})
 	var info: Dictionary = Essences.row(key)
 	var species: String = str(info.get("species",""))
+	species = {"goblin_chief":"boss:chief","furnace_golem":"boss:golem","soul_eater":"boss:eater"}.get(species,species)
 	var known: bool = bool(data.get("monsters",{}).get(species,{}).get("seen",false))
 	var part := Essences.part_of(key)
 	var form: String = Forms.FORMS[Forms.PARTS.find(part)] if part in Forms.PARTS else ""
 	var effect: Dictionary = effects.get(str(info.get("effect","")),{})
+	var title: String = str(info.get("part_name",""))
+	if title.is_empty(): title = Essences.title(key)
+	var description: String = str(effect.get("text",""))
+	if description.is_empty():
+		var stats := Essences.stats(key); var parts: PackedStringArray = []
+		for stat in stats: parts.append("%s +%d" % [Equipment.PROP_NAMES.get(str(stat),str(stat)),int(stats[stat])])
+		description = " · ".join(parts)
 	return {"key":key,"found":int(row.get("found",0)) > 0,"absorbed":bool(row.get("absorbed",false)),"species_known":known,
-		"name":str(info.get("part_name",Essences.title(key))) if known or int(row.get("found",0)) > 0 else "???",
-		"text":str(effect.get("text","")),"keywords":effect.get("keywords",[]),"families":effect.get("families",[]).map(func(f): return int(f)),
+		"name":title if known or int(row.get("found",0)) > 0 else "???",
+		"text":description,"keywords":effect.get("keywords",[]),"subtype":Subtypes.of(str(info.get("effect",""))),
+		"group":str(Subtypes.GROUP.get(Subtypes.of(str(info.get("effect",""))),Essences.role(key))),
 		"hint":str(FORM_HINT.get(form,""))}
 
 static func completion(data: Dictionary) -> Dictionary:
@@ -204,7 +220,30 @@ static func unrand_entry(data: Dictionary, id: String) -> Dictionary:
 		if str(row.id) != id: continue
 		var found: bool = int(data.get("unrands",{}).get(id,{}).get("found",0)) > 0
 		var type: String = str(row.type)
-		var Equipment = load("res://expedition/items/equipment.gd")
 		return {"key":id,"found":found,"slot":Equipment.SLOT_NAMES.get(Equipment.slot({"type":type}),""),
 			"name":str(row.name) if found else "???","text":Equipment.description(row) if found else ""}
 	return {}
+
+## Public base equipment and discovered options. Unknown artefacts keep only their slot.
+static func item_rows(data: Dictionary) -> Array:
+	var result: Array = []
+	for group in ["weapons","offhands","armours","rings"]:
+		var rows: Array = []
+		for id in Equipment.content.get(group,{}):
+			var info: Dictionary = Equipment.content[group][id]
+			var bits: PackedStringArray = []
+			for pair in [["form","형태"],["damage","공격"],["delay","지연"],["range","사거리"],["hands","손"],["ac","방어"],["ev_penalty","회피 감소"],["enc","무게"],["block","막기"],["sh","막기"],["spell","주문력"],["stat","효과"],["value","수치"]]:
+				if not info.has(pair[0]): continue
+				var value: String = str(info[pair[0]])
+				if pair[0] == "form": value = str(Forms.NAMES.get(value,value))
+				if pair[0] == "stat": value = str(Essences.ELEMENTS.get(value,{"power":"주문력","ev":"회피"}.get(value,value)))
+				bits.append("%s %s" % [pair[1],value])
+			rows.append({"key":id,"name":str(info.get("name",id)),"text":" · ".join(bits)})
+		result.append({"group":group,"rows":rows})
+	var affixes: Array = []
+	for id in effects:
+		if str(effects[id].get("gear_kind","")) != "affix" or int(data.get("affixes",{}).get(id,{}).get("found",0)) <= 0: continue
+		affixes.append({"key":id,"name":str(effects[id].name),"text":str(effects[id].text),"subtype":Subtypes.of(str(id)),"keywords":effects[id].get("keywords",[])})
+	result.append({"group":"affixes","rows":affixes})
+	result.append({"group":"unrands","rows":unrand_ids().map(func(id): return unrand_entry(data,str(id)))})
+	return result

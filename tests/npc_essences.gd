@@ -36,10 +36,10 @@ func run() -> void:
 	NpcEssences.choose(s,curious)
 	check(curious.equipped_abilities == [Essences.canonical(caster)],"high openness wears the caster")
 	check(not str(curious.essence_spells.get(Essences.canonical(str(caster)),"")).is_empty(),"and picks a spell for it")
-	var pack: Dictionary = stranger(s,3,{"A":100,"C":500,"O":500},{"ORC_CLEAVER":1,"GNOLL_SPEAR":1,"GOBLIN_SHIV":1},2)
+	var pack: Dictionary = stranger(s,3,{"A":100,"C":500,"O":500},{"ORC_CLEAVER":1,"GNOLL_SPEAR":1,"SHIELD_STANCE":1},2)
 	NpcEssences.choose(s,pack)
-	check(pack.equipped_abilities == [Essences.canonical("GNOLL_SPEAR"),Essences.canonical("ORC_CLEAVER")],"a second berserker keeps the set going over an equal ambusher")
-	check(NpcEssences.continuing(["GNOLL_SPEAR"],"ORC_CLEAVER") == 1 and NpcEssences.continuing(["GNOLL_SPEAR"],"GOBLIN_SHIV") == 0,"continuation counts shared tags")
+	check(pack.equipped_abilities == [Essences.canonical("GNOLL_SPEAR"),Essences.canonical("ORC_CLEAVER")],"a second melee stone keeps the set going over a tank stone")
+	check(NpcEssences.continuing(["GNOLL_SPEAR"],"ORC_CLEAVER") == 1 and NpcEssences.continuing(["GNOLL_SPEAR"],"SHIELD_STANCE") == 0,"continuation counts shared tags")
 	# Its own hunt.
 	var hunter: Dictionary = stranger(s,4,{"A":500,"C":500,"O":500},{},1)
 	var foe: Dictionary = s.enemies.filter(func(e): return Essences.has(str(e.get("part_id",""))))[0]

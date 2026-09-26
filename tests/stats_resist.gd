@@ -47,7 +47,7 @@ func attributes() -> void:
 	check(int(sheet.atk.total) == 4 and int(sheet.str.total) == 12 and sheet.atk.parts.any(func(p): return p.from == Essences.title("ORC_CLEAVER") and int(p.value) == 4),"an essence adds attack under its own name, no strength")
 	check(int(hero.max_hp) == hp+8 and int(hero.hp) == hp+8,"a berserk stone is eight more HP")
 	check(int(Stats.stats(s,hero).damage) == int(sword.damage)+12/6+4,"attack adds to the sword")
-	slot(hero,["ORC_CLEAVER","LIZARD_TAIL"]); StatSheet.refresh_pools(s,hero)
+	slot(hero,["ORC_CLEAVER","GNOLL_SPEAR"]); StatSheet.refresh_pools(s,hero)
 	check(int(StatSheet.value(s,hero,"atk")) == 8 and int(hero.max_hp) == hp+16,"two stones add up")
 	slot(hero,[""]); StatSheet.refresh_pools(s,hero)
 	check(int(hero.max_hp) == hp and int(hero.hp) <= hp,"taking it off returns the HP")
@@ -55,7 +55,7 @@ func attributes() -> void:
 	check(int(hero.max_mp) == mp+8,"a caster stone is eight more MP")
 	check(int(hero.pool_bonus.mp) == 8 and int(hero.pool_bonus.hp) == 0,"the pools remember what they were given")
 	slot(hero,["GOBLIN_SHIV"])
-	check(int(StatSheet.value(s,hero,"ev")) == int(StatSheet.value(s,hero,"dex"))/3 and int(StatSheet.value(s,hero,"dodge")) == 5,"evasion is one per three dexterity; the stone adds 회피 % instead")
+	check(int(StatSheet.value(s,hero,"ev")) == int(StatSheet.value(s,hero,"dex"))/3 and int(StatSheet.value(s,hero,"dodge")) == 0,"evasion is one per three dexterity; melee base stats grant no evasion")
 	check(StatSheet.legacy_power(hero,"RANGED",10) == 10,"the old auto path reads attribute points, which a stone no longer gives")
 
 func defence() -> void:

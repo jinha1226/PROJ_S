@@ -62,17 +62,18 @@ func formulas() -> void:
 	check(int(archer.range) == 4 and int(archer.attack_percent) == 390,"deep archers reach four; actives scale by 26×1.2/8")
 	var ambush: Dictionary = Bestiary.monster_stats("goblin",1)
 	check(int(ambush.ev) == 7,"an ambusher dodges four more")
-	check(Bestiary.essence_stats("BERSERK","") == {"atk":4,"hp":8},"광폭: 공격력 4, 최대 HP 8")
-	check(Bestiary.essence_stats("GUARD","") == {"hp":20,"ac":3},"수호: 최대 HP 20, 방어 3")
-	check(Bestiary.essence_stats("CASTER","fire") == {"spell":4,"mp":8},"술사: 주문력 4, 최대 MP 8")
-	check(Bestiary.essence_stats("CASTER","hex") == Bestiary.essence_stats("CASTER","fire"),"every caster stone is the same, whatever its school")
-	check(Bestiary.essence_stats("CASTER","") == {"spell":4,"mp":8},"a caster with no school too")
+	check(Bestiary.essence_stats("MELEE","") == {"atk":4,"hp":8},"광폭: 공격력 4, 최대 HP 8")
+	check(Bestiary.essence_stats("TANK","") == {"hp":20,"ac":3},"수호: 최대 HP 20, 방어 3")
+	check(Bestiary.essence_stats("MAGIC","fire") == {"spell":4,"mp":8},"술사: 주문력 4, 최대 MP 8")
+	check(Bestiary.essence_stats("MAGIC","hex") == Bestiary.essence_stats("MAGIC","fire"),"every caster stone is the same, whatever its school")
+	check(Bestiary.essence_stats("MAGIC","") == {"spell":4,"mp":8},"a caster with no school too")
+	check(Bestiary.essence_stats("SUPPORT") == {"hp":10,"mp":6},"support base pools")
 	var total := 0
 	for role in Bestiary.ROLE_POINTS:
 		var keys: Array = (Bestiary.ROLE_POINTS[role] as Dictionary).keys()
 		check(keys.size() == 2 and keys.all(func(k): return str(k) in ["atk","hp","spell","mp","speed","dodge","ac"]),"%s stones give two fight numbers, no attribute points" % role)
 		total += 1
-	check(total == 6,"six roles priced")
+	check(total == 5,"five roles priced")
 
 func parts() -> void:
 	for row in Bestiary.table():
@@ -80,14 +81,14 @@ func parts() -> void:
 		var part: String = Abilities.species_part(id)
 		check(not part.is_empty(),"%s has its active" % id)
 		if part.is_empty(): continue
-		check(Essences.has(part) and Essences.family(part) == str(row.family) and Essences.role(part) == str(row.role),"%s stone carries the family and role" % id)
-		check(Essences.row(part).stats == Bestiary.essence_stats(str(row.role),Essences.school(part)),"%s stone stats come from the role formula" % id)
+		check(Essences.has(part) and Essences.family(part) == str(row.family) and Essences.role(part) in Essences.ROLES,"%s stone carries the family and role" % id)
+		check(Essences.row(part).stats == Bestiary.essence_stats(Essences.role(part),Essences.school(part)),"%s stone stats come from the role formula" % id)
 		check(Essences.school(part).is_empty() == (str(row.role) != "CASTER" and id != "storm_bat"),"%s gives a spell exactly when it should" % id)
 		for element in row.get("variants",[]):
 			check(Abilities.has("%s@%s" % [part,element]) and Essences.has("%s@%s" % [part,element]),"%s@%s exists" % [part,element])
 	check(not Essences.row("GHOUL_CLAW@bleed").stats.has("res_bleed"),"a bleed variant adds no resistance")
 	check(int(Essences.row("ORE_SLAM@fire").stats.get("res_fire",0)) == 10,"a fire variant adds fire resistance ten")
-	check(Essences.row("STORM_BAT").role == "PACK" and Essences.school("STORM_BAT") == "air","the storm bat stone is pack but still sparks")
+	check(Essences.row("STORM_BAT").role == "RANGED" and Essences.school("STORM_BAT") == "air","the storm bat stone is pack but still sparks")
 
 ## Hero at c, a fresh foe beside at c+(1,0).
 func arena(ids: Array) -> Dictionary:

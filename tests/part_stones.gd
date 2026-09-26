@@ -97,7 +97,7 @@ func shared_actions() -> void:
 	check(s.equip_part(0,0,"RAT_GNAW") and s.equip_part(0,1,"RAT_GNAW/broken") and s.equip_part(0,2,"RAT_GNAW/pierced"),"three different species parts can be worn together")
 	check(not s.equip_part(0,1,"RAT_GNAW/cut"),"same stone cannot be slotted twice through an alias")
 	check(hero.rules.size() == 1 and Abilities.held(hero) == ["RAT_GNAW"],"three parts give one action and one rule")
-	check(int(TagSets.counts(hero).PACK) == 3,"role counts each distinct part")
+	check(int(TagSets.counts(hero).SUPPORT) == 3,"role counts each distinct part")
 	check(StoneEffects.effects(hero) == ["RAT_GNAW","RAT_INCISOR","RAT_HEART"],"unfinished parts do not repeat headline effects")
 	hero.rules[0].enabled = false
 	check(s.unequip_part(0,0) and hero.rules.size() == 1 and not hero.rules[0].enabled,"removing headline preserves configured active on another part")

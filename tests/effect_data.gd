@@ -1,5 +1,6 @@
 extends SceneTree
 const EffectEngine = preload("res://expedition/progression/effect_engine.gd")
+const Subtypes = preload("res://expedition/progression/subtypes.gd")
 const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
 var checks := 0
 var failures := 0
@@ -13,6 +14,7 @@ func run() -> void:
 	check(EffectEngine.validate(data).is_empty(),"production effect schema: "+str(EffectEngine.validate(data)))
 	for id in data.effects:
 		var row: Dictionary = data.effects[id]
+		if str(row.get("source","")) != "gear": check(Subtypes.of(str(id)) in Subtypes.IDS,str(id)+" has one subtype")
 		check(not row.rules.is_empty() and not row.keywords.is_empty(),str(id)+" has behavior and keywords")
 		check(row.name == StoneEffects.EFFECTS[id].name and row.text == StoneEffects.EFFECTS[id].text,str(id)+" keeps the UI labels")
 	for bad in [{"when":"TYPO","do":[{"notice":"!"}]},{"when":"HIT","if":[{"chacne":5}],"do":[{"notice":"!"}]},{"when":"HIT","do":[{"teleport":1}]},{"when":"HIT","code":"unknown"},{"when":"ALWAYS","mod":{"damage_typo":5}},{"when":"HIT","if":[{"chance":25}],"do":[{"gain_mp":1}]}]:

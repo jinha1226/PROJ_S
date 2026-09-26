@@ -107,7 +107,7 @@ static func best(s, actor: Dictionary, options: Array, stance: String, knobs: Di
 		if str(chosen.get("reason_code","")) == "BUILD_TARGET":
 			var families: Array = BuildSense.main(actor)
 			families.sort_custom(func(a,b): return BuildSense.fit(s,actor,chosen,int(a)) > BuildSense.fit(s,actor,chosen,int(b)))
-			chosen.reason_text = str(BuildSense.NAMES.get(families[0],"빌드"))+" 대상 우선"
+			chosen.reason_text = BuildSense.Subtypes.label(BuildSense.top_subtype(actor))+" 대상 우선"
 		else: chosen.reason_text = {"BUILD_SETUP":"동료 지원","BUILD_HOLD":"자리 유지","FINISH_FORM":"부위 노리기","FINISH_YIELD":"마무리 양보"}.get(str(chosen.get("reason_code","")),"")
 	return chosen
 

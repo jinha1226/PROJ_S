@@ -12,6 +12,7 @@ const CombatStats = preload("res://expedition/combat/combat_stats.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const Memory = preload("res://sim/party_memory_state.gd")
+const BuildSense = preload("res://expedition/ai/build_sense.gd")
 
 static func surface(color: Color, border: Color = Color("6d5b3f")) -> StyleBoxFlat:
 	var skin := StyleBoxFlat.new(); skin.bg_color = color; skin.border_color = border
@@ -213,6 +214,10 @@ static func stances(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		pick.tooltip_text = "실수 확률 %d%%" % Stances.mistake_chance(probe)
 	var badge := text(box,Stances.NAMES[Stances.suggested(actor)],13)
 	badge.name = "StanceSuggestion"
+	var profile := BuildSense.subtype_profile(actor)
+	var types: Array = profile.keys()
+	types.sort_custom(func(a,b): return float(profile[a]) > float(profile[b]) if float(profile[a]) != float(profile[b]) else str(a) < str(b))
+	if not types.is_empty(): text(box," · ".join(types.slice(0,3).map(func(id): return "%s %d%%" % [BuildSense.Subtypes.label(str(id)),roundi(float(profile[id])*100)])),12).name = "BuildProfile"
 	var line := text(box,mistake_line(actor),13); line.name = "MistakeLine"
 	if not Stances.comfortable(actor.profile,chosen): line.add_theme_color_override("font_color",Color("d1a05f"))
 

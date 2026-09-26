@@ -6,12 +6,11 @@ extends RefCounted
 ## does in a fight lives in `StoneEffects`; this file counts and words it.
 const Essences = preload("res://expedition/progression/essences.gd")
 const ROLE_TEXT := {
-	"PACK":{2:"파티 전원 공격력 +8%",4:"파티 전원 공격력 +18%, 동료 최대 HP +15%",6:"파티 전원 공격력 +22%, 처치할 때마다 파티 HP 3% 회복"},
-	"BERSERK":{2:"공격력 +12%",4:"공격력 +25%, 체력 절반 이하에서 행동 속도 +15%",6:"공격력 +30%, 처치하면 HP 6% 회복"},
-	"AMBUSH":{2:"치명타 +8%",4:"치명타 +16%, 치명타 피해 +40%",6:"치명타 +20%, 치명타 피해 +40%, 체력이 가득한 대상에게는 항상 치명타"},
-	"GUARD":{2:"방어 +2",4:"방어 +5, 막기 +10",6:"방어 +6, 막기 +12, 인접 아군 받는 피해 −10%"},
-	"ARCHER":{2:"원거리 사거리 +1",4:"원거리 피해 +20%",6:"원거리 피해 +25%, 15% 확률로 한 번 더"},
-	"CASTER":{2:"주문력 +12%",4:"주문력 +25%, 라운드마다 MP +2",6:"주문력 +30%, 주문 실패 없음"}}
+	"TANK":{2:"방어 +2",4:"방어 +5, 막기 +10",6:"방어 +6, 막기 +12, 인접 아군 받는 피해 −10%"},
+	"MELEE":{2:"공격력 +12%",4:"공격력 +25%, 치명타 +8%",6:"공격력 +30%, 치명타 +10%, 처치하면 HP 5% 회복"},
+	"RANGED":{2:"원거리 사거리 +1",4:"원거리 피해 +20%",6:"원거리 피해 +25%, 15% 확률로 한 번 더"},
+	"MAGIC":{2:"주문력 +12%",4:"주문력 +25%, 라운드마다 MP +2",6:"주문력 +30%, 주문 실패 없음"},
+	"SUPPORT":{2:"주는 회복·보호 +20%",4:"주는 회복·보호 +30%, 파티 공격력 +8%",6:"주는 회복·보호 +40%, 파티 공격력 +10%, 인접 동료 25% 정화"}}
 const TEXT := {
 	"fire":{2:"화염 저항 +20, 모든 명중에 화염 피해 +3, 화염 피해 +20%",3:"모든 명중 15% 화상"},
 	"ice":{2:"냉기 저항 +20, 모든 명중에 냉기 피해 +3, 냉기 피해 +20%",3:"모든 명중 10% 빙결"},
@@ -20,8 +19,8 @@ const TEXT := {
 	"will":{2:"의지 저항 +20, 상태이상 지속 +30%",3:"모든 명중 10% 혼란"},
 	"bleed":{2:"출혈 중인 대상에게 피해 +20%",3:"모든 명중 15% 출혈"}}
 const BRACKETS := [2,4,6]
-const GUARD_ARMOUR := {2:2,4:5,6:6}
-const GUARD_BLOCK := {2:0,4:10,6:12}
+const TANK_ARMOUR := {2:2,4:5,6:6}
+const TANK_BLOCK := {2:0,4:10,6:12}
 ## The elements a set lends resistance to: every one but bleeding.
 const RESISTED := ["fire","ice","air","poison","will"]
 ## The statuses a will resists and a will set lengthens: the hex school's.
@@ -84,17 +83,17 @@ static func active(actor: Dictionary) -> Array:
 ## sets' resistance.
 static func stat_bonus(actor: Dictionary) -> Dictionary:
 	var result: Dictionary = {}
-	var guard := bracket(actor,"GUARD")
+	var guard := bracket(actor,"TANK")
 	if guard > 0:
-		result.ac = int(GUARD_ARMOUR[guard])
-		if int(GUARD_BLOCK[guard]) > 0: result.sh = int(GUARD_BLOCK[guard])
+		result.ac = int(TANK_ARMOUR[guard])
+		if int(TANK_BLOCK[guard]) > 0: result.sh = int(TANK_BLOCK[guard])
 	for element in RESISTED:
 		if level(actor,element) >= 2: result["res_"+element] = 20
 	return result
 
 ## 사수 2: a bow reaches one farther (the four and six brackets hit harder instead).
 static func range_bonus(actor: Dictionary) -> int:
-	return 1 if bracket(actor,"ARCHER") == 2 else 0
+	return 1 if bracket(actor,"RANGED") == 2 else 0
 
 ## What an element set adds to a blow `attacker` is about to land.
 static func outgoing(s, attacker: Dictionary, target: Dictionary, amount: int) -> int:

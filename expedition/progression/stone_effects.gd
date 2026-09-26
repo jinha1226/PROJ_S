@@ -22,11 +22,12 @@ const CRIT_FORMS := ["physical","SLASH","IMPACT","PIERCE"]
 const CRIT_BASE := 150
 const CRIT_STEP := 50
 const SPEED_CAP := 40
-const PACK_ATTACK := {2:8,4:18,6:22}
-const BERSERK_ATTACK := {2:12,4:25,6:30}
-const AMBUSH_CRIT := {2:8,4:16,6:20}
-const ARCHER_RANGED := {4:20,6:25}
-const CASTER_SPELL := {2:12,4:25,6:30}
+const SUPPORT_ATTACK := {4:8,6:10}
+const MELEE_ATTACK := {2:12,4:25,6:30}
+const MELEE_CRIT := {4:8,6:10}
+const SUPPORT_HEAL := {2:20,4:30,6:40}
+const RANGED_DAMAGE := {4:20,6:25}
+const MAGIC_SPELL := {2:12,4:25,6:30}
 const TONES := ["buff","heal","debuff","crit"]
 ## Tests pin every roll here: -1 rolls for real, anything else is the roll.
 static var force := -1
@@ -75,7 +76,7 @@ static func heal(s, actor: Dictionary, amount: int, healer: Dictionary = {}, lif
 	if not alive(actor) or amount <= 0: return 0
 	var heal_ctx := {"source":healer,"target":actor,"external_heal":not healer.is_empty() and healer != actor,"lifesteal":lifesteal}
 	amount = amount*(100+EffectEngine.modifier(s,"heal_taken_percent",actor,heal_ctx))/100
-	amount = amount*(100+EffectEngine.modifier(s,"heal_given_percent",healer,heal_ctx))/100
+	amount = amount*(100+EffectEngine.modifier(s,"heal_given_percent",healer,heal_ctx)+int(SUPPORT_HEAL.get(TagSets.bracket(healer,"SUPPORT"),0)))/100
 	var before: int = int(actor.hp)
 	actor.hp = mini(int(actor.max_hp),before+amount)
 	var gained: int = int(actor.hp)-before
@@ -94,12 +95,12 @@ static func side(s, actor: Dictionary) -> Array:
 static func allies_beside(s, actor: Dictionary) -> Array:
 	return (s.party+s.npcs+s.enemies).filter(func(o): return alive(o) and int(o.id) != int(actor.id) and s.side_of(o) == s.side_of(actor) and s.melee_reach(actor.pos,o.pos))
 
-## 무리: the party takes the best bracket any of its members wears.
-static func pack_bracket(s, actor: Dictionary) -> int:
+## 지원: the party takes the best bracket any of its members wears.
+static func support_bracket(s, actor: Dictionary) -> int:
 	if bool(actor.get("enemy",false)): return 0
-	var best := TagSets.bracket(actor,"PACK")
+	var best := TagSets.bracket(actor,"SUPPORT")
 	if s == null: return best
-	for member in side(s,actor): best = maxi(best,TagSets.bracket(member,"PACK"))
+	for member in side(s,actor): best = maxi(best,TagSets.bracket(member,"SUPPORT"))
 	return best
 
 # ── numbers ────────────────────────────────────────────────────────────────
@@ -115,21 +116,19 @@ static func stat_bonus(actor: Dictionary, s = null) -> Dictionary:
 		if bonus != 0: result["res_"+element] = bonus
 	return result
 
-## Max HP in percent: 홉고블린's, and 무리 4's for the whole party.
+## Max HP in percent from equipped effects; no role lends HP to the party.
 static func hp_percent(s, actor: Dictionary) -> int:
 	var percent := EffectEngine.modifier(s,"max_hp_percent",actor)
-	if pack_bracket(s,actor) == 4: percent += 15
 	return percent
 
 static func range_bonus(actor: Dictionary, s = null) -> int:
 	return EffectEngine.modifier(s,"range",actor)
 
-## 행동 속도 in percent: the stones' own, 폭풍 박쥐's, 광폭 4 when wounded.
+## 행동 속도 in percent from base stone stats and actual effects.
 static func speed(s, actor: Dictionary) -> int:
 	var total := 0
 	if not bool(actor.get("enemy",false)): total += int(s.StatSheet.value(s,actor,"speed"))
 	total += EffectEngine.modifier(s,"speed",actor)
-	if TagSets.bracket(actor,"BERSERK") == 4 and under_half(actor): total += 15
 	return clampi(total,-50,SPEED_CAP)
 
 static func delay(s, actor: Dictionary, cost: int, kind: String = "ATTACK") -> int:
@@ -141,31 +140,29 @@ static func delay(s, actor: Dictionary, cost: int, kind: String = "ATTACK") -> i
 
 static func crit_chance(_s, attacker: Dictionary, target: Dictionary) -> int:
 	var total := EffectEngine.modifier(_s,"crit_chance",attacker,{"target":target})
-	var ambush := TagSets.bracket(attacker,"AMBUSH")
-	total += int(AMBUSH_CRIT.get(ambush,0))
-	if ambush == 6 and not target.is_empty() and fresh(target): total = 100
+	total += int(MELEE_CRIT.get(TagSets.bracket(attacker,"MELEE"),0))
 	if not target.is_empty() and target.get("statuses",{}).has("exposed"): total += 25+EffectEngine.modifier(_s,"exposed_bonus",attacker)
 	return mini(100,total)
 
-## A critical's damage in percent: ×1.5, fifty more from each of 해골 궁수 and 기습 4·6.
+## A critical's damage in percent: ×1.5, fifty more from 해골 궁수.
 static func crit_percent(attacker: Dictionary, s = null) -> int:
 	var total := CRIT_BASE
 	total += EffectEngine.modifier(s,"crit_damage",attacker)
-	if TagSets.bracket(attacker,"AMBUSH") >= 4: total += 40
 	return total
 
 static func spell_percent(_s, caster: Dictionary) -> int:
-	return int(CASTER_SPELL.get(TagSets.bracket(caster,"CASTER"),0))
+	return int(MAGIC_SPELL.get(TagSets.bracket(caster,"MAGIC"),0))
 
-## 술사 6: no spell fails.
+## 마딜 6: no spell fails.
 static func sure_casting(caster: Dictionary) -> bool:
-	return TagSets.bracket(caster,"CASTER") == 6
+	return TagSets.bracket(caster,"MAGIC") == 6
 
 static func summon_extra(caster: Dictionary, s = null) -> int:
 	return EffectEngine.modifier(s,"summon_count",caster)
 
 static func status_ticks(caster: Dictionary, status: String, ticks: int, s = null) -> int:
-	return ticks*(100+EffectEngine.modifier(s,"status_ticks",caster,{"status":status,"harmful":status in HARMFUL})+EffectEngine.modifier(s,"status_ticks."+status,caster))/100
+	var protection: int = int(SUPPORT_HEAL.get(TagSets.bracket(caster,"SUPPORT"),0)) if status == "ward" else 0
+	return ticks*(100+protection+EffectEngine.modifier(s,"status_ticks",caster,{"status":status,"harmful":status in HARMFUL})+EffectEngine.modifier(s,"status_ticks."+status,caster))/100
 
 # ── hooks ──────────────────────────────────────────────────────────────────
 
@@ -184,9 +181,9 @@ static func outgoing(s, attacker: Dictionary, target: Dictionary, amount: int, f
 	fire(s,"ATTACK",ctx)
 	var percent := EffectEngine.modifier(s,"attack_percent",attacker,ctx)+int(ctx.attack_percent)
 	if not bool(ctx.spell):
-		percent += int(PACK_ATTACK.get(pack_bracket(s,attacker),0))
-		percent += int(BERSERK_ATTACK.get(TagSets.bracket(attacker,"BERSERK"),0))
-		if bool(ctx.ranged): percent += int(ARCHER_RANGED.get(TagSets.bracket(attacker,"ARCHER"),0))
+		percent += int(SUPPORT_ATTACK.get(support_bracket(s,attacker),0))
+		percent += int(MELEE_ATTACK.get(TagSets.bracket(attacker,"MELEE"),0))
+		if bool(ctx.ranged): percent += int(RANGED_DAMAGE.get(TagSets.bracket(attacker,"RANGED"),0))
 	percent += EffectEngine.modifier(s,"summon_power",attacker,ctx)
 	percent += EffectEngine.modifier(s,"harmful_bonus_step",attacker,ctx)*EffectEngine.Conditions.harmful_count(s,target)
 	ctx.amount = amount*(100+percent)/100; ctx.phase = "scaled"
@@ -219,7 +216,7 @@ static func latch(s, attacker: Dictionary, target: Dictionary) -> int:
 static func incoming(s, target: Dictionary, amount: int, source: Dictionary = {}) -> int:
 	if target.is_empty() or amount <= 0: return amount
 	var percent := EffectEngine.modifier(s,"taken_percent",target,{"source":source,"target":target})
-	if target.has("pos") and allies_beside(s,target).any(func(o): return TagSets.bracket(o,"GUARD") == 6): percent -= 10
+	if target.has("pos") and allies_beside(s,target).any(func(o): return TagSets.bracket(o,"TANK") == 6): percent -= 10
 	var reduced: int = maxi(1,amount*(100+percent)/100)
 	if source.has("pos") and target.has("pos") and s.melee_reach(source.pos,target.pos): reduced = maxi(1,reduced-EffectEngine.modifier(s,"melee_flat_cut",target))
 	return reduced
@@ -245,11 +242,11 @@ static func after_hit(s, target: Dictionary, attacker: Dictionary, form: String,
 	if not bool(ctx.spell) and form == "physical" and alive(target) and bool(ctx.ranged) and not has(attacker,"ORC_THROW"): second_shot(s,attacker,target)
 	fire(s,"STRUCK",ctx)
 
-## 오크 투척병 and 사수 6: one more ranged attack, once an action.
+## 오크 투척병 and 원딜 6: one more ranged attack, once an action.
 static func second_shot(s, attacker: Dictionary, target: Dictionary) -> void:
 	var odds := 0
 	odds = EffectEngine.modifier(s,"second_shot_chance",attacker)
-	if TagSets.bracket(attacker,"ARCHER") == 6: odds = 100-(100-odds)*85/100
+	if TagSets.bracket(attacker,"RANGED") == 6: odds = 100-(100-odds)*85/100
 	if not chance(s,attacker,target,"double",odds) or not s.Reactions.once(s,attacker,"DOUBLE"): return
 	proc(s,attacker.pos,"연사!","buff")
 	s.CombatRules.attack(s,attacker,target)
@@ -268,9 +265,7 @@ static func on_kill(s, killer: Dictionary, victim: Dictionary, facts: Dictionary
 	if alive(killer) and not s.Downed.is_downed(victim):
 		fire(s,"KILL",ctx); fire(s,"ALLY_KILL",ctx)
 		if bool(ctx.get("primary",true)) and bool(victim.get("enemy",false)):
-			if TagSets.bracket(killer,"BERSERK") == 6: heal(s,killer,int(killer.max_hp)*6/100)
-			if pack_bracket(s,killer) == 6:
-				for member in side(s,killer): heal(s,member,int(member.max_hp)*3/100)
+			if TagSets.bracket(killer,"MELEE") == 6: heal(s,killer,int(killer.max_hp)*5/100)
 		if bool(killer.get("summoned",false)): fire(s,"PET_KILL",ctx)
 	fire(s,"DEATH_NEAR",ctx)
 
@@ -278,7 +273,14 @@ static func round_start(s, actor: Dictionary) -> void:
 	if not alive(actor): return
 	Stacks.expire(actor,"round",int(s.time))
 	fire(s,"ROUND_START",{"actor":actor})
-	if TagSets.bracket(actor,"CASTER") == 4 and actor.has("max_mp"): actor.mp = mini(int(actor.max_mp),int(actor.get("mp",0))+2)
+	if TagSets.bracket(actor,"MAGIC") == 4 and actor.has("max_mp"): actor.mp = mini(int(actor.max_mp),int(actor.get("mp",0))+2)
+
+	if TagSets.bracket(actor,"SUPPORT") == 6:
+		for ally in allies_beside(s,actor):
+			var harmful: Array = ally.get("statuses",{}).keys().filter(func(k): return k in HARMFUL)
+			if harmful.is_empty() or not chance(s,actor,ally,"support_cleanse",25): continue
+			harmful.sort_custom(func(a,b): return int(ally.statuses[a]) > int(ally.statuses[b]) if int(ally.statuses[a]) != int(ally.statuses[b]) else str(a) < str(b))
+			ally.statuses.erase(harmful[0]); proc(s,ally.pos,"정화!","heal")
 
 ## 신전 뱀: half the harmful statuses that would land slide off.
 static func shed(s, victim: Dictionary, status: String, source: Dictionary) -> bool:

@@ -271,8 +271,8 @@ func fallen() -> void:
 	BossAI.turn(s,boss)
 	check(int(ally.stress) >= mini(200,stress+40),"a friend of the fallen is shaken")
 	check(s.log_lines.any(func(l): return str(l).begins_with(str(boss.name)+": ")),"it speaks when the fight begins")
-	check(TagSets.level({"equipped_abilities":["GOBLIN_SHIV","GOBLIN_SHIV@fire"],"essences":{},"set_boost":true},"AMBUSH") == 4,"a boosted two-combo reads as four")
-	check(TagSets.level({"equipped_abilities":["GOBLIN_SHIV","GOBLIN_SHIV@fire"],"essences":{}},"AMBUSH") == 2,"an ordinary two-combo stays two")
+	check(TagSets.level({"equipped_abilities":["GOBLIN_SHIV","GOBLIN_SHIV@fire"],"essences":{},"set_boost":true},"MELEE") == 4,"a boosted two-combo reads as four")
+	check(TagSets.level({"equipped_abilities":["GOBLIN_SHIV","GOBLIN_SHIV@fire"],"essences":{}},"MELEE") == 2,"an ordinary two-combo stays two")
 	boss.hp = int(boss.max_hp)/2-1
 	BossAI.turn(s,boss)
 	check(bool(boss.set_boost),"below half its sets rise a step")

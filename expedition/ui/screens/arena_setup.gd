@@ -7,6 +7,8 @@ const Abilities = preload("res://expedition/items/abilities.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const CharacterUI = preload("res://expedition/ui/screens/character_folio.gd")
 const Builder = preload("res://expedition/level/encounter_builder.gd")
+const Builds = preload("res://expedition/progression/example_builds.gd")
+const Subtypes = preload("res://expedition/progression/subtypes.gd")
 const ROLES := ["MELEE","RANGED","CASTER"]
 const ROLE_NAMES := {"MELEE":"근접","RANGED":"원거리","CASTER":"마법"}
 const MEMBER_NAMES := ["아린","브란","세라"]
@@ -27,7 +29,7 @@ static func build(ui) -> Control:
 	var probe = Session.new(int(ui.arena_config.seed),true,int(ui.arena_config.size) > 1,true,int(ui.arena_config.size))
 	for i in range(int(ui.arena_config.size)): member_card(ui,list,i,probe.party[i])
 	var buttons := HBoxContainer.new(); buttons.add_theme_constant_override("separation",4); root.add_child(buttons)
-	var back = ui.button(buttons,"시작 화면",ui.leave_arena); back.name = "ArenaBack"
+	var back = ui.button(buttons,"원정으로" if ui.arena_return_session != null else "시작 화면",ui.leave_arena); back.name = "ArenaBack"
 	# A hand-made arena with nobody in it is not a fight; the presets always are.
 	var empty: bool = str(ui.arena_config.arena) == "custom" and ui.arena_config.custom.all(func(row): return str(row[0]).is_empty())
 	var start = ui.button(buttons,"시작",ui.start_arena,not empty); start.name = "ArenaStart"
@@ -103,7 +105,7 @@ static func choose_foe(ui, slot: int, table: Array, choice: int) -> void:
 ## A party size change keeps the cards it already has and fills the rest.
 static func resize(ui, count: int) -> void:
 	ui.arena_config.size = count
-	while ui.arena_config.members.size() < count: ui.arena_config.members.append({"stance":"CHARGER","parts":["",""]})
+	while ui.arena_config.members.size() < count: ui.arena_config.members.append({"stance":"CHARGER","parts":["",""],"build":""})
 	ui.show_arena_setup()
 
 ## One member: the hero chooses parts; companions also choose a stance.
@@ -113,12 +115,28 @@ static func member_card(ui, list: VBoxContainer, index: int, probe: Dictionary) 
 	if solo and str(setup.stance) == "GUARDIAN": setup.stance = "CHARGER"
 	var box := CharacterUI.card(list,str(probe.get("name",MEMBER_NAMES[index])))
 	box.name = "ArenaMember%d" % index
+	var builds := OptionButton.new(); builds.name = "ArenaBuild_%d" % index
+	builds.size_flags_horizontal = Control.SIZE_EXPAND_FILL; builds.custom_minimum_size.y = 44; builds.clip_text = true
+	builds.add_item("예시 빌드 없음")
+	var build_ids: Array = [""]
+	for row in Builds.data.builds:
+		builds.add_item(str(row.name)); build_ids.append(str(row.id))
+	builds.select(maxi(0,build_ids.find(str(setup.get("build","")))))
+	builds.item_selected.connect(func(choice):
+		setup.build = build_ids[choice]
+		if choice > 0: setup.stance = str(Builds.build(str(setup.build)).get("stance","CHARGER"))
+		ui.show_arena_setup())
+	box.add_child(builds)
 	if index > 0:
 		var stances := HBoxContainer.new(); stances.add_theme_constant_override("separation",4); box.add_child(stances)
 		for id in Stances.IDS:
 			var pick = ui.button(stances,Stances.NAMES[id],func(): choose_stance(ui,index,id),true)
 			pick.name = "ArenaStance_%d_%s" % [index,id]
 			pick.toggle_mode = true; pick.button_pressed = id == str(setup.stance)
+	if not str(setup.get("build","")).is_empty():
+		var b := Builds.build(str(setup.build))
+		CharacterUI.text(box,"%s · %s" % [str(b.get("name","")),Subtypes.long_label(str(b.get("subtype","")))],12)
+		return
 	var slots := HBoxContainer.new(); slots.add_theme_constant_override("separation",4); box.add_child(slots)
 	var ids: Array = Abilities.DEFINITIONS.keys()
 	for slot in range(2):

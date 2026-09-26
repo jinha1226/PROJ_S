@@ -38,12 +38,12 @@ func catalog() -> void:
 	for school in Essences.CASTER_BY_SCHOOL:
 		var id: String = str(Essences.CASTER_BY_SCHOOL[school])
 		check(Essences.has(id) and Essences.school(id) == school,"%s gives the %s school" % [id,school])
-		check(Essences.role(id) == ("PACK" if school == "air" else "CASTER"),"%s has its current role" % id)
+		check(Essences.role(id) == ("RANGED" if school == "air" else "SUPPORT" if school == "hex" else "MAGIC"),"%s has its current role" % id)
 		check(not Essences.title(id).is_empty(),"%s is named" % id)
 	check(Essences.element("FIRE_CALLER") == "fire" and Essences.element("GOBLIN_HEXER") == "will","caster element tags follow the school")
 	var variant: Dictionary = Essences.row("GOBLIN_SHIV@fire")
-	check(variant.element == "fire" and int(variant.stats.res_fire) == 10 and int(variant.stats.atk) == 3,"a variant is the base plus its element")
-	check(variant.role == "AMBUSH","a variant keeps the base role")
+	check(variant.element == "fire" and int(variant.stats.res_fire) == 10 and int(variant.stats.atk) == 4,"a variant is the base plus its element")
+	check(variant.role == "MELEE","a variant keeps the base role")
 	check(Essences.title("GOBLIN_SHIV@fire").begins_with("화염"),"a variant's title names its element")
 	check(not Essences.has("GOBLIN_SHIV@lava") and not Essences.has("NOPE") and not Essences.has(""),"unknown ids are not essences")
 	check(Essences.stats("ORC_CLEAVER") == {"atk":4,"hp":8},"base stats are the role's, fixed")
@@ -60,15 +60,15 @@ func catalog() -> void:
 	check(Essences.slot_count(actor) == 4 and Essences.slot_count({"level":15}) == 10 and Essences.slot_count({}) == 1,"slots follow the level, one to ten")
 
 func sets() -> void:
-	var actor := {"level":5,"essences":{},"equipped_abilities":["RAT_GNAW","RIVER_RAT_SPLASH","FIRE_CALLER","",""]}
+	var actor := {"level":5,"essences":{},"equipped_abilities":["RAT_GNAW","SPIDER_WEB","FIRE_CALLER","",""]}
 	var counts: Dictionary = TagSets.counts(actor)
-	check(int(counts.PACK) == 2 and int(counts.CASTER) == 1 and int(counts.fire) == 1,"roles and elements are counted apart")
-	check(TagSets.level(actor,"PACK") == 2 and TagSets.level(actor,"CASTER") == 0,"two of a role reach the first bracket")
+	check(int(counts.SUPPORT) == 2 and int(counts.MAGIC) == 1 and int(counts.fire) == 1,"roles and elements are counted apart")
+	check(TagSets.level(actor,"SUPPORT") == 2 and TagSets.level(actor,"MAGIC") == 0,"two of a role reach the first bracket")
 	actor.equipped_abilities[3] = "RAT_GNAW@ice"
-	check(TagSets.level(actor,"PACK") == 2,"three of a role are still the two bracket")
+	check(TagSets.level(actor,"SUPPORT") == 2,"three of a role are still the two bracket")
 	var active: Array = TagSets.active(actor)
-	var pack: Array = active.filter(func(r): return r.tag == "PACK")
-	check(pack.size() == 1 and int(pack[0].level) == 2 and int(pack[0].count) == 3 and int(pack[0].next) == 4 and str(pack[0].text).contains("공격력"),"the combo list carries count, next bracket and text")
+	var pack: Array = active.filter(func(r): return r.tag == "SUPPORT")
+	check(pack.size() == 1 and int(pack[0].level) == 2 and int(pack[0].count) == 3 and int(pack[0].next) == 4 and str(pack[0].text).contains("회복"),"the combo list carries count, next bracket and text")
 	var guard := {"level":3,"essences":{},"equipped_abilities":["HOB_TAUNT","SHIELD_STANCE",""]}
 	var bonus: Dictionary = TagSets.stat_bonus(guard)
 	check(int(bonus.ac) == 2 and not bonus.has("sh"),"수호 2 gives armour two, block only from four")
@@ -79,7 +79,7 @@ func sets() -> void:
 	var hexers := {"level":2,"essences":{},"equipped_abilities":["GOBLIN_HEXER","GNOLL_SUMMONER"]}
 	check(int(TagSets.stat_bonus(hexers).res_will) == 20,"의지 2 gives will")
 	var ambush := {"level":3,"essences":{},"equipped_abilities":["GOBLIN_SHIV","GOBLIN_SHIV@fire","GOBLIN_SHIV@ice"]}
-	check(TagSets.level(ambush,"AMBUSH") == 2 and not TagSets.stat_bonus(ambush).has("ev"),"기습 3 is the two bracket and lends no evasion")
+	check(TagSets.level(ambush,"MELEE") == 2 and not TagSets.stat_bonus(ambush).has("ev"),"기습 3 is the two bracket and lends no evasion")
 
 func levels() -> void:
 	var s = Session.new_run(731,"sword"); var hero: Dictionary = s.party[0]

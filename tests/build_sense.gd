@@ -11,7 +11,7 @@ func run() -> void:
 	var d := Fixture.reset(); var s = d.s
 	check(Build.profile(d.hero).is_empty() and Build.main(d.hero).is_empty(),"no effects means no build preference")
 	check(Build.inputs(s,d.hero,{"kind":"ATTACK","cell":d.foe.pos,"damage":10}).values().all(func(v): return float(v) == 0),"no-build inputs preserve old decisions")
-	Fixture.slot(d.hero,["LEECH_SEGMENT","LEECH_SUCKER","ORC_CLEAVER"])
+	Fixture.slot(d.hero,["LEECH_SEGMENT","RAT_INCISOR","ORC_CLEAVER"])
 	check(is_equal_approx(float(Build.profile(d.hero)[1]),2.0/3.0) and Build.main(d.hero) == [1,4],"build contribution normalizes and selects two dominant families")
 	Fixture.slot(d.hero,["LEECH_SEGMENT","ORC_CLEAVER","SHIELD_STANCE","ARCHER_EYE"])
 	check(Build.main(d.hero).is_empty(),"four diffuse builds do not create a false main build")

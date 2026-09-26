@@ -40,7 +40,14 @@ static func ranged_part(actor: Dictionary) -> String:
 ## What the build hints at; a badge, never a rule.
 static func suggested(actor: Dictionary) -> String:
 	if not ranged_part(actor).is_empty(): return "SKIRMISHER"
-	if actor.equipped_abilities.any(func(id): return Essences.role(str(id)) == "GUARD"): return "GUARDIAN"
+	var counts: Dictionary = {}; var group := ""; var best := 0
+	for id in Essences.equipped(actor):
+		var role := Essences.role(str(id))
+		counts[role] = int(counts.get(role,0))+1
+	for role in Essences.ROLES:
+		if int(counts.get(role,0)) > best: best = int(counts[role]); group = str(role)
+	if group in ["TANK","SUPPORT"]: return "GUARDIAN"
+	if group in ["RANGED","MAGIC"]: return "SKIRMISHER"
 	return "CHARGER"
 
 ## The stance the member actually fights in: always the one it was given.

@@ -5,6 +5,7 @@ const Abilities = preload("res://expedition/items/abilities.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const Floor = preload("res://expedition/level/continuous_floor.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
+const Builds = preload("res://expedition/progression/example_builds.gd")
 
 ## The battle-test arenas: the six rosters the simulator measures, plus the
 ## seat the player fills in by hand.
@@ -27,9 +28,11 @@ static func arena_test(s, p_seed: int, party_size: int, arena: Dictionary, membe
 	for i in range(s.party.size()):
 		var actor: Dictionary = s.party[i]
 		var setup: Dictionary = members[i] if i < members.size() else {}
+		var applied := Builds.apply(s,actor,str(setup.get("build","")))
 		var stance: String = str(setup.get("stance",actor.stance))
 		if stance == "GUARDIAN" and party_size == 1: stance = "CHARGER"
 		if stance in Stances.IDS: actor.stance = stance
+		if applied: continue
 		actor.equipped_abilities = ["",""]; actor.rules = []
 		var parts: Array = setup.get("parts",["",""])
 		for slot in range(2):

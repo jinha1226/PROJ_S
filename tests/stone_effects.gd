@@ -81,25 +81,25 @@ func catalogue() -> void:
 	check(bases == 30,"every base species has its stone")
 
 func base_stats() -> void:
-	check(Essences.stats("RAT_GNAW") == {"hp":10,"atk":2},"무리: HP +10, 공격력 +2")
-	check(Essences.stats("LIZARD_TAIL") == {"atk":4,"hp":8},"광폭: 공격력 +4, HP +8")
-	check(Essences.stats("GOBLIN_SHIV") == {"atk":3,"dodge":5},"기습: 공격력 +3, 회피 +5%")
+	check(Essences.stats("RAT_GNAW") == {"hp":10,"mp":6},"무리: HP +10, 공격력 +2")
+	check(Essences.stats("LIZARD_TAIL") == {"hp":20,"ac":3},"광폭: 공격력 +4, HP +8")
+	check(Essences.stats("GOBLIN_SHIV") == {"atk":4,"hp":8},"기습: 공격력 +3, 회피 +5%")
 	check(Essences.stats("HOB_TAUNT") == {"hp":20,"ac":3},"수호: HP +20, 방어 +3")
 	check(Essences.stats("KOBOLD_SLING") == {"atk":3,"speed":5},"사수: 공격력 +3, 속도 +5%")
-	check(Essences.stats("GOBLIN_HEXER") == {"spell":4,"mp":8},"술사: 주문력 +4, MP +8")
-	check(Essences.stats("GOBLIN_SHIV@fire") == {"atk":3,"dodge":5,"res_fire":10},"a variant adds ten of its element")
-	check(Essences.stats("GOBLIN_SHIV@bleed") == {"atk":3,"dodge":5},"bleeding lends no resistance")
+	check(Essences.stats("GOBLIN_HEXER") == {"hp":10,"mp":6},"술사: 주문력 +4, MP +8")
+	check(Essences.stats("GOBLIN_SHIV@fire") == {"atk":4,"hp":8,"res_fire":10},"a variant adds ten of its element")
+	check(Essences.stats("GOBLIN_SHIV@bleed") == {"atk":4,"hp":8},"bleeding lends no resistance")
 	check(Essences.stats("GOBLIN_CHIEF") == Essences.stats("RAT_GNAW"),"a boss stone keeps its role's stats")
 	for key in ["atk","hp","spell","mp","speed","dodge"]: check(key in StatSheet.KEYS and StatSheet.NAMES.has(key),"%s is on the stat sheet" % key)
 	check(not ["str","dex","int","con"].any(func(k): return Essences.stats("GNOLL_SPEAR").has(k)),"no attribute points from a stone")
 	var d := duo(); var s = d.s
 	var damage: int = int(Stats.stats(s,d.hero).damage)
 	var hp: int = int(d.hero.max_hp); var mp: int = int(d.hero.max_mp)
-	slot(d.hero,["LIZARD_TAIL"]); StatSheet.refresh_pools(s,d.hero)
+	slot(d.hero,["GOBLIN_SHIV"]); StatSheet.refresh_pools(s,d.hero)
 	check(int(Stats.stats(s,d.hero).damage) == damage+4,"공격력 adds to the weapon's damage")
 	check(int(d.hero.max_hp) == hp+8,"HP adds to the pool")
 	check(StatSheet.value(s,d.hero,"atk") == 4,"the sheet shows the attack")
-	slot(d.hero,["GOBLIN_HEXER"]); StatSheet.refresh_pools(s,d.hero)
+	slot(d.hero,["FIRE_CALLER"]); StatSheet.refresh_pools(s,d.hero)
 	check(int(d.hero.max_hp) == hp and int(d.hero.max_mp) == mp+8,"a caster stone: MP, and the HP gone again")
 	check(int(Stats.stats(s,d.hero).power) == 4,"주문력 reaches the spell power")
 	var delay: int = int(s.action_cost(d.hero,"ATTACK",d.foe.pos))
@@ -107,8 +107,9 @@ func base_stats() -> void:
 	check(StatSheet.value(s,d.hero,"speed") == 10 and int(s.action_cost(d.hero,"ATTACK",d.foe.pos)) == delay*90/100,"행동 속도 cuts the action's delay")
 	slot(d.hero,["KOBOLD_SLING","TOAD_SPIT","STORM_BAT","STORM_BAT@fire","KOBOLD_SLING@fire","TOAD_SPIT@fire","GOBLIN_AIM","GOBLIN_AIM@fire","ORC_THROW","ORC_THROW@fire"])
 	check(StoneEffects.speed(s,d.hero) == StoneEffects.SPEED_CAP,"speed stops at forty")
-	slot(d.hero,["GOBLIN_SHIV","SPIDER_WEB"])
-	check(int(Stats.stats(s,d.hero).dodge) == 10,"회피 % reaches the fight")
+	slot(d.hero,["STORM_BAT/pierced"])
+	d.hero.effect_moved_round = int(s.time)/100
+	check(int(Stats.stats(s,d.hero).dodge) == 15,"회피 % reaches the fight")
 
 func rat() -> void:
 	var d := duo(); var s = d.s
@@ -249,7 +250,7 @@ func storm_bat() -> void:
 	var d := duo(); var s = d.s
 	var cost: int = int(s.action_cost(d.hero,"ATTACK",d.foe.pos))
 	slot(d.hero,["STORM_BAT"])
-	check(StoneEffects.speed(s,d.hero) == 20 and int(s.action_cost(d.hero,"ATTACK",d.foe.pos)) == cost*80/100,"폭풍 박쥐: a fifth quicker")
+	check(StoneEffects.speed(s,d.hero) == 25 and int(s.action_cost(d.hero,"ATTACK",d.foe.pos)) == cost*75/100,"폭풍 박쥐: a fifth quicker")
 	check(StoneEffects.speed(s,{"enemy":true,"part_id":"STORM_BAT","species_id":"storm_bat"}) == 20,"a storm bat is quick too")
 
 func river_rat() -> void:

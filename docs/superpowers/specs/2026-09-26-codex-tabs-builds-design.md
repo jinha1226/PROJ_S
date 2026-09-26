@@ -1,6 +1,7 @@
 # 도감 3탭(영혼석·아이템·빌드)과 예시 빌드
 
-작성일: 2026-09-26 · 상태: **합의됨(탭 구성), 세부는 초안**
+상태: 구현 완료. 실제 API·검증·원정 보존 계약은 [구현 기록](../plans/2026-09-26-codex-tabs-builds.md)을 따른다.
+작성일: 2026-09-26 · 상태: **구현 완료**
 앞: [도감](2026-09-26-codex-design.md)(몬스터·영혼석·장비 탭으로 먼저 구현됨) · [역할군](2026-09-26-role-groups-design.md)(역할군 5·세부 유형 17)
 데이터: `data/content/example_builds.json`(이미 있음: 빌드 11개, 3인 파티 4개)
 기존 코드: `expedition/progression/codex.gd`, `expedition/ui/screens/codex_screen.gd`, `expedition/ui/screens/start_screen.gd`, `expedition/ui/screens/arena_setup.gd`, `expedition/run/arena_test.gd`, `expedition/items/equipment.gd`, `data/content/combat.json`, `data/content/unrands.json`

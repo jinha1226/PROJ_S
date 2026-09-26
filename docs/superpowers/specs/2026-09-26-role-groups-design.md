@@ -1,6 +1,7 @@
 # 역할군 5개와 세부 유형
 
-작성일: 2026-09-26 · 상태: **구조 합의됨(역할군 5, 세부 유형은 보너스 없음), 종족·효과 배정과 수치는 초안**
+상태: 현재 30종·부위 90개 기준 구현 완료. 실행 결과와 세부 계약은 [구현 기록](../plans/2026-09-26-role-groups.md)을 따른다.
+작성일: 2026-09-26 · 상태: **현재 30종 기준 구현 완료, 원정 난이도 조정은 후속 작업**
 근거: [영혼석 개편](2026-09-26-soulstone-rework-design.md)(역할 조합 2·4·6), [③ 빌드군과 부위 효과](2026-09-26-build-families-part-effects-design.md)(빌드군 12개), [빌드를 아는 동료 AI](2026-09-26-build-aware-companion-ai-design.md), [장비](2026-09-26-gear-affixes-design.md), [도감](2026-09-26-codex-design.md)
 기존 코드·데이터: `data/content/essences.json`(행마다 `role`: PACK·BERSERK·AMBUSH·GUARD·ARCHER·CASTER), `expedition/progression/essences.gd`(`ROLES`), `tag_sets.gd`(`ROLE_TEXT`, 구간), `stone_effects.gd`(역할 조합 수치 `PACK_ATTACK`·`BERSERK_ATTACK`·`AMBUSH_CRIT`·`ARCHER_RANGED`·`CASTER_SPELL`, `GUARD_*`), `bestiary.gd`(`ROLE_POINTS` 영혼석 기본 스탯, `ROLE_HP`·`ROLE_ATTACK` 몬스터 수치), `data/content/stone_effects.json`(효과마다 `families` 1~12), `expedition/ai/build_sense.gd`(`NAMES`), `expedition/actors/npc_essences.gd`, 도감 거르기 칩, 장비 증폭 옵션
 
@@ -135,7 +136,7 @@
 | `expedition/progression/tag_sets.gd` | `ROLE_TEXT`를 §2.2로, 구간 계산은 그대로 |
 | `expedition/progression/stone_effects.gd` | 역할 조합 수치 상수를 새 역할군으로(§2.2). 지원 조합의 회복·보호 증가, 공격력, 정화 |
 | `data/content/stone_effects.json` | 효과마다 `families` → `subtype`(§4). 장비 효과도 가장 가까운 세부 유형 |
-| `expedition/ai/build_sense.gd` | `NAMES`를 세부 유형 17개로, `profile`은 `subtype` 비율. 목표 적합도 표(동료 AI 설계 §3)를 세부 유형으로 다시(탱커 네 유형은 목표 대신 자리) |
+| `expedition/ai/build_sense.gd` | 세부 유형 이름은 `Subtypes`에서 읽고 `subtype_profile`은 유형 비율. `profile`은 내부 전술 채널로 합산하며 탱커 네 유형은 자리 선호로 대응 |
 | 동료 태세 기본값 | 주 역할군으로 추천: 탱커 → 수호형, 근딜 → 돌격형, 원딜·마딜 → 치고 빠지기, 지원 → 수호형(동료 곁). 추천만 하고 강제하지 않는다 |
 | `expedition/actors/npc_essences.gd` | 성격 선호를 역할군으로: 낮은 A → 근딜, 높은 C → 탱커·지원, 높은 O → 마딜, 그 밖 → 원딜 |
 | 장비 증폭 옵션 | 빌드군 12개 → 세부 유형(있는 것부터). 얇은 유형(회피·연사·저격·강화) 옵션을 우선 추가 |
@@ -146,7 +147,7 @@
 
 | 스위트 | 검사 |
 | --- | --- |
-| `tests/role_groups.gd` (새) | 38종(현재 30종)의 역할군 배정, 옛 역할 id 호환, 역할군 기본 스탯, 조합 2·4·6 각 구간(지원 조합 포함), 몬스터 수치가 바뀌지 않음 |
+| `tests/role_groups.gd` (새) | 38종(현재 30종)의 역할군 배정, 영혼석의 옛 역할 별칭 없음·몬스터의 기존 역할 유지, 역할군 기본 스탯, 조합 2·4·6 각 구간(지원 조합 포함), 몬스터 수치가 바뀌지 않음 |
 | `tests/effect_data.gd` | 모든 부위 효과에 `subtype`이 있고 17개 중 하나 |
 | `tests/build_sense.gd`, `build_ai.gd` | 세부 유형 기준으로 옮김, 검사 수 유지 |
 | 기존 `tag_sets`, `stone_effects`, `essences`, `npc_essences`, `gear_affixes`, `codex_ui` | 새 이름으로 옮김, 검사 수 유지 |

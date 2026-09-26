@@ -20,12 +20,11 @@ static func party_percent(size: int) -> int:
 ## A soul stone's fixed base stats by role (2026-09-26 spec §1): straight onto
 ## the fight's numbers, no attribute points.
 const ROLE_POINTS := {
-	"PACK":{"hp":10,"atk":2},
-	"BERSERK":{"atk":4,"hp":8},
-	"AMBUSH":{"atk":3,"dodge":5},
-	"GUARD":{"hp":20,"ac":3},
-	"ARCHER":{"atk":3,"speed":5},
-	"CASTER":{"spell":4,"mp":8}}
+	"SUPPORT":{"hp":10,"mp":6},
+	"MELEE":{"atk":4,"hp":8},
+	"TANK":{"hp":20,"ac":3},
+	"RANGED":{"atk":3,"speed":5},
+	"MAGIC":{"spell":4,"mp":8}}
 const SCHOOL_ELEMENT := {"fire":"fire","ice":"ice","air":"air","hex":"will","summon":"will"}
 
 static func table() -> Array:

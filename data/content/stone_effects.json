@@ -24,10 +24,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        12
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "BOOST"
     },
     "LIZARD_TAIL": {
       "name": "꼬리 반격",
@@ -56,10 +54,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        5
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "REFLECT"
     },
     "KOBOLD_SLING": {
       "name": "투석",
@@ -84,10 +80,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        6
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "SNIPE"
     },
     "GOBLIN_SHIV": {
       "name": "기습",
@@ -108,10 +102,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        3
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "VITAL"
     },
     "GOBLIN_AIM": {
       "name": "조준",
@@ -129,10 +121,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        6
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "SNIPE"
     },
     "SHIELD_STANCE": {
       "name": "방패 태세",
@@ -150,10 +140,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        5
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEFENSE"
     },
     "HOB_TAUNT": {
       "name": "거구",
@@ -171,10 +159,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        5
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEFENSE"
     },
     "GOBLIN_HEXER": {
       "name": "저주 연장",
@@ -197,12 +183,10 @@
         }
       ],
       "limit": "event",
-      "families": [
-        8
-      ],
       "roles": {
         "해로운 상태": "payoff"
-      }
+      },
+      "subtype": "HEX"
     },
     "ORC_CLEAVER": {
       "name": "난폭",
@@ -231,10 +215,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        4
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "FURY"
     },
     "ORC_THROW": {
       "name": "연속 투척",
@@ -271,10 +253,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        6
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "VOLLEY"
     },
     "SPIDER_WEB": {
       "name": "거미줄",
@@ -312,12 +292,10 @@
         }
       ],
       "limit": "event",
-      "families": [
-        8
-      ],
       "roles": {
         "속박": "setup"
-      }
+      },
+      "subtype": "HEX"
     },
     "BEETLE_CURL": {
       "name": "껍질",
@@ -335,10 +313,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        5
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEFENSE"
     },
     "ORE_SLAM": {
       "name": "강타",
@@ -376,12 +352,10 @@
         }
       ],
       "limit": "event",
-      "families": [
-        2
-      ],
       "roles": {
         "기절": "setup"
-      }
+      },
+      "subtype": "CRUSH"
     },
     "FIRE_CALLER": {
       "name": "불씨",
@@ -430,12 +404,10 @@
         }
       ],
       "limit": "event",
-      "families": [
-        7
-      ],
       "roles": {
         "화상": "setup"
-      }
+      },
+      "subtype": "ELEMENT"
     },
     "STORM_BAT": {
       "name": "질풍",
@@ -453,10 +425,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        12
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "BOOST"
     },
     "RIVER_RAT_SPLASH": {
       "name": "물장구",
@@ -478,10 +448,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        7
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "ELEMENT"
     },
     "LEECH_LATCH": {
       "name": "달라붙기",
@@ -498,10 +466,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        1
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "BLEED"
     },
     "TOAD_SPIT": {
       "name": "독침",
@@ -539,12 +505,10 @@
         }
       ],
       "limit": "event",
-      "families": [
-        9
-      ],
       "roles": {
         "중독": "setup"
-      }
+      },
+      "subtype": "VENOM"
     },
     "SERPENT_SHED": {
       "name": "탈피",
@@ -565,12 +529,10 @@
         }
       ],
       "limit": "event",
-      "families": [
-        12
-      ],
       "roles": {
         "해로운 상태": "payoff"
-      }
+      },
+      "subtype": "DEFENSE"
     },
     "WATER_WAVE": {
       "name": "치유의 물결",
@@ -594,10 +556,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        12
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "HEAL"
     },
     "GNOLL_SPEAR": {
       "name": "분노",
@@ -632,10 +592,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        4
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "FURY"
     },
     "FROST_IMP": {
       "name": "서리",
@@ -684,12 +642,10 @@
         }
       ],
       "limit": "event",
-      "families": [
-        7
-      ],
       "roles": {
         "빙결": "setup"
-      }
+      },
+      "subtype": "ELEMENT"
     },
     "GNOLL_SUMMONER": {
       "name": "무리 부르기",
@@ -715,10 +671,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        10
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "SUMMON"
     },
     "SKELETON_WALL": {
       "name": "뼈 방벽",
@@ -742,10 +696,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        5
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEFENSE"
     },
     "SKELETON_VOLLEY": {
       "name": "급소 사격",
@@ -770,10 +722,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        3
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "VITAL"
     },
     "GHOUL_CLAW": {
       "name": "포식",
@@ -803,10 +753,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        4
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "REGEN"
     },
     "VAMPIRE_BITE": {
       "name": "흡혈",
@@ -831,10 +779,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        11
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "REGEN"
     },
     "THORN_ARMOUR": {
       "name": "가시 갑주",
@@ -863,10 +809,8 @@
         }
       ],
       "limit": "event",
-      "families": [
-        5
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "REFLECT"
     },
     "WRAITH": {
       "name": "원한",
@@ -917,13 +861,11 @@
         }
       ],
       "limit": "event",
-      "families": [
-        8
-      ],
       "roles": {
         "약화": "setup",
         "혼란": "setup"
-      }
+      },
+      "subtype": "HEX"
     },
     "GRAVEKEEPER": {
       "name": "무덤 지기",
@@ -942,19 +884,14 @@
         }
       ],
       "limit": "event",
-      "families": [
-        11
-      ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEATH"
     },
     "RAT_INCISOR": {
       "name": "쥐 앞니",
       "text": "베기·찌르기 공격의 출혈 확률 +10%p",
       "keywords": [
         "출혈"
-      ],
-      "families": [
-        1
       ],
       "rules": [
         {
@@ -972,16 +909,14 @@
       ],
       "roles": {
         "출혈": "setup"
-      }
+      },
+      "subtype": "BLEED"
     },
     "RAT_HEART": {
       "name": "쥐 심장",
       "text": "동료가 적을 처치하면 내 다음 공격 +20%",
       "keywords": [
         "지원"
-      ],
-      "families": [
-        12
       ],
       "rules": [
         {
@@ -1013,16 +948,14 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "BOOST"
     },
     "LIZARD_FRILL": {
       "name": "목도리 도마뱀 목도리",
       "text": "피격될 때마다 분노 +1(최대 5), 분노당 공격력 +5%, 내가 공격하면 분노 초기화",
       "keywords": [
         "광폭"
-      ],
-      "families": [
-        4
       ],
       "rules": [
         {
@@ -1054,16 +987,14 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "FURY"
     },
     "LIZARD_EYE": {
       "name": "목도리 도마뱀 눈",
       "text": "공격을 피하면 다음 공격 치명타 확률 +30",
       "keywords": [
         "급소"
-      ],
-      "families": [
-        3
       ],
       "rules": [
         {
@@ -1095,16 +1026,14 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "EVASION"
     },
     "KOBOLD_HIDE": {
       "name": "코볼트 가죽",
       "text": "인접한 적이 없으면 회피 +10",
       "keywords": [
         "사수"
-      ],
-      "families": [
-        6
       ],
       "rules": [
         {
@@ -1119,16 +1048,14 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "EVASION"
     },
     "KOBOLD_HEART": {
       "name": "코볼트 심장",
       "text": "이동하지 않은 라운드마다 조준 +1(최대 3), 조준당 원거리 피해 +10%, 이동하면 초기화",
       "keywords": [
         "사수"
-      ],
-      "families": [
-        6
       ],
       "rules": [
         {
@@ -1178,16 +1105,14 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "SNIPE"
     },
     "GOBLIN_EAR": {
       "name": "고블린 귀",
       "text": "전투의 첫 공격은 반드시 치명타",
       "keywords": [
         "급소"
-      ],
-      "families": [
-        3
       ],
       "rules": [
         {
@@ -1202,7 +1127,8 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "VITAL"
     },
     "GOBLIN_TOOTH": {
       "name": "고블린 이빨",
@@ -1210,9 +1136,6 @@
       "keywords": [
         "저주",
         "해로운 상태"
-      ],
-      "families": [
-        8
       ],
       "rules": [
         {
@@ -1235,16 +1158,14 @@
       ],
       "roles": {
         "해로운 상태": "payoff"
-      }
+      },
+      "subtype": "HEX"
     },
     "ARCHER_KNUCKLE": {
       "name": "고블린 궁수 손가락뼈",
       "text": "원거리 명중 시 20% 확률로 대상 뒤 한 칸의 적에게도 피해 50%",
       "keywords": [
         "사수"
-      ],
-      "families": [
-        6
       ],
       "rules": [
         {
@@ -1261,16 +1182,14 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "VOLLEY"
     },
     "ARCHER_EYE": {
       "name": "고블린 궁수 눈",
       "text": "4칸 이상 떨어진 대상에게 피해 +20%",
       "keywords": [
         "사수"
-      ],
-      "families": [
-        6
       ],
       "rules": [
         {
@@ -1285,16 +1204,14 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "SNIPE"
     },
     "SHIELD_HIDE": {
       "name": "고블린 방패병 가죽",
       "text": "막으면 공격자에게 반격(공격력의 60%)",
       "keywords": [
         "수호"
-      ],
-      "families": [
-        5
       ],
       "rules": [
         {
@@ -1305,7 +1222,8 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "REFLECT"
     },
     "SHIELD_HEART": {
       "name": "고블린 방패병 심장",
@@ -1313,9 +1231,6 @@
       "keywords": [
         "분쇄",
         "골절"
-      ],
-      "families": [
-        2
       ],
       "rules": [
         {
@@ -1328,16 +1243,14 @@
       ],
       "roles": {
         "골절": "setup"
-      }
+      },
+      "subtype": "CRUSH"
     },
     "HOB_HIDE": {
       "name": "홉고블린 가죽",
       "text": "공격할 때 내 HP 2% 소모, 공격력 +30%",
       "keywords": [
         "광폭"
-      ],
-      "families": [
-        4
       ],
       "rules": [
         {
@@ -1353,7 +1266,8 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "FURY"
     },
     "HOB_JAW": {
       "name": "홉고블린 턱뼈",
@@ -1361,9 +1275,6 @@
       "keywords": [
         "분쇄",
         "골절"
-      ],
-      "families": [
-        2
       ],
       "rules": [
         {
@@ -1375,16 +1286,14 @@
       ],
       "roles": {
         "골절": "setup"
-      }
+      },
+      "subtype": "CRUSH"
     },
     "HEXER_HAND": {
       "name": "고블린 주술사 손",
       "text": "대상에게 걸린 해로운 상태 1개당 주는 피해 +8%",
       "keywords": [
         "저주"
-      ],
-      "families": [
-        8
       ],
       "rules": [
         {
@@ -1397,16 +1306,14 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "HEX"
     },
     "HEXER_SKULL": {
       "name": "고블린 주술사 두개골",
       "text": "저주 학파 주문의 의지 판정 −20(더 잘 걸림)",
       "keywords": [
         "저주"
-      ],
-      "families": [
-        8
       ],
       "rules": [
         {
@@ -1421,16 +1328,14 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "HEX"
     },
     "ORC_HIDE": {
       "name": "오크 가죽",
       "text": "이미 출혈 중인 대상에게 출혈을 다시 걸면 출혈 틱 3번 분량의 피해를 바로 줌",
       "keywords": [
         "출혈"
-      ],
-      "families": [
-        1
       ],
       "rules": [
         {
@@ -1449,16 +1354,14 @@
       ],
       "roles": {
         "출혈": "payoff"
-      }
+      },
+      "subtype": "BLEED"
     },
     "ORC_HEART": {
       "name": "오크 심장",
       "text": "체력 30% 이하에서 받는 피해 −25%",
       "keywords": [
         "광폭"
-      ],
-      "families": [
-        4
       ],
       "rules": [
         {
@@ -1473,16 +1376,14 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "FURY"
     },
     "THROWER_SHOULDER": {
       "name": "오크 투척병 어깨뼈",
       "text": "타격 명중 시 15% 확률로 대상을 한 칸 밀침, 밀 곳이 막혀 있으면 추가 피해 8",
       "keywords": [
         "분쇄"
-      ],
-      "families": [
-        2
       ],
       "rules": [
         {
@@ -1505,7 +1406,8 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "CRUSH"
     },
     "THROWER_EYE": {
       "name": "오크 투척병 눈",
@@ -1514,10 +1416,6 @@
         "사수",
         "저주",
         "표식"
-      ],
-      "families": [
-        6,
-        8
       ],
       "rules": [
         {
@@ -1542,16 +1440,14 @@
       ],
       "roles": {
         "표식": "setup"
-      }
+      },
+      "subtype": "HEX"
     },
     "SPIDER_LEG": {
       "name": "동굴 거미 다리",
       "text": "치명타를 내면 다음 행동 지연 −30%",
       "keywords": [
         "급소"
-      ],
-      "families": [
-        3
       ],
       "rules": [
         {
@@ -1583,7 +1479,8 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "VITAL"
     },
     "SPIDER_SHELL": {
       "name": "동굴 거미 껍질",
@@ -1591,9 +1488,6 @@
       "keywords": [
         "저주",
         "해로운 상태"
-      ],
-      "families": [
-        8
       ],
       "rules": [
         {
@@ -1610,16 +1504,14 @@
       ],
       "roles": {
         "해로운 상태": "payoff"
-      }
+      },
+      "subtype": "HEX"
     },
     "BEETLE_WING": {
       "name": "바위 딱정벌레 날개",
       "text": "라운드 시작에 인접한 적 1명당 방어 +2(그 라운드)",
       "keywords": [
         "수호"
-      ],
-      "families": [
-        5
       ],
       "rules": [
         {
@@ -1630,16 +1522,14 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEFENSE"
     },
     "BEETLE_CORE": {
       "name": "바위 딱정벌레 핵",
       "text": "피격될 때마다 방어 +1(전투 동안, 최대 +8)",
       "keywords": [
         "수호"
-      ],
-      "families": [
-        5
       ],
       "rules": [
         {
@@ -1671,16 +1561,14 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEFENSE"
     },
     "GOLEM_VEIN": {
       "name": "광석 골렘 광맥",
       "text": "타격 공격이 방어를 완전히 무시",
       "keywords": [
         "분쇄"
-      ],
-      "families": [
-        2
       ],
       "rules": [
         {
@@ -1690,7 +1578,8 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "CRUSH"
     },
     "GOLEM_CORE": {
       "name": "광석 골렘 핵",
@@ -1700,9 +1589,6 @@
         "골절",
         "기절",
         "빙결"
-      ],
-      "families": [
-        2
       ],
       "rules": [
         {
@@ -1725,7 +1611,8 @@
         "골절": "payoff",
         "기절": "payoff",
         "빙결": "payoff"
-      }
+      },
+      "subtype": "CRUSH"
     },
     "FIRECALLER_HAND": {
       "name": "코볼트 화염술사 손",
@@ -1733,9 +1620,6 @@
       "keywords": [
         "원소",
         "화상"
-      ],
-      "families": [
-        7
       ],
       "rules": [
         {
@@ -1752,16 +1636,14 @@
       ],
       "roles": {
         "화상": "payoff"
-      }
+      },
+      "subtype": "ELEMENT"
     },
     "FIRECALLER_BONE": {
       "name": "코볼트 화염술사 뼈",
       "text": "원소 반응을 일으키면 MP +2",
       "keywords": [
         "원소"
-      ],
-      "families": [
-        7
       ],
       "rules": [
         {
@@ -1773,7 +1655,8 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "ELEMENT"
     },
     "BAT_BONE": {
       "name": "폭풍 박쥐 뼈",
@@ -1781,9 +1664,6 @@
       "keywords": [
         "원소",
         "기절"
-      ],
-      "families": [
-        7
       ],
       "rules": [
         {
@@ -1820,16 +1700,14 @@
       ],
       "roles": {
         "기절": "setup"
-      }
+      },
+      "subtype": "ELEMENT"
     },
     "BAT_EAR": {
       "name": "폭풍 박쥐 귀",
       "text": "이번 라운드에 이동했으면 회피 +15",
       "keywords": [
         "지원"
-      ],
-      "families": [
-        12
       ],
       "rules": [
         {
@@ -1844,16 +1722,14 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "EVASION"
     },
     "RIVER_RAT_TOOTH": {
       "name": "강쥐 이빨",
       "text": "출혈을 걸 때 대상 방어 −2(300 tick)",
       "keywords": [
         "출혈"
-      ],
-      "families": [
-        1
       ],
       "rules": [
         {
@@ -1875,16 +1751,14 @@
       ],
       "roles": {
         "출혈": "payoff"
-      }
+      },
+      "subtype": "BLEED"
     },
     "RIVER_RAT_HEART": {
       "name": "강쥐 심장",
       "text": "피격되지 않은 라운드마다 MP +1",
       "keywords": [
         "지원"
-      ],
-      "families": [
-        12
       ],
       "rules": [
         {
@@ -1901,16 +1775,14 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "HEAL"
     },
     "LEECH_SEGMENT": {
       "name": "거대 거머리 몸마디",
       "text": "출혈 틱 피해 +2",
       "keywords": [
         "출혈"
-      ],
-      "families": [
-        1
       ],
       "rules": [
         {
@@ -1922,16 +1794,14 @@
       ],
       "roles": {
         "출혈": "payoff"
-      }
+      },
+      "subtype": "BLEED"
     },
     "LEECH_SUCKER": {
       "name": "거대 거머리 흡반",
       "text": "출혈 중인 대상에게 준 피해의 10% 흡혈",
       "keywords": [
         "출혈"
-      ],
-      "families": [
-        1
       ],
       "rules": [
         {
@@ -1954,7 +1824,8 @@
       ],
       "roles": {
         "출혈": "payoff"
-      }
+      },
+      "subtype": "REGEN"
     },
     "TOAD_TONGUE": {
       "name": "늪 두꺼비 혀",
@@ -1962,9 +1833,6 @@
       "keywords": [
         "독",
         "중독"
-      ],
-      "families": [
-        9
       ],
       "rules": [
         {
@@ -1983,16 +1851,14 @@
       ],
       "roles": {
         "중독": "payoff"
-      }
+      },
+      "subtype": "VENOM"
     },
     "TOAD_BONE": {
       "name": "늪 두꺼비 뼈",
       "text": "중독된 적에게 받는 피해 −15%",
       "keywords": [
         "독"
-      ],
-      "families": [
-        9
       ],
       "rules": [
         {
@@ -2007,7 +1873,8 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "VENOM"
     },
     "SERPENT_SCALE": {
       "name": "신전 뱀 비늘",
@@ -2015,9 +1882,6 @@
       "keywords": [
         "독",
         "중독"
-      ],
-      "families": [
-        9
       ],
       "rules": [
         {
@@ -2038,7 +1902,8 @@
       ],
       "roles": {
         "중독": "payoff"
-      }
+      },
+      "subtype": "VENOM"
     },
     "SERPENT_FANG": {
       "name": "신전 뱀 독니",
@@ -2046,9 +1911,6 @@
       "keywords": [
         "독",
         "중독"
-      ],
-      "families": [
-        9
       ],
       "rules": [
         {
@@ -2065,7 +1927,8 @@
       ],
       "roles": {
         "중독": "payoff"
-      }
+      },
+      "subtype": "VENOM"
     },
     "SPIRIT_CURRENT": {
       "name": "물의 정령 물살",
@@ -2073,10 +1936,6 @@
       "keywords": [
         "수호",
         "원소"
-      ],
-      "families": [
-        5,
-        7
       ],
       "rules": [
         {
@@ -2091,16 +1950,14 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEFENSE"
     },
     "SPIRIT_DROP": {
       "name": "물의 정령 물방울",
       "text": "내가 누군가를 회복시키면 그 대상 방어 +3(200 tick)",
       "keywords": [
         "지원"
-      ],
-      "families": [
-        12
       ],
       "rules": [
         {
@@ -2115,16 +1972,14 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "HEAL"
     },
     "GNOLL_HIDE": {
       "name": "놀 가죽",
       "text": "잃은 체력 10%당 행동 속도 +3%",
       "keywords": [
         "광폭"
-      ],
-      "families": [
-        4
       ],
       "rules": [
         {
@@ -2137,16 +1992,14 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "FURY"
     },
     "GNOLL_BONE": {
       "name": "놀 뼈",
       "text": "외부 회복을 받지 못하는 대신 라운드마다 최대 HP 4% 재생",
       "keywords": [
         "광폭"
-      ],
-      "families": [
-        4
       ],
       "rules": [
         {
@@ -2172,7 +2025,8 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "REGEN"
     },
     "FROST_CLAW": {
       "name": "서리 도깨비 발톱",
@@ -2180,9 +2034,6 @@
       "keywords": [
         "원소",
         "빙결"
-      ],
-      "families": [
-        7
       ],
       "rules": [
         {
@@ -2200,7 +2051,8 @@
       ],
       "roles": {
         "빙결": "both"
-      }
+      },
+      "subtype": "ELEMENT"
     },
     "FROST_HORN": {
       "name": "서리 도깨비 뿔",
@@ -2209,9 +2061,6 @@
         "원소",
         "빙결",
         "화상"
-      ],
-      "families": [
-        7
       ],
       "rules": [
         {
@@ -2230,16 +2079,14 @@
       "roles": {
         "빙결": "setup",
         "화상": "setup"
-      }
+      },
+      "subtype": "ELEMENT"
     },
     "SUMMONER_HIDE": {
       "name": "놀 소환사 가죽",
       "text": "내 소환수 둘 이상이 같은 대상을 치면 그 피해 +15%",
       "keywords": [
         "소환"
-      ],
-      "families": [
-        10
       ],
       "rules": [
         {
@@ -2255,16 +2102,14 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "SUMMON"
     },
     "SUMMONER_BONE": {
       "name": "놀 소환사 뼈",
       "text": "소환수 최대 HP +50%",
       "keywords": [
         "소환"
-      ],
-      "families": [
-        10
       ],
       "rules": [
         {
@@ -2274,16 +2119,14 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "SUMMON"
     },
     "SKELETON_ARM": {
       "name": "해골 병사 팔",
       "text": "내가 거는 출혈 지속 +50%",
       "keywords": [
         "출혈"
-      ],
-      "families": [
-        1
       ],
       "rules": [
         {
@@ -2295,16 +2138,14 @@
       ],
       "roles": {
         "출혈": "setup"
-      }
+      },
+      "subtype": "BLEED"
     },
     "SKELETON_SKULL": {
       "name": "해골 병사 두개골",
       "text": "내가 처치한 적이 20% 확률로 해골 소환수로 일어남(300 tick)",
       "keywords": [
         "사령"
-      ],
-      "families": [
-        11
       ],
       "rules": [
         {
@@ -2326,7 +2167,8 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEATH"
     },
     "BOWMAN_FINGER": {
       "name": "해골 궁수 손가락",
@@ -2334,9 +2176,6 @@
       "keywords": [
         "분쇄",
         "골절"
-      ],
-      "families": [
-        2
       ],
       "rules": [
         {
@@ -2353,7 +2192,8 @@
       ],
       "roles": {
         "골절": "payoff"
-      }
+      },
+      "subtype": "CRUSH"
     },
     "BOWMAN_SOCKET": {
       "name": "해골 궁수 눈구멍",
@@ -2362,10 +2202,6 @@
         "분쇄",
         "사수",
         "골절"
-      ],
-      "families": [
-        2,
-        6
       ],
       "rules": [
         {
@@ -2390,16 +2226,14 @@
       ],
       "roles": {
         "골절": "setup"
-      }
+      },
+      "subtype": "CRUSH"
     },
     "GHOUL_JAW": {
       "name": "구울 턱",
       "text": "내가 처치한 적이 1라운드 뒤 반경 1로 터짐(피해 = 그 적 최대 HP의 10%)",
       "keywords": [
         "사령"
-      ],
-      "families": [
-        11
       ],
       "rules": [
         {
@@ -2410,16 +2244,14 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEATH"
     },
     "GHOUL_HEART": {
       "name": "구울 심장",
       "text": "해로운 상태가 걸린 적을 처치하면 HP 5% 회복",
       "keywords": [
         "사령"
-      ],
-      "families": [
-        11
       ],
       "rules": [
         {
@@ -2439,16 +2271,14 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "REGEN"
     },
     "VAMPIRE_WING": {
       "name": "흡혈 박쥐 날개",
       "text": "이동한 뒤 첫 공격 피해 +20%",
       "keywords": [
         "급소"
-      ],
-      "families": [
-        3
       ],
       "rules": [
         {
@@ -2463,16 +2293,14 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "VITAL"
     },
     "VAMPIRE_HEART": {
       "name": "흡혈 박쥐 심장",
       "text": "흡혈로 HP가 넘치면 넘친 만큼 보호(최대 최대 HP의 20%, 300 tick)",
       "keywords": [
         "사령"
-      ],
-      "families": [
-        11
       ],
       "rules": [
         {
@@ -2488,7 +2316,8 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "REGEN"
     },
     "WRAITH_KNIGHT_CLOAK": {
       "name": "망령 기사 망토",
@@ -2496,9 +2325,6 @@
       "keywords": [
         "저주",
         "약화"
-      ],
-      "families": [
-        8
       ],
       "rules": [
         {
@@ -2524,7 +2350,8 @@
       ],
       "roles": {
         "약화": "setup"
-      }
+      },
+      "subtype": "HEX"
     },
     "WRAITH_KNIGHT_CORE": {
       "name": "망령 기사 핵",
@@ -2533,9 +2360,6 @@
         "분쇄",
         "골절",
         "기절"
-      ],
-      "families": [
-        2
       ],
       "rules": [
         {
@@ -2561,7 +2385,8 @@
       "roles": {
         "골절": "payoff",
         "기절": "setup"
-      }
+      },
+      "subtype": "CRUSH"
     },
     "WRAITH_SHROUD": {
       "name": "원혼 수의",
@@ -2569,9 +2394,6 @@
       "keywords": [
         "저주",
         "해로운 상태"
-      ],
-      "families": [
-        8
       ],
       "rules": [
         {
@@ -2597,7 +2419,8 @@
       ],
       "roles": {
         "해로운 상태": "setup"
-      }
+      },
+      "subtype": "HEX"
     },
     "WRAITH_BONE": {
       "name": "원혼 뼈",
@@ -2605,9 +2428,6 @@
       "keywords": [
         "저주",
         "해로운 상태"
-      ],
-      "families": [
-        8
       ],
       "rules": [
         {
@@ -2627,16 +2447,14 @@
       ],
       "roles": {
         "해로운 상태": "payoff"
-      }
+      },
+      "subtype": "HEX"
     },
     "GRAVEKEEPER_HAND": {
       "name": "묘지기 손",
       "text": "내 소환수가 처치하면 내 HP 5% 회복",
       "keywords": [
         "소환"
-      ],
-      "families": [
-        10
       ],
       "rules": [
         {
@@ -2651,7 +2469,8 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "SUMMON"
     },
     "GRAVEKEEPER_BONE": {
       "name": "묘지기 뼈",
@@ -2659,10 +2478,6 @@
       "keywords": [
         "소환",
         "사령"
-      ],
-      "families": [
-        10,
-        11
       ],
       "rules": [
         {
@@ -2678,19 +2493,17 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "SUMMON"
     },
     "GEAR_AMP_1": {
       "name": "출혈",
-      "text": "출혈 증폭",
+      "text": "출혈 피해 +2",
       "keywords": [
         "장비",
         "출혈"
       ],
       "source": "gear",
-      "families": [
-        1
-      ],
       "slots": [
         "ring1"
       ],
@@ -2711,19 +2524,17 @@
       ],
       "roles": {
         "출혈": "both"
-      }
+      },
+      "subtype": "BLEED"
     },
     "GEAR_AMP_2": {
       "name": "분쇄",
-      "text": "분쇄 증폭",
+      "text": "골절 대상 피해 +15%",
       "keywords": [
         "장비",
         "골절"
       ],
       "source": "gear",
-      "families": [
-        2
-      ],
       "slots": [
         "ring1"
       ],
@@ -2744,18 +2555,16 @@
       ],
       "roles": {
         "골절": "setup"
-      }
+      },
+      "subtype": "CRUSH"
     },
     "GEAR_AMP_3": {
       "name": "급소",
-      "text": "급소 증폭",
+      "text": "치명타 피해 +50%",
       "keywords": [
         "장비"
       ],
       "source": "gear",
-      "families": [
-        3
-      ],
       "slots": [
         "ring1"
       ],
@@ -2774,18 +2583,16 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "VITAL"
     },
     "GEAR_AMP_4": {
       "name": "광폭",
-      "text": "광폭 증폭",
+      "text": "중첩 상한 +2, 체력 절반 이하 공격력 +10%",
       "keywords": [
         "장비"
       ],
       "source": "gear",
-      "families": [
-        4
-      ],
       "slots": [
         "ring1"
       ],
@@ -2809,18 +2616,16 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "FURY"
     },
     "GEAR_AMP_5": {
-      "name": "수호",
-      "text": "수호 증폭",
+      "name": "방어탱",
+      "text": "막기 +10",
       "keywords": [
         "장비"
       ],
       "source": "gear",
-      "families": [
-        5
-      ],
       "slots": [
         "ring1"
       ],
@@ -2839,18 +2644,16 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEFENSE"
     },
     "GEAR_AMP_6": {
-      "name": "사수",
-      "text": "사수 증폭",
+      "name": "저격",
+      "text": "사거리 +1, 조준 상한 +2",
       "keywords": [
         "장비"
       ],
       "source": "gear",
-      "families": [
-        6
-      ],
       "slots": [
         "ring1"
       ],
@@ -2869,18 +2672,16 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "SNIPE"
     },
     "GEAR_AMP_7": {
       "name": "원소",
-      "text": "원소 증폭",
+      "text": "원소 반응 피해 +40%",
       "keywords": [
         "장비"
       ],
       "source": "gear",
-      "families": [
-        7
-      ],
       "slots": [
         "ring1"
       ],
@@ -2901,19 +2702,17 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "ELEMENT"
     },
     "GEAR_AMP_8": {
       "name": "저주",
-      "text": "저주 증폭",
+      "text": "해로운 상태 지속 +25%, 상태당 피해 +4%",
       "keywords": [
         "장비",
         "해로운 상태"
       ],
       "source": "gear",
-      "families": [
-        8
-      ],
       "slots": [
         "ring1"
       ],
@@ -2942,19 +2741,17 @@
       ],
       "roles": {
         "해로운 상태": "payoff"
-      }
+      },
+      "subtype": "HEX"
     },
     "GEAR_AMP_9": {
-      "name": "독",
-      "text": "독 증폭",
+      "name": "맹독",
+      "text": "독 피해 +2",
       "keywords": [
         "장비",
         "중독"
       ],
       "source": "gear",
-      "families": [
-        9
-      ],
       "slots": [
         "ring1"
       ],
@@ -2975,18 +2772,16 @@
       ],
       "roles": {
         "중독": "payoff"
-      }
+      },
+      "subtype": "VENOM"
     },
     "GEAR_AMP_10": {
       "name": "소환",
-      "text": "소환 증폭",
+      "text": "소환수 상한 +1, 소환 지속 +25%",
       "keywords": [
         "장비"
       ],
       "source": "gear",
-      "families": [
-        10
-      ],
       "slots": [
         "ring1"
       ],
@@ -3005,18 +2800,16 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "SUMMON"
     },
     "GEAR_AMP_11": {
       "name": "사령",
-      "text": "사령 증폭",
+      "text": "사령 효과 반경 +1, 처치 효과 확률 +10%",
       "keywords": [
         "장비"
       ],
       "source": "gear",
-      "families": [
-        11
-      ],
       "slots": [
         "ring1"
       ],
@@ -3035,18 +2828,16 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEATH"
     },
     "GEAR_AMP_12": {
-      "name": "지원",
-      "text": "지원 증폭",
+      "name": "회복",
+      "text": "주는 회복 +30%, 보호 지속 +50%",
       "keywords": [
         "장비"
       ],
       "source": "gear",
-      "families": [
-        12
-      ],
       "slots": [
         "ring1"
       ],
@@ -3065,7 +2856,8 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "HEAL"
     },
     "GEAR_FORM_SAW": {
       "name": "톱날",
@@ -3074,7 +2866,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [
         "weapon",
         "offhand"
@@ -3088,7 +2879,8 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "BLEED"
     },
     "GEAR_FORM_TIP": {
       "name": "꿰뚫는 촉",
@@ -3098,7 +2890,6 @@
         "급소 노출"
       ],
       "source": "gear",
-      "families": [],
       "slots": [
         "weapon",
         "offhand"
@@ -3114,7 +2905,8 @@
       ],
       "roles": {
         "급소 노출": "setup"
-      }
+      },
+      "subtype": "VITAL"
     },
     "GEAR_FORM_WEIGHT": {
       "name": "무게추",
@@ -3123,7 +2915,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [
         "weapon",
         "offhand"
@@ -3137,7 +2928,8 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "CRUSH"
     },
     "GEAR_FORM_EDGE": {
       "name": "날 선 가장자리",
@@ -3146,7 +2938,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [
         "weapon",
         "offhand"
@@ -3160,7 +2951,8 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "BLEED"
     },
     "GEAR_FORM_BALANCE": {
       "name": "균형추",
@@ -3169,7 +2961,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [
         "weapon",
         "offhand"
@@ -3192,7 +2983,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [
         "armour",
         "offhand"
@@ -3224,7 +3014,8 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEFENSE"
     },
     "GEAR_COMP_SHOVE": {
       "name": "거리 확보",
@@ -3233,7 +3024,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [
         "armour",
         "offhand"
@@ -3254,7 +3044,8 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "EVASION"
     },
     "GEAR_COMP_PETS": {
       "name": "소환수 보호",
@@ -3263,7 +3054,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [
         "armour",
         "offhand"
@@ -3282,7 +3072,8 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "SUMMON"
     },
     "GEAR_COMP_OPENING": {
       "name": "빠른 준비",
@@ -3291,7 +3082,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [
         "armour",
         "offhand"
@@ -3306,7 +3096,8 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "BOOST"
     },
     "GEAR_COMP_MELEE": {
       "name": "근접 완충",
@@ -3315,7 +3106,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [
         "armour",
         "offhand"
@@ -3329,7 +3119,8 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEFENSE"
     },
     "GEAR_COMP_BLOCK": {
       "name": "방패 반격",
@@ -3338,7 +3129,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [
         "armour",
         "offhand"
@@ -3372,7 +3162,8 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "REFLECT"
     },
     "GEAR_COMP_CLEANSE": {
       "name": "상태 방어",
@@ -3382,7 +3173,6 @@
         "해로운 상태"
       ],
       "source": "gear",
-      "families": [],
       "slots": [
         "armour",
         "offhand"
@@ -3405,7 +3195,8 @@
       ],
       "roles": {
         "해로운 상태": "payoff"
-      }
+      },
+      "subtype": "BOOST"
     },
     "GEAR_COMP_MP": {
       "name": "마력 보존",
@@ -3414,7 +3205,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [
         "armour",
         "offhand"
@@ -3435,7 +3225,8 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "BOOST"
     },
     "UNRAND_AXE": {
       "name": "피 먹는 도끼",
@@ -3445,10 +3236,6 @@
         "출혈"
       ],
       "source": "gear",
-      "families": [
-        1,
-        4
-      ],
       "slots": [],
       "gear_kind": "unrand",
       "rules": [
@@ -3471,7 +3258,8 @@
       ],
       "roles": {
         "출혈": "payoff"
-      }
+      },
+      "subtype": "BLEED"
     },
     "COST_AXE": {
       "name": "피 먹는 도끼 대가",
@@ -3480,7 +3268,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [],
       "gear_kind": "cost",
       "rules": [
@@ -3506,10 +3293,6 @@
         "골절"
       ],
       "source": "gear",
-      "families": [
-        2,
-        5
-      ],
       "slots": [],
       "gear_kind": "unrand",
       "rules": [
@@ -3529,7 +3312,8 @@
       ],
       "roles": {
         "골절": "setup"
-      }
+      },
+      "subtype": "DEFENSE"
     },
     "COST_SHIELD": {
       "name": "깨지지 않는 방패 대가",
@@ -3538,7 +3322,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [],
       "gear_kind": "cost",
       "rules": [
@@ -3559,9 +3342,6 @@
         "급소 노출"
       ],
       "source": "gear",
-      "families": [
-        3
-      ],
       "slots": [],
       "gear_kind": "unrand",
       "rules": [
@@ -3579,7 +3359,8 @@
       ],
       "roles": {
         "급소 노출": "payoff"
-      }
+      },
+      "subtype": "VITAL"
     },
     "COST_DAGGER": {
       "name": "바늘 단검 대가",
@@ -3588,7 +3369,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [],
       "gear_kind": "cost",
       "rules": [
@@ -3608,9 +3388,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [
-        4
-      ],
       "slots": [],
       "gear_kind": "unrand",
       "rules": [
@@ -3626,7 +3403,8 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "FURY"
     },
     "COST_CHAIN": {
       "name": "광전사의 사슬 대가",
@@ -3635,7 +3413,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [],
       "gear_kind": "cost",
       "rules": [
@@ -3660,9 +3437,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [
-        5
-      ],
       "slots": [],
       "gear_kind": "unrand",
       "rules": [
@@ -3673,7 +3447,8 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEFENSE"
     },
     "COST_OATH": {
       "name": "탑 방패의 서약 대가",
@@ -3682,7 +3457,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [],
       "gear_kind": "cost",
       "rules": [
@@ -3702,9 +3476,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [
-        6
-      ],
       "slots": [],
       "gear_kind": "unrand",
       "rules": [
@@ -3715,7 +3486,8 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "SNIPE"
     },
     "COST_BOW": {
       "name": "멈춘 매의 활 대가",
@@ -3724,7 +3496,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [],
       "gear_kind": "cost",
       "rules": [
@@ -3744,9 +3515,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [
-        7
-      ],
       "slots": [],
       "gear_kind": "unrand",
       "rules": [
@@ -3763,7 +3531,8 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "ELEMENT"
     },
     "COST_ORB": {
       "name": "끓는 오브 대가",
@@ -3772,7 +3541,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [],
       "gear_kind": "cost",
       "rules": [
@@ -3793,9 +3561,6 @@
         "해로운 상태"
       ],
       "source": "gear",
-      "families": [
-        8
-      ],
       "slots": [],
       "gear_kind": "unrand",
       "rules": [
@@ -3813,7 +3578,8 @@
       ],
       "roles": {
         "해로운 상태": "payoff"
-      }
+      },
+      "subtype": "HEX"
     },
     "COST_HEX": {
       "name": "원한의 반지 대가",
@@ -3822,7 +3588,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [],
       "gear_kind": "cost",
       "rules": [
@@ -3844,9 +3609,6 @@
         "중독"
       ],
       "source": "gear",
-      "families": [
-        9
-      ],
       "slots": [],
       "gear_kind": "unrand",
       "rules": [
@@ -3865,7 +3627,8 @@
       ],
       "roles": {
         "중독": "both"
-      }
+      },
+      "subtype": "VENOM"
     },
     "COST_PLAGUE": {
       "name": "역병 주머니 대가",
@@ -3874,7 +3637,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [],
       "gear_kind": "cost",
       "rules": [
@@ -3894,9 +3656,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [
-        10
-      ],
       "slots": [],
       "gear_kind": "unrand",
       "rules": [
@@ -3907,7 +3666,8 @@
           }
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "SUMMON"
     },
     "COST_HORN": {
       "name": "부름의 뿔 대가",
@@ -3916,7 +3676,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [],
       "gear_kind": "cost",
       "rules": [
@@ -3936,9 +3695,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [
-        11
-      ],
       "slots": [],
       "gear_kind": "unrand",
       "rules": [
@@ -3952,7 +3708,8 @@
           ]
         }
       ],
-      "roles": {}
+      "roles": {},
+      "subtype": "DEATH"
     },
     "COST_DEAD": {
       "name": "망자의 반지 대가",
@@ -3961,7 +3718,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [],
       "gear_kind": "cost",
       "rules": [
@@ -3981,7 +3737,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [],
       "gear_kind": "unrand",
       "rules": [
@@ -4001,7 +3756,6 @@
         "장비"
       ],
       "source": "gear",
-      "families": [],
       "slots": [],
       "gear_kind": "cost",
       "rules": [
@@ -4013,6 +3767,72 @@
         }
       ],
       "roles": {}
+    },
+    "GEAR_AMP_EVASION": {
+      "name": "회피탱",
+      "text": "회피 +8%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "slots": [
+        "ring1"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "dodge": 8
+          }
+        }
+      ],
+      "roles": {},
+      "subtype": "EVASION"
+    },
+    "GEAR_AMP_VOLLEY": {
+      "name": "연사",
+      "text": "원거리 추가 사격 확률 +10%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "slots": [
+        "ring1"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "second_shot_chance": 10
+          }
+        }
+      ],
+      "roles": {},
+      "subtype": "VOLLEY"
+    },
+    "GEAR_AMP_BOOST": {
+      "name": "강화",
+      "text": "행동 속도 +8%",
+      "keywords": [
+        "장비"
+      ],
+      "source": "gear",
+      "slots": [
+        "ring1"
+      ],
+      "gear_kind": "affix",
+      "rules": [
+        {
+          "when": "ALWAYS",
+          "mod": {
+            "speed": 8
+          }
+        }
+      ],
+      "roles": {},
+      "subtype": "BOOST"
     }
   }
 }

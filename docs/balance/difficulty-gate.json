@@ -4,39 +4,39 @@
       "camp_rate": 1.0,
       "depth": 2,
       "kit": "sword",
-      "mean_loss_percent": 40.5,
+      "mean_loss_percent": 60.9,
       "share": 100,
-      "win_rate": 0.909090909090909
+      "win_rate": 0.888888888888889
     },
     {
       "camp_rate": 1.0,
       "depth": 2,
       "kit": "sword",
-      "mean_loss_percent": 41.6,
+      "mean_loss_percent": 61.6,
       "share": 50,
-      "win_rate": 0.909090909090909
+      "win_rate": 0.888888888888889
     },
     {
       "camp_rate": 1.0,
       "depth": 2,
       "kit": "fire",
-      "mean_loss_percent": 74.6,
+      "mean_loss_percent": 73.6,
       "share": 100,
-      "win_rate": 0.571428571428571
+      "win_rate": 0.625
     },
     {
       "camp_rate": 1.0,
       "depth": 2,
       "kit": "fire",
-      "mean_loss_percent": 75.1,
+      "mean_loss_percent": 74.2,
       "share": 50,
-      "win_rate": 0.571428571428571
+      "win_rate": 0.625
     },
     {
       "camp_rate": 1.0,
       "depth": 3,
       "kit": "sword",
-      "mean_loss_percent": 88.5,
+      "mean_loss_percent": 88.0,
       "share": 100,
       "win_rate": 0.25
     },
@@ -44,7 +44,7 @@
       "camp_rate": 1.0,
       "depth": 3,
       "kit": "sword",
-      "mean_loss_percent": 90.8,
+      "mean_loss_percent": 90.2,
       "share": 50,
       "win_rate": 0.25
     },
@@ -52,7 +52,7 @@
       "camp_rate": 1.0,
       "depth": 3,
       "kit": "fire",
-      "mean_loss_percent": 90.3,
+      "mean_loss_percent": 90.7,
       "share": 100,
       "win_rate": 0.25
     },
@@ -60,7 +60,7 @@
       "camp_rate": 1.0,
       "depth": 3,
       "kit": "fire",
-      "mean_loss_percent": 96.5,
+      "mean_loss_percent": 96.8,
       "share": 50,
       "win_rate": 0.25
     },
@@ -116,9 +116,9 @@
       "camp_rate": 1.0,
       "depth": 5,
       "kit": "fire",
-      "mean_loss_percent": 86.9,
+      "mean_loss_percent": 90.3,
       "share": 100,
-      "win_rate": 0.333333333333333
+      "win_rate": 0.2
     },
     {
       "camp_rate": 1.0,

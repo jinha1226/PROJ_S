@@ -119,8 +119,10 @@ static func sets(list: VBoxContainer, actor: Dictionary) -> void:
 			label(box,"%s %s · %s" % [tag_name(str(row.tag)),tally,str(row.text) if int(row.level) > 0 else "구간 전"],13)
 		else: label(box,"%s %d · %s" % [tag_name(str(row.tag)),int(row.level),str(row.text)],13)
 
-	var builds: Dictionary = BuildSense.profile(actor)
-	if not builds.is_empty(): label(box,"빌드 · "+" · ".join(builds.keys().map(func(f): return "%s %d%%" % [BuildSense.NAMES[int(f)],roundi(float(builds[f])*100)])),12)
+	var builds: Dictionary = BuildSense.subtype_profile(actor)
+	var types: Array = builds.keys()
+	types.sort_custom(func(a,b): return float(builds[a]) > float(builds[b]) if float(builds[a]) != float(builds[b]) else str(a) < str(b))
+	if not types.is_empty(): label(box,"빌드 · "+" · ".join(types.slice(0,3).map(func(f): return "%s %d%%" % [BuildSense.Subtypes.label(str(f)),roundi(float(builds[f])*100)])),12)
 
 static func group_key(id: String) -> String:
 	return Essences.base_of(id)+("@"+Essences.variant_element(id) if not Essences.variant_element(id).is_empty() else "")
@@ -144,7 +146,7 @@ static func siblings(id: String) -> Array:
 
 static func family_line(id: String) -> String:
 	var effect: String = StoneEffects.effect_of(id)
-	return " · ".join(StoneEffects.EFFECTS.get(effect,{}).get("families",[]).map(func(f): return str(BuildSense.NAMES.get(int(f),""))))
+	return BuildSense.Subtypes.long_label(BuildSense.Subtypes.of(effect))
 
 static func collection(actor: Dictionary, id: String) -> String:
 	var count := 0

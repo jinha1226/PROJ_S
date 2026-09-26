@@ -30,21 +30,25 @@ func run() -> void:
 	for _i in range(3): await process_frame
 	check(scene.details_popup.visible and node(scene,"CodexScreen") != null,"the codex opens")
 	check(node(scene,"CodexCompletion") != null,"completion is shown")
-	check(node(scene,"CodexEntry_dcss_rat") != null and node(scene,"CodexEntry_cave_spider") != null,"seen and unseen monsters are listed")
-	check(node(scene,"CodexEntry_cave_spider").get_meta("known",true) == false,"an unseen monster is a silhouette")
+	check(node(scene,"CodexSpecies_dcss_rat") != null and node(scene,"CodexSpecies_cave_spider") != null,"seen and unseen monsters are listed")
+	check(node(scene,"CodexSpecies_cave_spider").get_meta("known",true) == false,"an unseen monster is a silhouette")
 	scene.show_codex("monsters","dcss_rat")
 	for _i in range(3): await process_frame
-	check(node(scene,"CodexDetail") != null and str(node(scene,"CodexDetail").get_meta("key","")) == "dcss_rat","focus opens the rat")
+	check(node(scene,"CodexMonsterDetail") != null and str(node(scene,"CodexMonsterDetail").get_meta("key","")) == "dcss_rat","focus opens the rat")
 	scene.show_codex("stones")
 	for _i in range(3): await process_frame
 	check(node(scene,"CodexEntry_RAT_GNAW_cut") != null and node(scene,"CodexEntry_RAT_GNAW_broken") != null,"found and locked parts are listed")
-	check(node(scene,"CodexFilter_1") != null,"a build family filter exists")
-	(node(scene,"CodexFilter_12") as Button).pressed.emit()
+	check(node(scene,"CodexGroup_MELEE") != null,"a build family filter exists")
+	(node(scene,"CodexGroup_SUPPORT") as Button).pressed.emit()
 	for _i in range(3): await process_frame
 	check(node(scene,"CodexEntry_RAT_GNAW_cut") != null,"the support filter keeps the rat's tail")
-	check(node(scene,"CodexTab_unrands") == null or FileAccess.file_exists("res://data/content/unrands.json"),"the gear tab hides until unrands exist")
+	check(node(scene,"CodexFilter_BOOST") != null and node(scene,"CodexFilter_HEAL") != null,"group reveals its subtype filters")
+	(node(scene,"CodexFilter_BOOST") as Button).pressed.emit()
+	for _i in range(3): await process_frame
+	check(node(scene,"CodexEntry_RAT_GNAW_cut") != null and node(scene,"CodexEntry_RAT_GNAW_broken") == null,"subtype filter narrows individual parts")
+	check(node(scene,"CodexTab_items") == null or FileAccess.file_exists("res://data/content/unrands.json"),"the gear tab hides until unrands exist")
 	check(int(s.time) == before,"no time passes in the codex")
-	check(node(scene,"CodexTab_unrands") != null,"implemented artifacts enable the gear tab")
+	check(node(scene,"CodexTab_items") != null,"implemented artifacts enable the gear tab")
 	scene.show_codex("unrands")
 	for _i in range(3): await process_frame
 	check(node(scene,"CodexEntry_AXE") != null,"artifact rows populate the gear tab")
@@ -55,7 +59,7 @@ func run() -> void:
 	scene.set_process(false); s.manual_mode = true
 	for screen in [Vector2i(320,568),Vector2i(360,640),Vector2i(390,844)]:
 		root.size = screen
-		for tab in ["monsters","stones","unrands"]:
+		for tab in ["stones","items","builds"]:
 			scene.show_codex(tab)
 			for _i in range(6): await process_frame
 			check(scene.details_popup.size.x <= screen.x and scene.details_popup.size.y <= screen.y,"%s codex fits %s" % [tab,screen])
@@ -77,4 +81,34 @@ func run() -> void:
 	scene.show_codex(); scene.details_popup.hide()
 	for _i in range(6): await process_frame
 	check(not scene.details_popup.visible,"closing immediately is not undone by deferred popup fitting")
+	scene.show_codex("builds")
+	for _i in range(4): await process_frame
+	check(node(scene,"CodexBuild_wall") != null and node(scene,"CodexParty_classic") != null,"build and party examples are listed")
+	(node(scene,"CodexBuild_wall") as Button).pressed.emit()
+	for _i in range(4): await process_frame
+	check(node(scene,"CodexBuildDetail") != null and scene.modal_content.find_children("CodexBuildStone_*","Control",true,false).size() == 10,"build detail has all ten stones")
+	s.records_codex = true; Codex.note_affix(s,"GEAR_AMP_1")
+	(node(scene,"CodexTryBuild") as Button).pressed.emit()
+	for _i in range(4): await process_frame
+	check(scene.mode_arena_setup and scene.arena_config.size == 1 and scene.arena_config.members[0].build == "wall","codex routes wall to arena setup")
+	check(scene.find_child("ArenaBuild_0",true,false) != null and scene.find_child("ArenaPart_0_0",true,false) == null,"selected build replaces two part pickers")
+	scene.start_arena()
+	for _i in range(4): await process_frame
+	check(scene.session.party[0].equipped_abilities.size() == 10 and scene.session.party[0].gear.offhand.type == "shield","starting equips the actual wall loadout")
+	check(not scene.session.records_codex,"arena examples never record collection")
+	scene._notification(scene.NOTIFICATION_APPLICATION_PAUSED)
+	check(int(Codex.read().affixes.get("GEAR_AMP_1",{}).get("found",0)) > 0 and not s.codex_dirty,"pausing in an arena flushes the parked run's codex")
+	scene.show_codex("builds","classic")
+	for _i in range(4): await process_frame
+	check(node(scene,"CodexTryParty") != null,"party detail offers an arena trial")
+	(node(scene,"CodexTryParty") as Button).pressed.emit()
+	for _i in range(4): await process_frame
+	check(scene.arena_config.size == 3 and scene.arena_config.members.map(func(m): return m.build) == ["wall","blood_hunter","elementalist"],"party trial selects all three builds")
+	scene.start_arena()
+	for _i in range(4): await process_frame
+	check(scene.session.party.size() == 3 and scene.session.party.all(func(a): return a.equipped_abilities.size() == 10),"all three members wear full example builds")
+	scene.leave_arena()
+	check(scene.session == s and int(s.time) == before,"trying builds restores the original run without advancing time")
+	scene.queue_free(); await process_frame
+	if FileAccess.file_exists(Codex.path): DirAccess.remove_absolute(ProjectSettings.globalize_path(Codex.path))
 	print("Codex UI: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)

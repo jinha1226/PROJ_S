@@ -14,6 +14,9 @@ func run() -> void:
 	for pair in [[1,"bleed_tick",2],[2,"fracture_percent",15],[3,"crit_damage",50],[4,"stack_max",2],[5,"block",10],[6,"range",1],[7,"reaction_percent",40],[8,"status_ticks",25],[9,"poison_tick",2],[10,"summon_count",1],[11,"radius",1],[12,"heal_given_percent",30]]:
 		d = Fixture.reset(s); d.hero.gear.ring1 = {"type":"power","affix":"GEAR_AMP_%d"%int(pair[0])}
 		check(Effects.modifier(s,pair[1],d.hero,{"harmful":true}) == pair[2],"amplification %d reaches the runtime reader" % int(pair[0]))
+	for pair in [["EVASION","dodge",8],["VOLLEY","second_shot_chance",10],["BOOST","speed",8]]:
+		d = Fixture.reset(s); d.hero.gear.ring1 = {"type":"power","affix":"GEAR_AMP_"+str(pair[0])}
+		check(Effects.modifier(s,str(pair[1]),d.hero) == int(pair[2]),"new subtype amplifier reaches combat: "+str(pair[0]))
 	d = Fixture.reset(s); d.hero.gear.ring1 = {"type":"power","affix":"GEAR_AMP_8"}; d.foe.statuses = {"bleed":300,"weak":300,"marked":300}
 	check(s.StoneEffects.outgoing(s,d.hero,d.foe,100,"physical") == 112,"curse amplifier scales actual damage by harmful status count")
 	d = Fixture.reset(s); d.hero.gear.armour = {"type":"robe","affix":"GEAR_COMP_CRISIS"}; d.hero.hp = 20

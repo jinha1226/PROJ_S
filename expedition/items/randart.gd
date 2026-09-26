@@ -1,4 +1,5 @@
 extends RefCounted
+const Subtypes = preload("res://expedition/progression/subtypes.gd")
 const Equipment = preload("res://expedition/items/equipment.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
@@ -10,22 +11,22 @@ static var artifacts: Array = JSON.parse_string(FileAccess.get_file_as_string("r
 static func roll(s, key: int, lane: String, modulus: int) -> int:
 	return Hexaco.sample(int(s.seed_value),key,"randart:"+lane,modulus)
 
-static func families(s) -> Array:
+static func subtypes(s) -> Array:
 	var result: Array = []
 	for actor in s.party:
 		for id in Essences.equipped(actor):
 			var effect: String = str(Essences.row(id).get("effect",""))
-			for family in effects.get(effect,{}).get("families",[]):
-				if family not in result: result.append(family)
+			var subtype := Subtypes.of(effect)
+			if not subtype.is_empty() and subtype not in result: result.append(subtype)
 	return result
 
 static func weighted(s, key: int, lane: String, pool: Array) -> Variant:
 	if pool.is_empty(): return null
-	var present := families(s)
+	var present := subtypes(s)
 	var expanded: Array = []
 	for row in pool:
 		expanded.append(row)
-		if row.get("families",[]).any(func(f): return f in present): expanded.append(row)
+		if str(row.get("subtype",Subtypes.of(str(row.get("affix",""))))) in present: expanded.append(row)
 	return expanded[roll(s,key,lane,expanded.size())]
 
 static func make(s, key: int, type: String, force_tier: String = "", boss: bool = false) -> Dictionary:
@@ -50,7 +51,7 @@ static func make(s, key: int, type: String, force_tier: String = "", boss: bool 
 	for id in effects:
 		var row: Dictionary = effects[id]
 		if row.get("source","") != "gear" or row.get("gear_kind","") != "affix" or slot not in row.get("slots",[]): continue
-		if slot == "ring1" and (zone == 1 or (zone == 2 and row.get("families",[]).any(func(f): return int(f) > 6))): continue
+		if slot == "ring1" and (zone == 1 or (zone == 2 and Subtypes.GROUP.get(str(row.get("subtype","")),"") in ["MAGIC","SUPPORT"])): continue
 		if slot == "offhand" and (str(type).begins_with("off_") != str(id).begins_with("GEAR_FORM_")): continue
 		var copy: Dictionary = row.duplicate(); copy.id = id; affixes.append(copy)
 	if not affixes.is_empty() and roll(s,key,"affix_exists",100) < 60:

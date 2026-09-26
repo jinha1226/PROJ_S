@@ -54,6 +54,7 @@ static func grant_gear(s, item: Dictionary) -> void:
 	if item.is_empty(): return
 	s.gear_bag.append(item.duplicate(true))
 	if not str(item.get("unrand","")).is_empty(): s.Codex.note_unrand(s,str(item.unrand))
+	if not str(item.get("affix","")).is_empty(): s.Codex.note_affix(s,str(item.affix))
 	s.message(Equipment.title(item)+" 획득")
 
 static func equip_part(s, index: int, slot: int, id: String) -> bool:
@@ -141,7 +142,6 @@ static func reset_rules(s, index: int) -> void:
 	for id in Abilities.held(actor):
 		if Abilities.has(id): actor.rules.append(Abilities.default_rule(id))
 
-## A slot change can move 무리 4's HP for the whole party: every pool is
-## brought in line, not just the wearer's.
+## Bring every party pool in line after a loadout changes.
 static func refresh_party(s) -> void:
 	for member in s.party: StatSheet.refresh_pools(s,member)

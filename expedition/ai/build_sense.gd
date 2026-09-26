@@ -6,19 +6,31 @@ const Abilities = preload("res://expedition/items/abilities.gd")
 const Stats = preload("res://expedition/combat/combat_stats.gd")
 const Lookahead = preload("res://expedition/ai/lookahead.gd")
 const NAMES := {1:"출혈",2:"분쇄",3:"급소",4:"광폭",5:"수호",6:"사수",7:"원소",8:"저주",9:"독",10:"소환",11:"사령",12:"지원"}
+const Subtypes = preload("res://expedition/progression/subtypes.gd")
 const IDS := ["build_target","build_setup","build_hold","finish_form"]
 
-static func profile(actor: Dictionary) -> Dictionary:
+static func subtype_profile(actor: Dictionary) -> Dictionary:
 	var counts: Dictionary = {}; var total := 0.0
 	for id in Effects.effects(actor):
-		var families: Array = Effects.content.effects.get(id,{}).get("families",[])
-		if families.is_empty(): continue
-		for family in families:
-			counts[int(family)] = float(counts.get(int(family),0.0))+1.0/float(families.size())
-			total += 1.0/float(families.size())
+		var subtype := Subtypes.of(str(id))
+		if subtype.is_empty(): continue
+		counts[subtype] = float(counts.get(subtype,0.0))+1.0; total += 1.0
 	if total > 0:
-		for family in counts: counts[family] = float(counts[family])/total
+		for subtype in counts: counts[subtype] = float(counts[subtype])/total
 	return counts
+
+static func profile(actor: Dictionary) -> Dictionary:
+	var counts: Dictionary = {}
+	var subtypes := subtype_profile(actor)
+	for subtype in subtypes:
+		var family: int = int(Subtypes.LEGACY_FAMILY[subtype])
+		counts[family] = float(counts.get(family,0.0))+float(subtypes[subtype])
+	return counts
+
+static func top_subtype(actor: Dictionary) -> String:
+	var p := subtype_profile(actor); var ids: Array = p.keys()
+	ids.sort_custom(func(a,b): return float(p[a]) > float(p[b]) if float(p[a]) != float(p[b]) else Subtypes.IDS.find(a) < Subtypes.IDS.find(b))
+	return str(ids[0]) if not ids.is_empty() else ""
 
 static func main(actor: Dictionary) -> Array:
 	var p := profile(actor)
@@ -118,7 +130,7 @@ static func wishes(s, target: Dictionary) -> Array:
 	for part in Forms.PARTS:
 		if owned.any(func(id): return s.Essences.base_of(str(id)) == base and s.Essences.part_of(s.Essences.canonical(str(id))) == part): continue
 		var effect: String = str(row.parts[part].get("effect",""))
-		if Effects.content.effects.get(effect,{}).get("families",[]).any(func(family): return family in families): result.append(part)
+		if int(Subtypes.LEGACY_FAMILY.get(Subtypes.of(effect),0)) in families: result.append(part)
 	return result
 
 static func yield_to(s, actor: Dictionary, target: Dictionary, desired: Array) -> bool:
