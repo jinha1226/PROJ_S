@@ -5,6 +5,8 @@ const Session = preload("res://expedition/run/session.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const Forms = preload("res://expedition/combat/forms.gd")
+const Fixture = preload("res://tests/floor_fixture.gd")
+const EssenceTab = preload("res://expedition/ui/screens/essence_tab.gd")
 var failures := 0
 var checks := 0
 
@@ -44,9 +46,30 @@ func run() -> void:
 	check(label(scene,"EnemyResist") == null,"no resistance line when every resistance is zero")
 	scene.details_popup.hide()
 	var npc: Dictionary = s.roster[0]
-	npc.essences = {"ORC_CLEAVER":1}; npc.equipped_abilities = ["ORC_CLEAVER"]
+	npc.essences = {"ORC_CLEAVER":1}; npc.equipped_abilities = ["ORC_CLEAVER"]; npc.build_role = "MELEE"
 	scene.Popups.show_npc(scene,npc)
 	for _i in range(3): await process_frame
-	check(label(scene,"NpcLevel") != null and label(scene,"NpcLevel").text == "Lv.%d · 영혼석 %s" % [int(npc.level),Essences.title("ORC_CLEAVER")],"the npc line shows level and essences")
+	check(label(scene,"NpcLevel") != null and label(scene,"NpcLevel").text == "Lv.%d · 근접" % int(npc.level),"the NPC header shows its level and role")
+	check(scene.modal_content.find_child("StoneName",true,false).text == Essences.title("ORC_CLEAVER") and scene.modal_content.find_child("StoneEffect",true,false).text == EssenceTab.effect_line("ORC_CLEAVER",npc),"before recruitment the card shows the actual stone name and effect")
+	scene.details_popup.hide()
+	# Distant inspection must not become distant recruitment or spend a turn.
+	var c := Fixture.arena(s,8); npc.pos = c+Vector2i(3,0); npc.state = "MET"; npc.partner = -1
+	s.npcs = [npc]; s.floor_state.observe(s); s.MobileEffects.enable(s,s.MobileEffects.PROFILE)
+	npc.level = 2; npc.equipped_abilities = ["GOBLIN_SHIV/pierced","GOBLIN_SHIV/cut"]; npc.essences = {"GOBLIN_SHIV/pierced":1,"GOBLIN_SHIV/cut":1}
+	var time_before: int = s.time; var roll_before: int = s.roll_serial
+	for viewport in [Vector2i(320,568),Vector2i(390,844)]:
+		root.size = viewport; scene.refresh(); await process_frame
+		scene.on_cell(npc.pos)
+		for _i in range(4): await process_frame
+		check(scene.details_popup.visible and scene.modal_content.find_children("NpcStone_*","PanelContainer",true,false).size() == 2,"a visible distant NPC can be inspected with both stones")
+		check(scene.find_child("ProposeButton",true,false).disabled and not s.propose(npc).accepted and s.time == time_before and s.roll_serial == roll_before,"distant inspection cannot recruit or advance the world")
+		check(scene.details_popup.size.x <= scene.get_viewport_rect().size.x and scene.details_popup.size.y <= scene.get_viewport_rect().size.y,"NPC inspection stays inside the mobile viewport (popup %s, viewport %s)" % [scene.details_popup.size,scene.get_viewport_rect().size])
+		check(scene.modal_content.find_child("StoneStats",true,false).text == EssenceTab.stat_line("GOBLIN_SHIV/pierced",npc),"NPC stone rewards use the actor's current combat profile")
+		scene.details_popup.hide()
+	npc.pos = c+Vector2i.RIGHT; s.floor_state.observe(s); s.pending_offer = npc.id
+	scene.Popups.update_offer_popup(scene)
+	for _i in range(3): await process_frame
+	check(scene.offer_popup.visible and scene.offer_content.find_children("OfferNpcStone_*","PanelContainer",true,false).size() == 2 and scene.offer_content.find_child("OfferNpcLevel",true,false).text == "Lv.2 · 근접","an NPC's own offer also reveals its full build before acceptance")
+	scene.offer_popup.hide(); s.pending_offer = -1
 	scene.details_popup.hide(); scene.queue_free(); await process_frame
 	print("Inspect UI: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)

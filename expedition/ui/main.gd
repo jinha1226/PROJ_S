@@ -608,8 +608,7 @@ func on_cell(point: Vector2i) -> void:
 			if wanderer.get("hostile",false):
 				if session.attack_preview(point).is_empty(): Popups.show_enemy_info(self,wanderer)
 				else: run_action(func(): return session.act("ATTACK",point))
-			elif session.melee_reach(session.party[session.selected].pos,point): Popups.show_npc(self,wanderer)
-			else: notice = "%s · %s" % [wanderer.name,wanderer.get("activity","")] if not str(wanderer.get("activity","")).is_empty() else str(wanderer.name); refresh()
+			else: Popups.show_npc(self,wanderer)
 			return
 		if feature.get("kind","") == "curio": Popups.show_curio(self,point); return
 		if feature.get("kind","") == "stairs" and session.distance(session.party[session.selected].pos,point) <= 1: show_stairs(); return

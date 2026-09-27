@@ -2,6 +2,8 @@ extends SceneTree
 ## Run roster: ten NPCs, two duos, three to five placed per floor with a situation.
 const Session = preload("res://expedition/run/session.gd")
 const Roster = preload("res://expedition/actors/npc_roster.gd")
+const NpcEssences = preload("res://expedition/actors/npc_essences.gd")
+const Essences = preload("res://expedition/progression/essences.gd")
 var failures := 0
 var checks := 0
 func check(ok: bool, reason: String) -> void:
@@ -10,7 +12,7 @@ func check(ok: bool, reason: String) -> void:
 func _initialize() -> void: call_deferred("run")
 
 func run() -> void:
-	roster(); placement(); reappearance(); deep_packs()
+	roster(); starter_builds(); placement(); reappearance(); deep_packs()
 	print("NPC roster: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
 func roster() -> void:
@@ -22,14 +24,30 @@ func roster() -> void:
 	check(rows.all(func(n): return n.npc and not n.enemy and n.id >= 1000 and n.hp == 55 and n.max_hp == 55 and n.state == "UNMET" and not n.awake),"npc fields")
 	check(rows.all(func(n): return n.stress >= 0 and n.stress <= 40),"stress 0-40")
 	check(rows.all(func(n): return n.stance in ["CHARGER","SKIRMISHER","GUARDIAN"] and n.stance == s.Stances.default_stance(n.profile)),"stance is the personality's default")
-	var with_part: int = rows.filter(func(n): return n.equipped_abilities[0] != "").size()
-	check(with_part >= 1 and with_part <= 8 and rows.all(func(n): return n.equipped_abilities.size() == n.level and (n.equipped_abilities[0] == "" or n.rules.size() >= 1 and Session.Abilities.held(n).all(func(id): return n.rules.any(func(r): return r.skill == id)))),"some carry one part with its rule")
+	check(rows.all(func(n): return Essences.equipped(n).is_empty() and not n.has("starting_build_floor")),"unseen NPC builds wait for their actual first floor")
 	var paired: Array = rows.filter(func(n): return n.partner >= 0)
 	check(paired.size() == 4 and paired.all(func(n): return rows.filter(func(m): return m.id == n.partner)[0].partner == n.id),"two mutual duos")
 	check(paired.all(func(n): return n.bond in ["close","strained"] and rows.filter(func(m): return m.id == n.partner)[0].bond == n.bond),"bond shared by the pair")
 	check(rows.filter(func(n): return n.partner < 0).all(func(n): return n.bond == ""),"singles have no bond")
 	var again: Array = Roster.generate(Session.new(41,false,false,true,1))
 	check(again.map(func(n): return [n.name,n.partner,n.bond,n.stance]) == rows.map(func(n): return [n.name,n.partner,n.bond,n.stance]),"deterministic per seed")
+
+func starter_builds() -> void:
+	for depth in [1,4,7,10]:
+		var s = Session.new(46,false,false,true,1); s.depth = depth
+		var rows := Roster.generate(s)
+		for npc in rows: NpcEssences.seed_build(s,npc)
+		var pool := NpcEssences.floor_pool(depth)
+		check(rows.all(func(n): return Essences.equipped(n).size() in [1,2] and Essences.equipped(n).all(func(id): return id in pool and Essences.role(str(id)) == n.build_role)),"floor %d gives every NPC one or two local stones matching its role" % depth)
+		check(rows.all(func(n): return int(n.level) == Essences.equipped(n).size() and n.equipped_abilities.size() == Essences.slot_count(n)),"starter level respects permanent absorption slots")
+		check(rows.any(func(n): return n.level == 1) and rows.any(func(n): return n.level == 2),"both one-stone and two-stone NPCs exist")
+		var original: Array = rows.map(func(n): return [n.build_role,n.gear.weapon.duplicate(true),n.equipped_abilities.duplicate(),n.max_hp,n.level_xp])
+		s.depth = 11
+		for npc in rows: NpcEssences.seed_build(s,npc)
+		check(original == rows.map(func(n): return [n.build_role,n.gear.weapon,n.equipped_abilities,n.max_hp,n.level_xp]),"returning NPCs retain their build, pools and XP on another floor")
+		var repeat = Session.new(46,false,false,true,1); repeat.depth = depth
+		for npc in Roster.generate(repeat): NpcEssences.seed_build(repeat,npc)
+		check(original == repeat.roster.map(func(n): return [n.build_role,n.gear.weapon,n.equipped_abilities,n.max_hp,n.level_xp]),"starting builds are deterministic for seed and first floor")
 
 ## Below the catalog's last depth a FIGHTING npc still gets a real pack, not the builder's single-kobold fallback.
 func deep_packs() -> void:
@@ -49,6 +67,7 @@ func placement() -> void:
 	check(s.roster.size() == 10,"depart generates the roster")
 	check(s.npcs.size() == 3,"floor 1 places three")
 	check(s.npcs.all(func(n): return n.state == "MET" and n.floor_seen == Roster.depth(s) and n.hp > 0),"placed NPCs are met on this floor")
+	check(s.npcs.all(func(n): return n.starting_build_floor == 1 and Essences.equipped(n).size() in [1,2]),"placement initializes a real starting build before combat")
 	for n in s.npcs:
 		check(s.inside(n.pos) and s.tile(n.pos).terrain != "wall" and s.at(n.pos) == n,"npc stands on a floor cell and at() finds it")
 		check(Roster.situation(n) in ["FIGHTING","WOUNDED","RESTING"],"situation set")

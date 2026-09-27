@@ -54,6 +54,7 @@ static func dialogue(s, npc: Dictionary) -> Dictionary:
 ## npc's own extraversion and warmth answer, once every twenty rounds.
 static func propose(s, npc: Dictionary) -> Dictionary:
 	if s.phase != "EXPLORE": return {"accepted":false,"line":"지금은 싸울 때다"}
+	if not s.alive().any(func(a): return s.melee_reach(a.pos,npc.pos)): return {"accepted":false,"line":"거리 초과"}
 	if bool(npc.get("summoned",false)): return {"accepted":false,"line":"부름에 답한 것일 뿐이다"}
 	var d := dialogue(s,npc)
 	if not d.can_propose: return {"accepted":false,"line":d.line}

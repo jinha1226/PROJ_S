@@ -21,7 +21,10 @@ func field() -> Dictionary:
 	npc.hp = npc.max_hp
 	npc.awake = true
 	npc.hostile = false
-	npc.equipped_abilities = ["",""]
+	# This fixture measures XP from an empty level-one hunter, independently
+	# of the randomized one/two-stone build it arrived with.
+	npc.level = 1; npc.level_xp = 0; npc.essences = {}; npc.essence_spells = {}
+	npc.equipped_abilities = [""]
 	npc.rules = []
 	s.floor_state.observe(s)
 	return {"s":s,"c":c,"npc":npc}
@@ -57,6 +60,7 @@ func solo_hunts() -> void:
 func shared_hunt() -> void:
 	var f := field(); var s = f.s; var npc: Dictionary = f.npc
 	var bystander: Dictionary = s.roster.filter(func(r): return r.id != npc.id)[0]
+	bystander.level_xp = 0
 	bystander.pos = f.c+Vector2i(8,0); bystander.awake = true; bystander.hp = bystander.max_hp
 	s.npcs.append(bystander)
 	var foe: Dictionary = s.enemies[0]

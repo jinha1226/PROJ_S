@@ -11,6 +11,64 @@ const PLAIN := 300
 const Forms = preload("res://expedition/combat/forms.gd")
 const Subtypes = preload("res://expedition/progression/subtypes.gd")
 const Effects = preload("res://expedition/progression/stone_effects.gd")
+const Mobile = preload("res://expedition/progression/attack_wait.gd")
+const Encounters = preload("res://expedition/level/encounter_builder.gd")
+const ROLE_NAMES := {"TANK":"방어","MELEE":"근접","RANGED":"원거리","MAGIC":"마법","SUPPORT":"지원"}
+const ROLE_WEAPONS := {"TANK":["sword","mace"],"MELEE":["sword","axe","dagger"],"RANGED":["bow"],"MAGIC":["staff"],"SUPPORT":["spear","staff"]}
+
+## The same depth eligibility the encounter generator uses. Ordinary parts
+## can drop throughout a zone; boss-only and later-zone stones stay out.
+static func floor_pool(depth: int) -> Array:
+	var species: Array = Encounters.table().filter(func(r): return Encounters.weight(r,depth) > 0.0).map(func(r): return str(r.species_id))
+	return Essences.catalog().filter(func(id): return str(Essences.row(str(id)).get("species","")) in species)
+
+static func role_name(npc: Dictionary) -> String:
+	var role := str(npc.get("build_role",""))
+	if role.is_empty():
+		var stones := Essences.equipped(npc)
+		if not stones.is_empty(): role = Essences.role(str(stones[0]))
+	return str(ROLE_NAMES.get(role,"모험가"))
+
+## A single stone must work without another stone. A starter pair may carry
+## a chain only when the other stone supplies its condition.
+static func starter_usable(id: String, picked: Array) -> bool:
+	var row := Mobile.row(id)
+	if str(row.get("role","")) != "CHAIN": return true
+	for other in picked:
+		var source := Mobile.row(str(other))
+		if not row.get("requires",[]).is_empty() and str(source.get("status","")) in row.requires and str(source.get("op","")) in ["status","status_area","lightning"]: return true
+		if "blessing" in row.get("self_requires",[]) and str(source.get("op","")) == "bless": return true
+		if bool(row.get("needs_pet",false)) and str(source.get("op","")) == "summon": return true
+	return false
+
+static func seed_build(s, npc: Dictionary) -> void:
+	if npc.has("starting_build_floor"): return
+	var pool := floor_pool(int(s.depth))
+	if pool.is_empty(): return
+	var lane: int = int(s.depth)*100000+int(npc.id)
+	var existing := Essences.equipped(npc)
+	# Preserve stones on returning/legacy NPCs rather than re-rolling them.
+	if not existing.is_empty():
+		npc.build_role = str(Essences.role(str(existing[0])))
+		npc.starting_build_floor = int(s.depth)
+		return
+	var roles: Array = ROLE_NAMES.keys().filter(func(role): return pool.any(func(id): return Essences.role(str(id)) == role and starter_usable(str(id),[])))
+	if roles.is_empty(): return
+	var role: String = str(roles[Hexaco.sample(s.seed_value,lane,"npc_build_role",roles.size())])
+	var candidates: Array = pool.filter(func(id): return Essences.role(str(id)) == role)
+	var picked: Array = []
+	var want: int = 1+Hexaco.sample(s.seed_value,lane,"npc_build_count",2)
+	for i in range(want):
+		var choices: Array = candidates.filter(func(id):
+			return id not in picked and starter_usable(str(id),picked) and not picked.any(func(other): return Mobile.effect_id(str(other)) == Mobile.effect_id(str(id))))
+		if choices.is_empty(): break
+		picked.append(choices[Hexaco.sample(s.seed_value,lane,"npc_build_stone_%d" % i,choices.size())])
+	if picked.size() > int(npc.level): s.gain_level_xp(npc,65-int(npc.get("level_xp",0)))
+	var weapons: Array = ROLE_WEAPONS[role]
+	npc.gear.weapon = {"type":str(weapons[Hexaco.sample(s.seed_value,lane,"npc_build_weapon",weapons.size())]),"enchant":0}
+	npc.build_role = role; npc.starting_build_floor = int(s.depth)
+	for id in picked: Essences.bind(npc,str(id))
+	StatSheet.refresh_pools(s,npc)
 
 ## Low A leans to 광폭·기습, high C to 수호, high O to 술사; a stone it has
 ## absorbed counts a little over one it has not.

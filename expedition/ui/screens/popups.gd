@@ -12,6 +12,7 @@ const Equipment = preload("res://expedition/items/equipment.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const EssenceTab = preload("res://expedition/ui/screens/essence_tab.gd")
+const NpcEssences = preload("res://expedition/actors/npc_essences.gd")
 
 static func show_menu(ui) -> void:
 	var session = ui.session
@@ -142,27 +143,53 @@ static func npc_personality(ui, npc: Dictionary) -> String:
 		words.append(str(terms.high_noun if npc.profile.value(facet) >= 500 else terms.low_noun))
 	return " · ".join(words)
 
-## The npc popup: who it is, what it is doing, and the two things the party has
-## to offer — a share of the food and a place in the line.
-static func show_npc(ui, npc: Dictionary) -> void:
-	var session = ui.session
-	ui.stop_navigation(); ui.clear(ui.modal_content)
-	ui.modal_content.custom_minimum_size = Vector2(ui.popup_width(),0)
-	var page := VBoxContainer.new(); page.name = "NpcPopup"; ui.modal_content.add_child(page)
-	page.add_theme_constant_override("separation",8)
-	var talk: Dictionary = Session.Recruit.dialogue(session,npc)
+## The same build inspection precedes both a player's invitation and an NPC's
+## offer. Scrolling keeps two stones and long effect text inside a phone.
+static func npc_page(ui, parent: VBoxContainer, npc: Dictionary, node_name: String, offer: bool = false) -> VBoxContainer:
+	var scroll := ScrollContainer.new(); scroll.name = node_name+"Scroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size = Vector2(ui.popup_width(),minf(ui.get_viewport_rect().size.y-64,(304 if offer else 392)+90*Essences.equipped(npc).size()))
+	parent.add_child(scroll)
+	var page := VBoxContainer.new(); page.name = node_name; page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	page.add_theme_constant_override("separation",8); scroll.add_child(page)
+	return page
+
+static func npc_build_info(ui, page: VBoxContainer, npc: Dictionary, prefix: String = "Npc") -> void:
 	var heading := HBoxContainer.new(); page.add_child(heading)
 	var portrait := TextureRect.new(); portrait.texture = Art.actor_portrait(npc)
 	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	portrait.custom_minimum_size = Vector2(64,64); heading.add_child(portrait)
-	var words := VBoxContainer.new(); heading.add_child(words)
-	ui.label(words,str(npc.name),20)
-	var worn: Array = Essences.equipped(npc).map(func(id): return Essences.title(str(id)))
-	var level_line = ui.label(words,"Lv.%d · 영혼석 %s" % [int(npc.get("level",1)),", ".join(worn) if not worn.is_empty() else "없음"],13)
-	level_line.name = "NpcLevel"
-	var dialogue = ui.label(words,str(talk.line),15)
-	dialogue.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var ask = ui.button(page,"동행 제안",func(): propose_npc(ui,npc),bool(talk.can_propose))
+	var words := VBoxContainer.new(); words.size_flags_horizontal = Control.SIZE_EXPAND_FILL; heading.add_child(words)
+	EssenceTab.label(words,str(npc.name),20)
+	EssenceTab.label(words,"Lv.%d · %s" % [int(npc.get("level",1)),NpcEssences.role_name(npc)],14).name = prefix+"Level"
+	EssenceTab.label(words,"HP %d/%d · 스트레스 %d" % [int(npc.hp),int(npc.max_hp),int(npc.stress)],12).name = prefix+"Health"
+	EssenceTab.label(page,"%s · %s" % [Equipment.title(npc.get("gear",{}).get("weapon",{})),npc_personality(ui,npc)],13).name = prefix+"Equipment"
+	var stones := Essences.equipped(npc)
+	for id in stones:
+		var card := PanelContainer.new(); card.name = prefix+"Stone_"+EssenceTab.node_key(str(id))
+		card.add_theme_stylebox_override("panel",EssenceTab.surface(EssenceTab.border_for(str(id)))); page.add_child(card)
+		var row := HBoxContainer.new(); row.add_theme_constant_override("separation",8); card.add_child(row)
+		var icon := TextureRect.new(); icon.texture = Art.part_icon(str(id)); icon.custom_minimum_size = Vector2(28,28)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.size_flags_vertical = Control.SIZE_SHRINK_BEGIN; row.add_child(icon)
+		var text := VBoxContainer.new(); text.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(text)
+		EssenceTab.label(text,Essences.title(str(id)),15).name = "StoneName"
+		EssenceTab.label(text,EssenceTab.stat_line(str(id),npc),12).name = "StoneStats"
+		EssenceTab.label(text,EssenceTab.effect_line(str(id),npc),13).name = "StoneEffect"
+	if stones.is_empty(): EssenceTab.label(page,"영혼석 없음",13)
+
+## Visible strangers can be inspected at range; an invitation still needs
+## an adjacent party member, just like sharing food.
+static func show_npc(ui, npc: Dictionary) -> void:
+	var session = ui.session
+	ui.stop_navigation(); ui.clear(ui.modal_content)
+	ui.modal_content.custom_minimum_size = Vector2(ui.popup_width(),0)
+	var page := npc_page(ui,ui.modal_content,npc,"NpcPopup")
+	var talk: Dictionary = Session.Recruit.dialogue(session,npc)
+	npc_build_info(ui,page,npc)
+	EssenceTab.label(page,str(talk.line),15)
+	var near: bool = session.alive().any(func(a): return session.melee_reach(a.pos,npc.pos))
+	var ask = ui.button(page,"동행 제안",func(): propose_npc(ui,npc),bool(talk.can_propose) and near and session.phase == "EXPLORE" and npc.state == "MET")
 	ask.name = "ProposeButton"
 	var share = ui.button(page,"식량 1 나누기",func(): ui.details_popup.hide(); ui.run_action(func(): return session.aid(npc)),bool(talk.can_aid))
 	share.name = "AidButton"
@@ -170,6 +197,7 @@ static func show_npc(ui, npc: Dictionary) -> void:
 	attack.name = "AttackNpcButton"
 	var close = ui.button(page,"닫기",func(): ui.details_popup.hide())
 	close.name = "CloseNpc"
+	ui.details_popup.reset_size()
 	ui.details_popup.popup_centered()
 
 ## The ask itself always goes through: what comes back is the npc's answer, and
@@ -195,18 +223,14 @@ static func update_offer_popup(ui) -> void:
 	ui.stop_navigation()
 	ui.stop_text = "%s이(가) 말을 겁니다" % npc.name
 	ui.clear(ui.offer_content)
-	var heading := HBoxContainer.new(); ui.offer_content.add_child(heading)
-	var portrait := TextureRect.new(); portrait.texture = Art.actor_portrait(npc)
-	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	portrait.custom_minimum_size = Vector2(64,64); heading.add_child(portrait)
-	var words := VBoxContainer.new(); heading.add_child(words)
-	ui.label(words,str(npc.name),20)
-	var dialogue = ui.label(words,str(Session.Recruit.dialogue(session,npc).line),15)
-	dialogue.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var accept = ui.button(ui.offer_content,"동행",func(): ui.offer_popup.hide(); ui.run_action(func(): return session.answer_offer(true)),session.alive().size() < Session.Recruit.MAX_PARTY)
+	var page := npc_page(ui,ui.offer_content,npc,"NpcOffer",true)
+	npc_build_info(ui,page,npc,"OfferNpc")
+	EssenceTab.label(page,str(Session.Recruit.dialogue(session,npc).line),15)
+	var accept = ui.button(page,"동행",func(): ui.offer_popup.hide(); ui.run_action(func(): return session.answer_offer(true)),session.alive().size() < Session.Recruit.MAX_PARTY)
 	accept.name = "OfferAccept"
-	var refuse = ui.button(ui.offer_content,"거절",func(): ui.offer_popup.hide(); ui.run_action(func(): return session.answer_offer(false)))
+	var refuse = ui.button(page,"거절",func(): ui.offer_popup.hide(); ui.run_action(func(): return session.answer_offer(false)))
 	refuse.name = "OfferDecline"
+	ui.offer_popup.reset_size()
 	ui.offer_popup.popup_centered()
 
 static func show_character(ui, index: int, tab: String = "상태") -> void:

@@ -3,8 +3,7 @@ const Hazards = preload("res://expedition/level/hazards.gd")
 ## The run's NPC roster and its placement on each floor.
 const Hexaco = preload("res://sim/dungeon_population/hexaco_profile.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
-const Abilities = preload("res://expedition/items/abilities.gd")
-const Essences = preload("res://expedition/progression/essences.gd")
+const NpcEssences = preload("res://expedition/actors/npc_essences.gd")
 const Generator = preload("res://expedition/level/floor_generator.gd")
 const Encounters = preload("res://expedition/level/encounter_builder.gd")
 static var names: Array = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/npc_names.json")).names
@@ -40,10 +39,6 @@ static func generate(s) -> Array:
 		actor.knobs = s.Knobs.defaults(actor.profile)
 		actor.stress = Hexaco.sample(s.seed_value,id,"npc_stress",41)
 		actor.equipped_abilities = [""]; actor.rules = []; actor.essences = {}
-		if Hexaco.sample(s.seed_value,id,"npc_part",100) < 40:
-			var parts: Array = Abilities.droppable()
-			var part: String = Essences.canonical(str(parts[Hexaco.sample(s.seed_value,id,"npc_part_id",parts.size())]))
-			Essences.bind(actor,part)
 		actor.merge({"npc":true,"awake":false,"hostile":false,"mode":"","mode_until":0,"hungry":false,"partner":-1,"bond":"",
 			"state":"UNMET","floor_seen":0,"joined_floor":0,"activity":"","explains":[],"noise_seen":-99,"declined_until":-99,"offered_until":-99})
 		rows.append(actor)
@@ -105,6 +100,9 @@ static func place(s) -> void:
 			cells = cells.filter(func(p): return s.distance(p,mate_pos) <= 2)
 		if cells.is_empty(): continue
 		var lane: int = d*100000+n.id
+		# Only a first appearance fixes the build: unseen roster entries may
+		# first arrive several zones below the floor that generated their names.
+		NpcEssences.seed_build(s,n)
 		n.pos = cells[Hexaco.sample(s.seed_value,lane,"npc_cell",cells.size())]
 		var situ: String = SITUATIONS[Hexaco.sample(s.seed_value,lane,"npc_situation",3)] if not partner_here else situation(chosen.filter(func(m): return m.id == n.partner)[0])
 		n.situation = situ
