@@ -52,9 +52,37 @@ func run() -> void:
 		reachable[Mobile.effect_id(str(id))] = true
 		for element in Session.Essences.ELEMENTS: reachable[Mobile.effect_id(str(id)+"@"+str(element))] = true
 	for id in Mobile.data.effects: check(reachable.has(id),"reachable effect "+str(id))
-	reward_stats(); seeding(); waiting(); defense(); ice(); electricity(); support(); pets(); physical(); compatibility(); pure_prediction(); advanced_contracts(); operations()
+	reward_stats(); mobile_items(); seeding(); waiting(); defense(); ice(); electricity(); support(); pets(); physical(); compatibility(); pure_prediction(); advanced_contracts(); operations()
 	Forms.force = -1; Session.StoneEffects.force = -1
 	print("Attack/wait: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
+
+func mobile_items() -> void:
+	var d := field()
+	var item := {"type":"power","props":[{"key":"spell","value":3},{"key":"mp","value":4}],"flaw":{"key":"mp","value":-1}}
+	d.hero.gear.ring1 = item
+	var before_hp: int = d.hero.max_hp
+	d.s.StatSheet.refresh_pools(d.s,d.hero)
+	check(d.hero.max_hp == before_hp+6,"gear MP bonuses and penalties become usable HP")
+	check(d.s.StatSheet.value(d.s,d.hero,"atk") == 8,"power ring and spell property both improve normal attacks")
+	var desc: String = d.s.Gear.Equipment.description(item,d.hero)
+	check(desc.contains("공격력 +5") and desc.contains("최대 HP +8") and desc.contains("최대 HP -2") and not desc.contains("MP") and not desc.contains("주문력"),"gear preview agrees with effective rewards and penalties")
+	check(d.s.Gear.Equipment.numeric(item,"mp") == 3 and d.s.Gear.Equipment.numeric(item,"spell") == 3,"legacy gear still reads original MP and spell properties")
+	d.hero.gear.ring1 = {}; d.hero.gear.armour.affix = "GEAR_COMP_MP"
+	d.hero.hp = 50; var before_mp: int = d.hero.mp
+	d.s.StoneEffects.fire(d.s,"ROUND_START",{"owner":d.hero})
+	check(d.hero.hp == 51 and d.hero.mp == before_mp,"MP regeneration gear heals in automatic profile")
+	d.hero.gear.armour = {"type":"robe","cost_effect":"COST_ORB"}
+	check(d.s.StoneEffects.hp_percent(d.s,d.hero) == -25,"former MP artifact penalty keeps a real HP cost")
+	d.hero.gear.armour = {"type":"robe"}
+	Mobile.track_encounter(d.s,d.hero)
+	var st := Mobile.state(d.hero)
+	st.cooldowns = {"summon_wait":int(d.s.time)+600}; st.uses = {"heal_defense":2}
+	st.foes = [d.foe.id]; st.encounters = [d.foe.id]
+	d.s.bag.recharging = 2; d.hero.ap = 1
+	check(d.s.use_item("recharging"),"recharging scroll releases automatic cooldowns")
+	check(st.cooldowns.is_empty() and st.uses.get("heal_defense",0) == 2 and d.hero.mp == before_mp,"recharging preserves encounter use limits and consumes no MP")
+	var before_time: int = d.s.time
+	check(not d.s.use_item("recharging") and d.s.bag.recharging == 1 and d.s.time == before_time,"no cooldown means no scroll or action is spent")
 func reward_stats() -> void:
 	var d := field()
 	for id in Mobile.catalog():

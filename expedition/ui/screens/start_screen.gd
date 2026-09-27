@@ -56,7 +56,7 @@ static func build_kit_picker(ui, parent: Node) -> void:
 			node.name = "Kit_"+id
 			node.custom_minimum_size = Vector2(0,70); node.clip_text = true
 			node.add_theme_font_size_override("font_size",11)
-			node.tooltip_text = "%s · %s\n%s" % [str(kit.name),str(kit.get("blurb","")),detail]
+			node.tooltip_text = "%s · %s" % [str(kit.name),detail]
 			var glyph := TextureRect.new(); glyph.texture = Art.mastery_icon(str(kit.axis))
 			glyph.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			glyph.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -74,13 +74,14 @@ static func kit_detail(kit: Dictionary) -> String:
 	if spell_id.is_empty():
 		var weapon: Dictionary = content.weapons.get(str(kit.weapon),{})
 		return "피해 %d · 속도 %d · 사거리 %d" % [int(weapon.get("damage",0)),int(weapon.get("delay",100)),int(weapon.get("range",1))]
-	return "%s · %s" % [str(content.spells.get(spell_id,{}).get("name","")),str(kit.get("blurb",""))]
+	var stone: String = str(Session.Essences.CASTER_BY_SCHOOL.get(str(kit.axis),""))
+	return str(Session.MobileEffects.row(stone).get("text",""))
 
 static func choose_kit(ui, id: String) -> void:
 	ui.kit_choice = id; ui.refresh()
 
 static func new_run(ui, record_codex: bool = true) -> void:
-	ui.session = Session.new_run(randi(),ui.kit_choice)
+	ui.session = Session.new_run(randi(),ui.kit_choice,Session.MobileEffects.PROFILE)
 	if record_codex:
 		ui.session.codex = Session.Codex.read(); ui.session.records_codex = true
 		ui.session.floor_state.observe(ui.session)

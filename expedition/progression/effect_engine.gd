@@ -61,7 +61,7 @@ static func fire(s, when: String, ctx: Dictionary) -> void:
 		if seen.has(int(owner.get("id",-1))): continue
 		seen[int(owner.get("id",-1))] = true
 		for effect in effects(owner):
-			var row: Dictionary = content.effects.get(effect,{})
+			var row: Dictionary = Equipment.effect_row(content.effects.get(effect,{}),owner)
 			var eligible: Array = []
 			for rule in row.get("rules",[]):
 				if str(rule.get("when","")) != when: continue
@@ -106,7 +106,7 @@ static func modifier(s, key: String, actor: Dictionary, ctx: Dictionary = {}) ->
 		if seen.has(identity): continue
 		seen[identity] = true
 		for effect in effects(owner):
-			for rule in content.effects.get(effect,{}).get("rules",[]):
+			for rule in Equipment.effect_row(content.effects.get(effect,{}),owner).get("rules",[]):
 				if str(rule.get("when","")) != "ALWAYS" or not rule.get("mod",{}).has(key): continue
 				var scope: String = str(rule.get("scope","self"))
 				if scope == "self" and owner != actor: continue

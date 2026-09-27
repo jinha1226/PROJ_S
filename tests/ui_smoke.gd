@@ -71,6 +71,9 @@ func run() -> void:
 	scene.on_cell(foe.pos); await process_frame
 	check(scene.session.time > before_time and scene.mode.is_empty(),"armed attack fires and clears selection")
 	var hero: Dictionary = scene.session.party[0]
+	# Legacy arena spells remain usable; a normal run now uses automatic stones.
+	check(scene.session.MobileEffects.active(hero),"normal run uses automatic soulstones")
+	scene.session.MobileEffects.enable(scene.session,"legacy")
 	hero.spells = ["fire_1"]; hero.prepared = ["fire_1"]
 	scene.refresh(); await process_frame
 	scene.find_child("Tactics",true,false).pressed.emit(); await process_frame

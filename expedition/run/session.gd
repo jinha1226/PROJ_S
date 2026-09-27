@@ -163,9 +163,12 @@ var rules_config: Dictionary = DEFAULT_RULES.duplicate()
 ## mastery axis. An unknown id is refused rather than silently swapped.
 var kit_id := "sword"
 
-static func new_run(seed: int, p_kit_id: String = "sword"):
+# The game start screen supplies its profile; legacy simulation fixtures keep
+# their existing baseline when they omit the optional profile argument.
+static func new_run(seed: int, p_kit_id: String = "sword", profile: String = "legacy"):
 	if CombatStats.kit(p_kit_id).is_empty(): return null
 	var run = new(seed,false,false,true,1)
+	if not MobileEffects.enable(run,profile): return null
 	run.kit_id = p_kit_id
 	if not run.depart(): return null
 	run.manual_mode = true

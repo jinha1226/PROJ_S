@@ -63,6 +63,9 @@ static func effects(result: Dictionary, actor: Dictionary, s = null) -> void:
 
 static func gear(result: Dictionary, actor: Dictionary) -> void:
 	var worn: Dictionary = Equipment.worn(actor)
+	if Equipment.automatic(actor):
+		if Equipment.definition(worn.weapon).get("trait","") == "focus": add(result,"atk",Equipment.title(worn.weapon),4)
+		if Equipment.hands(worn.weapon) < 2: add(result,"atk",Equipment.title(worn.offhand),int(Equipment.definition(worn.offhand).get("spell",0)))
 	var armour: Dictionary = worn.armour
 	var armour_def: Dictionary = Equipment.definition(armour)
 	if not armour_def.is_empty():
@@ -75,9 +78,10 @@ static func gear(result: Dictionary, actor: Dictionary) -> void:
 		var definition: Dictionary = Equipment.definition(ring)
 		var stat: String = str(definition.get("stat",""))
 		if stat == "ev": add(result,"ev",Equipment.title(ring),int(definition.value))
+		elif stat == "power" and Equipment.automatic(actor): add(result,"atk",Equipment.title(ring),int(definition.value))
 		elif stat in RES: add(result,"res_"+stat,Equipment.title(ring),int(definition.value))
 	for item in worn.values():
-		for key in KEYS: add(result,key,Equipment.title(item),Equipment.numeric(item,key))
+		for key in KEYS: add(result,key,Equipment.title(item),Equipment.numeric(item,key,actor))
 
 static func add(result: Dictionary, key: String, from: String, amount: int) -> void:
 	if amount != 0: result[key].parts.append({"from":from,"value":amount})

@@ -43,17 +43,27 @@ static func title(item: Dictionary) -> String:
 static func colour(item: Dictionary) -> Color:
 	return Color("e4ba54") if item.get("tier","") == "unrand" else Color("74b7e8") if item.get("tier","") == "randart" else Color("e0d4bc")
 
-static func numeric(item: Dictionary, key: String) -> int:
+static func automatic(actor: Dictionary) -> bool:
+	return str(actor.get("combat_profile","legacy")) == "attack_wait_v1" and not bool(actor.get("enemy",false))
+
+static func property(prop: Dictionary, actor: Dictionary) -> Dictionary:
+	if not automatic(actor): return prop
+	if str(prop.get("key","")) == "mp": return {"key":"hp","value":int(prop.value)*2}
+	if str(prop.get("key","")) == "spell": return {"key":"atk","value":int(prop.value)}
+	return prop
+
+static func numeric(item: Dictionary, key: String, actor: Dictionary = {}) -> int:
 	var total := 0
-	for prop in item.get("props",[]):
+	for raw in item.get("props",[]):
+		var prop := property(raw,actor)
 		if str(prop.get("key","")) == key: total += int(prop.value)
-	var flaw: Dictionary = item.get("flaw",{})
+	var flaw: Dictionary = property(item.get("flaw",{}),actor)
 	if str(flaw.get("key","")) == key: total += int(flaw.get("value",0))
 	return total
 
 static func bonus(actor: Dictionary, key: String) -> int:
 	var total := 0
-	for item in worn(actor).values(): total += numeric(item,key)
+	for item in worn(actor).values(): total += numeric(item,key,actor)
 	return total
 
 static func effects(actor: Dictionary) -> Array:
@@ -66,13 +76,26 @@ static func effects(actor: Dictionary) -> Array:
 
 static var effect_text: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/stone_effects.json")).get("effects",{})
 
-static func description(item: Dictionary) -> String:
+static func effect_row(row: Dictionary, actor: Dictionary) -> Dictionary:
+	if not automatic(actor) or not row.has("mobile_rules"): return row
+	var mapped := row.duplicate()
+	mapped.rules = row.mobile_rules; mapped.text = row.get("mobile_text",row.get("text",""))
+	return mapped
+
+static func description(item: Dictionary, actor: Dictionary = {}) -> String:
 	var lines: PackedStringArray = []
-	for prop in item.get("props",[]): lines.append("%s %+d" % [PROP_NAMES.get(str(prop.key),str(prop.key)),int(prop.value)])
+	if automatic(actor):
+		var def := definition(item)
+		var attack: int = 4 if def.get("trait","") == "focus" else int(def.get("spell",0))
+		if def.get("stat","") == "power": attack += int(def.value)
+		if attack != 0: lines.append("공격력 %+d" % attack)
+	for raw in item.get("props",[]):
+		var prop := property(raw,actor)
+		lines.append("%s %+d" % [PROP_NAMES.get(str(prop.key),str(prop.key)),int(prop.value)])
 	var effects: Dictionary = effect_text
 	for id in [item.get("affix",""),item.get("cost_effect","")]:
-		if effects.has(id): lines.append(str(effects[id].text))
-	var flaw: Dictionary = item.get("flaw",{})
+		if effects.has(id): lines.append(str(effect_row(effects[id],actor).text))
+	var flaw: Dictionary = property(item.get("flaw",{}),actor)
 	if not flaw.is_empty(): lines.append("단점 · %s %+d" % [PROP_NAMES.get(str(flaw.key),str(flaw.key)),int(flaw.value)])
 	return "\n".join(lines)
 

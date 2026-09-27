@@ -2678,6 +2678,7 @@
     "GEAR_AMP_7": {
       "name": "원소",
       "text": "원소 반응 피해 +40%",
+      "mobile_rules": [{"when":"ALWAYS","mod":{"reaction_percent":40}},{"when":"REACTION","do":[{"heal":1,"target":"self"}]}],
       "keywords": [
         "장비"
       ],
@@ -3201,6 +3202,8 @@
     "GEAR_COMP_MP": {
       "name": "마력 보존",
       "text": "피격되지 않은 라운드 MP +1",
+      "mobile_text": "피격되지 않은 턴 HP +1",
+      "mobile_rules": [{"when":"ROUND_START","if":[{"not_hit_last_round":true}],"do":[{"heal":1,"target":"self"}]}],
       "keywords": [
         "장비"
       ],
@@ -3537,6 +3540,8 @@
     "COST_ORB": {
       "name": "끓는 오브 대가",
       "text": "최대 MP −25%",
+      "mobile_text": "최대 HP −25%",
+      "mobile_rules": [{"when":"ALWAYS","mod":{"max_hp_percent":-25}}],
       "keywords": [
         "장비"
       ],

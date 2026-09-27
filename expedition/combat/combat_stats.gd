@@ -38,7 +38,7 @@ static func stats(session, actor: Dictionary) -> Dictionary:
 			result.delay = int(weapon_def.delay)
 			result.range = int(weapon_def.range) + (TagSets.range_bonus(actor)+StoneEffects.range_bonus(actor,session) if result.trait == "ranged" else 0)
 			result.brand = str(weapon.get("brand", ""))
-			if result.trait == "focus": result.power += 4
+			if result.trait == "focus" and not Equipment.automatic(actor): result.power += 4
 		# A summoned creature carries no gear at all: it fights with the power
 		# its own row in `combat.json.summons` gave it.
 		if bool(actor.get("summoned", false)) and weapon_def.is_empty(): result.damage = int(actor.get("power", 7))
@@ -48,10 +48,11 @@ static func stats(session, actor: Dictionary) -> Dictionary:
 		var offhand: Dictionary = Equipment.definition(gear.get("offhand",{})) if Equipment.hands(weapon) < 2 else {}
 		if int(offhand.get("block",0)) > 0: result.enc += 2
 		else: result.sh = int(result.sh)/2
-		result.power += int(offhand.get("spell",0))
-		for slot in ["ring1","ring2"]:
-			var ring_def: Dictionary = Equipment.definition(gear[slot])
-			if str(ring_def.get("stat","")) == "power": result.power += int(ring_def.value)
+		if not Equipment.automatic(actor):
+			result.power += int(offhand.get("spell",0))
+			for slot in ["ring1","ring2"]:
+				var ring_def: Dictionary = Equipment.definition(gear[slot])
+				if str(ring_def.get("stat","")) == "power": result.power += int(ring_def.value)
 		result.power += int(sheet.spell.total)
 	var statuses: Dictionary = actor.get("statuses", {})
 	if statuses.has("ward"): result.ac += 6

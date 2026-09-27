@@ -72,7 +72,7 @@ static func show_gear(ui, index: int) -> void:
 				if session.equip_gear(index,item,target_slot): ui.refresh(); show_gear(ui,index))
 			choice.clip_text = true
 			choice.add_theme_color_override("font_color",Equipment.colour(item))
-			choice.tooltip_text = Equipment.title(item)+"\n"+Equipment.description(item)+"\nΔ피해 %+d · Δ방어 %+d" % [int(next.damage)-int(current.damage),int(next.ac)-int(current.ac)]
+			choice.tooltip_text = Equipment.title(item)+"\n"+Equipment.description(item,actor)+"\nΔ피해 %+d · Δ방어 %+d" % [int(next.damage)-int(current.damage),int(next.ac)-int(current.ac)]
 			choice.name = "GearOption%d_%s" % [i,target_slot]; choice.custom_minimum_size.y = 44
 
 	ui.button(box,"닫기",func(): ui.details_popup.hide())

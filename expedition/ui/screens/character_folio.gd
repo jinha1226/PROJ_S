@@ -136,7 +136,7 @@ static func status(ui, list: VBoxContainer, actor: Dictionary) -> void:
 static func sheet_cards(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	var sheet: Dictionary = StatSheet.sheet(ui.session,actor)
 	for group in STAT_GROUPS:
-		var keys: Array = group[1]
+		var keys: Array = group[1].filter(func(key): return not ui.session.MobileEffects.active(actor) or key not in ["mp","spell"])
 		var box := card(list,str(group[0])); box.get_parent().name = "StatGroup_"+str(group[0])
 		var cells := grid(box,keys.size() if keys.size() <= 5 else 3)
 		for key in keys:
@@ -160,8 +160,10 @@ static func breakdown(entry: Dictionary, key: String) -> String:
 ## The numbers a soul stone moves, as the fight reads them.
 static func numbers(session, actor: Dictionary) -> Dictionary:
 	var values: Dictionary = CombatStats.stats(session,actor)
-	return {"공격력":int(values.damage),"최대 HP":int(actor.max_hp),"최대 MP":int(actor.get("max_mp",0)),"주문력":int(values.power),
+	var result := {"공격력":int(values.damage),"최대 HP":int(actor.max_hp),"최대 MP":int(actor.get("max_mp",0)),"주문력":int(values.power),
 		"방어":int(values.ac),"막기":int(values.sh),"회피율":int(values.dodge),"행동 속도":StatSheet.value(session,actor,"speed")}
+	if session.MobileEffects.active(actor): result.erase("최대 MP"); result.erase("주문력")
+	return result
 
 ## What slotting `id` into `slot` would change, before → after: "공격력 12 → 16".
 static func changes(session, actor: Dictionary, slot: int, id: String) -> PackedStringArray:

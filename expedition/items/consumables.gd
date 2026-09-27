@@ -50,6 +50,8 @@ static func label(s, kind: String) -> String:
 	return str(row.name) if s.known.has(kind) else str(s.appearances.get(kind,row.name))
 
 static func description(s, kind: String) -> String:
+	if s.known.has(kind) and kind == "recharging" and s.combat_profile == s.MobileEffects.PROFILE: return "영혼석 재사용 대기 해제"
+	if s.known.has(kind) and kind == "mirror_image" and s.combat_profile == s.MobileEffects.PROFILE: return "거울상 소환 · 소환수 최대 1"
 	return str(definition(kind).get("description","")) if s.known.has(kind) else "정체 불명"
 
 static func random_kind(seed: int, key: int) -> String:
@@ -224,6 +226,11 @@ static func read(s, kind: String, user: Dictionary) -> bool:
 			for enemy in s.enemies:
 				if enemy.hp > 0: enemy.alert = true; Statuses.apply(s,enemy,"haste",200)
 		"recharging":
+			if s.MobileEffects.active(user):
+				if not effect_ready(s,kind,user,user,false): return false
+				s.MobileEffects.state(user).cooldowns.clear()
+				s.StoneEffects.Vfx.emit(s,"buff",user.pos,user.pos)
+				return true
 			if user.mp >= user.max_mp: return false
 			user.mp = user.max_mp
 			s.StoneEffects.Vfx.emit(s,"mana",user.pos,user.pos)
@@ -250,7 +257,9 @@ static func effect_ready(s, kind: String, user: Dictionary, actor: Dictionary, t
 		"experience": return int(actor.level) < 12
 		"calm": return int(actor.stress) > 0
 		"upgrade": return not user.gear.weapon.is_empty() or not user.gear.armour.is_empty()
-		"recharging": return int(user.mp) < int(user.max_mp)
+		"recharging":
+			if s.MobileEffects.active(user): return user.get("aw_state",{}).get("cooldowns",{}).values().any(func(until): return int(until) > int(s.time))
+			return int(user.mp) < int(user.max_mp)
 		"teleportation":
 			for y in range(s.floor_state.size):
 				for x in range(s.floor_state.size):

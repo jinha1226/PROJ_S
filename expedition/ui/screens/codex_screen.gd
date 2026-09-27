@@ -6,6 +6,11 @@ const Keywords = preload("res://expedition/ui/screens/keyword_popup.gd")
 const Subtypes = preload("res://expedition/progression/subtypes.gd")
 const Builds = preload("res://expedition/progression/example_builds.gd")
 const Sets = preload("res://expedition/progression/tag_sets.gd")
+const Tab = preload("res://expedition/ui/screens/essence_tab.gd")
+
+static func actor_of(ui) -> Dictionary:
+	if ui.session != null and not ui.session.party.is_empty(): return ui.session.party[0]
+	return {"combat_profile":"attack_wait_v1"}
 
 static func name_for(key: String) -> String:
 	return "CodexEntry_"+key.replace("/","_").replace(":","_")
@@ -123,13 +128,18 @@ static func stone_row(ui, list: VBoxContainer, entry: Dictionary) -> void:
 		head.modulate = Color(1,1,1,0.45)
 		if entry.species_known: text(ui,row,str(entry.hint))
 		return
-	text(ui,row,Subtypes.long_label(str(entry.subtype)),11)
-	text(ui,row,str(entry.text))
+	var actor := actor_of(ui)
+	if Codex.Equipment.automatic(actor):
+		text(ui,row,Tab.stat_line(str(entry.key),actor))
+		text(ui,row,Tab.effect_line(str(entry.key),actor))
+	else:
+		text(ui,row,Subtypes.long_label(str(entry.subtype)),11)
+		text(ui,row,str(entry.text))
 	Keywords.chips(ui,row,entry.keywords)
 
 static func items(ui, list: VBoxContainer, data: Dictionary) -> void:
 	var names := {"weapons":"무기","offhands":"왼손","armours":"갑옷","rings":"반지","affixes":"발견한 옵션","unrands":"고정 유물"}
-	for group in Codex.item_rows(data):
+	for group in Codex.item_rows(data,actor_of(ui)):
 		var box := VBoxContainer.new(); box.name = "CodexItems_"+str(group.group); list.add_child(box)
 		text(ui,box,str(names[group.group]),16)
 		if group.rows.is_empty(): text(ui,box,"—")

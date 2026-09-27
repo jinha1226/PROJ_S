@@ -214,18 +214,18 @@ static func unrand_ids() -> Array:
 	if not parsed is Dictionary: return []
 	return parsed.get("rows",[]).map(func(row): return str(row.id))
 
-static func unrand_entry(data: Dictionary, id: String) -> Dictionary:
+static func unrand_entry(data: Dictionary, id: String, actor: Dictionary = {}) -> Dictionary:
 	var parsed: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/unrands.json"))
 	for row in parsed.get("rows",[]):
 		if str(row.id) != id: continue
 		var found: bool = int(data.get("unrands",{}).get(id,{}).get("found",0)) > 0
 		var type: String = str(row.type)
 		return {"key":id,"found":found,"slot":Equipment.SLOT_NAMES.get(Equipment.slot({"type":type}),""),
-			"name":str(row.name) if found else "???","text":Equipment.description(row) if found else ""}
+			"name":str(row.name) if found else "???","text":Equipment.description(row,actor) if found else ""}
 	return {}
 
 ## Public base equipment and discovered options. Unknown artefacts keep only their slot.
-static func item_rows(data: Dictionary) -> Array:
+static func item_rows(data: Dictionary, actor: Dictionary = {}) -> Array:
 	var result: Array = []
 	for group in ["weapons","offhands","armours","rings"]:
 		var rows: Array = []
@@ -235,15 +235,18 @@ static func item_rows(data: Dictionary) -> Array:
 			for pair in [["form","형태"],["damage","공격"],["delay","지연"],["range","사거리"],["hands","손"],["ac","방어"],["ev_penalty","회피 감소"],["enc","무게"],["block","막기"],["sh","막기"],["spell","주문력"],["stat","효과"],["value","수치"]]:
 				if not info.has(pair[0]): continue
 				var value: String = str(info[pair[0]])
+				var caption: String = pair[1]
+				if pair[0] == "spell" and Equipment.automatic(actor): caption = "공격력"
 				if pair[0] == "form": value = str(Forms.NAMES.get(value,value))
-				if pair[0] == "stat": value = str(Essences.ELEMENTS.get(value,{"power":"주문력","ev":"회피"}.get(value,value)))
-				bits.append("%s %s" % [pair[1],value])
+				if pair[0] == "stat": value = str(Essences.ELEMENTS.get(value,{"power":"공격력" if Equipment.automatic(actor) else "주문력","ev":"회피"}.get(value,value)))
+				bits.append("%s %s" % [caption,value])
+			if info.get("trait","") == "focus" and Equipment.automatic(actor): bits.append("공격력 +4")
 			rows.append({"key":id,"name":str(info.get("name",id)),"text":" · ".join(bits)})
 		result.append({"group":group,"rows":rows})
 	var affixes: Array = []
 	for id in effects:
 		if str(effects[id].get("gear_kind","")) != "affix" or int(data.get("affixes",{}).get(id,{}).get("found",0)) <= 0: continue
-		affixes.append({"key":id,"name":str(effects[id].name),"text":str(effects[id].text),"subtype":Subtypes.of(str(id)),"keywords":effects[id].get("keywords",[])})
+		affixes.append({"key":id,"name":str(effects[id].name),"text":str(Equipment.effect_row(effects[id],actor).text),"subtype":Subtypes.of(str(id)),"keywords":effects[id].get("keywords",[])})
 	result.append({"group":"affixes","rows":affixes})
-	result.append({"group":"unrands","rows":unrand_ids().map(func(id): return unrand_entry(data,str(id)))})
+	result.append({"group":"unrands","rows":unrand_ids().map(func(id): return unrand_entry(data,str(id),actor))})
 	return result

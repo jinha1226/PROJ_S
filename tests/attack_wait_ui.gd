@@ -12,7 +12,8 @@ func run() -> void:
 	var ui = Scene.instantiate(); root.add_child(ui); await process_frame
 	ui.new_run(); await process_frame
 	var s = ui.session
-	s.MobileEffects.enable(s,Session.MobileEffects.PROFILE)
+	check(s.combat_profile == Session.MobileEffects.PROFILE,"normal new run enables attack/wait without an arena toggle")
+	check(s.roster.all(func(n): return s.MobileEffects.active(n)),"dungeon NPCs inherit normal run profile")
 	Fixture.arena(s,8); s.party[0].level = 10
 	for stone in ["FIRE_CALLER/cut","FIRE_CALLER/broken","FIRE_CALLER/pierced","SHIELD_STANCE/cut","WATER_WAVE/cut","GRAVEKEEPER/cut"]:
 		if s.Essences.has(stone): s.Essences.bind(s.party[0],stone)
@@ -21,6 +22,12 @@ func run() -> void:
 	check(ui.find_child("AutoEffectBar",true,false) != null,"automatic profile shows trigger icon bar")
 	check(not str(ui.find_child("HeroHP",true,false).text).contains("MP"),"automatic profile HP line omits MP")
 	check(ui.find_child("BottomActions",true,false).get_child_count() == 5,"mobile controls keep exactly five actions")
+	ui.show_tactics(); await process_frame
+	check(ui.find_child("TacticSkills",true,false) == null,"normal tactics has no manual skill button")
+	ui.details_popup.hide()
+	ui.show_character(0,"능력치"); await process_frame
+	check(ui.find_child("Stat_mp",true,false) == null and ui.find_child("Stat_spell",true,false) == null,"normal character sheet omits unused MP and spell stats")
+	ui.details_popup.hide()
 	for dimensions in [Vector2i(320,568),Vector2i(390,844),Vector2i(430,932)]:
 		root.size = dimensions; ui.size = Vector2(dimensions)
 		ui.refresh(); await process_frame; await process_frame

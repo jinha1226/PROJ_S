@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parents[2]
 ALL = (ROOT / "tools/ci/full-suites.txt").read_text().split()
 CORE = ["run_start", "ui_smoke", "mobile_hud", "layout_guard"]
 LINKS = {
+    "session": ["run_start", "start_kit", "attack_wait", "attack_wait_ui"],
+    "start_screen": ["start_kit", "attack_wait_ui"],
     "stone_drop": ["stone_drop", "stone_drop_ui"],
     "stone_drop_card": ["stone_drop_ui"],
     "status_vfx": ["effect_vfx"],

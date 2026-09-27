@@ -26,7 +26,7 @@ func run() -> void:
 	# Every kit departs with its own weapon, a robe and rank 1 in its axis.
 	for kit in kits:
 		var id: String = str(kit.id)
-		var s = Session.new_run(7,id)
+		var s = Session.new_run(7,id,Session.MobileEffects.PROFILE)
 		check(s != null,"run departs with kit "+id)
 		if s == null: continue
 		var hero: Dictionary = s.party[0]
@@ -40,7 +40,8 @@ func run() -> void:
 		if spell.is_empty():
 			check(hero.spells.is_empty() and hero.prepared.is_empty(),"%s knows no spell" % id)
 		else:
-			check(hero.spells == [spell] and hero.prepared == [spell],"%s knows and prepares %s" % [id,spell])
+			check(s.MobileEffects.active(hero) and hero.spells.is_empty() and hero.prepared.is_empty(),"%s starts with an automatic stone instead of a prepared spell" % id)
+			check(not s.MobileEffects.row(caster).is_empty(),"%s has a working automatic starting effect" % id)
 		var stats: Dictionary = Stats.stats(s,hero)
 		check(int(stats.range) == int(Stats.content.weapons[str(kit.weapon)].range),"%s reaches as far as its weapon" % id)
 	# The weapon really is behind the numbers.
@@ -48,8 +49,8 @@ func run() -> void:
 	check(int(Stats.stats(mace,mace.party[0]).delay) == 145,"mace swings at its own delay")
 	var bow = Session.new_run(7,"bow")
 	check(int(Stats.stats(bow,bow.party[0]).range) == 6,"bow reaches six cells")
-	var fire = Session.new_run(7,"fire")
-	check(int(Stats.stats(fire,fire.party[0]).power) >= 4,"a staff focuses")
+	var fire = Session.new_run(7,"fire",Session.MobileEffects.PROFILE)
+	check(int(fire.StatSheet.value(fire,fire.party[0],"atk")) >= 4,"a staff contributes usable attack power")
 	check(str(Stats.stats(fire,fire.party[0]).trait) == "focus","staff trait is focus")
 	# An id nobody offers is refused, both ways in.
 	check(Session.new_run(7,"wizard") == null,"unknown kit refuses a run")
@@ -71,7 +72,7 @@ func run() -> void:
 
 ## Each magic kit's first spell, cast at a foe two cells east in an open arena.
 func magic(id: String, spell: String) -> void:
-	var s = Session.new_run(11,id)
+	var s = Session.new_run(11,id,"legacy")
 	var centre: Vector2i = Fixture.arena(s,10)
 	var hero: Dictionary = s.party[0]
 	hero.mp = 18
@@ -109,7 +110,7 @@ func magic(id: String, spell: String) -> void:
 ## The hound belongs to nobody but the spell: it cannot be recruited, never
 ## shows in the run's history, and goes when its three hundred ticks are up.
 func summoned_hound() -> void:
-	var s = Session.new_run(13,"summon")
+	var s = Session.new_run(13,"summon","legacy")
 	Fixture.arena(s,10)
 	var hero: Dictionary = s.party[0]
 	hero.mp = 18
