@@ -17,10 +17,10 @@ const Banners = preload("res://expedition/ui/screens/banners.gd")
 var portrait_gesture = preload("res://expedition/legacy/portrait_gesture.gd").new()
 var navigation = preload("res://expedition/level/exploration_navigation.gd").new()
 var world_destination := Vector2(-1,-1)
-var auto_explore_paused := false
+var auto_explore_paused := true
 var queued_curio: Dictionary = {}
 const NAVIGATION_STEP_SECONDS := 0.075
-const JOYSTICK_STEP_SECONDS := 0.18
+const JOYSTICK_STEP_SECONDS := 0.12
 var navigation_clock := 0.0
 var floor_widgets: Dictionary = {}
 var view_side := 11
@@ -525,9 +525,9 @@ func run_action(callback: Callable, navigating: bool = false, motion_seconds: fl
 	check_stop()
 	if not (accepted and navigating and FloorHud.sync_free(self)): refresh()
 	if accepted and session.free_movement and is_instance_valid(board):
-		board.animate_world(world_before,motion_seconds if motion_seconds > 0 else NAVIGATION_STEP_SECONDS if navigating else 0.16)
+		board.animate_world(world_before,motion_seconds if motion_seconds > 0 else NAVIGATION_STEP_SECONDS if navigating else JOYSTICK_STEP_SECONDS)
 		if free_combat_before and session.party_enemies().is_empty():
-			auto_explore_paused = false; session.party_command = "FOLLOW"; session.command_target = -1
+			session.party_command = "FOLLOW"; session.command_target = -1
 		return
 	if accepted and is_instance_valid(board) and session.on_floor() and not session.party.is_empty() and hero_before != session.party[0].pos:
 		board.animate_walk(int(session.party[0].id),hero_before,session.party[0].pos,NAVIGATION_STEP_SECONDS)

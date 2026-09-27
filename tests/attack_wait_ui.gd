@@ -13,6 +13,10 @@ func run() -> void:
 	ui.new_run(); await process_frame
 	var s = ui.session
 	ui.set_process(false)
+	var spawn: Vector2 = Session.Free.position(s.party[0])
+	var spawn_time: int = s.time
+	ui.free_navigation_process(0.5)
+	check(ui.auto_explore_paused and Session.Free.position(s.party[0]).is_equal_approx(spawn) and s.time == spawn_time,"new run waits for input without automatic motion or time consumption")
 	check(s.free_movement,"normal run uses real continuous coordinates")
 	check(s.combat_profile == Session.MobileEffects.PROFILE,"normal new run enables attack/wait without an arena toggle")
 	check(s.roster.all(func(n): return s.MobileEffects.active(n)),"dungeon NPCs inherit normal run profile")
@@ -28,13 +32,14 @@ func run() -> void:
 	check(ui.board.joystick_active and ui.board.joystick_origin == touch.position,"touch anchors a floating joystick exactly under the finger")
 	var drag := InputEventScreenDrag.new(); drag.index = 3; drag.position = touch.position+Vector2(34,17)
 	ui.board._gui_input(drag)
-	ui.free_navigation_process(0.19)
+	ui.free_navigation_process(ui.JOYSTICK_STEP_SECONDS+0.01)
 	var target: Vector2 = start+Vector2(34,17).normalized()
 	check(Session.Free.position(s.party[0]).is_equal_approx(target) and s.time > before_time,"joystick commits arbitrary-angle movement through the turn scheduler")
 	check(ui.board.world_walks.has(int(s.party[0].id)),"camera and sprite interpolate from actual world positions")
 	check(ui.find_child("BottomActions",true,false).get_instance_id() == controls_id and ui.find_child("HeroHP",true,false) == hp_label,"movement retains HUD controls and their layout")
 	check(ui.navigation_clock > 0,"movement scheduling preserves the frame remainder")
-	ui.board._process(0.12)
+	ui.board._process(ui.JOYSTICK_STEP_SECONDS*0.6)
+	check(not ui.board.movement_vfx.dust.is_empty() and ui.board.movement_vfx.body_offset(int(s.party[0].id),ui.board.half_width).y < 0,"walking leaves ground dust and lifts only the body")
 	var visual_before: Vector2 = ui.board.display_world_position(s.party[0])
 	var camera_before: Vector2 = ui.board.camera_origin()
 	var turn_before: int = s.turn_serial
@@ -51,6 +56,8 @@ func run() -> void:
 	before_time = s.time
 	ui.board.world_walks.clear(); ui.free_navigation_process(0.5)
 	check(not ui.board.joystick_active and s.time == before_time,"release stops manual movement and further turn consumption")
+	ui.board._process(0.5)
+	check(ui.board.movement_vfx.dust.is_empty() and ui.board.movement_vfx.body_offset(int(s.party[0].id),ui.board.half_width) == Vector2.ZERO and s.time == before_time,"walking feedback fades and settles without advancing world time")
 	touch.pressed = true; touch.position = Vector2(120,270); ui.board._gui_input(touch)
 	drag.position = touch.position+Vector2(5,3); ui.board._gui_input(drag)
 	ui.free_navigation_process(0.5)

@@ -81,12 +81,14 @@ static func choose_kit(ui, id: String) -> void:
 	ui.kit_choice = id; ui.refresh()
 
 static func new_run(ui, record_codex: bool = true) -> void:
+	ui.stop_navigation()
+	if is_instance_valid(ui.board): ui.board.reset_motion()
 	ui.session = Session.new_run(randi(),ui.kit_choice,Session.MobileEffects.PROFILE)
 	ui.session.enable_free_movement()
 	if record_codex:
 		ui.session.codex = Session.Codex.read(); ui.session.records_codex = true
 		ui.session.floor_state.observe(ui.session)
-	ui.auto_explore_paused = false; ui.world_destination = Vector2(-1,-1)
+	ui.auto_explore_paused = true; ui.world_destination = Vector2(-1,-1)
 	ui.stop_text = ""; ui.battle_reported = false
 	ui.mode_arena_setup = false; ui.mode_arena_active = false; ui.mode = ""; ui.pending_item = ""; ui.pending_attack = {}; ui.show_attack_range = false; ui.action_effects = []; ui.reset_effects = true
 	AutoBattleHud.check_stop(ui); ui.refresh()

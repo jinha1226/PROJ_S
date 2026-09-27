@@ -5,6 +5,8 @@ var action_footer := false
 signal world_pressed(point: Vector2)
 var fullscreen := false
 var world_walks: Dictionary = {}
+var movement_vfx = preload("res://expedition/ui/movement_vfx.gd").new()
+var motion_depth := -1
 const JOYSTICK_RADIUS := 46.0
 const JOYSTICK_DEADZONE := 12.0
 var joystick_active := false
@@ -250,10 +252,16 @@ func preview_rect(actor: Dictionary) -> Rect2:
 
 func _process(delta: float) -> void:
 	var moving: bool = not world_walks.is_empty()
+	var feedback: bool = movement_vfx.advance(delta,world_walks.keys())
 	for id in world_walks.keys():
+		var from: Vector2 = Vector2(world_walks[id].from).lerp(world_walks[id].to,clampf(float(world_walks[id].elapsed)/float(world_walks[id].duration),0,1))
 		world_walks[id].elapsed += delta
+		var to: Vector2 = Vector2(world_walks[id].from).lerp(world_walks[id].to,clampf(float(world_walks[id].elapsed)/float(world_walks[id].duration),0,1))
+		var cell := Vector2i(floori(to.x),floori(to.y))
+		var dusty: bool = session != null and session.inside(cell) and session.floor_state.visible.has(cell) and session.tile(cell).terrain not in Hazards.WATERY and session.tile(cell).terrain != "lava"
+		movement_vfx.travel(int(id),from,to,dusty)
 		if float(world_walks[id].elapsed) >= float(world_walks[id].duration): world_walks.erase(id)
-	if moving: queue_redraw()
+	if moving or feedback: queue_redraw()
 	# This clock keeps moving while the player waits; it never ticks statuses.
 	if is_visible_in_tree():
 		status_visual_clock = fposmod(status_visual_clock+delta,4096.0)
@@ -567,6 +575,7 @@ func _draw() -> void:
 					draw_string(ui_font,center+Vector2(-4,4),"!"+(session.Abilities.badge(intent.kind) if not str(intent.get("kind","")).is_empty() else ""),HORIZONTAL_ALIGNMENT_LEFT,-1,12 if not str(intent.get("kind","")).is_empty() else 18,Color.WHITE)
 			if cell.fire > 0:
 				draw_circle(center,half_width*0.4,Color("a74b24")); draw_circle(center-Vector2(0,4),half_width*0.2,Color("ffc675"))
+	movement_vfx.paint(self,project,half_width,visual_state.visible if is_presenting() else session.floor_state.visible)
 	for actor in (visual_state.actors if is_presenting() else session.party+session.npcs+session.enemies):
 		var point: Vector2i = actor.pos
 		if actor.hp > 0 and (visual_state.visible if is_presenting() else session.floor_state.visible).has(point):
@@ -581,7 +590,8 @@ func _draw() -> void:
 			center += hit_offset(point)
 			var struck := hit_flash(point)
 			if struck.a > 0: flash = struck
-			var actor_rect := Rect2(center-Vector2.ONE*side/2,Vector2.ONE*side)
+			var body: Vector2 = center+(movement_vfx.body_offset(int(actor.id),half_width) if session.free_movement and not is_presenting() else Vector2.ZERO)
+			var actor_rect := Rect2(body-Vector2.ONE*side/2,Vector2.ONE*side)
 			# Separate sprite canvas permits an alpha-based one-screen-pixel rim.
 			var key: String = str(actor.enemy)+"/"+str(actor.id)
 			if not actor_visuals.has(key) or not is_instance_valid(actor_visuals[key]):
@@ -1024,6 +1034,10 @@ func animate_world(before: Dictionary, duration: float = 0.11) -> void:
 		if before.has(id) and Vector2(before[id]).distance_to(end) > 0.001:
 			var start: Vector2 = display_world_position(actor) if world_walks.has(id) else Vector2(before[id])
 			world_walks[id] = {"from":start,"to":end,"elapsed":0.0,"duration":maxf(0.01,duration)}
+	queue_redraw()
+
+func reset_motion() -> void:
+	world_walks.clear(); movement_vfx.reset(); walk_actor_id = -1
 	queue_redraw()
 
 func effect_center(effect: Dictionary) -> Vector2:

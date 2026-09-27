@@ -60,6 +60,8 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 	ui.board.fullscreen = session.free_movement
 	ui.board.process_priority = -10 if session.free_movement else 0
 	ui.board.z_index = 0
+	if ui.board.session != session or ui.board.motion_depth != session.depth:
+		ui.board.reset_motion(); ui.board.motion_depth = session.depth
 	ui.board.session = session; ui.board.view_side = ui.view_side; ui.board.action_footer = not session.manual_mode and not ui.pending_attack.is_empty()
 	if ui.board.get_parent() != null: ui.board.get_parent().remove_child(ui.board)
 	ui.board.visible = true
