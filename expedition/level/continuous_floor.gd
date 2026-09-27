@@ -24,6 +24,8 @@ var discoveries: Array = []
 var epoch := ""
 var discovered_curios := 0
 var seen_enemies: Dictionary = {}
+var sight_key: Array = []
+var sight_cells: Dictionary = {}
 var element := ""
 const SIGHT_RADIUS := 6.0
 
@@ -80,13 +82,15 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 	state.size = side
 	state.epoch = str(s.seed_value)+"/"+str(s.depth)
 	state.visible.clear(); state.explored.clear(); state.discoveries.clear(); state.features.clear(); state.seen_enemies.clear()
-	state.discovered_curios = 0
+	state.discovered_curios = 0; state.sight_key.clear(); state.sight_cells.clear()
 	s.BOARD_SIDE = side; s.tiles = []
+	s.environment_dirty.clear(); s.environment_active.clear()
 	for y in range(side):
 		for x in range(side):
 			var terrain: String = layout.terrain[y*side+x]
 			var start: Dictionary = Hazards.initial(terrain)
 			s.tiles.append({"terrain":terrain,"source_terrain":terrain,"pillar":layout.get("pillars",{}).has(Vector2i(x,y)),"fire":int(start.fire),"wet":int(start.wet),"variant":posmod(x*13+y*7,3),"palette":0})
+			if int(start.fire) > 0 or int(start.wet) > 0: s.environment_active[y*side+x] = true
 	for p in layout.get("hazards",{}): s.tile(p).merge((layout.hazards[p] as Dictionary).duplicate(true),true)
 	s.enemies = []
 	for e in range(layout.encounters.size()):
@@ -135,39 +139,36 @@ static func mint_enemy(s, member: Dictionary, group: String, tier: String, manda
 func observer(s) -> Dictionary:
 	return s.party[s.selected] if s.party[s.selected].hp > 0 else s.alive()[0] if not s.alive().is_empty() else {}
 
+## A blocker snapshot catches spells, collapsing walls and steam expiry even
+## when the observer stands still. Equal snapshots reuse only the sight rays;
+## discovery, combat transitions and codex updates still run on every observe.
+func sight_snapshot(s, actor: Dictionary, radius: float) -> Array:
+	if actor.is_empty(): return []
+	var reach := ceili(radius)
+	var flags := PackedByteArray()
+	for y in range(maxi(0,actor.pos.y-reach),mini(size,actor.pos.y+reach+1)):
+		for x in range(maxi(0,actor.pos.x-reach),mini(size,actor.pos.x+reach+1)):
+			var cell: Dictionary = s.tile(Vector2i(x,y))
+			var wall: bool = cell.terrain == "wall"
+			var pillar: bool = bool(cell.get("pillar",false))
+			var blocks: bool = (wall or int(cell.get("wall_until",0)) > s.time) and not pillar if s.free_movement else (wall and not pillar or int(cell.get("steam_until",0)) > s.time)
+			flags.append((1 if wall else 0)|(2 if blocks else 0))
+	return [actor.pos,s.Free.position(actor) if s.free_movement else Vector2(actor.pos),radius,size,s.free_movement,flags]
+
 func observe(s) -> void:
-	visible.clear()
 	var center := observer(s)
 	var radius: float = Hazards.sight_radius(s,center,SIGHT_RADIUS)
-	var before := ceili(radius)
-	var side := before*2+1
-	for actor in ([] if center.is_empty() else [center]):
-		for y in range(maxi(0,actor.pos.y-before),mini(size,actor.pos.y-before+side)):
-			for x in range(maxi(0,actor.pos.x-before),mini(size,actor.pos.x-before+side)):
-				var p := Vector2i(x,y)
-				if (s.Free.position(actor).distance_to(s.Free.center(p)) if s.free_movement else Vector2(actor.pos).distance_to(Vector2(p))) > radius: continue
-				# Adjacent tiles stay readable so legal diagonal steps can be tapped at corners.
-				var adjacent: bool = maxi(absi(p.x-actor.pos.x),absi(p.y-actor.pos.y)) <= 1
-				if s.free_movement and not s.Free.segment(s,s.Free.position(actor),s.Free.center(p),0,{},false,true): continue
-				if not s.free_movement and not adjacent and not s.TurnCore.Geometry.sees(actor.pos,p,
-					func(c): return (s.tile(c).terrain == "wall" and not bool(s.tile(c).get("pillar",false))) or int(s.tile(c).get("steam_until",0)) > int(s.time),before): continue
-				visible[p] = true
-				if not explored.has(p):
-					explored[p] = true
-					var feature: Dictionary = features.get(p,{})
-					if feature.get("kind","") == "curio": discovered_curios += 1
-					discoveries.append({"position":[x,y],"terrain_id":s.tile(p).terrain,"visibility_state":"MEMORY","marker":"EXIT" if feature.get("kind","") == "entry" else "STAIRS" if feature.get("kind","") == "stairs" else ""})
-		# Show the outline of the visible room without revealing actors beyond it.
-		for floor_cell in visible.keys():
-			if s.tile(floor_cell).terrain == "wall": continue
-			for direction in s.DIRECTIONS:
-				var edge: Vector2i = floor_cell+direction
-				if not s.inside(edge) or maxi(absi(edge.x-actor.pos.x),absi(edge.y-actor.pos.y)) > before: continue
-				if s.tile(edge).terrain != "wall": continue
-				visible[edge] = true
-				if not explored.has(edge):
-					explored[edge] = true
-					discoveries.append({"position":[edge.x,edge.y],"terrain_id":"wall","visibility_state":"MEMORY","marker":""})
+	var key := sight_snapshot(s,center,radius)
+	if sight_key != key:
+		sight_key = key
+		sight_cells = calculate_sight(s,center,radius)
+	visible = sight_cells.duplicate()
+	for p in visible:
+		if explored.has(p): continue
+		explored[p] = true
+		var feature: Dictionary = features.get(p,{})
+		if feature.get("kind","") == "curio": discovered_curios += 1
+		discoveries.append({"position":[p.x,p.y],"terrain_id":s.tile(p).terrain,"visibility_state":"MEMORY","marker":"EXIT" if feature.get("kind","") == "entry" else "STAIRS" if feature.get("kind","") == "stairs" else ""})
 	if not s.simulation_arena and s.phase in ["EXPLORE","BATTLE"]:
 		var was: String = s.phase
 		s.phase = "EXPLORE" if safe(s) else "BATTLE"
@@ -178,6 +179,29 @@ func observe(s) -> void:
 	if s.records_codex:
 		for enemy in s.enemies+s.npcs:
 			if enemy.hp > 0 and (bool(enemy.get("enemy",false)) or bool(enemy.get("boss",false))) and visible.has(enemy.pos): s.Codex.note_seen(s,enemy)
+
+func calculate_sight(s, actor: Dictionary, radius: float) -> Dictionary:
+	var result: Dictionary = {}
+	if actor.is_empty(): return result
+	var before := ceili(radius)
+	var side := before*2+1
+	for y in range(maxi(0,actor.pos.y-before),mini(size,actor.pos.y-before+side)):
+		for x in range(maxi(0,actor.pos.x-before),mini(size,actor.pos.x-before+side)):
+			var p := Vector2i(x,y)
+			if (s.Free.position(actor).distance_to(s.Free.center(p)) if s.free_movement else Vector2(actor.pos).distance_to(Vector2(p))) > radius: continue
+			var adjacent: bool = maxi(absi(p.x-actor.pos.x),absi(p.y-actor.pos.y)) <= 1
+			if s.free_movement and not s.Free.segment(s,s.Free.position(actor),s.Free.center(p),0,{},false,true): continue
+			if not s.free_movement and not adjacent and not s.TurnCore.Geometry.sees(actor.pos,p,
+				func(c): return (s.tile(c).terrain == "wall" and not bool(s.tile(c).get("pillar",false))) or int(s.tile(c).get("steam_until",0)) > int(s.time),before): continue
+			result[p] = true
+	# Walls at the room edge remain readable without revealing actors beyond.
+	for floor_cell in result.keys():
+		if s.tile(floor_cell).terrain == "wall": continue
+		for direction in s.DIRECTIONS:
+			var edge: Vector2i = floor_cell+direction
+			if not s.inside(edge) or maxi(absi(edge.x-actor.pos.x),absi(edge.y-actor.pos.y)) > before: continue
+			if s.tile(edge).terrain == "wall": result[edge] = true
+	return result
 
 ## Static markers are cached per epoch by the minimap; a state change rewrites
 ## the row and starts a new epoch so the next observation rebuilds once.

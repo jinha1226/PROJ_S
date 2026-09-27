@@ -89,4 +89,24 @@ func run() -> void:
 	check(s.Free.segment(s,Vector2(3.5,3.5),Vector2(5.5,3.5),0,{},false,true) and not s.Free.segment(s,Vector2(3.5,3.5),Vector2(5.5,3.5),0),"pillar remains transparent to perception but blocks attacks")
 	s.tile(Vector2i(4,3)).pillar = false; s.tile(Vector2i(4,3)).terrain = "stone"; s.tile(Vector2i(4,3)).wall_until = s.time+100
 	check(not s.Free.segment(s,Vector2(5.2,3.6),Vector2(3.8,3.8),0),"temporary walls block rays traversing fractional positions backwards")
+	# A reused view must respond to stationary terrain edits and wall expiry.
+	s.Free.place(hero,Vector2(3.5,3.5)); s.floor_state.observe(s)
+	check(not s.floor_state.visible.has(Vector2i(5,3)),"temporary wall hides terrain while observer stands still")
+	s.time += 101; s.floor_state.observe(s)
+	check(s.floor_state.visible.has(Vector2i(5,3)),"temporary wall expiry updates cached sight without movement")
+	s.tile(Vector2i(4,3)).erase("wall_until"); s.tile(Vector2i(4,3)).terrain = "wall"; s.floor_state.observe(s)
+	check(not s.floor_state.visible.has(Vector2i(5,3)),"new ordinary wall invalidates stationary sight")
+	s.tile(Vector2i(4,3)).terrain = "stone"; s.floor_state.observe(s)
+	check(s.floor_state.visible.has(Vector2i(5,3)),"opening a wall restores stationary sight")
+	var nearby := Vector2i(4,3); var distant := Vector2i(6,3)
+	s.floor_state.features[nearby] = {"kind":"item","item_id":"healing"}
+	s.floor_state.features[distant] = {"kind":"item","item_id":"healing"}
+	var bag_before: int = int(s.bag.get("healing",0))
+	var pickup_time: int = s.time
+	s.Consumables.pickup(s,hero)
+	check(int(s.bag.get("healing",0)) == bag_before+1 and not s.floor_state.features.has(nearby) and s.floor_state.features.has(distant),"nearby item enters shared bag while distant item stays on ground")
+	check(s.time == pickup_time,"proximity pickup does not spend an extra turn")
+	s.floor_state.features[nearby] = {"kind":"item","item_id":"healing"}; s.tile(nearby).terrain = "wall"
+	s.Consumables.pickup(s,hero)
+	check(s.floor_state.features.has(nearby) and int(s.bag.get("healing",0)) == bag_before+1,"proximity pickup cannot cross a wall")
 	print("Free movement: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)

@@ -60,6 +60,8 @@ static func fits(s, at: Vector2, actor: Dictionary = {}, bodies: bool = true, ra
 
 static func segment(s, a: Vector2, b: Vector2, radius: float = RADIUS, actor: Dictionary = {}, bodies: bool = false, perception: bool = false) -> bool:
 	if radius <= 0 and not bodies: return ray_clear(s,a,b,perception)
+	# Long obstructed rays fail before testing every wall in the enclosing box.
+	if radius > 0 and a.distance_squared_to(b) > 4.0 and not ray_clear(s,a,b,perception): return false
 	# Swept clearance: the sampling gap is smaller than an actor radius. Test
 	# expanded wall rectangles as well, so diagonal corners cannot be tunneled.
 	var low := cell(Vector2(minf(a.x,b.x),minf(a.y,b.y))-Vector2.ONE*radius)
@@ -129,7 +131,7 @@ static func route(s, actor: Dictionary, goal: Vector2, known: bool = false) -> A
 	# Terrain search supplies corridor topology; string pulling supplies actual
 	# continuous paths. Actors are never snapped to these planning cells.
 	var result: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,actor.pos,[cell(goal)],
-		func(a,b): return allowed.call(b) and not wall(s,b) and segment(s,center(a),center(b)),func(_p): return 100)
+		func(a,b): return allowed.call(b) and terrain_step(s,a,b),func(_p): return 100)
 	if not result.found: return []
 	var points: Array = [start]
 	for p in result.path.slice(1): points.append(center(p))
@@ -137,10 +139,21 @@ static func route(s, actor: Dictionary, goal: Vector2, known: bool = false) -> A
 	var smooth: Array = [start]; var index := 0
 	while index < points.size()-1:
 		var next := index+1
-		for j in range(index+2,points.size()):
-			if segment(s,points[index],points[j]) and (not known or remembered(s,points[index],points[j])): next = j
+		# The furthest clear waypoint is identical to the previous full scan.
+		for j in range(points.size()-1,index+1,-1):
+			if segment(s,points[index],points[j]) and (not known or remembered(s,points[index],points[j])):
+				next = j; break
 		smooth.append(points[next]); index = next
 	return smooth
+
+## With radius < half a cell, centre-to-centre cardinal steps need only two
+## open cells. Diagonals additionally need both corner cells open. Swept
+## geometry remains authoritative for the actual fractional movement.
+static func terrain_step(s, a: Vector2i, b: Vector2i) -> bool:
+	if wall(s,a) or wall(s,b): return false
+	var delta := b-a
+	if absi(delta.x) > 1 or absi(delta.y) > 1 or delta == Vector2i.ZERO: return false
+	return delta.x == 0 or delta.y == 0 or not wall(s,Vector2i(a.x,b.y)) and not wall(s,Vector2i(b.x,a.y))
 
 static func remembered(s, a: Vector2, b: Vector2) -> bool:
 	var steps := maxi(1,ceili(a.distance_to(b)*4))

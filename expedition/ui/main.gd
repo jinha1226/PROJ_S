@@ -453,7 +453,7 @@ func refresh() -> void:
 	if is_instance_valid(board):
 		if board.get_parent() != null: board.get_parent().remove_child(board)
 		clear(board)
-		board.actor_visuals.clear(); board.foreground = null; board.intent_overlay = null
+		board.actor_visuals.clear(); board.foreground = null; board.intent_overlay = null; board.terrain_layer = null
 		board.visible = false; parked.add_child(board)
 	if is_instance_valid(minimap) and minimap.get_parent() != null:
 		minimap.get_parent().remove_child(minimap)
@@ -523,6 +523,9 @@ func run_action(callback: Callable, navigating: bool = false, motion_seconds: fl
 	action_effects = session.effects.duplicate(true); session.effects.clear()
 	reset_effects = accepted
 	check_stop()
+	# Discovery brakes even if another actor blocked the submitted movement.
+	# Continuing the held drag cannot restart it; combat buttons work at once.
+	if session.free_movement and not free_combat_before and not session.party_enemies().is_empty(): stop_navigation()
 	if not (accepted and navigating and FloorHud.sync_free(self)): refresh()
 	if accepted and session.free_movement and is_instance_valid(board):
 		board.animate_world(world_before,motion_seconds if motion_seconds > 0 else NAVIGATION_STEP_SECONDS if navigating else JOYSTICK_STEP_SECONDS)

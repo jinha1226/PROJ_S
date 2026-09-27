@@ -77,6 +77,24 @@ func run() -> void:
 	check(ui.board.joystick_direction().is_equal_approx(Vector2(26,-14).normalized()),"mouse drag uses the same arbitrary-angle control")
 	mouse.pressed = false; mouse.position = motion.position; ui.board._gui_input(mouse)
 	check(not ui.board.joystick_active,"mouse release clears the joystick")
+	# An encounter consumes the current gesture, then returns control explicitly.
+	var encounter_start: Vector2 = Session.Free.center(Vector2i(s.BOARD_SIDE/2,s.BOARD_SIDE/2))
+	s.Free.place(s.party[0],encounter_start)
+	var enemy: Dictionary = s.make_actor(101,"조우",true)
+	s.Floor.MonsterAI.configure(enemy,"MELEE"); enemy.hp = 100; enemy.max_hp = 100; enemy.ready_at = s.time+10000
+	s.Free.place(enemy,encounter_start+Vector2(7,0)); s.enemies.append(enemy); s.floor_state.observe(s)
+	check(s.party_enemies().is_empty(),"encounter fixture begins outside sight")
+	touch.canceled = false
+	touch.pressed = true; touch.position = Vector2(120,270); ui.board._gui_input(touch)
+	drag.position = touch.position+Vector2(34,0); ui.board._gui_input(drag)
+	ui.free_navigation_process(ui.JOYSTICK_STEP_SECONDS+0.01)
+	check(not ui.board.joystick_active and ui.auto_explore_paused and not s.party_enemies().is_empty(),"first enemy sight brakes exploration and the held joystick")
+	before_time = s.time; ui.board._gui_input(drag); ui.free_navigation_process(0.5)
+	check(s.time == before_time and not ui.board.joystick_active,"continuing the old drag cannot rush into the enemy")
+	touch.pressed = false; ui.board._gui_input(touch)
+	touch.pressed = true; ui.board._gui_input(touch)
+	check(ui.board.joystick_active,"fresh press restores deliberate movement during combat")
+	ui.stop_navigation(); enemy.hp = 0; s.floor_state.observe(s)
 	await process_frame
 	for stone in ["FIRE_CALLER/cut","FIRE_CALLER/broken","FIRE_CALLER/pierced","SHIELD_STANCE/cut","WATER_WAVE/cut","GRAVEKEEPER/cut"]:
 		if s.Essences.has(stone): s.Essences.bind(s.party[0],stone)

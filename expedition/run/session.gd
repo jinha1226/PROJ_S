@@ -17,6 +17,14 @@ const Encounters = preload("res://expedition/level/encounter_builder.gd")
 var floor_state
 const Free = preload("res://expedition/level/free_movement.gd")
 var free_movement := false
+## tile() returns mutable dictionaries. Access schedules a recheck, so existing
+## callers that change a cell immediately need no separate dirty notification.
+var environment_dirty: Dictionary = {}
+var environment_active: Dictionary = {}
+var environment_pending: Array = []
+var environment_queued: Dictionary = {}
+var environment_running := false
+var environment_cursor := -1
 
 func enable_free_movement() -> void: Free.enable(self)
 func actor_distance(a: Dictionary, b: Dictionary) -> float:
@@ -401,7 +409,13 @@ func solo_rule(key: String) -> int: return AutoBattle.solo_rule(self,key)
 func action_budget(actor: Dictionary) -> int: return AutoBattle.action_budget(self,actor)
 
 func tile(point: Vector2i) -> Dictionary:
-	return tiles[point.y * BOARD_SIDE + point.x]
+	var index: int = point.y*BOARD_SIDE+point.x
+	environment_dirty[index] = true
+	# A gas blast can activate later cells during this same row-ordered tick.
+	if environment_running and index > environment_cursor and not environment_queued.has(index):
+		environment_queued[index] = true
+		environment_pending.insert(environment_pending.bsearch(index),index)
+	return tiles[index]
 
 func inside(point: Vector2i) -> bool:
 	return point.x >= 0 and point.y >= 0 and point.x < BOARD_SIDE and point.y < BOARD_SIDE

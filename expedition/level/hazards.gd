@@ -15,6 +15,9 @@ const FOG_MIN_SIGHT := 1.5
 const FOG_RADIUS := 2
 ## Separate from the layout generator so packs never shift with hazards.
 const RNG_SALT := 0x48415A
+## Cells with a transition to process; dormant gas and plain ground do nothing.
+static func needs_tick(cell: Dictionary) -> bool:
+	return cell.fire > 0 or cell.wet > 0 or cell.terrain in TERRAINS or cell.has("collapse") or int(cell.get("wall_until",0)) > 0 or int(cell.get("steam_until",0)) > 0 or bool(cell.get("ice",false)) or bool(cell.get("poison_pool",false))
 const OVERLAY := {"lava":Color(1.0,0.35,0.05,0.55),"deep_water":Color(0.05,0.2,0.5,0.45),"bog":Color(0.3,0.45,0.1,0.5)}
 const FOG_COLOR := Color(0.75,0.78,0.85,0.35)
 const GAS_COLOR := Color(0.55,0.8,0.2,0.8)

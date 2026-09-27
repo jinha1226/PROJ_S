@@ -7,6 +7,11 @@ var fullscreen := false
 var world_walks: Dictionary = {}
 var movement_vfx = preload("res://expedition/ui/movement_vfx.gd").new()
 var motion_depth := -1
+var terrain_layer: Node2D
+var terrain_key: Array = []
+var terrain_anchor := Vector2.ZERO
+var painting := false
+var paint_camera := Vector2.ZERO
 const JOYSTICK_RADIUS := 46.0
 const JOYSTICK_DEADZONE := 12.0
 var joystick_active := false
@@ -317,7 +322,7 @@ func geometry() -> void:
 	origin = Vector2.ZERO if fullscreen else (size-Vector2.ONE*map_side)*0.5
 
 func project(cell: Vector2) -> Vector2:
-	return origin + (cell-camera_origin())*half_width*2
+	return origin + (cell-(paint_camera if painting else camera_origin()))*half_width*2
 
 func camera_origin() -> Vector2:
 	if session == null or session.tiles.is_empty(): return Vector2.ZERO
@@ -331,7 +336,7 @@ func camera_origin() -> Vector2:
 	return focus-Vector2.ONE*float((visible_side()-1)/2)
 
 func camera_cell() -> Vector2i:
-	var top_left := camera_origin()
+	var top_left := paint_camera if painting else camera_origin()
 	return Vector2i(floori(top_left.x),floori(top_left.y))
 
 func visible_side() -> int:
@@ -379,7 +384,10 @@ func terrain_visibility(point: Vector2i) -> int:
 	return known
 
 func outline(points: PackedVector2Array, color: Color, width: float = 1) -> void:
-	var closed := points.duplicate(); closed.append(points[0]); draw_polyline(closed,color,width,true)
+	outline_on(self,points,color,width)
+
+func outline_on(canvas: CanvasItem, points: PackedVector2Array, color: Color, width: float = 1) -> void:
+	var closed := points.duplicate(); closed.append(points[0]); canvas.draw_polyline(closed,color,width,true)
 
 func movement_previews() -> Array:
 	var result: Array = []
@@ -462,7 +470,42 @@ func draw_movement_previews() -> void:
 		draw_line(tail,tip,color,2.5,true)
 		draw_colored_polygon(PackedVector2Array([tip,tip-direction*8+normal*5,tip-direction*8-normal*5]),color)
 
-func paint_terrain() -> void:
+func invalidate_terrain() -> void:
+	terrain_key.clear()
+
+## Retain the terrain draw commands between turns. Fractional camera movement
+## only translates this layer; visibility and hazards are repainted on a turn.
+func sync_terrain_layer(camera: Dictionary) -> bool:
+	var retained: bool = session != null and session.free_movement and not is_presenting()
+	if not is_instance_valid(terrain_layer):
+		terrain_layer = Node2D.new(); terrain_layer.name = "TerrainLayer"; terrain_layer.z_index = -1
+		add_child(terrain_layer)
+		terrain_layer.draw.connect(func():
+			draw_terrain_layer())
+	terrain_layer.visible = retained
+	if not retained: return false
+	var key: Array = [session.get_instance_id(),session.depth,session.turn_serial,session.time,camera_cell(),size,view_side,session.floor_state.theme_id,show_attack_range,targeting_skill,target_cell,input_actor]
+	if terrain_key != key:
+		terrain_key = key
+		terrain_anchor = camera_origin()
+		terrain_layer.queue_redraw()
+	terrain_layer.position = camera.offset+(terrain_anchor-camera_origin())*half_width*2*float(camera.zoom)
+	terrain_layer.scale = Vector2.ONE*float(camera.zoom)
+	return true
+
+func draw_terrain_layer() -> void:
+	if session == null or session.tiles.is_empty(): return
+	terrain_anchor = camera_origin()
+	var camera := impact_transform()
+	terrain_layer.position = camera.offset
+	var margin := Vector2.ONE*half_width*2
+	terrain_layer.draw_rect(Rect2(-margin,size+margin*2),Color("0b1117"))
+	paint_camera = terrain_anchor; painting = true
+	paint_terrain(terrain_layer)
+	paint_cells(terrain_layer)
+	painting = false
+
+func paint_terrain(canvas: CanvasItem) -> void:
 	var walls: Array = []
 	var camera := camera_cell()
 	# One additional row supplies the raised portion of walls below the viewport.
@@ -477,22 +520,83 @@ func paint_terrain() -> void:
 			var tint := MEMORY_TINT if visibility == 1 else Color.WHITE
 			tint *= THEME_TINT.get(session.floor_state.theme_id,Color.WHITE)
 			if cell.terrain == "wall":
-				draw_rect(rect,Color("090c10"))
+				canvas.draw_rect(rect,Color("090c10"))
 				walls.append({"point":point,"rect":rect,"tint":tint})
 			else:
-				if visibility == 1: draw_rect(rect,Color("151b22"))
-				else: draw_texture_rect(Art.terrain(cell,point,session.floor_state.theme_id if uses_pixel_floor_art() else ""),rect,false,tint)
+				if visibility == 1: canvas.draw_rect(rect,Color("151b22"))
+				else: canvas.draw_texture_rect(Art.terrain(cell,point,session.floor_state.theme_id if uses_pixel_floor_art() else ""),rect,false,tint)
 				if visibility != 1:
 					var wash: Color = Hazards.overlay(cell)
-					if wash.a > 0: draw_rect(rect,wash)
-					if bool(cell.get("fog",false)): draw_rect(rect,Hazards.FOG_COLOR)
-				Art.Masonry.paint_floor_shadow(self,rect,point,is_wall_tile)
+					if wash.a > 0: canvas.draw_rect(rect,wash)
+					if bool(cell.get("fog",false)): canvas.draw_rect(rect,Hazards.FOG_COLOR)
+				Art.Masonry.paint_floor_shadow(canvas,rect,point,is_wall_tile)
 				# Single-slab art already marks its own edges; remembered cells keep one fine rim.
-				if visibility == 1: draw_rect(rect,Color(0,0,0,0.16),false,1.0)
-	Art.Masonry.paint_walls(self,walls,is_wall_tile,Art.FirstFloor.material(session.floor_state.theme_id) if uses_pixel_floor_art() else {})
+				if visibility == 1: canvas.draw_rect(rect,Color(0,0,0,0.16),false,1.0)
+	Art.Masonry.paint_walls(canvas,walls,is_wall_tile,Art.FirstFloor.material(session.floor_state.theme_id) if uses_pixel_floor_art() else {})
 
 func uses_pixel_floor_art() -> bool:
 	return session.floor_state.theme_id in ["F1_RUINS","F2_MINES","F3_TEMPLE","F4_CRYPT"]
+
+func paint_cells(canvas: CanvasItem) -> void:
+	var corner := camera_cell()
+	var attacks: Array = []
+	if show_attack_range and targeting_skill == "ATTACK":
+		attacks = session.attack_cells()
+	elif session.Abilities.has(targeting_skill) and session.Abilities.definition(targeting_skill).target == "ENEMY" and session.Abilities.definition(targeting_skill).range > 0:
+		attacks.clear()
+		var caster: Dictionary = session.party[session.selected if input_actor < 0 else input_actor]
+		for y in range(corner.y,corner.y+visible_side()+2):
+			for x in range(corner.x,corner.x+visible_side()+2):
+				if x < 0 or y < 0 or x >= session.BOARD_SIDE or y >= session.BOARD_SIDE: continue
+				var cell := Vector2i(x,y)
+				if session.distance(caster.pos,cell) <= int(session.Abilities.definition(targeting_skill).range) and session.tile(cell).terrain != "wall" and session.TurnCore.Geometry.sees(caster.pos,cell,func(p): return session.tile(p).terrain == "wall"): attacks.append(cell)
+	for depth in range(visible_side()+ceili(size.y/(half_width*2))+3):
+		for local_x in range(visible_side()+2):
+			var local_y := depth-local_x
+			if local_y < 0 or local_y >= ceili(size.y/(half_width*2))+2: continue
+			var x: int = local_x+corner.x
+			var y: int = local_y+corner.y
+			if x < 0 or y < 0 or x >= session.BOARD_SIDE or y >= session.BOARD_SIDE: continue
+			var point := Vector2i(x,y)
+			if not (visual_state.explored if is_presenting() else session.floor_state.explored).has(point): continue
+			if not (visual_state.visible if is_presenting() else session.floor_state.visible).has(point): continue
+			var cell: Dictionary = session.tile(point)
+			var polygon := tile_polygon(Vector2(point))
+			if cell.terrain not in ["stone","wall"]: outline_on(canvas,polygon,Color(0.08,0.10,0.12,0.25))
+			var center := project(Vector2(point)+Vector2.ONE*0.5)
+			if session.floor_state.features.has(point):
+				var feature: Dictionary = session.floor_state.features[point]
+				var icon: String = ("potion" if session.Consumables.definition(str(feature.get("item_id",""))).get("class","") == "potion" else "scroll") if feature.kind == "item" else session.Curios.definition(feature).get("icon",feature.kind)
+				var object_id: String = Art.FirstFloor.feature_id(feature) if uses_pixel_floor_art() else ""
+				var item_kind: String = str(feature.get("item_id","")) if feature.kind == "item" else ""
+				if not item_kind.is_empty():
+					# A dropped potion or scroll wears its run look; a known one shows its effect.
+					var known: bool = session.known.has(item_kind)
+					var texture: Texture2D = Art.item_icon(icon,session.Consumables.look_index(session,item_kind))
+					Art.paint_item(canvas,Rect2(center-Vector2.ONE*half_width*0.95,Vector2.ONE*half_width*1.9),texture,Art.item_badge(item_kind,true) if known else null)
+				elif not object_id.is_empty():
+					Art.FirstFloor.paint_object(canvas,object_id,Rect2(center-Vector2.ONE*half_width,Vector2.ONE*half_width*2),Color("777777") if bool(feature.get("used",false)) else Color.WHITE)
+				else:
+					Icons.paint(canvas,"entry" if feature.kind in ["entry","altar"] else icon,center,half_width*0.65,Color("655a43") if bool(feature.get("used",false)) else Color("9fe3ff") if feature.kind in ["stairs","lever"] else Color("e4c98e"))
+			if point in attacks:
+				canvas.draw_colored_polygon(polygon,Color(0.95,0.15,0.18,0.3)); outline_on(canvas,polygon,Color("f37575"),2)
+			if point == target_cell: outline_on(canvas,polygon,Color.WHITE,3)
+			if cell.wet > 0 and cell.terrain not in Hazards.WATERY: outline_on(canvas,polygon,Color(0.3,0.6,0.8,0.6))
+			if bool(cell.get("ice",false)):
+				canvas.draw_colored_polygon(polygon,Color(0.78,0.92,1.0,0.55)); outline_on(canvas,polygon,Color("e8f7ff"),2)
+			if bool(cell.get("poison_pool",false)): canvas.draw_colored_polygon(polygon,Color(0.35,0.75,0.2,0.4))
+			if int(cell.get("steam_until",0)) > int(session.time): canvas.draw_colored_polygon(polygon,Color(0.9,0.9,0.92,0.55))
+			if bool(cell.get("gas",false)): canvas.draw_circle(center,half_width*0.3,Hazards.GAS_COLOR)
+			if cell.has("collapse"):
+				var armed: bool = bool(cell.collapse.get("armed",false))
+				outline_on(canvas,polygon,Hazards.COLLAPSE_ARMED if armed else Hazards.COLLAPSE_IDLE,3 if armed else 1)
+				if armed: canvas.draw_string(ui_font,center+Vector2(-4,4),"!",HORIZONTAL_ALIGNMENT_LEFT,-1,18,Color.WHITE)
+			for intent in (visual_state.intents if is_presenting() else session.intents):
+				if intent.cell == point and not intent.has("world_center"):
+					canvas.draw_colored_polygon(polygon,Color(1,0.45,0.05,0.4)); outline_on(canvas,polygon,Color("ffb447"),3)
+					canvas.draw_string(ui_font,center+Vector2(-4,4),"!"+(session.Abilities.badge(intent.kind) if not str(intent.get("kind","")).is_empty() else ""),HORIZONTAL_ALIGNMENT_LEFT,-1,12 if not str(intent.get("kind","")).is_empty() else 18,Color.WHITE)
+			if cell.fire > 0:
+				canvas.draw_circle(center,half_width*0.4,Color("a74b24")); canvas.draw_circle(center-Vector2(0,4),half_width*0.2,Color("ffc675"))
 
 func _draw() -> void:
 	for visual in actor_visuals.values():
@@ -510,71 +614,18 @@ func _draw() -> void:
 	intent_overlay.queue_redraw()
 	foreground.queue_redraw()
 	geometry()
-	draw_rect(Rect2(Vector2.ZERO,size),Color("0b1117"))
 	if session == null or session.tiles.is_empty():
+		draw_rect(Rect2(Vector2.ZERO,size),Color("0b1117"))
 		draw_string(ui_font,Vector2(18,size.y*0.45),"",HORIZONTAL_ALIGNMENT_CENTER,size.x-36,20,Color("cfbd91"))
 		return
 	var camera := impact_transform()
+	paint_camera = camera_origin(); painting = true
+	var retained_terrain := sync_terrain_layer(camera)
 	draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
-	paint_terrain()
-	var attacks: Array = []
-	if show_attack_range and targeting_skill == "ATTACK":
-		attacks = session.attack_cells()
-	elif session.Abilities.has(targeting_skill) and session.Abilities.definition(targeting_skill).target == "ENEMY" and session.Abilities.definition(targeting_skill).range > 0:
-		attacks.clear()
-		var caster: Dictionary = session.party[session.selected if input_actor < 0 else input_actor]
-		for y in range(camera_cell().y,camera_cell().y+visible_side()+2):
-			for x in range(camera_cell().x,camera_cell().x+visible_side()+2):
-				if x < 0 or y < 0 or x >= session.BOARD_SIDE or y >= session.BOARD_SIDE: continue
-				var cell := Vector2i(x,y)
-				if session.distance(caster.pos,cell) <= int(session.Abilities.definition(targeting_skill).range) and session.tile(cell).terrain != "wall" and session.TurnCore.Geometry.sees(caster.pos,cell,func(p): return session.tile(p).terrain == "wall"): attacks.append(cell)
-	for depth in range(visible_side()+ceili(size.y/(half_width*2))+3):
-		for local_x in range(visible_side()+2):
-			var local_y := depth-local_x
-			if local_y < 0 or local_y >= ceili(size.y/(half_width*2))+2: continue
-			var x: int = local_x+camera_cell().x
-			var y: int = local_y+camera_cell().y
-			if x < 0 or y < 0 or x >= session.BOARD_SIDE or y >= session.BOARD_SIDE: continue
-			var point := Vector2i(x,y)
-			if not (visual_state.explored if is_presenting() else session.floor_state.explored).has(point): continue
-			var cell: Dictionary = session.tile(point)
-			var polygon := tile_polygon(Vector2(point))
-			if not (visual_state.visible if is_presenting() else session.floor_state.visible).has(point): continue
-			if cell.terrain not in ["stone","wall"]: outline(polygon,Color(0.08,0.10,0.12,0.25))
-			var center := project(Vector2(point)+Vector2.ONE*0.5)
-			if session.floor_state.features.has(point):
-				var feature: Dictionary = session.floor_state.features[point]
-				var icon: String = ("potion" if session.Consumables.definition(str(feature.get("item_id",""))).get("class","") == "potion" else "scroll") if feature.kind == "item" else session.Curios.definition(feature).get("icon",feature.kind)
-				var object_id: String = Art.FirstFloor.feature_id(feature) if uses_pixel_floor_art() else ""
-				var item_kind: String = str(feature.get("item_id","")) if feature.kind == "item" else ""
-				if not item_kind.is_empty():
-					# A dropped potion or scroll wears its run look; a known one shows its effect.
-					var known: bool = session.known.has(item_kind)
-					var texture: Texture2D = Art.item_icon(icon,session.Consumables.look_index(session,item_kind))
-					Art.paint_item(self,Rect2(center-Vector2.ONE*half_width*0.95,Vector2.ONE*half_width*1.9),texture,Art.item_badge(item_kind,true) if known else null)
-				elif not object_id.is_empty():
-					Art.FirstFloor.paint_object(self,object_id,Rect2(center-Vector2.ONE*half_width,Vector2.ONE*half_width*2),Color("777777") if bool(feature.get("used",false)) else Color.WHITE)
-				else:
-					Icons.paint(self,"entry" if feature.kind in ["entry","altar"] else icon,center,half_width*0.65,Color("655a43") if bool(feature.get("used",false)) else Color("9fe3ff") if feature.kind in ["stairs","lever"] else Color("e4c98e"))
-			if point in attacks:
-				draw_colored_polygon(polygon,Color(0.95,0.15,0.18,0.3)); outline(polygon,Color("f37575"),2)
-			if point == target_cell: outline(polygon,Color.WHITE,3)
-			if cell.wet > 0 and cell.terrain not in Hazards.WATERY: outline(polygon,Color(0.3,0.6,0.8,0.6))
-			if bool(cell.get("ice",false)):
-				draw_colored_polygon(polygon,Color(0.78,0.92,1.0,0.55)); outline(polygon,Color("e8f7ff"),2)
-			if bool(cell.get("poison_pool",false)): draw_colored_polygon(polygon,Color(0.35,0.75,0.2,0.4))
-			if int(cell.get("steam_until",0)) > int(session.time): draw_colored_polygon(polygon,Color(0.9,0.9,0.92,0.55))
-			if bool(cell.get("gas",false)): draw_circle(center,half_width*0.3,Hazards.GAS_COLOR)
-			if cell.has("collapse"):
-				var armed: bool = bool(cell.collapse.get("armed",false))
-				outline(polygon,Hazards.COLLAPSE_ARMED if armed else Hazards.COLLAPSE_IDLE,3 if armed else 1)
-				if armed: draw_string(ui_font,center+Vector2(-4,4),"!",HORIZONTAL_ALIGNMENT_LEFT,-1,18,Color.WHITE)
-			for intent in (visual_state.intents if is_presenting() else session.intents):
-				if intent.cell == point and not intent.has("world_center"):
-					draw_colored_polygon(polygon,Color(1,0.45,0.05,0.4)); outline(polygon,Color("ffb447"),3)
-					draw_string(ui_font,center+Vector2(-4,4),"!"+(session.Abilities.badge(intent.kind) if not str(intent.get("kind","")).is_empty() else ""),HORIZONTAL_ALIGNMENT_LEFT,-1,12 if not str(intent.get("kind","")).is_empty() else 18,Color.WHITE)
-			if cell.fire > 0:
-				draw_circle(center,half_width*0.4,Color("a74b24")); draw_circle(center-Vector2(0,4),half_width*0.2,Color("ffc675"))
+	if not retained_terrain:
+		draw_rect(Rect2(Vector2.ZERO,size),Color("0b1117"))
+		paint_terrain(self)
+	if not retained_terrain: paint_cells(self)
 	movement_vfx.paint(self,project,half_width,visual_state.visible if is_presenting() else session.floor_state.visible)
 	for actor in (visual_state.actors if is_presenting() else session.party+session.npcs+session.enemies):
 		var point: Vector2i = actor.pos
@@ -609,6 +660,7 @@ func _draw() -> void:
 	draw_movement_previews()
 	draw_action_previews()
 	draw_set_transform(Vector2.ZERO)
+	painting = false
 
 ## Which pawn stands in for an actor: party members own one each, an npc
 ## borrows one by its roster id.

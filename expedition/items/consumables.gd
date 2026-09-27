@@ -7,6 +7,7 @@ const Statuses = preload("res://expedition/combat/statuses.gd")
 const Summons = preload("res://expedition/spells/summons.gd")
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/consumables.json"))
 const NO_TARGET := Vector2i(-1,-1)
+const PICKUP_RADIUS := 1.0
 
 static func definition(kind: String) -> Dictionary:
 	for row in content.kinds:
@@ -70,11 +71,22 @@ static func grant(s, kind: String, count: int = 1, known: bool = false) -> void:
 	s.message(label(s,kind)+" 획득")
 
 static func pickup(s, actor: Dictionary) -> void:
-	var feature: Dictionary = s.floor_state.features.get(actor.pos,{})
-	if feature.get("kind","") != "item": return
-	s.floor_state.features.erase(actor.pos)
-	s.floor_state.clear_marker(actor.pos)
-	grant(s,str(feature.get("item_id","")))
+	var cells: Array = [actor.pos]
+	if s.free_movement:
+		cells.clear()
+		var here: Vector2 = s.Free.position(actor)
+		for y in range(actor.pos.y-1,actor.pos.y+2):
+			for x in range(actor.pos.x-1,actor.pos.x+2):
+				var point := Vector2i(x,y)
+				if not s.floor_state.features.has(point): continue
+				var there: Vector2 = s.Free.center(point)
+				if here.distance_to(there) <= PICKUP_RADIUS and s.Free.segment(s,here,there,0): cells.append(point)
+	for point in cells:
+		var feature: Dictionary = s.floor_state.features.get(point,{})
+		if feature.get("kind","") != "item": continue
+		s.floor_state.features.erase(point)
+		s.floor_state.clear_marker(point)
+		grant(s,str(feature.get("item_id","")))
 
 static func identify(s, kind: String) -> void:
 	if definition(kind).is_empty() or s.known.has(kind): return

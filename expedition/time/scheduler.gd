@@ -138,27 +138,38 @@ static func act(s, actor: Dictionary) -> void:
 static func environment_tick(s) -> void:
 	Summons.expire(s)
 	s.StoneEffects.EffectEngine.Code.delayed(s)
-	for y in range(s.BOARD_SIDE):
-		for x in range(s.BOARD_SIDE):
-			var point := Vector2i(x, y)
-			var cell: Dictionary = s.tile(point)
-			Hazards.tick_cell(s,point,cell)
-			# A conjured barrier holds its cells for the span the spell bought,
-			# then is simply gone; a wall of fire burns whoever stands in it.
-			if int(cell.get("wall_until",0)) > 0:
-				if int(cell.wall_until) <= s.time: cell.erase("wall_until"); cell.erase("wall_burn")
-				elif bool(cell.get("wall_burn",false)):
-					for standing in s.Free.occupants(s,point): Rules.damage(s,{},standing,4,"fire")
-			var suppression := 0
-			if cell.fire > 0 or cell.wet > 0:
-				var result: Dictionary = ElementRules.project_existing_fire_tick(cell.fire, cell.wet, 0, s.time)
-				cell.fire = result.fire_after_decay
-				cell.wet = maxi(0, result.wetness_after_suppression - ElementRules.WETNESS_DECAY_PER_ENVIRONMENT_TICK)
-				suppression = int(result.suppression)
-				if result.known_damage > 0:
-					for victim in s.Free.occupants(s,point): s.damage(victim, result.known_damage, 999, "FIRE")
-			if suppression > 0 or cell.has("steam_until") or bool(cell.get("ice",false)) or bool(cell.get("poison_pool",false)):
-				s.Reactions.tile_tick(s, point, cell, suppression)
+	var pending: Dictionary = s.environment_active.duplicate()
+	pending.merge(s.environment_dirty,true)
+	s.environment_pending = pending.keys(); s.environment_pending.sort()
+	s.environment_queued = pending
+	s.environment_dirty.clear(); s.environment_cursor = -1; s.environment_running = true
+	var cursor := 0
+	while cursor < s.environment_pending.size():
+		var index: int = int(s.environment_pending[cursor]); cursor += 1
+		s.environment_cursor = index
+		var cell: Dictionary = s.tiles[index]
+		if not Hazards.needs_tick(cell): s.environment_active.erase(index); continue
+		var point := Vector2i(index%s.BOARD_SIDE,index/s.BOARD_SIDE)
+		Hazards.tick_cell(s,point,cell)
+		# A conjured barrier holds its cells for the span the spell bought,
+		# then is simply gone; a wall of fire burns whoever stands in it.
+		if int(cell.get("wall_until",0)) > 0:
+			if int(cell.wall_until) <= s.time: cell.erase("wall_until"); cell.erase("wall_burn")
+			elif bool(cell.get("wall_burn",false)):
+				for standing in s.Free.occupants(s,point): Rules.damage(s,{},standing,4,"fire")
+		var suppression := 0
+		if cell.fire > 0 or cell.wet > 0:
+			var result: Dictionary = ElementRules.project_existing_fire_tick(cell.fire, cell.wet, 0, s.time)
+			cell.fire = result.fire_after_decay
+			cell.wet = maxi(0, result.wetness_after_suppression - ElementRules.WETNESS_DECAY_PER_ENVIRONMENT_TICK)
+			suppression = int(result.suppression)
+			if result.known_damage > 0:
+				for victim in s.Free.occupants(s,point): s.damage(victim, result.known_damage, 999, "FIRE")
+		if suppression > 0 or cell.has("steam_until") or bool(cell.get("ice",false)) or bool(cell.get("poison_pool",false)):
+			s.Reactions.tile_tick(s, point, cell, suppression)
+		if Hazards.needs_tick(cell): s.environment_active[index] = true
+		else: s.environment_active.erase(index)
+	s.environment_running = false; s.environment_pending.clear(); s.environment_queued.clear()
 	for actor in s.party + s.npcs:
 		actor["guarded"] = false; actor["protected_by"] = -1
 		actor.iron_guard = false

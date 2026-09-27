@@ -70,6 +70,9 @@ func gas() -> void:
 	check(hp-int(d.hero.hp) >= Hazards.GAS_DAMAGE,"the blast reaches two cells")
 	check(int(s.tile(d.c+Vector2i(3,0)).fire) >= Hazards.GAS_FIRE-10,"the blast sets the ground alight")
 	check(s.log_lines.any(func(l): return l.contains("가스 폭발")),"the blast is logged")
+	check(int(s.tile(pocket+Vector2i(0,-1)).fire) == Hazards.GAS_FIRE,"blast leaves earlier-row fire for the following environment tick")
+	var later_fire: Dictionary = s.Scheduler.ElementRules.project_existing_fire_tick(Hazards.GAS_FIRE,0,0,s.time)
+	check(int(s.tile(pocket+Vector2i(0,1)).fire) == int(later_fire.fire_after_decay),"blast activates later-row fire in the same environment tick")
 	var far := arena(); var t = far.s
 	var away: Vector2i = far.c+Vector2i(5,0)
 	t.tile(away).gas = true; t.tile(away).fire = 10
