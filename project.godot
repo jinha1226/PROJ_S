@@ -8,6 +8,7 @@ config/features=PackedStringArray("4.6", "GL Compatibility")
 [display]
 window/size/viewport_width=320
 window/size/viewport_height=640
+window/dpi/allow_hidpi.web=false
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=1
