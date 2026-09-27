@@ -148,6 +148,20 @@ static func approach(s, actor: Dictionary, target: Dictionary, reach: float = CO
 	var goal := there-delta.normalized()*maxf(RADIUS*2+0.03,reach-0.05)
 	return next(s,actor,goal)
 
+static func steer(s, actor: Dictionary, direction: Vector2) -> Vector2:
+	var start := position(actor)
+	if direction.length_squared() < EPS: return start
+	var delta := direction.normalized()*STEP
+	if segment(s,start,start+delta,RADIUS,actor,true): return start+delta
+	# Slide along a blocked wall without steering away from the finger's axes.
+	var options: Array = [Vector2(delta.x,0),Vector2(0,delta.y)]
+	options.sort_custom(func(a,b): return a.length_squared() > b.length_squared())
+	for offset in options:
+		if offset.length_squared() > EPS and segment(s,start,start+offset,RADIUS,actor,true): return start+offset
+	for scale in [0.75,0.5,0.25]:
+		if segment(s,start,start+delta*scale,RADIUS,actor,true): return start+delta*scale
+	return start
+
 static func retreat(s, actor: Dictionary) -> Vector2:
 	var foes: Array = (s.party+s.npcs+s.enemies).filter(func(a): return a.hp > 0 and s.MobileEffects.hostile(s,actor,a) and sees(s,position(actor),position(a),6))
 	if foes.is_empty(): return position(actor)

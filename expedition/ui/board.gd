@@ -5,6 +5,13 @@ var action_footer := false
 signal world_pressed(point: Vector2)
 var fullscreen := false
 var world_walks: Dictionary = {}
+const JOYSTICK_RADIUS := 46.0
+const JOYSTICK_DEADZONE := 12.0
+var joystick_active := false
+var joystick_pointer := -2
+var joystick_origin := Vector2.ZERO
+var joystick_offset := Vector2.ZERO
+var joystick_dragged := false
 signal cell_pressed(cell: Vector2i)
 signal cell_inspected(cell: Vector2i)
 signal zoom_changed(side: int)
@@ -240,9 +247,11 @@ func preview_rect(actor: Dictionary) -> Rect2:
 	return Rect2(Vector2(clampf(center.x-29,0,maxf(0,size.x-58)),maxf(origin.y,center.y-half_width-19)),Vector2(58,18))
 
 func _process(delta: float) -> void:
+	var moving: bool = not world_walks.is_empty()
 	for id in world_walks.keys():
 		world_walks[id].elapsed += delta
 		if float(world_walks[id].elapsed) >= float(world_walks[id].duration): world_walks.erase(id)
+	if moving: queue_redraw()
 	# This clock keeps moving while the player waits; it never ticks statuses.
 	if is_visible_in_tree():
 		status_visual_clock = fposmod(status_visual_clock+delta,4096.0)
@@ -746,6 +755,11 @@ func _draw_foreground(canvas: Node2D) -> void:
 			var direction := Vector2.RIGHT.rotated(i*TAU/8)
 			canvas.draw_line(point+direction*(12+impact_time*35),point+direction*(28+impact_time*80),Color(1,0.7,0.45,fade),3,true)
 		canvas.draw_string(ui_font,Vector2(clampf(point.x-65,2,maxf(2,size.x-132)),maxf(20,point.y-30)),str(injury.get("part","신체"))+" 손상!",HORIZONTAL_ALIGNMENT_CENTER,130,16,Color(1,0.85,0.7,fade))
+	if joystick_active:
+		canvas.draw_circle(joystick_origin,JOYSTICK_RADIUS,Color(0.05,0.06,0.08,0.65))
+		canvas.draw_arc(joystick_origin,JOYSTICK_RADIUS,0,TAU,48,Color("dbcaa2",0.8),2,true)
+		canvas.draw_circle(joystick_origin+joystick_offset,19,Color("dbcaa2",0.9))
+		canvas.draw_arc(joystick_origin+joystick_offset,19,0,TAU,32,Color("242126"),2,true)
 
 ## Outlined text, the Forge Master way: an ink rim under a bright fill.
 func draw_outlined(canvas: Node2D, position: Vector2, text: String, font_size: int, color: Color) -> void:
@@ -871,7 +885,21 @@ func draw_effect_visual(effect: Dictionary, canvas) -> void:
 		Vfx.projectile(canvas,style,start,center,half_width,t)
 	Vfx.draw(canvas,style,center,start,half_width,t)
 
+func _input(event: InputEvent) -> void:
+	# HUD refreshes reparent this map. Keep the active finger captured even if
+	# it crosses a HUD button or the original GUI touch capture was cleared.
+	if not fullscreen or not joystick_active: return
+	var owned := false
+	if event is InputEventScreenDrag: owned = event.index == joystick_pointer
+	elif event is InputEventScreenTouch: owned = not event.pressed and event.index == joystick_pointer
+	elif event is InputEventMouseMotion: owned = joystick_pointer == -1
+	elif event is InputEventMouseButton: owned = joystick_pointer == -1 and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT
+	if owned:
+		joystick_input(event); get_viewport().set_input_as_handled()
+
 func _gui_input(event: InputEvent) -> void:
+	if fullscreen and session != null and session.free_movement and joystick_input(event):
+		accept_event(); return
 	if event is InputEventScreenTouch:
 		suppress_mouse_until = Time.get_ticks_msec()+500
 		if event.pressed:
@@ -901,6 +929,52 @@ func _gui_input(event: InputEvent) -> void:
 		gesture_started.emit(); emit_cell(event.position); accept_event()
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 		emit_inspection(event.position); accept_event()
+
+func begin_joystick(at: Vector2, pointer: int) -> void:
+	gesture_started.emit()
+	joystick_active = true; joystick_pointer = pointer
+	joystick_origin = at; joystick_offset = Vector2.ZERO; joystick_dragged = false
+	touch_pressed_at = Time.get_ticks_msec()
+	queue_redraw()
+
+func drag_joystick(at: Vector2) -> void:
+	joystick_offset = (at-joystick_origin).limit_length(JOYSTICK_RADIUS)
+	if joystick_offset.length() > JOYSTICK_DEADZONE: joystick_dragged = true
+	queue_redraw()
+
+func cancel_joystick() -> void:
+	joystick_active = false; joystick_pointer = -2; joystick_offset = Vector2.ZERO
+	queue_redraw()
+
+func end_joystick(at: Vector2, canceled: bool = false) -> void:
+	var tap: bool = not joystick_dragged and not canceled
+	cancel_joystick()
+	if tap:
+		if Time.get_ticks_msec()-touch_pressed_at >= 450: emit_inspection(at)
+		else: emit_cell(at)
+
+func joystick_direction() -> Vector2:
+	return joystick_offset.normalized() if joystick_active and joystick_offset.length() > JOYSTICK_DEADZONE else Vector2.ZERO
+
+func joystick_input(event: InputEvent) -> bool:
+	if event is InputEventScreenTouch:
+		suppress_mouse_until = Time.get_ticks_msec()+500
+		if event.pressed:
+			if not joystick_active: begin_joystick(event.position,event.index)
+		elif joystick_active and joystick_pointer == event.index: end_joystick(event.position,event.canceled)
+		return true
+	if event is InputEventScreenDrag:
+		suppress_mouse_until = Time.get_ticks_msec()+500
+		if joystick_active and event.index == joystick_pointer: drag_joystick(event.position)
+		return true
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.device == InputEvent.DEVICE_ID_EMULATION or Time.get_ticks_msec() < suppress_mouse_until: return true
+		if event.pressed: begin_joystick(event.position,-1)
+		elif joystick_active and joystick_pointer == -1: end_joystick(event.position)
+		return true
+	if event is InputEventMouseMotion and joystick_active and joystick_pointer == -1:
+		drag_joystick(event.position); return true
+	return false
 
 func emit_cell(position: Vector2) -> void:
 	if is_presenting(): return

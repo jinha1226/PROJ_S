@@ -21,7 +21,7 @@ func run() -> void:
 	check(s.floor_state.layout.get("npc_rooms",[]).size() >= 3,"NPC room reservations")
 	check(not s.has_method("return_home") and not s.has_method("use_torch"),"old lifecycle removed")
 	var main = load("res://expedition/ui/main.tscn").instantiate()
-	root.add_child(main); await process_frame
+	root.add_child(main); main.set_process(false); await process_frame
 	check(main.find_child("StartScreen",true,false) != null,"start screen")
 	main.new_run(); await process_frame
 	check(main.find_child("FoodLabel",true,false) != null and main.find_child("BottomActions",true,false) != null,"floor HUD")
@@ -29,11 +29,14 @@ func run() -> void:
 	for enemy in main.session.enemies: enemy.hp = 0
 	main.session.floor_state.observe(main.session); main.refresh(); await process_frame
 	main.show_menu(); await process_frame
-	var camp: Button = main.modal_content.get_child(0)
+	var camp: Button = main.modal_content.find_child("CampAction",true,false)
 	check(camp != null and not camp.disabled,"camp available")
+	if camp == null: main.queue_free(); quit(1); return
 	camp.pressed.emit(); await process_frame
 	check(main.find_child("CampScreen",true,false) != null,"camp screen")
-	main.find_child("CampEnd",true,false).pressed.emit(); await process_frame
+	var camp_end: Button = main.find_child("CampEnd",true,false)
+	if camp_end == null: main.queue_free(); quit(1); return
+	camp_end.pressed.emit(); await process_frame
 	check(main.session.phase == "EXPLORE","camp ends")
 	main.session.party[0].hp = 0; main.session.check_battle_end(); main.refresh(); await process_frame
 	check(main.find_child("ResultCard",true,false) != null,"result card")

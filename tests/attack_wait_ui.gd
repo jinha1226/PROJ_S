@@ -20,11 +20,39 @@ func run() -> void:
 	s.npcs.clear(); s.phase = "EXPLORE"; s.floor_state.observe(s)
 	ui.refresh(); await process_frame
 	var start: Vector2 = Session.Free.position(s.party[0])
-	var target: Vector2 = start+Vector2(0.82,0.17)
 	var before_time: int = s.time
-	ui.on_world(target)
-	check(Session.Free.position(s.party[0]).is_equal_approx(target) and s.time > before_time,"world tap commits a turn at the exact fractional destination")
+	var touch := InputEventScreenTouch.new(); touch.index = 3; touch.position = Vector2(110,260); touch.pressed = true
+	ui.board._gui_input(touch)
+	check(ui.board.joystick_active and ui.board.joystick_origin == touch.position,"touch anchors a floating joystick exactly under the finger")
+	var drag := InputEventScreenDrag.new(); drag.index = 3; drag.position = touch.position+Vector2(34,17)
+	ui.board._gui_input(drag)
+	ui.free_navigation_process(0.19)
+	var target: Vector2 = start+Vector2(34,17).normalized()
+	check(Session.Free.position(s.party[0]).is_equal_approx(target) and s.time > before_time,"joystick commits arbitrary-angle movement through the turn scheduler")
 	check(ui.board.world_walks.has(int(s.party[0].id)),"camera and sprite interpolate from actual world positions")
+	touch.pressed = false; touch.position = drag.position; ui.board._input(touch)
+	before_time = s.time
+	ui.board.world_walks.clear(); ui.free_navigation_process(0.5)
+	check(not ui.board.joystick_active and s.time == before_time,"release stops manual movement and further turn consumption")
+	touch.pressed = true; touch.position = Vector2(120,270); ui.board._gui_input(touch)
+	drag.position = touch.position+Vector2(5,3); ui.board._gui_input(drag)
+	ui.free_navigation_process(0.5)
+	check(s.time == before_time,"joystick deadzone does not spend a turn")
+	var other := InputEventScreenTouch.new(); other.index = 4; other.position = Vector2(200,310); other.pressed = true
+	ui.board._gui_input(other)
+	check(ui.board.joystick_pointer == 3 and ui.board.joystick_origin == touch.position,"second touch cannot steal the movement stick")
+	touch.pressed = false; touch.canceled = true; ui.board._gui_input(touch)
+	check(not ui.board.joystick_active and s.time == before_time,"canceled touch clears the stick without tapping a target")
+	ui.on_world(Session.Free.position(s.party[0])+Vector2(2,0))
+	check(s.time == before_time,"ground tap does not start destination movement")
+	ui.board.suppress_mouse_until = 0
+	var mouse := InputEventMouseButton.new(); mouse.button_index = MOUSE_BUTTON_LEFT; mouse.position = Vector2(90,240); mouse.pressed = true
+	ui.board._gui_input(mouse)
+	check(ui.board.joystick_active and ui.board.joystick_pointer == -1,"desktop mouse also anchors a floating joystick")
+	var motion := InputEventMouseMotion.new(); motion.position = mouse.position+Vector2(26,-14); ui.board._input(motion)
+	check(ui.board.joystick_direction().is_equal_approx(Vector2(26,-14).normalized()),"mouse drag uses the same arbitrary-angle control")
+	mouse.pressed = false; mouse.position = motion.position; ui.board._gui_input(mouse)
+	check(not ui.board.joystick_active,"mouse release clears the joystick")
 	await process_frame
 	for stone in ["FIRE_CALLER/cut","FIRE_CALLER/broken","FIRE_CALLER/pierced","SHIELD_STANCE/cut","WATER_WAVE/cut","GRAVEKEEPER/cut"]:
 		if s.Essences.has(stone): s.Essences.bind(s.party[0],stone)

@@ -20,6 +20,7 @@ var world_destination := Vector2(-1,-1)
 var auto_explore_paused := false
 var queued_curio: Dictionary = {}
 const NAVIGATION_STEP_SECONDS := 0.075
+const JOYSTICK_STEP_SECONDS := 0.18
 var navigation_clock := 0.0
 var view_side := 11
 var log_popup: PopupPanel
@@ -146,6 +147,7 @@ func _ready() -> void:
 	refresh()
 
 func stop_navigation() -> void:
+	if is_instance_valid(board): board.cancel_joystick()
 	world_destination = Vector2(-1,-1)
 	if session != null and session.free_movement: auto_explore_paused = true
 	navigation.stop(); navigation_clock = 0
@@ -489,7 +491,7 @@ func finish_presentation() -> void:
 		report_battle()
 	refresh()
 
-func run_action(callback: Callable, navigating: bool = false) -> void:
+func run_action(callback: Callable, navigating: bool = false, motion_seconds: float = -1) -> void:
 	if is_instance_valid(board) and board.is_presenting(): return
 	if not navigating: stop_navigation()
 	var free_combat_before: bool = session != null and session.free_movement and not session.party_enemies().is_empty()
@@ -521,7 +523,7 @@ func run_action(callback: Callable, navigating: bool = false) -> void:
 	check_stop()
 	refresh()
 	if accepted and session.free_movement and is_instance_valid(board):
-		board.animate_world(world_before,NAVIGATION_STEP_SECONDS if navigating else 0.16)
+		board.animate_world(world_before,motion_seconds if motion_seconds > 0 else NAVIGATION_STEP_SECONDS if navigating else 0.16)
 		if free_combat_before and session.party_enemies().is_empty():
 			auto_explore_paused = false; session.party_command = "FOLLOW"; session.command_target = -1
 		return
@@ -667,15 +669,27 @@ func on_world(point: Vector2) -> void:
 	var feature: Dictionary = session.floor_state.features.get(terrain,{})
 	if not feature.is_empty() and feature.get("kind","") not in ["item","entry"]:
 		on_cell(terrain); return
-	world_destination = point; auto_explore_paused = true
-	free_navigation_tick()
+	# Ground presses anchor a floating joystick; only entities/features use taps.
 
 func free_navigation_process(delta: float) -> void:
-	if popup_open() or not get_window().has_focus(): return
-	if session.phase not in ["EXPLORE","BATTLE"]: return
+	if popup_open() or not get_window().has_focus():
+		if is_instance_valid(board): board.cancel_joystick()
+		return
+	if session.phase not in ["EXPLORE","BATTLE"]:
+		if is_instance_valid(board): board.cancel_joystick()
+		return
+	navigation_clock += delta
+	if board.joystick_active:
+		var direction: Vector2 = board.joystick_direction()
+		if direction == Vector2.ZERO: navigation_clock = JOYSTICK_STEP_SECONDS; return
+		if navigation_clock < JOYSTICK_STEP_SECONDS or navigation_camera_busy(): return
+		navigation_clock = 0
+		var hero: Dictionary = session.party[0]
+		var dest := Session.Free.steer(session,hero,direction)
+		if dest != Session.Free.position(hero): run_action(func(): return Session.Free.submit(session,Session.Free.choice(hero,"MOVE",dest,"이동")),true,JOYSTICK_STEP_SECONDS)
+		return
 	if navigation_camera_busy(): return
 	if world_destination.x < 0 and (auto_explore_paused or not session.party_enemies().is_empty()): return
-	navigation_clock += delta
 	if navigation_clock < NAVIGATION_STEP_SECONDS: return
 	navigation_clock = 0; free_navigation_tick()
 

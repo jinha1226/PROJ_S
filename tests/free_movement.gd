@@ -81,4 +81,7 @@ func run() -> void:
 	s.tile(Vector2i(7,7)).terrain = "bog"
 	s.Scheduler.Hazards.tick_cell(s,Vector2i(7,7),s.tile(Vector2i(7,7)))
 	check(hero.statuses.has("poison") and mate.statuses.has("poison"),"terrain affects both bodies sharing a terrain cell")
+	s.Free.place(hero,Vector2(3.5,3.5)); s.tile(Vector2i(4,3)).terrain = "wall"
+	var slide: Vector2 = s.Free.steer(s,hero,Vector2(1,0.4))
+	check(slide.x == 3.5 and slide.y > 3.5 and s.Free.segment(s,s.Free.position(hero),slide,s.Free.RADIUS,hero,true),"joystick slides along a blocked wall without crossing it")
 	print("Free movement: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)

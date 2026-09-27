@@ -22,7 +22,8 @@ static func show_menu(ui) -> void:
 			ui.auto_explore_paused = not ui.auto_explore_paused
 			ui.world_destination = Vector2(-1,-1); ui.details_popup.hide())
 	if session != null and session.manual_mode:
-		ui.button(ui.modal_content,"야영",func(): ui.details_popup.hide(); ui.run_action(session.camp),session.can_camp().is_empty())
+		var camp = ui.button(ui.modal_content,"야영",func(): ui.details_popup.hide(); ui.run_action(session.camp),session.can_camp().is_empty())
+		camp.name = "CampAction"
 	ui.button(ui.modal_content,"기록",func(): show_logs(ui))
 	ui.button(ui.modal_content,"가방",func(): show_supplies(ui))
 	if session != null and session.manual_mode: ui.button(ui.modal_content,"인물",func(): show_character(ui,0,"상태"))
