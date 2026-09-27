@@ -95,7 +95,8 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 	if session.manual_mode:
 		build_manual_controls(ui)
 		if session.free_movement:
-			fullscreen(ui); cache_free(ui)
+			fullscreen(ui)
+		cache_manual(ui)
 		return
 	var party_row := HBoxContainer.new(); party_row.name = "PartyRow"
 	party_row.add_theme_constant_override("separation",5); ui.root_layout.add_child(party_row)
@@ -232,16 +233,12 @@ static func build_manual_controls(ui) -> void:
 	nav.add_theme_constant_override("separation",3); ui.root_layout.add_child(nav)
 	var attack = ui.action_button(nav,"공격",Art.ui_icon(0),func(): arm_attack(ui)); attack.name = "Attack"
 	var wait = ui.action_button(nav,"대기",Art.ui_icon(2),func(): ui.run_action(func(): return session.act("WAIT",session.party[0].pos))); wait.name = "Wait"; ui.wait_button = wait
-	if session.free_movement:
-		var retreat = ui.action_button(nav,"후퇴",Art.ui_icon(20),func(): ui.run_action(func():
-			var hero: Dictionary = session.party[0]
-			return Session.Free.submit(session,Session.Free.choice(hero,"MOVE",Session.Free.retreat(session,hero),"후퇴"))))
-		retreat.name = "Retreat"
-		return
-	ui.auto_explore_button = ui.action_button(nav,"중지" if ui.navigation.active else "탐색",Art.ui_icon(3),ui.toggle_explore,not session.in_combat())
+	ui.auto_explore_button = ui.action_button(nav,"탐험",Art.ui_icon(3),ui.toggle_explore)
+	ui.auto_explore_button.name = "Explore"
 	ui.auto_explore_button.action_mode = BaseButton.ACTION_MODE_BUTTON_PRESS
-	var tactics = ui.action_button(nav,"전술",Art.ui_icon(4),func(): show_manual_tactics(ui)); tactics.name = "Tactics"
-	ui.action_button(nav,"가방",Art.ui_icon(5),func(): Popups.show_supplies(ui))
+	var tactics = ui.action_button(nav,"전술",Art.ui_icon(4),func(): ui.stop_navigation(); show_manual_tactics(ui)); tactics.name = "Tactics"
+	ui.action_button(nav,"가방",Art.ui_icon(5),func(): Popups.show_supplies(ui)).name = "Bag"
+	sync_explore(ui)
 	for action in nav.get_children():
 		action.custom_minimum_size.y = 54
 		action.add_theme_font_size_override("font_size",11)
@@ -251,6 +248,16 @@ static func build_manual_controls(ui) -> void:
 			style.content_margin_left = 3
 			style.content_margin_right = 3
 			action.add_theme_stylebox_override(state,style)
+
+static func sync_explore(ui) -> void:
+	if not is_instance_valid(ui.auto_explore_button): return
+	var running: bool = ui.exploration_running()
+	var caption: String = "중지" if running else "탐험" if ui.session != null and ui.session.manual_mode else "자동탐험"
+	if ui.auto_explore_button.text != caption: ui.set_action_button_text(ui.auto_explore_button,caption)
+	var enabled: bool = running or ui.session != null and ui.session.on_floor() and not ui.session.in_combat() and not ui.session.auto.running
+	if ui.auto_explore_button.disabled != (not enabled):
+		ui.auto_explore_button.disabled = not enabled
+		ui.auto_explore_button.get_node("ActionCaption").add_theme_color_override("font_color",Color("e5e7e8") if enabled else Color("80888c"))
 
 static func build_stop_banner(ui) -> void:
 	var banner = ui.label(ui.root_layout,ui.stop_text,15)
@@ -455,21 +462,16 @@ static func fullscreen(ui) -> void:
 	ui.root_layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.root_layout.z_index = 5
 	for node in ui.root_layout.find_children("*","Container",true,false): node.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var header = ui.find_child("TopHUD",true,false)
-	var tactics = ui.button(header,"전술",func(): show_manual_tactics(ui)); tactics.name = "Tactics"
-	tactics.size_flags_horizontal = Control.SIZE_SHRINK_END; tactics.custom_minimum_size.x = 44
-	var bag = ui.button(header,"가방",func(): Popups.show_supplies(ui)); bag.name = "Bag"
-	bag.size_flags_horizontal = Control.SIZE_SHRINK_END; bag.custom_minimum_size.x = 44
 	ui.board.queue_redraw()
 
-static func free_hud_key(ui) -> Array:
+static func manual_hud_key(ui) -> Array:
 	var session = ui.session
 	return [session.get_instance_id(),session.depth,session.selected,
 		session.party.map(func(a): return int(a.id)),Session.Essences.equipped(session.party[0])]
 
-static func cache_free(ui) -> void:
+static func cache_manual(ui) -> void:
 	if not Session.MobileEffects.active(ui.session.party[0]): return
-	var widgets := {"key":free_hud_key(ui).duplicate(true),"members":[],"glyphs":[]}
+	var widgets := {"key":manual_hud_key(ui).duplicate(true),"members":[],"glyphs":[]}
 	for name in ["Location","TurnCount","FoodLabel","RecentLog"]:
 		widgets[name] = ui.root_layout.find_child(name,true,false)
 	for i in range(ui.session.party.size()):
@@ -482,12 +484,13 @@ static func cache_free(ui) -> void:
 
 ## Movement updates values without rebuilding Controls, renderer nodes, or
 ## container layout. A new screen/party/loadout still uses the normal builder.
-static func sync_free(ui) -> bool:
+static func sync_manual(ui) -> bool:
 	var session = ui.session
-	if session == null or not session.free_movement or not session.manual_mode or not session.on_floor() or ui.mode_arena_setup: return false
+	if session == null or not session.manual_mode or not session.on_floor() or ui.mode_arena_setup: return false
 	if not Session.MobileEffects.active(session.party[0]): return false
-	if ui.floor_widgets.is_empty() or ui.floor_widgets.key != free_hud_key(ui): return false
+	if ui.floor_widgets.is_empty() or ui.floor_widgets.key != manual_hud_key(ui): return false
 	var widgets: Dictionary = ui.floor_widgets
+	sync_explore(ui)
 	widgets.Location.text = "%d층" % session.depth
 	widgets.TurnCount.text = "%d턴" % session.turn_serial
 	widgets.FoodLabel.text = "식량 %d" % session.food

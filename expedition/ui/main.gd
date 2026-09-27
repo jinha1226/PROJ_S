@@ -153,7 +153,11 @@ func stop_navigation() -> void:
 	if session != null and session.free_movement: auto_explore_paused = true
 	navigation.stop(); navigation_clock = 0
 	queued_curio = {}
-	set_action_button_text(auto_explore_button,"탐색" if session != null and session.manual_mode else "자동탐험")
+	FloorHud.sync_explore(self)
+
+func exploration_running() -> bool:
+	if session != null and session.free_movement: return not auto_explore_paused or world_destination.x >= 0
+	return navigation.active
 
 func popup_open() -> bool:
 	return is_instance_valid(stone_drop_card) and stone_drop_card.visible or details_popup.visible or map_popup.visible or log_popup.visible or item_popup.visible or is_instance_valid(offer_popup) and offer_popup.visible
@@ -209,6 +213,7 @@ func _process(delta: float) -> void:
 			auto_clock = 0.0; auto_tick()
 	if session != null and session.free_movement:
 		free_navigation_process(delta); return
+	if grid_joystick_process(delta): return
 	if session == null or not navigation.active: return
 	if popup_open() or not get_window().has_focus(): stop_navigation(); return
 	navigation_clock += delta
@@ -219,6 +224,28 @@ func navigation_camera_busy() -> bool:
 	if session != null and session.free_movement: return is_instance_valid(board) and board.world_walks.has(int(session.party[0].id))
 	return session != null and not session.party.is_empty() and is_instance_valid(board) \
 		and board.walk_actor_id == int(session.party[0].id) and board.walk_elapsed < board.walk_duration
+
+func grid_joystick_process(delta: float) -> bool:
+	if session == null or session.free_movement or not session.manual_mode or not is_instance_valid(board) or not board.joystick_active: return false
+	if popup_open() or not get_window().has_focus() or session.phase not in ["EXPLORE","BATTLE"] or not mode.is_empty():
+		board.cancel_joystick(); return true
+	var direction: Vector2 = board.joystick_direction()
+	if direction == Vector2.ZERO:
+		navigation_clock = JOYSTICK_STEP_SECONDS; return true
+	# Combat consumes one deflection; returning to the center arms the next.
+	if session.in_combat() and board.joystick_step_used: return true
+	navigation_clock += delta
+	if navigation_clock < JOYSTICK_STEP_SECONDS or navigation_camera_busy(): return true
+	navigation_clock = minf(navigation_clock-JOYSTICK_STEP_SECONDS,JOYSTICK_STEP_SECONDS*0.5)
+	var axis := Vector2i(Vector2.RIGHT.rotated(roundf(direction.angle()/(PI/4.0))*PI/4.0).round())
+	var hero: Dictionary = session.party[0]
+	var point: Vector2i = hero.pos+axis
+	if not session.inside(point): return true
+	var occupant: Dictionary = session.at(point)
+	var kind: String = "ATTACK" if not occupant.is_empty() and Session.MobileEffects.hostile(session,hero,occupant) else "SWAP" if session.can_swap_step(hero,point) else "MOVE"
+	board.joystick_step_used = true
+	run_action(func(): return session.act(kind,point),true,JOYSTICK_STEP_SECONDS)
+	return true
 
 func navigation_tick() -> void:
 	if navigation_camera_busy():
@@ -305,9 +332,14 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func toggle_explore() -> void:
-	if navigation.active: stop_navigation(); return
+	if exploration_running(): stop_navigation(); return
+	if session == null or not session.on_floor(): return
 	mode = ""; pending_item = ""; reservation_actor = -1
-	if navigation.explore(session): set_action_button_text(auto_explore_button,"중지")
+	if navigation.explore(session):
+		if session.free_movement:
+			board.cancel_joystick(); world_destination = Vector2(-1,-1)
+			auto_explore_paused = false; navigation_clock = 0
+		FloorHud.sync_explore(self)
 	else: notice = "주변에 적 있음"; refresh()
 
 ## Popup content width. The window, not the HUD's own size, bounds a modal, and
@@ -496,7 +528,7 @@ func finish_presentation() -> void:
 func run_action(callback: Callable, navigating: bool = false, motion_seconds: float = -1) -> void:
 	if is_instance_valid(board) and board.is_presenting(): return
 	if not navigating: stop_navigation()
-	var free_combat_before: bool = session != null and session.free_movement and not session.party_enemies().is_empty()
+	var combat_before: bool = session != null and not session.party_enemies().is_empty()
 	var world_before: Dictionary = {}
 	if session != null and session.free_movement:
 		for actor in session.party+session.npcs+session.enemies: world_before[int(actor.id)] = Session.Free.position(actor)
@@ -525,15 +557,15 @@ func run_action(callback: Callable, navigating: bool = false, motion_seconds: fl
 	check_stop()
 	# Discovery brakes even if another actor blocked the submitted movement.
 	# Continuing the held drag cannot restart it; combat buttons work at once.
-	if session.free_movement and not free_combat_before and not session.party_enemies().is_empty(): stop_navigation()
-	if not (accepted and navigating and FloorHud.sync_free(self)): refresh()
+	if session.manual_mode and not combat_before and not session.party_enemies().is_empty(): stop_navigation()
+	if not (accepted and navigating and FloorHud.sync_manual(self)): refresh()
 	if accepted and session.free_movement and is_instance_valid(board):
 		board.animate_world(world_before,motion_seconds if motion_seconds > 0 else NAVIGATION_STEP_SECONDS if navigating else JOYSTICK_STEP_SECONDS)
-		if free_combat_before and session.party_enemies().is_empty():
+		if combat_before and session.party_enemies().is_empty():
 			session.party_command = "FOLLOW"; session.command_target = -1
 		return
 	if accepted and is_instance_valid(board) and session.on_floor() and not session.party.is_empty() and hero_before != session.party[0].pos:
-		board.animate_walk(int(session.party[0].id),hero_before,session.party[0].pos,NAVIGATION_STEP_SECONDS)
+		board.animate_walk(int(session.party[0].id),hero_before,session.party[0].pos,motion_seconds if motion_seconds > 0 else NAVIGATION_STEP_SECONDS)
 
 func queue_action(kind: String, point: Vector2i) -> void:
 	if session.reserve_action(reservation_actor,kind,point):
@@ -662,7 +694,7 @@ func on_world(point: Vector2) -> void:
 		if Session.MobileEffects.hostile(session,hero,actor):
 			session.command_target = int(actor.id); session.party_command = "ATTACK_TARGET"
 			run_action(func(): return Session.Free.attack(session)); return
-		if actor == hero: auto_explore_paused = not auto_explore_paused; return
+		if actor == hero: toggle_explore(); return
 		if session.wanderer(actor): Popups.show_npc(self,actor); return
 		var index: int = session.party.find(actor)
 		if index >= 0:
@@ -677,6 +709,7 @@ func on_world(point: Vector2) -> void:
 	# Ground presses anchor a floating joystick; only entities/features use taps.
 
 func free_navigation_process(delta: float) -> void:
+	FloorHud.sync_explore(self)
 	if popup_open() or not get_window().has_focus():
 		if is_instance_valid(board): board.cancel_joystick()
 		return
@@ -714,13 +747,13 @@ func free_navigation_tick() -> void:
 		if not session.party_enemies().is_empty(): return
 		navigation.automatic = true
 		var path: Array = navigation.frontier_path(session)
-		if path.size() < 2: auto_explore_paused = true; return
+		if path.size() < 2: stop_navigation(); return
 		world_destination = Session.Free.center(path.back())
 	var goal := world_destination
 	var dest := Session.Free.next(session,hero,goal,true)
-	if dest == Session.Free.position(hero): world_destination = Vector2(-1,-1); auto_explore_paused = true; return
+	if dest == Session.Free.position(hero): stop_navigation(); return
 	var hp: int = int(hero.hp)
 	run_action(func(): return Session.Free.submit(session,Session.Free.choice(hero,"MOVE",dest,"이동")),true)
 	if automatic: world_destination = Vector2(-1,-1)
 	elif Session.Free.position(hero).distance_to(goal) < 0.05: world_destination = Vector2(-1,-1)
-	if int(hero.hp) != hp or not session.party_enemies().is_empty(): world_destination = Vector2(-1,-1)
+	if int(hero.hp) != hp or not session.party_enemies().is_empty(): stop_navigation()

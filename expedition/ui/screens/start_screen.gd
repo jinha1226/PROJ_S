@@ -84,7 +84,6 @@ static func new_run(ui, record_codex: bool = true) -> void:
 	ui.stop_navigation()
 	if is_instance_valid(ui.board): ui.board.reset_motion()
 	ui.session = Session.new_run(randi(),ui.kit_choice,Session.MobileEffects.PROFILE)
-	ui.session.enable_free_movement()
 	if record_codex:
 		ui.session.codex = Session.Codex.read(); ui.session.records_codex = true
 		ui.session.floor_state.observe(ui.session)

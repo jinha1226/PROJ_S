@@ -19,6 +19,7 @@ var joystick_pointer := -2
 var joystick_origin := Vector2.ZERO
 var joystick_offset := Vector2.ZERO
 var joystick_dragged := false
+var joystick_step_used := false
 signal cell_pressed(cell: Vector2i)
 signal cell_inspected(cell: Vector2i)
 signal zoom_changed(side: int)
@@ -476,7 +477,7 @@ func invalidate_terrain() -> void:
 ## Retain the terrain draw commands between turns. Fractional camera movement
 ## only translates this layer; visibility and hazards are repainted on a turn.
 func sync_terrain_layer(camera: Dictionary) -> bool:
-	var retained: bool = session != null and session.free_movement and not is_presenting()
+	var retained: bool = session != null and session.manual_mode and not is_presenting()
 	if not is_instance_valid(terrain_layer):
 		terrain_layer = Node2D.new(); terrain_layer.name = "TerrainLayer"; terrain_layer.z_index = -1
 		add_child(terrain_layer)
@@ -949,7 +950,7 @@ func draw_effect_visual(effect: Dictionary, canvas) -> void:
 func _input(event: InputEvent) -> void:
 	# HUD refreshes reparent this map. Keep the active finger captured even if
 	# it crosses a HUD button or the original GUI touch capture was cleared.
-	if not fullscreen or not joystick_active: return
+	if not joystick_active: return
 	var owned := false
 	if event is InputEventScreenDrag: owned = event.index == joystick_pointer
 	elif event is InputEventScreenTouch: owned = not event.pressed and event.index == joystick_pointer
@@ -959,7 +960,7 @@ func _input(event: InputEvent) -> void:
 		joystick_input(event); get_viewport().set_input_as_handled()
 
 func _gui_input(event: InputEvent) -> void:
-	if fullscreen and session != null and session.free_movement and joystick_input(event):
+	if session != null and session.manual_mode and joystick_input(event):
 		accept_event(); return
 	if event is InputEventScreenTouch:
 		suppress_mouse_until = Time.get_ticks_msec()+500
@@ -995,16 +996,19 @@ func begin_joystick(at: Vector2, pointer: int) -> void:
 	gesture_started.emit()
 	joystick_active = true; joystick_pointer = pointer
 	joystick_origin = at; joystick_offset = Vector2.ZERO; joystick_dragged = false
+	joystick_step_used = false
 	touch_pressed_at = Time.get_ticks_msec()
 	queue_redraw()
 
 func drag_joystick(at: Vector2) -> void:
 	joystick_offset = (at-joystick_origin).limit_length(JOYSTICK_RADIUS)
 	if joystick_offset.length() > JOYSTICK_DEADZONE: joystick_dragged = true
+	else: joystick_step_used = false
 	queue_redraw()
 
 func cancel_joystick() -> void:
 	joystick_active = false; joystick_pointer = -2; joystick_offset = Vector2.ZERO
+	joystick_step_used = false
 	queue_redraw()
 
 func end_joystick(at: Vector2, canceled: bool = false) -> void:
