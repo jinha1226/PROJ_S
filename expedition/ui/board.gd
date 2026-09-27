@@ -41,6 +41,10 @@ var companion_previews: Array = []
 var touch_pressed_at := 0
 signal playback_finished
 const Vfx = preload("res://expedition/ui/effect_vfx.gd")
+const StatusVfx = preload("res://expedition/ui/status_vfx.gd")
+var status_visual_clock := 0.0
+var status_redraw_clock := 0.0
+var status_visual_active := false
 const ActorVisual = preload("res://expedition/ui/battle_actor_visual.gd")
 var playback: Array = []
 var playback_clock := 0.0
@@ -227,6 +231,15 @@ func preview_rect(actor: Dictionary) -> Rect2:
 	return Rect2(Vector2(clampf(center.x-29,0,maxf(0,size.x-58)),maxf(origin.y,center.y-half_width-19)),Vector2(58,18))
 
 func _process(delta: float) -> void:
+	# This clock keeps moving while the player waits; it never ticks statuses.
+	if is_visible_in_tree():
+		status_visual_clock = fposmod(status_visual_clock+delta,4096.0)
+		status_redraw_clock += delta
+		if status_redraw_clock >= 1.0/30.0:
+			status_redraw_clock = fposmod(status_redraw_clock,1.0/30.0)
+			var active: bool = not status_actors().is_empty()
+			if is_instance_valid(foreground) and (active or status_visual_active): foreground.queue_redraw()
+			status_visual_active = active
 	var had_labels: bool = not skill_badges.is_empty() or not intent_ui.speech.is_empty()
 	if walk_actor_id >= 0:
 		walk_elapsed += delta
@@ -581,7 +594,7 @@ func draw_distant_npcs() -> void:
 		draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
 
 func paint_actor_base(center: Vector2, actor: Dictionary) -> void:
-	var color := HOSTILE_NPC_COLOR if session.wanderer(actor) and actor.get("hostile",false) else NPC_COLOR if session.wanderer(actor) else Color("eea38c") if actor.enemy else Color("b9dcd6")
+	var color := HOSTILE_NPC_COLOR if visual_wanderer(actor) and actor.get("hostile",false) else NPC_COLOR if visual_wanderer(actor) else Color("eea38c") if actor.enemy else Color("b9dcd6")
 	var base := center+Vector2(0,half_width*0.65)
 	if actor.enemy:
 		outline(PackedVector2Array([base+Vector2(-half_width*0.65,0),base+Vector2(0,-half_width*0.23),base+Vector2(half_width*0.65,0),base+Vector2(0,half_width*0.23)]),color,1.5)
@@ -590,16 +603,34 @@ func paint_actor_base(center: Vector2, actor: Dictionary) -> void:
 		draw_arc(Vector2.ZERO,half_width*0.65,0,TAU,32,color,2.0,true)
 		draw_set_transform(impact_transform().offset,0,Vector2.ONE*impact_transform().zoom)
 
+func visual_wanderer(actor: Dictionary) -> bool:
+	return session.wanderer(actor) and not bool(actor.get("party_member",false))
+
+func status_actors() -> Array:
+	if session == null: return []
+	var actors: Array = visual_state.get("actors",[]) if is_presenting() else session.party+session.enemies+session.npcs
+	var seen: Dictionary = visual_state.get("visible",{}) if is_presenting() else session.floor_state.visible
+	var time: int = int(visual_state.get("time",session.time)) if is_presenting() else int(session.time)
+	return actors.filter(func(actor): return seen.has(actor.pos) and not StatusVfx.styles(actor,time).is_empty() and Rect2(Vector2(-half_width*2,-half_width*2),size+Vector2.ONE*half_width*4).has_point(display_center(actor)))
+
+func draw_status_visuals(canvas) -> void:
+	if session == null: return
+	var time: int = int(visual_state.get("time",session.time)) if is_presenting() else int(session.time)
+	for actor in status_actors():
+		var foot := display_center(actor)+hit_offset(actor.pos)+Vector2(0,half_width*0.69)
+		StatusVfx.draw(canvas,actor,time,foot,half_width*(1.25 if actor.get("boss",false) else 1.0),status_visual_clock)
+
 func _draw_foreground(canvas: Node2D) -> void:
 	if session == null or session.tiles.is_empty(): return
 	var camera := impact_transform()
 	canvas.draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
+	draw_status_visuals(canvas)
 	var actors: Array = visual_state.actors if is_presenting() else session.party+session.enemies+session.npcs
 	for actor in actors:
 		if actor.hp <= 0: continue
 		# A recruit is a companion now: the third colour and the name tag belong
 		# to those still out on their own.
-		var npc: bool = session.wanderer(actor)
+		var npc: bool = visual_wanderer(actor)
 		var seen: bool = (visual_state.visible if is_presenting() else session.floor_state.visible).has(actor.pos)
 		# An awake npc keeps its tag out of sight; anyone else is only drawn in the light.
 		if not seen and not (npc and actor.get("awake",false)): continue

@@ -4,6 +4,7 @@ const Fixture = preload("res://tests/floor_fixture.gd")
 const Board = preload("res://expedition/ui/board.gd")
 const Vfx = preload("res://expedition/ui/effect_vfx.gd")
 const Presentation = preload("res://expedition/ui/battle_presentation.gd")
+const StatusVfx = preload("res://expedition/ui/status_vfx.gd")
 var checks := 0
 var failures := 0
 
@@ -141,6 +142,44 @@ func run() -> void:
 	check(is_equal_approx(board.clock_of(second),0.3-board.STAGGER),"auxiliary effects do not delay the next hit")
 	board.effects = [event]
 	check(board.hit_offset(hero.pos) == Vector2.ZERO,"VFX alone cannot lunge the caster")
+	# Sustained visuals follow actual state even after the one-shot has expired.
+	foe.statuses = {"burn":s.time+300,"freeze":s.time+300,"slow":s.time+300,"poison":s.time+300,"bleed":s.time+300,"charge":s.time+300}
+	s.floor_state.visible[foe.pos] = true
+	canvas.strokes.clear(); board.effects.clear(); board.status_visual_clock = 12.13
+	board.draw_status_visuals(canvas)
+	check(not canvas.strokes.is_empty(),"status loops persist independently of attack effects")
+	check(not StatusVfx.styles(foe,s.time).has("slow"),"freeze hides redundant slow marks")
+	var saved_strokes: Array = canvas.strokes.duplicate(true)
+	var saved_statuses: Dictionary = foe.statuses.duplicate(true)
+	var saved_time: int = s.time; var saved_roll: int = s.roll_serial
+	board.status_visual_clock += 0.25; canvas.strokes.clear(); board.draw_status_visuals(canvas)
+	check(saved_strokes != canvas.strokes and foe.statuses == saved_statuses and s.time == saved_time and s.roll_serial == saved_roll,"loops animate while combat and status durations stay paused")
+	var recorded := Presentation.snapshot(s)
+	foe.statuses.clear(); canvas.strokes.clear(); board.draw_status_visuals(canvas)
+	check(canvas.strokes.is_empty(),"cleansing immediately removes sustained geometry")
+	board.play_frames([{"before":recorded,"after":recorded,"effects":[]}])
+	s.time += 1000; s.floor_state.visible.erase(foe.pos)
+	canvas.strokes.clear(); board.draw_status_visuals(canvas)
+	check(not canvas.strokes.is_empty(),"playback retains copied statuses and historical time without reading future state")
+	board.playback.clear(); board.visual_state = {}; canvas.strokes.clear()
+	foe.statuses = saved_statuses; s.time = saved_time; board.draw_status_visuals(canvas)
+	check(canvas.strokes.is_empty(),"unseen actors never reveal status animations")
+	s.floor_state.visible[foe.pos] = true; foe.hp = 0; canvas.strokes.clear(); board.draw_status_visuals(canvas)
+	check(canvas.strokes.is_empty(),"death removes sustained visuals")
+	foe.hp = foe.max_hp; foe.statuses = {"burn":s.time-1}
+	check(StatusVfx.styles(foe,s.time).is_empty(),"expired status clocks do not produce stale loops")
+	for status in ["burn","poison","bleed","freeze","charge"]:
+		foe.statuses = {status:s.time+300}; canvas.strokes.clear()
+		StatusVfx.draw(canvas,foe,s.time,Vector2(100,100),8,10.0)
+		check(not canvas.strokes.is_empty(),status+" remains visible between animation pulses at mobile tile scale")
+	for status in Session.Statuses.HARMFUL:
+		foe.statuses = {status:s.time+300}
+		check(not StatusVfx.styles(foe,s.time).is_empty(),status+" has a sustained mark")
+	foe.statuses.clear()
+	var idle_recorder = Presentation.new(); idle_recorder.begin(s)
+	s.time += 100; idle_recorder.finish(s)
+	check(idle_recorder.frames.is_empty(),"clock-only changes do not add empty playback frames")
+	s.time = saved_time
 	board.free()
 	# Exercise native CanvasItem drawing, not just the geometry collector.
 	var scene = load("res://expedition/ui/main.tscn").instantiate()
@@ -150,5 +189,14 @@ func run() -> void:
 	for style in Vfx.PALETTE:
 		scene.board.effects.append({"kind":"VFX","vfx":style,"from":scene.session.party[0].pos,"cell":scene.session.enemies[0].pos})
 	scene.board.queue_redraw(); await process_frame; await process_frame
+	for actor in scene.session.party+scene.session.enemies:
+		if actor.hp <= 0: continue
+		actor.statuses = {"burn":scene.session.time+300,"poison":scene.session.time+300,"bleed":scene.session.time+300,"freeze":scene.session.time+300,"charge":scene.session.time+300,"blessing":scene.session.time+300}
+	await process_frame; await process_frame
+	var paused_time: int = scene.session.time
+	var visual_clock: float = scene.board.status_visual_clock
+	scene.board._process(0.08)
+	check(scene.board.status_visual_clock > visual_clock and scene.session.time == paused_time,"idle board continues cosmetic loops without taking a turn")
+	await process_frame; await process_frame
 	scene.queue_free(); await process_frame
 	print("Effect VFX: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
