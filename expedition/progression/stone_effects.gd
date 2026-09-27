@@ -81,7 +81,7 @@ static func heal(s, actor: Dictionary, amount: int, healer: Dictionary = {}, lif
 	var before: int = int(actor.hp)
 	actor.hp = mini(int(actor.max_hp),before+amount)
 	var gained: int = int(actor.hp)-before
-	if gained > 0 or (lifesteal and amount > 0):
+	if gained > 0 or (not s.MobileEffects.active(actor) and lifesteal and amount > 0):
 		if gained > 0:
 			s.Body.heal(actor)
 			if not s.effect_source.is_empty(): s.EffectReport.note(s,int(s.effect_source.owner),str(s.effect_source.effect),"heal",gained)
@@ -240,7 +240,7 @@ static func after_hit(s, target: Dictionary, attacker: Dictionary, form: String,
 	if lost > 0:
 		attacker.effect_target = int(target.get("id",-1)); attacker.effect_hit_round = int(s.time)/100
 		fire(s,"HIT",ctx)
-	if not bool(ctx.spell) and form == "physical" and alive(target) and bool(ctx.ranged) and not has(attacker,"ORC_THROW"): second_shot(s,attacker,target)
+	if not s.MobileEffects.active(attacker) and not bool(ctx.spell) and form == "physical" and alive(target) and bool(ctx.ranged) and not has(attacker,"ORC_THROW"): second_shot(s,attacker,target)
 	fire(s,"STRUCK",ctx)
 
 ## 오크 투척병 and 원거리 6: one more ranged attack, once an action.

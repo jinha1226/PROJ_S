@@ -17,14 +17,19 @@ static func roll(s, source: Dictionary, target: Dictionary, lane: String, modulu
 	s.roll_serial += 1
 	return s.Hexaco.sample(s.seed_value, s.time * 37 + int(source.get("id", -1)) * 997 + int(target.get("id", -1)) * 17 + s.roll_serial, lane, modulus)
 
-static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
+static func attack(s, source: Dictionary, target: Dictionary, extra_damage: int = -1, hit_form: String = "HIT") -> Dictionary:
 	var out := {"hit":false, "evaded":false, "blocked":false, "damage":0}
 	if target.is_empty() or int(target.hp) <= 0: return out
 	source["physical_blow"] = true
 	Stats.Equipment.attack_noise(s,source)
 	if not bool(source.get("enemy",false)) and bool(target.get("enemy",false)):
 		Hunt.record(source,int(target.id))
+	var automatic: bool = s.MobileEffects.active(source) or bool(source.get("aw_pet",false))
+	var ctx := StoneEffects.context(s,source,target)
+	if automatic and hit_form == "HIT": s.MobileEffects.prepare_attack(s,source,target,ctx)
 	var offense: Dictionary = Stats.stats(s, source)
+	if extra_damage >= 0: offense.damage = extra_damage
+	elif automatic: offense.damage = int(offense.damage)*(100+int(ctx.get("attack_percent",0)))/100
 	var defense: Dictionary = Stats.stats(s, target)
 	# 왜곡 takes thirty points off whatever the attacker can still aim.
 	# 회피 % from the soul stones rides on the evasion's own two percent a point.
@@ -33,13 +38,18 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 	if bool(source.get("enemy", false)) and gap > 1: dodge = mini(RANGED_DODGE_CAP, dodge + RANGED_DODGE_PER_TILE * (gap - 1))
 	if StoneEffects.modifier(s,"zero_dodge",target) > 0: dodge = 0
 	if source.get("statuses", {}).has("distort"): dodge = mini(95, dodge + 30)
-	if roll(s, source, target, "dodge", 100) < dodge:
-		StoneEffects.fire(s,"DODGE",StoneEffects.context(s,source,target))
+	dodge = mini(95,dodge+s.MobileEffects.confusion_penalty(source))
+	var cover_dodge: int = s.MobileEffects.ranged_dodge(s,target,source)
+	if cover_dodge > 0: dodge = mini(95,dodge+cover_dodge)
+	var evaded: bool = roll(s, source, target, "dodge", 100) < dodge
+	if hit_form == "HIT": s.MobileEffects.attempted(target)
+	if evaded:
+		if hit_form == "HIT": StoneEffects.fire(s,"DODGE",StoneEffects.context(s,source,target))
 		out.evaded = true; s.message(str(target.name) + " 회피")
 		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"회피","vfx":"dodge","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
 		return out
 	if roll(s, source, target, "block", 100) < int(defense.sh):
-		StoneEffects.fire(s,"BLOCK",StoneEffects.context(s,source,target))
+		if hit_form == "HIT": StoneEffects.fire(s,"BLOCK",StoneEffects.context(s,source,target))
 		out.blocked = true; s.message(str(target.name) + " 방패 방어")
 		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"막음","vfx":"shield","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
 		if StoneEffects.has(target,"SHIELD_STANCE"): StoneEffects.proc(s,target.pos,"막음!","buff")
@@ -53,8 +63,11 @@ static func attack(s, source: Dictionary, target: Dictionary) -> Dictionary:
 	var physical: Dictionary = Turns.physical(raw, 950, 0, roll(s, source, target, "absorb", ac + 1))
 	out.hit = true
 	var was: String = Forms.begin(s,form)
-	out.damage = damage(s, source, target, int(physical.damage), "physical")
-	if target.hp > 0:
+	var previous_context: Dictionary = s.aw_attack_context
+	s.aw_attack_context = ctx if automatic and hit_form == "HIT" else {}
+	out.damage = damage(s, source, target, int(physical.damage), "physical",0,hit_form)
+	s.aw_attack_context = previous_context
+	if target.hp > 0 and hit_form == "HIT":
 		match str(offense.brand):
 			"fire", "ice": out.damage += damage(s, source, target, 4, str(offense.brand),0,Reactions.EXTRA_FORM)
 			"venom":
@@ -93,9 +106,15 @@ static func damage(s, source: Dictionary, target: Dictionary, raw: int, element:
 	if target.get("statuses",{}).has("marked"): amount = amount * 12 / 10
 	var form: String = element if hit_form == Reactions.HIT_FORM else hit_form
 	var visual_element := hit_form if hit_form in [Reactions.COUNTER_FORM,"RETALIATE"] else element
-	var received: Dictionary = {"vfx":StoneEffects.Vfx.damage_style(visual_element,str(s.blow_form),source.is_empty()),"element":element}
+	var received: Dictionary = {"vfx":StoneEffects.Vfx.damage_style(visual_element,str(s.blow_form),source.is_empty()),"element":element,"hit_form":hit_form}
+	s.aw_hold += 1
 	var lost: int = s.after_damage(target, amount, int(source.get("id", 999)), form,received)
 	var victim: Dictionary = received.get("target",target)
+	if hit_form == Reactions.HIT_FORM and lost > 0 and not s.aw_attack_context.is_empty():
+		var facts: Dictionary = s.aw_attack_context.duplicate()
+		facts.merge(received,true); facts.target = victim; facts.lost = lost
+		s.MobileEffects.landed(s,source,victim,facts)
+	if hit_form == Reactions.HIT_FORM and lost > 0: s.MobileEffects.struck(s,victim,source,received)
 	if hit_form in [Reactions.HIT_FORM, Reactions.EXTRA_FORM]: Reactions.on_hit(s, source, victim, element, lost, hit_form)
 	# The stones' status procs come after the reactions, like the element sets'
 	# own, so a blow never shatters the ice its own proc just laid.
@@ -104,6 +123,8 @@ static func damage(s, source: Dictionary, target: Dictionary, raw: int, element:
 		Forms.wound(s,source,victim,lost)
 		Forms.supplemental(s,source,victim,lost)
 	Forms.end(s,previous)
+	s.aw_hold -= 1
+	if s.aw_hold == 0: s.MobileEffects.drain(s)
 	return lost
 
 static func move_time(s, actor: Dictionary, cell: Vector2i) -> int:

@@ -23,11 +23,21 @@ static func load_arena_presets() -> Dictionary:
 ## A throwaway floor battle: full health, every part available, the members'
 ## stances and slots set as asked, dropped into an arena the simulator also
 ## uses. The town session is never involved.
-static func arena_test(s, p_seed: int, party_size: int, arena: Dictionary, members: Array):
+static func arena_test(s, p_seed: int, party_size: int, arena: Dictionary, members: Array, profile: String = "legacy"):
+	s.MobileEffects.enable(s,profile)
 	s.grant_test_loadout()
 	for i in range(s.party.size()):
 		var actor: Dictionary = s.party[i]
 		var setup: Dictionary = members[i] if i < members.size() else {}
+		if profile == s.MobileEffects.PROFILE:
+			actor.level = 10; actor.equipped_abilities = ["","","","","",""]
+			actor.essences = {}; actor.rules = []
+			for stone in setup.get("auto_parts",[]):
+				if not str(stone).is_empty(): Essences.bind(actor,str(stone))
+			actor.stance = str(setup.get("stance","CHARGER"))
+			if party_size == 1 and actor.stance == "GUARDIAN": actor.stance = "CHARGER"
+			s.StatSheet.refresh_pools(s,actor)
+			continue
 		var applied := Builds.apply(s,actor,str(setup.get("build","")))
 		var stance: String = str(setup.get("stance",actor.stance))
 		if stance == "GUARDIAN" and party_size == 1: stance = "CHARGER"

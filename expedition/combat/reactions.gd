@@ -40,6 +40,7 @@ static func round_of(s) -> int:
 static func begin_action(s) -> void:
 	s.action_serial += 1
 	s.effect_depth = 0
+	s.aw_fired.clear()
 	for actor in s.party+s.npcs+s.enemies:
 		actor.repeat_reaction = false
 		s.StoneEffects.Stacks.expire(actor,"action",int(s.time))
@@ -85,6 +86,7 @@ static func refresh_wet(s) -> void:
 ## as it is hung. An extra hit reacts with the ground and the statuses but
 ## carries no proc and no extra of its own.
 static func on_hit(s, source: Dictionary, target: Dictionary, element: String, amount: int, form: String) -> void:
+	if s.MobileEffects.active(source) or bool(source.get("aw_pet",false)) or str(s.effect_source.get("policy","")) == s.MobileEffects.PROFILE: return
 	if source.is_empty() or form not in [HIT_FORM,EXTRA_FORM]: return
 	target["last_hit"] = amount
 	if target.has("pos"): tile_react(s,target.pos,element,amount,source)
@@ -189,6 +191,7 @@ static func announce(s, cell: Vector2i, key: String, source: Dictionary) -> void
 ## element that just struck it. `form` is "HIT", "EXTRA" or "STATUS" (a status
 ## was just hung).
 static func status_react(s, target: Dictionary, source: Dictionary, element: String, form: String) -> void:
+	if s.MobileEffects.active(source) or bool(source.get("aw_pet",false)) or str(s.effect_source.get("policy","")) == s.MobileEffects.PROFILE: return
 	if int(target.get("hp",0)) <= 0 or not target.has("pos"): return
 	element = element_of(element)
 	var worn: Dictionary = target.get("statuses",{})

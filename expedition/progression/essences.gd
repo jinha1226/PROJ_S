@@ -276,6 +276,8 @@ static func choose_spell(s, actor: Dictionary, id: String, spell_id: String) -> 
 ## Each part keeps its own choice. Invalid legacy choices fall back to the
 ## first linked unlocked spell; level-up also activates previously locked stones.
 static func sync_spells(actor: Dictionary) -> void:
+	if str(actor.get("combat_profile","legacy")) == "attack_wait_v1":
+		actor.prepared = []; return
 	normalize_actor(actor)
 	var chosen: Dictionary = actor.get("essence_spells",{})
 	var order: Array = equipped(actor)

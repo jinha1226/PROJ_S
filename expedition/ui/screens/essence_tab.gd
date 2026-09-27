@@ -2,6 +2,7 @@ extends RefCounted
 ## The 영혼석 tab: slots, active combos and the absorbed collection.
 ## Absorption stays in inventory and permanently fills one of six slots.
 ## Casters may choose spells; shared text helpers also serve item inspection.
+const Mobile = preload("res://expedition/progression/attack_wait.gd")
 const Keywords = preload("res://expedition/ui/screens/keyword_popup.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const TagSets = preload("res://expedition/progression/tag_sets.gd")
@@ -41,7 +42,14 @@ static func stat_line(id: String) -> String:
 	return "기본 스탯 없음" if parts.is_empty() else " · ".join(parts)
 
 ## The stone's headline effect: its name and what it does.
-static func effect_line(id: String) -> String:
+static func effect_line(id: String, actor: Dictionary = {}) -> String:
+	if Mobile.active(actor):
+		var effect := Mobile.row(id)
+		var names := {"burn":"화상","poison":"중독","slow":"둔화","charge":"전하","bleed":"출혈","confuse":"혼란","weak":"약화","wet":"젖음","freeze":"빙결","death_mark":"사령 낙인","exposed":"약점"}
+		var requirements: Array = effect.get("requires",effect.get("requires_before",[])).map(func(key): return str(names.get(key,key)))
+		if effect.has("damage_element"): requirements = requirements.duplicate(); requirements.append("직접 "+str(Essences.ELEMENTS.get(effect.damage_element,effect.damage_element))+" 피해")
+		if effect.get("needs_pet",false): requirements = requirements.duplicate(); requirements.append("자기 소환수")
+		return "%s · %s%s" % [Mobile.ROLE_NAMES.get(effect.get("role",""),""),effect.get("text","")," · 조건: "+"/".join(requirements) if not requirements.is_empty() else ""]
 	var effect: String = StoneEffects.effect_of(id)
 	if effect.is_empty(): return "효과 없음"
 	var row: Dictionary = StoneEffects.EFFECTS[effect]
@@ -56,6 +64,7 @@ static func active_line(id: String) -> String:
 
 ## Preview every linked spell before a permanent choice, including later unlocks.
 static func spell_preview(parent: Node, id: String, actor: Dictionary = {}) -> void:
+	if Mobile.active(actor): return
 	var spells := Essences.spell_catalog(id)
 	if spells.is_empty(): return
 	label(parent,"주문",15)
@@ -89,7 +98,7 @@ static func build(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	list.add_child(slots)
 	var open: int = Essences.slot_count(actor)
 	for slot in range(Essences.MAX_SLOTS): slot_cell(ui,slots,actor,slot,slot < open)
-	sets(list,actor)
+	if not Mobile.active(actor): sets(list,actor)
 	summary(list,actor)
 
 static func slot_cell(ui, grid: GridContainer, actor: Dictionary, slot: int, open: bool) -> void:
@@ -147,7 +156,7 @@ static func summary(list: VBoxContainer, actor: Dictionary) -> void:
 	var box := card(list,"영혼석 효과","EssenceSummary")
 	var fixed := Summary.stats(actor)
 	if not fixed.is_empty(): label(box,fixed,13).name = "EssenceSummaryStats"
-	var passive := Summary.passives(actor)
+	var passive := Mobile.summary(actor) if Mobile.active(actor) else Summary.passives(actor)
 	if not passive.is_empty(): label(box,passive,13).name = "EssenceSummaryPassives"
 	var names: Array = []
 	for id in Abilities.held(actor):
@@ -166,7 +175,9 @@ static func slot_detail(ui, slot: int, id: String) -> void:
 	label(ui.item_detail,Essences.title(id),20)
 	if not tag_line(id).is_empty(): label(ui.item_detail,tag_line(id),13)
 	label(ui.item_detail,stat_line(id),13)
-	label(ui.item_detail,effect_line(id),13).custom_minimum_size.x = minf(ui.popup_width(),ui.size.x-40)
+	label(ui.item_detail,effect_line(id,actor),13).custom_minimum_size.x = minf(ui.popup_width(),ui.size.x-40)
+	if Mobile.active(actor):
+		ui.button(ui.item_detail,"닫기",func(): ui.item_popup.hide()); ui.popup_item_detail(); return
 	Keywords.chips(ui,ui.item_detail,StoneEffects.EFFECTS.get(StoneEffects.effect_of(id),{}).get("keywords",[]))
 	var extra: String = str(Essences.row(id).get("active",""))
 	if Abilities.has(extra): label(ui.item_detail,str(Abilities.definition(extra).description),13)

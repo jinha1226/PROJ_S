@@ -29,6 +29,8 @@ static func sense(s, npc: Dictionary) -> bool:
 ## utility table, a duo's cohesion coming before the mode's own step.
 static func turn(s, npc: Dictionary) -> void:
 	npc.ap = 1
+	if npc.get("aw_pet",false):
+		pet_turn(s,npc); return
 	if npc.get("fallen",false):
 		s.BossAI.turn(s,npc)
 		return
@@ -158,6 +160,24 @@ static func explore_goal(s, npc: Dictionary) -> Vector2i:
 static func perform(s, npc: Dictionary, choice: Dictionary) -> void:
 	var kind: String = str(choice.get("kind","WAIT"))
 	var cell: Vector2i = choice.get("cell",npc.pos)
-	if not s.act_as(npc,kind,cell,false): s.act_as(npc,"WAIT",npc.pos,false)
+	if not s.act_as(npc,kind,cell,false,str(choice.get("mistake","")) != "HESITATE" and str(choice.get("tag","")) != "WAIT:yield"): s.act_as(npc,"WAIT",npc.pos,false,false)
 	npc.explains.append({"round":s.round_number,"kind":kind,"cell":cell,"explain":choice.get("explain",[])})
 	while npc.explains.size() > 20: npc.explains.pop_front()
+
+## Automatic summons perceive for themselves and focus only on a legal target.
+static func pet_turn(s, pet: Dictionary) -> void:
+	if s.status_blocks(pet,"ATTACK"): return
+	var owner: Dictionary = s.actor_by_id(int(pet.get("summoner",-1)))
+	if owner.is_empty() or int(owner.hp) <= 0: return
+	var foes: Array = s.MobileEffects.targets(s,pet,pet.pos,5)
+	foes.sort_custom(func(a,b):
+		var fa: bool = int(a.id) == int(pet.get("aw_focus",-1))
+		var fb: bool = int(b.id) == int(pet.get("aw_focus",-1))
+		if fa != fb: return fa
+		var da: int = s.MobileEffects.distance(pet.pos,a.pos); var db: int = s.MobileEffects.distance(pet.pos,b.pos)
+		return da < db if da != db else int(a.id) < int(b.id))
+	if not foes.is_empty():
+		if s.melee_reach(pet.pos,foes[0].pos): s.act_as(pet,"ATTACK",foes[0].pos,false); return
+		if not s.status_blocks(pet,"MOVE"): close_on(s,pet,Stances.adjacent_free(s,foes[0].pos),foes[0].pos)
+	elif s.distance(pet.pos,owner.pos) > 1 and not s.status_blocks(pet,"MOVE"):
+		close_on(s,pet,Stances.adjacent_free(s,owner.pos),owner.pos)

@@ -26,6 +26,7 @@ static func effects(actor: Dictionary) -> Array:
 	for id in ids:
 		var effect: String = str(Essences.row(str(id)).get("effect",""))
 		if not effect.is_empty() and effect not in result: result.append(effect)
+	if str(actor.get("combat_profile","legacy")) == "attack_wait_v1" and not bool(actor.get("enemy",false)): result = []
 	if not bool(actor.get("enemy",false)):
 		for effect in Equipment.effects(actor):
 			if effect not in result: result.append(effect)
@@ -51,6 +52,7 @@ static func owners(s, when: String, ctx: Dictionary) -> Array:
 	return [source] if not source.is_empty() else []
 
 static func fire(s, when: String, ctx: Dictionary) -> void:
+	if when not in ["ATTACK","HIT","STRUCK"]: s.MobileEffects.fire(s,when,ctx)
 	if when not in EVENTS or int(s.effect_depth) >= MAX_DEPTH: return
 	s.effect_depth += 1
 	var seen: Dictionary = {}
@@ -95,7 +97,8 @@ static func modifier(s, key: String, actor: Dictionary, ctx: Dictionary = {}) ->
 			if not caster.is_empty(): candidates.append(caster)
 	var seen: Dictionary = {}
 	var groups: Dictionary = {}
-	var total := Equipment.bonus(actor,key) if key not in ["speed","dodge","hp","mp","atk","ac","ev","sh","spell"] else 0
+	var total: int = s.MobileEffects.modifier(s,key,actor) if s != null else 0
+	total += Equipment.bonus(actor,key) if key not in ["speed","dodge","hp","mp","atk","ac","ev","sh","spell"] else 0
 	for buff in actor.get("effect_mods",{}).values():
 		if s != null and int(buff.get("until",0)) > int(s.time): total += int(buff.get("mods",{}).get(key,0))
 	for owner in candidates:

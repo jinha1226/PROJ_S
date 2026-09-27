@@ -3,6 +3,7 @@ extends RefCounted
 ## are changed here. Events are emitted only after the gameplay effect succeeds.
 const DURATION := 0.46
 const STATUS := {
+	"charge":"lightning", "blessing":"buff", "death_mark":"hex",
 	"burn":"fire", "freeze":"ice", "slow":"slow", "poison":"poison", "bleed":"bleed",
 	"bind":"bind", "stun":"stun", "confuse":"confuse", "dominate":"dominate",
 	"fracture":"fracture", "exposed":"mark", "marked":"mark", "vulnerable":"mark",

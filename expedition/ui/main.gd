@@ -37,7 +37,7 @@ var session = null
 ## Battle test mode: the town session set aside while a throwaway arena session
 ## fights, the setup screen's own state, and whether that screen is showing.
 
-var arena_config := {"arena":"early_hob","seed":0,"fixed_seed":false,"size":1,
+var arena_config := {"profile":"legacy","arena":"early_hob","seed":0,"fixed_seed":false,"size":1,
 	"members":[{"stance":"CHARGER","parts":["",""],"build":""},{"stance":"CHARGER","parts":["",""],"build":""},{"stance":"CHARGER","parts":["",""],"build":""}],
 	"custom":[["",""],["",""],["",""]]}
 var mode_arena_setup := false
@@ -172,7 +172,7 @@ func start_arena() -> void:
 	if str(arena_config.arena) == "custom":
 		arena.members = arena_config.custom.filter(func(row): return not str(row[0]).is_empty()).map(func(row): return [str(row[0]),str(row[1])])
 	details_popup.hide()
-	session = Session.arena_test(int(arena_config.seed),int(arena_config.size),arena,arena_config.members)
+	session = Session.arena_test(int(arena_config.seed),int(arena_config.size),arena,arena_config.members,str(arena_config.get("profile","legacy")))
 	session.manual_mode = true
 	mode_arena_active = true
 	mode = ""; pending_attack = {}; show_attack_range = false

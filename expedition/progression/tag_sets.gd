@@ -43,6 +43,7 @@ static func bracket_of(stones: int) -> int:
 ## A role combo's bracket on `actor`; the final boss's `set_boost` lifts a
 ## reached bracket one step (2→4, 4→6).
 static func bracket(actor: Dictionary, role: String) -> int:
+	if str(actor.get("combat_profile","legacy")) == "attack_wait_v1": return 0
 	var reached := bracket_of(count(actor,role))
 	if reached > 0 and reached < 6 and bool(actor.get("set_boost",false)): reached += 2
 	return reached
@@ -53,6 +54,7 @@ static func step(stones: int) -> int:
 
 ## A role tag reads its combo bracket, an element tag its set step.
 static func level(actor: Dictionary, tag: String) -> int:
+	if str(actor.get("combat_profile","legacy")) == "attack_wait_v1": return 0
 	if ROLE_TEXT.has(tag): return bracket(actor,tag)
 	var reached := step(count(actor,tag))
 	return 3 if reached == 2 and bool(actor.get("set_boost",false)) else reached

@@ -163,7 +163,10 @@ static func role_turn(s, enemy: Dictionary, targets: Array, held: bool = false) 
 			enemy.pos = choice.cell
 		elif choice.kind == "ATTACK": strike(s,enemy,s.at(choice.cell),7)
 		return
-	targets.sort_custom(func(a,b): return distance(enemy.pos,a.pos) < distance(enemy.pos,b.pos))
+	targets.sort_custom(func(a,b):
+		var da: int = distance(enemy.pos,a.pos)*4-s.MobileEffects.threat(s,enemy,a)
+		var db: int = distance(enemy.pos,b.pos)*4-s.MobileEffects.threat(s,enemy,b)
+		return da < db if da != db else int(a.id) < int(b.id))
 	# 고블린 궁수: its own stone's headline effect shoots two farther.
 	var reach: int = mini(int(ROLES[role].range),sight(s))+StoneEffects.range_bonus(enemy,s)
 	var ready: bool = enemy.get("cast_cooldown",2) <= 0

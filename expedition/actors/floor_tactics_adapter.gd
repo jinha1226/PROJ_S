@@ -30,6 +30,8 @@ func blocked(p: Vector2i) -> bool: return not s.inside(p) or s.tile(p).terrain =
 func clear_line(a: Vector2i,b: Vector2i,_blocked: Callable) -> bool:
 	if distance(a,b) == 1: return s.melee_reach(a,b)
 	return s.TurnCore.Geometry.sees(a,b,blocked)
+func target_pressure(_source: Dictionary, target: Dictionary) -> int:
+	return s.MobileEffects.threat(s,origin,s.actor_by_id(int(target.id)))
 func basic_power(actor: Dictionary) -> int: return int(s.CombatStats.stats(s,actor).damage) if s.manual_mode else 7 if actor.enemy else s.StatSheet.legacy_power(actor,"MELEE",18)
 func use_error(_actor: Dictionary,_kind: String) -> String: return ""
 func assess(_kind: String,_source: Dictionary,_target: Dictionary,_actors: Array,_blocked: Callable,_bounds: Vector2i) -> Dictionary: return {"accepted":false}

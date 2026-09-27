@@ -44,6 +44,7 @@ static func choose(model,source:Dictionary)->Dictionary:
 			if int(effect.damage)>0:
 				var effective:float=maxf(0.0,float(effect.damage)-float(target.barrier))
 				score=minf(effective,float(target.hp))+minf(float(effect.damage),float(target.barrier))*0.5
+				if model.has_method("target_pressure"): score += float(model.target_pressure(source,target))
 				# Finishing a threat protects whoever it can hurt, not just a leader.
 				if effective>=float(target.hp):
 					score+=12.0

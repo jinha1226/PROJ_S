@@ -99,13 +99,22 @@ static func use(s, kind: String, target: Vector2i = NO_TARGET, recipient: int = 
 		if s.distance(user.pos,target) > 4 or not s.Floor.MonsterAI.line(s,user.pos,target,4): return false
 	else:
 		if row["class"] == "scroll" and recipient != -1: return false
+	var previous_stacks: Dictionary = user.get("stacks",{}).duplicate(true)
+	if s.MobileEffects.active(user):
+		if not effect_ready(s,kind,user,actor,thrown): return false
+		s.Reactions.begin_action(s)
+		s.MobileEffects.begin(s,user,"ITEM")
+	var was: Vector2i = user.pos
 	var effective := true
 	if row["class"] == "potion":
 		if thrown:
 			if bool(row.area): effective = potion_area(s,kind,target,false)
-		else: effective = drink(s,kind,actor)
+		else: effective = drink(s,kind,actor,user)
 	else: effective = read(s,kind,user)
 	if not effective: return false
+	if s.MobileEffects.active(user):
+		if user.pos != was: s.MobileEffects.state(user).aim = 0
+		s.record_action(user,"ITEM",user.pos,was,previous_stacks)
 	spend(s,kind)
 	if not thrown or bool(row.area): identify(s,kind)
 	s.message(label(s,kind)+(" 투척" if thrown else " 사용"))
@@ -117,12 +126,16 @@ static func use(s, kind: String, target: Vector2i = NO_TARGET, recipient: int = 
 		else: s.finish_player_action()
 	return true
 
-static func drink(s, kind: String, actor: Dictionary) -> bool:
+static func drink(s, kind: String, actor: Dictionary, user: Dictionary = {}) -> bool:
 	match kind:
 		"healing":
 			if actor.hp >= actor.max_hp and not actor.statuses.has("bleed"): return false
 			var visual := "heal" if actor.hp < actor.max_hp else "cleanse"
+			var before: int = int(actor.hp)
+			var bleeding: bool = actor.statuses.has("bleed")
 			actor.hp = mini(actor.max_hp,actor.hp+20); actor.statuses.erase("bleed"); Body.heal(actor)
+			if int(actor.hp) > before and s.MobileEffects.active(user): s.StoneEffects.fire(s,"HEALED",{"healer":user,"target":actor,"amount":int(actor.hp)-before})
+			if bleeding and s.MobileEffects.active(user): s.StoneEffects.fire(s,"CLEANSED",{"source":user,"target":actor,"status":"bleed"})
 			s.StoneEffects.Vfx.emit(s,visual,actor.pos,actor.pos)
 		"strength":
 			actor.str_bonus = int(actor.get("str_bonus",0))+3
@@ -198,7 +211,9 @@ static func read(s, kind: String, user: Dictionary) -> bool:
 			pickup(s,user)
 		"mirror_image":
 			var cells: Array = Summons.summon_cells(s,user)
-			for i in range(mini(2,cells.size())): Summons.summon(s,user,cells[i],"mirror")
+			var count: int = mini(2,cells.size())
+			if s.MobileEffects.active(user): count = mini(count,maxi(0,1-Summons.summons_of(s,user).size()))
+			for i in range(count): Summons.summon(s,user,cells[i],"mirror")
 		"lullaby":
 			for enemy in s.enemies:
 				if enemy.hp > 0 and s.floor_state.visible.has(enemy.pos):
@@ -225,3 +240,19 @@ static func resolve_choice(s, option: String) -> bool:
 	else: return false
 	s.pending_choice = {}
 	return true
+
+## Validation before opening the new profile's committed item action.
+static func effect_ready(s, kind: String, user: Dictionary, actor: Dictionary, thrown: bool) -> bool:
+	if thrown: return true
+	match kind:
+		"healing": return actor.hp < actor.max_hp or actor.statuses.has("bleed")
+		"experience": return int(actor.level) < 12
+		"calm": return int(actor.stress) > 0
+		"upgrade": return not user.gear.weapon.is_empty() or not user.gear.armour.is_empty()
+		"recharging": return int(user.mp) < int(user.max_mp)
+		"teleportation":
+			for y in range(s.floor_state.size):
+				for x in range(s.floor_state.size):
+					if s.is_free(Vector2i(x,y)): return true
+			return false
+	return kind in ["strength","haste","liquid_flame","frost","toxic_gas","identify","magic_mapping","mirror_image","lullaby","rage"]

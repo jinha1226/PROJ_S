@@ -119,6 +119,17 @@ var action_serial := 0
 ## Above zero while a spell resolves: its damage is a spell's, never a weapon's.
 var casting := 0
 var effect_depth := 0
+const MobileEffects = preload("res://expedition/progression/attack_wait.gd")
+var combat_profile := "legacy"
+var aw_attack_context: Dictionary = {}
+var aw_queue: Array = []
+var aw_fired: Dictionary = {}
+var aw_trace: Array = []
+var aw_hold := 0
+var aw_running := false
+var aw_sequence := 0
+var aw_parent := 0
+var aw_overflows := 0
 var gear_bag: Array = []
 var effect_delays: Array = []
 var unrands_seen: Dictionary = {}
@@ -183,6 +194,7 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"stress":0, "condition":"평온", "ap":2,
 		"body":Body.create(id, seed_value, enemy),
 		"profile":Hexaco.generated(seed_value, id + 1), "memory":Memory.new()}
+	actor["combat_profile"] = combat_profile if not enemy else "legacy"
 	actor["species_id"] = "" if enemy else "human"
 	if enemy:
 		actor["power"] = 7; actor["speed"] = 100; actor["ac"] = 0; actor["ev"] = 3; actor["res"] = {}
@@ -267,6 +279,9 @@ func dominated(actor: Dictionary) -> bool:
 ## Domination moves a monster across without touching its `enemy` flag, so
 ## everything that used to read `enemy` to tell friend from foe reads this.
 func side_of(actor: Dictionary) -> int:
+	if bool(actor.get("aw_pet",false)):
+		var owner: Dictionary = actor_by_id(int(actor.get("summoner",-1)))
+		if not owner.is_empty() and owner != actor: return side_of(owner)
 	if wanderer(actor) and not actor.get("summoned",false): return 1 if actor.get("hostile",false) else 0
 	return 1 if bool(actor.get("enemy",false)) != dominated(actor) else 0
 
@@ -606,26 +621,51 @@ func _presentation_action(actor: Dictionary, kind: String, target: Vector2i) -> 
 ## One action by `actor`. `chain` runs the legacy follow-up (companions acting
 ## after the hero, round end on empty AP); auto_step passes false and drives
 ## the round itself.
-func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = true) -> bool:
+func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = true, intentional: bool = true) -> bool:
 	var previous_stacks: Dictionary = actor.get("stacks",{}).duplicate(true)
 	if Forms.attack_action(self,kind) and int(actor.get("effect_moved_round",-1)) == time/100 and StoneEffects.modifier(self,"no_attack_after_move",actor) > 0: return false
-	Reactions.begin_action(self)
 	if not on_floor() or not inside(target): return false
 	if not pending_choice.is_empty(): return false
 	# A follower can round a corner outside the selected leader's sight.
-	# Only automatic movement bypasses the UI visibility gate; movement_cells
-	# still checks adjacency, terrain and occupancy. Attacks keep their gate.
+	# Automated actors use their own attack perception rather than the camera;
+	# movement still checks adjacency, terrain and occupancy.
 	# A recruited npc is a party member: only one still standing in the dungeon
 	# on its own walks outside the party's sight.
-	var following: bool = (resolving_companions and kind in ["MOVE","RESCUE"]) or wanderer(actor)
+	var following: bool = resolving_companions or wanderer(actor)
 	if not floor_state.visible.has(target) and not following: return false
+	if actor.hp <= 0 or actor.ap <= 0 or (status_blocks(actor,kind) and not (MobileEffects.active(actor) and kind == "WAIT")): return false
+	var candidate: Dictionary = at(target)
+	match kind:
+		"WAIT":
+			if target != actor.pos: return false
+		"MOVE":
+			if target not in movement_cells(actor.id if bool(actor.get("npc",false)) else party.find(actor)): return false
+		"SWAP":
+			if not can_swap_step(actor,target): return false
+		"RESCUE":
+			if not Downed.can_rescue(self,actor,downed_at(target)): return false
+		"ATTACK":
+			if MobileEffects.active(actor) and actor != party[0] and not MobileEffects.line(self,actor.pos,target,6): return false
+			if candidate.is_empty() or candidate.hp <= 0 or not attack_reach(actor,target,int(CombatStats.stats(self,actor).range)): return false
+			if not (actor in party and wanderer(candidate) and not candidate.get("summoned",false)) and not (wanderer(actor) and candidate.enemy) and side_of(actor) == side_of(candidate): return false
+		"LEVER":
+			if not BossAI.lever_ready(self,actor,target): return false
+		"FIRE", "WATER", "ELECTRIC":
+			if distance(actor.pos,target) > 4 or tile(target).terrain == "wall": return false
+			if kind == "FIRE" and tile(target).terrain != "wood": return false
+			if not TurnCore.Geometry.sees(actor.pos,target,func(point): return tile(point).terrain == "wall"): return false
+		_:
+			if not Abilities.has(kind) or not Abilities.legal(self,actor,kind,target): return false
+	if MobileEffects.active(actor) and kind == "WAIT" and status_blocks(actor,"ATTACK"): intentional = false
+	Reactions.begin_action(self)
+	MobileEffects.begin(self,actor,kind,intentional)
 	var display_event := _presentation_action(actor,kind,target) if presentation != null else {}
 	if kind == "LEVER":
 		if not BossAI.pull_lever(self,actor,target): return false
 		if presentation != null: presentation.capture(self,actor.id,display_event)
 		if chain: finish_player_action()
 		return true
-	if actor.hp <= 0 or actor.ap <= 0 or status_blocks(actor,kind): return false
+	if actor.hp <= 0 or actor.ap <= 0 or (status_blocks(actor,kind) and not (MobileEffects.active(actor) and kind == "WAIT")): return false
 	var was: Vector2i = actor.pos
 	if Abilities.has(kind):
 		if not Abilities.execute(self,actor,kind,target): return false
@@ -637,7 +677,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 	var victim := at(target)
 	match kind:
 		"WAIT":
-			if target != actor.pos: return false
+			if intentional: MobileEffects.push(self,"WAIT",actor,{"target":actor})
 		"MOVE":
 			# movement_cells indexes the party; an npc is not in it, so it checks its own step.
 			if bool(actor.get("npc",false)):
@@ -818,7 +858,7 @@ static var ARENA_PRESETS: Dictionary = ArenaTest.ARENA_PRESETS
 
 static func load_arena_presets() -> Dictionary: return ArenaTest.load_arena_presets()
 
-static func arena_test(p_seed: int, party_size: int, arena: Dictionary, members: Array): return ArenaTest.arena_test(new(p_seed,true,party_size > 1,true,party_size),p_seed,party_size,arena,members)
+static func arena_test(p_seed: int, party_size: int, arena: Dictionary, members: Array, profile: String = "legacy"): return ArenaTest.arena_test(new(p_seed,true,party_size > 1,true,party_size),p_seed,party_size,arena,members,profile)
 
 static func arena_contact(s) -> void: ArenaTest.arena_contact(s)
 
@@ -836,11 +876,18 @@ static func subject_name(value: String) -> String:
 ## hit. A protector who has fallen or stepped out of contact covers nobody, and
 ## a mutual guard collapses: the first member the chain revisits eats the hit
 ## itself, at half through its own `guarded`, and nothing is redirected.
-func protection_recipient(target: Dictionary) -> Dictionary:
+func protection_recipient(target: Dictionary, mobile_direct: bool = true) -> Dictionary:
 	var current: Dictionary = target
 	var seen: Dictionary = {current.id:true}
 	while true:
 		var guardian: int = int(current.get("protected_by",-1))
+		if guardian < 0 and mobile_direct and MobileEffects.active(current):
+			var guards: Array = npcs.filter(func(p):
+				if not bool(p.get("aw_guard",false)) or int(p.hp) <= 0 or not melee_reach(p.pos,current.pos): return false
+				var caster: Dictionary = actor_by_id(int(p.get("summoner",-1)))
+				return not caster.is_empty() and int(caster.hp) > 0 and MobileEffects.allied(self,caster,current) and "summon_defense" in MobileEffects.effects(caster))
+			guards.sort_custom(func(a,b): return int(a.id) < int(b.id))
+			if not guards.is_empty(): guardian = int(guards[0].id)
 		if guardian < 0: return current
 		var next: Dictionary = {}
 		for mate in party+npcs:
@@ -864,10 +911,10 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 	if target.hp <= 0: return 0
 	var attacker: Dictionary = actor_by_id(source)
 	# Retaliation is plain damage: it never triggers passives again.
-	var passive_hit: bool = form not in Reactions.SECONDARY
+	var passive_hit: bool = form not in Reactions.SECONDARY and not str(received.get("hit_form","")).begins_with("MOBILE_")
 	# 엄호: the protector steps in front. Counted and logged once, and only when
 	# the hit really lands on somebody else.
-	var recipient: Dictionary = protection_recipient(target)
+	var recipient: Dictionary = protection_recipient(target,str(received.get("hit_form","HIT")) == "HIT" and not attacker.is_empty() and MobileEffects.hostile(self,target,attacker))
 	var covered: bool = recipient.id != target.id
 	if covered:
 		StoneEffects.Vfx.emit(self,"shield",target.pos,recipient.pos)
@@ -884,6 +931,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 	if target.hp <= 0: return 0
 	var cut: int = Abilities.reduction(target)
 	if cut > 0: amount = maxi(1,amount*(100-cut)/100)
+	amount = MobileEffects.incoming(self,target,attacker,amount,str(received.get("hit_form","HIT")))
 	if passive_hit:
 		amount = Passives.incoming(self,target,amount,attacker)
 		amount = StoneEffects.EffectEngine.Code.share_damage(self,target,attacker,amount)
@@ -965,7 +1013,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 		StoneEffects.on_kill(self,attacker,target,received)
 		if bool(target.get("summoned",false)) and not bool(target.get("summon_ended",false)):
 			target.summon_ended = true
-			StoneEffects.fire(self,"SUMMON_END",{"caster":actor_by_id(int(target.get("summoner",-1))),"pet":target,"died":true})
+			StoneEffects.fire(self,"SUMMON_END",{"caster":actor_by_id(int(target.get("summoner",-1))),"pet":target,"died":true,"hostile_death":not attacker.is_empty() and MobileEffects.hostile(self,target,attacker)})
 	if target.enemy and fell:
 		var hunters: Array = hunt_recipients(target,attacker)
 		var party_hunted: bool = hunters.any(func(a): return a in party)

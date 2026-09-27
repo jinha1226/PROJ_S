@@ -2,6 +2,7 @@ extends RefCounted
 ## What each stone did in a fight (legibility spec §1): procs, the damage and
 ## healing done while it ran. Party members only; percent modifiers are not
 ## credited.
+const Mobile = preload("res://expedition/progression/attack_wait.gd")
 const EffectEngine = preload("res://expedition/progression/effect_engine.gd")
 
 static func note(s, owner_id: int, effect: String, field: String, amount: int) -> void:
@@ -26,6 +27,7 @@ static func top(rows: Dictionary, n: int) -> Array:
 
 static func line(entry: Dictionary) -> String:
 	var name: String = str(EffectEngine.content.effects.get(str(entry.effect),{}).get("name",entry.effect))
+	if str(entry.effect).begins_with("aw:"): name = str(Mobile.data.effects.get(str(entry.effect).trim_prefix("aw:"),{}).get("name",name))
 	var bits: Array = [name+(" ×%d" % int(entry.procs) if int(entry.procs) > 0 else "")]
 	if int(entry.get("damage",0)) > 0: bits.append("피해 %d" % int(entry.damage))
 	if int(entry.get("heal",0)) > 0: bits.append("회복 %d" % int(entry.heal))

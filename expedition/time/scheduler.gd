@@ -95,9 +95,12 @@ static func advance(s, cost: int) -> bool:
 
 static func act(s, actor: Dictionary) -> void:
 	if actor.is_empty() or actor.hp <= 0: return
-	s.Reactions.begin_action(s)
+	if s.status_blocks(actor,"ATTACK"):
+		s.MobileEffects.skip(actor)
+	if bool(actor.get("enemy",false)) or (s.wanderer(actor) and not s.MobileEffects.active(actor)): s.Reactions.begin_action(s)
 	var cost := 100
 	var was: Vector2i = actor.pos
+	var serial_before: int = int(s.action_serial)
 	actor["physical_blow"] = false
 	if bool(actor.get("enemy", false)):
 		s.enemy_attack_turn(actor)
@@ -112,19 +115,21 @@ static func act(s, actor: Dictionary) -> void:
 		var cell: Vector2i = choice.get("cell", actor.pos)
 		cost = s.action_cost(actor, kind, cell)
 		s.resolving_companions = true
-		var succeeded: bool = s.act_as(actor, kind, cell, false)
+		var succeeded: bool = s.act_as(actor, kind, cell, false, str(choice.get("mistake","")) != "HESITATE" and str(choice.get("tag","")) != "WAIT:yield")
 		if succeeded: Tactics.BuildSense.committed(s,choice)
 		if not succeeded:
-			cost = 100; s.act_as(actor, "WAIT", actor.pos, false)
+			cost = 100; s.act_as(actor, "WAIT", actor.pos, false, false)
 		s.resolving_companions = false
 		s.note_explain(actor, choice)
 		if str(choice.get("mistake", "")) != "": s.note_mistake(actor, str(choice.mistake))
+	if s.MobileEffects.active(actor) and int(s.action_serial) == serial_before: s.MobileEffects.skip(actor)
 	# Monsters and independent NPCs use a fixed turn cost, bypassing action_cost.
 	if bool(actor.get("enemy",false)) or s.wanderer(actor):
 		if actor.pos != was or bool(actor.get("physical_blow",false)): cost = Forms.fracture_delay(actor,cost)
 	if actor.pos != was and int(actor.get("effect_move_action",-1)) != int(s.action_serial):
 		actor.effect_move_action = int(s.action_serial); actor.effect_moved_round = int(s.time)/100; actor.moved_since_attack = true
 		s.StoneEffects.fire(s,"MOVED",{"actor":actor,"from":was,"to":actor.pos})
+	if bool(actor.get("enemy",false)) and (actor.pos != was or bool(actor.get("physical_blow",false))) and not s.status_blocks(actor,"ATTACK"): actor.erase("aw_cc_locked")
 	actor.ready_at = s.time + maxi(40, cost)
 
 static func environment_tick(s) -> void:
@@ -159,6 +164,7 @@ static func environment_tick(s) -> void:
 		for id in actor.cooldowns: actor.cooldowns[id] = maxi(0, int(actor.cooldowns[id]) - 1)
 	s.Reactions.refresh_wet(s)
 	Statuses.tick(s)
+	s.MobileEffects.tick(s)
 	for actor in s.alive():
 		if not s.floor_state.safe(s): s.stress(actor, 2)
 	# A dominated monster stands on both lists; nobody's passives run twice.

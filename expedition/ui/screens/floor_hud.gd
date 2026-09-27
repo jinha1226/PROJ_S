@@ -15,10 +15,18 @@ static func portrait_state(actor: Dictionary) -> String:
 	if bool(actor.get("downed",false)): return "빈사 · %d턴" % int(actor.get("bleedout_turns",0))
 	if int(actor.hp) <= 0: return "사망"
 	var details: Array[String] = ["스트레스 %d" % int(actor.stress)]
-	var names := {"burn":"화상","poison":"중독","bleed":"출혈","fracture":"골절","exposed":"급소 노출","freeze":"빙결","bind":"속박","slow":"둔화","haste":"가속","stun":"기절","silence":"침묵"}
+	var names := {"charge":"전하","blessing":"축복","death_mark":"사령 낙인","wet":"젖음","weak":"약화","confuse":"혼란","vulnerable":"취약","burn":"화상","poison":"중독","bleed":"출혈","fracture":"골절","exposed":"급소 노출","freeze":"빙결","bind":"속박","slow":"둔화","haste":"가속","stun":"기절","silence":"침묵"}
 	for status in actor.get("statuses",{}): details.append(str(names.get(status,status)))
 	var condition: String = str(actor.get("condition",""))
 	if not condition.is_empty() and condition != "평온": details.append(condition)
+	if Session.MobileEffects.active(actor):
+		var state: Dictionary = actor.get("aw_state",{})
+		if not state.get("preps",{}).is_empty(): details.append("보호")
+		if int(state.get("waits",0)) > 0: details.append("위협 %d" % int(state.waits))
+		if int(state.get("aim",0)) > 0: details.append("조준 %d" % int(state.aim))
+		for id in state.get("uses",{}):
+			var effect: Dictionary = Session.MobileEffects.data.effects.get(id,{})
+			if effect.has("uses"): details.append("치유 %d" % maxi(0,int(effect.uses)-int(state.uses[id])))
 	return " · ".join(details)
 
 static func build(ui, elapsed: float, impact_elapsed: float) -> void:
@@ -131,7 +139,8 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 
 static func build_manual_controls(ui) -> void:
 	var session = ui.session
-	var prepared: Array = session.party[0].prepared
+	var automatic: bool = Session.MobileEffects.active(session.party[0])
+	var prepared: Array = [] if automatic else session.party[0].prepared
 	if not prepared.is_empty():
 		var spells := HBoxContainer.new(); spells.name = "SpellBar"
 		spells.add_theme_constant_override("separation",3); ui.root_layout.add_child(spells)
@@ -167,7 +176,7 @@ static func build_manual_controls(ui) -> void:
 			icon.custom_minimum_size = Vector2(40,40); icon.mouse_filter = Control.MOUSE_FILTER_IGNORE; heading.add_child(icon)
 			var name: Label = ui.label(heading,str(actor.name),11); name.clip_text = true
 			name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			var hp: Label = ui.label(compact,"HP%d/%d  MP%d/%d" % [actor.hp,actor.max_hp,actor.mp,actor.max_mp],9)
+			var hp: Label = ui.label(compact,("HP%d/%d" % [actor.hp,actor.max_hp]) if automatic else ("HP%d/%d  MP%d/%d" % [actor.hp,actor.max_hp,actor.mp,actor.max_mp]),9)
 			hp.name = "HeroHP" if i == 0 else "MemberHP%d" % i
 			hp.clip_text = true
 			var state: Label = ui.label(compact,portrait_state(actor),9)
@@ -187,12 +196,26 @@ static func build_manual_controls(ui) -> void:
 		values.add_theme_constant_override("separation",2); content.add_child(values)
 		var name = ui.label(values,"%s  Lv.%d" % [actor.name,int(actor.level)],13 if session.party.size() == 1 else 11)
 		name.add_theme_color_override("font_color",Color("e7d6b0"))
-		var hp = ui.label(values,"HP %d/%d  ·  MP %d/%d" % [actor.hp,actor.max_hp,actor.mp,actor.max_mp],11)
+		var hp = ui.label(values,("HP %d/%d" % [actor.hp,actor.max_hp]) if automatic else ("HP %d/%d  ·  MP %d/%d" % [actor.hp,actor.max_hp,actor.mp,actor.max_mp]),11)
 		hp.name = "HeroHP" if i == 0 else "MemberHP%d" % i
 		hp.clip_text = true
 		var state = ui.label(values,portrait_state(actor),10)
 		state.name = "HeroState" if i == 0 else "MemberState%d" % i
 		state.clip_text = true; state.tooltip_text = state.text
+	if automatic:
+		var triggers := HBoxContainer.new(); triggers.name = "AutoEffectBar"
+		triggers.add_theme_constant_override("separation",3); ui.root_layout.add_child(triggers)
+		for event in ["HIT","WAIT"]:
+			var flow := HFlowContainer.new(); flow.name = "AttackEffects" if event == "HIT" else "WaitEffects"
+			flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL; triggers.add_child(flow)
+			for stone in Session.Essences.equipped(session.party[0]):
+				var effect: Dictionary = Session.MobileEffects.row(str(stone))
+				if str(effect.get("event","")) not in [event,"ATTACK" if event == "HIT" else event]: continue
+				var glyph := TextureRect.new(); glyph.texture = Art.part_icon(str(stone))
+				glyph.custom_minimum_size = Vector2(20,20); glyph.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				glyph.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; glyph.tooltip_text = str(effect.text)
+				if not Session.MobileEffects.ready(session,session.party[0],Session.MobileEffects.effect_id(str(stone)),effect): glyph.modulate.a = 0.35
+				flow.add_child(glyph)
 	var nav := HBoxContainer.new(); nav.name = "BottomActions"
 	nav.add_theme_constant_override("separation",3); ui.root_layout.add_child(nav)
 	var attack = ui.action_button(nav,"공격",Art.ui_icon(0),func(): arm_attack(ui)); attack.name = "Attack"
@@ -277,8 +300,9 @@ static func show_manual_tactics(ui) -> void:
 			pick.toggle_mode = true; pick.button_pressed = session.party_command == command
 	var parts = ui.button(box,"부위 노리기",func(): session.aim_parts = not session.aim_parts; show_manual_tactics(ui))
 	parts.name = "TacticParts"; parts.toggle_mode = true; parts.button_pressed = session.aim_parts
-	var skills = ui.button(box,"기술",func(): show_manual_skills(ui),not actor.prepared.is_empty() or not Session.Abilities.held(actor).is_empty())
-	skills.name = "TacticSkills"
+	if not Session.MobileEffects.active(actor):
+		var skills = ui.button(box,"기술",func(): show_manual_skills(ui),not actor.prepared.is_empty() or not Session.Abilities.held(actor).is_empty())
+		skills.name = "TacticSkills"
 	ui.button(box,"도감",func(): ui.show_codex()).name = "TacticCodex"
 	center_tactics_popup(ui,292 if session.party.size() == 1 else 436)
 

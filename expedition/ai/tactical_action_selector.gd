@@ -72,12 +72,16 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 		for o in PartsCandidates.candidates(s,actor):
 			if s.Abilities.definition(o.kind).get("effect","") != "HEAL": continue
 			o.score = 40+RETREAT.score; pool.append(o)
+		if s.MobileEffects.active(actor) and s.MobileEffects.estimate(s,actor,"WAIT") >= 10:
+			pool.append({"kind":"WAIT","cell":actor.pos,"score":40+RETREAT.score,"reason":"영혼석 보호"})
 		if pool.is_empty(): pool = [{"kind":"WAIT","cell":actor.pos,"score":0,"reason":"대기"}]
 		pool.sort_custom(rank); return pool[0]
 	# 4단계: the stance's candidates and the parts in one pool. A 거리형 in
 	# contact no longer needs a filter — `contact_penalty` (−1000) is what keeps
 	# its reaching parts holstered.
 	var stance_options: Array = Stances.candidates(s,actor,stance,knobs)+PartsCandidates.candidates(s,actor)
+	if s.MobileEffects.active(actor) and not stance_options.any(func(o): return str(o.kind) == "WAIT"):
+		stance_options.append({"kind":"WAIT","cell":actor.pos,"damage":0,"reason":"영혼석 대기"})
 	# A REVERT is only a mistake once the stance it reverted to is what answers:
 	# a rule that would have won anyway is the same round either way.
 	if stance_options.is_empty(): return {"kind":"WAIT","cell":actor.pos,"reason":"대기","mistake":mistake}
@@ -95,6 +99,10 @@ static func best(s, actor: Dictionary, options: Array, stance: String, knobs: Di
 		var scored: Dictionary = Utility.score(s,actor,o,ctx,stance,knobs)
 		o.score = scored.score; o.base_score = scored.base_score
 		o.explain = scored.explain; o.build_terms = scored.build_terms
+		if s.MobileEffects.active(actor):
+			var benefit: int = s.MobileEffects.estimate(s,actor,str(o.kind),s.at(o.cell))
+			o.score += benefit
+			if benefit > 0: o.explain.append({"id":"soulstone_auto","contrib":benefit})
 	var baseline: Array = options.duplicate()
 	baseline.sort_custom(func(a,b): return int(a.base_score) > int(b.base_score) if int(a.base_score) != int(b.base_score) else str(a.kind)+str(a.cell) < str(b.kind)+str(b.cell))
 	options.sort_custom(rank)

@@ -9,7 +9,7 @@ const TagSets = preload("res://expedition/progression/tag_sets.gd")
 const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
 const Reactions = preload("res://expedition/combat/reactions.gd")
 const Forms = preload("res://expedition/combat/forms.gd")
-const HARMFUL := ["confuse","slow","freeze","bind","burn","weak","brittle","distort","vulnerable","dominate","bleed","poison","taunted","stun","fracture","exposed","marked"]
+const HARMFUL := ["confuse","slow","freeze","bind","burn","weak","brittle","distort","vulnerable","dominate","bleed","poison","taunted","stun","fracture","exposed","marked","charge","death_mark"]
 
 ## What a spell's own burn does per boundary tick, told apart from the single
 ## point the fire mastery's burn has always done.
@@ -33,11 +33,17 @@ static func resisted_ticks(s, victim: Dictionary, status: String, ticks: int) ->
 
 static func apply(s, victim: Dictionary, status: String, ticks: int, source: Dictionary = {}) -> bool:
 	if status in HARMFUL and victim.get("statuses",{}).has("immune"): return false
+	var mobile: bool = s.MobileEffects.active(source) or bool(source.get("aw_pet",false)) or str(s.effect_source.get("policy","")) == s.MobileEffects.PROFILE
+	if mobile and status in ["freeze","stun"] and bool(victim.get("aw_cc_locked",false)): return false
 	ticks = resisted_ticks(s,victim,status,ticks)
 	if ticks <= 0 or StoneEffects.shed(s,victim,status,source): return false
 	var already: bool = victim.get("statuses",{}).has(status)
-	victim.statuses[status] = s.time+ticks
-	victim.get_or_add("status_sources",{})[status] = {"id":int(source.get("id",-1)),"depth":int(s.depth),
+	if mobile and already and int(victim.statuses[status]) >= int(s.time)+ticks: return false
+	victim.statuses[status] = maxi(int(victim.statuses.get(status,0)),s.time+ticks) if mobile else s.time+ticks
+	if mobile and status in ["freeze","stun"]: victim.aw_cc_locked = true
+	var origins: Dictionary = victim.get_or_add("status_sources",{})
+	if not (mobile and already and origins.has(status)):
+		origins[status] = {"id":int(source.get("id",-1)),"depth":int(s.depth),"policy":s.MobileEffects.PROFILE if mobile else "legacy",
 		"report_source":s.effect_source.duplicate() if not s.effect_source.is_empty() and int(s.effect_source.owner) == int(source.get("id",-1)) else {}}
 	if status == "burn": victim.get_or_add("status_power",{})["burn"] = BURN_DAMAGE
 	if status == "fracture": victim.get_or_add("status_power",{})["fracture_bonus"] = StoneEffects.modifier(s,"fracture_percent",source)
@@ -69,11 +75,13 @@ static func tick(s) -> void:
 			var previous: Dictionary = s.effect_source
 			s.effect_source = origin.get("report_source",{}).duplicate() if int(origin.get("depth",-1)) == int(s.depth) else {}
 			if not s.effect_source.is_empty(): s.effect_source.indirect = true
-			if status == "bleed": lost = Rules.damage(s,{},actor,2+StoneEffects.modifier(s,"bleed_tick",source,{"target":actor}),"physical")
+			var dot_source: Dictionary = source if str(origin.get("policy","legacy")) == s.MobileEffects.PROFILE else {}
+			var dot_form: String = "MOBILE_DOT" if str(origin.get("policy","legacy")) == s.MobileEffects.PROFILE else "HIT"
+			if status == "bleed": lost = Rules.damage(s,dot_source,actor,2+StoneEffects.modifier(s,"bleed_tick",source,{"target":actor}),"physical",0,dot_form)
 			# A spell's burn says how hard it bites; the old mastery burn keeps
 			# the single point it always did.
-			elif status == "burn": lost = Rules.damage(s,{},actor,int(payload.get("burn",1)),"fire")
-			elif status == "poison": lost = Rules.damage(s,{},actor,2+int(payload.get("poison_bonus",0))+StoneEffects.modifier(s,"poison_tick",source,{"target":actor}),"poison")
+			elif status == "burn": lost = Rules.damage(s,dot_source,actor,int(payload.get("burn",1)),"fire",0,dot_form)
+			elif status == "poison": lost = Rules.damage(s,dot_source,actor,2+int(payload.get("poison_bonus",0))+StoneEffects.modifier(s,"poison_tick",source,{"target":actor}),"poison",0,dot_form)
 			s.effect_source = previous
 			if lost > 0: StoneEffects.fire(s,"DOT_TICK",{"target":actor,"victim":actor,"status":status,"amount":lost})
 			Forms.end(s,was)

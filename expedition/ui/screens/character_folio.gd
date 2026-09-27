@@ -107,7 +107,8 @@ static func grid(parent: Node, columns: int) -> GridContainer:
 static func status(ui, list: VBoxContainer, actor: Dictionary) -> void:
 	var vitals := card(list,"Lv.%d · %s" % [int(actor.get("level",1)),actor.name])
 	text(vitals,"HP  %d / %d" % [actor.hp,actor.max_hp]); gauge(vitals,actor.hp,actor.max_hp,Color("bf5450"))
-	text(vitals,"MP  %d / %d" % [actor.mp,actor.max_mp]); gauge(vitals,actor.mp,actor.max_mp,Color("507eb9"))
+	if not ui.session.MobileEffects.active(actor):
+		text(vitals,"MP  %d / %d" % [actor.mp,actor.max_mp]); gauge(vitals,actor.mp,actor.max_mp,Color("507eb9"))
 	text(vitals,"스트레스  %d / 200" % actor.stress); gauge(vitals,actor.stress,200,Color("c9a251"))
 	var values: Dictionary = CombatStats.stats(ui.session,actor)
 	var combat := card(list,"전투")

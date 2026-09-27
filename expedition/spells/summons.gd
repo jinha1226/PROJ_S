@@ -38,6 +38,8 @@ static func summon(s, caster: Dictionary, cell: Vector2i, kind: String = "hound"
 	pet.pos = cell; pet.ap = 1; pet.ready_at = s.time+100
 	pet.enemy = bool(caster.get("enemy",false))
 	pet.summoner = int(caster.get("id",-1))
+	if s.MobileEffects.active(caster):
+		pet.aw_pet = true; pet.aw_origin_policy = s.MobileEffects.PROFILE
 	if caster.get("statuses",{}).has("summon_power"): pet.statuses["summon_power"] = int(caster.statuses.summon_power)
 	pet.hp = int(pet.hp)*(100+s.StoneEffects.modifier(s,"summon_hp",caster))/100
 	pet.max_hp = pet.hp

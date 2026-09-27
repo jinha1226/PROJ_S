@@ -25,6 +25,14 @@ static func build(ui) -> Control:
 	list.add_theme_constant_override("separation",4); scroll.add_child(list)
 	arena_row(ui,list)
 	seed_row(ui,list)
+	var profile := OptionButton.new(); profile.name = "CombatProfile"
+	profile.size_flags_horizontal = Control.SIZE_EXPAND_FILL; profile.custom_minimum_size.y = 44
+	profile.add_item("기존 전투"); profile.add_item("공격·대기 영혼석")
+	profile.select(1 if str(ui.arena_config.get("profile","legacy")) == Session.MobileEffects.PROFILE else 0)
+	profile.item_selected.connect(func(index):
+		ui.arena_config.profile = Session.MobileEffects.PROFILE if index == 1 else "legacy"
+		ui.show_arena_setup())
+	list.add_child(profile)
 	if str(ui.arena_config.arena) == "custom": custom_row(ui,list)
 	var probe = Session.new(int(ui.arena_config.seed),true,int(ui.arena_config.size) > 1,true,int(ui.arena_config.size))
 	for i in range(int(ui.arena_config.size)): member_card(ui,list,i,probe.party[i])
@@ -115,6 +123,12 @@ static func member_card(ui, list: VBoxContainer, index: int, probe: Dictionary) 
 	if solo and str(setup.stance) == "GUARDIAN": setup.stance = "CHARGER"
 	var box := CharacterUI.card(list,str(probe.get("name",MEMBER_NAMES[index])))
 	box.name = "ArenaMember%d" % index
+	if str(ui.arena_config.get("profile","legacy")) == Session.MobileEffects.PROFILE:
+		auto_stones(ui,box,index,setup)
+		if index > 0:
+			var stances := HBoxContainer.new(); box.add_child(stances)
+			for id in Stances.IDS: ui.button(stances,Stances.NAMES[id],func(): choose_stance(ui,index,id))
+		return
 	var builds := OptionButton.new(); builds.name = "ArenaBuild_%d" % index
 	builds.size_flags_horizontal = Control.SIZE_EXPAND_FILL; builds.custom_minimum_size.y = 44; builds.clip_text = true
 	builds.add_item("예시 빌드 없음")
@@ -164,3 +178,30 @@ static func choose_part(ui, index: int, slot: int, ids: Array, choice: int) -> v
 static func choose_stance(ui, index: int, id: String) -> void:
 	ui.arena_config.members[index].stance = id
 	ui.show_arena_setup()
+
+static func auto_stones(ui, box: VBoxContainer, index: int, setup: Dictionary) -> void:
+	var selected: Array = setup.get_or_add("auto_parts",["","","","","",""])
+	var grid := GridContainer.new(); grid.columns = 2; grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(grid)
+	var ids: Array = Session.MobileEffects.catalog()
+	for slot in range(6):
+		var cell := VBoxContainer.new(); cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL; grid.add_child(cell)
+		var pick := OptionButton.new(); pick.name = "AutoStone_%d_%d" % [index,slot]
+		pick.custom_minimum_size = Vector2(0,44); pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL; pick.clip_text = true
+		pick.add_item("빈 슬롯")
+		for id in ids:
+			var effect: Dictionary = Session.MobileEffects.row(str(id))
+			pick.add_item(Session.Essences.title(str(id)))
+			pick.get_popup().set_item_tooltip(pick.item_count-1,"%s · %s" % [Session.MobileEffects.ROLE_NAMES.get(effect.get("role",""),""),str(effect.get("text",""))])
+			if str(id) in selected and str(id) != str(selected[slot]): pick.set_item_disabled(pick.item_count-1,true)
+		pick.select(ids.find(str(selected[slot]))+1)
+		pick.item_selected.connect(func(choice):
+			selected[slot] = "" if choice == 0 else str(ids[choice-1])
+			ui.show_arena_setup())
+		cell.add_child(pick)
+		if not str(selected[slot]).is_empty():
+			var effect: Dictionary = Session.MobileEffects.row(str(selected[slot]))
+			var detail := Label.new(); detail.name = "AutoStoneDetail_%d_%d" % [index,slot]
+			detail.text = "%s · %s" % [Session.MobileEffects.ROLE_NAMES.get(effect.get("role",""),""),effect.get("text","")]
+			detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; detail.add_theme_font_size_override("font_size",11)
+			cell.add_child(detail)

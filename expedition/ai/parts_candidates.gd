@@ -9,6 +9,7 @@ extends RefCounted
 const Abilities = preload("res://expedition/items/abilities.gd")
 
 static func candidates(s, actor: Dictionary) -> Array:
+	if s.MobileEffects.active(actor): return []
 	var options: Array = []
 	push_options(s,actor,options)
 	guard_options(s,actor,options)

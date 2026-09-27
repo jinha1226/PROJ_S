@@ -116,6 +116,7 @@ static func definition(id: String) -> Dictionary:
 ## the monster's, never a party member's; a player-only part (도발) is never a
 ## monster's.
 static func usable_by(actor: Dictionary, id: String) -> bool:
+	if str(actor.get("combat_profile","legacy")) == "attack_wait_v1" and not bool(actor.get("enemy",false)): return false
 	if not has(id): return false
 	if str(actor.get("borrowed","")) == id: return true
 	var def: Dictionary = definition(id)
@@ -196,6 +197,7 @@ static func holds(actor: Dictionary, id: String) -> bool:
 	return id in held(actor) and usable_by(actor,id)
 
 static func held(actor: Dictionary) -> Array:
+	if str(actor.get("combat_profile","legacy")) == "attack_wait_v1" and not bool(actor.get("enemy",false)): return []
 	var result: Array = []; var species: Array = []
 	var stones: Array = Essences.equipped(actor)
 	# Legacy action fixtures (PUSH, GUARD, IRON_HIDE, BOMB) do not own stones.

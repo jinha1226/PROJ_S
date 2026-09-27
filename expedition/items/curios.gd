@@ -25,6 +25,8 @@ static func resolve(s, point: Vector2i, option: String) -> bool:
 	var def: Dictionary = definition(feature)
 	var choice: Dictionary = def.options[option]
 	var actor: Dictionary = s.party[s.selected]
+	if s.MobileEffects.active(actor):
+		s.Reactions.begin_action(s); s.MobileEffects.begin(s,actor,"CURIO")
 	var key: int = s.depth*10000+point.y*100+point.x
 	var roll: int = s.Hexaco.sample(s.seed_value,key,"curio",100)
 	var outcome: Dictionary = choice.success if roll < int(choice.chance) else choice.get("failure",{})
