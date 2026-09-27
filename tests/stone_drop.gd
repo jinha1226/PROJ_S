@@ -77,11 +77,11 @@ func run() -> void:
 	actor = auto_actor(["ice_hit","ice_chain"])
 	check(Drop.fit(actor,stone_for("ice_shatter")).kind == "linked","multi-step slow freeze shatter chain is recognized")
 	actor = auto_actor(["water_hit"])
-	check(Drop.fit(actor,stone_for("water_air")).kind == "missing","wet without direct lightning is insufficient")
+	check(Drop.fit(actor,stone_for("water_air")).kind == "linked","wet alone now supports the water lightning chain")
 	actor = auto_actor(["water_hit","air_hit"])
-	check(Drop.fit(actor,stone_for("water_air")).kind == "linked","wet and direct lightning meet both requirements")
+	check(Drop.fit(actor,stone_for("water_air")).kind == "linked","extra lightning does not introduce another prerequisite")
 	actor = auto_actor(["fire_poison"])
-	check(Drop.fit(actor,stone_for("fire_hit")).kind == "missing" and Drop.fit(actor,stone_for("fire_hit")).text.contains("중독"),"one seed of a cross-element chain is marked as partial rather than fully linked")
+	check(Drop.fit(actor,stone_for("poison_hit")).kind == "linked" and Drop.fit(actor,stone_for("fire_hit")).kind == "neutral","poison explosion needs only its poison seed")
 	actor = auto_actor([])
 	check(Drop.fit(actor,stone_for("summon_focus")).kind == "missing","pet support requires a summon source")
 	actor = auto_actor(["summon_wait"])
@@ -89,8 +89,8 @@ func run() -> void:
 	actor = auto_actor(["bless_hit"])
 	check(Drop.fit(actor,stone_for("bless_chain")).kind == "linked","self blessing prerequisite is recognized")
 	check(Drop.fit(actor,stone_for("bless_hit")).kind == "duplicate","identical effect is flagged without disabling stat rewards")
-	actor = auto_actor(["focus_wait"]); actor.gear.weapon.type = "sword"
-	check(Drop.fit(actor,stone_for("focus_chain")).text.contains("원거리 무기"),"ranged chain warns about a melee weapon")
+	actor = auto_actor(["vital_hit"]); actor.gear.weapon.type = "sword"
+	check(Drop.fit(actor,stone_for("focus_chain")).kind == "linked","weak-point chain works without a weapon-type requirement")
 	actor = {"hp":100,"level":6,"equipped_abilities":["FIRE_CALLER/cut"]}
 	check(Drop.fit(actor,"FIRE_CALLER/broken").kind == "linked","legacy preview uses actual set thresholds")
 	s = setup_session(); s.interactive_stone_drops = true

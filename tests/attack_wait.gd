@@ -52,9 +52,23 @@ func run() -> void:
 		reachable[Mobile.effect_id(str(id))] = true
 		for element in Session.Essences.ELEMENTS: reachable[Mobile.effect_id(str(id)+"@"+str(element))] = true
 	for id in Mobile.data.effects: check(reachable.has(id),"reachable effect "+str(id))
-	reward_stats(); mobile_items(); seeding(); waiting(); defense(); ice(); electricity(); support(); pets(); physical(); compatibility(); pure_prediction(); advanced_contracts(); operations()
+	reward_stats(); mobile_items(); simple_rules(); seeding(); waiting(); defense(); ice(); electricity(); support(); pets(); physical(); compatibility(); pure_prediction(); advanced_contracts(); operations()
 	Forms.force = -1; Session.StoneEffects.force = -1
 	print("Attack/wait: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
+
+func simple_rules() -> void:
+	var d := with_effects(["fury_hit","evasion_hit"])
+	d.hero.hp = d.hero.max_hp; hit(d)
+	check(d.s.aw_trace.any(func(e): return e.effect == "fury_hit") and d.s.aw_trace.any(func(e): return e.effect == "evasion_hit"),"full-health stationary attacks activate their bonuses")
+	d = with_effects(["wind_hit"]); hit(d)
+	check(d.foe.pos == d.centre+Vector2i(2,0),"wind hit pushes without a preceding move")
+	d = with_effects(["volley_hit"]); hit(d)
+	check(d.s.aw_trace.any(func(e): return e.effect == "volley_hit"),"extra strike works with the starting sword")
+	d = with_effects(["heal_wait"]); d.hero.hp = 95; wait(d)
+	check(d.hero.hp == 100,"wait healing works for a small wound without a percentage threshold")
+	d = with_effects(["summon_wait","summon_chain","summon_kill"]); wait(d)
+	var pets: Array = d.s.Spells.Summons.summons_of(d.s,d.hero)
+	check(pets.size() == 1 and int(pets[0].get("aw_attack_percent",0)) == 20 and int(pets[0].expires_at) == 400,"one wait summons, strengthens and extends a pet without extra pet events")
 
 func mobile_items() -> void:
 	var d := field()
@@ -139,7 +153,7 @@ func waiting() -> void:
 func defense() -> void:
 	var d := with_effects(["defense_defense","defense_threat"])
 	wait(d); wait(d); wait(d)
-	check(d.hero.aw_state.waits == 3,"consecutive intentional waits capped at three")
+	check(d.hero.aw_state.waits == 1,"one wait grants full lure without stacking")
 	check(Mobile.incoming(d.s,d.hero,d.foe,100,"HIT") == 80,"guard refresh never stacks reduction")
 	check(Mobile.incoming(d.s,d.hero,d.foe,100,"MOBILE_DOT") == 100,"stance excludes DOT")
 	check(Mobile.threat(d.s,d.foe,d.hero) == 9,"known target threat bonus is bounded")
@@ -149,8 +163,11 @@ func defense() -> void:
 	d.foe.statuses.erase("poison"); d.s.Reactions.begin_action(d.s); Mobile.struck(d.s,d.hero,d.foe,{"lost":4})
 	check(not d.foe.statuses.has("poison"),"next enemy action does not recharge defensive preparation")
 	d = with_effects(["air_defense"]); wait(d); Session.StoneEffects.force = 99
-	Mobile.struck(d.s,d.hero,d.foe,{"lost":1}); Session.StoneEffects.force = 0; Mobile.struck(d.s,d.hero,d.foe,{"lost":1})
-	check(not d.foe.statuses.has("stun"),"failed electric chance still consumes preparation")
+	Mobile.struck(d.s,d.hero,d.foe,{"lost":1})
+	check(d.foe.statuses.has("stun"),"electric barrier triggers without a random proc roll")
+	d.foe.statuses.erase("stun"); Session.StoneEffects.force = 0; Mobile.struck(d.s,d.hero,d.foe,{"lost":1})
+	check(not d.foe.statuses.has("stun"),"electric barrier remains one reaction per preparation")
+	wait(d); check(d.hero.aw_state.preps.is_empty(),"strong guaranteed control keeps its cooldown")
 	Session.StoneEffects.force = 99
 	d = with_effects(["ice_defense"]); wait(d)
 	check(d.s.CombatStats.stats(d.s,d.hero).ac >= 4,"ice armor enters real stat calculation")
@@ -201,14 +218,17 @@ func pets() -> void:
 	var count: int = d.s.aw_trace.size(); pets[0].expires_at = d.s.time; d.s.Spells.Summons.expire(d.s)
 	check(d.s.aw_trace.size() == count,"natural expiration does not fabricate death burst")
 	d = with_effects(["death_hit","death_chain"]); hit(d); d.foe.hp = 1; hit(d)
-	check(d.s.Spells.Summons.summons_of(d.s,d.hero).size() == 1,"marked monster death summons exactly one skeleton")
+	check(d.s.Spells.Summons.summons_of(d.s,d.hero).size() == 1,"marked hit summons exactly one skeleton without a kill condition")
 func physical() -> void:
 	var d := with_effects(["focus_wait"]); d.hero.gear.weapon = {"type":"bow","enchant":0}
-	wait(d); wait(d); wait(d); wait(d); check(d.hero.aw_state.aim == 3,"aim caps at three waits")
-	hit(d); check(d.hero.aw_state.aim == 0,"legal basic attack consumes aim")
+	wait(d); wait(d); wait(d); wait(d)
+	check(d.hero.aw_state.attack_preps.focus.percent == 20,"one wait fully prepares focus without stacking")
+	hit(d); check(d.hero.aw_state.attack_preps.is_empty(),"legal basic attack consumes focus preparation")
 	d = with_effects(["crush_hit","crush_chain"]); var blocked: Vector2i = d.foe.pos+Vector2i.RIGHT
 	d.s.tile(blocked).terrain = "wall"; hit(d)
-	check(d.s.aw_trace.any(func(e): return e.event == "COLLISION"),"real wall collision emits collision link")
+	check(not d.s.aw_trace.any(func(e): return e.effect == "crush_chain"),"wall collision alone is no longer a separate activation condition")
+	d = with_effects(["vital_hit","crush_chain"]); hit(d)
+	check(d.s.aw_trace.any(func(e): return e.effect == "crush_chain"),"weak-point seed activates crush chain in an open room")
 	d = with_effects(["rapid_hit","bleed_hit","bleed_chain"]); hit(d)
 	check(d.s.aw_trace.filter(func(e): return e.event == "HIT").size() <= 3 and d.s.aw_overflows == 0,"extra attacks cannot recursively restart attack stones")
 func compatibility() -> void:
@@ -258,7 +278,7 @@ func advanced_contracts() -> void:
 		var next_roll: int = d.s.Hexaco.sample(d.s.seed_value,d.s.time*37+int(d.hero.id)*997+int(d.foe.id)*17+serial+1,"dodge",100)
 		if next_roll < 45: d.s.roll_serial = serial; break
 	var result: Dictionary = hit(d)
-	check(result.evaded and int(d.hero.aw_state.aim) == 0 and not d.foe.statuses.has("burn"),"legal miss consumes preparation without HIT seeds")
+	check(result.evaded and d.hero.aw_state.attack_preps.is_empty() and not d.foe.statuses.has("burn"),"legal miss consumes preparation without HIT seeds")
 	d = with_effects(["fire_hit","fire_chain"]); var neighbour := near(d,901,Vector2i(2,0))
 	hit(d); var first: int = neighbour.hp
 	var reverse := field([stone("fire_chain"),stone("fire_hit")]); var other := near(reverse,901,Vector2i(2,0)); hit(reverse)
@@ -271,9 +291,9 @@ func advanced_contracts() -> void:
 	check(not d.s.use_item("healing") and before_serial == d.s.action_serial and d.hero.aw_state == old_state,"rejected consumable preserves preparation and root")
 	d.hero.hp = 50
 	check(d.s.use_item("healing") and int(d.hero.aw_state.waits) == 0 and not d.hero.aw_state.preps.has("stance"),"committed item expires stance and consecutive waits")
-	check(d.s.aw_trace.any(func(e): return e.event == "HEALED"),"actual potion healing can execute declared heal link")
+	check(not d.s.aw_trace.any(func(e): return e.event == "HEALED") and not d.hero.aw_state.preps.has("guard"),"potions do not activate an extra healing event")
 	d = with_effects(["water_cleanse"]); d.hero.hp = 50; d.hero.statuses.bleed = 300; d.s.bag.healing = 1
-	check(d.s.use_item("healing") and d.s.aw_trace.any(func(e): return e.event == "CLEANSED"),"actual potion cleanse executes declared cleanse link")
+	check(d.s.use_item("healing") and not d.hero.statuses.has("bleed") and not d.s.aw_trace.any(func(e): return e.event == "CLEANSED"),"potion cleansing works without another soulstone trigger")
 	d = with_effects(["mental_hit"]); hit(d)
 	check(Mobile.confusion_penalty(d.foe) == 20 and bool(d.foe.enemy),"mobile confusion impairs aim without changing allegiance")
 	# Pick a real deterministic roll that hits normally but misses when confused.
@@ -302,10 +322,12 @@ func advanced_contracts() -> void:
 	d = with_effects(["poison_hit","bleed_kill"]); d.hero.hp = 50; d.foe.hp = 2
 	d.s.Statuses.apply(d.s,d.foe,"bleed",300,d.hero); d.s.Statuses.apply(d.s,d.foe,"poison",300,d.hero)
 	d.s.Statuses.tick(d.s)
-	check(d.s.aw_trace.any(func(e): return e.effect == "bleed_kill") and d.hero.hp == 54,"DOT death retains its owner and executes final-enemy heal")
-	d = with_effects(["air_hit","water_hit","water_air"]); second = near(d,904,Vector2i(3,0)); hit(d)
-	check(second.hp == 197,"explicit wet/electric direct component enables cross-chain")
+	check(not d.s.aw_trace.any(func(e): return e.effect == "bleed_kill") and d.hero.hp == 50,"DOT death no longer activates a hidden kill-healing condition")
+	d = with_effects(["water_hit","water_air"]); second = near(d,904,Vector2i(3,0)); hit(d)
+	check(second.hp == 197,"wet alone activates its chain without a lightning-source requirement")
 	d = with_effects(["death_end","death_wait"]); wait(d)
 	pet = d.s.Spells.Summons.summons_of(d.s,d.hero)[0]; pet.hp = 1; pet.pos = d.centre+Vector2i(1,1)
 	d.s.CombatRules.damage(d.s,d.foe,pet,5,"physical")
-	check(d.foe.statuses.has("weak"),"enemy killing a real owned skeleton causes its declared death reaction")
+	check(not d.foe.statuses.has("weak"),"pet death no longer activates a hidden soulstone trigger")
+	d = with_effects(["death_hit","death_end"]); second = near(d,904,Vector2i(2,0)); hit(d)
+	check(second.statuses.has("weak"),"death-marked hit spreads weakness without sacrificing a pet")

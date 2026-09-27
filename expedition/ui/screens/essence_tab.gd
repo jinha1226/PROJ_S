@@ -45,11 +45,7 @@ static func stat_line(id: String, actor: Dictionary = {}) -> String:
 static func effect_line(id: String, actor: Dictionary = {}) -> String:
 	if Mobile.active(actor):
 		var effect := Mobile.row(id)
-		var names := {"burn":"화상","poison":"중독","slow":"둔화","charge":"전하","bleed":"출혈","confuse":"혼란","weak":"약화","wet":"젖음","freeze":"빙결","death_mark":"사령 낙인","exposed":"약점"}
-		var requirements: Array = effect.get("requires",effect.get("requires_before",[])).map(func(key): return str(names.get(key,key)))
-		if effect.has("damage_element"): requirements = requirements.duplicate(); requirements.append("직접 "+str(Essences.ELEMENTS.get(effect.damage_element,effect.damage_element))+" 피해")
-		if effect.get("needs_pet",false): requirements = requirements.duplicate(); requirements.append("자기 소환수")
-		return "%s · %s%s" % [Mobile.ROLE_NAMES.get(effect.get("role",""),""),effect.get("text","")," · 조건: "+"/".join(requirements) if not requirements.is_empty() else ""]
+		return "%s · %s" % [Mobile.ROLE_NAMES.get(effect.get("role",""),""),effect.get("text","")]
 	var effect: String = StoneEffects.effect_of(id)
 	if effect.is_empty(): return "효과 없음"
 	var row: Dictionary = StoneEffects.EFFECTS[effect]

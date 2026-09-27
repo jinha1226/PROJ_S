@@ -22,8 +22,8 @@ static func portrait_state(actor: Dictionary) -> String:
 	if Session.MobileEffects.active(actor):
 		var state: Dictionary = actor.get("aw_state",{})
 		if not state.get("preps",{}).is_empty(): details.append("보호")
-		if int(state.get("waits",0)) > 0: details.append("위협 %d" % int(state.waits))
-		if int(state.get("aim",0)) > 0: details.append("조준 %d" % int(state.aim))
+		if not state.get("attack_preps",{}).is_empty(): details.append("공격 준비")
+		if int(state.get("waits",0)) > 0: details.append("유인")
 		for id in state.get("uses",{}):
 			var effect: Dictionary = Session.MobileEffects.data.effects.get(id,{})
 			if effect.has("uses"): details.append("치유 %d" % maxi(0,int(effect.uses)-int(state.uses[id])))

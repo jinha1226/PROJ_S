@@ -66,7 +66,7 @@ static func fit(actor: Dictionary, stone: String) -> Dictionary:
 	var row: Dictionary = Mobile.row(stone)
 	var missing := unmet(actor,row,after)
 	if not missing.is_empty(): return {"kind":"missing","text":"준비 필요 · "+" · ".join(missing)}
-	var conditions := unmet(actor,row,{"statuses":[],"self":[],"families":[],"direct":[],"pet":false,"aim":false})
+	var conditions := unmet(actor,row,{"statuses":[],"self":[],"pet":false})
 	if not conditions.is_empty(): return {"kind":"linked","text":"연계 가능 · "+str(row.get("name",""))}
 	for existing in owned:
 		var other: Dictionary = Mobile.data.effects[existing]
@@ -81,23 +81,15 @@ static func fit(actor: Dictionary, stone: String) -> Dictionary:
 
 static func unmet(actor: Dictionary, row: Dictionary, caps: Dictionary) -> Array:
 	var result: Array = []
-	for status in row.get("requires",[])+row.get("requires_before",[]):
+	for status in row.get("requires",[]):
 		if status not in caps.statuses: result.append(str(STATUS_NAMES.get(status,status)))
 	for status in row.get("self_requires",[]):
 		if status not in caps.self: result.append(str(STATUS_NAMES.get(status,status)))
-	if (row.get("needs_pet",false) or str(row.get("event","")) in ["PET_HIT","PET_KILL","SUMMON","SUMMON_END"]) and not caps.pet: result.append("소환수")
-	if row.has("needs_effect") and row.needs_effect not in caps.families: result.append("강타 효과" if row.needs_effect == "crush" else str(row.needs_effect))
-	if row.has("damage_element") and row.damage_element not in caps.direct: result.append(str(Essences.ELEMENTS.get(row.damage_element,row.damage_element))+" 직접 피해")
-	if row.get("aimed",false) and not caps.aim: result.append("조준 효과")
-	var weapon: String = str(actor.get("gear",{}).get("weapon",{}).get("type",""))
-	if row.get("ranged",false) and str(Essences.combat.weapons.get(weapon,{}).get("trait","")) != "ranged": result.append("원거리 무기")
+	if row.get("needs_pet",false) and not caps.pet: result.append("소환수")
 	return result
 
 static func capabilities(actor: Dictionary, ids: Array) -> Dictionary:
-	var caps := {"statuses":[],"self":[],"families":[],"direct":[],"pet":false,"aim":false}
-	for id in ids:
-		var row: Dictionary = Mobile.data.effects.get(id,{})
-		if not row.is_empty() and row.family not in caps.families: caps.families.append(row.family)
+	var caps := {"statuses":[],"self":[],"pet":false}
 	# A chain can produce another chain's input, but only after a valid seed.
 	for _pass in range(ids.size()+1):
 		for id in ids:
@@ -107,6 +99,4 @@ static func capabilities(actor: Dictionary, ids: Array) -> Dictionary:
 			if row.has("status") and op in ["status","status_area","spread","attack_prep","pet_burst","prepare"] and str(row.status) not in caps.statuses: caps.statuses.append(str(row.status))
 			if op == "bless" and "blessing" not in caps.self: caps.self.append("blessing")
 			if op == "summon": caps.pet = true
-			if op == "aim": caps.aim = true
-			if row.get("direct_element",false) and str(row.get("element","")) not in caps.direct: caps.direct.append(str(row.element))
 	return caps

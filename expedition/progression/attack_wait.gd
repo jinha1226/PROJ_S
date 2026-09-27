@@ -4,7 +4,7 @@ const Essences = preload("res://expedition/progression/essences.gd")
 const Conditions = preload("res://expedition/progression/effect_conditions.gd")
 const PROFILE := "attack_wait_v1"
 const ROLE_NAMES := {"OFFENSE":"공격형","DEFENSE":"방어형","CHAIN":"연쇄형"}
-const EVENTS := ["ATTACK","HIT","WAIT","STRUCK","DODGE","BLOCK","KILL","MOVED","HEALED","CLEANSED","PUSHED","COLLISION","SUMMON","SUMMON_END","PET_HIT","PET_KILL"]
+const EVENTS := ["ATTACK","HIT","WAIT"]
 const OPS := ["status","status_area","burst","spread","extend","damage","lightning","extra","prepare","bless","attack_prep","aim","threat","ally_guard","heal_self","heal_ally","drain","cleanse","regen","summon","pet_focus","pet_bond","pet_extend","pet_buff","pet_bless","pet_burst","push","attack_bonus"]
 const MAX_EVENTS := 512
 static var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/attack_wait_effects.json"))
@@ -157,6 +157,7 @@ static func push(s, event: String, owner: Dictionary, ctx: Dictionary = {}) -> v
 	if s.aw_hold == 0 and not s.aw_running: drain(s)
 
 static func fire(s, event: String, ctx: Dictionary) -> void:
+	if event not in EVENTS: return
 	for owner in s.StoneEffects.EffectEngine.owners(s,event,ctx):
 		var facts := ctx.duplicate()
 		if event in ["KILL","PET_KILL"] and not hostile(s,owner,ctx.get("victim",ctx.get("target",{}))): continue
@@ -170,11 +171,6 @@ static func drain(s) -> void:
 	s.aw_running = true
 	var handled := 0
 	while not s.aw_queue.is_empty():
-		# HIT seeds and links finish before the matching death/kill events.
-		s.aw_queue.sort_custom(func(a,b):
-			var pa := 2 if str(a.event) in ["KILL","PET_KILL","SUMMON_END"] else 1
-			var pb := 2 if str(b.event) in ["KILL","PET_KILL","SUMMON_END"] else 1
-			return pa < pb if pa != pb else int(a.id) < int(b.id))
 		var e: Dictionary = s.aw_queue.pop_front()
 		handled += 1
 		if handled > MAX_EVENTS:
@@ -187,7 +183,7 @@ static func drain(s) -> void:
 
 static func resolve(s, owner: Dictionary, event: String, ctx: Dictionary, e: Dictionary) -> void:
 	var ids := effects(owner)
-	# Cross shatter replaces the ordinary shatter, never double consumes it.
+	# Two shatter stones do not consume the same frozen target twice.
 	if "ice_crush" in ids and conditions(s,owner,data.effects.ice_crush,ctx): ids.erase("ice_shatter")
 	ids.sort_custom(func(a,b):
 		var ra: Dictionary = data.effects[a]; var rb: Dictionary = data.effects[b]
@@ -228,21 +224,9 @@ static func conditions(s, owner: Dictionary, r: Dictionary, ctx: Dictionary) -> 
 	if int(target.get("hp",1)) <= 0: statuses = ctx.get("victim_statuses",statuses)
 	for name in r.get("requires",[]):
 		if not statuses.has(name): return false
-	for name in r.get("requires_before",[]):
-		if not ctx.get("victim_statuses",{}).has(name): return false
 	for name in r.get("self_requires",[]):
 		if not owner.get("statuses",{}).has(name) and not ctx.get("self_statuses",{}).has(name): return false
-	if r.has("hp_below") and str(r.op) not in ["heal_ally"] and int(owner.hp)*100 > int(owner.max_hp)*int(r.hp_below): return false
-	if r.get("ranged",false) and not bool(ctx.get("ranged",false)): return false
-	if r.get("moved",false) and not bool(ctx.get("moved",owner.get("moved_since_attack",false))): return false
-	if r.get("aimed",false) and int(ctx.get("aim",0)) <= 0: return false
-	if r.has("form") and str(ctx.get("hit_form","")) != str(r.form): return false
-	if r.has("damage_element") and str(ctx.get("damage_element","")) != str(r.damage_element) and str(r.damage_element) not in ctx.get("direct_elements",[]): return false
-	if r.has("min_distance") and (target.is_empty() or distance(owner.pos,target.pos) < int(r.min_distance)): return false
-	if r.get("monster",false) and (not bool(target.get("enemy",false)) or bool(target.get("npc",false)) or bool(target.get("summoned",false))): return false
 	if r.get("needs_pet",false) and s.Spells.Summons.summons_of(s,owner).is_empty(): return false
-	if r.has("needs_effect") and not effects(owner).any(func(id): return str(data.effects[id].family) == str(r.needs_effect)): return false
-	if r.get("same_target",false) and int(ctx.get("previous_target",-1)) != int(target.get("id",-2)): return false
 	return true
 
 static func status(s, owner: Dictionary, target: Dictionary, name: String, ticks: int) -> bool:
@@ -338,10 +322,9 @@ static func execute(s, owner: Dictionary, r: Dictionary, ctx: Dictionary) -> boo
 			st.attack_preps.blessing = r.duplicate(true)
 			return true
 		"attack_prep": st.attack_preps[str(r.get("key","power"))] = r.duplicate(true); return true
-		"aim": st.aim = mini(3,int(st.aim)+1); return true
 		"threat":
 			if not encounter_active(s,owner): return false
-			st.waits = mini(3,int(st.waits)+1); return true
+			st.waits = 1; return true
 		"ally_guard":
 			var mates := allies(s,owner,int(r.get("radius",2)))
 			if str(r.event) == "BLOCK": mates = mates.filter(func(a): return int(a.id) != int(owner.id))
@@ -354,7 +337,7 @@ static func execute(s, owner: Dictionary, r: Dictionary, ctx: Dictionary) -> boo
 		"heal_self": return s.StoneEffects.heal(s,owner,int(r.heal),owner) > 0
 		"drain": return int(ctx.get("lost",0)) > 0 and s.StoneEffects.heal(s,owner,mini(int(r.cap),maxi(1,int(ctx.lost)*int(r.percent)/100)),owner) > 0
 		"heal_ally":
-			var mates := allies(s,owner,int(r.radius)).filter(func(t): return int(t.hp)*100 <= int(t.max_hp)*int(r.get("hp_below",99)))
+			var mates := allies(s,owner,int(r.radius)).filter(func(t): return int(t.hp) < int(t.max_hp))
 			return not mates.is_empty() and s.StoneEffects.heal(s,mates[0],int(r.heal),owner) > 0
 		"cleanse":
 			for mate in allies(s,owner,int(r.radius)):
@@ -382,17 +365,18 @@ static func execute(s, owner: Dictionary, r: Dictionary, ctx: Dictionary) -> boo
 			if pet.is_empty() or int(st.get("last_target",-1)) != int(target.get("id",-2)): return false
 			pet.aw_attack_percent = int(r.percent); return true
 		"pet_buff":
-			var pets: Array = s.Spells.Summons.summons_of(s,owner).filter(func(p): return str(p.get("summon_kind","")) == "skeleton")
+			var pets: Array = s.Spells.Summons.summons_of(s,owner)
 			for pet in pets: pet.aw_attack_percent = int(r.percent)
 			return not pets.is_empty()
 		"pet_extend":
-			var pet: Dictionary = ctx.get("killer",{})
-			if pet.is_empty() or not bool(pet.get("summoned",false)): return false
-			pet.expires_at = mini(int(s.time)+500,int(pet.expires_at)+int(r.extend)); return true
+			var pets: Array = s.Spells.Summons.summons_of(s,owner)
+			for pet in pets: pet.expires_at = mini(int(s.time)+500,int(pet.expires_at)+int(r.extend))
+			return not pets.is_empty()
 		"pet_bless":
-			var pet: Dictionary = ctx.get("pet",{})
-			if pet.is_empty(): return false
-			pet.aw_attack_percent = int(r.percent); return status(s,owner,pet,"blessing",ticks)
+			var pets: Array = s.Spells.Summons.summons_of(s,owner)
+			for pet in pets:
+				pet.aw_attack_percent = int(r.percent); status(s,owner,pet,"blessing",ticks)
+			return not pets.is_empty()
 		"push": return shove(s,owner,target,r,ctx)
 		"attack_bonus":
 			ctx.attack_percent = int(ctx.get("attack_percent",0))+int(r.percent)
@@ -467,9 +451,8 @@ static func incoming(s, target: Dictionary, source: Dictionary, amount: int, hit
 		var p: Dictionary = st.preps[key]
 		if not preparation_valid(s,p): st.preps.erase(key); continue
 		reduction = maxi(reduction,int(p.rule.get("reduction",0)))
-		if key in ["guard","divine_guard","rage_guard"]: st.preps.erase(key)
 		if p.rule.has("share"):
-			var pets: Array = s.Spells.Summons.summons_of(s,target).filter(func(pet): return str(pet.get("summon_kind","")) == "skeleton" and distance(target.pos,pet.pos) <= 1)
+			var pets: Array = s.Spells.Summons.summons_of(s,target)
 			if not pets.is_empty():
 				var share := mini(int(pets[0].hp),amount*int(p.rule.share)/100)
 				if share > 0: damage(s,source,pets[0],{},share,"MOBILE_SHARE"); amount -= share
@@ -485,7 +468,6 @@ static func struck(s, owner: Dictionary, attacker: Dictionary, ctx: Dictionary) 
 		if not preparation_valid(s,prep): st.preps.erase(key); continue
 		if not valid(s,owner,attacker,owner.pos,int(r.get("reach",1))): continue
 		st.preps.erase(key)
-		if not s.StoneEffects.chance(s,owner,attacker,"aw:"+key,int(r.get("chance",100))): continue
 		var reaction: Dictionary = r.duplicate(true); reaction.op = str(r.reaction)
 		var previous: Dictionary = s.effect_source; s.effect_source = {"owner":int(owner.id),"effect":"aw:"+key,"policy":PROFILE}
 		if str(r.reaction) == "reflect": damage(s,owner,attacker,r,maxi(1,int(ctx.lost)*int(r.percent)/100),"MOBILE_REFLECT")
@@ -530,7 +512,7 @@ static func tick(s) -> void:
 static func threat(s, observer: Dictionary, target: Dictionary) -> int:
 	if not active(target) or int(target.hp) <= 0 or not line(s,observer.pos,target.pos,5): return 0
 	if "defense_threat" not in effects(target): return 0
-	return int(target.get("aw_state",{}).get("waits",0))*3
+	return int(data.effects.defense_threat.get("amount",9)) if int(target.get("aw_state",{}).get("waits",0)) > 0 else 0
 
 ## Pure prediction: no state(), RNG or target mutation in UI/AI queries.
 static func estimate(s, actor: Dictionary, kind: String, target: Dictionary = {}) -> int:
@@ -544,7 +526,7 @@ static func estimate(s, actor: Dictionary, kind: String, target: Dictionary = {}
 		if not conditions(s,actor,r,ctx): continue
 		if str(r.op) == "status_area": value += targets(s,actor,actor.pos,int(r.radius),int(r.get("count",0))).size()*5
 		elif str(r.op) == "heal_ally":
-			var injured := allies(s,actor,int(r.radius)).filter(func(t): return int(t.hp)*100 <= int(t.max_hp)*int(r.get("hp_below",99)))
+			var injured := allies(s,actor,int(r.radius)).filter(func(t): return int(t.hp) < int(t.max_hp))
 			if not injured.is_empty(): value += mini(int(r.heal),int(injured[0].max_hp)-int(injured[0].hp))*2
 		elif str(r.op) == "summon":
 			if s.Spells.Summons.summons_of(s,actor).size() < int(r.cap) and not s.Spells.Summons.summon_cells(s,actor).is_empty(): value += 12
@@ -552,14 +534,14 @@ static func estimate(s, actor: Dictionary, kind: String, target: Dictionary = {}
 			if not encounter_active(s,actor): continue
 			value += int(r.get("reduction",0))/5
 			var reaction_value := 10 if str(r.get("status","")) == "stun" else int(r.get("damage",3))
-			if r.has("reaction"): value += roundi(float(r.get("chance",100))*reaction_value/100.0)
+			if r.has("reaction"): value += reaction_value
 			value += int(r.get("mods",{}).get("armour",0))+int(r.get("mods",{}).get("dodge",0))/5
 		else: value += 4
 	return mini(45,value)
 
 static func summary(actor: Dictionary) -> String:
 	var lines: Array = []
-	for group in [["공격",["ATTACK","HIT"]],["대기",["WAIT"]],["반응",["STRUCK","DODGE","BLOCK","KILL","MOVED","HEALED","CLEANSED","PUSHED","COLLISION","SUMMON","SUMMON_END","PET_HIT","PET_KILL"]]]:
+	for group in [["공격",["ATTACK","HIT"]],["대기",["WAIT"]]]:
 		var texts: Array = []
 		for id in effects(actor):
 			var r: Dictionary = data.effects[id]
@@ -578,4 +560,8 @@ static func validate() -> Array:
 		if str(r.get("role","")) not in ROLE_NAMES: errors.append(str(id)+": role")
 		if int(r.get("limit",0)) < 1: errors.append(str(id)+": unbounded rule")
 		if str(r.get("text","")) == "": errors.append(str(id)+": label")
+		var prerequisites: int = r.get("requires",[]).size()+r.get("self_requires",[]).size()+int(r.get("needs_pet",false))
+		if prerequisites > 1 or (str(r.role) == "CHAIN") != (prerequisites == 1): errors.append(str(id)+": simple prerequisite")
+		for key in ["hp_below","moved","ranged","ranged_only","aimed","form","damage_element","min_distance","monster","needs_effect","same_target","chance","requires_before","on_attempt"]:
+			if r.has(key): errors.append(str(id)+": retired condition "+str(key))
 	return errors

@@ -1,12 +1,26 @@
 {
-  "version": 1,
+  "version": 2,
   "profile": "attack_wait_v1",
   "role_stats": {
-    "SUPPORT": {"hp": 16},
-    "MELEE": {"atk": 4, "hp": 8},
-    "TANK": {"hp": 20, "ac": 3},
-    "RANGED": {"atk": 3, "speed": 5},
-    "MAGIC": {"atk": 2, "hp": 12}
+    "SUPPORT": {
+      "hp": 16
+    },
+    "MELEE": {
+      "atk": 4,
+      "hp": 8
+    },
+    "TANK": {
+      "hp": 20,
+      "ac": 3
+    },
+    "RANGED": {
+      "atk": 3,
+      "speed": 5
+    },
+    "MAGIC": {
+      "atk": 2,
+      "hp": 12
+    }
   },
   "bindings": {
     "RAT_GNAW": "bless_defense",
@@ -497,10 +511,10 @@
     },
     "heal_chain": {
       "name": "방어 준비",
-      "text": "실제 치유 후 보호",
+      "text": "대기 시 받는 피해 20% 감소",
       "family": "heal",
-      "role": "CHAIN",
-      "event": "HEALED",
+      "role": "DEFENSE",
+      "event": "WAIT",
       "op": "prepare",
       "limit": 1,
       "ticks": 300,
@@ -510,15 +524,18 @@
     },
     "wind_chain": {
       "name": "추가타",
-      "text": "실제 밀침 후 추가타",
+      "text": "둔화된 적 공격 시 추가타",
       "family": "wind",
       "role": "CHAIN",
-      "event": "PUSHED",
+      "event": "HIT",
       "op": "extra",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "damage_percent": 30
+      "damage_percent": 30,
+      "requires": [
+        "slow"
+      ]
     },
     "ice_shatter": {
       "name": "파쇄",
@@ -530,12 +547,12 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "ice",
-      "requires_before": [
-        "freeze"
-      ],
       "consume": "freeze",
       "damage": 4,
-      "element": "physical"
+      "element": "physical",
+      "requires": [
+        "freeze"
+      ]
     },
     "fire_defense": {
       "name": "방어 준비",
@@ -586,7 +603,7 @@
     },
     "air_defense": {
       "name": "방어 준비",
-      "text": "대기 후 피격 시 15% 마비",
+      "text": "대기 후 피격 시 공격자 마비 · 재사용 3턴",
       "family": "air",
       "role": "DEFENSE",
       "event": "WAIT",
@@ -597,8 +614,8 @@
       "key": "electric_barrier",
       "reaction": "status",
       "status": "stun",
-      "chance": 15,
-      "reach": 3
+      "reach": 3,
+      "cooldown": 300
     },
     "hex_defense": {
       "name": "방어 준비",
@@ -662,7 +679,7 @@
     },
     "wind_defense": {
       "name": "방어 준비",
-      "text": "대기 후 다음 피격 회피 +15",
+      "text": "대기 시 회피 +15",
       "family": "wind",
       "role": "DEFENSE",
       "event": "WAIT",
@@ -673,8 +690,7 @@
       "key": "wind_wall",
       "mods": {
         "dodge": 15
-      },
-      "on_attempt": true
+      }
     },
     "defense_defense": {
       "name": "방어 준비",
@@ -744,10 +760,10 @@
     },
     "bless_kill": {
       "name": "치유",
-      "text": "축복 중 처치 시 부상 아군 회복",
+      "text": "축복 중 공격 시 주변 아군 HP 2 회복",
       "family": "bless",
       "role": "CHAIN",
-      "event": "KILL",
+      "event": "HIT",
       "op": "heal_ally",
       "limit": 1,
       "ticks": 300,
@@ -756,14 +772,14 @@
         "blessing"
       ],
       "radius": 2,
-      "heal": 4
+      "heal": 2
     },
     "fire_kill": {
       "name": "화상 전이",
-      "text": "화상 적 처치 시 주변 화상",
+      "text": "화상 상태의 적 공격 시 주변에 화상 전이",
       "family": "fire",
       "role": "CHAIN",
-      "event": "KILL",
+      "event": "HIT",
       "op": "spread",
       "limit": 1,
       "ticks": 300,
@@ -776,10 +792,10 @@
     },
     "poison_kill": {
       "name": "독 연장",
-      "text": "중독 적 처치 시 주변 독 연장",
+      "text": "중독 상태의 적 공격 시 주변 중독 연장",
       "family": "poison",
       "role": "CHAIN",
-      "event": "KILL",
+      "event": "HIT",
       "op": "extend",
       "limit": 1,
       "ticks": 300,
@@ -793,10 +809,10 @@
     },
     "air_kill": {
       "name": "전하 전이",
-      "text": "전하 적 처치 시 표식 전이",
+      "text": "전하 상태의 적 공격 시 주변에 전하 전이",
       "family": "air",
       "role": "CHAIN",
-      "event": "KILL",
+      "event": "HIT",
       "op": "spread",
       "limit": 1,
       "ticks": 300,
@@ -810,10 +826,10 @@
     },
     "bleed_kill": {
       "name": "회복",
-      "text": "출혈 적 처치 시 HP 4 회복",
+      "text": "출혈 상태의 적 공격 시 HP 2 회복",
       "family": "bleed",
       "role": "CHAIN",
-      "event": "KILL",
+      "event": "HIT",
       "op": "heal_self",
       "limit": 1,
       "ticks": 300,
@@ -821,14 +837,14 @@
       "requires": [
         "bleed"
       ],
-      "heal": 4
+      "heal": 2
     },
     "mental_kill": {
       "name": "공격 준비",
-      "text": "혼란 적 처치 시 다음 공격 강화",
+      "text": "혼란 상태의 적 공격 시 다음 공격 강화",
       "family": "mental",
       "role": "CHAIN",
-      "event": "KILL",
+      "event": "HIT",
       "op": "attack_prep",
       "limit": 1,
       "ticks": 300,
@@ -840,10 +856,10 @@
     },
     "hex_kill": {
       "name": "약화 전이",
-      "text": "약화 적 처치 시 저주 전이",
+      "text": "약화 상태의 적 공격 시 주변에 약화 전이",
       "family": "hex",
       "role": "CHAIN",
-      "event": "KILL",
+      "event": "HIT",
       "op": "spread",
       "limit": 1,
       "ticks": 300,
@@ -870,38 +886,39 @@
     },
     "defense_threat": {
       "name": "위협",
-      "text": "연속 대기 위협도 1~3",
+      "text": "대기 시 적의 시선 끌기",
       "family": "defense",
-      "role": "CHAIN",
+      "role": "DEFENSE",
       "event": "WAIT",
       "op": "threat",
       "limit": 1,
       "ticks": 300,
-      "vfx": "shield"
+      "vfx": "shield",
+      "amount": 9
     },
     "defense_counter": {
-      "name": "반격",
-      "text": "실제 막기 후 반격",
+      "name": "공격 강화",
+      "text": "공격 시 피해 +10%",
       "family": "defense",
-      "role": "CHAIN",
-      "event": "BLOCK",
-      "op": "extra",
+      "role": "OFFENSE",
+      "event": "ATTACK",
+      "op": "attack_bonus",
       "limit": 1,
       "ticks": 300,
       "vfx": "shield",
-      "damage_percent": 40
+      "percent": 10
     },
     "evasion_counter": {
-      "name": "반격",
-      "text": "실제 회피 후 반격",
+      "name": "연타",
+      "text": "적중 시 추가타",
       "family": "evasion",
-      "role": "CHAIN",
-      "event": "DODGE",
+      "role": "OFFENSE",
+      "event": "HIT",
       "op": "extra",
       "limit": 1,
       "ticks": 300,
       "vfx": "dodge",
-      "damage_percent": 40
+      "damage_percent": 25
     },
     "heal_hit": {
       "name": "흡혈",
@@ -918,7 +935,7 @@
     },
     "heal_wait": {
       "name": "치유",
-      "text": "대기 시 HP 70% 이하 아군 치유 · 조우당 2회",
+      "text": "대기 시 주변 아군 HP 8 회복 · 전투당 2회 · 재사용 3턴",
       "family": "heal",
       "role": "DEFENSE",
       "event": "WAIT",
@@ -928,17 +945,16 @@
       "vfx": "heal",
       "radius": 1,
       "heal": 8,
-      "hp_below": 70,
       "uses": 2,
       "cooldown": 300,
       "combat": true
     },
     "heal_cleanse": {
       "name": "정화",
-      "text": "처치 시 인접 아군 상태 1개 정화",
+      "text": "대기 시 주변 아군 상태이상 1개 해제",
       "family": "heal",
-      "role": "CHAIN",
-      "event": "KILL",
+      "role": "DEFENSE",
+      "event": "WAIT",
       "op": "cleanse",
       "limit": 1,
       "ticks": 300,
@@ -957,23 +973,23 @@
       "vfx": "heal",
       "heal": 2,
       "pulses": 2,
-      "hp_below": 70,
       "cooldown": 300,
       "combat": true
     },
     "regen_struck": {
       "name": "재생",
-      "text": "적대 직접 피격 후 재생",
+      "text": "대기 시 HP 재생 · 재사용 3턴",
       "family": "regen",
       "role": "DEFENSE",
-      "event": "STRUCK",
+      "event": "WAIT",
       "op": "regen",
       "limit": 1,
       "ticks": 300,
       "vfx": "heal",
       "heal": 2,
       "pulses": 2,
-      "cooldown": 300
+      "cooldown": 300,
+      "combat": true
     },
     "regen_hit": {
       "name": "재생",
@@ -1022,9 +1038,9 @@
     },
     "summon_focus": {
       "name": "목표 집중",
-      "text": "적중 시 소환수 목표 집중",
+      "text": "소환수가 있으면 공격 시 목표 집중",
       "family": "summon",
-      "role": "OFFENSE",
+      "role": "CHAIN",
       "event": "HIT",
       "op": "pet_focus",
       "limit": 1,
@@ -1034,11 +1050,11 @@
     },
     "summon_chain": {
       "name": "결속",
-      "text": "주인과 같은 적 적중 후 소환수 강화",
+      "text": "소환수가 있으면 대기 시 다음 소환수 공격 강화",
       "family": "summon",
       "role": "CHAIN",
-      "event": "PET_HIT",
-      "op": "pet_bond",
+      "event": "WAIT",
+      "op": "pet_buff",
       "limit": 1,
       "ticks": 300,
       "vfx": "summon",
@@ -1047,16 +1063,17 @@
     },
     "summon_kill": {
       "name": "지속 연장",
-      "text": "소환수 처치 시 지속 +1턴",
+      "text": "소환수가 있으면 대기 시 지속 +1턴 · 재사용 3턴",
       "family": "summon",
       "role": "CHAIN",
-      "event": "PET_KILL",
+      "event": "WAIT",
       "op": "pet_extend",
       "limit": 1,
       "ticks": 300,
       "vfx": "summon",
       "needs_pet": true,
-      "extend": 100
+      "extend": 100,
+      "cooldown": 300
     },
     "death_hit": {
       "name": "사령 낙인",
@@ -1089,9 +1106,9 @@
     },
     "death_defense": {
       "name": "방어 준비",
-      "text": "대기 후 직접 피해 25%를 자기 해골과 분담",
+      "text": "소환수가 있으면 대기 시 피해 분담",
       "family": "death",
-      "role": "DEFENSE",
+      "role": "CHAIN",
       "event": "WAIT",
       "op": "prepare",
       "limit": 1,
@@ -1103,10 +1120,10 @@
     },
     "death_chain": {
       "name": "해골",
-      "text": "낙인 몬스터 처치 시 해골",
+      "text": "낙인 상태의 적 공격 시 해골 소환 · 최대 1 · 재사용 3턴",
       "family": "death",
       "role": "CHAIN",
-      "event": "KILL",
+      "event": "HIT",
       "op": "summon",
       "limit": 1,
       "ticks": 300,
@@ -1114,24 +1131,27 @@
       "requires": [
         "death_mark"
       ],
-      "monster": true,
       "kind": "skeleton",
-      "cap": 1
+      "cap": 1,
+      "cooldown": 300
     },
     "death_end": {
       "name": "사령 폭발",
-      "text": "적에게 죽은 자기 해골 주변 저주",
+      "text": "낙인 상태의 적 공격 시 주변에 약화",
       "family": "death",
       "role": "CHAIN",
-      "event": "SUMMON_END",
-      "op": "pet_burst",
+      "event": "HIT",
+      "op": "burst",
       "limit": 1,
       "ticks": 300,
       "vfx": "hex",
       "radius": 1,
       "damage": 2,
       "element": "will",
-      "status": "weak"
+      "status": "weak",
+      "requires": [
+        "death_mark"
+      ]
     },
     "rapid_prep": {
       "name": "공격 준비",
@@ -1200,7 +1220,7 @@
     },
     "rapid_defense": {
       "name": "방어 준비",
-      "text": "적중 후 다음 피격 회피 +10",
+      "text": "적중 후 회피 +10",
       "family": "rapid",
       "role": "DEFENSE",
       "event": "HIT",
@@ -1211,12 +1231,11 @@
       "key": "quick_guard",
       "mods": {
         "dodge": 10
-      },
-      "on_attempt": true
+      }
     },
     "volley_hit": {
       "name": "추가타",
-      "text": "원거리 적중 후 추가 사격",
+      "text": "적중 시 추가타",
       "family": "volley",
       "role": "OFFENSE",
       "event": "HIT",
@@ -1224,12 +1243,11 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "ranged": true,
       "damage_percent": 30
     },
     "volley_chain": {
       "name": "추가타",
-      "text": "같은 적 연속 원거리 적중 후 추가 사격",
+      "text": "약점 상태의 적 공격 시 추가타",
       "family": "volley",
       "role": "CHAIN",
       "event": "HIT",
@@ -1237,42 +1255,42 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "ranged": true,
-      "same_target": true,
-      "damage_percent": 40
+      "damage_percent": 40,
+      "requires": [
+        "exposed"
+      ]
     },
     "volley_defense": {
       "name": "방어 준비",
-      "text": "이동 후 적중 시 회피 준비",
+      "text": "대기 시 회피 +10",
       "family": "volley",
       "role": "DEFENSE",
-      "event": "HIT",
+      "event": "WAIT",
       "op": "prepare",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "moved": true,
       "key": "quick_guard",
       "mods": {
         "dodge": 10
-      },
-      "on_attempt": true
+      }
     },
     "focus_wait": {
       "name": "조준",
-      "text": "대기 시 조준 +1 · 최대 3 · 이동 시 해제",
+      "text": "대기 후 다음 공격 피해 +20%",
       "family": "focus",
       "role": "OFFENSE",
       "event": "WAIT",
-      "op": "aim",
+      "op": "attack_prep",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "percent": 10
+      "percent": 20,
+      "key": "focus"
     },
     "focus_hit": {
       "name": "추가 피해",
-      "text": "4칸 이상 사격 시 추가 피해",
+      "text": "적중 시 추가 피해 3",
       "family": "focus",
       "role": "OFFENSE",
       "event": "HIT",
@@ -1280,13 +1298,11 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "ranged": true,
-      "min_distance": 4,
       "damage": 3
     },
     "focus_defense": {
       "name": "방어 준비",
-      "text": "대기 후 다음 원거리 피격 회피 +15",
+      "text": "대기 시 회피 +15",
       "family": "focus",
       "role": "DEFENSE",
       "event": "WAIT",
@@ -1297,13 +1313,11 @@
       "key": "cover",
       "mods": {
         "dodge": 15
-      },
-      "ranged_only": true,
-      "on_attempt": true
+      }
     },
     "focus_chain": {
       "name": "추가타",
-      "text": "조준 소비 후 추가 사격",
+      "text": "약점 상태의 적 공격 시 추가타",
       "family": "focus",
       "role": "CHAIN",
       "event": "HIT",
@@ -1311,9 +1325,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "ranged": true,
-      "aimed": true,
-      "damage_percent": 35
+      "damage_percent": 35,
+      "requires": [
+        "exposed"
+      ]
     },
     "vital_hit": {
       "name": "급소",
@@ -1329,39 +1344,36 @@
     },
     "vital_chain": {
       "name": "공격 강화",
-      "text": "약점 대상 다음 공격 강화",
+      "text": "약점 상태의 적 공격 시 추가 피해 4",
       "family": "vital",
       "role": "CHAIN",
-      "event": "ATTACK",
-      "op": "attack_bonus",
+      "event": "HIT",
+      "op": "damage",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
       "requires": [
         "exposed"
       ],
-      "percent": 20,
-      "consume": "exposed"
+      "consume": "exposed",
+      "damage": 4
     },
     "vital_defense": {
       "name": "방어 준비",
-      "text": "약점 대상 회피 시 보호",
+      "text": "대기 시 받는 피해 20% 감소",
       "family": "vital",
       "role": "DEFENSE",
-      "event": "DODGE",
+      "event": "WAIT",
       "op": "prepare",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "requires": [
-        "exposed"
-      ],
       "key": "guard",
       "reduction": 20
     },
     "fury_hit": {
       "name": "공격 강화",
-      "text": "HP 35% 이하 공격 +25%",
+      "text": "공격 시 피해 +15%",
       "family": "fury",
       "role": "OFFENSE",
       "event": "ATTACK",
@@ -1369,12 +1381,11 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "hp_below": 35,
-      "percent": 25
+      "percent": 15
     },
     "fury_defense": {
       "name": "방어 준비",
-      "text": "HP 35% 이하 대기 시 직접 피해 25% 감소",
+      "text": "대기 시 받는 피해 25% 감소",
       "family": "fury",
       "role": "DEFENSE",
       "event": "WAIT",
@@ -1382,26 +1393,24 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "hp_below": 35,
       "key": "rage_guard",
       "reduction": 25
     },
     "fury_kill": {
       "name": "회복",
-      "text": "HP 35% 이하 처치 시 회복",
+      "text": "적중 시 HP 2 회복",
       "family": "fury",
-      "role": "CHAIN",
-      "event": "KILL",
+      "role": "OFFENSE",
+      "event": "HIT",
       "op": "heal_self",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "hp_below": 35,
-      "heal": 4
+      "heal": 2
     },
     "wind_hit": {
       "name": "강타",
-      "text": "이동 후 첫 적중 시 밀치기",
+      "text": "적중 시 밀치기",
       "family": "wind",
       "role": "OFFENSE",
       "event": "HIT",
@@ -1409,7 +1418,6 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "moved": true,
       "blocked_damage": 0
     },
     "crush_hit": {
@@ -1426,19 +1434,22 @@
     },
     "crush_chain": {
       "name": "추가 피해",
-      "text": "실제 벽 충돌 후 추가 피해",
+      "text": "약점 상태의 적 공격 시 추가 피해 3",
       "family": "crush",
       "role": "CHAIN",
-      "event": "COLLISION",
+      "event": "HIT",
       "op": "damage",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "damage": 3
+      "damage": 3,
+      "requires": [
+        "exposed"
+      ]
     },
     "evasion_hit": {
       "name": "공격 강화",
-      "text": "이동 후 첫 공격 +20%",
+      "text": "공격 시 피해 +10%",
       "family": "evasion",
       "role": "OFFENSE",
       "event": "ATTACK",
@@ -1446,15 +1457,14 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "dodge",
-      "moved": true,
-      "percent": 20
+      "percent": 10
     },
     "evasion_defense": {
       "name": "방어 준비",
-      "text": "이동 후 다음 피격 회피 +10",
+      "text": "대기 시 회피 +10",
       "family": "evasion",
       "role": "DEFENSE",
-      "event": "MOVED",
+      "event": "WAIT",
       "op": "prepare",
       "limit": 1,
       "ticks": 300,
@@ -1462,20 +1472,20 @@
       "key": "step_guard",
       "mods": {
         "dodge": 10
-      },
-      "on_attempt": true
+      }
     },
     "wind_dodge": {
       "name": "공격 준비",
-      "text": "회피 후 다음 공격 +20%",
+      "text": "대기 후 다음 공격 피해 +20%",
       "family": "wind",
-      "role": "CHAIN",
-      "event": "DODGE",
+      "role": "OFFENSE",
+      "event": "WAIT",
       "op": "attack_prep",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "percent": 20
+      "percent": 20,
+      "key": "wind"
     },
     "reflect_hit": {
       "name": "방어 준비",
@@ -1494,23 +1504,22 @@
     },
     "reflect_kill": {
       "name": "회복",
-      "text": "반사 처치 시 HP 3 회복",
+      "text": "적중 시 HP 2 회복",
       "family": "reflect",
-      "role": "CHAIN",
-      "event": "KILL",
+      "role": "OFFENSE",
+      "event": "HIT",
       "op": "heal_self",
       "limit": 1,
       "ticks": 300,
       "vfx": "reflect",
-      "form": "MOBILE_REFLECT",
-      "heal": 3
+      "heal": 2
     },
     "water_cleanse": {
       "name": "방어 준비",
-      "text": "실제 정화 후 보호",
+      "text": "대기 시 받는 피해 20% 감소",
       "family": "water",
-      "role": "CHAIN",
-      "event": "CLEANSED",
+      "role": "DEFENSE",
+      "event": "WAIT",
       "op": "prepare",
       "limit": 1,
       "ticks": 300,
@@ -1520,7 +1529,7 @@
     },
     "water_air": {
       "name": "연쇄 번개",
-      "text": "젖은 전기 적중 시 최대 4명 연쇄",
+      "text": "젖은 적 공격 시 최대 4명 연쇄 번개",
       "family": "water",
       "role": "CHAIN",
       "event": "HIT",
@@ -1531,7 +1540,6 @@
       "requires": [
         "wet"
       ],
-      "damage_element": "air",
       "count": 4,
       "radius": 3,
       "damage": 3,
@@ -1539,23 +1547,22 @@
     },
     "water_ice": {
       "name": "빙결",
-      "text": "젖은 둔화 대상 적중 시 빙결",
+      "text": "젖은 적 공격 시 빙결",
       "family": "water",
       "role": "CHAIN",
       "event": "HIT",
       "op": "status",
       "limit": 1,
-      "ticks": 150,
+      "ticks": 100,
       "vfx": "water",
       "requires": [
-        "wet",
-        "slow"
+        "wet"
       ],
       "status": "freeze"
     },
     "fire_poison": {
       "name": "화염 폭발",
-      "text": "화상·중독 적중 시 독성 폭발",
+      "text": "중독 상태의 적 공격 시 주변 독성 폭발",
       "family": "fire",
       "role": "CHAIN",
       "event": "HIT",
@@ -1564,7 +1571,6 @@
       "ticks": 300,
       "vfx": "fire",
       "requires": [
-        "burn",
         "poison"
       ],
       "radius": 1,
@@ -1573,7 +1579,7 @@
     },
     "fire_bleed": {
       "name": "추가 피해",
-      "text": "화상·출혈 적중 시 추가 피해",
+      "text": "출혈 상태의 적 공격 시 추가 화염 피해",
       "family": "fire",
       "role": "CHAIN",
       "event": "HIT",
@@ -1582,7 +1588,6 @@
       "ticks": 300,
       "vfx": "fire",
       "requires": [
-        "burn",
         "bleed"
       ],
       "damage": 3,
@@ -1590,7 +1595,7 @@
     },
     "ice_crush": {
       "name": "파쇄",
-      "text": "빙결 강타 적중 시 강화 파쇄",
+      "text": "빙결 상태의 적 공격 시 파쇄",
       "family": "ice",
       "role": "CHAIN",
       "event": "HIT",
@@ -1598,16 +1603,15 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "ice",
-      "requires_before": [
-        "freeze"
-      ],
-      "needs_effect": "crush",
       "consume": "freeze",
-      "damage": 6
+      "damage": 4,
+      "requires": [
+        "freeze"
+      ]
     },
     "hex_mental": {
       "name": "추가 피해",
-      "text": "약화·혼란 적중 시 정신 피해",
+      "text": "약화 상태의 적 공격 시 정신 피해",
       "family": "hex",
       "role": "CHAIN",
       "event": "HIT",
@@ -1616,18 +1620,17 @@
       "ticks": 300,
       "vfx": "hex",
       "requires": [
-        "weak",
-        "confuse"
+        "weak"
       ],
-      "damage": 4,
+      "damage": 3,
       "element": "will"
     },
     "bless_defense_link": {
       "name": "아군 보호",
-      "text": "축복 중 막기 시 가까운 아군 보호",
+      "text": "축복 중 공격 시 주변 아군 보호",
       "family": "bless",
       "role": "CHAIN",
-      "event": "BLOCK",
+      "event": "HIT",
       "op": "ally_guard",
       "limit": 1,
       "ticks": 300,
@@ -1641,48 +1644,47 @@
     },
     "wind_ranged": {
       "name": "방어 준비",
-      "text": "원거리 밀침 성공 후 회피 준비",
+      "text": "대기 시 회피 +10",
       "family": "wind",
-      "role": "CHAIN",
-      "event": "PUSHED",
+      "role": "DEFENSE",
+      "event": "WAIT",
       "op": "prepare",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "ranged": true,
       "key": "gust_guard",
       "mods": {
         "dodge": 10
-      },
-      "on_attempt": true
+      }
     },
     "hex_death": {
       "name": "해골 강화",
-      "text": "약화·사령 낙인 처치 시 해골 강화",
+      "text": "낙인 상태의 적 공격 시 추가 정신 피해 3",
       "family": "death",
       "role": "CHAIN",
-      "event": "KILL",
-      "op": "pet_buff",
+      "event": "HIT",
+      "op": "damage",
       "limit": 1,
       "ticks": 300,
       "vfx": "hex",
       "requires": [
-        "weak",
         "death_mark"
       ],
-      "percent": 20
+      "damage": 3,
+      "element": "will"
     },
     "bless_summon": {
       "name": "소환 축복",
-      "text": "실제 소환 성공 시 소환수 축복",
+      "text": "소환수가 있으면 대기 시 소환수 축복",
       "family": "bless",
       "role": "CHAIN",
-      "event": "SUMMON",
+      "event": "WAIT",
       "op": "pet_bless",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "percent": 20
+      "percent": 20,
+      "needs_pet": true
     }
   }
 }
