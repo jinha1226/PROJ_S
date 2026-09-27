@@ -37,6 +37,23 @@ static func ranged_part(actor: Dictionary) -> String:
 		if def.effect in ["DAMAGE","LUNGE"] and int(def.range) >= 3: return id
 	return ""
 
+## Basic weapon reach is independent of the retired manual skill slots.
+static func weapon_reach(s, actor: Dictionary) -> int:
+	return int(s.CombatStats.stats(s,actor).range) if s.manual_mode else 1
+
+static func ranged_reach(s, actor: Dictionary) -> int:
+	var part := ranged_part(actor)
+	return maxi(weapon_reach(s,actor),int(Abilities.definition(part).range) if not part.is_empty() else 1)
+
+## A stranger's fight is local; party commands do not direct unaffiliated NPCs.
+static func foes(s, actor: Dictionary) -> Array:
+	var own: Array = s.hostiles_of(actor).filter(func(e): return s.Floor.MonsterAI.line(s,actor.pos,e.pos,s.Floor.MonsterAI.sight(s)))
+	if s.wanderer(actor): return own
+	var shared: Array = s.combat_enemies()
+	for e in own:
+		if not shared.any(func(other): return other.id == e.id): shared.append(e)
+	return shared
+
 ## What the build hints at; a badge, never a rule.
 static func suggested(actor: Dictionary) -> String:
 	if not ranged_part(actor).is_empty(): return "SKIRMISHER"
@@ -83,19 +100,28 @@ static func mistaken(s, actor: Dictionary) -> bool:
 
 ## The party's shared target: the attack order, else whoever a charger is on,
 ## else the nearest visible foe.
-static func party_target(s) -> Dictionary:
+static func party_target(s, actor: Dictionary = {}) -> Dictionary:
+	if not actor.is_empty() and s.wanderer(actor):
+		var local: Array = foes(s,actor)
+		local.sort_custom(func(a,b):
+			var da := steps_between(actor.pos,a.pos); var db := steps_between(actor.pos,b.pos)
+			if da != db: return da < db
+			if actor.get("basic_target","NEAREST") == "LOWEST_HP" and a.hp != b.hp: return a.hp < b.hp
+			return a.id < b.id)
+		return {} if local.is_empty() else local[0]
+	var targets: Array = s.combat_enemies() if actor.is_empty() else foes(s,actor)
 	if s.party_command == "ATTACK_TARGET":
-		for e in s.combat_enemies():
+		for e in targets:
 			if e.id == s.command_target: return e
 	for a in s.friends():
 		if effective(a) != "CHARGER": continue
-		for e in s.combat_enemies():
+		for e in targets:
 			if s.melee_reach(a.pos,e.pos): return e
 	var best_d := 999
 	for a in s.friends():
-		for e in s.combat_enemies():
+		for e in targets:
 			best_d = mini(best_d,s.distance(a.pos,e.pos))
-	var nearest: Array = s.combat_enemies().filter(func(e): return s.friends().any(func(a): return s.distance(a.pos,e.pos) == best_d))
+	var nearest: Array = targets.filter(func(e): return s.friends().any(func(a): return s.distance(a.pos,e.pos) == best_d))
 	if nearest.is_empty(): return {}
 	# `basic_target` survives only as the tie-break between equally near foes.
 	var lowest: bool = s.friends().any(func(a): return a.basic_target == "LOWEST_HP")
@@ -107,12 +133,17 @@ static func party_target(s) -> Dictionary:
 ## Whom a guardian covers: the explicit pick, else a skirmisher, else the
 ## member lowest on health.
 static func protectee(s, actor: Dictionary) -> Dictionary:
+	var allies: Array = s.friends()
+	if s.wanderer(actor):
+		allies = allies.filter(func(a): return s.Floor.MonsterAI.line(s,actor.pos,a.pos,s.Floor.MonsterAI.sight(s)))
+		for a in allies:
+			if int(a.id) == int(actor.get("partner",-1)): return a
 	var idx: int = int(actor.get("protect_id",-1))
-	if idx >= 0 and idx < s.party.size() and s.party[idx].hp > 0 and s.party[idx].id != actor.id: return s.party[idx]
-	for a in s.friends():
+	if idx >= 0 and idx < s.party.size() and s.party[idx] in allies and s.party[idx].id != actor.id: return s.party[idx]
+	for a in allies:
 		if a.id != actor.id and effective(a) == "SKIRMISHER": return a
 	var best: Dictionary = {}
-	for a in s.friends():
+	for a in allies:
 		if a.id == actor.id: continue
 		if best.is_empty() or a.hp*100/a.max_hp < best.hp*100/best.max_hp: best = a
 	return best
@@ -129,16 +160,16 @@ static func threats_to(s, target: Dictionary) -> Array:
 ## The living foe this member could reach soonest, or {}.
 static func nearest_foe(s, actor: Dictionary) -> Dictionary:
 	var best: Dictionary = {}
-	for e in s.combat_enemies():
+	for e in foes(s,actor):
 		if best.is_empty() or steps_between(actor.pos,e.pos) < steps_between(actor.pos,best.pos): best = e
 	return best
 
-## The foe this member would defend itself against: the shared target when it
-## is already in reach, else whatever else is.
-static func adjacent_foe(s, actor: Dictionary, target: Dictionary) -> Dictionary:
-	if not target.is_empty() and s.melee_reach(actor.pos,target.pos): return target
-	for e in s.combat_enemies():
-		if s.melee_reach(actor.pos,e.pos): return e
+## A legal basic attack: the chosen target when reachable, else a nearby foe.
+static func reachable_foe(s, actor: Dictionary, target: Dictionary) -> Dictionary:
+	var reach := weapon_reach(s,actor)
+	if not target.is_empty() and s.attack_reach(actor,target.pos,reach) and not s.attack_preview(target.pos,actor.id).is_empty(): return target
+	for e in foes(s,actor):
+		if s.attack_reach(actor,e.pos,reach) and not s.attack_preview(e.pos,actor.id).is_empty(): return e
 	return {}
 
 ## Every first step that closes on that goal just as fast, the route's own step
@@ -216,7 +247,7 @@ static func adjacent_free(s, target_pos: Vector2i) -> Array:
 static func candidates(s, actor: Dictionary, stance: String, knobs: Dictionary) -> Array:
 	if s.free_movement: return s.Free.candidates(s,actor,stance)
 	var options: Array = []
-	var target := party_target(s)
+	var target := party_target(s,actor)
 	match stance:
 		"CHARGER": charger(s,actor,target,knobs,options)
 		"SKIRMISHER": skirmisher(s,actor,target,knobs,options)
@@ -241,7 +272,7 @@ static func charger(s, actor: Dictionary, target: Dictionary, knobs: Dictionary,
 			if s.can_step(actor.pos,c) and s.Tactics.danger(s,c) == 0:
 				options.append(move(actor,c,"MOVE:sidestep","예고 회피")); return
 	# Whatever is already swinging at this member is answered, target or not.
-	var foe := adjacent_foe(s,actor,target)
+	var foe := reachable_foe(s,actor,target)
 	if not foe.is_empty(): options.append(strike(s,actor,foe,"ATTACK","돌격 · 공격"))
 	else: approach(s,actor,adjacent_free(s,target.pos),"MOVE:approach","돌격 · 접근",options,false,fallback_goals(s,actor,target))
 
@@ -259,7 +290,7 @@ static func off_the_fire(s, actor: Dictionary, target: Dictionary) -> Vector2i:
 		if steps_between(c,target.pos) < steps_between(best,target.pos): best = c
 	return best
 
-## 거리형: hold the band its part reaches, or hit and break away without one.
+## 거리형: shoot with the equipped weapon, use a ranged part, or hit and run.
 static func skirmisher(s, actor: Dictionary, target: Dictionary, knobs: Dictionary, options: Array) -> void:
 	if target.is_empty(): return
 	for cell in s.movement_cells(actor.id):   # telegraphs are always avoided
@@ -269,7 +300,20 @@ static func skirmisher(s, actor: Dictionary, target: Dictionary, knobs: Dictiona
 	# Contact is eight-way (movement's own definition, matching the rule filter
 	# in tactical_action_selector.gd), and any foe counts, not only the shared
 	# target — a diagonal attacker must trigger the opening step just the same.
-	var in_contact: bool = s.combat_enemies().any(func(e): return s.melee_reach(actor.pos,e.pos))
+	var in_contact: bool = foes(s,actor).any(func(e): return s.melee_reach(actor.pos,e.pos))
+	if weapon_reach(s,actor) > 1:
+		if in_contact:
+			var away: Vector2i = s.Tactics.retreat_cell(s,actor)
+			if away != actor.pos: options.append(move(actor,away,"MOVE:disengage","거리 · 이탈"))
+		var shot := reachable_foe(s,actor,target)
+		if not shot.is_empty(): options.append(strike(s,actor,shot,"ATTACK","거리 · 사격"))
+		elif not in_contact:
+			var reach: int = weapon_reach(s,actor)
+			var goals: Array = []
+			for cell in near_free(s,target.pos,reach):
+				if s.distance(cell,target.pos) >= 2 and s.Floor.MonsterAI.line(s,cell,target.pos,reach): goals.append(cell)
+			approach(s,actor,goals,"MOVE:approach","거리 · 접근",options,true,fallback_goals(s,actor,target))
+		return
 	if not part.is_empty():
 		var reach: int = int(Abilities.definition(part).range)-(1 if int(knobs.posture) > 50 else 0)
 		if in_contact:
@@ -299,19 +343,23 @@ static func skirmisher(s, actor: Dictionary, target: Dictionary, knobs: Dictiona
 static func guardian(s, actor: Dictionary, p: Dictionary, target: Dictionary, knobs: Dictionary, options: Array) -> void:
 	var threats := threats_to(s,p)
 	var keep: int = 1 if int(knobs.cohesion) >= 0 else 2
+	# Answer its own attacker while weighing protection and rejoining.
+	var attackers: Array = foes(s,actor).filter(func(e): return s.melee_reach(actor.pos,e.pos))
+	if not attackers.is_empty():
+		options.append(strike(s,actor,attackers[0],"ATTACK","호위 · 반격"))
 	if not threats.is_empty():
 		var t: Dictionary = threats[0]
-		if s.melee_reach(actor.pos,t.pos):
+		if s.attack_reach(actor,t.pos,weapon_reach(s,actor)) and not s.attack_preview(t.pos,actor.id).is_empty():
 			options.append(strike(s,actor,t,"ATTACK:intercept","호위 · 저지"))
 		var gap: Vector2i = p.pos+Vector2i(signi(t.pos.x-p.pos.x),signi(t.pos.y-p.pos.y))
 		if gap != actor.pos and s.is_free(gap):
 			approach(s,actor,[gap],"MOVE:block","호위 · 가로막기",options)
 		return
 	if steps_between(actor.pos,p.pos) <= keep:
-		var foe := adjacent_foe(s,actor,target)
+		var foe := reachable_foe(s,actor,target)
 		if not foe.is_empty(): options.append(strike(s,actor,foe,"ATTACK","호위 · 공격"))
 		else: advance(s,actor,p,target,keep,options)
-		options.append({"kind":"WAIT","cell":actor.pos,"tag":"WAIT:hold","reason":"호위 · 대기"})
+		if foe.is_empty() or weapon_reach(s,actor) <= 1: options.append({"kind":"WAIT","cell":actor.pos,"tag":"WAIT:hold","reason":"호위 · 대기"})
 	else:
 		approach(s,actor,adjacent_free(s,p.pos),"MOVE:rejoin","호위 · 합류",options,false,near_free(s,p.pos,keep+1))
 
@@ -339,13 +387,13 @@ static func in_role(s, actor: Dictionary) -> bool:
 			var p := protectee(s,actor)
 			return not p.is_empty() and steps_between(actor.pos,p.pos) <= 2
 		"SKIRMISHER":
-			var target := party_target(s)
+			var target := party_target(s,actor)
 			if target.is_empty(): return false
-			var part := ranged_part(actor)
-			if part.is_empty(): return bool(actor.get("hit_and_run",false)) or s.melee_reach(actor.pos,target.pos)
-			if s.combat_enemies().any(func(e): return s.melee_reach(actor.pos,e.pos)): return false
+			var reach := ranged_reach(s,actor)
+			if reach <= 1: return bool(actor.get("hit_and_run",false)) or s.melee_reach(actor.pos,target.pos)
+			if foes(s,actor).any(func(e): return s.melee_reach(actor.pos,e.pos)): return false
 			var d: int = s.distance(actor.pos,target.pos)
-			return d >= 2 and d <= int(Abilities.definition(part).range)
+			return d >= 2 and d <= reach
 		_:
-			var target := party_target(s)
-			return not target.is_empty() and s.melee_reach(actor.pos,target.pos)
+			var target := party_target(s,actor)
+			return not target.is_empty() and s.attack_reach(actor,target.pos,weapon_reach(s,actor))

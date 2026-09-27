@@ -81,12 +81,17 @@ func no_cost() -> void:
 	var pos: Vector2i = npc.pos
 	for i in range(3): s.end_round()
 	check(npc.pos == pos and npc.activity == "","a sleeping npc neither moves nor gets an activity")
-	# Sleep, not the absence of a turn, is what keeps it still: a living foe two
-	# tiles away is fought by whoever is awake, and this one is not.
+	# Its own encounter wakes it without the party or a prior combat noise.
 	var g := field(Vector2i(9,0)); var t = g.s; var n2: Dictionary = g.npc
 	var foe: Dictionary = t.enemies[0]
 	foe.hp = 30; foe.max_hp = 30; foe.pos = n2.pos+Vector2i(2,0); foe.alert = true; foe.role = "MELEE"
 	t.floor_state.observe(t)
-	var spot: Vector2i = n2.pos; var health: int = n2.hp
-	for i in range(3): t.end_round()
-	check(n2.pos == spot and n2.hp == health and not n2.awake and n2.activity == "","asleep two tiles from a foe: no turn of its own, and nothing hits it")
+	t.noise.clear()
+	check(not t.floor_state.visible.has(n2.pos) and NpcAI.sense(t,n2),"own visible enemy wakes an offscreen npc")
+	t.round_number += 10
+	check(NpcAI.sense(t,n2),"its ongoing encounter keeps the npc awake")
+	var blocked := field(Vector2i(9,0))
+	var enemy: Dictionary = blocked.s.enemies[0]
+	enemy.hp = 30; enemy.pos = blocked.npc.pos+Vector2i(2,0)
+	blocked.s.tile(blocked.npc.pos+Vector2i.RIGHT).terrain = "wall"
+	check(not NpcAI.sense(blocked.s,blocked.npc),"an enemy hidden behind a wall does not wake it")

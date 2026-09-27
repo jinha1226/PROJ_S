@@ -523,7 +523,7 @@ func attack_cells(actor_index: int = -1) -> Array:
 		for y in range(maxi(0,actor.pos.y-reach),mini(BOARD_SIDE,actor.pos.y+reach+1)):
 			for x in range(maxi(0,actor.pos.x-reach),mini(BOARD_SIDE,actor.pos.x+reach+1)):
 				var cell := Vector2i(x,y)
-				if floor_state.visible.has(cell) and attack_reach(actor,cell,reach): result.append(cell)
+				if attack_visible(actor,cell) and attack_reach(actor,cell,reach): result.append(cell)
 		return result
 	for direction in DIRECTIONS:
 		var cell: Vector2i = actor.pos + direction
@@ -544,9 +544,8 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 		return {"actor":old_actor.id,"target":old_victim.id,"cell":target,"name":old_victim.name,"chance":100,"damage":old_amount,"damage_min":old_amount,"damage_max":old_amount,"time":100}
 	var victim := at(target)
 	if victim.is_empty() or not (victim.enemy or wanderer(victim) and not victim.get("summoned",false)): return {}
-	if not floor_state.visible.has(target): return {}
 	var actor: Dictionary = party[selected] if actor_index < 0 else (party[actor_index] if actor_index < party.size() else actor_by_id(actor_index))
-	if actor.is_empty(): return {}
+	if actor.is_empty() or not attack_visible(actor,target): return {}
 	var offense: Dictionary = CombatStats.stats(self,actor)
 	var defense: Dictionary = CombatStats.stats(self,victim)
 	if not attack_reach(actor,target,int(offense.range)): return {}
@@ -560,6 +559,11 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 	return {"actor":actor.id,"target":victim.id,"cell":target,"name":victim.name,"form":form,
 		"chance":maxi(0,(100-dodge)*(100-block)/100),"block":block,"damage":maxi(1,raw-ac),
 		"damage_min":maxi(1,raw-ac),"damage_max":raw,"time":action_cost(actor,"ATTACK",target)}
+
+## The leader obeys player fog; other actors evaluate their own line of sight.
+func attack_visible(actor: Dictionary, target: Vector2i) -> bool:
+	if actor == party[0]: return floor_state.visible.has(target)
+	return Floor.MonsterAI.line(self,actor.pos,target,6)
 
 func attack_reach(actor: Dictionary, target: Vector2i, attack_range: int) -> bool:
 	if free_movement: return Free.reaches(self,actor,at(target),attack_range)
@@ -693,7 +697,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 		"RESCUE":
 			if not Downed.can_rescue(self,actor,downed_at(target)): return false
 		"ATTACK":
-			if MobileEffects.active(actor) and actor != party[0] and not MobileEffects.line(self,actor.pos,target,6): return false
+			if manual_mode and not attack_visible(actor,target): return false
 			if candidate.is_empty() or candidate.hp <= 0 or not attack_reach(actor,target,int(CombatStats.stats(self,actor).range)): return false
 			if not (actor in party and wanderer(candidate) and not candidate.get("summoned",false)) and not (wanderer(actor) and candidate.enemy) and side_of(actor) == side_of(candidate): return false
 		"LEVER":
@@ -759,7 +763,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 				var hit := TurnCore.physical(StatSheet.legacy_power(actor,"MELEE",18) * actor.attack_factor / 100, 1000, 0, 2)
 				damage(victim,int(hit.damage),actor.id,"SLASH")
 			# A skirmisher with nothing to shoot strikes once, then breaks away.
-			if Stances.effective(actor) == "SKIRMISHER" and Stances.ranged_part(actor).is_empty(): actor.hit_and_run = true
+			if Stances.effective(actor) == "SKIRMISHER" and Stances.ranged_reach(self,actor) <= 1: actor.hit_and_run = true
 		"FIRE", "WATER", "ELECTRIC":
 			if distance(actor.pos, target) > 4 or tile(target).terrain == "wall": return false
 			if not preload("res://sim/combat_kernel.gd").sees(actor.pos, target,

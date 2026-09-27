@@ -27,8 +27,62 @@ func foe_at(s, p: Vector2i, hp: int = 30) -> Dictionary:
 
 func run() -> void:
 	friends(); fights(); targeted(); dies()
+	manual_combat()
 	modes_approach(); modes_hold(); modes_rest(); modes_explore(); commitment(); shape(); duo(); labels(); cooldowns()
 	print("NPC behaviour: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
+
+## Reproductions from the live, automatic-soulstone rules, without skill slots.
+func manual_field(stance: String, weapon: String, offset: Vector2i, gap: Vector2i) -> Dictionary:
+	var s = Session.new_run(711)
+	s.MobileEffects.enable(s,s.MobileEffects.PROFILE)
+	var c := Fixture.arena(s,12)
+	var npc: Dictionary = s.npcs[0]
+	s.npcs = [npc]; npc.pos = c+offset; npc.awake = true
+	npc.hp = 200; npc.max_hp = 200; npc.stress = 0; npc.ap = 1
+	npc.stance = stance; npc.gear.weapon = {"type":weapon}
+	npc.knobs = {"posture":0,"retreat_hp":0,"cohesion":0}
+	npc.equipped_abilities = []; npc.essences = {}; npc.rules = []; npc.hit_and_run = false
+	s.mistake_override[npc.id] = false
+	var foe := foe_at(s,npc.pos+gap,1000)
+	return {"s":s,"npc":npc,"foe":foe}
+
+func manual_combat() -> void:
+	for stance in ["CHARGER","GUARDIAN"]:
+		var f := manual_field(stance,"sword",Vector2i(9,0),Vector2i.RIGHT)
+		var s = f.s; var npc: Dictionary = f.npc; var foe: Dictionary = f.foe
+		check(not s.floor_state.visible.has(foe.pos),"offscreen encounter fixture")
+		var serial: int = s.serial; var time: int = s.time; var hp: int = foe.hp
+		check(int(s.attack_preview(foe.pos,npc.id).get("damage",0)) > 0 and foe.pos in s.attack_cells(npc.id),"own sight supplies attack preview and cells")
+		check(s.serial == serial and s.time == time and foe.hp == hp,"offscreen preview changes neither combat nor time")
+		check(s.attack_preview(foe.pos,0).is_empty(),"hero cannot preview a foe outside player sight")
+		NpcAI.turn(s,npc)
+		check(foe.hp < hp and npc.last_action_kind == "ATTACK","offscreen charger and guardian execute their own attack")
+	# A stranger ignores a party order against a foe on the opposite side.
+	var local := manual_field("CHARGER","sword",Vector2i(9,0),Vector2i.RIGHT)
+	var remote := foe_at(local.s,local.s.party[0].pos+Vector2i.LEFT,1000)
+	local.s.party_command = "ATTACK_TARGET"; local.s.command_target = remote.id
+	check(local.s.Stances.party_target(local.s,local.npc).id == local.foe.id,"independent npc targets its own encounter")
+	check(local.s.Tactics.choose(local.s,local.npc).cell == local.foe.pos,"party order cannot redirect a stranger's attack")
+	for stance in ["CHARGER","SKIRMISHER","GUARDIAN"]:
+		var f := manual_field(stance,"bow",Vector2i(3,0),Vector2i(-4,0))
+		var s = f.s; var npc: Dictionary = f.npc; var foe: Dictionary = f.foe
+		var was: Vector2i = npc.pos; var hp: int = foe.hp
+		check(s.Tactics.choose(s,npc).kind == "ATTACK","equipped bow supplies a ranged attack in every stance")
+		NpcAI.turn(s,npc)
+		check(npc.pos == was and foe.hp < hp and not npc.hit_and_run,"bow fires from range and avoids melee hit-and-run mode")
+		# The weapon does not grant vision through an opaque wall.
+		npc.ap = 1; s.tile(npc.pos+Vector2i.LEFT).terrain = "wall"
+		check(s.attack_preview(foe.pos,npc.id).is_empty() and not s.act_as(npc,"ATTACK",foe.pos,false),"walls block ranged preview and execution")
+	var spear := manual_field("CHARGER","spear",Vector2i(3,0),Vector2i(2,0))
+	check(spear.s.Tactics.choose(spear.s,spear.npc).kind == "ATTACK","spear also uses actual two-tile reach")
+	# Recruited companions use the same weapon candidate generation offscreen.
+	var companion := manual_field("SKIRMISHER","bow",Vector2i(9,0),Vector2i(3,0))
+	companion.s.npcs = []; companion.s.party.append(companion.npc)
+	companion.s.resolving_companions = true
+	var hp: int = companion.foe.hp
+	check(not companion.s.floor_state.visible.has(companion.foe.pos),"companion encounter is outside player sight")
+	check(companion.s.Tactics.choose(companion.s,companion.npc).kind == "ATTACK","offscreen recruited archer selects a shot")
+	check(companion.s.act_as(companion.npc,"ATTACK",companion.foe.pos,false) and companion.foe.hp < hp,"offscreen recruited archer executes the shot")
 
 func friends() -> void:
 	var f := field(Vector2i(3,0)); var s = f.s

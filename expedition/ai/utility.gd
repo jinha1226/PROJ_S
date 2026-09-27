@@ -66,8 +66,8 @@ static func context(s, actor: Dictionary, pool: Array = []) -> Dictionary:
 	var ally_hp := 0
 	for mate in s.friends():
 		if mate.id != actor.id: ally_hp += int(mate.hp)
-	return {"pool":pool,"target":Stances.party_target(s),"protectee":protectee,"threats":threats,
-		"protectee_lethal":lethal,"gap":gap,"ranged":Stances.ranged_part(actor),
+	return {"pool":pool,"target":Stances.party_target(s,actor),"protectee":protectee,"threats":threats,
+		"protectee_lethal":lethal,"gap":gap,"ranged":Stances.ranged_part(actor),"ranged_reach":Stances.ranged_reach(s,actor),
 		"stand":stand,"before_lethal":before,"ally_hp":ally_hp,"danger_now":int(s.Tactics.danger(s,actor.pos)),
 		"last_kind":str(actor.get("last_action_kind","")),"last_dir":actor.get("last_action_dir",Vector2i.ZERO)}
 
@@ -115,11 +115,11 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, we
 		"rule_ready": 0.0, "contact_penalty": 0.0,
 		"same_as_last": 1.0 if kind == ctx.last_kind and (kind != "MOVE" or action.get("dir",Vector2i.ZERO) == ctx.last_dir) else 0.0,
 		"la_self_hit": la_self, "la_ally_hit": la_ally, "la_enemy_hit": la_enemy, "la_lethal_saved": la_saved}
-	if not str(ctx.ranged).is_empty() and not target.is_empty():
+	if int(ctx.get("ranged_reach",1)) > 1 and not target.is_empty():
 		# The band is measured the way the skirmisher's own generator builds it:
-		# `s.distance`, not the eight-way step count, and the part's raw range —
+		# `s.distance`, with the weapon or part's actual range —
 		# shrinking it at a bold posture is that generator's own preference.
-		var reach: int = int(Abilities.definition(ctx.ranged).range)
+		var reach: int = int(ctx.ranged_reach)
 		var band: int = s.distance(dest,target.pos)
 		result.in_band = 1.0 if band >= 2 and band <= reach else 0.0
 	var p: Dictionary = ctx.protectee

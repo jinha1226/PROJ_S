@@ -40,7 +40,7 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 	var stance: String = Stances.effective(actor)
 	# Standing in fire is the one thing every stance answers the same way.
 	if int(s.tile(actor.pos).fire) > 0:
-		var out: Vector2i = Stances.off_the_fire(s,actor,Stances.party_target(s))
+		var out: Vector2i = Stances.off_the_fire(s,actor,Stances.party_target(s,actor))
 		if out != actor.pos: return {"kind":"MOVE","cell":out,"reason":"불길 회피","score":0,"explain":[]}
 	var low: bool = actor.hp*100/actor.max_hp <= int(knobs.retreat_hp)
 	# A mistake round: the member hesitates, overreaches, or falls back on the

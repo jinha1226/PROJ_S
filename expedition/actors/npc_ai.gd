@@ -11,12 +11,13 @@ const SLEEP_AFTER := 5
 const MATE_LABEL := "동료에게 이동 중"
 const LABELS := {"FIGHT":"교전 중","APPROACH":"다가오는 중","HOLD":"거리를 두고 지켜보는 중","REST":"부상으로 대기 중","EXPLORE":"주변을 탐색 중","":""}
 
-## Wakes on its own sight of the party or on nearby combat; sleeps after five quiet rounds unseen.
+## Own sight of a hostile wakes it even when the party is nowhere nearby.
 static func sense(s, npc: Dictionary) -> bool:
 	var seen: int = MonsterAI.sight(s)
 	var sees_party: bool = s.alive().any(func(a): return MonsterAI.line(s,npc.pos,a.pos,seen))
+	var sees_foe: bool = s.hostiles_of(npc).any(func(e): return MonsterAI.line(s,npc.pos,e.pos,seen))
 	var hears: bool = s.noise.any(func(p): return s.distance(p,npc.pos) <= NOISE_RADIUS)
-	if sees_party or hears:
+	if sees_party or sees_foe or hears:
 		npc.awake = true; npc.noise_seen = s.npc_clock()
 		return true
 	if npc.awake and not npc.get("hostile",false) and not s.floor_state.visible.has(npc.pos) and s.npc_clock()-int(npc.noise_seen) >= (500 if s.manual_mode else SLEEP_AFTER):
@@ -38,7 +39,7 @@ static func turn(s, npc: Dictionary) -> void:
 	if npc.get("hostile",false):
 		hostile_turn(s,npc,seen)
 		return
-	var foes: Array = s.enemies.filter(func(e): return e.hp > 0 and MonsterAI.line(s,npc.pos,e.pos,seen))
+	var foes: Array = Stances.foes(s,npc)
 	if not foes.is_empty():
 		npc.activity = LABELS.FIGHT; npc.mode = ""
 		var choice: Dictionary = Tactics.choose(s,npc)
