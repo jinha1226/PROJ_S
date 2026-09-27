@@ -57,7 +57,7 @@ func run() -> void:
 	button(scene,"BagAbsorb0").pressed.emit(); await frames(3)
 	scene.item_popup.hide(); scene.details_popup.hide(); scene.show_character(0,"영혼석"); await frames(4)
 	var sets: Node = scene.modal_content.find_child("EssenceSets",true,false)
-	check(sets != null and sets.find_children("*","Label",true,false).any(func(l): return l.text.begins_with("지원 ·")),"only the active support bonus shows")
+	check(sets != null and sets.find_children("*","Label",true,false).any(func(l): return l.text.begins_with("서포터 ·")),"only the active support bonus shows")
 	check(sets != null and not sets.find_children("*","Label",true,false).any(func(l): return l.text.contains("다음") or l.text.contains("구간") or l.text.contains("2/")),"no next threshold or progress copy")
 	var overview: Node = scene.modal_content.find_child("EssenceSummary",true,false)
 	check(overview != null and overview.get_index() > sets.get_index(),"the combined summary follows actual combos")
