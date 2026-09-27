@@ -66,6 +66,7 @@ static func equip_part(s, index: int, slot: int, id: String) -> bool:
 static func unequip_part(_s, _index: int, _slot: int) -> bool: return false
 
 static func absorb_essence(s, index: int, id: String) -> String:
+	if not s.pending_stone_drops.is_empty(): return "영혼석 선택 중"
 	if index < 0 or index >= s.party.size(): return "없는 인물"
 	var actor: Dictionary = s.party[index]
 	var reason: String = Essences.absorb(s,actor,id)
@@ -78,7 +79,7 @@ static func choose_essence_spell(s, index: int, essence_id: String, spell_id: St
 	if index < 0 or index >= s.party.size(): return false
 	return Essences.choose_spell(s,s.party[index],essence_id,spell_id)
 
-static func grant_part(s, id: String) -> void:
+static func grant_part(s, id: String, present: bool = false) -> void:
 	id = Essences.canonical(id)
 	if id.is_empty(): return
 	s.parts_bag = Essences.normalize_keys(s.parts_bag,true)
@@ -86,6 +87,7 @@ static func grant_part(s, id: String) -> void:
 	s.codex_test_stones.erase(id)
 	s.Codex.note_stone(s,id)
 	s.message(Essences.title(id)+" 획득")
+	if present: s.StoneDrop.enqueue(s,id)
 
 ## Level XP to every hunter; the essence only to a hunt the party joined. The
 ## first of a species this run always leaves it, the rest one time in four.
@@ -111,6 +113,7 @@ static func roll_part(s, enemy: Dictionary, reward_actors: Variant = null) -> vo
 	s.Codex.note_stone(s,id)
 	s.battle_stats.drops[id] = int(s.battle_stats.drops.get(id,0))+1
 	s.message(Essences.title(id)+" 획득")
+	s.StoneDrop.enqueue(s,id)
 
 ## Playtest helper: one of every catalog part in the bag, so loadouts can be tried without farming.
 static func grant_test_loadout(s) -> bool:

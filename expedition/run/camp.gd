@@ -7,6 +7,7 @@ const Essences = preload("res://expedition/progression/essences.gd")
 const PREPARED_SLOTS := Essences.QUICK_SPELLS
 
 static func can_camp(s) -> String:
+	if not s.pending_stone_drops.is_empty(): return "영혼석 선택 중"
 	if s.phase != "EXPLORE": return "지금은 불가"
 	if not s.floor_state.safe(s): return "적이 보임"
 	var needed: int = s.alive().size()
@@ -26,6 +27,7 @@ static func camp(s) -> bool:
 	s.message("야영 · 식량 -%d" % s.alive().size()); return true
 
 static func end_camp(s) -> bool:
+	if not s.pending_stone_drops.is_empty(): return false
 	if s.phase != "CAMP": return false
 	s.phase = "EXPLORE"
 	for actor in s.alive(): actor.ap = s.action_budget(actor)

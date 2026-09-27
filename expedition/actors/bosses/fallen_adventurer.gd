@@ -167,5 +167,5 @@ static func defeated(s, boss: Dictionary) -> void:
 	Common.say(s,boss,line(boss,2))
 	var worn: Array = Essences.equipped(boss)
 	var best: String = str(worn[0]) if not worn.is_empty() else str(boss.get("essences",{}).keys()[0]) if not boss.get("essences",{}).is_empty() else ""
-	if not best.is_empty(): s.grant_part(best)
+	if not best.is_empty(): s.grant_part(best,true)
 	s.victory()

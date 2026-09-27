@@ -11,6 +11,8 @@ const ResultCard = preload("res://expedition/ui/screens/result_card.gd")
 const Popups = preload("res://expedition/ui/screens/popups.gd")
 const AutoBattleHud = preload("res://expedition/ui/screens/autobattle_hud.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
+const StoneDropCard = preload("res://expedition/ui/screens/stone_drop_card.gd")
+var stone_drop_card
 const Banners = preload("res://expedition/ui/screens/banners.gd")
 var portrait_gesture = preload("res://expedition/legacy/portrait_gesture.gd").new()
 var navigation = preload("res://expedition/level/exploration_navigation.gd").new()
@@ -129,6 +131,7 @@ func _ready() -> void:
 	offer_popup = PopupPanel.new(); offer_popup.name = "OfferPopup"; add_child(offer_popup)
 	offer_content = VBoxContainer.new(); offer_content.custom_minimum_size = Vector2(popup_width(),160); offer_popup.add_child(offer_content)
 	log_popup = PopupPanel.new(); add_child(log_popup)
+	stone_drop_card = StoneDropCard.new(); add_child(stone_drop_card); stone_drop_card.setup(self)
 	toast = Label.new(); toast.name = "NoticeToast"; toast.mouse_filter = MOUSE_FILTER_IGNORE
 	add_child(toast); toast.set_anchors_and_offsets_preset(PRESET_TOP_WIDE)
 	toast.anchor_top = 0.22; toast.anchor_bottom = 0.22
@@ -146,7 +149,7 @@ func stop_navigation() -> void:
 	set_action_button_text(auto_explore_button,"탐색" if session != null and session.manual_mode else "자동탐험")
 
 func popup_open() -> bool:
-	return details_popup.visible or map_popup.visible or log_popup.visible or item_popup.visible or is_instance_valid(offer_popup) and offer_popup.visible
+	return is_instance_valid(stone_drop_card) and stone_drop_card.visible or details_popup.visible or map_popup.visible or log_popup.visible or item_popup.visible or is_instance_valid(offer_popup) and offer_popup.visible
 
 ## Battle test mode (§3): the setup screen, a throwaway arena session started
 ## from it, and the way back to the town session it set aside.
@@ -191,13 +194,14 @@ func _process(delta: float) -> void:
 	if is_instance_valid(board) and board.is_presenting(): return
 	toast_remaining = maxf(0,toast_remaining-delta)
 	if is_instance_valid(toast): toast.visible = toast_remaining > 0 and not notice.is_empty()
+	stone_drop_card.update()
 	portrait_gesture.tick(self)
 	if session != null and not session.manual_mode and session.auto.running and not popup_open():
 		auto_clock += delta
 		if auto_clock >= auto_interval():
 			auto_clock = 0.0; auto_tick()
 	if session == null or not navigation.active: return
-	if details_popup.visible or map_popup.visible or log_popup.visible or not get_window().has_focus(): stop_navigation(); return
+	if popup_open() or not get_window().has_focus(): stop_navigation(); return
 	navigation_clock += delta
 	if navigation_clock >= NAVIGATION_STEP_SECONDS and not navigation_camera_busy():
 		navigation_clock = 0; navigation_tick()
@@ -405,6 +409,7 @@ func modal(title: String, body: String) -> void:
 ## The router: which screen the run's state asks for, and the board and minimap
 ## that are parked between screens. The screens themselves are in ui/screens/.
 func refresh() -> void:
+	if session != null: session.interactive_stone_drops = true
 	if is_instance_valid(board) and board.is_presenting(): return
 	call_deferred("show_banners")
 	Popups.update_offer_popup(self)
@@ -499,6 +504,7 @@ func queue_action(kind: String, point: Vector2i) -> void:
 	refresh()
 
 func on_cell(point: Vector2i) -> void:
+	if popup_open(): return
 	if session == null or not session.on_floor(): return
 	stop_navigation()
 	var downed: Dictionary = session.downed_at(point)

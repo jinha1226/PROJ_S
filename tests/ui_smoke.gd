@@ -80,6 +80,10 @@ func run() -> void:
 	before_time = scene.session.time
 	scene.find_child("Spell_fire_1",true,false).pressed.emit(); scene.on_cell(foe.pos); await process_frame
 	check(hero.mp < before_mp and scene.session.time > before_time,"prepared spell casts with one target tap")
+	# A killing spell now requires a loot decision before the next player action.
+	while not scene.session.pending_stone_drops.is_empty():
+		scene.session.resolve_stone_drop(int(scene.session.pending_stone_drops[0].token),-1)
+	scene.stone_drop_card.dismiss_preserving()
 	var old_depth: int = scene.session.depth
 	var stairs: Vector2i = scene.session.floor_state.layout.stairs
 	for enemy in scene.session.enemies: enemy.hp = 0

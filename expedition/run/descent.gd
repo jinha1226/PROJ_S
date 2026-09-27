@@ -13,6 +13,7 @@ static func depart(s) -> bool:
 	if kit.is_empty(): return false
 	s.depth = 1; s.score = 0; s.run_stats = {"mistakes":0,"kills":0}
 	s.bag.clear(); s.known.clear(); s.pending_choice.clear()
+	s.pending_stone_drops.clear()
 	s.essence_seen.clear(); s.events.clear()
 	s.appearances = s.Consumables.shuffle_appearances(s.seed_value)
 	s.time = 0; s.boundary = 100; s.turn_serial = 0; s.roll_serial = 0
@@ -46,6 +47,7 @@ static func stairs_sealed(s) -> bool:
 	return s.enemies.any(func(e): return e.get("boss",false) and e.hp > 0) or s.npcs.any(func(n): return n.get("fallen",false) and n.hp > 0)
 
 static func descend(s) -> bool:
+	if not s.pending_stone_drops.is_empty(): return false
 	if s.depth >= Zones.FINAL_DEPTH: return false
 	if s.phase != "EXPLORE" or not s.floor_state.safe(s) or s.stairs_sealed(): return false
 	if s.party.any(func(actor): return s.Downed.is_downed(actor)): return false

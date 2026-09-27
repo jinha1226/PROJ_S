@@ -147,6 +147,11 @@ var bag: Dictionary = {}
 var known: Dictionary = {}
 var appearances: Dictionary = {}
 var pending_choice: Dictionary = {}
+const StoneDrop = preload("res://expedition/progression/stone_drop.gd")
+# Bots keep non-interactive loot. The game UI opts in before accepting input.
+var interactive_stone_drops := false
+var pending_stone_drops: Array = []
+var stone_drop_serial := 0
 const Curios = preload("res://expedition/items/curios.gd")
 const BossAI = preload("res://expedition/actors/boss_ai.gd")
 
@@ -356,7 +361,9 @@ func stairs_sealed() -> bool: return Descent.stairs_sealed(self)
 
 func descend() -> bool: return Descent.descend(self)
 
-func grant_part(id: String) -> void: Gear.grant_part(self,id)
+func grant_part(id: String, present: bool = false) -> void: Gear.grant_part(self,id,present)
+
+func resolve_stone_drop(token: int, index: int) -> String: return StoneDrop.resolve(self,token,index)
 
 func push_event(event: Dictionary) -> void:
 	events.append(event)
@@ -534,6 +541,7 @@ func attack_reach(actor: Dictionary, target: Vector2i, attack_range: int) -> boo
 	return distance(actor.pos,target) <= attack_range and Floor.MonsterAI.line(self,actor.pos,target,attack_range)
 
 func act(kind: String, target: Vector2i) -> bool:
+	if not pending_stone_drops.is_empty(): return false
 	if not pending_choice.is_empty(): return false
 	if manual_mode: return submit(kind,target)
 	return act_as(party[selected],kind,target,true)
@@ -554,6 +562,7 @@ func action_cost(actor: Dictionary, kind: String, target: Vector2i, _value: Stri
 	return maxi(40,StoneEffects.delay(self,actor,cost,kind))
 
 func submit(kind: String, target: Vector2i, value: String = "") -> bool:
+	if not pending_stone_drops.is_empty(): return false
 	if not pending_choice.is_empty(): return false
 	if not on_floor() or party.is_empty() or party[0].hp <= 0: return false
 	manual_mode = true
@@ -570,6 +579,7 @@ func submit(kind: String, target: Vector2i, value: String = "") -> bool:
 		actor.ap = 1
 		return Scheduler.advance(self,swap_cost)
 	if not Scheduler.flush_ready(self) or actor.hp <= 0: return false
+	if not pending_stone_drops.is_empty(): return false
 	var cost := action_cost(actor,kind,target,value)
 	if kind == "CAST":
 		var previous_stacks: Dictionary = actor.get("stacks",{}).duplicate(true)
@@ -771,7 +781,9 @@ func companion_choice(actor: Dictionary) -> Dictionary: return AutoBattle.compan
 func companion_intent_snapshot() -> Array: return AutoBattle.companion_intent_snapshot(self)
 
 
-func auto_step() -> bool: return AutoBattle.auto_step(self)
+func auto_step() -> bool:
+	if not pending_stone_drops.is_empty(): return false
+	return AutoBattle.auto_step(self)
 
 func open_battle_conflicts() -> void: AutoBattle.open_battle_conflicts(self)
 
@@ -1027,7 +1039,7 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 			food += 1; message("고기 획득 · 식량 +1")
 		if target.get("boss",false):
 			if party_hunted:
-				grant_part(str(target.part_id)); score += 100
+				grant_part(str(target.part_id),true); score += 100
 			BossAI.on_boss_defeated(self,target)
 			if depth >= Zones.FINAL_DEPTH: victory()
 		else: roll_part(target,hunters)

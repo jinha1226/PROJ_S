@@ -86,6 +86,7 @@ static func spend(s, kind: String) -> void:
 	else: s.bag[kind] = left
 
 static func use(s, kind: String, target: Vector2i = NO_TARGET, recipient: int = -1) -> bool:
+	if not s.pending_stone_drops.is_empty(): return false
 	var row: Dictionary = definition(kind)
 	if row.is_empty() or s.phase not in ["EXPLORE","BATTLE","CAMP"] or not s.pending_choice.is_empty(): return false
 	if int(s.bag.get(kind,0)) <= 0 or s.party.is_empty() or s.selected < 0 or s.selected >= s.party.size(): return false
