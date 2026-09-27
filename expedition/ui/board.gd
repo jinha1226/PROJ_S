@@ -93,16 +93,18 @@ func animate_walk(actor_id: int, from: Vector2i, to: Vector2i, duration: float =
 func display_center(actor: Dictionary) -> Vector2:
 	var center := cell_center(actor.pos)
 	if session.free_movement:
-		var world: Vector2 = session.Free.position(actor)
-		if world_walks.has(int(actor.id)):
-			var walk: Dictionary = world_walks[int(actor.id)]
-			world = Vector2(walk.from).lerp(walk.to,clampf(float(walk.elapsed)/float(walk.duration),0,1))
-		return project(world)
+		return project(display_world_position(actor))
 	if not is_presenting() and walk_actor_id == int(actor.id) and actor.pos == walk_to:
 		var t := clampf(walk_elapsed/walk_duration,0.0,1.0)
 		center = project(walk_visual_from+Vector2.ONE*0.5).lerp(center,t)
 	# The lunge and the recoil of a blow are applied where the sprite is drawn (hit_offset).
 	return center
+
+func display_world_position(actor: Dictionary) -> Vector2:
+	if world_walks.has(int(actor.id)):
+		var walk: Dictionary = world_walks[int(actor.id)]
+		return Vector2(walk.from).lerp(walk.to,clampf(float(walk.elapsed)/float(walk.duration),0,1))
+	return session.Free.position(actor)
 
 func is_presenting() -> bool:
 	return not playback.is_empty()
@@ -313,10 +315,7 @@ func camera_origin() -> Vector2:
 	if session == null or session.tiles.is_empty(): return Vector2.ZERO
 	if session.free_movement and not is_presenting():
 		var hero: Dictionary = session.party[session.selected]
-		var focus: Vector2 = session.Free.position(hero)
-		if world_walks.has(int(hero.id)):
-			var walk: Dictionary = world_walks[int(hero.id)]
-			focus = Vector2(walk.from).lerp(walk.to,clampf(float(walk.elapsed)/float(walk.duration),0,1))
+		var focus := display_world_position(hero)
 		return focus-Vector2(size.x*0.5,size.y*0.40)/(half_width*2.0)
 	var focus: Vector2 = Vector2(playback_focus) if is_presenting() else Vector2(session.party[session.selected].pos)
 	if not is_presenting() and walk_actor_id == int(session.party[session.selected].id) and walk_to == session.party[session.selected].pos:
@@ -1023,7 +1022,8 @@ func animate_world(before: Dictionary, duration: float = 0.11) -> void:
 		var id: int = int(actor.id)
 		var end: Vector2 = session.Free.position(actor)
 		if before.has(id) and Vector2(before[id]).distance_to(end) > 0.001:
-			world_walks[id] = {"from":before[id],"to":end,"elapsed":0.0,"duration":duration}
+			var start: Vector2 = display_world_position(actor) if world_walks.has(id) else Vector2(before[id])
+			world_walks[id] = {"from":start,"to":end,"elapsed":0.0,"duration":maxf(0.01,duration)}
 	queue_redraw()
 
 func effect_center(effect: Dictionary) -> Vector2:

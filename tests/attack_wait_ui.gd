@@ -21,6 +21,8 @@ func run() -> void:
 	ui.refresh(); await process_frame
 	var start: Vector2 = Session.Free.position(s.party[0])
 	var before_time: int = s.time
+	var controls_id: int = ui.find_child("BottomActions",true,false).get_instance_id()
+	var hp_label: Label = ui.find_child("HeroHP",true,false)
 	var touch := InputEventScreenTouch.new(); touch.index = 3; touch.position = Vector2(110,260); touch.pressed = true
 	ui.board._gui_input(touch)
 	check(ui.board.joystick_active and ui.board.joystick_origin == touch.position,"touch anchors a floating joystick exactly under the finger")
@@ -30,6 +32,21 @@ func run() -> void:
 	var target: Vector2 = start+Vector2(34,17).normalized()
 	check(Session.Free.position(s.party[0]).is_equal_approx(target) and s.time > before_time,"joystick commits arbitrary-angle movement through the turn scheduler")
 	check(ui.board.world_walks.has(int(s.party[0].id)),"camera and sprite interpolate from actual world positions")
+	check(ui.find_child("BottomActions",true,false).get_instance_id() == controls_id and ui.find_child("HeroHP",true,false) == hp_label,"movement retains HUD controls and their layout")
+	check(ui.navigation_clock > 0,"movement scheduling preserves the frame remainder")
+	ui.board._process(0.12)
+	var visual_before: Vector2 = ui.board.display_world_position(s.party[0])
+	var camera_before: Vector2 = ui.board.camera_origin()
+	var turn_before: int = s.turn_serial
+	s.party[0].hp -= 1; s.message("이동 기록")
+	ui.navigation_clock = ui.JOYSTICK_STEP_SECONDS-0.02
+	ui.free_navigation_process(0.025)
+	check(s.turn_serial == turn_before+1,"held joystick schedules the next turn without waiting for the previous visual to disappear")
+	check(ui.board.display_world_position(s.party[0]).is_equal_approx(visual_before) and ui.board.camera_origin().is_equal_approx(camera_before),"overlapping movement starts from the displayed position without a sprite or camera jump")
+	check(ui.find_child("HeroHP",true,false) == hp_label and hp_label.text == "HP %d/%d" % [s.party[0].hp,s.party[0].max_hp] and ui.find_child("RecentLog",true,false).text.contains("이동 기록") and ui.find_child("TurnCount",true,false).text == "%d턴" % s.turn_serial,"retained HUD refreshes health, log and turn values")
+	turn_before = s.turn_serial
+	ui.free_navigation_process(10)
+	check(s.turn_serial == turn_before+1,"one stalled frame never replays a backlog of movement turns")
 	touch.pressed = false; touch.position = drag.position; ui.board._input(touch)
 	before_time = s.time
 	ui.board.world_walks.clear(); ui.free_navigation_process(0.5)

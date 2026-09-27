@@ -84,4 +84,9 @@ func run() -> void:
 	s.Free.place(hero,Vector2(3.5,3.5)); s.tile(Vector2i(4,3)).terrain = "wall"
 	var slide: Vector2 = s.Free.steer(s,hero,Vector2(1,0.4))
 	check(slide.x == 3.5 and slide.y > 3.5 and s.Free.segment(s,s.Free.position(hero),slide,s.Free.RADIUS,hero,true),"joystick slides along a blocked wall without crossing it")
+	check(not s.Free.segment(s,Vector2(3.5,3.5),Vector2(4.5,4.5),0),"sight ray cannot slip through an exact blocked corner")
+	s.tile(Vector2i(4,3)).pillar = true
+	check(s.Free.segment(s,Vector2(3.5,3.5),Vector2(5.5,3.5),0,{},false,true) and not s.Free.segment(s,Vector2(3.5,3.5),Vector2(5.5,3.5),0),"pillar remains transparent to perception but blocks attacks")
+	s.tile(Vector2i(4,3)).pillar = false; s.tile(Vector2i(4,3)).terrain = "stone"; s.tile(Vector2i(4,3)).wall_until = s.time+100
+	check(not s.Free.segment(s,Vector2(5.2,3.6),Vector2(3.8,3.8),0),"temporary walls block rays traversing fractional positions backwards")
 	print("Free movement: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)

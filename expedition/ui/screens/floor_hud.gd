@@ -58,6 +58,7 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 		ui.board.zoom_changed.connect(func(value): ui.view_side = value)
 		ui.board.gesture_started.connect(ui.stop_navigation); ui.board.playback_finished.connect(ui.finish_presentation)
 	ui.board.fullscreen = session.free_movement
+	ui.board.process_priority = -10 if session.free_movement else 0
 	ui.board.z_index = 0
 	ui.board.session = session; ui.board.view_side = ui.view_side; ui.board.action_footer = not session.manual_mode and not ui.pending_attack.is_empty()
 	if ui.board.get_parent() != null: ui.board.get_parent().remove_child(ui.board)
@@ -90,7 +91,8 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 		log_button.add_theme_font_size_override("font_size",12)
 	if session.manual_mode:
 		build_manual_controls(ui)
-		if session.free_movement: fullscreen(ui)
+		if session.free_movement:
+			fullscreen(ui); cache_free(ui)
 		return
 	var party_row := HBoxContainer.new(); party_row.name = "PartyRow"
 	party_row.add_theme_constant_override("separation",5); ui.root_layout.add_child(party_row)
@@ -179,6 +181,7 @@ static func build_manual_controls(ui) -> void:
 			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 			icon.custom_minimum_size = Vector2(40,40); icon.mouse_filter = Control.MOUSE_FILTER_IGNORE; heading.add_child(icon)
 			var name: Label = ui.label(heading,str(actor.name),11); name.clip_text = true
+			name.name = "HeroName" if i == 0 else "MemberName%d" % i
 			name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			var hp: Label = ui.label(compact,("HP%d/%d" % [actor.hp,actor.max_hp]) if automatic else ("HP%d/%d  MP%d/%d" % [actor.hp,actor.max_hp,actor.mp,actor.max_mp]),9)
 			hp.name = "HeroHP" if i == 0 else "MemberHP%d" % i
@@ -199,6 +202,7 @@ static func build_manual_controls(ui) -> void:
 		var values := VBoxContainer.new(); values.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		values.add_theme_constant_override("separation",2); content.add_child(values)
 		var name = ui.label(values,"%s  Lv.%d" % [actor.name,int(actor.level)],13 if session.party.size() == 1 else 11)
+		name.name = "HeroName" if i == 0 else "MemberName%d" % i
 		name.add_theme_color_override("font_color",Color("e7d6b0"))
 		var hp = ui.label(values,("HP %d/%d" % [actor.hp,actor.max_hp]) if automatic else ("HP %d/%d  ·  MP %d/%d" % [actor.hp,actor.max_hp,actor.mp,actor.max_mp]),11)
 		hp.name = "HeroHP" if i == 0 else "MemberHP%d" % i
@@ -216,6 +220,7 @@ static func build_manual_controls(ui) -> void:
 				var effect: Dictionary = Session.MobileEffects.row(str(stone))
 				if str(effect.get("event","")) not in [event,"ATTACK" if event == "HIT" else event]: continue
 				var glyph := TextureRect.new(); glyph.texture = Art.part_icon(str(stone))
+				glyph.set_meta("stone",str(stone))
 				glyph.custom_minimum_size = Vector2(20,20); glyph.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 				glyph.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; glyph.tooltip_text = str(effect.text)
 				if not Session.MobileEffects.ready(session,session.party[0],Session.MobileEffects.effect_id(str(stone)),effect): glyph.modulate.a = 0.35
@@ -453,3 +458,55 @@ static func fullscreen(ui) -> void:
 	var bag = ui.button(header,"가방",func(): Popups.show_supplies(ui)); bag.name = "Bag"
 	bag.size_flags_horizontal = Control.SIZE_SHRINK_END; bag.custom_minimum_size.x = 44
 	ui.board.queue_redraw()
+
+static func free_hud_key(ui) -> Array:
+	var session = ui.session
+	return [session.get_instance_id(),session.depth,session.selected,
+		session.party.map(func(a): return int(a.id)),Session.Essences.equipped(session.party[0])]
+
+static func cache_free(ui) -> void:
+	if not Session.MobileEffects.active(ui.session.party[0]): return
+	var widgets := {"key":free_hud_key(ui).duplicate(true),"members":[],"glyphs":[]}
+	for name in ["Location","TurnCount","FoodLabel","RecentLog"]:
+		widgets[name] = ui.root_layout.find_child(name,true,false)
+	for i in range(ui.session.party.size()):
+		widgets.members.append({"name":ui.root_layout.find_child("HeroName" if i == 0 else "MemberName%d" % i,true,false),
+			"hp":ui.root_layout.find_child("HeroHP" if i == 0 else "MemberHP%d" % i,true,false),
+			"state":ui.root_layout.find_child("HeroState" if i == 0 else "MemberState%d" % i,true,false)})
+	var bar: Control = ui.root_layout.find_child("AutoEffectBar",true,false)
+	for flow in bar.get_children(): widgets.glyphs.append_array(flow.get_children())
+	ui.floor_widgets = widgets
+
+## Movement updates values without rebuilding Controls, renderer nodes, or
+## container layout. A new screen/party/loadout still uses the normal builder.
+static func sync_free(ui) -> bool:
+	var session = ui.session
+	if session == null or not session.free_movement or not session.manual_mode or not session.on_floor() or ui.mode_arena_setup: return false
+	if not Session.MobileEffects.active(session.party[0]): return false
+	if ui.floor_widgets.is_empty() or ui.floor_widgets.key != free_hud_key(ui): return false
+	var widgets: Dictionary = ui.floor_widgets
+	widgets.Location.text = "%d층" % session.depth
+	widgets.TurnCount.text = "%d턴" % session.turn_serial
+	widgets.FoodLabel.text = "식량 %d" % session.food
+	widgets.RecentLog.text = "\n".join(session.log_lines.slice(maxi(0,session.log_lines.size()-4)))
+	var compact: bool = session.party.size() > 1
+	for i in range(session.party.size()):
+		var actor: Dictionary = session.party[i]
+		var member: Dictionary = widgets.members[i]
+		member.name.text = str(actor.name) if compact else "%s  Lv.%d" % [actor.name,int(actor.level)]
+		member.hp.text = ("HP%d/%d" if compact else "HP %d/%d") % [actor.hp,actor.max_hp]
+		member.state.text = portrait_state(actor); member.state.tooltip_text = member.state.text
+	for glyph in widgets.glyphs:
+		var stone: String = glyph.get_meta("stone","")
+		var effect: Dictionary = Session.MobileEffects.row(stone)
+		glyph.modulate.a = 1.0 if Session.MobileEffects.ready(session,session.party[0],Session.MobileEffects.effect_id(stone),effect) else 0.35
+	if not ui.action_effects.is_empty():
+		ui.board.effects = ui.action_effects; ui.board.effect_time = 0; ui.board.impact_time = 0
+	ui.action_effects = []; ui.reset_effects = false
+	ui.board.show_attack_range = ui.show_attack_range; ui.board.targeting_skill = ui.mode
+	ui.board.target_cell = ui.pending_attack.get("cell",Vector2i(-1,-1))
+	ui.board.companion_previews = session.companion_previews(); ui.board.companion_intents = session.companion_intent_snapshot()
+	if not session.in_combat(): ui.board.reset_intent_ui()
+	ui.board.queue_redraw(); ui.minimap.queue_redraw()
+	ui.call_deferred("show_banners"); Popups.update_offer_popup(ui); ui.show_choice_if_pending()
+	return true

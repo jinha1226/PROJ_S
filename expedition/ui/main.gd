@@ -22,6 +22,7 @@ var queued_curio: Dictionary = {}
 const NAVIGATION_STEP_SECONDS := 0.075
 const JOYSTICK_STEP_SECONDS := 0.18
 var navigation_clock := 0.0
+var floor_widgets: Dictionary = {}
 var view_side := 11
 var log_popup: PopupPanel
 var log_filter := "전체"
@@ -446,6 +447,7 @@ func refresh() -> void:
 		action_effects = board.effects.duplicate(true); elapsed = board.effect_time
 		impact_elapsed = board.impact_time
 	reset_effects = false
+	floor_widgets.clear()
 	# The renderer and the minimap keep their incremental caches: a rebuilt
 	# 80x80 minimap would redraw every known tile on every action.
 	if is_instance_valid(board):
@@ -521,7 +523,7 @@ func run_action(callback: Callable, navigating: bool = false, motion_seconds: fl
 	action_effects = session.effects.duplicate(true); session.effects.clear()
 	reset_effects = accepted
 	check_stop()
-	refresh()
+	if not (accepted and navigating and FloorHud.sync_free(self)): refresh()
 	if accepted and session.free_movement and is_instance_valid(board):
 		board.animate_world(world_before,motion_seconds if motion_seconds > 0 else NAVIGATION_STEP_SECONDS if navigating else 0.16)
 		if free_combat_before and session.party_enemies().is_empty():
@@ -682,11 +684,14 @@ func free_navigation_process(delta: float) -> void:
 	if board.joystick_active:
 		var direction: Vector2 = board.joystick_direction()
 		if direction == Vector2.ZERO: navigation_clock = JOYSTICK_STEP_SECONDS; return
-		if navigation_clock < JOYSTICK_STEP_SECONDS or navigation_camera_busy(): return
-		navigation_clock = 0
+		if navigation_clock < JOYSTICK_STEP_SECONDS: return
+		# Keep the frame's remainder: resetting to zero inserts a pause each turn.
+		# Never replay a backlog of turns after a browser/background stall.
+		navigation_clock = minf(navigation_clock-JOYSTICK_STEP_SECONDS,JOYSTICK_STEP_SECONDS*0.5)
 		var hero: Dictionary = session.party[0]
 		var dest := Session.Free.steer(session,hero,direction)
-		if dest != Session.Free.position(hero): run_action(func(): return Session.Free.submit(session,Session.Free.choice(hero,"MOVE",dest,"이동")),true,JOYSTICK_STEP_SECONDS)
+		if dest != Session.Free.position(hero): run_action(func(): return Session.Free.submit(session,Session.Free.choice(hero,"MOVE",dest,"이동")),true,JOYSTICK_STEP_SECONDS-navigation_clock)
+		else: navigation_clock = 0
 		return
 	if navigation_camera_busy(): return
 	if world_destination.x < 0 and (auto_explore_paused or not session.party_enemies().is_empty()): return

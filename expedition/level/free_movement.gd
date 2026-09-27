@@ -59,6 +59,7 @@ static func fits(s, at: Vector2, actor: Dictionary = {}, bodies: bool = true, ra
 	return true
 
 static func segment(s, a: Vector2, b: Vector2, radius: float = RADIUS, actor: Dictionary = {}, bodies: bool = false, perception: bool = false) -> bool:
+	if radius <= 0 and not bodies: return ray_clear(s,a,b,perception)
 	# Swept clearance: the sampling gap is smaller than an actor radius. Test
 	# expanded wall rectangles as well, so diagonal corners cannot be tunneled.
 	var low := cell(Vector2(minf(a.x,b.x),minf(a.y,b.y))-Vector2.ONE*radius)
@@ -77,6 +78,33 @@ static func segment(s, a: Vector2, b: Vector2, radius: float = RADIUS, actor: Di
 		for i in range(1,steps+1):
 			if not fits(s,a.lerp(b,float(i)/steps),actor,true,radius): return false
 	return true
+
+## Visit only cells crossed by a sight/attack ray, rather than every cell in
+## its bounding rectangle. Simultaneous crossings include both corner edges.
+static func ray_clear(s, a: Vector2, b: Vector2, perception: bool = false) -> bool:
+	var here := cell(a); var end := cell(b)
+	var delta := b-a
+	var step := Vector2i(signi(end.x-here.x),signi(end.y-here.y))
+	var stride := Vector2(INF if step.x == 0 else absf(1.0/delta.x),INF if step.y == 0 else absf(1.0/delta.y))
+	var crossing := Vector2(INF if step.x == 0 else (here.x+(1 if step.x > 0 else 0)-a.x)/delta.x,
+		INF if step.y == 0 else (here.y+(1 if step.y > 0 else 0)-a.y)/delta.y)
+	while true:
+		if ray_blocked(s,here,perception): return false
+		if here == end: return true
+		if is_equal_approx(crossing.x,crossing.y):
+			if ray_blocked(s,here+Vector2i(step.x,0),perception) or ray_blocked(s,here+Vector2i(0,step.y),perception): return false
+			here += step; crossing += stride
+		elif crossing.x < crossing.y:
+			here.x += step.x; crossing.x += stride.x
+		else:
+			here.y += step.y; crossing.y += stride.y
+	return false
+
+static func ray_blocked(s, at: Vector2i, perception: bool) -> bool:
+	if not s.inside(at): return true
+	var tile: Dictionary = s.tile(at)
+	if perception and tile.get("pillar",false): return false
+	return tile.terrain == "wall" or int(tile.get("wall_until",0)) > s.time
 
 static func sees(s, a: Vector2, b: Vector2, reach: float) -> bool:
 	return a.distance_to(b) <= reach+EPS and segment(s,a,b,0.0)
