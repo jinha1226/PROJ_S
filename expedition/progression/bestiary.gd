@@ -3,6 +3,7 @@ extends RefCounted
 ## weighs on a floor, and what a soul stone of a role gives. Every number here
 ## is a table the difficulty gate tunes, never a per-species constant.
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/floor_monsters.json"))
+static var automatic_rewards: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/attack_wait_effects.json")).get("role_stats",{})
 const FAMILIES := ["rat","goblin","reptile","kobold","orc","elemental","insect","gnoll","undead","bat"]
 const ROLES := ["PACK","BERSERK","AMBUSH","GUARD","ARCHER","CASTER"]
 const ZONE_HP := {1:30,2:70,3:110,4:160}
@@ -17,8 +18,8 @@ const PARTY_HP_STEP := 35
 
 static func party_percent(size: int) -> int:
 	return 100+PARTY_HP_STEP*(maxi(1,size)-1)
-## A soul stone's fixed base stats by role (2026-09-26 spec §1): straight onto
-## the fight's numbers, no attribute points.
+## Legacy fixed role rewards (2026-09-26 spec §1). The automatic profile reads
+## its own data table, so its rewards never alter an existing run's numbers.
 const ROLE_POINTS := {
 	"SUPPORT":{"hp":10,"mp":6},
 	"MELEE":{"atk":4,"hp":8},
@@ -58,5 +59,6 @@ static func monster_stats(species_id: String, depth: int) -> Dictionary:
 		"attack_percent":int(ZONE_ATTACK[zone])*step/ACTIVE_BASE_ATTACK}
 
 ## A soul stone of `role`: the same for every stone of that role.
-static func essence_stats(role: String, _school: String = "") -> Dictionary:
-	return (ROLE_POINTS.get(role,{}) as Dictionary).duplicate()
+static func essence_stats(role: String, _school: String = "", profile: String = "legacy") -> Dictionary:
+	var points: Dictionary = automatic_rewards if profile == "attack_wait_v1" else ROLE_POINTS
+	return (points.get(role,{}) as Dictionary).duplicate()

@@ -270,6 +270,7 @@ static func execute(s, owner: Dictionary, r: Dictionary, ctx: Dictionary) -> boo
 			if r.has("damage") and int(target.get("hp",0)) > 0:
 				var dealt := damage(s,owner,target,r)
 				if dealt > 0 and r.get("direct_element",false): ctx.get_or_add("direct_elements",[]).append(str(r.element))
+				applied = applied or dealt > 0
 			return applied
 		"status_area":
 			var success := false

@@ -117,13 +117,13 @@ static func normalize_run(s) -> void:
 ## A row's stats come from its role (zones spec §3.1); a role-less row (the
 ## basics) keeps what it lists. A variant adds ten of its element's
 ## resistance, except bleed, which nothing resists.
-static func row(id: String) -> Dictionary:
+static func row(id: String, profile: String = "legacy") -> Dictionary:
 	if not has(id): return {}
 	var base: Dictionary = content.rows[base_of(id)]
 	var part: String = part_of(id)
 	var piece: Dictionary = base.get("parts",{}).get(part,{})
 	var role: String = str(base.get("role",""))
-	var stats: Dictionary = Bestiary.essence_stats(role,str(base.get("school",""))) if not role.is_empty() else (base.get("stats",{}) as Dictionary).duplicate()
+	var stats: Dictionary = Bestiary.essence_stats(role,str(base.get("school","")),profile) if not role.is_empty() else (base.get("stats",{}) as Dictionary).duplicate()
 	var result := {"name":str(base.get("name","")),"stats":stats,"role":role,"element":str(base.get("element","")),
 		"school":str(base.get("school","")),"species":str(base.get("species","")),"family":str(base.get("family","")),
 		"part":part,"part_name":str(piece.get("name","")),"active":str(piece.get("active","")),"effect":str(piece.get("effect",base.get("effect",""))),
@@ -147,10 +147,11 @@ static func title(id: String) -> String:
 	var element := variant_element(id)
 	return name if element.is_empty() else "%s %s" % [ELEMENTS[element],name]
 
-## The stone's fixed base stats: its role's, plus a variant's resistance.
-static func stats(id: String) -> Dictionary:
+## Role rewards for this actor's profile, plus the variant's resistance.
+## Actor-less catalog queries keep the legacy reward contract.
+static func stats(id: String, actor: Dictionary = {}) -> Dictionary:
 	var result: Dictionary = {}
-	var base: Dictionary = row(id).get("stats",{})
+	var base: Dictionary = row(id,str(actor.get("combat_profile","legacy"))).get("stats",{})
 	for key in base: result[key] = int(base[key])
 	return result
 

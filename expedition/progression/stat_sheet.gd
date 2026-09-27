@@ -43,7 +43,7 @@ static func sheet(s, actor: Dictionary) -> Dictionary:
 	add(result,"str","물약",int(actor.get("str_bonus",0)))
 	gear(result,actor)
 	for id in Essences.equipped(actor):
-		var values: Dictionary = Essences.stats(id)
+		var values: Dictionary = Essences.stats(id,actor)
 		for key in values:
 			if key in KEYS: add(result,key,Essences.title(id),int(values[key]))
 	var sets: Dictionary = TagSets.stat_bonus(actor)
@@ -100,7 +100,7 @@ static func value(s, actor: Dictionary, key: String) -> int:
 ## Only what essences and sets add: what the pools and the old auto path read.
 static func bonus(actor: Dictionary, key: String) -> int:
 	var total := 0
-	for id in Essences.equipped(actor): total += int(Essences.stats(id).get(key,0))
+	for id in Essences.equipped(actor): total += int(Essences.stats(id,actor).get(key,0))
 	return total+int(TagSets.stat_bonus(actor).get(key,0))
 
 ## Brings max HP and MP in line with the essences worn now: the stones' flat

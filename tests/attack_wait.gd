@@ -52,9 +52,33 @@ func run() -> void:
 		reachable[Mobile.effect_id(str(id))] = true
 		for element in Session.Essences.ELEMENTS: reachable[Mobile.effect_id(str(id)+"@"+str(element))] = true
 	for id in Mobile.data.effects: check(reachable.has(id),"reachable effect "+str(id))
-	seeding(); waiting(); defense(); ice(); electricity(); support(); pets(); physical(); compatibility(); pure_prediction(); advanced_contracts(); operations()
+	reward_stats(); seeding(); waiting(); defense(); ice(); electricity(); support(); pets(); physical(); compatibility(); pure_prediction(); advanced_contracts(); operations()
 	Forms.force = -1; Session.StoneEffects.force = -1
 	print("Attack/wait: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
+func reward_stats() -> void:
+	var d := field()
+	for id in Mobile.catalog():
+		var rewards: Dictionary = d.s.Essences.stats(str(id),d.hero)
+		check(not rewards.has("mp") and not rewards.has("spell"),"automatic rewards have no unused MP or spell stat: "+str(id))
+	check(d.s.Essences.stats("FIRE_CALLER/pierced",d.hero) == {"atk":2,"hp":12},"magic reward supplies usable attack and HP")
+	check(d.s.Essences.stats("RAT_GNAW/cut",d.hero) == {"hp":16},"support reward replaces MP with HP")
+	check(d.s.Essences.stats("FIRE_CALLER/pierced") == {"spell":4,"mp":8} and d.s.Essences.stats("RAT_GNAW/cut") == {"hp":10,"mp":6},"legacy reward queries are unchanged beside automatic queries")
+	check(d.s.Essences.stats("FIRE_CALLER/pierced@ice",d.hero) == {"atk":2,"hp":12,"res_ice":10},"automatic reward preserves variant resistance")
+	var before_damage: int = d.s.CombatStats.stats(d.s,d.hero).damage
+	d.s.phase = "CAMP"; d.s.parts_bag["FIRE_CALLER/pierced"] = 1
+	check(d.s.absorb_essence(0,"FIRE_CALLER/pierced").is_empty(),"normal permanent absorption applies new reward")
+	check(d.hero.max_hp == 112 and d.hero.max_mp == 0 and d.s.CombatStats.stats(d.s,d.hero).damage == before_damage+2,"reward changes actual HP and basic damage without MP")
+	d.s.StatSheet.refresh_pools(d.s,d.hero)
+	check(d.hero.max_hp == 112,"pool refresh never duplicates the new reward")
+	Mobile.enable(d.s,"legacy")
+	check(d.hero.max_hp == 100 and d.hero.max_mp == 8 and d.s.StatSheet.bonus(d.hero,"spell") == 4,"switching to legacy restores exactly its original reward")
+	Mobile.enable(d.s,Mobile.PROFILE)
+	check(d.hero.max_hp == 112 and d.hero.max_mp == 0 and d.s.StatSheet.bonus(d.hero,"spell") == 0,"switching back removes the legacy pool bonus")
+	var npc: Dictionary = d.s.make_actor(401,"보상 검사 NPC",false); npc.npc = true; npc.level = 6
+	var npc_hp: int = npc.max_hp; var npc_mp: int = npc.max_mp
+	check(d.s.Essences.bind(npc,"RAT_GNAW/cut").is_empty(),"NPC absorption uses the same profile")
+	d.s.StatSheet.refresh_pools(d.s,npc)
+	check(npc.max_hp == npc_hp+16 and npc.max_mp == npc_mp,"NPC gains usable support HP and no MP")
 func seeding() -> void:
 	var d := with_effects(["fire_hit","fire_chain"]); var n := near(d,901,Vector2i(2,0))
 	hit(d)
@@ -114,6 +138,20 @@ func electricity() -> void:
 	hit(d)
 	check(a.hp == 197 and b.hp == 197 and c.hp == 200,"lightning visits exactly three distinct targets")
 	check(not d.foe.statuses.has("charge"),"chain consumes charge without restarting")
+	d = with_effects(["air_hit"]); d.s.reset_battle_stats(); d.foe.statuses.charge = d.s.time+1000
+	var facts := {"target":d.foe,"lost":1,"primary":true}
+	Mobile.push(d.s,"HIT",d.hero,facts)
+	var report: Dictionary = d.s.member_stats(d.hero.id).get("effects",{}).get("aw:air_hit",{})
+	check(d.foe.hp == 198 and d.foe.statuses.charge == d.s.time+1000,"existing charge still takes real electric damage without extending status")
+	check(int(report.get("procs",0)) == 1 and int(report.get("damage",0)) == 2 and d.s.aw_trace.any(func(e): return e.effect == "air_hit"),"damage-only proc is present in contribution report and trace")
+	check(d.s.effects.any(func(e): return e.get("kind","") == "PROC" and str(e.get("text","")) == str(Mobile.data.effects.air_hit.name)),"damage-only proc displays its effect")
+	Mobile.push(d.s,"HIT",d.hero,facts)
+	check(d.foe.hp == 198 and int(report.procs) == 1,"damage-only proc retains its per-action limit")
+	d.s.Reactions.begin_action(d.s); Mobile.push(d.s,"HIT",d.hero,facts)
+	check(d.foe.hp == 196 and int(report.procs) == 2,"next action records another damage-only proc")
+	d.foe.res.air = 100; d.s.Reactions.begin_action(d.s); d.s.effects.clear()
+	Mobile.push(d.s,"HIT",d.hero,facts)
+	check(d.foe.hp == 196 and int(report.procs) == 2 and not d.s.effects.any(func(e): return e.get("kind","") == "PROC"),"no status change and no damage produces no fabricated proc")
 func support() -> void:
 	var d := with_effects(["heal_wait","heal_chain"],2)
 	d.hero.hp = 50; d.s.party[1].hp = 10; d.s.party[1].max_hp = 100

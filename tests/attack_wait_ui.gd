@@ -30,7 +30,13 @@ func run() -> void:
 		ui.show_character(0,"영혼석"); await process_frame
 		var summary: Label = ui.find_child("EssenceSummaryPassives",true,false)
 		check(summary != null and str(summary.text).contains("대기"),"summary reads real automatic effects")
+		var rewards: Label = ui.find_child("EssenceSummaryStats",true,false)
+		check(rewards != null and not rewards.text.contains("MP") and not rewards.text.contains("주문력") and rewards.text.contains("공격력"),"summary shows usable automatic rewards")
 		ui.details_popup.hide()
+	s.grant_part("FIRE_CALLER/pierced"); ui.show_supplies(); ui.show_item_detail("FIRE_CALLER/pierced"); await process_frame
+	var preview: Array = ui.item_detail.find_children("*","Label",true,false).map(func(l): return l.text)
+	check(preview.any(func(t): return t.contains("공격력 +2") and t.contains("최대 HP +12") and not t.contains("MP") and not t.contains("주문력")),"inventory preview uses the same automatic reward as absorption")
+	ui.item_popup.hide(); ui.details_popup.hide()
 	ui.session.party.append(ui.session.make_actor(1,"브란",false)); ui.session.party.append(ui.session.make_actor(2,"세라",false))
 	ui.session.companions = true; ui.refresh(); await process_frame
 	var portrait: Control = ui.find_child("PortraitRow",true,false)

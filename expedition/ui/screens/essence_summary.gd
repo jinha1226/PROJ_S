@@ -100,8 +100,9 @@ const TEXT := {
 static func stats(actor: Dictionary) -> String:
 	var totals := {}
 	for id in Essences.equipped(actor):
-		for key in Essences.stats(str(id)):
-			totals[key] = int(totals.get(key,0))+int(Essences.stats(str(id))[key])
+		var values: Dictionary = Essences.stats(str(id),actor)
+		for key in values:
+			totals[key] = int(totals.get(key,0))+int(values[key])
 	var lines: Array = []
 	for key in StatSheet.KEYS:
 		if int(totals.get(key,0)) != 0:

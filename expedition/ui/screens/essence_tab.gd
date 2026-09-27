@@ -34,8 +34,8 @@ static func tag_line(id: String) -> String:
 	if not str(Essences.element(id)).is_empty(): tags.append(tag_name(str(Essences.element(id))))
 	return " · ".join(tags)
 
-static func stat_line(id: String) -> String:
-	var stats: Dictionary = Essences.stats(id)
+static func stat_line(id: String, actor: Dictionary = {}) -> String:
+	var stats: Dictionary = Essences.stats(id,actor)
 	var parts: Array = []
 	for key in StatSheet.KEYS:
 		if int(stats.get(key,0)) != 0: parts.append("%s %+d%s" % [StatSheet.NAMES[key],int(stats[key]),"%" if key in ["speed","dodge"] else ""])
@@ -174,7 +174,7 @@ static func slot_detail(ui, slot: int, id: String) -> void:
 	ui.clear(ui.item_detail)
 	label(ui.item_detail,Essences.title(id),20)
 	if not tag_line(id).is_empty(): label(ui.item_detail,tag_line(id),13)
-	label(ui.item_detail,stat_line(id),13)
+	label(ui.item_detail,stat_line(id,actor),13)
 	label(ui.item_detail,effect_line(id,actor),13).custom_minimum_size.x = minf(ui.popup_width(),ui.size.x-40)
 	if Mobile.active(actor):
 		ui.button(ui.item_detail,"닫기",func(): ui.item_popup.hide()); ui.popup_item_detail(); return

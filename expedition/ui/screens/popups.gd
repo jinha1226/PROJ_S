@@ -444,7 +444,7 @@ static func inventory_rows(ui) -> Array:
 	for id in session.parts_bag:
 		if session.parts_bag.get(id,0) <= 0: continue
 		if not Essences.has(str(id)): continue
-		rows.append({"id":id,"label":Essences.title(str(id)),"quantity":session.parts_bag[id],"category":"파츠","description":EssenceTab.stat_line(str(id))+"\n"+EssenceTab.effect_line(str(id),session.party[0]),"icon":Art.part_icon(id)})
+		rows.append({"id":id,"label":Essences.title(str(id)),"quantity":session.parts_bag[id],"category":"파츠","description":EssenceTab.stat_line(str(id),session.party[0])+"\n"+EssenceTab.effect_line(str(id),session.party[0]),"icon":Art.part_icon(id)})
 	rows.append({"id":"food","label":"식량","quantity":session.food,"category":"자원","description":"야영","icon":Art.food_icon()})
 	return rows
 
