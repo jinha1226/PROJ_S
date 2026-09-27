@@ -165,6 +165,12 @@ func quiet_log(scene, s) -> void:
 	check(s.log_lines[-1] == Session.Essences.title("GOBLIN_SHIV/"+str(drop.part_kind))+" 획득","a part drop uses the concise log line")
 	check(scene.find_child("RecentLog",true,false).text.ends_with(s.log_lines[-1]),"the HUD shows the latest log line")
 	check(scene.find_child("RecentLog",true,false).get_theme_stylebox("normal") is StyleBoxEmpty,"recent log has no button border")
+	# The new loot card waits for a decision before movement or WAIT resumes.
+	# This fixture disables Main._process(), so drive the card presenter explicitly.
+	scene.stone_drop_card.update()
+	check(scene.stone_drop_card.visible,"a dropped soulstone opens its choice card")
+	scene.stone_drop_card.choose(-1); await process_frame
+	check(s.pending_stone_drops.is_empty(),"keeping the dropped soulstone releases the action lock")
 
 ## Auto exploration stops on what the party can actually see (sight 5).
 func sight_stops(scene, s) -> void:
