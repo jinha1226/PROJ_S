@@ -11,4 +11,4 @@ func _draw() -> void:
 		if boss: Art.paint_boss(self,rect,tint,str(actor.get("sprite_species","goblin")))
 		else: Art.paint_monster(self,str(actor.get("species_id","kobold")),rect,tint,str(actor.get("variant_element","")))
 	else:
-		Art.paint_actor(self,Art.actor_index(actor),rect,tint)
+		Art.paint_actor(self,Art.actor_index(actor),rect,tint,actor)

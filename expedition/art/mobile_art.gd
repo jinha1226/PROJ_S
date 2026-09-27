@@ -208,11 +208,13 @@ static func enemy_sprite(species_id: String) -> AtlasTexture:
 
 ## A paper-doll sprite drawn `scale` tiles wide, centred on the tile, feet on
 ## the tile's lower edge so a figure stands in its cell and rises above it.
-static func paint_standing(canvas: CanvasItem, texture: Texture2D, rect: Rect2, scale: float, tint: Color) -> void:
+static func standing_rect(rect: Rect2, scale: float) -> Rect2:
 	var extent := rect.size*scale
 	var feet := rect.end.y-rect.size.y*0.08
-	var display := Rect2(Vector2(rect.get_center().x-extent.x*0.5,feet-extent.y*FEET_Y),extent)
-	canvas.draw_texture_rect(texture,display,false,tint)
+	return Rect2(Vector2(rect.get_center().x-extent.x*0.5,feet-extent.y*FEET_Y),extent)
+
+static func paint_standing(canvas: CanvasItem, texture: Texture2D, rect: Rect2, scale: float, tint: Color) -> void:
+	canvas.draw_texture_rect(texture,standing_rect(rect,scale),false,tint)
 
 ## A mastery axis's picture: its weapon for the five weapon axes, its school
 ## emblem for the five magic ones (the kit picker and the mastery tab).
@@ -281,8 +283,38 @@ static func paint_item(canvas: CanvasItem, rect: Rect2, texture: Texture2D, badg
 static func food_icon() -> AtlasTexture:
 	return pixel_region(ITEM_SHEET,4,4,13,"flat/item/food")
 
-static func paint_actor(canvas: CanvasItem, index: int, rect: Rect2, tint: Color = Color.WHITE) -> void:
+## Grip coordinates belong to the existing weapon pictures, not to an actor's
+## identity. Reading worn gear at draw time keeps swaps and playback in sync.
+const WEAPON_GRIPS := {
+	"sword":Vector2(0.28,0.72), "dagger":Vector2(0.32,0.68),
+	"axe":Vector2(0.28,0.72), "mace":Vector2(0.28,0.72),
+	"spear":Vector2(0.25,0.75), "staff":Vector2(0.25,0.75),
+	"bow":Vector2(0.61,0.50)
+}
+const HELD_WEAPON_SCALE := {"sword":0.64,"dagger":0.48,"axe":0.64,"mace":0.60,"spear":0.78,"staff":0.74,"bow":0.64}
+
+static func weapon_layer(actor: Dictionary, rect: Rect2) -> Dictionary:
+	var weapon: Dictionary = actor.get("gear",{}).get("weapon",{})
+	var kind := str(weapon.get("type",""))
+	if not WEAPON_ICONS.has(kind): return {}
+	var body := standing_rect(rect,2.2)
+	var extent: Vector2 = body.size*float(HELD_WEAPON_SCALE[kind])
+	var image := Rect2(-WEAPON_GRIPS[kind]*extent,extent)
+	var hand := body.position+body.size*Vector2(0.70,0.68)
+	var rotation := 0.0 if kind == "bow" else -PI/6.0
+	var points := PackedVector2Array()
+	for corner in [image.position,image.position+Vector2(image.size.x,0),image.end,image.position+Vector2(0,image.size.y)]:
+		points.append(hand+corner.rotated(rotation))
+	return {"texture":WEAPON_ICONS[kind],"points":points,"hand":hand,"radius":body.size.x*0.035}
+
+static func paint_actor(canvas: CanvasItem, index: int, rect: Rect2, tint: Color = Color.WHITE, actor: Dictionary = {}) -> void:
 	paint_standing(canvas,actor_texture(index),rect,2.2,tint)
+	var layer := weapon_layer(actor,rect)
+	if layer.is_empty(): return
+	# A textured quad preserves the caller's camera/impact transform.
+	canvas.draw_polygon(layer.points,PackedColorArray([tint]),PackedVector2Array([Vector2.ZERO,Vector2.RIGHT,Vector2.ONE,Vector2.DOWN]),layer.texture)
+	canvas.draw_circle(layer.hand,layer.radius,Color("292731")*tint)
+	canvas.draw_circle(layer.hand,layer.radius*0.65,Color("c6a06f")*tint)
 
 static func paint_monster(canvas: CanvasItem, species_id: String, rect: Rect2, tint: Color = Color.WHITE, element: String = "") -> void:
 	var wash: Color = tint*ELEMENT_TINTS[element] if ELEMENT_TINTS.has(element) else tint

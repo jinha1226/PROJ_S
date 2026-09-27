@@ -2,6 +2,7 @@ extends SceneTree
 const Fixture = preload("res://tests/followup_fixture.gd")
 const Equipment = preload("res://expedition/items/equipment.gd")
 const Stats = preload("res://expedition/combat/combat_stats.gd")
+const Art = preload("res://expedition/art/mobile_art.gd")
 var checks := 0
 var failures := 0
 func check(ok: bool, why: String) -> void:
@@ -20,9 +21,14 @@ func run() -> void:
 	check(s.equip_gear(0,shield) and Stats.stats(s,d.hero).sh == 15,"shield provides its block")
 	check(s.equip_gear(0,bow) and d.hero.gear.offhand.is_empty() and s.gear_bag.any(func(i): return i.type == "shield"),"two-hand swap returns shield to bag")
 	check(not s.equip_gear(0,s.gear_bag.filter(func(i): return i.type == "shield")[0]),"offhand cannot be worn with a two-hand weapon")
+	var actor_rect := Rect2(10,20,24,24)
+	check(Art.weapon_layer(d.hero,actor_rect).texture == Art.WEAPON_ICONS.bow and Art.weapon_layer(d.ally,actor_rect).texture == Art.WEAPON_ICONS.sword,"map layers follow each party member's equipped weapon independently")
 	var sword := {"type":"sword"}; var orb := {"type":"orb"}
 	s.gear_bag.append(sword); s.gear_bag.append(orb)
 	check(s.equip_gear(0,sword) and s.equip_gear(0,orb) and Stats.stats(s,d.hero).power == 3,"orb adds spell power without block")
+	check(Art.weapon_layer(d.hero,actor_rect).texture == Art.WEAPON_ICONS.sword,"replacing a weapon immediately changes its map layer")
+	check(s.unequip_gear(0,"weapon") and Art.weapon_layer(d.hero,actor_rect).is_empty(),"unequipping removes the visible weapon")
+	check(s.equip_gear(0,s.gear_bag.filter(func(i): return i.type == "sword")[0]),"weapon can be restored after unequipping")
 	var ring1 := {"type":"power","uid":1,"props":[{"key":"hp","value":10}],"affix":"GEAR_AMP_1"}
 	var ring2 := {"type":"power","uid":2,"props":[{"key":"hp","value":10}],"affix":"GEAR_AMP_1"}
 	s.gear_bag.append(ring1); s.gear_bag.append(ring2)

@@ -14,6 +14,7 @@ var painting := false
 var paint_camera := Vector2.ZERO
 const JOYSTICK_RADIUS := 46.0
 const JOYSTICK_DEADZONE := 12.0
+var joystick_enabled := false
 var joystick_active := false
 var joystick_pointer := -2
 var joystick_origin := Vector2.ZERO
@@ -462,7 +463,7 @@ func draw_movement_previews() -> void:
 		draw_colored_polygon(polygon,Color(color,0.13))
 		outline(polygon,Color(color,0.8),2)
 		var side := half_width*1.65
-		Art.paint_actor(self,int(preview.sprite),Rect2(destination-Vector2.ONE*side/2,Vector2.ONE*side),Color(color,0.35))
+		Art.paint_actor(self,int(preview.sprite),Rect2(destination-Vector2.ONE*side/2,Vector2.ONE*side),Color(color,0.35),session.actor_by_id(int(preview.actor)))
 		var direction := (destination-start).normalized()
 		var tip := destination-direction*half_width*0.4
 		var tail := start+direction*half_width*0.6
@@ -681,7 +682,7 @@ func draw_distant_npcs() -> void:
 		var center := project(Vector2(npc.pos)+Vector2.ONE*0.5)
 		if not Rect2(Vector2.ZERO,size).has_point(center): continue
 		var side := half_width*1.65
-		Art.paint_actor(self,actor_sprite(npc),Rect2(center-Vector2.ONE*side/2,Vector2.ONE*side),Color(1,1,1,0.5))
+		Art.paint_actor(self,actor_sprite(npc),Rect2(center-Vector2.ONE*side/2,Vector2.ONE*side),Color(1,1,1,0.5),npc)
 		paint_actor_base(center,npc)
 		draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
 
@@ -817,7 +818,7 @@ func _draw_foreground(canvas: Node2D) -> void:
 			var direction := Vector2.RIGHT.rotated(i*TAU/8)
 			canvas.draw_line(point+direction*(12+impact_time*35),point+direction*(28+impact_time*80),Color(1,0.7,0.45,fade),3,true)
 		canvas.draw_string(ui_font,Vector2(clampf(point.x-65,2,maxf(2,size.x-132)),maxf(20,point.y-30)),str(injury.get("part","신체"))+" 손상!",HORIZONTAL_ALIGNMENT_CENTER,130,16,Color(1,0.85,0.7,fade))
-	if joystick_active:
+	if joystick_enabled and joystick_active:
 		canvas.draw_circle(joystick_origin,JOYSTICK_RADIUS,Color(0.05,0.06,0.08,0.65))
 		canvas.draw_arc(joystick_origin,JOYSTICK_RADIUS,0,TAU,48,Color("dbcaa2",0.8),2,true)
 		canvas.draw_circle(joystick_origin+joystick_offset,19,Color("dbcaa2",0.9))
@@ -950,7 +951,7 @@ func draw_effect_visual(effect: Dictionary, canvas) -> void:
 func _input(event: InputEvent) -> void:
 	# HUD refreshes reparent this map. Keep the active finger captured even if
 	# it crosses a HUD button or the original GUI touch capture was cleared.
-	if not joystick_active: return
+	if not joystick_enabled or not joystick_active: return
 	var owned := false
 	if event is InputEventScreenDrag: owned = event.index == joystick_pointer
 	elif event is InputEventScreenTouch: owned = not event.pressed and event.index == joystick_pointer
@@ -960,7 +961,7 @@ func _input(event: InputEvent) -> void:
 		joystick_input(event); get_viewport().set_input_as_handled()
 
 func _gui_input(event: InputEvent) -> void:
-	if session != null and session.manual_mode and joystick_input(event):
+	if joystick_enabled and session != null and session.manual_mode and joystick_input(event):
 		accept_event(); return
 	if event is InputEventScreenTouch:
 		suppress_mouse_until = Time.get_ticks_msec()+500

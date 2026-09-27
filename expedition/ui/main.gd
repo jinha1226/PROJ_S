@@ -226,7 +226,7 @@ func navigation_camera_busy() -> bool:
 		and board.walk_actor_id == int(session.party[0].id) and board.walk_elapsed < board.walk_duration
 
 func grid_joystick_process(delta: float) -> bool:
-	if session == null or session.free_movement or not session.manual_mode or not is_instance_valid(board) or not board.joystick_active: return false
+	if session == null or session.free_movement or not session.manual_mode or not is_instance_valid(board) or not board.joystick_enabled or not board.joystick_active: return false
 	if popup_open() or not get_window().has_focus() or session.phase not in ["EXPLORE","BATTLE"] or not mode.is_empty():
 		board.cancel_joystick(); return true
 	var direction: Vector2 = board.joystick_direction()

@@ -24,35 +24,24 @@ func run() -> void:
 	s.npcs.clear(); s.phase = "EXPLORE"; s.floor_state.observe(s)
 	ui.refresh(); await process_frame
 	var grid_start: Vector2i = s.party[0].pos
-	var grid_touch := InputEventScreenTouch.new(); grid_touch.index = 3; grid_touch.position = Vector2(110,100); grid_touch.pressed = true
-	ui.board._gui_input(grid_touch)
-	var grid_drag := InputEventScreenDrag.new(); grid_drag.index = 3; grid_drag.position = grid_touch.position+Vector2(34,17)
-	ui.board._gui_input(grid_drag); ui.grid_joystick_process(ui.JOYSTICK_STEP_SECONDS+0.01)
-	check(s.party[0].pos == grid_start+Vector2i(1,1),"grid joystick rounds a diagonal direction to one square step")
-	ui.board._process(ui.JOYSTICK_STEP_SECONDS); ui.grid_joystick_process(ui.JOYSTICK_STEP_SECONDS)
-	check(s.party[0].pos == grid_start+Vector2i(2,2),"held joystick repeats grid steps during safe exploration")
-	ui.stop_navigation()
-	var grid_enemy: Dictionary = s.make_actor(102,"격자 조우",true)
-	s.Floor.MonsterAI.configure(grid_enemy,"MELEE"); grid_enemy.hp = 100; grid_enemy.max_hp = 100; grid_enemy.ready_at = s.time+10000
-	grid_enemy.pos = s.party[0].pos+Vector2i(4,0); s.enemies.append(grid_enemy); s.floor_state.observe(s)
-	ui.board._process(ui.JOYSTICK_STEP_SECONDS)
-	grid_start = s.party[0].pos
-	ui.board._gui_input(grid_touch); grid_drag.position = grid_touch.position+Vector2(34,0); ui.board._gui_input(grid_drag)
-	ui.grid_joystick_process(ui.JOYSTICK_STEP_SECONDS+0.01)
 	var grid_time: int = s.time
-	ui.board._process(ui.JOYSTICK_STEP_SECONDS); ui.grid_joystick_process(1.0)
-	check(s.party[0].pos == grid_start+Vector2i.RIGHT and s.time == grid_time,"held combat joystick executes one square step then waits")
-	grid_drag.position = grid_touch.position; ui.board._gui_input(grid_drag)
-	ui.grid_joystick_process(0.01)
-	grid_drag.position = grid_touch.position+Vector2(34,0); ui.board._gui_input(grid_drag)
-	ui.grid_joystick_process(0.01)
-	check(s.party[0].pos == grid_start+Vector2i(2,0) and s.time > grid_time,"returning the combat stick to center permits the next deliberate step")
-	ui.stop_navigation(); grid_enemy.hp = 0; s.floor_state.observe(s)
+	var grid_touch := InputEventScreenTouch.new(); grid_touch.index = 3; grid_touch.position = ui.board.cell_center(grid_start+Vector2i.RIGHT); grid_touch.pressed = true
+	ui.board._gui_input(grid_touch)
+	ui.grid_joystick_process(1.0)
+	check(not ui.board.joystick_enabled and not ui.board.joystick_active and s.time == grid_time,"normal grid touch never opens a joystick or spends time on press")
+	grid_touch.pressed = false; ui.board._gui_input(grid_touch)
+	check(s.party[0].pos == grid_start+Vector2i.RIGHT and s.time > grid_time,"releasing an adjacent tile tap makes one grid move")
+	ui.board._process(0.5)
+	grid_time = s.time; grid_start = s.party[0].pos
+	grid_touch.position = ui.board.cell_center(grid_start+Vector2i.DOWN); grid_touch.pressed = true; ui.board._gui_input(grid_touch)
+	grid_touch.pressed = false; grid_touch.canceled = true; ui.board._gui_input(grid_touch)
+	check(s.party[0].pos == grid_start and s.time == grid_time,"canceling a tile touch does not move or consume a turn")
+	ui.stop_navigation()
 	ui.find_child("Bag",true,false).pressed.emit(); await process_frame
 	check(ui.details_popup.visible and ui.find_child("ManualInventory",true,false) != null,"bottom bag button opens equipment and inventory")
 	ui.details_popup.hide()
 	# Keep the former continuous mode covered as an explicit comparison fixture.
-	s.enable_free_movement(); ui.refresh(); await process_frame
+	s.enable_free_movement(); ui.board.joystick_enabled = true; ui.refresh(); await process_frame
 	var start: Vector2 = Session.Free.position(s.party[0])
 	var before_time: int = s.time
 	var controls_id: int = ui.find_child("BottomActions",true,false).get_instance_id()
