@@ -34,7 +34,7 @@ static func attack(s, source: Dictionary, target: Dictionary, extra_damage: int 
 	# 왜곡 takes thirty points off whatever the attacker can still aim.
 	# 회피 % from the soul stones rides on the evasion's own two percent a point.
 	var dodge := clampi(int(defense.ev) * 2 + int(defense.get("dodge", 0)) - StoneEffects.modifier(s,"accuracy",source), 5, 45)
-	var gap: int = maxi(absi(source.pos.x - target.pos.x), absi(source.pos.y - target.pos.y))
+	var gap: int = ceili(s.Free.gap(source,target)) if s.free_movement else maxi(absi(source.pos.x - target.pos.x), absi(source.pos.y - target.pos.y))
 	if bool(source.get("enemy", false)) and gap > 1: dodge = mini(RANGED_DODGE_CAP, dodge + RANGED_DODGE_PER_TILE * (gap - 1))
 	if StoneEffects.modifier(s,"zero_dodge",target) > 0: dodge = 0
 	if source.get("statuses", {}).has("distort"): dodge = mini(95, dodge + 30)

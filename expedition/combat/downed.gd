@@ -27,7 +27,7 @@ static func enter(s, actor: Dictionary, source: int) -> void:
 static func can_rescue(s, rescuer: Dictionary, actor: Dictionary) -> bool:
 	return s.on_floor() and rescuer in s.party and actor in s.party and rescuer != actor \
 		and int(rescuer.hp) > 0 and int(rescuer.ap) > 0 and is_downed(actor) \
-		and not s.status_blocks(rescuer,"RESCUE") and s.melee_reach(rescuer.pos,actor.pos)
+		and not s.status_blocks(rescuer,"RESCUE") and (s.Free.reaches(s,rescuer,actor,1) if s.free_movement else s.melee_reach(rescuer.pos,actor.pos))
 
 static func rescue(s, rescuer: Dictionary, actor: Dictionary) -> bool:
 	if not can_rescue(s,rescuer,actor): return false

@@ -79,8 +79,11 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, we
 	var kind: String = str(action.kind)
 	var dest: Vector2i = action.cell if kind == "MOVE" else actor.pos
 	var target: Dictionary = ctx.target
-	var d_now: int = Stances.steps_between(actor.pos,target.pos) if not target.is_empty() else 0
-	var d_then: int = Stances.steps_between(dest,target.pos) if not target.is_empty() else 0
+	var d_now: float = Stances.steps_between(actor.pos,target.pos) if not target.is_empty() else 0
+	var d_then: float = Stances.steps_between(dest,target.pos) if not target.is_empty() else 0
+	if s.free_movement and not target.is_empty():
+		d_now = s.Free.gap(actor,target)
+		d_then = Vector2(action.get("world",s.Free.position(actor))).distance_to(s.Free.position(target))
 	var damage: float = float(action.get("damage",0))
 	var victim: Dictionary = s.at(action.cell) if kind != "MOVE" else {}
 	# 설계 §2 개정(Task 3): the three safety considerations are signed deltas
@@ -130,6 +133,11 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, we
 		# Only a genuinely ranged part is holstered in contact: a MELEE dash part
 		# (돌진·기습) reaches three cells precisely in order to close.
 		if str(def.get("axis","")) == "RANGED" and int(def.range) >= 3 and s.combat_enemies().any(func(e): return s.melee_reach(actor.pos,e.pos)): result.contact_penalty = 1.0
+	if s.free_movement:
+		var world: Vector2 = action.get("world",s.Free.position(actor)) if kind == "MOVE" else s.Free.position(actor)
+		result.target_adjacent = 1.0 if not target.is_empty() and s.Free.sees(s,world,s.Free.position(target),1) else 0.0
+		result.any_foe_adjacent = 1.0 if s.combat_enemies().any(func(e): return s.Free.sees(s,world,s.Free.position(e),1)) else 0.0
+		if not p.is_empty(): result.protectee_near = 1.0 if world.distance_to(s.Free.position(p)) <= 1.1 else 0.0
 	var build_inputs: Dictionary = BuildSense.inputs(s,actor,action)
 	# Build preferences cannot reward a configured part outside its rule condition.
 	if Abilities.has(kind) and actor.rules.any(func(r): return Abilities.active_id(str(r.get("skill",""))) == Abilities.active_id(kind)) and float(result.rule_ready) <= 0.0:

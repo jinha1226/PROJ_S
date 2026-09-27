@@ -15,6 +15,12 @@ const Floor = preload("res://expedition/level/continuous_floor.gd")
 const Zones = preload("res://expedition/level/zones.gd")
 const Encounters = preload("res://expedition/level/encounter_builder.gd")
 var floor_state
+const Free = preload("res://expedition/level/free_movement.gd")
+var free_movement := false
+
+func enable_free_movement() -> void: Free.enable(self)
+func actor_distance(a: Dictionary, b: Dictionary) -> float:
+	return Free.gap(a,b) if free_movement else float(distance(a.pos,b.pos))
 const Tactics = preload("res://expedition/ai/tactical_action_selector.gd")
 const Knobs = preload("res://expedition/ai/knobs.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
@@ -412,9 +418,11 @@ func is_free(point: Vector2i) -> bool:
 	return inside(point) and tile(point).terrain != "wall" and at(point).is_empty() and downed_at(point).is_empty() and int(tile(point).get("wall_until",0)) <= time
 
 func distance(a: Vector2i, b: Vector2i) -> int:
+	if free_movement: return ceili(Free.point(self,a).distance_to(Free.point(self,b))-0.0001)
 	return absi(a.x - b.x) + absi(a.y - b.y)
 
 func melee_reach(a: Vector2i, b: Vector2i) -> bool:
+	if free_movement: return Free.sees(self,Free.point(self,a),Free.point(self,b),1.0) and a != b
 	if not inside(a) or not inside(b) or a == b or maxi(absi(a.x-b.x),absi(a.y-b.y)) != 1: return false
 	if tile(b).terrain == "wall": return false
 	return true
@@ -540,10 +548,17 @@ func attack_preview(target: Vector2i, actor_index: int = -1) -> Dictionary:
 		"damage_min":maxi(1,raw-ac),"damage_max":raw,"time":action_cost(actor,"ATTACK",target)}
 
 func attack_reach(actor: Dictionary, target: Vector2i, attack_range: int) -> bool:
+	if free_movement: return Free.reaches(self,actor,at(target),attack_range)
 	if attack_range <= 1: return melee_reach(actor.pos,target)
 	return distance(actor.pos,target) <= attack_range and Floor.MonsterAI.line(self,actor.pos,target,attack_range)
 
 func act(kind: String, target: Vector2i) -> bool:
+	if free_movement and kind in ["MOVE","ATTACK","WAIT"]:
+		var hero: Dictionary = party[0]
+		var world: Vector2 = Free.position(hero) if kind == "WAIT" else Free.point(self,target)
+		var action := Free.choice(hero,kind,world,kind)
+		if kind == "ATTACK": action.target_id = int(at(target).get("id",-1))
+		return Free.submit(self,action)
 	if not pending_stone_drops.is_empty(): return false
 	if not pending_choice.is_empty(): return false
 	if manual_mode: return submit(kind,target)
@@ -635,6 +650,12 @@ func _presentation_action(actor: Dictionary, kind: String, target: Vector2i) -> 
 ## after the hero, round end on empty AP); auto_step passes false and drives
 ## the round itself.
 func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = true, intentional: bool = true) -> bool:
+	if free_movement and kind in ["MOVE","ATTACK","WAIT"]:
+		var world: Vector2 = Free.position(actor) if kind == "WAIT" else Free.point(self,target)
+		if kind == "MOVE": world = Free.next(self,actor,world)
+		var action := Free.choice(actor,kind,world,kind)
+		if kind == "ATTACK": action.target_id = int(at(target).get("id",-1))
+		return Free.perform(self,actor,action,intentional)
 	var previous_stacks: Dictionary = actor.get("stacks",{}).duplicate(true)
 	if Forms.attack_action(self,kind) and int(actor.get("effect_moved_round",-1)) == time/100 and StoneEffects.modifier(self,"no_attack_after_move",actor) > 0: return false
 	if not on_floor() or not inside(target): return false
@@ -977,6 +998,10 @@ func after_damage(target: Dictionary, amount: int, source: int, form: String, re
 	var effect := {"from":source_cell,"cell":target.pos,"amount":lost,"form":form,"enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))}
 	effect["vfx"] = str(received.get("vfx",StoneEffects.Vfx.damage_style(form,str(blow_form))))
 	effect["element"] = str(received.get("element",form))
+	if free_movement:
+		effect.world_cell = Free.position(target)
+		var owner: Dictionary = actor_by_id(source)
+		effect.world_from = Free.position(owner) if not owner.is_empty() else effect.world_cell
 	effects.append(effect)
 	StoneEffects.Vfx.trim(self)
 	var dealt_row: Dictionary = member_stats(source) if not attacker.is_empty() and not attacker.enemy else {}

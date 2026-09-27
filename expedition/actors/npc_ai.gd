@@ -77,6 +77,9 @@ static func turn(s, npc: Dictionary) -> void:
 		"REST": pass
 		"EXPLORE":
 			var goal: Vector2i = explore_goal(s,npc)
+			if s.free_movement:
+				var dest: Vector2 = s.Free.next(s,npc,s.Free.center(goal))
+				s.Free.perform(s,npc,s.Free.choice(npc,"MOVE",dest,"탐색")); return
 			# A room centre can be a wall or an occupied cell: aim for the free
 			# ground around it rather than idling on an unreachable goal.
 			var goals: Array = [goal] if s.is_free(goal) else Stances.near_free(s,goal,2)
@@ -110,6 +113,10 @@ static func hostile_turn(s, npc: Dictionary, seen: int) -> void:
 ## `target` wins, and the cell itself breaks the last tie: the walk is
 ## deterministic and never idles a round sidling across the party's row.
 static func close_on(s, npc: Dictionary, goals: Array, target: Vector2i) -> bool:
+	if s.free_movement:
+		var other: Dictionary = s.at(target)
+		var dest: Vector2 = s.Free.approach(s,npc,other,0.85) if not other.is_empty() else s.Free.next(s,npc,s.Free.center(target))
+		return s.Free.perform(s,npc,s.Free.choice(npc,"MOVE",dest,"접근"))
 	if goals.is_empty(): return false
 	# The cells that stand closest to `target` are aimed for first; the rest are
 	# the fallback when none of them can be reached.
@@ -160,7 +167,9 @@ static func explore_goal(s, npc: Dictionary) -> Vector2i:
 static func perform(s, npc: Dictionary, choice: Dictionary) -> void:
 	var kind: String = str(choice.get("kind","WAIT"))
 	var cell: Vector2i = choice.get("cell",npc.pos)
-	if not s.act_as(npc,kind,cell,false,str(choice.get("mistake","")) != "HESITATE" and str(choice.get("tag","")) != "WAIT:yield"): s.act_as(npc,"WAIT",npc.pos,false,false)
+	var intentional: bool = str(choice.get("mistake","")) != "HESITATE" and str(choice.get("tag","")) != "WAIT:yield"
+	var ok: bool = s.Free.perform(s,npc,choice,intentional) if s.free_movement else s.act_as(npc,kind,cell,false,intentional)
+	if not ok: s.act_as(npc,"WAIT",npc.pos,false,false)
 	npc.explains.append({"round":s.round_number,"kind":kind,"cell":cell,"explain":choice.get("explain",[])})
 	while npc.explains.size() > 20: npc.explains.pop_front()
 

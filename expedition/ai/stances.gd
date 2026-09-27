@@ -214,6 +214,7 @@ static func adjacent_free(s, target_pos: Vector2i) -> Array:
 ## Everything the stance would have this member do, scored. The selector ranks
 ## these against nothing else: no rule matched, so the stance decides.
 static func candidates(s, actor: Dictionary, stance: String, knobs: Dictionary) -> Array:
+	if s.free_movement: return s.Free.candidates(s,actor,stance)
 	var options: Array = []
 	var target := party_target(s)
 	match stance:

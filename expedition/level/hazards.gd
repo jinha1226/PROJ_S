@@ -104,8 +104,7 @@ static func tick_cell(s, point: Vector2i, cell: Dictionary) -> void:
 		"deep_water": cell.wet = 100
 		"bog":
 			cell.wet = 100
-			var standing: Dictionary = s.at(point)
-			if not standing.is_empty(): s.Statuses.apply(s,standing,"poison",BOG_POISON_TICKS)
+			for standing in s.Free.occupants(s,point): s.Statuses.apply(s,standing,"poison",BOG_POISON_TICKS)
 	if bool(cell.get("gas",false)) and int(cell.fire) > 0: explode(s,point)
 	if cell.has("collapse"): collapse_tick(s,point,cell)
 
@@ -116,8 +115,7 @@ static func explode(s, origin: Vector2i) -> void:
 		for x in range(origin.x-GAS_RADIUS,origin.x+GAS_RADIUS+1):
 			var p := Vector2i(x,y)
 			if not s.inside(p) or s.tile(p).terrain == "wall": continue
-			var victim: Dictionary = s.at(p)
-			if not victim.is_empty(): s.damage(victim,GAS_DAMAGE,999,"FIRE")
+			for victim in s.Free.occupants(s,p): s.damage(victim,GAS_DAMAGE,999,"FIRE")
 			if s.tile(p).terrain not in WATERY: s.tile(p).fire = mini(100,int(s.tile(p).fire)+GAS_FIRE)
 
 static func collapse_tick(s, point: Vector2i, cell: Dictionary) -> void:
@@ -128,8 +126,7 @@ static func collapse_tick(s, point: Vector2i, cell: Dictionary) -> void:
 			s.message("천장이 흔들린다")
 		return
 	if int(s.time) < int(state.at): return
-	var victim: Dictionary = s.at(point)
-	if not victim.is_empty(): s.damage(victim,COLLAPSE_DAMAGE,999,"IMPACT")
+	for victim in s.Free.occupants(s,point): s.damage(victim,COLLAPSE_DAMAGE,999,"IMPACT")
 	cell.erase("collapse")
 	cell.terrain = "wall" if s.at(point).is_empty() else "rubble"
 

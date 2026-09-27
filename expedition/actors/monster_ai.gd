@@ -30,6 +30,7 @@ static func configure(enemy: Dictionary, role: String) -> void:
 	enemy.cast_recovery = 0
 
 static func line(s, a: Vector2i, b: Vector2i, reach: int) -> bool:
+	if s.free_movement: return s.Free.sees(s,s.Free.point(s,a),s.Free.point(s,b),reach)
 	# Range uses eight-way tile distance; Geometry's circular cutoff must not trim diagonals.
 	return distance(a,b) <= reach and s.TurnCore.Geometry.sees(a,b,func(p): return not s.inside(p) or s.tile(p).terrain == "wall" or int(s.tile(p).get("steam_until",0)) > int(s.time),ceili(reach*sqrt(2.0)))
 
@@ -72,7 +73,12 @@ static func plan(s) -> void:
 		# An area part announces every cell it will hit, so threat assessment and
 		# the board see the whole ring, not just its centre.
 		var cells: Array = Abilities.cells(s,enemy,id,enemy.cast_cell) if Abilities.has(id) else [enemy.cast_cell]
-		for cell in cells: s.intents.append({"id":enemy.id,"cell":cell,"damage":amount,"kind":id,"resolve_at":int(enemy.get("resolve_at",s.time+int(enemy.cast_left)*100))})
+		for cell in cells:
+			var intent := {"id":enemy.id,"cell":cell,"damage":amount,"kind":id,"resolve_at":int(enemy.get("resolve_at",s.time+int(enemy.cast_left)*100))}
+			if s.free_movement:
+				intent.world_center = enemy.get("cast_world",s.Free.center(enemy.cast_cell))
+				intent.world_radius = maxf(0.5,float(Abilities.definition(id).get("radius",0)))
+			s.intents.append(intent)
 
 static func turn(s, enemy: Dictionary) -> void:
 	if s.time < int(enemy.get("sleep_until",0)): return
@@ -125,6 +131,7 @@ static func turn(s, enemy: Dictionary) -> void:
 			var prep: int = int(Abilities.definition(part).enemy.prep)
 			if prep <= 0: Abilities.execute(s,enemy,part,target.pos); return
 			enemy.charging = true; enemy.cast_id = part; enemy.cast_cell = target.pos; enemy.cast_left = prep
+			if s.free_movement: enemy.cast_world = s.Free.position(target)
 			enemy.resolve_at = s.time+prep*100
 			plan(s); s.message("%s · %s 준비" % [enemy.name,Abilities.definition(part).name])
 			return
@@ -133,6 +140,7 @@ static func turn(s, enemy: Dictionary) -> void:
 ## An unalerted pack still takes its scheduled turns. Patrol stays near its
 ## encounter spawn, so distant enemies do not silently cross the whole floor.
 static func patrol(s, enemy: Dictionary) -> void:
+	if s.free_movement: s.Free.patrol(s,enemy); return
 	if enemy.get("boss",false) or s.status_blocks(enemy,"MOVE"): return
 	var home: Vector2i = enemy.get("home",enemy.pos)
 	var heading: int = posmod(int(enemy.get("patrol_heading",int(enemy.id)+s.seed_value)),s.DIRECTIONS.size())
@@ -148,13 +156,15 @@ static func patrol(s, enemy: Dictionary) -> void:
 static func resolve_spell(s, enemy: Dictionary, cell: Vector2i) -> void:
 	enemy.cast_cooldown = 3
 	if not line(s,enemy.pos,cell,4): return
-	var victim: Dictionary = s.at(cell)
+	var victim: Dictionary = s.Free.actor_at(s,enemy.get("cast_world",s.Free.center(cell)),0.5,false) if s.free_movement else s.at(cell)
 	if not victim.is_empty() and not can_attack_target(s,enemy,victim): return
 	s.enemy_attack_effect(enemy,[cell],true)
 	if not victim.is_empty() and (s.side_of(victim) != s.side_of(enemy) or s.wanderer(victim) and not s.dominated(enemy)): s.damage(victim,Abilities.scaled(enemy,SPELL_DAMAGE),enemy.id,"ELECTRIC")
 	s.message(enemy.name+"의 마법이 예고한 지점에 떨어졌습니다.")
 
 static func role_turn(s, enemy: Dictionary, targets: Array, held: bool = false) -> void:
+	if s.free_movement:
+		free_role_turn(s,enemy,targets,held); return
 	var role: String = enemy.get("role","MELEE")
 	if role == "MELEE":
 		var choice: Dictionary = Melee.new(s,enemy).choose(enemy)
@@ -224,6 +234,10 @@ static func taunter_of(s, enemy: Dictionary) -> Dictionary:
 
 ## A taunted monster strikes its taunter if it can, else steps toward it.
 static func taunted_turn(s, enemy: Dictionary, taunter: Dictionary) -> void:
+	if s.free_movement:
+		if s.Free.reaches(s,enemy,taunter,1): strike(s,enemy,taunter,int(ROLES.MELEE.damage))
+		else: s.Free.monster_move(s,enemy,taunter)
+		return
 	if s.melee_reach(enemy.pos,taunter.pos):
 		strike(s,enemy,taunter,int(ROLES.MELEE.damage)); return
 	if s.status_blocks(enemy,"MOVE"): return
@@ -233,3 +247,24 @@ static func taunted_turn(s, enemy: Dictionary, taunter: Dictionary) -> void:
 		if s.inside(cell) and s.is_free(cell) and s.melee_reach(cell,taunter.pos): goals.append(cell)
 	var route: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,enemy.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100)
 	if route.found and route.path.size() > 1: enemy.pos = route.path[1]
+
+static func free_role_turn(s, enemy: Dictionary, targets: Array, held: bool) -> void:
+	if targets.is_empty(): return
+	targets.sort_custom(func(a,b): return s.Free.gap(enemy,a) < s.Free.gap(enemy,b))
+	var role: String = str(enemy.get("role","MELEE"))
+	var reach: float = minf(float(ROLES[role].range),float(sight(s)))+StoneEffects.range_bonus(enemy,s)
+	var target: Dictionary = targets[0]
+	var reload: int = int(enemy.get("reload",0))
+	if reload > 0: enemy.reload = reload-1
+	if s.Free.reaches(s,enemy,target,reach) and can_attack_target(s,enemy,target):
+		if reload > 0: return
+		if role == "CASTER":
+			enemy.cast_cooldown = maxi(0,int(enemy.get("cast_cooldown",0))-1)
+			if enemy.cast_cooldown <= 0:
+				enemy.charging = true; enemy.cast_id = ""; enemy.cast_cell = target.pos
+				enemy.cast_world = s.Free.position(target); enemy.cast_left = 1; enemy.resolve_at = s.time+100; plan(s)
+			else: strike(s,enemy,target,int(ROLES[role].damage))
+		else:
+			strike(s,enemy,target,int(ROLES[role].damage))
+			if role == "RANGED": enemy.reload = 1
+	elif not held: s.Free.monster_move(s,enemy,target,reach-0.05)

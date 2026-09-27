@@ -16,6 +16,8 @@ var stone_drop_card
 const Banners = preload("res://expedition/ui/screens/banners.gd")
 var portrait_gesture = preload("res://expedition/legacy/portrait_gesture.gd").new()
 var navigation = preload("res://expedition/level/exploration_navigation.gd").new()
+var world_destination := Vector2(-1,-1)
+var auto_explore_paused := false
 var queued_curio: Dictionary = {}
 const NAVIGATION_STEP_SECONDS := 0.075
 var navigation_clock := 0.0
@@ -144,6 +146,8 @@ func _ready() -> void:
 	refresh()
 
 func stop_navigation() -> void:
+	world_destination = Vector2(-1,-1)
+	if session != null and session.free_movement: auto_explore_paused = true
 	navigation.stop(); navigation_clock = 0
 	queued_curio = {}
 	set_action_button_text(auto_explore_button,"탐색" if session != null and session.manual_mode else "자동탐험")
@@ -200,6 +204,8 @@ func _process(delta: float) -> void:
 		auto_clock += delta
 		if auto_clock >= auto_interval():
 			auto_clock = 0.0; auto_tick()
+	if session != null and session.free_movement:
+		free_navigation_process(delta); return
 	if session == null or not navigation.active: return
 	if popup_open() or not get_window().has_focus(): stop_navigation(); return
 	navigation_clock += delta
@@ -207,6 +213,7 @@ func _process(delta: float) -> void:
 		navigation_clock = 0; navigation_tick()
 
 func navigation_camera_busy() -> bool:
+	if session != null and session.free_movement: return is_instance_valid(board) and board.world_walks.has(int(session.party[0].id))
 	return session != null and not session.party.is_empty() and is_instance_valid(board) \
 		and board.walk_actor_id == int(session.party[0].id) and board.walk_elapsed < board.walk_duration
 
@@ -237,6 +244,13 @@ func navigation_tick() -> void:
 	elif not navigation.automatic and step == navigation.destination: stop_navigation()
 
 func collect_curio(point: Vector2i, option: String) -> void:
+	if session != null and session.free_movement:
+		var error: String = Session.Curios.error(session,point,option)
+		if error.is_empty(): run_action(func(): return Session.Curios.resolve(session,point,option)); return
+		if error != "거리 초과": return
+		queued_curio = {"point":point,"option":option}
+		world_destination = Session.Free.center(point); auto_explore_paused = true
+		free_navigation_tick(); return
 	if session == null or not session.on_floor(): return
 	var reason: String = Session.Curios.error(session,point,option)
 	if reason.is_empty():
@@ -264,6 +278,15 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		KEY_E: direction = Vector2i(1,-1)
 		KEY_Z: direction = Vector2i(-1,1)
 		KEY_C: direction = Vector2i(1,1)
+	if direction != Vector2i.ZERO and session.free_movement:
+		var hero: Dictionary = session.party[0]
+		var world: Vector2 = Session.Free.position(hero)+Vector2(direction).normalized()*Session.Free.STEP
+		var target: Dictionary = Session.Free.actor_at(session,world)
+		if not target.is_empty() and Session.MobileEffects.hostile(session,hero,target):
+			var strike := Session.Free.choice(hero,"ATTACK",Session.Free.position(target),"공격"); strike.target_id = int(target.id)
+			run_action(func(): return Session.Free.submit(session,strike))
+		else: run_action(func(): return Session.Free.submit(session,Session.Free.choice(hero,"MOVE",world,"이동")))
+		get_viewport().set_input_as_handled(); return
 	if direction != Vector2i.ZERO:
 		var point: Vector2i = session.party[0].pos+direction
 		if session.inside(point):
@@ -469,6 +492,10 @@ func finish_presentation() -> void:
 func run_action(callback: Callable, navigating: bool = false) -> void:
 	if is_instance_valid(board) and board.is_presenting(): return
 	if not navigating: stop_navigation()
+	var free_combat_before: bool = session != null and session.free_movement and not session.party_enemies().is_empty()
+	var world_before: Dictionary = {}
+	if session != null and session.free_movement:
+		for actor in session.party+session.npcs+session.enemies: world_before[int(actor.id)] = Session.Free.position(actor)
 	var hero_before: Vector2i = session.party[0].pos if session != null and not session.party.is_empty() else Vector2i(-1,-1)
 	session.effects.clear()
 	var recorder = Presentation.new()
@@ -493,6 +520,11 @@ func run_action(callback: Callable, navigating: bool = false) -> void:
 	reset_effects = accepted
 	check_stop()
 	refresh()
+	if accepted and session.free_movement and is_instance_valid(board):
+		board.animate_world(world_before,NAVIGATION_STEP_SECONDS if navigating else 0.16)
+		if free_combat_before and session.party_enemies().is_empty():
+			auto_explore_paused = false; session.party_command = "FOLLOW"; session.command_target = -1
+		return
 	if accepted and is_instance_valid(board) and session.on_floor() and not session.party.is_empty() and hero_before != session.party[0].pos:
 		board.animate_walk(int(session.party[0].id),hero_before,session.party[0].pos,NAVIGATION_STEP_SECONDS)
 
@@ -611,3 +643,62 @@ func report_battle() -> void: AutoBattleHud.report_battle(self)
 func show_battle_report() -> void: AutoBattleHud.show_battle_report(self)
 
 func show_banners() -> void: Banners.show_next(self)
+
+func on_world(point: Vector2) -> void:
+	if popup_open() or session == null or not session.on_floor(): return
+	var hero: Dictionary = session.party[0]
+	var terrain := Session.Free.cell(point)
+	if not session.inside(terrain) or not session.floor_state.explored.has(terrain): return
+	var actor: Dictionary = Session.Free.actor_at(session,point)
+	if not actor.is_empty():
+		if actor.get("downed",false): on_cell(actor.pos); return
+		if Session.MobileEffects.hostile(session,hero,actor):
+			session.command_target = int(actor.id); session.party_command = "ATTACK_TARGET"
+			run_action(func(): return Session.Free.attack(session)); return
+		if actor == hero: auto_explore_paused = not auto_explore_paused; return
+		if session.wanderer(actor): Popups.show_npc(self,actor); return
+		var index: int = session.party.find(actor)
+		if index >= 0:
+			if Session.Free.gap(hero,actor) <= 1:
+				var swap := Session.Free.choice(hero,"SWAP",Session.Free.position(actor),"자리 교환"); swap.target_id = int(actor.id)
+				run_action(func(): return Session.Free.submit(session,swap))
+			else: Popups.show_character(self,index,"상태")
+		return
+	var feature: Dictionary = session.floor_state.features.get(terrain,{})
+	if not feature.is_empty() and feature.get("kind","") not in ["item","entry"]:
+		on_cell(terrain); return
+	world_destination = point; auto_explore_paused = true
+	free_navigation_tick()
+
+func free_navigation_process(delta: float) -> void:
+	if popup_open() or not get_window().has_focus(): return
+	if session.phase not in ["EXPLORE","BATTLE"]: return
+	if navigation_camera_busy(): return
+	if world_destination.x < 0 and (auto_explore_paused or not session.party_enemies().is_empty()): return
+	navigation_clock += delta
+	if navigation_clock < NAVIGATION_STEP_SECONDS: return
+	navigation_clock = 0; free_navigation_tick()
+
+func free_navigation_tick() -> void:
+	if not queued_curio.is_empty():
+		var reason: String = Session.Curios.error(session,queued_curio.point,queued_curio.option)
+		if reason.is_empty():
+			var point: Vector2i = queued_curio.point; var option: String = str(queued_curio.option)
+			stop_navigation(); run_action(func(): return Session.Curios.resolve(session,point,option)); return
+		if reason != "거리 초과" or not session.party_enemies().is_empty(): stop_navigation(); return
+	var hero: Dictionary = session.party[0]
+	var automatic: bool = world_destination.x < 0
+	if automatic:
+		if not session.party_enemies().is_empty(): return
+		navigation.automatic = true
+		var path: Array = navigation.frontier_path(session)
+		if path.size() < 2: auto_explore_paused = true; return
+		world_destination = Session.Free.center(path.back())
+	var goal := world_destination
+	var dest := Session.Free.next(session,hero,goal,true)
+	if dest == Session.Free.position(hero): world_destination = Vector2(-1,-1); auto_explore_paused = true; return
+	var hp: int = int(hero.hp)
+	run_action(func(): return Session.Free.submit(session,Session.Free.choice(hero,"MOVE",dest,"이동")),true)
+	if automatic: world_destination = Vector2(-1,-1)
+	elif Session.Free.position(hero).distance_to(goal) < 0.05: world_destination = Vector2(-1,-1)
+	if int(hero.hp) != hp or not session.party_enemies().is_empty(): world_destination = Vector2(-1,-1)

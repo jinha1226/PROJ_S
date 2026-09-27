@@ -100,6 +100,7 @@ static func act(s, actor: Dictionary) -> void:
 	if bool(actor.get("enemy",false)) or (s.wanderer(actor) and not s.MobileEffects.active(actor)): s.Reactions.begin_action(s)
 	var cost := 100
 	var was: Vector2i = actor.pos
+	var world_before: Vector2 = s.Free.position(actor) if s.free_movement else Vector2(was)
 	var serial_before: int = int(s.action_serial)
 	actor["physical_blow"] = false
 	if bool(actor.get("enemy", false)):
@@ -115,13 +116,15 @@ static func act(s, actor: Dictionary) -> void:
 		var cell: Vector2i = choice.get("cell", actor.pos)
 		cost = s.action_cost(actor, kind, cell)
 		s.resolving_companions = true
-		var succeeded: bool = s.act_as(actor, kind, cell, false, str(choice.get("mistake","")) != "HESITATE" and str(choice.get("tag","")) != "WAIT:yield")
+		var intentional: bool = str(choice.get("mistake","")) != "HESITATE" and str(choice.get("tag","")) != "WAIT:yield"
+		var succeeded: bool = s.Free.perform(s,actor,choice,intentional) if s.free_movement else s.act_as(actor, kind, cell, false, intentional)
 		if succeeded: Tactics.BuildSense.committed(s,choice)
 		if not succeeded:
 			cost = 100; s.act_as(actor, "WAIT", actor.pos, false, false)
 		s.resolving_companions = false
 		s.note_explain(actor, choice)
 		if str(choice.get("mistake", "")) != "": s.note_mistake(actor, str(choice.mistake))
+	if s.free_movement and s.Free.position(actor) != world_before and actor.pos == was: cost = Rules.move_time(s,actor,actor.pos)
 	if s.MobileEffects.active(actor) and int(s.action_serial) == serial_before: s.MobileEffects.skip(actor)
 	# Monsters and independent NPCs use a fixed turn cost, bypassing action_cost.
 	if bool(actor.get("enemy",false)) or s.wanderer(actor):
@@ -145,8 +148,7 @@ static func environment_tick(s) -> void:
 			if int(cell.get("wall_until",0)) > 0:
 				if int(cell.wall_until) <= s.time: cell.erase("wall_until"); cell.erase("wall_burn")
 				elif bool(cell.get("wall_burn",false)):
-					var standing: Dictionary = s.at(point)
-					if not standing.is_empty(): Rules.damage(s,{},standing,4,"fire")
+					for standing in s.Free.occupants(s,point): Rules.damage(s,{},standing,4,"fire")
 			var suppression := 0
 			if cell.fire > 0 or cell.wet > 0:
 				var result: Dictionary = ElementRules.project_existing_fire_tick(cell.fire, cell.wet, 0, s.time)
@@ -154,8 +156,7 @@ static func environment_tick(s) -> void:
 				cell.wet = maxi(0, result.wetness_after_suppression - ElementRules.WETNESS_DECAY_PER_ENVIRONMENT_TICK)
 				suppression = int(result.suppression)
 				if result.known_damage > 0:
-					var victim: Dictionary = s.at(point)
-					if not victim.is_empty(): s.damage(victim, result.known_damage, 999, "FIRE")
+					for victim in s.Free.occupants(s,point): s.damage(victim, result.known_damage, 999, "FIRE")
 			if suppression > 0 or cell.has("steam_until") or bool(cell.get("ice",false)) or bool(cell.get("poison_pool",false)):
 				s.Reactions.tile_tick(s, point, cell, suppression)
 	for actor in s.party + s.npcs:

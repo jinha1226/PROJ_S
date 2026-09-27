@@ -53,6 +53,8 @@ func run() -> void:
 	seed(731)
 	scene.find_child("NewRun",true,false).pressed.emit(); await process_frame
 	var s = scene.session
+	# The retained grid navigation cases below are a legacy comparison fixture.
+	s.free_movement = false; scene.refresh(); await process_frame
 	check(s.depth == 1 and s.food == 2 and s.party.size() == 1,"new run starts solo with food")
 	check(scene.find_child("FoodLabel",true,false).text == "식량 2","HUD displays food")
 	check(scene.find_child("Location",true,false).text == "1층","HUD displays depth")
@@ -137,7 +139,7 @@ func touch_targets(scene) -> void:
 	check(scene.find_child("Attack",true,false).find_children("*","TextureRect",true,false).size() == 1,"action icon sits above its label")
 	check(scene.item_buttons.is_empty(),"supplies live in the bag")
 	var nav: Node = scene.find_child("BottomActions",true,false)
-	check(nav.get_children().map(func(c): return str(c.text)) == ["공격","대기","탐색","전술","가방"],"five direct actions share one row")
+	check(nav.get_children().map(func(c): return str(c.text)) == (["공격","대기","후퇴"] if scene.session.free_movement else ["공격","대기","탐색","전술","가방"]),"direct actions share one row")
 	check(scene.find_child("PartyRow",true,false) == null,"manual play has no auto-battle party row")
 	var status: Button = scene.find_child("HeroStatus",true,false)
 	check(status != null and status.find_children("*","TextureRect",true,false).size() == 1,"hero portrait appears above actions")

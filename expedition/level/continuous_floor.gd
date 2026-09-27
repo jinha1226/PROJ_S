@@ -101,6 +101,9 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 		s.party[i].reservation = {}
 	if theme.get("boss",false): BossAI.spawn(s,layout,int(theme.depth))
 	s.phase = "BATTLE" if s.simulation_arena else "EXPLORE"; s.round_number = 1
+	if s.free_movement:
+		for actor in s.party+s.npcs+s.enemies:
+			actor.erase("world_pos"); s.Free.position(actor)
 	state.observe(s)
 
 ## One floor monster from an encounter member: the roster health (scaled down for
@@ -142,10 +145,11 @@ func observe(s) -> void:
 		for y in range(maxi(0,actor.pos.y-before),mini(size,actor.pos.y-before+side)):
 			for x in range(maxi(0,actor.pos.x-before),mini(size,actor.pos.x-before+side)):
 				var p := Vector2i(x,y)
-				if Vector2(actor.pos).distance_to(Vector2(p)) > radius: continue
+				if (s.Free.position(actor).distance_to(s.Free.center(p)) if s.free_movement else Vector2(actor.pos).distance_to(Vector2(p))) > radius: continue
 				# Adjacent tiles stay readable so legal diagonal steps can be tapped at corners.
 				var adjacent: bool = maxi(absi(p.x-actor.pos.x),absi(p.y-actor.pos.y)) <= 1
-				if not adjacent and not s.TurnCore.Geometry.sees(actor.pos,p,
+				if s.free_movement and not s.Free.segment(s,s.Free.position(actor),s.Free.center(p),0,{},false,true): continue
+				if not s.free_movement and not adjacent and not s.TurnCore.Geometry.sees(actor.pos,p,
 					func(c): return (s.tile(c).terrain == "wall" and not bool(s.tile(c).get("pillar",false))) or int(s.tile(c).get("steam_until",0)) > int(s.time),before): continue
 				visible[p] = true
 				if not explored.has(p):

@@ -167,6 +167,13 @@ static func lunge_cell(s, actor: Dictionary, id: String, target: Vector2i) -> Ve
 		if steps < best_len or (steps == best_len and str(cell) < str(best)): best = cell; best_len = steps
 	return best
 
+static func lunge_world(s, actor: Dictionary, id: String, target: Vector2) -> Vector2:
+	var start: Vector2 = s.Free.position(actor)
+	var landing: Vector2 = target-(target-start).normalized()*0.85
+	if start.distance_to(target) <= 1: landing = start
+	if start.distance_to(landing) > float(definition(id).range): return Vector2(-1,-1)
+	return landing if s.Free.segment(s,start,landing,s.Free.RADIUS,actor,true) else Vector2(-1,-1)
+
 static func cells(s, actor: Dictionary, id: String, target: Vector2i) -> Array:
 	var result: Array = []
 	if not has(id): return result
@@ -175,7 +182,7 @@ static func cells(s, actor: Dictionary, id: String, target: Vector2i) -> Array:
 	for y in range(maxi(0,center.y-def.radius),mini(s.BOARD_SIDE,center.y+def.radius+1)):
 		for x in range(maxi(0,center.x-def.radius),mini(s.BOARD_SIDE,center.x+def.radius+1)):
 			var cell := Vector2i(x,y)
-			var in_range: bool = s.distance(center,cell) <= def.radius if def.shape == "CIRCLE" else maxi(absi(center.x-x),absi(center.y-y)) <= def.radius
+			var in_range: bool = s.distance(center,cell) <= def.radius if def.shape == "CIRCLE" or s.free_movement else maxi(absi(center.x-x),absi(center.y-y)) <= def.radius
 			if in_range and s.tile(cell).terrain != "wall" and s.TurnCore.Geometry.sees(center,cell,func(p): return s.tile(p).terrain == "wall"): result.append(cell)
 	return result
 
@@ -236,14 +243,16 @@ static func legal(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 	if victim.enemy == actor.enemy: return false
 	# distance() is Manhattan, so a range-1 skill would miss the diagonals a
 	# basic attack reaches; "adjacent" means melee_reach everywhere else.
-	var in_range: bool = s.melee_reach(actor.pos,target) if int(def.range) == 1 else s.distance(actor.pos,target) <= int(def.range)
+	var in_range: bool = s.Free.reaches(s,actor,victim,int(def.range)) if s.free_movement else (s.melee_reach(actor.pos,target) if int(def.range) == 1 else s.distance(actor.pos,target) <= int(def.range))
 	if not in_range or (int(def.range) > 1 and not s.TurnCore.Geometry.sees(actor.pos,target,func(p): return s.tile(p).terrain == "wall")): return false
-	if def.effect == "LUNGE": return lunge_cell(s,actor,id,target) != Vector2i(-1,-1)
+	if def.effect == "LUNGE":
+		return lunge_world(s,actor,id,s.Free.position(victim)) != Vector2(-1,-1) if s.free_movement else lunge_cell(s,actor,id,target) != Vector2i(-1,-1)
 	return true
 
 static func execute(s, actor: Dictionary, id: String, target: Vector2i) -> bool:
 	if not legal(s,actor,id,target): return false
 	id = active_id(id)
+	if s.free_movement: actor.cast_world = s.Free.point(s,target,actor)
 	# Ranged and magical parts train only when they affect a hostile target.
 	# Record before resolving damage so a killing blow receives its XP share.
 	if not actor.enemy:
@@ -262,6 +271,7 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 		s.CombatStats.Equipment.attack_noise(s,actor)
 	var def: Dictionary = definition(id)
 	var victim: Dictionary = s.at(target)
+	if s.free_movement and def.target != "SELF": victim = s.Free.actor_at(s,actor.get("cast_world",s.Free.point(s,target)),0.5,false)
 	if int(def.get("mp",0)) > 0: actor.mp -= int(def.mp)
 	# The use is logged first so that a miss is the last line the log shows.
 	if def.effect not in ["GUARD","PUSH"]: s.message(actor.name+" · "+def.name)
@@ -329,7 +339,12 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 				s.message("%s · 밀리지 않습니다" % victim.name)
 			else:
 				var destination: Vector2i = target+(target-actor.pos)
-				if s.can_step(target,destination):
+				if s.free_movement:
+					var start: Vector2 = s.Free.position(victim)
+					var landing: Vector2 = start+(start-s.Free.position(actor)).normalized()
+					if s.Free.segment(s,start,landing,s.Free.RADIUS,victim,true): s.Free.place(victim,landing)
+					else: s.damage(victim,power(s,actor,def,id),actor.id,"IMPACT")
+				elif s.can_step(target,destination):
 					victim.pos = destination
 					s.StoneEffects.Vfx.emit(s,"push",destination,target)
 				else: s.damage(victim,power(s,actor,def,id),actor.id,"IMPACT")
@@ -338,7 +353,11 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 				s.message("밀쳐내기 · 적의 예고 공격을 취소했습니다.")
 		"LUNGE":
 			var cell := lunge_cell(s,actor,id,target)
-			if cell != Vector2i(-1,-1): actor.pos = cell
+			if s.free_movement:
+				var landing := lunge_world(s,actor,id,actor.get("cast_world",s.Free.point(s,target)))
+				cell = s.Free.cell(landing) if landing != Vector2(-1,-1) else Vector2i(-1,-1)
+				if cell != Vector2i(-1,-1): s.Free.place(actor,landing)
+			elif cell != Vector2i(-1,-1): actor.pos = cell
 			# A telegraphed lunge lands on the announced cell, but never on the
 			# caster's own side: a fellow monster who stepped in is a miss.
 			var spared: bool = not victim.is_empty() and not def.allies_hit and victim.enemy == actor.enemy
@@ -352,7 +371,12 @@ static func resolve(s, actor: Dictionary, id: String, target: Vector2i) -> void:
 			s.effects.append({"kind":"ENEMY_ATTACK","from":actor.pos,"cell":target,"cells":affected,"area":affected.size() > 1,"amount":0,"form":Forms.of_part(def),"element":str(def.get("element","")),"caption":str(def.get("short",def.name))})
 			var hit := 0
 			for other in s.party+s.npcs+s.enemies:
-				if other.hp <= 0 or other.id == actor.id or other.pos not in affected: continue
+				if other.hp <= 0 or other.id == actor.id: continue
+				if s.free_movement:
+					var origin: Vector2 = s.Free.position(actor) if def.target == "SELF" else actor.get("cast_world",s.Free.point(s,target))
+					var radius: float = maxf(0.5,float(def.radius))
+					if not s.Free.sees(s,origin,s.Free.position(other),radius): continue
+				elif other.pos not in affected: continue
 				if not def.allies_hit and other.enemy == actor.enemy: continue
 				for i in range(maxi(1,int(def.get("hits",1)))):
 					if other.hp > 0: strike_victim(s,actor,other,amount,"IMPACT",def)
@@ -402,6 +426,11 @@ static func after_strike(s, actor: Dictionary, victim: Dictionary, lost: int, de
 	var status: String = str(def.get("status",""))
 	if not status.is_empty(): s.Statuses.apply(s,victim,status,int(def.get("status_ticks",200)),actor)
 	if int(def.get("push",0)) > 0:
+		if s.free_movement:
+			var start: Vector2 = s.Free.position(victim)
+			var landing: Vector2 = start+(start-s.Free.position(actor)).normalized()
+			if s.Free.segment(s,start,landing,s.Free.RADIUS,victim,true): s.Free.place(victim,landing)
+			return
 		var step: Vector2i = (victim.pos-actor.pos).sign()
 		var destination: Vector2i = victim.pos+step
 		if step != Vector2i.ZERO and s.inside(destination) and s.can_step(victim.pos,destination) and s.at(destination).is_empty(): victim.pos = destination

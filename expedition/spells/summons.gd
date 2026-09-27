@@ -8,7 +8,10 @@ static func summon_cells(s, caster: Dictionary) -> Array:
 	var result: Array = []
 	for direction in s.DIRECTIONS:
 		var cell: Vector2i = caster.pos+direction
-		if s.is_free(cell) and s.melee_reach(caster.pos,cell): result.append(cell)
+		if s.free_movement:
+			var point: Vector2 = s.Free.center(cell)
+			if s.Free.position(caster).distance_to(point) <= 1.25 and s.Free.fits(s,point,{},true) and s.Free.segment(s,s.Free.position(caster),point): result.append(cell)
+		elif s.is_free(cell) and s.melee_reach(caster.pos,cell): result.append(cell)
 	result.sort_custom(func(a,b): return a.y < b.y or a.y == b.y and a.x < b.x)
 	return result
 

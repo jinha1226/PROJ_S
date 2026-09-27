@@ -54,8 +54,11 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 		ui.board = Board.new(); ui.board.ui_font = FONT; ui.board.cell_pressed.connect(ui.on_cell)
 		ui.board.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		ui.board.cell_inspected.connect(ui.inspect_cell)
+		ui.board.world_pressed.connect(ui.on_world)
 		ui.board.zoom_changed.connect(func(value): ui.view_side = value)
 		ui.board.gesture_started.connect(ui.stop_navigation); ui.board.playback_finished.connect(ui.finish_presentation)
+	ui.board.fullscreen = session.free_movement
+	ui.board.z_index = 0
 	ui.board.session = session; ui.board.view_side = ui.view_side; ui.board.action_footer = not session.manual_mode and not ui.pending_attack.is_empty()
 	if ui.board.get_parent() != null: ui.board.get_parent().remove_child(ui.board)
 	ui.board.visible = true
@@ -87,6 +90,7 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 		log_button.add_theme_font_size_override("font_size",12)
 	if session.manual_mode:
 		build_manual_controls(ui)
+		if session.free_movement: fullscreen(ui)
 		return
 	var party_row := HBoxContainer.new(); party_row.name = "PartyRow"
 	party_row.add_theme_constant_override("separation",5); ui.root_layout.add_child(party_row)
@@ -220,6 +224,12 @@ static func build_manual_controls(ui) -> void:
 	nav.add_theme_constant_override("separation",3); ui.root_layout.add_child(nav)
 	var attack = ui.action_button(nav,"공격",Art.ui_icon(0),func(): arm_attack(ui)); attack.name = "Attack"
 	var wait = ui.action_button(nav,"대기",Art.ui_icon(2),func(): ui.run_action(func(): return session.act("WAIT",session.party[0].pos))); wait.name = "Wait"; ui.wait_button = wait
+	if session.free_movement:
+		var retreat = ui.action_button(nav,"후퇴",Art.ui_icon(20),func(): ui.run_action(func():
+			var hero: Dictionary = session.party[0]
+			return Session.Free.submit(session,Session.Free.choice(hero,"MOVE",Session.Free.retreat(session,hero),"후퇴"))))
+		retreat.name = "Retreat"
+		return
 	ui.auto_explore_button = ui.action_button(nav,"중지" if ui.navigation.active else "탐색",Art.ui_icon(3),ui.toggle_explore,not session.in_combat())
 	ui.auto_explore_button.action_mode = BaseButton.ACTION_MODE_BUTTON_PRESS
 	var tactics = ui.action_button(nav,"전술",Art.ui_icon(4),func(): show_manual_tactics(ui)); tactics.name = "Tactics"
@@ -240,6 +250,8 @@ static func build_stop_banner(ui) -> void:
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; banner.clip_text = true
 
 static func arm_attack(ui) -> void:
+	if ui.session != null and ui.session.free_movement:
+		ui.run_action(func(): return Session.Free.attack(ui.session)); return
 	if ui.session == null or not ui.session.manual_mode: return
 	var session = ui.session
 	var hero: Dictionary = session.party[0]
@@ -419,3 +431,25 @@ static func select_actor(ui, index: int) -> void:
 		Popups.show_character(ui,index); return
 	ui.pending_attack = {}; ui.show_attack_range = false
 	session.selected = index; ui.mode = ""; ui.pending_item = ""; ui.notice = session.party[index].name; ui.refresh()
+
+static func fullscreen(ui) -> void:
+	var slot: int = ui.board.get_index()
+	ui.root_layout.remove_child(ui.board)
+	var spacer := Control.new(); spacer.name = "MapSpace"
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE; spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	ui.root_layout.add_child(spacer); ui.root_layout.move_child(spacer,slot)
+	ui.add_child(ui.board); ui.move_child(ui.board,0)
+	ui.board.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ui.board.fullscreen = true
+	ui.board.z_index = -1
+	# Containers must not swallow taps on the map beneath their empty area.
+	ui.root_layout.get_parent().mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.root_layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.root_layout.z_index = 5
+	for node in ui.root_layout.find_children("*","Container",true,false): node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var header = ui.find_child("TopHUD",true,false)
+	var tactics = ui.button(header,"전술",func(): show_manual_tactics(ui)); tactics.name = "Tactics"
+	tactics.size_flags_horizontal = Control.SIZE_SHRINK_END; tactics.custom_minimum_size.x = 44
+	var bag = ui.button(header,"가방",func(): Popups.show_supplies(ui)); bag.name = "Bag"
+	bag.size_flags_horizontal = Control.SIZE_SHRINK_END; bag.custom_minimum_size.x = 44
+	ui.board.queue_redraw()

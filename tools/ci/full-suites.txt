@@ -102,3 +102,5 @@ effect_links
 effect_vfx
 build_actives
 stone_magic
+
+free_movement

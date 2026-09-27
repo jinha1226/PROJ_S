@@ -84,6 +84,7 @@ static func swing(s, boss: Dictionary, foe: Dictionary) -> void:
 
 ## One step along the route to any free cell beside `foe`.
 static func step_toward(s, boss: Dictionary, foe: Dictionary) -> void:
+	if s.free_movement: s.Free.monster_move(s,boss,foe); return
 	var goals: Array = []
 	for direction in s.DIRECTIONS:
 		var cell: Vector2i = foe.pos+direction

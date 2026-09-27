@@ -29,6 +29,8 @@ func run() -> void:
 	check(scene.item_buttons.is_empty() and scene.find_child("PartyRow",true,false) == null,"manual floor uses a hero status instead of party controls")
 	check(scene.find_child("HeroStatus",true,false) != null and scene.find_child("AutoToggle",true,false) == null,"manual hero HUD")
 	check(scene.find_child("SpellBar",true,false) == null,"empty prepared spells do not occupy the HUD")
+	# Remaining cell-input and manual-spell cases compare the retained grid mode.
+	scene.session.free_movement = false; scene.refresh(); await process_frame
 	var item_step: Vector2i = scene.session.movement_cells(0)[0]
 	scene.session.floor_state.features[item_step] = {"kind":"item","item_id":"healing"}
 	scene.refresh(); await process_frame
@@ -73,6 +75,7 @@ func run() -> void:
 	var hero: Dictionary = scene.session.party[0]
 	# Legacy arena spells remain usable; a normal run now uses automatic stones.
 	check(scene.session.MobileEffects.active(hero),"normal run uses automatic soulstones")
+	scene.session.free_movement = false
 	scene.session.MobileEffects.enable(scene.session,"legacy")
 	hero.spells = ["fire_1"]; hero.prepared = ["fire_1"]
 	scene.refresh(); await process_frame

@@ -151,14 +151,12 @@ static func tile_tick(s, point: Vector2i, cell: Dictionary, suppression: int) ->
 	if int(cell.get("steam_until",0)) > 0:
 		if int(cell.steam_until) <= int(s.time): cell.erase("steam_until")
 		else:
-			var scalded: Dictionary = s.at(point)
-			if not scalded.is_empty(): s.CombatRules.damage(s,{},scalded,STEAM_DAMAGE,"fire",0,REACTION_FORM)
+			for scalded in s.Free.occupants(s,point): s.CombatRules.damage(s,{},scalded,STEAM_DAMAGE,"fire",0,REACTION_FORM)
 	if bool(cell.get("ice",false)) and int(cell.get("fire",0)) > 0: cell.ice = false; cell.wet = maxi(int(cell.wet),50)
 	if bool(cell.get("poison_pool",false)):
 		if water_level(cell) <= 0: cell.poison_pool = false
 		else:
-			var soaked: Dictionary = s.at(point)
-			if not soaked.is_empty(): hang(s,soaked,"poison",POOL_POISON_TICKS)
+			for soaked in s.Free.occupants(s,point): hang(s,soaked,"poison",POOL_POISON_TICKS)
 
 ## A status a reaction hangs: resisted like any other, but it sets off no
 ## further reaction of its own.

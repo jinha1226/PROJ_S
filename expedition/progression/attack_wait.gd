@@ -81,6 +81,11 @@ static func line(s, a: Vector2i, b: Vector2i, reach: int) -> bool:
 	return s.Floor.MonsterAI.line(s,a,b,reach)
 
 static func valid(s, owner: Dictionary, target: Dictionary, centre: Vector2i, radius: int) -> bool:
+	if s.free_movement:
+		if int(target.get("hp",0)) <= 0 or not hostile(s,owner,target): return false
+		if owner == s.party[0] and not s.floor_state.visible.has(target.pos): return false
+		var origin: Vector2 = s.Free.point(s,centre,owner)
+		return s.Free.sees(s,origin,s.Free.position(target),radius) and s.Free.sees(s,s.Free.position(owner),s.Free.position(target),6)
 	if int(target.get("hp",0)) <= 0 or not hostile(s,owner,target) or distance(centre,target.pos) > radius: return false
 	if owner == s.party[0] and not s.floor_state.visible.has(target.pos): return false
 	# NPCs use their own perception; a hop cannot reveal a whole floor.
@@ -98,7 +103,7 @@ static func targets(s, owner: Dictionary, centre: Vector2i, radius: int, count: 
 	return result
 
 static func allies(s, owner: Dictionary, radius: int) -> Array:
-	var result: Array = (s.party+s.npcs).filter(func(t): return int(t.hp) > 0 and allied(s,owner,t) and distance(owner.pos,t.pos) <= radius and line(s,owner.pos,t.pos,radius))
+	var result: Array = (s.party+s.npcs).filter(func(t): return int(t.hp) > 0 and allied(s,owner,t) and ((s.Free.gap(owner,t) <= radius and s.Free.sees(s,s.Free.position(owner),s.Free.position(t),radius)) if s.free_movement else (distance(owner.pos,t.pos) <= radius and line(s,owner.pos,t.pos,radius))))
 	result.sort_custom(func(a,b):
 		var ha := float(a.hp)/maxi(1,int(a.max_hp)); var hb := float(b.hp)/maxi(1,int(b.max_hp))
 		return ha < hb if ha != hb else int(a.id) < int(b.id))
@@ -387,6 +392,13 @@ static func execute(s, owner: Dictionary, r: Dictionary, ctx: Dictionary) -> boo
 static func shove(s, owner: Dictionary, target: Dictionary, r: Dictionary, ctx: Dictionary) -> bool:
 	if target.is_empty() or int(target.get("hp",0)) <= 0 or bool(target.get("boss",false)): return false
 	if state(target).preps.values().any(func(p): return preparation_valid(s,p) and bool(p.rule.get("push_resist",false))): return false
+	if s.free_movement:
+		var from: Vector2 = s.Free.position(target)
+		var goal: Vector2 = from+(from-s.Free.position(owner)).normalized()
+		if s.Free.segment(s,from,goal,s.Free.RADIUS,target,true):
+			s.Free.place(target,goal); s.Floor.MonsterAI.interrupt(s,target); return true
+		if int(r.get("blocked_damage",0)) > 0: damage(s,owner,target,r,int(r.blocked_damage))
+		return false
 	var next: Vector2i = target.pos+Vector2i(signi(target.pos.x-owner.pos.x),signi(target.pos.y-owner.pos.y))
 	if s.can_step(target.pos,next):
 		target.pos = next; s.Floor.MonsterAI.interrupt(s,target)

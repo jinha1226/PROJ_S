@@ -68,7 +68,11 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 	if low:
 		var pool: Array = []
 		var away: Vector2i = retreat_cell(s,actor)
-		if away != actor.pos: pool.append({"kind":"MOVE","cell":away,"score":RETREAT.score,"reason":"후퇴"})
+		if s.free_movement:
+			var world: Vector2 = s.Free.retreat(s,actor)
+			if world != s.Free.position(actor):
+				var retreat: Dictionary = s.Free.choice(actor,"MOVE",world,"후퇴"); retreat.score = RETREAT.score; pool.append(retreat)
+		elif away != actor.pos: pool.append({"kind":"MOVE","cell":away,"score":RETREAT.score,"reason":"후퇴"})
 		for o in PartsCandidates.candidates(s,actor):
 			if s.Abilities.definition(o.kind).get("effect","") != "HEAL": continue
 			o.score = 40+RETREAT.score; pool.append(o)

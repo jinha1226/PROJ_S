@@ -12,16 +12,27 @@ func run() -> void:
 	var ui = Scene.instantiate(); root.add_child(ui); await process_frame
 	ui.new_run(); await process_frame
 	var s = ui.session
+	ui.set_process(false)
+	check(s.free_movement,"normal run uses real continuous coordinates")
 	check(s.combat_profile == Session.MobileEffects.PROFILE,"normal new run enables attack/wait without an arena toggle")
 	check(s.roster.all(func(n): return s.MobileEffects.active(n)),"dungeon NPCs inherit normal run profile")
 	Fixture.arena(s,8); s.party[0].level = 10
+	s.npcs.clear(); s.phase = "EXPLORE"; s.floor_state.observe(s)
+	ui.refresh(); await process_frame
+	var start: Vector2 = Session.Free.position(s.party[0])
+	var target: Vector2 = start+Vector2(0.82,0.17)
+	var before_time: int = s.time
+	ui.on_world(target)
+	check(Session.Free.position(s.party[0]).is_equal_approx(target) and s.time > before_time,"world tap commits a turn at the exact fractional destination")
+	check(ui.board.world_walks.has(int(s.party[0].id)),"camera and sprite interpolate from actual world positions")
+	await process_frame
 	for stone in ["FIRE_CALLER/cut","FIRE_CALLER/broken","FIRE_CALLER/pierced","SHIELD_STANCE/cut","WATER_WAVE/cut","GRAVEKEEPER/cut"]:
 		if s.Essences.has(stone): s.Essences.bind(s.party[0],stone)
 	ui.refresh(); await process_frame
 	check(ui.find_child("SpellBar",true,false) == null,"automatic profile removes selectable spell bar")
 	check(ui.find_child("AutoEffectBar",true,false) != null,"automatic profile shows trigger icon bar")
 	check(not str(ui.find_child("HeroHP",true,false).text).contains("MP"),"automatic profile HP line omits MP")
-	check(ui.find_child("BottomActions",true,false).get_child_count() == 5,"mobile controls keep exactly five actions")
+	check(ui.find_child("BottomActions",true,false).get_child_count() == 3,"normal free movement exposes attack/wait/retreat")
 	ui.show_tactics(); await process_frame
 	check(ui.find_child("TacticSkills",true,false) == null,"normal tactics has no manual skill button")
 	ui.details_popup.hide()
@@ -31,6 +42,9 @@ func run() -> void:
 	for dimensions in [Vector2i(320,568),Vector2i(390,844),Vector2i(430,932)]:
 		root.size = dimensions; ui.size = Vector2(dimensions)
 		ui.refresh(); await process_frame; await process_frame
+		check(ui.board.get_global_rect().size.is_equal_approx(ui.size),"map fills portrait viewport "+str(dimensions))
+		var world: Vector2 = Session.Free.position(s.party[0])+Vector2(0.217,0.391)
+		check(ui.board.world_at(ui.board.project(world)).is_equal_approx(world),"touch projection preserves fractional coordinates")
 		var nav: Control = ui.find_child("BottomActions",true,false)
 		check(nav.get_global_rect().end.x <= ui.size.x+1,"bottom controls fit width "+str(dimensions))
 		check(nav.get_global_rect().end.y <= ui.size.y+1,"bottom controls fit height "+str(dimensions))

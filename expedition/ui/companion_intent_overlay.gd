@@ -23,12 +23,12 @@ func _draw() -> void:
 		var source: Dictionary = board._actor_for_id(displayed_actors,actor_id)
 		if source.is_empty() or int(source.get("id",-1)) != actor_id or int(source.get("hp",0)) <= 0: continue
 		if int(row.get("target_id",-1)) >= 0:
-			var target: Dictionary = board.display_at(cell)
+			var target: Dictionary = board.session.actor_by_id(int(row.target_id)) if board.session.free_movement else board.display_at(cell)
 			if target.is_empty() or int(target.get("id",-1)) != int(row.target_id) or int(target.get("hp",0)) <= 0: continue
 		var color: Color = COLORS[posmod(actor_id,COLORS.size())]
 		var intent := str(row.get("intent",""))
 		if intent == "ATTACK":
-			var a: Vector2 = board.cell_center(from); var b: Vector2 = board.cell_center(cell)
+			var a: Vector2 = board.display_center(source); var b: Vector2 = board.project(row.world_cell) if row.has("world_cell") else board.cell_center(cell)
 			var direction: Vector2 = (b-a).normalized()
 			draw_line(a+direction*board.half_width*0.55,b-direction*board.half_width*0.55,color,0.75,true)
 			# Four short brackets identify the target, unlike an actor selection ring.
@@ -46,6 +46,8 @@ func _draw() -> void:
 				if not p0 is Vector2i or not p1 is Vector2i: continue
 				if (not visible.has(p0) or not visible.has(p1)): continue
 				segments.append([board.cell_center(p0),board.cell_center(p1)])
+			if row.has("world_cell"):
+				segments = [[board.display_center(source),board.project(row.world_cell)]]
 			if segments.is_empty(): continue
 			for segment in segments: _dashed(segment[0],segment[1],color,1.0)
 			var last_segment: Array = segments[-1]

@@ -101,6 +101,16 @@ static func command_choice(s, actor: Dictionary) -> Dictionary:
 	return {}
 
 static func companion_choice(s, actor: Dictionary) -> Dictionary:
+	if s.free_movement:
+		var rescue: Dictionary = s.Downed.choice(s,actor)
+		if not rescue.is_empty(): return rescue
+		if s.party_command in ["HOLD_POSITION","STOP_ATTACK"]: return s.Free.choice(actor,"WAIT",s.Free.position(actor),"대기")
+		if s.party_command == "RETREAT":
+			var away: Vector2 = s.Free.retreat(s,actor)
+			return s.Free.choice(actor,"WAIT" if away == s.Free.position(actor) else "MOVE",away,"후퇴")
+		if s.floor_state.safe(s) or not s.Free.candidates(s,actor,s.Stances.effective(actor)).any(func(a): return a.kind == "ATTACK" or a.kind == "MOVE"):
+			return s.Free.follow(s,actor)
+		return Tactics.choose(s,actor)
 	var rescue: Dictionary = s.Downed.choice(s,actor)
 	if not rescue.is_empty(): return rescue
 	var reserved: Dictionary = s.reservation_choice(actor)
@@ -128,9 +138,13 @@ static func companion_intent_snapshot(s) -> Array:
 		var target_id := -1
 		if choice.get("kind", "") in ["ATTACK", "PUSH"] or Abilities.has(str(choice.get("kind", ""))):
 			var target: Dictionary = s.at(choice.get("cell", actor.pos))
-			target_id = int(target.get("id", -1)) if not target.is_empty() else -1
+			target_id = int(choice.get("target_id",target.get("id",-1)))
 		var dto := IntentUI.adapt(actor,choice,target_id,_intent_id(s,actor,choice,target_id))
-		if not dto.is_empty(): result.append(dto)
+		if not dto.is_empty():
+			if s.free_movement:
+				dto.world_from = s.Free.position(actor)
+				dto.world_cell = choice.get("world",s.Free.point(s,choice.get("cell",actor.pos)))
+			result.append(dto)
 	return result
 
 static func _intent_id(s, actor: Dictionary, choice: Dictionary, target_id: int) -> int:

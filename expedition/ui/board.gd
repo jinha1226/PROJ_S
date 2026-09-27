@@ -2,6 +2,9 @@ extends Control
 var input_actor := -1
 var targeting_skill := ""
 var action_footer := false
+signal world_pressed(point: Vector2)
+var fullscreen := false
+var world_walks: Dictionary = {}
 signal cell_pressed(cell: Vector2i)
 signal cell_inspected(cell: Vector2i)
 signal zoom_changed(side: int)
@@ -82,6 +85,12 @@ func animate_walk(actor_id: int, from: Vector2i, to: Vector2i, duration: float =
 
 func display_center(actor: Dictionary) -> Vector2:
 	var center := cell_center(actor.pos)
+	if session.free_movement:
+		var world: Vector2 = session.Free.position(actor)
+		if world_walks.has(int(actor.id)):
+			var walk: Dictionary = world_walks[int(actor.id)]
+			world = Vector2(walk.from).lerp(walk.to,clampf(float(walk.elapsed)/float(walk.duration),0,1))
+		return project(world)
 	if not is_presenting() and walk_actor_id == int(actor.id) and actor.pos == walk_to:
 		var t := clampf(walk_elapsed/walk_duration,0.0,1.0)
 		center = project(walk_visual_from+Vector2.ONE*0.5).lerp(center,t)
@@ -231,6 +240,9 @@ func preview_rect(actor: Dictionary) -> Rect2:
 	return Rect2(Vector2(clampf(center.x-29,0,maxf(0,size.x-58)),maxf(origin.y,center.y-half_width-19)),Vector2(58,18))
 
 func _process(delta: float) -> void:
+	for id in world_walks.keys():
+		world_walks[id].elapsed += delta
+		if float(world_walks[id].elapsed) >= float(world_walks[id].duration): world_walks.erase(id)
 	# This clock keeps moving while the player waits; it never ticks statuses.
 	if is_visible_in_tree():
 		status_visual_clock = fposmod(status_visual_clock+delta,4096.0)
@@ -280,16 +292,23 @@ func _resize_board() -> void:
 	queue_redraw()
 
 func geometry() -> void:
-	var map_side: float = maxf(2,minf(size.x,size.y-8))
+	var map_side: float = maxf(2,size.x if fullscreen else minf(size.x,size.y-8))
 	half_width = maxf(1,map_side/(visible_side()*2.0))
 	half_height = half_width
-	origin = (size-Vector2.ONE*map_side)*0.5
+	origin = Vector2.ZERO if fullscreen else (size-Vector2.ONE*map_side)*0.5
 
 func project(cell: Vector2) -> Vector2:
 	return origin + (cell-camera_origin())*half_width*2
 
 func camera_origin() -> Vector2:
 	if session == null or session.tiles.is_empty(): return Vector2.ZERO
+	if session.free_movement and not is_presenting():
+		var hero: Dictionary = session.party[session.selected]
+		var focus: Vector2 = session.Free.position(hero)
+		if world_walks.has(int(hero.id)):
+			var walk: Dictionary = world_walks[int(hero.id)]
+			focus = Vector2(walk.from).lerp(walk.to,clampf(float(walk.elapsed)/float(walk.duration),0,1))
+		return focus-Vector2(size.x*0.5,size.y*0.40)/(half_width*2.0)
 	var focus: Vector2 = Vector2(playback_focus) if is_presenting() else Vector2(session.party[session.selected].pos)
 	if not is_presenting() and walk_actor_id == int(session.party[session.selected].id) and walk_to == session.party[session.selected].pos:
 		focus = walk_visual_from.lerp(Vector2(walk_to),clampf(walk_elapsed/walk_duration,0.0,1.0))
@@ -431,7 +450,7 @@ func paint_terrain() -> void:
 	var walls: Array = []
 	var camera := camera_cell()
 	# One additional row supplies the raised portion of walls below the viewport.
-	for y in range(camera.y,camera.y+visible_side()+2):
+	for y in range(camera.y,camera.y+ceili(size.y/(half_width*2))+2):
 		for x in range(camera.x,camera.x+visible_side()+2):
 			var point := Vector2i(x,y)
 			if not session.inside(point): continue
@@ -493,10 +512,10 @@ func _draw() -> void:
 				if x < 0 or y < 0 or x >= session.BOARD_SIDE or y >= session.BOARD_SIDE: continue
 				var cell := Vector2i(x,y)
 				if session.distance(caster.pos,cell) <= int(session.Abilities.definition(targeting_skill).range) and session.tile(cell).terrain != "wall" and session.TurnCore.Geometry.sees(caster.pos,cell,func(p): return session.tile(p).terrain == "wall"): attacks.append(cell)
-	for depth in range((visible_side()+2)*2-1):
+	for depth in range(visible_side()+ceili(size.y/(half_width*2))+3):
 		for local_x in range(visible_side()+2):
 			var local_y := depth-local_x
-			if local_y < 0 or local_y >= visible_side()+2: continue
+			if local_y < 0 or local_y >= ceili(size.y/(half_width*2))+2: continue
 			var x: int = local_x+camera_cell().x
 			var y: int = local_y+camera_cell().y
 			if x < 0 or y < 0 or x >= session.BOARD_SIDE or y >= session.BOARD_SIDE: continue
@@ -535,37 +554,39 @@ func _draw() -> void:
 				outline(polygon,Hazards.COLLAPSE_ARMED if armed else Hazards.COLLAPSE_IDLE,3 if armed else 1)
 				if armed: draw_string(ui_font,center+Vector2(-4,4),"!",HORIZONTAL_ALIGNMENT_LEFT,-1,18,Color.WHITE)
 			for intent in (visual_state.intents if is_presenting() else session.intents):
-				if intent.cell == point:
+				if intent.cell == point and not intent.has("world_center"):
 					draw_colored_polygon(polygon,Color(1,0.45,0.05,0.4)); outline(polygon,Color("ffb447"),3)
 					draw_string(ui_font,center+Vector2(-4,4),"!"+(session.Abilities.badge(intent.kind) if not str(intent.get("kind","")).is_empty() else ""),HORIZONTAL_ALIGNMENT_LEFT,-1,12 if not str(intent.get("kind","")).is_empty() else 18,Color.WHITE)
 			if cell.fire > 0:
 				draw_circle(center,half_width*0.4,Color("a74b24")); draw_circle(center-Vector2(0,4),half_width*0.2,Color("ffc675"))
-			var actor: Dictionary = display_at(point)
-			if not actor.is_empty():
-				center = display_center(actor)
-				draw_set_transform(center*camera.zoom+camera.offset,0,Vector2(1,0.45)*camera.zoom)
-				draw_circle(Vector2.ZERO,half_width*0.6,Color(0,0,0,0.5))
-				draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
-				var side := half_width*1.65
-				var flash := Color.WHITE
-				if actor.enemy:
-					flash = {"MELEE":Color.WHITE,"RANGED":Color("b8d9a2"),"CASTER":Color("c5a5ef")}.get(actor.get("role","MELEE"),Color.WHITE)
-				center += hit_offset(point)
-				var struck := hit_flash(point)
-				if struck.a > 0: flash = struck
-				var actor_rect := Rect2(center-Vector2.ONE*side/2,Vector2.ONE*side)
-				# Separate sprite canvas permits an alpha-based one-screen-pixel rim.
-				var key: String = str(actor.enemy)+"/"+str(actor.id)
-				if not actor_visuals.has(key) or not is_instance_valid(actor_visuals[key]):
-					actor_visuals[key] = ActorVisual.new(); add_child(actor_visuals[key])
-				var visual = actor_visuals[key]
-				visual.visible = true; visual.actor = actor; visual.rect = actor_rect
-				visual.tint = flash; visual.boss = bool(actor.get("boss",false))
-				visual.position = camera.offset; visual.scale = Vector2.ONE*camera.zoom
-				visual.z_index = 1; move_child(visual,get_child_count()-1)
-				visual.queue_redraw()
-				paint_actor_base(center,actor)
+	for actor in (visual_state.actors if is_presenting() else session.party+session.npcs+session.enemies):
+		var point: Vector2i = actor.pos
+		if actor.hp > 0 and (visual_state.visible if is_presenting() else session.floor_state.visible).has(point):
+			var center := display_center(actor)
+			draw_set_transform(center*camera.zoom+camera.offset,0,Vector2(1,0.45)*camera.zoom)
+			draw_circle(Vector2.ZERO,half_width*0.6,Color(0,0,0,0.5))
+			draw_set_transform(camera.offset,0,Vector2.ONE*camera.zoom)
+			var side := half_width*1.65
+			var flash := Color.WHITE
+			if actor.enemy:
+				flash = {"MELEE":Color.WHITE,"RANGED":Color("b8d9a2"),"CASTER":Color("c5a5ef")}.get(actor.get("role","MELEE"),Color.WHITE)
+			center += hit_offset(point)
+			var struck := hit_flash(point)
+			if struck.a > 0: flash = struck
+			var actor_rect := Rect2(center-Vector2.ONE*side/2,Vector2.ONE*side)
+			# Separate sprite canvas permits an alpha-based one-screen-pixel rim.
+			var key: String = str(actor.enemy)+"/"+str(actor.id)
+			if not actor_visuals.has(key) or not is_instance_valid(actor_visuals[key]):
+				actor_visuals[key] = ActorVisual.new(); add_child(actor_visuals[key])
+			var visual = actor_visuals[key]
+			visual.visible = true; visual.actor = actor; visual.rect = actor_rect
+			visual.tint = flash; visual.boss = bool(actor.get("boss",false))
+			visual.position = camera.offset; visual.scale = Vector2.ONE*camera.zoom
+			visual.z_index = 1; move_child(visual,get_child_count()-1)
+			visual.queue_redraw()
+			paint_actor_base(center,actor)
 
+	draw_free_intents()
 	draw_distant_npcs()
 	draw_movement_previews()
 	draw_action_previews()
@@ -741,7 +762,7 @@ func draw_hit(effect: Dictionary, canvas: Node2D) -> void:
 	if int(effect.get("amount",0)) <= 0: return
 	draw_effect_visual(effect,canvas)
 	var party := hits_party(effect)
-	var center := cell_center(effect.cell)-Vector2(0,half_width*0.7)
+	var center := effect_center(effect)-Vector2(0,half_width*0.7)
 	var seed := float((int(effect.cell.x)*73+int(effect.cell.y)*151+int(effect.get("amount",0))*17)%360)
 	var amount := int(effect.get("amount",0))
 	var pop := 1.0+0.7*maxf(0,1.0-t/0.1)
@@ -755,7 +776,7 @@ func draw_swing(effect: Dictionary, canvas: Node2D) -> void:
 	var t := clock_of(effect)
 	if t < 0 or t >= 0.22: return
 	var progress := t/0.22
-	var target := cell_center(effect.cell)-Vector2(0,half_width*0.6)
+	var target := effect_center(effect)-Vector2(0,half_width*0.6)
 	var heading := Vector2(effect.cell-effect.from).angle()
 	var start := heading-PI*0.6+PI*1.2*maxf(0,progress-0.35)
 	var end := heading-PI*0.6+PI*1.2*minf(1,progress*1.6)
@@ -769,14 +790,14 @@ func draw_miss(effect: Dictionary, canvas: Node2D) -> void:
 	var t := clock_of(effect)
 	if t < 0 or t >= 0.8: return
 	draw_effect_visual(effect,canvas)
-	var center := cell_center(effect.cell)-Vector2(0,half_width*(1.2+t*0.8))
+	var center := effect_center(effect)-Vector2(0,half_width*(1.2+t*0.8))
 	draw_outlined(canvas,center,str(effect.get("text","회피")),int(18*(1.0+0.4*maxf(0,1.0-t/0.1))),Color(0.8,0.9,1.0,clampf((0.8-t)/0.3,0,1)))
 
 func draw_reaction(effect: Dictionary, canvas: Node2D) -> void:
 	var t := clock_of(effect)
 	if t < 0 or t >= 1.1: return
 	draw_effect_visual(effect,canvas)
-	var center := cell_center(effect.cell)-Vector2(0,half_width*(1.6+t*0.9))
+	var center := effect_center(effect)-Vector2(0,half_width*(1.6+t*0.9))
 	var grow := 1.0+0.6*maxf(0,1.0-t/0.12)
 	draw_outlined(canvas,center,str(effect.get("text","")),int(24*grow),Color(1.0,0.86,0.35,clampf((1.1-t)/0.35,0,1)))
 
@@ -793,7 +814,7 @@ func draw_proc(effect: Dictionary, canvas: Node2D) -> void:
 		if str(other.get("kind","")) == "PROC" and other.get("cell") == effect.get("cell"): stack += 1
 	# Above the rising damage number, not on it: one line higher for every
 	# earlier proc on the same cell.
-	var center := cell_center(effect.cell)-Vector2(0,half_width*2.7+t*16+stack*19)
+	var center := effect_center(effect)-Vector2(0,half_width*2.7+t*16+stack*19)
 	var color: Color = PROC_COLORS.get(str(effect.get("tone","buff")),PROC_COLORS.buff)
 	color.a = clampf((1.0-t)/0.3,0,1)
 	draw_outlined(canvas,center,str(effect.get("text","")),int(15*(1.0+0.4*maxf(0,1.0-t/0.1))),color)
@@ -802,7 +823,7 @@ func draw_speech(effect: Dictionary, canvas: Node2D) -> void:
 	if clock_of(effect) >= 2.5: return
 	var text := str(effect.get("text",""))
 	var width := clampf(text.length()*11.0+8.0,70.0,220.0)
-	var center := cell_center(effect.cell)-Vector2(0,half_width*2.6)
+	var center := effect_center(effect)-Vector2(0,half_width*2.6)
 	var box := Rect2(Vector2(clampf(center.x-width/2.0,2,maxf(2,size.x-width-2)),maxf(origin.y,center.y-18)),Vector2(width,18))
 	canvas.draw_rect(box,Color(0.08,0.03,0.04,0.88))
 	canvas.draw_rect(box,Color("d98a8a",0.8),false,1)
@@ -833,7 +854,7 @@ func draw_effect_visual(effect: Dictionary, canvas) -> void:
 	if not effect_visible(effect): return
 	var style := str(effect.get("vfx",""))
 	if style.is_empty() and effect.get("kind","") == "": style = Vfx.damage_style(str(effect.get("element",effect.get("form",""))),str(effect.get("form","")))
-	var center := cell_center(effect.cell)-Vector2(0,half_width*0.7)
+	var center := effect_center(effect)-Vector2(0,half_width*0.7)
 	var seen: Dictionary = visual_state.get("visible",{}) if is_presenting() else session.floor_state.visible
 	var from: Vector2i = effect.get("from",effect.cell)
 	var start := center
@@ -883,12 +904,17 @@ func _gui_input(event: InputEvent) -> void:
 
 func emit_cell(position: Vector2) -> void:
 	if is_presenting(): return
+	if fullscreen:
+		world_pressed.emit(world_at(position)); return
 	if position.y < origin.y or position.y >= origin.y+size.x: return
 	var point := cell_at(position)
 	if session != null and session.inside(point): cell_pressed.emit(point)
 
 func emit_inspection(position: Vector2) -> void:
-	if is_presenting() or position.y < origin.y or position.y >= origin.y+size.x: return
+	if is_presenting(): return
+	if fullscreen:
+		if not Rect2(Vector2.ZERO,size).has_point(position): return
+	elif position.y < origin.y or position.y >= origin.y+size.x: return
 	var point := cell_at(position)
 	if session != null and session.inside(point): cell_inspected.emit(point)
 
@@ -912,3 +938,34 @@ func displayed_companion_intents() -> Array:
 		rows = rows.filter(func(row): return int(row.get("actor_id",-1)) != int(executed.actor_id))
 		rows.append(executed.duplicate(true))
 	return rows.filter(func(row): return int(row.get("actor_id",-1)) != int(session.party[0].id))
+
+func world_at(screen: Vector2) -> Vector2:
+	geometry()
+	var camera := impact_transform()
+	return ((screen-camera.offset)/camera.zoom-origin)/(half_width*2)+camera_origin()
+
+func animate_world(before: Dictionary, duration: float = 0.11) -> void:
+	for actor in session.party+session.npcs+session.enemies:
+		var id: int = int(actor.id)
+		var end: Vector2 = session.Free.position(actor)
+		if before.has(id) and Vector2(before[id]).distance_to(end) > 0.001:
+			world_walks[id] = {"from":before[id],"to":end,"elapsed":0.0,"duration":duration}
+	queue_redraw()
+
+func effect_center(effect: Dictionary) -> Vector2:
+	return project(effect.world_cell) if effect.has("world_cell") else cell_center(effect.cell)
+
+func effect_source(effect: Dictionary) -> Vector2:
+	return project(effect.world_from) if effect.has("world_from") else cell_center(effect.get("from",effect.cell))
+
+func draw_free_intents() -> void:
+	if not session.free_movement: return
+	var drawn: Dictionary = {}
+	for intent in session.intents:
+		if not intent.has("world_center") or drawn.has(int(intent.id)) or not session.floor_state.visible.has(intent.cell): continue
+		drawn[int(intent.id)] = true
+		var center: Vector2 = project(intent.world_center)
+		var radius: float = float(intent.world_radius)*half_width*2
+		draw_circle(center,radius,Color(1,0.45,0.05,0.2))
+		draw_arc(center,radius,0,TAU,48,Color("ffb447"),2,true)
+		draw_string(ui_font,center+Vector2(-4,4),"!",HORIZONTAL_ALIGNMENT_LEFT,-1,16,Color.WHITE)

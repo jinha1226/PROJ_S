@@ -17,6 +17,10 @@ static func show_menu(ui) -> void:
 	var session = ui.session
 	ui.clear(ui.modal_content)
 	ui.modal_content.custom_minimum_size = Vector2(148,0)
+	if session != null and session.free_movement:
+		ui.button(ui.modal_content,"탐험 재개" if ui.auto_explore_paused else "탐험 중지",func():
+			ui.auto_explore_paused = not ui.auto_explore_paused
+			ui.world_destination = Vector2(-1,-1); ui.details_popup.hide())
 	if session != null and session.manual_mode:
 		ui.button(ui.modal_content,"야영",func(): ui.details_popup.hide(); ui.run_action(session.camp),session.can_camp().is_empty())
 	ui.button(ui.modal_content,"기록",func(): show_logs(ui))
