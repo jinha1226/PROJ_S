@@ -126,8 +126,10 @@ func shared_actions() -> void:
 	Abilities.resolve(s,foe,str(foe.part_id),hero.pos)
 	remaining = Abilities.cooldown(foe,str(foe.part_id))
 	check(remaining > 0 and foe.cooldowns.keys() == ["KOBOLD_SLING@ice"],"intrinsic monster variant retains the turn driver's cooldown key")
+	# Ordinary monsters no longer fire species actives (2026-09-28): the turn
+	# neither re-arms the variant nor queues a telegraph.
 	MonsterAI.turn(s,foe)
-	check(Abilities.cooldown(foe,str(foe.part_id)) == remaining-1 and not foe.charging,"variant monster cooldown ticks and blocks premature telegraph")
+	check(Abilities.cooldown(foe,str(foe.part_id)) == remaining and not foe.charging and not s.intents.any(func(i): return i.id == foe.id),"variant monster turn leaves its cooldown alone and never telegraphs")
 
 func spells() -> void:
 	var s = Session.new_run(731,"fire"); s.phase = "CAMP"

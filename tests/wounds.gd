@@ -173,7 +173,7 @@ func scheduled() -> void:
 	Scheduler.act(d.s,d.foe)
 	check(int(d.foe.ready_at)-int(d.s.time) == 125,"the monster scheduler also delays a fractured attacker")
 	var npc: Dictionary = d.s.make_actor(888,"적대 NPC",false)
-	npc.npc = true; npc.hostile = true; npc.awake = true; npc.pos = d.c+Vector2i(-1,0)
+	npc.npc = true; npc.hostile = true; npc.awake = true; npc.explains = []; npc.pos = d.c+Vector2i(-1,0)
 	npc.statuses["fracture"] = d.s.time+300; d.s.npcs.append(npc)
 	Scheduler.act(d.s,npc)
 	check(int(npc.ready_at)-int(d.s.time) == 125,"independent NPC attacks also obey fracture delay")

@@ -79,20 +79,22 @@ func redirect() -> void:
 	check(f.s.member_stats(f.s.party[0].id).covers == 1,"the redirect is counted")
 	check(f.s.log_lines.any(func(line): return line.contains("대신 맞습니다")),"the redirect is logged")
 
+## Casters no longer wind up a cell-locked spell (2026-09-28): an old-save
+## wind-up is dropped and the caster simply strikes, which 엄호 still covers.
 func caster_intent() -> void:
 	var f := arena(3,1)
 	var caster: Dictionary = f.foes[0]
-	caster.role = "CASTER"; caster.pos = f.c+Vector2i(3,1)
+	caster.role = "CASTER"; caster.pos = f.c+Vector2i(3,1); caster.alert = true
 	caster.charging = true; caster.cast_cell = f.ally.pos
 	f.s.floor_state.observe(f.s)
 	MonsterAI.plan(f.s)
-	check(f.s.intents.any(func(i): return i.cell == f.ally.pos),"the wind-up is announced on the ally's cell")
-	check(f.s.act("GUARD",f.ally.pos),"엄호 against the wind-up")
+	check(not f.s.intents.any(func(i): return i.cell == f.ally.pos),"an ordinary caster announces no wind-up on the ally's cell")
+	check(f.s.act("GUARD",f.ally.pos),"엄호 against the caster")
 	var ally_hp: int = f.ally.hp
 	var hero_hp: int = f.hero.hp
 	MonsterAI.turn(f.s,caster)
-	check(f.ally.hp == ally_hp,"the cell-locked spell does not reach the covered ally")
-	check(f.hero.hp < hero_hp,"the protector eats the spell instead")
+	check(f.ally.hp == ally_hp and not bool(caster.charging),"the old wind-up is dropped and the covered ally is untouched")
+	check(f.hero.hp < hero_hp,"the protector eats the strike instead")
 
 func expiry() -> void:
 	var f := arena(3,0)
