@@ -36,7 +36,7 @@ async function openPage(file) {
 
 try {
   // 이전 버전도 뜨는지만 본다
-  for (const f of ['versions/v1.html', 'versions/v2.html']) {
+  for (const f of ['versions/v1.html', 'versions/v2.html', 'versions/v3.html']) {
     const before = errors.length, p = await openPage(f);
     check(`${f} 로드`, errors.length === before, errors.slice(before).join(' | '));
     await p.close();

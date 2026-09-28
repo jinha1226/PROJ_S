@@ -1,0 +1,32 @@
+export const COLORS = {
+  red: { name: '빨강', trig: '공격이 맞았을 때', hex: 0xff4a5a, css: '#ff5a6a' },
+  purple: { name: '보라', trig: '대기할 때', hex: 0xb45aff, css: '#c27dff' },
+  green: { name: '초록', trig: '내가 맞았을 때', hex: 0x4ad86a, css: '#62e27a' },
+};
+
+export const STONE = {
+  r_bleed: { color: 'red', icon: '🩸', name: '출혈', line: '적중 시 출혈 +3 (해골 제외)' },
+  r_extra: { color: 'red', icon: '✦', name: '추가 타격', line: '출혈 중인 적을 치면 한 번 더 친다' },
+  r_poison: { color: 'red', icon: '☠', name: '중독', line: '적중 시 중독 3 — 불이 닿으면 폭발' },
+  r_push: { color: 'red', icon: '✋', name: '밀치기', line: '적중 시 대상을 1칸 밀친다 — 벽이면 충돌' },
+  r_arrow: { color: 'red', icon: '🏹', name: '추가 타격', line: '적중 시 가장 가까운 다른 적에게 뼈 화살 2' },
+  r_shock: { color: 'red', icon: '⚡', name: '감전', line: '적중 시 대상에 번개 2 — 젖었으면 번진다' },
+  r_fire: { color: 'red', icon: '🔥', name: '화상', line: '적중 시 대상에 불 2 — 풀·기름·빙결·중독과 반응' },
+  r_freeze: { color: 'red', icon: '❄', name: '빙결', line: '적중한 적이 젖어 있으면 3턴 얼린다' },
+  p_summon: { color: 'purple', icon: '👻', name: '소환', line: '대기 시 영혼 고블린을 부른다 (4턴)' },
+  p_shield: { color: 'purple', icon: '🛡', name: '보호', line: '대기 시 보호막 +4 (최대 8)' },
+  p_poison: { color: 'purple', icon: '☠', name: '중독', line: '대기 시 붙어 있는 적 모두 중독 3' },
+  p_push: { color: 'purple', icon: '✋', name: '밀치기', line: '대기 시 붙어 있는 적을 모두 1칸 밀어낸다' },
+  p_heal: { color: 'purple', icon: '❤', name: '회복', line: '대기 시 HP 3 회복' },
+  p_shock: { color: 'purple', icon: '⚡', name: '감전', line: '대기 시 보이는 젖은 적 모두에게 번개 3' },
+  p_fire: { color: 'purple', icon: '🔥', name: '화상', line: '대기 시 가장 가까운 적에게 불 3' },
+  p_wet: { color: 'purple', icon: '💧', name: '젖음', line: '대기 시 2칸 안의 적이 모두 젖는다' },
+  g_counter: { color: 'green', icon: '⚔', name: '반격', line: '맞으면 붙어 있는 공격자에게 무기로 반격' },
+  g_shield: { color: 'green', icon: '🛡', name: '보호', line: '맞으면 보호막 +2 (최대 8)' },
+  g_poison: { color: 'green', icon: '☠', name: '중독', line: '맞으면 공격자 중독 3' },
+  g_push: { color: 'green', icon: '✋', name: '밀치기', line: '맞으면 공격자를 2칸 밀친다 — 벽이면 충돌' },
+  g_heal: { color: 'green', icon: '❤', name: '회복', line: '맞으면 HP 2 회복' },
+  g_shock: { color: 'green', icon: '⚡', name: '감전', line: '맞으면 공격자에게 번개 3 — 젖었으면 번진다' },
+  g_fire: { color: 'green', icon: '🔥', name: '화상', line: '맞으면 공격자에게 불 2' },
+  g_freeze: { color: 'green', icon: '❄', name: '빙결', line: '맞으면 공격자를 얼린다 (젖었으면 5턴)' },
+};

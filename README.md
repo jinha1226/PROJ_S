@@ -1,29 +1,31 @@
 # 횃불과 원소 (PROJ_S)
 
-모바일 세로 화면에서 한 손으로 하는 턴제 던전 크롤러. HTML 파일 하나(Three.js CDN)로 돈다.
+모바일 세로 화면에서 한 손으로 하는 턴제 던전 크롤러. 빌드 도구 없이 브라우저 ES 모듈 + Three.js(CDN)로 돈다.
 위험을 읽고, 원소·지형·소모품·영혼석 빌드로 무너뜨리고, 원정에서 돌아와 작은 마을을 키운다.
 
-- **플레이**: GitHub Pages — `https://jinha1226.github.io/PROJ_S/` (이전 단계: `versions/v1.html`, `versions/v2.html`)
-- **로컬**: `index.html`을 브라우저로 열면 된다(인터넷 필요 — Three.js를 CDN에서 받는다).
+- **플레이**: GitHub Pages — `https://jinha1226.github.io/PROJ_S/` (이전 단계: `versions/v1.html` ~ `v3.html`)
+- **로컬**: 저장소 루트에서 `python3 -m http.server 8000` → `http://localhost:8000` (모듈이라 `file://` 더블클릭으로는 안 열린다. 인터넷 필요 — Three.js를 CDN에서 받는다). `?seed=123`을 붙이면 같은 층이 나온다.
 - 진행은 브라우저 localStorage에 저장된다. 타이틀의 "처음부터"로 지운다.
 
 ## 구성
 
-| 파일 | 내용 |
+| 경로 | 내용 |
 | --- | --- |
-| `index.html` | 현재 판(3차까지): 전투·원소·지형·소모품 → 영혼석 빌드·공격 형태 → 구역 원정·보스·정착지(HEXACO NPC) |
-| `versions/v1.html`, `v2.html` | 1차·2차 결과 보존본 |
-| `docs/prompts/` | 단계별 제작 프롬프트(1차·2차·3차·사이·추가 장비) |
-| `docs/설계_아이템_장비.md` | 다음 단계(장비) 설계 |
+| `index.html` | 화면 틀·CSS·importmap. `js/main.js`를 불러온다 |
+| `js/` | 게임 코드. `data/`(표) · `core/`(규칙, 화면을 모름) · `render/`(3D, `render/diorama.js` = DioramaKit) · `ui/` · `town/` · `flow.js`(모드 전환) · `main.js`(연결) |
+| `versions/v1~v3.html` | 1차·2차·3차 한 파일 보존본 (v3 = 모듈로 나누기 전 원본) |
+| `docs/코드정리_가이드.md` | **코드 구조와 규칙 — 기능을 추가할 때 먼저 읽는다** (§9 기능별로 고칠 파일) |
+| `docs/prompts/`, `docs/설계_아이템_장비.md` | 단계별 제작 프롬프트, 다음 단계(장비) 설계 |
 | `tests/smoke.mjs` | 헤드리스 크롬 스모크 테스트 |
+| `tools/equivalence.mjs` | 리팩터링 전후 동작 비교 (`node tools/equivalence.mjs versions/v3.html index.html`) |
 
-`index.html` 안의 `<script id="diorama-kit">` 블록이 카메라·조명·셰이더·격자·이펙트이고, 게임 규칙과 분리되어 던전(`preset: 'dungeon'`)과 정착지(`'settlement'`)가 같이 쓴다.
+던전과 정착지는 같은 3D 체계(`render/diorama.js`)를 `preset: 'dungeon' | 'settlement'`로 바꿔 쓴다.
 
 ## 테스트 · 배포
 
 `main`에 push하면 GitHub Actions가
 
-1. 헤드리스 크롬으로 `tests/smoke.mjs`를 돌리고(로드·정착지·출발·무작위 200턴·영혼석 24종·보스 귀환·이전 버전 로드), 스크린샷을 아티팩트로 올린 뒤
+1. 헤드리스 크롬으로 `tests/smoke.mjs`를 돌리고(이전 버전 로드·정착지·출발·무작위 200턴·영혼석 24종·보스 귀환·콘솔 오류 0), 스크린샷을 아티팩트로 올린 뒤
 2. 통과하면 GitHub Pages로 배포한다.
 
 로컬에서:

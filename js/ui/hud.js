@@ -1,0 +1,94 @@
+import { closeDoor } from '../core/combat.js';
+import { G, I, emit, entAt } from '../core/state.js';
+import { BOSSES } from '../data/enemies.js';
+import { SK, SKILLS } from '../data/skills.js';
+import { COLORS, STONE } from '../data/stones.js';
+import { T_OPEN, ZONES } from '../data/terrain.js';
+import { FORMS, WPN } from '../data/weapons.js';
+import { Anim, act, descend } from '../flow.js';
+import { Sfx } from '../render/sfx.js';
+import { $, UI } from './ui.js';
+
+Object.assign(UI, {
+  swapWeapon() { if (Anim.active || G.over) return; this.instant(() => { G.wi ^= 1; emit('weapon', { id: G.wpn[G.wi] }); }); const W = WPN(G.wpn[G.wi]); this.toast(`${FORMS[W.form].icon} ${W.name} — ${FORMS[W.form].name} (${FORMS[W.form].injury}, 막타 → ${FORMS[W.form].part})`); Sfx.play('ui'); },
+  weaponInfo() {
+    const r = G.wpn.map((w, k) => { const W = WPN(w), F = FORMS[W.form], C = COLORS[F.color]; return `<div>${k === G.wi ? '▶' : '　'} ${F.icon} <b>${W.name}</b> ${F.name} ${W.dmg[0]}–${W.dmg[1]} · 부상 ${F.injury} · 막타 → ${F.part} <b style="color:${C.css}">●${C.name}</b></div>`; }).join('');
+    this.info(`<h3>무기 두 자루 <small style="color:#9aa2bd">탭 = 바꿔 들기</small></h3>${r}<div class="hint" style="margin-top:6px">💡 베기 = 출혈, 타격 = 골절(한 턴씩 쉰다·돌진 끊음), 찌르기 = 급소 표식 → 다음 찌르기 치명타</div>`);
+  },
+  renderWeapon() {
+    const W = WPN(G.wpn[G.wi]), F = FORMS[W.form], o = WPN(G.wpn[G.wi ^ 1]);
+    $('#btn-wpn').innerHTML = `${F.icon}<small>${W.name}·${F.name}</small><small style="font-size:9px;opacity:.7">⇄ ${o.name}</small>`;
+    $('#btn-wpn').style.boxShadow = `inset 0 -3px 0 ${COLORS[F.color].css}`;
+  },
+  renderSlots(d) {
+    this.slotsSnap = d;
+    [...$('#souls').children].forEach((b, k) => {
+      const q = d.slots[k], def = q.stone ? STONE[q.stone] : null;
+      b.classList.toggle('on', !!def); b.style.setProperty('--c', q.color ? COLORS[q.color].css : 'transparent');
+      b.querySelector('.si').textContent = def ? def.icon : '';
+      b.classList.toggle('cool', q.cd > 0); b.querySelector('.scd').textContent = q.cd > 0 ? q.cd : '';
+    });
+    $('#bagcount').textContent = (G.inv.reduce((a, b) => a + b.n, 0) + (d.bag.length ? ` · ◆${d.bag.length}` : '')) || '';
+  },
+  flashSlot(k) { const b = $('#souls').children[k]; if (!b) return; b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); },
+  slotInfo(k) {
+    const q = (this.slotsSnap || { slots: G.slots }).slots[k];
+    if (!q.stone) { this.info('<div>빈 칸 — 처음 끼우는 영혼석의 색으로 이 칸의 색이 정해진다.<br>몬스터를 <b>무기로</b> 쓰러뜨리면 막타 형태에 따라 영혼석이 떨어진다: ⚔베기→가죽🟢 · 🔨타격→뼈🟣 · 🗡찌르기→심장🔴</div>'); return; }
+    const d = STONE[q.stone], C = COLORS[d.color];
+    this.info(`<h3><span style="color:${C.css}">●</span> ${d.icon} ${d.name} <small style="color:#9aa2bd">${C.name} · ${C.trig}${d.color === 'purple' ? ' · 발동 후 2턴 쉰다' : d.color === 'green' ? ' · 한 턴에 한 번' : ''}</small></h3><div>${d.line}</div>`);
+  },
+  skillInfo(id) { const sk = SK[id]; this.info(`<h3>${sk.icon} ${sk.name} <small style="color:#9aa2bd">재사용 ${sk.cd}턴 · 사거리 ${sk.range}</small></h3><div>${sk.desc}</div>`); },
+  /* ---- HUD ---- */
+  hp(hp, max) {
+    const w = Math.max(0, hp / max) * 100;
+    $('#hpfill').style.width = w + '%'; $('#hpghost').style.width = w + '%'; $('#hptext').textContent = `${Math.max(0, hp)} / ${max}`;
+  },
+  pstatus(st) {
+    this.lastSt = st;
+    const L = [['wet', '💧', '젖음'], ['frozen', '🧊', '빙결'], ['burn', '🔥', '화상'], ['poison', '☠', '중독'], ['stun', '💫', '기절'], ['haste', '💨', '가속'], ['immune', '🛡', '해독']];
+    $('#pstatus').innerHTML = (this.shieldV > 0 ? `<span class="pill" style="border-color:#9fd8ff">🛡 보호막 ${this.shieldV}</span> ` : '') + L.filter(([k]) => st[k] > 0).map(([k, ic, nm]) => `<span class="pill">${ic} ${nm} ${st[k]}</span>`).join(' ');
+  },
+  hud(d) {
+    this.lastHud = d; this.shieldV = d.shield;
+    this.hp(d.hp, d.max); this.pstatus(d.st);
+    $('#turns').textContent = `턴 ${d.turn}`;
+    $('#floorname').textContent = `구역 ${G.zone}-${G.zf} ${G.theme.name}`;
+    $('#lootcount').textContent = G.loot ? `🎒 ${Object.values(G.loot.mats).reduce((a, b) => a + b, 0)}` : '';
+    this.bossBar(d.boss);
+    $('#bagcount').textContent = d.inv ? d.inv : '';
+    for (const sk of SKILLS) { const b = this.skEls[sk.id], cd = d.cd[sk.id]; b.classList.toggle('cooling', cd > 0); b.querySelector('.cd').textContent = cd > 0 ? cd : ''; }
+    const c = $('#btn-ctx');
+    if (d.stairs) { c.disabled = false; c.classList.add('live'); c.innerHTML = '⬇<small>내려가기</small>'; c.dataset.act = 'stairs'; }
+    else if (d.wep) { const W = WPN(d.wep); c.disabled = false; c.classList.add('live'); c.innerHTML = `${FORMS[W.form].icon}<small>${W.name} 줍기</small>`; c.dataset.act = 'wep'; }
+    else if (d.door) { c.disabled = false; c.classList.remove('live'); c.innerHTML = '🚪<small>문 닫기</small>'; c.dataset.act = 'door'; c.dataset.x = d.door[0]; c.dataset.y = d.door[1]; }
+    else { c.disabled = true; c.classList.remove('live'); c.innerHTML = '·<small>—</small>'; c.dataset.act = ''; }
+  },
+  ctxBtn() {
+    if (Anim.active || G.over) return;
+    const c = $('#btn-ctx');
+    if (c.dataset.act === 'stairs') descend();
+    else if (c.dataset.act === 'wep') this.weaponCard();
+    else if (c.dataset.act === 'door') { const x = +c.dataset.x, y = +c.dataset.y; if (G.tile[I(x, y)] === T_OPEN && !entAt(x, y)) act(() => closeDoor(x, y)); }
+  },
+  log(t, cls) {
+    const el = $('#log'); const div = document.createElement('div'); div.textContent = t; if (cls) div.className = cls;
+    el.appendChild(div); while (el.children.length > 3) el.firstChild.remove();
+    [...el.children].forEach((c, k, a) => c.classList.toggle('old', k < a.length - 1));
+    setTimeout(() => { div.style.opacity = '0'; setTimeout(() => div.remove(), 700); }, 6000);
+  },
+  banner(text, elem) {
+    const el = $('#banner'); const C = { bolt: '#ffe14a', fire: '#ff9a3a', poison: '#9dff6a', ice: '#9fe2ff', steam: '#f2f6ff', push: '#ffd08a', info: '#c8d4ff' };
+    el.textContent = text; el.style.color = C[elem] || '#fff'; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  },
+  hurt() { const el = $('#hurt'); el.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('on'))); },
+  floorCard() {
+    const F = G.theme, el = $('#floorcard'), B = G.bossFloor ? BOSSES[ZONES[G.zone - 1].boss] : null;
+    el.querySelector('.k').textContent = `구역 ${G.zone} · ${G.zf} / 3층${B ? ' · 보스' : ''}`; el.querySelector('.n').textContent = B ? `${F.name} — ${B.name}` : F.name; el.querySelector('.t').textContent = '💡 ' + (B ? `${B.desc} ${B.tip}` : F.tip);
+    el.classList.add('on'); clearTimeout(this._fc); this._fc = setTimeout(() => el.classList.remove('on'), 4200);
+    $('#log').innerHTML = '';
+  },
+  bossBar(b) {
+    const el = $('#bossbar'); if (!b) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden'); $('#bossname').textContent = '👑 ' + b.name; $('#bossfill').style.width = Math.max(0, b.hp / b.max * 100) + '%';
+  },
+});
