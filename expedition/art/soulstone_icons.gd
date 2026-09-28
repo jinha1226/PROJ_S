@@ -19,8 +19,18 @@ static var effect_cache: Dictionary = {}
 static func source(folder: String, key: String) -> Image:
 	var path := ROOT+folder+"/"+key+".png"
 	if not image_cache.has(path):
-		var loaded := Image.new()
-		if loaded.load(path) != OK: return null
+		# An exported build ships the imported texture, not the raw PNG, so
+		# prefer the resource and read the file directly only when it has
+		# not been imported (headless tests).
+		var loaded: Image = null
+		if ResourceLoader.exists(path):
+			var texture := load(path) as Texture2D
+			if texture != null: loaded = texture.get_image()
+		if loaded == null:
+			loaded = Image.new()
+			if loaded.load(path) != OK: return null
+		if loaded.is_compressed(): loaded.decompress()
+		loaded.convert(Image.FORMAT_RGBA8)
 		image_cache[path] = loaded
 	return image_cache[path]
 
