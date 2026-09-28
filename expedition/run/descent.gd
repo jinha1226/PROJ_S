@@ -55,7 +55,7 @@ static func descend(s) -> bool:
 	if stairs.x < 0 or not s.alive().any(func(a): return s.distance(a.pos,stairs) <= 1): return false
 	s.Codex.flush(s)
 	s.depth += 1; s.score += 20
-	s.effect_delays.clear(); s.finish_yielded.clear()
+	s.effect_delays.clear()
 	for actor in s.party: actor.reservation = {}; actor.hit_and_run = false
 	s.end_battle_orders(); s.reset_battle_stats()
 	s.floor_state.build(s)

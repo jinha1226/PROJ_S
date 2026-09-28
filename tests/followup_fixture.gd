@@ -16,7 +16,7 @@ static func reset(s = null) -> Dictionary:
 	s.party[0].pos = Vector2i(3,3); s.party[1].pos = Vector2i(3,4)
 	var foe: Dictionary = s.make_actor(100,"적",true)
 	foe.pos = Vector2i(4,3); foe.hp = 500; foe.max_hp = 500; foe.species_id = ""; foe.part_id = ""; foe.ac = 0; foe.sh = 0; foe.ev = 0; foe.res = {}; foe.role = "MELEE"; foe.alert = true; foe.ready_at = 200
-	s.enemies = [foe]; s.npcs = []; s.intents = []; s.effects = []; s.effect_delays = []; s.gear_bag = []; s.parts_bag = {}; s.essence_seen = {}; s.finish_yielded = {}; s.part_wishes = {}; s.aim_parts = true; s.unrands_seen = {}
+	s.enemies = [foe]; s.npcs = []; s.intents = []; s.effects = []; s.effect_delays = []; s.gear_bag = []; s.parts_bag = {}; s.essence_seen = {}; s.unrands_seen = {}
 	s.mistake_override = {0:false,1:false}
 	s.lookahead_enabled = true; s.party_command = "FOLLOW"; s.command_target = -1
 	s.floor_state.visible.clear()

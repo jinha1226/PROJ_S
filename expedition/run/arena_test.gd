@@ -34,8 +34,6 @@ static func arena_test(s, p_seed: int, party_size: int, arena: Dictionary, membe
 			actor.essences = {}; actor.rules = []
 			for stone in setup.get("auto_parts",[]):
 				if not str(stone).is_empty(): Essences.bind(actor,str(stone))
-			actor.stance = str(setup.get("stance","CHARGER"))
-			if party_size == 1 and actor.stance == "GUARDIAN": actor.stance = "CHARGER"
 			s.StatSheet.refresh_pools(s,actor)
 			continue
 		var applied := Builds.apply(s,actor,str(setup.get("build","")))

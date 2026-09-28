@@ -73,7 +73,7 @@ static func monster_detail(ui, list: VBoxContainer, entry: Dictionary) -> void:
 	text(ui,box,"%s · 구역 %d" % [str(entry.get("name","???")),int(entry.zone)],18)
 	if not entry.known: return
 	text(ui,box,str(entry.get("role","")))
-	text(ui,box,str(entry.get("active_text","")))
+	if not str(entry.get("active_text","")).is_empty(): text(ui,box,str(entry.active_text))
 	if not str(entry.body_line).is_empty(): text(ui,box,str(entry.body_line),13)
 	if not str(entry.effect_text).is_empty(): text(ui,box,"대표 효과 · "+str(entry.effect_text),13)
 	for part in entry.parts:

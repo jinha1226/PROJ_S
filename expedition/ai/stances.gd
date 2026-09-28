@@ -1,16 +1,14 @@
 extends RefCounted
-const BuildSense = preload("res://expedition/ai/build_sense.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
-## Stances: how a member uses whatever it has — charge in, keep range, or
-## guard someone. Personality sets an aptitude per stance; the player may pick
-## any stance, and an uncomfortable one costs mistakes rather than stress.
+## Legacy stance weights and candidate generation. The attack/wait combat
+## profile chooses actions through the shared Utility evaluator instead.
 const IDS := ["CHARGER","SKIRMISHER","GUARDIAN"]
 const NAMES := {"CHARGER":"돌격형","SKIRMISHER":"거리형","GUARDIAN":"호위형"}
 const SHORT := {"CHARGER":"돌","SKIRMISHER":"거","GUARDIAN":"호"}
 const Abilities = preload("res://expedition/items/abilities.gd")
-## Mistakes: the floor every member has, and the ceiling no forcing passes.
-const MISTAKE_BASE := 4
-const MISTAKE_CAP := 40
+## Only extreme stress can interrupt an otherwise chosen action.
+const MISTAKE_BASE := 0
+const MISTAKE_CAP := 30
 
 static func aptitude(profile) -> Dictionary:
 	return {"CHARGER":profile.value("X")-profile.value("E"),
@@ -67,36 +65,25 @@ static func suggested(actor: Dictionary) -> String:
 	if group in ["RANGED","MAGIC"]: return "SKIRMISHER"
 	return "CHARGER"
 
-## The stance the member actually fights in: always the one it was given.
-## Forcing an uncomfortable one no longer swaps it out — it shows up as
-## mistakes instead (§1).
+## The assigned stance in legacy combat.
 static func effective(actor: Dictionary) -> String:
 	return str(actor.get("stance",default_stance(actor.profile)))
 
-## How often this member gets a round wrong: carelessness, how far the stance
-## it was given sits from its own, and how badly it is holding up.
+## Only extreme stress permits hesitation; conscientiousness softens it.
 static func mistake_chance(actor: Dictionary) -> int:
-	var profile = actor.profile
-	var chance: int = MISTAKE_BASE+(1000-profile.value("C"))/60
-	var chosen: String = str(actor.get("stance",default_stance(profile)))
-	if not comfortable(profile,chosen):
-		var apt := aptitude(profile)
-		chance += mini(20,(int(apt[default_stance(profile)])-int(apt[chosen]))/40)
-	if int(actor.stress) >= 150: chance = chance*2
-	elif int(actor.stress) >= 100: chance = chance*3/2
-	return mini(MISTAKE_CAP,chance)
+	if int(actor.get("stress",0)) < 150: return 0
+	var chance: int = 5+(int(actor.stress)-150)/5
+	chance += (1000-actor.profile.value("C"))/100
+	return clampi(chance,0,MISTAKE_CAP)
 
-## What a mistake looks like: a forced member falls back to its own stance;
-## otherwise the timid hesitate and the bold overreach.
+## A failed action becomes a wait at execution.
 static func mistake_kind(actor: Dictionary) -> String:
-	var profile = actor.profile
-	if not comfortable(profile,str(actor.get("stance",default_stance(profile)))): return "REVERT"
-	return "HESITATE" if profile.value("E") >= profile.value("X") else "RECKLESS"
+	return "HESITATE"
 
 ## Deterministic roll: one answer per expedition, round and member.
 static func mistaken(s, actor: Dictionary) -> bool:
 	if s.mistake_override.has(actor.id): return bool(s.mistake_override[actor.id])
-	return s.Hexaco.sample(s.seed_value,s.depth*100000+(s.turn_serial if s.manual_mode else s.round_number)*100+actor.id,"mistake",100) < mistake_chance(actor)
+	return s.Hexaco.sample(s.seed_value,s.depth*100000+int(s.action_serial)*100+actor.id,"mistake",100) < mistake_chance(actor)
 
 ## The party's shared target: the attack order, else whoever a charger is on,
 ## else the nearest visible foe.
@@ -255,7 +242,6 @@ static func candidates(s, actor: Dictionary, stance: String, knobs: Dictionary) 
 			var p := protectee(s,actor)
 			if p.is_empty(): charger(s,actor,target,knobs,options)
 			else: guardian(s,actor,p,target,knobs,options)
-	BuildSense.candidates(s,actor,options)
 	return options
 
 ## 돌격형: close on the shared target and stay on it.

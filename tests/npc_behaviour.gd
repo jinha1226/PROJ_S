@@ -38,7 +38,7 @@ func manual_field(stance: String, weapon: String, offset: Vector2i, gap: Vector2
 	var c := Fixture.arena(s,12)
 	var npc: Dictionary = s.npcs[0]
 	s.npcs = [npc]; npc.pos = c+offset; npc.awake = true
-	npc.hp = 200; npc.max_hp = 200; npc.stress = 0; npc.ap = 1
+	npc.hp = 200; npc.max_hp = 200; npc.stress = 0
 	npc.stance = stance; npc.gear.weapon = {"type":weapon}
 	npc.knobs = {"posture":0,"retreat_hp":0,"cohesion":0}
 	npc.equipped_abilities = []; npc.essences = {}; npc.rules = []; npc.hit_and_run = false
@@ -71,7 +71,7 @@ func manual_combat() -> void:
 		NpcAI.turn(s,npc)
 		check(npc.pos == was and foe.hp < hp and not npc.hit_and_run,"bow fires from range and avoids melee hit-and-run mode")
 		# The weapon does not grant vision through an opaque wall.
-		npc.ap = 1; s.tile(npc.pos+Vector2i.LEFT).terrain = "wall"
+		s.tile(npc.pos+Vector2i.LEFT).terrain = "wall"
 		check(s.attack_preview(foe.pos,npc.id).is_empty() and not s.act_as(npc,"ATTACK",foe.pos,false),"walls block ranged preview and execution")
 	var spear := manual_field("CHARGER","spear",Vector2i(3,0),Vector2i(2,0))
 	check(spear.s.Tactics.choose(spear.s,spear.npc).kind == "ATTACK","spear also uses actual two-tile reach")

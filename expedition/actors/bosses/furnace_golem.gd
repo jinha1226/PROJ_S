@@ -72,7 +72,7 @@ static func on_damaged(s, boss: Dictionary, form: String) -> void:
 static func lever_ready(s, actor: Dictionary, point: Vector2i) -> bool:
 	var feature: Dictionary = s.floor_state.features.get(point,{})
 	if str(feature.get("kind","")) != "lever": return false
-	if int(actor.hp) <= 0 or int(actor.ap) <= 0 or Common.reach(actor.pos,point) != 1: return false
+	if int(actor.hp) <= 0 or not s.manual_mode and int(actor.ap) <= 0 or Common.reach(actor.pos,point) != 1: return false
 	return int(s.time) >= int(feature.get("ready_at",0))
 
 ## Every cell of the lever's channel runs wet; the lever rests four rounds.
@@ -86,6 +86,6 @@ static func pull_lever(s, actor: Dictionary, point: Vector2i) -> bool:
 		if str(row.get("kind","")) == "channel" and int(row.get("channel",0)) == channel:
 			s.tile(cell).wet = 100; flooded += 1
 	feature.ready_at = int(s.time)+LEVER_TICKS
-	actor.ap -= 1
+	if not s.manual_mode: actor.ap -= 1
 	s.message("%s · 수로 레버 · 물이 %d칸을 적십니다" % [actor.name,flooded])
 	return true

@@ -30,5 +30,6 @@ static func end_camp(s) -> bool:
 	if not s.pending_stone_drops.is_empty(): return false
 	if s.phase != "CAMP": return false
 	s.phase = "EXPLORE"
-	for actor in s.alive(): actor.ap = s.action_budget(actor)
+	if not s.manual_mode:
+		for actor in s.alive(): actor.ap = s.action_budget(actor)
 	s.floor_state.observe(s); return true

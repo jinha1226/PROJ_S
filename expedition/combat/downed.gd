@@ -17,7 +17,7 @@ static func enter(s, actor: Dictionary, source: int) -> void:
 	actor.downed = true
 	actor.bleedout_turns = TURNS
 	actor.downed_source = source
-	actor.ap = 0
+	if not s.manual_mode: actor.ap = 0
 	actor.reservation = {}
 	s.remember_important(actor,"SELF_HARM",int(actor.id)+1,source+1,850)
 	for ally in s.alive():
@@ -26,7 +26,7 @@ static func enter(s, actor: Dictionary, source: int) -> void:
 
 static func can_rescue(s, rescuer: Dictionary, actor: Dictionary) -> bool:
 	return s.on_floor() and rescuer in s.party and actor in s.party and rescuer != actor \
-		and int(rescuer.hp) > 0 and int(rescuer.ap) > 0 and is_downed(actor) \
+		and int(rescuer.hp) > 0 and (s.manual_mode or int(rescuer.ap) > 0) and is_downed(actor) \
 		and not s.status_blocks(rescuer,"RESCUE") and (s.Free.reaches(s,rescuer,actor,1) if s.free_movement else s.melee_reach(rescuer.pos,actor.pos))
 
 static func rescue(s, rescuer: Dictionary, actor: Dictionary) -> bool:
@@ -58,7 +58,7 @@ static func rescue(s, rescuer: Dictionary, actor: Dictionary) -> bool:
 	actor.statuses.erase("burn")
 	actor.statuses.erase("poison")
 	actor.ready_at = maxi(int(actor.get("ready_at",0)),int(s.time)+100)
-	actor.ap = 0
+	if not s.manual_mode: actor.ap = 0
 	if bool(actor.get("npc",false)): actor.state = "PARTY"
 	Body.heal(actor)
 	s.StoneEffects.Vfx.emit(s,"revive",actor.pos,rescuer.pos)

@@ -13,7 +13,7 @@ static func error(s, point: Vector2i, option: String) -> String:
 	if def.is_empty() or not s.floor_state.visible.has(point): return "시야 밖"
 	if feature.used: return "조사 완료"
 	var actor: Dictionary = s.party[s.selected]
-	if actor.hp <= 0 or actor.ap <= 0: return "행동 불가"
+	if actor.hp <= 0 or not s.manual_mode and actor.ap <= 0: return "행동 불가"
 	if not s.party_enemies().is_empty(): return "주변에 적 있음"
 	if actor.pos != point and not s.melee_reach(actor.pos,point): return "거리 초과"
 	if not def.options.has(option): return "선택 불가"
@@ -58,8 +58,9 @@ static func resolve(s, point: Vector2i, option: String) -> bool:
 		s.grant_gear(Randart.make(s,key,id.trim_prefix("ring:")))
 	if got_food > 0: s.message("식량 %d 획득" % got_food)
 	s.score += 5
-	actor.ap -= 1; s.check_battle_end()
+	if not s.manual_mode: actor.ap -= 1
+	s.check_battle_end()
 	if s.manual_mode:
-		actor.ap = 1; s.Scheduler.advance(s,100)
+		s.Scheduler.advance(s,100)
 	else: s.finish_player_action()
 	return true

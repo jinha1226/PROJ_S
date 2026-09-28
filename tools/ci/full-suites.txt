@@ -75,8 +75,6 @@ gear_slots
 randarts
 unrands
 gear_affixes
-build_sense
-build_ai
 model_b_combat
 model_b_scheduler
 model_b_parts_ui

@@ -38,7 +38,8 @@ static func summon(s, caster: Dictionary, cell: Vector2i, kind: String = "hound"
 	pet.hp = int(row.hp)*int(buffs.get("summon_hp",100))/100
 	pet.max_hp = pet.hp
 	pet.power = int(row.power); pet.speed = int(row.speed); pet.stress = 0
-	pet.pos = cell; pet.ap = 1; pet.ready_at = s.time+100
+	pet.pos = cell; pet.ready_at = s.time+100
+	if not s.manual_mode: pet.ap = 1
 	pet.enemy = bool(caster.get("enemy",false))
 	pet.summoner = int(caster.get("id",-1))
 	if s.MobileEffects.active(caster):

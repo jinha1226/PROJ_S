@@ -101,7 +101,8 @@ static func apply(s, theme: Dictionary, p_layout: Dictionary) -> void:
 	if not state.element.is_empty(): s.message("이 층의 기운 · "+str(Abilities.ELEMENT_NAMES[state.element]))
 	for p in layout.features: state.features[p] = layout.features[p].duplicate(true)
 	for i in range(s.party.size()):
-		s.party[i].pos = layout.entry+Vector2i(0,i); s.party[i].ap = 1
+		s.party[i].pos = layout.entry+Vector2i(0,i)
+		if not s.manual_mode and not s.MobileEffects.active(s.party[i]): s.party[i].ap = 1
 		s.party[i].reservation = {}
 	if theme.get("boss",false): BossAI.spawn(s,layout,int(theme.depth))
 	s.phase = "BATTLE" if s.simulation_arena else "EXPLORE"; s.round_number = 1
@@ -236,7 +237,7 @@ func safe(s) -> bool:
 	return party_threats(s).is_empty()
 
 func interact(s, p: Vector2i) -> bool:
-	if s.phase != "EXPLORE" or s.party[s.selected].hp <= 0 or s.party[s.selected].ap <= 0: return false
+	if s.phase != "EXPLORE" or s.party[s.selected].hp <= 0 or not s.manual_mode and s.party[s.selected].ap <= 0: return false
 	if not visible.has(p) or not features.has(p) or s.distance(s.party[s.selected].pos,p) > 1: return false
 	var feature: Dictionary = features[p]
 	if feature.kind in ["curio","stairs","lever","channel","binding","entry","camp","item"]: return false # Items are picked up by stepping onto them.

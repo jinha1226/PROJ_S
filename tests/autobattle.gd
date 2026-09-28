@@ -212,13 +212,13 @@ func knobs() -> void:
 	check(hero.stress == stress and hero.memory.records.size() == memories,"a conflict costs no stress and leaves no memory")
 	check(hero.conflicted,"battle start still notes who fights against their orders")
 	check(Knobs.effective(hero).posture == -100,"the forced knob is the one the member fights with")
-	# Anxiety no longer swaps the knobs out: it multiplies the mistake chance.
+	# Execution failure begins only under extreme stress.
 	var calm: int = Stances.mistake_chance(hero)
 	hero.stress = 120; s.stress(hero,0)
 	check(hero.condition == "불안" and Knobs.effective(hero).posture == -100,"an anxious member keeps its orders")
-	check(Stances.mistake_chance(hero) == mini(40,calm*3/2),"anxious: half again as many mistakes")
+	check(calm == 0 and Stances.mistake_chance(hero) == 0,"ordinary stress does not fail an action")
 	hero.stress = 160; s.stress(hero,0)
-	check(Stances.mistake_chance(hero) == mini(40,calm*2),"collapsed: twice as many")
+	check(Stances.mistake_chance(hero) > 0,"extreme stress can fail an action")
 	hero.stress = 0; s.stress(hero,0); hero.knobs.posture = 60
 	check(not Knobs.conflicted(hero) and Knobs.effective(hero).posture == 60,"inside the band the knob is used as set")
 	# Tactics: fire underfoot is left, cohesion keeps contact, the retreat line wins.

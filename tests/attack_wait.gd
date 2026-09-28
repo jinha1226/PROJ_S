@@ -33,7 +33,6 @@ func stone(effect: String) -> String:
 func with_effects(ids: Array, size: int = 1) -> Dictionary:
 	return field(ids.map(func(id): return stone(str(id))),size)
 func wait(d: Dictionary, intentional: bool = true) -> bool:
-	d.hero.ap = 1
 	return d.s.act_as(d.hero,"WAIT",d.hero.pos,false,intentional)
 func hit(d: Dictionary) -> Dictionary:
 	d.s.Reactions.begin_action(d.s)
@@ -52,7 +51,7 @@ func run() -> void:
 		reachable[Mobile.effect_id(str(id))] = true
 		for element in Session.Essences.ELEMENTS: reachable[Mobile.effect_id(str(id)+"@"+str(element))] = true
 	for id in Mobile.data.effects: check(reachable.has(id),"reachable effect "+str(id))
-	reward_stats(); mobile_items(); simple_rules(); seeding(); waiting(); defense(); ice(); electricity(); support(); pets(); physical(); compatibility(); pure_prediction(); advanced_contracts(); operations()
+	reward_stats(); mobile_items(); simple_rules(); seeding(); waiting(); manual_execution(); defense(); ice(); electricity(); support(); pets(); physical(); compatibility(); pure_prediction(); advanced_contracts(); operations()
 	Forms.force = -1; Session.StoneEffects.force = -1
 	print("Attack/wait: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
@@ -92,7 +91,7 @@ func mobile_items() -> void:
 	var st := Mobile.state(d.hero)
 	st.cooldowns = {"summon_wait":int(d.s.time)+600}; st.uses = {"heal_defense":2}
 	st.foes = [d.foe.id]; st.encounters = [d.foe.id]
-	d.s.bag.recharging = 2; d.hero.ap = 1
+	d.s.bag.recharging = 2
 	check(d.s.use_item("recharging"),"recharging scroll releases automatic cooldowns")
 	check(st.cooldowns.is_empty() and st.uses.get("heal_defense",0) == 2 and d.hero.mp == before_mp,"recharging preserves encounter use limits and consumes no MP")
 	var before_time: int = d.s.time
@@ -141,15 +140,24 @@ func seeding() -> void:
 	check(d.foe.hp == 0 and not d.foe.statuses.has("burn"),"fatal basic damage cannot seed corpse")
 func waiting() -> void:
 	var d := with_effects(["fire_wait","poison_wait"]); var n := near(d,901,Vector2i(3,2)); var far := near(d,902,Vector2i(5,0))
+	var before_actions: int = d.s.action_serial
 	wait(d)
 	check(d.foe.statuses.has("burn") and n.statuses.has("poison") and not far.statuses.has("poison"),"deliberate wait applies all valid area targets")
-	check(d.hero.ap == 0,"automatic effects share one action")
+	check(d.s.action_serial == before_actions+1,"automatic effects share one action")
 	d = with_effects(["fire_wait"]); wait(d,false)
 	check(not d.foe.statuses.has("burn"),"forced fallback wait has no offensive proc")
 	d = with_effects(["fire_wait"]); d.s.tile(d.centre+Vector2i(2,0)).terrain = "wall"; n = near(d,901,Vector2i(3,0)); wait(d)
 	check(not n.statuses.has("burn"),"visible enemy behind wall is not a legal area target")
-	var serial: int = d.s.action_serial; var preps: Dictionary = d.hero.aw_state.duplicate(true); d.hero.ap = 1
+	var serial: int = d.s.action_serial; var preps: Dictionary = d.hero.aw_state.duplicate(true)
 	check(not d.s.act_as(d.hero,"ATTACK",d.centre+Vector2i(9,0),false) and serial == d.s.action_serial and preps == d.hero.aw_state,"rejected action preserves serial and preparation")
+
+func manual_execution() -> void:
+	var d := with_effects(["fire_wait"])
+	var before_time: int = d.s.time
+	check(not d.hero.has("ap") and d.s.submit("WAIT",d.hero.pos) and d.s.time == before_time+100 and not d.hero.has("ap"),"manual wait advances time without an AP field")
+	check(d.foe.statuses.has("burn"),"automatic wait effect still fires without AP")
+	d.hero.prepared = ["blink"]
+	check(not d.s.submit("CAST",d.hero.pos,"blink") and not d.s.submit("PUSH",d.foe.pos),"automatic profile has no manually selected spells or parts")
 func defense() -> void:
 	var d := with_effects(["defense_defense","defense_threat"])
 	wait(d); wait(d); wait(d)
@@ -260,7 +268,7 @@ func advanced_contracts() -> void:
 	var d := with_effects(["fire_wait"])
 	var npc: Dictionary = d.s.make_actor(401,"시야 밖 동료",false)
 	npc.level = 10; npc.npc = true; npc.awake = true; npc.pos = d.centre+Vector2i(9,0)
-	npc.equipped_abilities = ["","","","","",""]; npc.essences = {}; npc.ap = 1
+	npc.equipped_abilities = ["","","","","",""]; npc.essences = {}
 	d.s.Essences.bind(npc,stone("fire_wait")); d.s.npcs.append(npc)
 	var foe := near(d,902,Vector2i(10,0))
 	d.s.floor_state.visible.erase(foe.pos)
@@ -286,7 +294,7 @@ func advanced_contracts() -> void:
 	d = with_effects(["bless_defense"],2); wait(d)
 	check(Mobile.incoming(d.s,d.s.party[1],d.foe,100,"HIT") == 80,"gifted ally guard validates its original giver")
 	d = with_effects(["defense_defense","defense_threat","heal_chain"]); wait(d)
-	d.s.bag.healing = 2; d.hero.ap = 1
+	d.s.bag.healing = 2
 	var before_serial: int = d.s.action_serial; var old_state: Dictionary = d.hero.aw_state.duplicate(true)
 	check(not d.s.use_item("healing") and before_serial == d.s.action_serial and d.hero.aw_state == old_state,"rejected consumable preserves preparation and root")
 	d.hero.hp = 50
@@ -315,7 +323,7 @@ func advanced_contracts() -> void:
 	d = with_effects(["summon_wait","summon_focus"]); wait(d)
 	pet = d.s.Spells.Summons.summons_of(d.s,d.hero)[0]
 	var second := near(d,903,Vector2i(2,1)); second.awake = true
-	pet.pos = d.centre+Vector2i(1,1); pet.aw_focus = int(second.id); pet.ap = 1
+	pet.pos = d.centre+Vector2i(1,1); pet.aw_focus = int(second.id)
 	d.s.floor_state.visible.erase(second.pos)
 	var hp: int = second.hp; d.s.NpcAI.pet_turn(d.s,pet)
 	check(second.hp < hp and int(d.foe.hp) == 200,"pet focus uses its own sight for its next normal attack, without an immediate free hit")

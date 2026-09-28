@@ -158,7 +158,7 @@ static func monster_entry(data: Dictionary, key: String) -> Dictionary:
 	var base := species_stone(key)
 	result.role = str(Essences.ROLES.get(Essences.role(base),""))
 	result.effect_text = str(effects.get(Essences.row(base).get("effect",""),{}).get("text","")) if not base.is_empty() else ""
-	result.active_text = str(Essences.Abilities.definition(base).get("description","")) if not base.is_empty() else ""
+	result.active_text = ""
 	for i in range(Forms.PARTS.size()):
 		var id: String = "%s/%s" % [base,Forms.PARTS[i]]
 		if base.is_empty() or not Essences.has(id): continue

@@ -119,7 +119,8 @@ static func place(s) -> void:
 		if situ == "FIGHTING": spawn_pack(s,n,room)
 		n.hungry = situ != "RESTING" and Hexaco.sample(s.seed_value,lane,"npc_hungry",2) == 0
 		# One action in hand, like a floor monster waking up.
-		n.state = "MET"; n.floor_seen = d; n.awake = false; n.mode = ""; n.ap = 1
+		n.state = "MET"; n.floor_seen = d; n.awake = false; n.mode = ""
+		if not s.manual_mode and not s.MobileEffects.active(n): n.ap = 1
 		used[n.id] = true
 		s.npcs.append(n)
 

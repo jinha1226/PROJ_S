@@ -1,5 +1,4 @@
 extends RefCounted
-const BuildSense = preload("res://expedition/ai/build_sense.gd")
 ## Utility selector: every candidate action is scored as Σ weight × curve(input)
 ## over a closed catalogue of considerations; the stance picks the weights,
 ## personality knobs shift them, and the top three terms explain the choice.
@@ -93,7 +92,8 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, we
 	var la_ally := 0.0
 	var la_enemy: float = damage/40.0
 	var la_saved := 0.0
-	var wanted: bool = weights.is_empty() or LOOKAHEAD_IDS.any(func(id): return weights.has(id))
+	var mobile_value := 0
+	var wanted: bool = weights.is_empty() or LOOKAHEAD_IDS.any(func(id): return weights.has(id)) or s.MobileEffects.active(actor)
 	if bool(s.lookahead_enabled) and wanted:
 		var stand: Dictionary = ctx.get("stand",{"self":0,"allies":0,"enemies":0})
 		var after: Dictionary = Lookahead.predict(s,actor,action,ctx.get("before_lethal",{}))
@@ -101,6 +101,7 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, we
 		la_ally = float(int(stand.allies)-int(after.allies))/maxf(1.0,float(ctx.get("ally_hp",0)))
 		la_enemy = minf(1.0,float(after.enemies)/40.0)
 		la_saved = minf(1.0,float(after.lethal_saved)/3.0)
+		mobile_value = int(after.get("mobile_value",0))
 	var result := {
 		"target_adjacent": 1.0 if not target.is_empty() and s.melee_reach(dest,target.pos) else 0.0,
 		"any_foe_adjacent": 1.0 if s.combat_enemies().any(func(e): return s.melee_reach(dest,e.pos)) else 0.0,
@@ -114,7 +115,8 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, we
 		"protectee_near": 0.0, "protectee_gap": 0.0, "protectee_lethal": 0.0,
 		"rule_ready": 0.0, "contact_penalty": 0.0,
 		"same_as_last": 1.0 if kind == ctx.last_kind and (kind != "MOVE" or action.get("dir",Vector2i.ZERO) == ctx.last_dir) else 0.0,
-		"la_self_hit": la_self, "la_ally_hit": la_ally, "la_enemy_hit": la_enemy, "la_lethal_saved": la_saved}
+		"la_self_hit": la_self, "la_ally_hit": la_ally, "la_enemy_hit": la_enemy, "la_lethal_saved": la_saved,
+		"mobile_value": mobile_value}
 	if int(ctx.get("ranged_reach",1)) > 1 and not target.is_empty():
 		# The band is measured the way the skirmisher's own generator builds it:
 		# `s.distance`, with the weapon or part's actual range —
@@ -138,12 +140,6 @@ static func inputs(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, we
 		result.target_adjacent = 1.0 if not target.is_empty() and s.Free.sees(s,world,s.Free.position(target),1) else 0.0
 		result.any_foe_adjacent = 1.0 if s.combat_enemies().any(func(e): return s.Free.sees(s,world,s.Free.position(e),1)) else 0.0
 		if not p.is_empty(): result.protectee_near = 1.0 if world.distance_to(s.Free.position(p)) <= 1.1 else 0.0
-	var build_inputs: Dictionary = BuildSense.inputs(s,actor,action)
-	# Build preferences cannot reward a configured part outside its rule condition.
-	if Abilities.has(kind) and actor.rules.any(func(r): return Abilities.active_id(str(r.get("skill",""))) == Abilities.active_id(kind)) and float(result.rule_ready) <= 0.0:
-		for key in build_inputs: build_inputs[key] = 0.0
-	result.merge(build_inputs,true)
-	if str(action.get("tag","")) == "WAIT:yield": result.finish_form = 1.0
 	return result
 
 ## 설계 §2 `rule_ready`, Task 2 판정: 등급형이다. The rule list used to be a
@@ -206,7 +202,80 @@ static func score(s, actor: Dictionary, action: Dictionary, ctx: Dictionary, sta
 		total += contrib
 		terms.append({"id":cid,"input":inp.get(cid,0.0),"weight":weight,"contrib":int(round(contrib))})
 	terms.sort_custom(func(a,b): return a.contrib > b.contrib if a.contrib != b.contrib else a.id < b.id)
-	var build_bonus := 0.0
-	for term in terms:
-		if str(term.id) in BuildSense.IDS: build_bonus += float(term.contrib)
-	return {"score":int(round(total)),"base_score":int(round(total-build_bonus)),"explain":terms.slice(0,3),"build_terms":terms.filter(func(t): return str(t.id) in BuildSense.IDS)}
+	return {"score":int(round(total)),"base_score":int(round(total)),"explain":terms.slice(0,3),"build_terms":[],
+		"mobile_score":mini(45,int(inp.get("mobile_value",0)))}
+
+## The live combat evaluator is side-relative: the same one-round terms rank
+## party members, hostile NPCs and monsters. The callers own legal actions and
+## species timing; neither personality nor a stance changes the candidate set.
+static func combat_risk(s, actor: Dictionary, cell: Vector2i, foes: Array, defeated: int = -1) -> int:
+	var total := maxi(0,int(s.tile(cell).get("fire",0)))
+	for foe in foes:
+		if int(foe.id) == defeated or int(foe.hp) <= 0 or s.status_blocks(foe,"ATTACK"): continue
+		var reach: int = int(s.CombatStats.stats(s,foe).range)
+		if bool(foe.get("enemy",false)):
+			var role: String = str(foe.get("role","MELEE"))
+			reach = int(s.Floor.MonsterAI.ROLES.get(role,s.Floor.MonsterAI.ROLES.MELEE).range)
+		if not s.attack_reach(foe,cell,reach): continue
+		total += maxi(1,int(s.CombatStats.stats(s,foe).damage))
+	for intent in s.intents:
+		if intent.cell != cell: continue
+		var source: Dictionary = s.actor_by_id(int(intent.id))
+		if not source.is_empty() and s.side_of(source) != s.side_of(actor): total += int(intent.damage)
+	return total
+
+static func combat_score(s, actor: Dictionary, action: Dictionary, foes: Array) -> Dictionary:
+	var kind: String = str(action.kind)
+	var cell: Vector2i = action.get("cell",actor.pos)
+	var target: Dictionary = s.at(cell) if kind == "ATTACK" else {}
+	var damage: int = maxi(0,int(action.get("damage",0)))
+	var killed: bool = not target.is_empty() and damage >= int(target.hp)
+	var current_risk: int = combat_risk(s,actor,actor.pos,foes)
+	var next_risk: int = combat_risk(s,actor,cell if kind == "MOVE" else actor.pos,foes,int(target.id) if killed else -1)
+	var nearest_before := 99
+	var nearest_after := 99
+	for foe in foes:
+		nearest_before = mini(nearest_before,s.distance(actor.pos,foe.pos))
+		nearest_after = mini(nearest_after,s.distance(cell if kind == "MOVE" else actor.pos,foe.pos))
+	var value := float(current_risk-next_risk)*(0.3 if bool(actor.get("enemy",false)) else 1.5)
+	var terms: Array = []
+	if kind == "ATTACK":
+		value += float(mini(damage,int(target.hp)) if not target.is_empty() else damage)*3.0
+		if killed: value += 20.0
+		terms.append({"id":"damage","contrib":roundi(value)})
+	elif kind == "MOVE":
+		var closing: int = nearest_before-nearest_after
+		var reach: int = int(s.CombatStats.stats(s,actor).range)
+		if bool(actor.get("enemy",false)):
+			var role: String = str(actor.get("role","MELEE"))
+			reach = int(s.Floor.MonsterAI.ROLES.get(role,s.Floor.MonsterAI.ROLES.MELEE).range)
+		value += float(closing)*14.0 if nearest_before > reach else float(closing)*2.0
+		if reach > 1 and nearest_after <= 1: value -= 10.0
+		terms.append({"id":"position","contrib":roundi(value)})
+	else:
+		terms.append({"id":"wait","contrib":0})
+	# Automatic stone triggers belong to ATTACK and WAIT. MOVE already gets
+	# its destination and exposure score above; predicting it adds no trigger.
+	if kind != "MOVE" and s.MobileEffects.active(actor):
+		var predicted: Dictionary = Lookahead.predict(s,actor,action)
+		value += float(predicted.get("mobile_value",0))
+		if kind == "ATTACK": value += float(predicted.get("enemies",0)-damage)*2.0
+		if kind == "WAIT": value += float(-int(predicted.get("self",0))-int(predicted.get("allies",0)))*0.5
+		terms.append({"id":"soulstone_auto","contrib":int(predicted.get("mobile_value",0))})
+	# Personality is a small preference, never a separate stance or failure roll.
+	if not bool(actor.get("enemy",false)):
+		var knobs: Dictionary = actor.get("knobs",{})
+		if kind == "ATTACK": value += float(knobs.get("posture",0))*0.05
+		elif kind == "MOVE": value -= float(knobs.get("posture",0))*float(maxi(0,next_risk-current_risk))*0.01
+	return {"score":roundi(value),"explain":terms}
+
+static func combat_pick(s, actor: Dictionary, options: Array, visible_foes: Array = []) -> Dictionary:
+	if options.is_empty(): return {"kind":"WAIT","cell":actor.pos,"reason":"대기"}
+	var foes: Array = visible_foes if not visible_foes.is_empty() else s.hostiles_of(actor)
+	for option in options:
+		var result: Dictionary = combat_score(s,actor,option,foes)
+		option.score = int(result.score)
+		option.explain = result.explain
+	options.sort_custom(func(a,b):
+		return int(a.score) > int(b.score) if int(a.score) != int(b.score) else str(a.kind)+str(a.cell) < str(b.kind)+str(b.cell))
+	return options[0]

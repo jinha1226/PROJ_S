@@ -75,67 +75,38 @@ func data() -> void:
 	hero.stress = 0; hero.stance = "CHARGER"
 	check(not Knobs.conflicted(hero),"comfortable stance: no conflict")
 
-## §1: forcing a stance costs no stress — it raises a deterministic mistake
-## chance, and a mistake round is a revert, a hesitation or an overreach.
+## An action is chosen first; extreme stress may make its execution fail.
 func mistakes() -> void:
 	var s = Session.new(731,true,true,true,3)
 	var hero: Dictionary = s.party[0]
-	# Base chance from conscientiousness; forcing adds up to 20; stress multiplies; cap 40.
 	hero.profile = profile({"C":1000,"X":900,"E":100}); hero.stance = "CHARGER"; hero.stress = 0
-	check(Stances.mistake_chance(hero) == 4,"C 1000 charger at ease: 4%")
+	check(Stances.mistake_chance(hero) == 0,"calm action never fails")
 	hero.profile = profile({"C":0,"X":900,"E":100})
-	check(Stances.mistake_chance(hero) == 20,"C 0: 20%")
-	hero.stance = "GUARDIAN"   # aptitude 800 vs 0 -> gap 800 -> +20
-	check(Stances.mistake_chance(hero) == 40 and Stances.mistake_kind(hero) == "REVERT","forced far outside: +20, reverts to its own stance")
-	hero.stance = "CHARGER"; hero.stress = 120
-	check(Stances.mistake_chance(hero) == 30,"anxious: x1.5")
+	check(Stances.mistake_chance(hero) == 0,"personality alone never fails an action")
+	hero.stance = "GUARDIAN"; hero.stress = 120
+	check(Stances.mistake_chance(hero) == 0,"chosen stance does not create failure")
 	hero.stress = 160
-	check(Stances.mistake_chance(hero) == 40,"collapsed: x2 capped at 40")
+	check(Stances.mistake_chance(hero) == 17 and Stances.mistake_kind(hero) == "HESITATE","extreme stress has a capped failure chance")
+	check(CharacterUI.cause(hero) == "극심한 스트레스","the UI names the failure cause")
 	hero.stress = 0
-	check(Stances.mistake_kind(hero) == "RECKLESS","bold at ease: reckless mistakes")
-	hero.profile = profile({"C":500,"X":100,"E":900}); hero.stance = "SKIRMISHER"
-	check(Stances.mistake_kind(hero) == "HESITATE","timid at ease: hesitation")
-	# The named cause is the largest of the three terms, not the first one that applies.
-	hero.profile = profile({"C":480,"X":900,"E":100}); hero.stance = "GUARDIAN"; hero.stress = 0
-	check(CharacterUI.cause(hero) == "태세 강제","careless 8 against a forcing 20: the stance is the reason")
-	hero.stance = "CHARGER"
-	check(CharacterUI.cause(hero) == "성실 낮음","nothing forced: carelessness is all that is left")
-	hero.profile = profile({"C":1000,"X":900,"E":100}); hero.stress = 160
-	check(CharacterUI.cause(hero) == "불안","a collapsed member at ease: the stress is the reason")
-	hero.stress = 0
-	check(CharacterUI.cause(hero) == "안정","conscientious, comfortable and calm: no reason at all")
-	# Deterministic per seed/round/member.
+	check(CharacterUI.cause(hero) == "안정","calm state has no failure cause")
+	# Deterministic per seed/action/member.
 	s.depart()
 	var a := Stances.mistaken(s,hero); var b := Stances.mistaken(s,hero)
-	check(a == b,"same round, same answer")
-	# Behaviour: a hesitating member WAITs on a mistake round; retreat line still wins.
+	check(a == b,"same action, same answer")
 	var f := field(["SKIRMISHER","CHARGER","CHARGER"]); var t = f.s; var h: Dictionary = t.party[0]
-	h.profile = profile({"C":0,"X":100,"E":900}); h.knobs = Knobs.defaults(h.profile); h.knobs.retreat_hp = 0
+	h.profile = profile({"C":0,"X":100,"E":900}); h.knobs = Knobs.defaults(h.profile); h.knobs.retreat_hp = 0; h.stress = 160
 	t.mistake_override[h.id] = true   # test hook: force the roll
-	check(t.Tactics.choose(t,h).kind == "WAIT","hesitation is a WAIT")
-	h.hp = 5; h.knobs.retreat_hp = 50
-	check(t.Tactics.choose(t,h).kind == "MOVE","below the retreat line the mistake never overrides retreating")
-	h.hp = h.max_hp
-	# Bold but comfortable as a skirmisher (apt 300 against a best of 400, band 400):
-	# a plain skirmisher would step off the telegraph, this one charges into it.
-	h.profile = profile({"C":1000,"X":700,"E":300}); h.knobs = Knobs.defaults(h.profile); h.knobs.retreat_hp = 0
-	check(Stances.mistake_kind(h) == "RECKLESS","comfortable and bold: overreaches")
-	f.foes[0].pos = h.pos+Vector2i(1,0); t.intents = [{"id":f.foes[0].id,"cell":h.pos,"damage":9,"kind":""}]; f.foes[0].charging = true
-	t.floor_state.observe(t)
-	var pick: Dictionary = t.Tactics.choose(t,h)
-	check(pick.kind == "ATTACK" and str(pick.reason).begins_with("무모함"),"reckless: attacks from the telegraphed cell even as a skirmisher")
-	h.profile = profile({"C":0,"X":900,"E":100}); h.stance = "GUARDIAN"  # far outside -> REVERT to CHARGER
-	t.intents = []; f.foes[0].charging = false; t.floor_state.observe(t)
-	check(str(t.Tactics.choose(t,h).reason).begins_with("돌격"),"revert: acts on its own stance")
-	check(t.Tactics.choose(t,h).get("mistake","") == "REVERT","the choice reports the mistake it came from")
-	# `choose` reports; only a round that is actually played tallies.
+	var planned: Dictionary = t.Tactics.choose(t,h)
+	check(str(planned.get("mistake","")) == "" and str(t.Tactics.execution_choice(t,h,planned).kind) == "WAIT","only execution can turn a planned action into failure")
+	# Previewing never tallies; only a round actually played does.
 	t.reset_battle_stats()
 	var tallied: int = int(t.member_stats(h.id).mistakes)
 	t.Tactics.choose(t,h); t.Tactics.choose(t,h)
 	check(int(t.member_stats(h.id).mistakes) == tallied,"previewing a choice tallies nothing")
 	for member in t.party: member.ap = 1
 	t.auto_step()
-	check(int(t.member_stats(h.id).mistakes) == tallied+1,"one auto_step tallies exactly one mistake")
+	check(int(t.member_stats(h.id).mistakes) == tallied+1,"one failed execution tallies once")
 	t.mistake_override[h.id] = false
 	# No conflict stress any more.
 	var d := skirmish_for_conflict()
@@ -426,16 +397,4 @@ func ui() -> void:
 ## The spec's largest reason for a member's mistake chance, restated here so
 ## the label is checked against the rule and not against itself.
 func cause(actor: Dictionary) -> String:
-	var profile = actor.profile
-	var chosen: String = str(actor.get("stance",Stances.default_stance(profile)))
-	var careless: int = (1000-profile.value("C"))/60 if profile.value("C") < 500 else 0
-	var forced := 0
-	if not Stances.comfortable(profile,chosen):
-		var apt := Stances.aptitude(profile)
-		forced = mini(20,(int(apt[Stances.default_stance(profile)])-int(apt[chosen]))/40)
-	var before: int = Stances.MISTAKE_BASE+(1000-profile.value("C"))/60+forced
-	var after: int = before*2 if int(actor.stress) >= 150 else before*3/2 if int(actor.stress) >= 100 else before
-	var anxious: int = after-before
-	if careless > 0 and careless >= forced and careless >= anxious: return "성실 낮음"
-	if forced > 0 and forced >= anxious: return "태세 강제"
-	return "불안" if anxious > 0 else "안정"
+	return "극심한 스트레스" if int(actor.stress) >= 150 else "안정"

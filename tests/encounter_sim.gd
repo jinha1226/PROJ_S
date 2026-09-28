@@ -49,7 +49,7 @@ func runner() -> void:
 		"rules":Session.DEFAULT_RULES,"supplies":[1,0,0,0,0],"max_rounds":60,
 		"probe":func(s,round_number): if round_number == 1 and not s.combat_enemies().is_empty(): seen.enemy = true},7)
 	check(started.damage_before_first_action == 0 and seen.enemy,"nearby enemy is seen before first action, without ambush")
-	check(started.enemy_skill_uses is Dictionary and started.interrupts is int,"run_one reports enemy part uses and interrupts")
+	check(started.enemy_skill_uses is Dictionary and started.interrupts is int,"run_one retains legacy enemy skill metrics")
 	var many: Dictionary = Runner.run_many(config(mixed,1,"tactical",Session.DEFAULT_RULES),range(100,120))
 	var counted := 0
 	for amount in many.results.values(): counted += int(amount)
@@ -57,10 +57,10 @@ func runner() -> void:
 	check(many.has("damage_wins_per_member") and many.has("guards") and many.has("before_first"),"run_many reports per-member win damage, guards and before_first")
 	check(many.damage.has("mean") and many.damage.has("p95") and many.rounds.has("median"),"run_many statistics")
 	check(many.has("distinct_outcomes") and many.distinct_outcomes >= 1 and many.distinct_outcomes <= many.samples,"run_many counts distinct outcomes")
-	check(many.has("enemy_skill_uses_mean") and many.has("interrupts_mean") and many.interrupts_mean >= 0.0,"run_many averages enemy part uses and interrupts")
-	# Hits no longer cancel a part charge, so announced parts actually land.
+	check(many.has("enemy_skill_uses_mean") and many.has("interrupts_mean") and many.interrupts_mean >= 0.0,"run_many retains legacy skill metrics")
+	# Species parts now supply automatic effects rather than selected skills.
 	var part_mean: float = many.enemy_skill_uses_mean.values().reduce(func(a,b): return a+b,0.0)
-	check(part_mean > 0.0,"monsters land their signature parts over twenty runs")
+	check(part_mean == 0.0,"ordinary monsters never use active signature skills")
 
 func rules_and_party() -> void:
 	for size in [1,2,3]:
@@ -147,8 +147,7 @@ func rules_policy() -> void:
 	for id in ["b_knife","b_lunge","b_bomb","b_shockwave","b_iron","melee_1"]:
 		cfg.build = id
 		check(Runner.run_one(cfg,3).result != "TIMEOUT","%s finishes a solo fight" % id)
-	# The mixed pack includes two monsters with signature techniques; verify
-	# the enemy-usage gate measures real attacks rather than an idle roster.
+	# The mixed pack still fights, without selecting signature skills.
 	var trio: Dictionary = config(mixed,3,"rules",Session.DEFAULT_RULES); trio.supplies = [0,0,0,0,0]
 	var trio_many: Dictionary = Runner.run_many(trio,range(200,220))
-	check(float(trio_many.enemy_skill_uses_mean.get("GOBLIN_SHIV",0.0))+float(trio_many.enemy_skill_uses_mean.get("KOBOLD_SLING",0.0)) > 0.0,"the mixed pack uses a signature part against a trio (%s)" % [trio_many.enemy_skill_uses_mean])
+	check(trio_many.enemy_skill_uses_mean.is_empty() and float(trio_many.damage.mean) > 0.0,"the mixed pack uses basic attacks without signature skills")

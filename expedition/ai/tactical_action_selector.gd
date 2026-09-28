@@ -3,12 +3,10 @@ extends RefCounted
 ## enumerate legal candidates, compare effective damage and before/after threat,
 ## then deterministic ranking. Timeline costs are equal in this action-turn host.
 ##
-## Ordering is fixed (설계 §1): 명령 → 불길 → 후퇴선 → 실수 → 효용. The stance
-## candidates carry no scores of their own any more: `Utility.score` weighs them
-## against the stance's profile, and the knobs shift those weights (§4). Only the
-## retreat line keeps hand numbers — it is the stage above the utility pool.
+## The live attack/wait profile ranks legal actions in Utility.combat_pick,
+## then checks stress for a possible hesitation at execution. The legacy
+## profile still uses stance weights and a separate retreat line.
 ##   hp% <= retreat_hp    태세를 건너뛰고 거리를 벌리는 MOVE 150, 회복 파츠 190
-const BuildSense = preload("res://expedition/ai/build_sense.gd")
 const Knobs = preload("res://expedition/ai/knobs.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const Utility = preload("res://expedition/ai/utility.gd")
@@ -21,6 +19,12 @@ static func danger(s, point: Vector2i) -> int:
 		if intent.cell == point: value += int(intent.damage)
 	return value
 
+## Decision previews remain deterministic and never roll. Only the execution
+## caller asks this after all commands, rescues and utility choices are settled.
+static func execution_choice(s, actor: Dictionary, choice: Dictionary) -> Dictionary:
+	if str(choice.get("kind","WAIT")) == "WAIT" or not Stances.mistaken(s,actor): return choice
+	return {"kind":"WAIT","cell":actor.pos,"reason":"머뭇거림","mistake":"HESITATE","explain":[]}
+
 static func threat(s, enemy: Dictionary, point: Vector2i, position: Vector2i) -> int:
 	if enemy.get("recovery",0) > 0: return 0
 	if enemy.get("charging",false):
@@ -29,13 +33,10 @@ static func threat(s, enemy: Dictionary, point: Vector2i, position: Vector2i) ->
 		return 0
 	return 6 if s.melee_reach(position,point) else 0
 
-## The stages, in this order: the party command (resolved by the caller), fire
-## underfoot, the retreat line, the mistake roll, and then one pool — the
-## stance's candidates and the equipped parts — weighed by utility. The parts
-## no longer pre-empt: their `rule_when` is the consideration `rule_ready`.
-## Nothing else makes a MOVE, an ATTACK or a WAIT — the stance owns the
-## member's intent.
+## The live profile uses the shared evaluator below. This older stance pool
+## remains for legacy combat sessions; neither branch rolls a mistake here.
 static func choose(s, actor: Dictionary) -> Dictionary:
+	if s.MobileEffects.active(actor): return Utility.combat_pick(s,actor,live_candidates(s,actor))
 	var knobs: Dictionary = Knobs.effective(actor)
 	var stance: String = Stances.effective(actor)
 	# Standing in fire is the one thing every stance answers the same way.
@@ -43,26 +44,6 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 		var out: Vector2i = Stances.off_the_fire(s,actor,Stances.party_target(s,actor))
 		if out != actor.pos: return {"kind":"MOVE","cell":out,"reason":"불길 회피","score":0,"explain":[]}
 	var low: bool = actor.hp*100/actor.max_hp <= int(knobs.retreat_hp)
-	# A mistake round: the member hesitates, overreaches, or falls back on the
-	# stance it would have picked itself. Staying alive still comes first.
-	# `choose` only reports it — `mistake` on the returned choice — so that a UI
-	# preview costs nothing; auto_step is what tallies it.
-	var mistake := ""
-	if not low and Stances.mistaken(s,actor):
-		var kind: String = Stances.mistake_kind(actor)
-		match kind:
-			"HESITATE": return {"kind":"WAIT","cell":actor.pos,"reason":"머뭇거림","mistake":kind,"score":0,"explain":[]}
-			"RECKLESS":
-				var bold: Dictionary = knobs.duplicate(); bold.posture = 100
-				var reckless: Array = Stances.candidates(s,actor,"CHARGER",bold)
-				# Nothing to overreach with: the round is an ordinary one, and
-				# nothing is reported, so the tally matches what actually ran.
-				if not reckless.is_empty():
-					var pick: Dictionary = best(s,actor,reckless,"CHARGER",bold)
-					pick.reason = "무모함 · "+str(pick.reason)
-					pick.mistake = kind
-					return pick
-			"REVERT": stance = Stances.default_stance(actor.profile); mistake = kind
 	# Below the retreat line staying alive outranks everything below it: this
 	# stage sits above the utility pool, so it keeps its own hand constants.
 	if low:
@@ -76,52 +57,52 @@ static func choose(s, actor: Dictionary) -> Dictionary:
 		for o in PartsCandidates.candidates(s,actor):
 			if s.Abilities.definition(o.kind).get("effect","") != "HEAL": continue
 			o.score = 40+RETREAT.score; pool.append(o)
-		if s.MobileEffects.active(actor) and s.MobileEffects.estimate(s,actor,"WAIT") >= 10:
-			pool.append({"kind":"WAIT","cell":actor.pos,"score":40+RETREAT.score,"reason":"영혼석 보호"})
 		if pool.is_empty(): pool = [{"kind":"WAIT","cell":actor.pos,"score":0,"reason":"대기"}]
 		pool.sort_custom(rank); return pool[0]
 	# 4단계: the stance's candidates and the parts in one pool. A 거리형 in
 	# contact no longer needs a filter — `contact_penalty` (−1000) is what keeps
 	# its reaching parts holstered.
 	var stance_options: Array = Stances.candidates(s,actor,stance,knobs)+PartsCandidates.candidates(s,actor)
-	if s.MobileEffects.active(actor) and not stance_options.any(func(o): return str(o.kind) == "WAIT"):
-		stance_options.append({"kind":"WAIT","cell":actor.pos,"damage":0,"reason":"영혼석 대기"})
-	# A REVERT is only a mistake once the stance it reverted to is what answers:
-	# a rule that would have won anyway is the same round either way.
-	if stance_options.is_empty(): return {"kind":"WAIT","cell":actor.pos,"reason":"대기","mistake":mistake}
-	var chosen: Dictionary = best(s,actor,stance_options,stance,knobs)
-	if mistake != "": chosen.mistake = mistake
-	return chosen
+	if stance_options.is_empty(): return {"kind":"WAIT","cell":actor.pos,"reason":"대기"}
+	return best(s,actor,stance_options,stance,knobs)
+
+## Current attack/wait combat has no manually pressed part or chosen stance.
+## Legal attacks, route steps and waiting compete in the shared evaluator.
+static func live_candidates(s, actor: Dictionary) -> Array:
+	if s.free_movement: return s.Free.candidates(s,actor,"")
+	var options: Array = [{"kind":"WAIT","cell":actor.pos,"tag":"WAIT","reason":"대기"}]
+	var foes: Array = s.hostiles_of(actor).filter(func(e): return int(e.hp) > 0 and s.Floor.MonsterAI.line(s,actor.pos,e.pos,6))
+	if foes.is_empty(): return options
+	foes.sort_custom(func(a,b): return s.distance(actor.pos,a.pos) < s.distance(actor.pos,b.pos) if s.distance(actor.pos,a.pos) != s.distance(actor.pos,b.pos) else int(a.id) < int(b.id))
+	for foe in foes:
+		var preview: Dictionary = s.attack_preview(foe.pos,actor.id)
+		if not preview.is_empty(): options.append({"kind":"ATTACK","cell":foe.pos,"tag":"ATTACK","damage":int(preview.damage),"target_id":int(foe.id),"reason":"공격"})
+	if s.status_blocks(actor,"MOVE"): return options
+	var reach: int = int(s.CombatStats.stats(s,actor).range)
+	var target: Dictionary = foes[0]
+	var goals: Array = []
+	for cell in Stances.near_free(s,target.pos,maxi(1,reach)):
+		if s.distance(cell,target.pos) <= reach and s.Floor.MonsterAI.line(s,cell,target.pos,reach):
+			goals.append(cell)
+	if goals.is_empty(): goals = Stances.adjacent_free(s,target.pos)
+	for step in Stances.steps_toward(s,actor,goals):
+		options.append(Stances.move(actor,step,"MOVE:approach","접근"))
+	if reach > 1 and s.melee_reach(actor.pos,target.pos):
+		var away: Vector2i = retreat_cell(s,actor)
+		if away != actor.pos: options.append(Stances.move(actor,away,"MOVE:disengage","거리 확보"))
+	return options
 
 ## 설계 §1.5: the pool weighed against the stance's own profile. The context is
 ## the same for every candidate, so it is built once — and it carries the pool,
 ## which `rule_ready` reads to tell a rule's preferred target from its siblings.
 static func best(s, actor: Dictionary, options: Array, stance: String, knobs: Dictionary) -> Dictionary:
 	var ctx := Utility.context(s,actor,options)
-	options = BuildSense.safe_options(s,actor,options,ctx)
 	for o in options:
 		var scored: Dictionary = Utility.score(s,actor,o,ctx,stance,knobs)
 		o.score = scored.score; o.base_score = scored.base_score
 		o.explain = scored.explain; o.build_terms = scored.build_terms
-		if s.MobileEffects.active(actor):
-			var benefit: int = s.MobileEffects.estimate(s,actor,str(o.kind),s.at(o.cell))
-			o.score += benefit
-			if benefit > 0: o.explain.append({"id":"soulstone_auto","contrib":benefit})
-	var baseline: Array = options.duplicate()
-	baseline.sort_custom(func(a,b): return int(a.base_score) > int(b.base_score) if int(a.base_score) != int(b.base_score) else str(a.kind)+str(a.cell) < str(b.kind)+str(b.cell))
 	options.sort_custom(rank)
-	var chosen: Dictionary = options[0]
-	if str(chosen.kind)+str(chosen.cell) != str(baseline[0].kind)+str(baseline[0].cell):
-		var terms: Array = chosen.build_terms
-		terms.sort_custom(func(a,b): return int(a.contrib) > int(b.contrib) if int(a.contrib) != int(b.contrib) else str(a.id) < str(b.id))
-		if str(chosen.get("tag","")) == "WAIT:yield": chosen.reason_code = "FINISH_YIELD"
-		elif not terms.is_empty(): chosen.reason_code = {"build_target":"BUILD_TARGET","build_setup":"BUILD_SETUP","build_hold":"BUILD_HOLD","finish_form":"FINISH_FORM"}.get(str(terms[0].id),"")
-		if str(chosen.get("reason_code","")) == "BUILD_TARGET":
-			var families: Array = BuildSense.main(actor)
-			families.sort_custom(func(a,b): return BuildSense.fit(s,actor,chosen,int(a)) > BuildSense.fit(s,actor,chosen,int(b)))
-			chosen.reason_text = BuildSense.Subtypes.label(BuildSense.top_subtype(actor))+" 대상 우선"
-		else: chosen.reason_text = {"BUILD_SETUP":"동료 지원","BUILD_HOLD":"자리 유지","FINISH_FORM":"부위 노리기","FINISH_YIELD":"마무리 양보"}.get(str(chosen.get("reason_code","")),"")
-	return chosen
+	return options[0]
 
 ## Score first, then a stable name so that two equal candidates never flip.
 static func rank(a, b) -> bool:

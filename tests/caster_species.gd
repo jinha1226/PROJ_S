@@ -45,7 +45,7 @@ func casters() -> void:
 		check(bool(def.get("monster_only",false)),"%s is a monster-only attack" % part)
 		check(str(def.get("element","")) == str(entry[1]),"%s carries %s" % [part,entry[1]])
 		check(StoneEffects.species_effect(species_id) == part and StoneEffects.EFFECTS.has(part),"%s's monsters carry their stone's headline effect" % part)
-		check(int(def.damage) <= 14 and int(def.enemy.prep) == 1,"%s stays within floor-1 numbers" % part)
+		check(int(def.damage) <= 14 and not def.enemy.has("prep"),"%s stays within floor-1 numbers without windup" % part)
 		check(Essences.has(part) and str(Essences.row(part).get("species","")) == species_id,"%s is the essence of %s" % [part,species_id])
 	var s = Session.new_run(731)
 	var hero: Dictionary = s.party[0]

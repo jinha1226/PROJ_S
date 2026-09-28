@@ -108,7 +108,7 @@ static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 		var portrait = ui.button(column,"",func(): select_actor(ui,i)); portrait.name = "MemberCard%d" % i
 		portrait.tooltip_text = "길게 누르기: 상태"; portrait.custom_minimum_size.y = 62
 		ui.portrait_buttons.append(portrait)
-		var caption := "%s [%s] · HP %d/%d\n%s\n%s" % [actor.name,Stances.SHORT[Stances.effective(actor)],actor.hp,actor.max_hp,portrait_state(actor),actor.last_action]
+		var caption := "%s · HP %d/%d\n%s\n%s" % [actor.name,actor.hp,actor.max_hp,portrait_state(actor),actor.last_action] if session.MobileEffects.active(actor) else "%s [%s] · HP %d/%d\n%s\n%s" % [actor.name,Stances.SHORT[Stances.effective(actor)],actor.hp,actor.max_hp,portrait_state(actor),actor.last_action]
 		if bool(actor.get("conflicted",false)): caption += " ⚠ 갈등"
 		var stats = ui.label(portrait,caption,12 if session.party.size() == 1 else 10)
 		stats.name = "MemberCaption%d" % i
@@ -325,8 +325,6 @@ static func show_manual_tactics(ui) -> void:
 				session.in_combat() or command in ["HOLD_POSITION","FOLLOW","STOP_ATTACK"])
 			pick.name = "Tactic_"+command
 			pick.toggle_mode = true; pick.button_pressed = session.party_command == command
-	var parts = ui.button(box,"부위 노리기",func(): session.aim_parts = not session.aim_parts; show_manual_tactics(ui))
-	parts.name = "TacticParts"; parts.toggle_mode = true; parts.button_pressed = session.aim_parts
 	if not Session.MobileEffects.active(actor):
 		var skills = ui.button(box,"기술",func(): show_manual_skills(ui),not actor.prepared.is_empty() or not Session.Abilities.held(actor).is_empty())
 		skills.name = "TacticSkills"

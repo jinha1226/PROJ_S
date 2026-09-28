@@ -10,7 +10,7 @@ static func snapshot(s) -> Dictionary:
 		if a.hp <= 0: continue
 		if not s.floor_state.visible.has(a.pos): continue
 		var item := {}
-		for key in ["id","name","pos","hp","max_hp","enemy","charging","cast_id","role","ap","guarded","protected_by","npc","awake","hostile","activity","boss","boss_kind","heat","species_id","sprite_species","variant_element"]:
+		for key in ["id","name","pos","hp","max_hp","enemy","charging","cast_id","role","guarded","protected_by","npc","awake","hostile","activity","boss","boss_kind","heat","species_id","sprite_species","variant_element"]:
 			if a.has(key): item[key] = a[key]
 		item.statuses = a.get("statuses",{}).duplicate(true)
 		item.party_member = a in s.party

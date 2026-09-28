@@ -38,7 +38,9 @@ func run() -> void:
 	var hero: Dictionary = row.h
 	var foe: Dictionary = row.e
 	hero.gear.weapon = {"type":"dagger"}
+	hero.ap = 0
 	check(s.submit("ATTACK",foe.pos),"first dagger swing accepted")
+	check(hero.ap == 0,"time-scheduled attack does not refill or spend AP")
 	check(s.time == 75 and foe.ready_at == 100,"enemy is not scheduled inside the first 75 ticks")
 	check(s.submit("ATTACK",foe.pos),"second dagger swing accepted")
 	check(s.time == 150 and foe.ready_at == 200,"enemy acts at tick 100 during the second swing")

@@ -110,15 +110,14 @@ static func act(s, actor: Dictionary) -> void:
 		NpcAI.turn(s, actor)
 		if actor.pos != was: cost = Rules.move_time(s, actor, actor.pos)
 	else:
-		actor.ap = 1
 		var choice: Dictionary = s.AutoBattle.companion_choice(s, actor)
+		choice = Tactics.execution_choice(s,actor,choice)
 		var kind: String = str(choice.get("kind", "WAIT"))
 		var cell: Vector2i = choice.get("cell", actor.pos)
 		cost = s.action_cost(actor, kind, cell)
 		s.resolving_companions = true
 		var intentional: bool = str(choice.get("mistake","")) != "HESITATE" and str(choice.get("tag","")) != "WAIT:yield"
 		var succeeded: bool = s.Free.perform(s,actor,choice,intentional) if s.free_movement else s.act_as(actor, kind, cell, false, intentional)
-		if succeeded: Tactics.BuildSense.committed(s,choice)
 		if not succeeded:
 			cost = 100; s.act_as(actor, "WAIT", actor.pos, false, false)
 		s.resolving_companions = false

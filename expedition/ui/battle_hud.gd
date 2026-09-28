@@ -25,7 +25,7 @@ static func report(ui) -> void:
 		var row: Dictionary = s.member_stats(actor.id)
 		if row.is_empty(): continue
 		var text := "%s · 입힘 %d · 받음 %d · 엄호 %d회/%d · 파츠 %s" % [actor.name,int(row.dealt),int(row.taken),int(row.guards),int(row.redirected),used(ui,row.parts)]
-		text += role(actor,row)
+		if not s.MobileEffects.active(actor): text += role(actor,row)
 		text += " · 실수 %d" % int(row.get("mistakes",0))
 		var entry := line(ui,list,text,13)
 		var worked: Array = s.EffectReport.top(row.get("effects",{}),5)
@@ -33,7 +33,7 @@ static func report(ui) -> void:
 			var summary := line(ui,list,"   ".join(worked.map(func(e): return s.EffectReport.line(e))),12)
 			summary.name = "ReportEffects_%d" % int(actor.id)
 		if bool(row.downed) or actor.hp <= 0: entry.add_theme_color_override("font_color",Color("d1685f"))
-	line(ui,list,"적 파츠: %s · 끊김 %d" % [used(ui,stats.get("enemy_parts",{})),int(stats.get("interrupts",0))],12)
+	if not stats.get("enemy_parts",{}).is_empty(): line(ui,list,"보스 기술: %s" % used(ui,stats.enemy_parts),12)
 	line(ui,list,"획득: %s" % used(ui,stats.get("drops",{})),12)
 	if downed+dead > 0:
 		for entry in s.log_lines.slice(maxi(0,s.log_lines.size()-3)): line(ui,list,entry,11)

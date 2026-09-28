@@ -76,22 +76,6 @@
     "la_lethal_saved": {
       "curve": "linear",
       "doc": "룩어헤드: 치명 위기를 벗어나는 아군 수 / 3"
-    },
-    "build_target": {
-      "curve": "linear",
-      "doc": "빌드 행동 선호"
-    },
-    "build_setup": {
-      "curve": "linear",
-      "doc": "빌드 행동 선호"
-    },
-    "build_hold": {
-      "curve": "linear",
-      "doc": "빌드 행동 선호"
-    },
-    "finish_form": {
-      "curve": "signed",
-      "doc": "빌드 행동 선호"
     }
   },
   "personality": {
@@ -124,24 +108,18 @@
         "kill": 20,
         "la_enemy_hit": 20,
         "la_self_hit": 60,
-        "same_as_last": 10,
-        "build_target": 30,
-        "build_setup": 20,
-        "build_hold": 10,
-        "finish_form": 35
+        "same_as_last": 10
       },
       "MOVE:approach": {
         "closes_distance": 80,
         "cell_danger": 120,
         "ally_delta": 0,
         "la_self_hit": 80,
-        "same_as_last": 10,
-        "build_hold": 10
+        "same_as_last": 10
       },
       "MOVE:sidestep": {
         "cell_danger": 60,
-        "ally_delta": 0,
-        "build_hold": 10
+        "ally_delta": 0
       },
       "PART": {
         "rule_ready": 150,
@@ -150,58 +128,41 @@
         "la_enemy_hit": 30,
         "la_self_hit": 40,
         "la_lethal_saved": 200,
-        "contact_penalty": -1000,
-        "build_target": 25,
-        "build_setup": 20,
-        "build_hold": 10,
-        "finish_form": 35
+        "contact_penalty": -1000
       },
-      "WAIT": {
-        "build_hold": 25
-      },
+      "WAIT": {},
       "WAIT:yield": {
-        "finish_form": 200,
         "cell_danger": 60,
         "la_self_hit": 60
       },
-      "WAIT:hold": {
-        "build_hold": 25
-      }
+      "WAIT:hold": {}
     },
     "SKIRMISHER": {
       "MOVE:escape": {
         "cell_danger": 200,
         "ally_delta": 0,
-        "la_self_hit": 60,
-        "build_hold": 10
+        "la_self_hit": 60
       },
       "MOVE:disengage": {
         "opens_distance": 120,
         "ally_delta": 0,
-        "la_self_hit": 40,
-        "build_hold": 10
+        "la_self_hit": 40
       },
       "MOVE:approach": {
         "closes_distance": 80,
         "cell_danger": 40,
         "ally_delta": 0,
-        "la_self_hit": 40,
-        "build_hold": 10
+        "la_self_hit": 40
       },
       "ATTACK": {
         "any_foe_adjacent": 60,
         "damage": 30,
         "kill": 20,
-        "la_self_hit": 20,
-        "build_target": 30,
-        "build_setup": 20,
-        "build_hold": 10,
-        "finish_form": 35
+        "la_self_hit": 20
       },
       "WAIT:hold": {
         "in_band": 50,
-        "cell_danger": 20,
-        "build_hold": 25
+        "cell_danger": 20
       },
       "PART": {
         "rule_ready": 140,
@@ -211,14 +172,9 @@
         "la_enemy_hit": 30,
         "la_self_hit": 60,
         "la_lethal_saved": 200,
-        "contact_penalty": -1000,
-        "build_target": 25,
-        "build_setup": 20,
-        "build_hold": 10,
-        "finish_form": 35
+        "contact_penalty": -1000
       },
       "WAIT:yield": {
-        "finish_form": 200,
         "cell_danger": 60,
         "la_self_hit": 60
       }
@@ -227,57 +183,43 @@
       "ATTACK:intercept": {
         "any_foe_adjacent": 100,
         "damage": 30,
-        "la_ally_hit": 40,
-        "build_target": 30,
-        "build_setup": 20,
-        "build_hold": 10,
-        "finish_form": 35
+        "la_ally_hit": 40
       },
       "MOVE:block": {
         "protectee_gap": 90,
         "protectee_lethal": 40,
         "ally_delta": 0,
         "la_ally_hit": 60,
-        "la_lethal_saved": 100,
-        "build_hold": 10
+        "la_lethal_saved": 100
       },
       "ATTACK": {
         "any_foe_adjacent": 60,
-        "damage": 20,
-        "build_target": 30,
-        "build_setup": 20,
-        "build_hold": 10,
-        "finish_form": 35
+        "damage": 20
       },
       "MOVE:advance": {
         "closes_distance": 50,
         "protectee_near": 30,
         "ally_delta": 0,
-        "la_ally_hit": 20,
-        "build_hold": 10
+        "la_ally_hit": 20
       },
       "MOVE:rejoin": {
         "protectee_near": 80,
         "ally_delta": 0,
-        "la_ally_hit": 20,
-        "build_hold": 10
+        "la_ally_hit": 20
       },
       "WAIT:hold": {
-        "protectee_near": 40,
-        "build_hold": 25
+        "protectee_near": 40
       },
       "MOVE:approach": {
         "closes_distance": 80,
         "cell_danger": 120,
         "ally_delta": 0,
         "la_self_hit": 80,
-        "same_as_last": 10,
-        "build_hold": 10
+        "same_as_last": 10
       },
       "MOVE:sidestep": {
         "cell_danger": 60,
-        "ally_delta": 0,
-        "build_hold": 10
+        "ally_delta": 0
       },
       "PART": {
         "rule_ready": 150,
@@ -285,14 +227,9 @@
         "la_ally_hit": 60,
         "la_self_hit": 40,
         "damage": 20,
-        "contact_penalty": -1000,
-        "build_target": 25,
-        "build_setup": 20,
-        "build_hold": 10,
-        "finish_form": 35
+        "contact_penalty": -1000
       },
       "WAIT:yield": {
-        "finish_form": 200,
         "cell_danger": 60,
         "la_self_hit": 60
       }

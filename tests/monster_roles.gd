@@ -12,7 +12,7 @@ func fixture(role: String) -> Dictionary:
 	Fixture.equip_basics(s)
 	s.party[1].hp = 0
 	var e: Dictionary = s.enemies[0]
-	# Role behaviour only: the signature part is tested in tests/parts.gd and would go first.
+	# Role behaviour only: species stones are tested in tests/parts.gd.
 	e.hp = e.max_hp; e.role = role; e.pos = c+Vector2i(4,0); e.alert = true; e.part_id = ""
 	return {"s":s,"c":c}
 func _initialize() -> void:
@@ -73,27 +73,9 @@ func _initialize() -> void:
 	s.tile(c+Vector2i(2,0)).terrain = "wall"; AI.turn(s,e)
 	check(s.party[0].hp == hp and e.pos != c+Vector2i(4,0),"blocked shooter repositions without shooting through wall")
 	f = fixture("CASTER"); s = f.s; c = f.c; e = s.enemies[0]; hp = s.party[0].hp
-	AI.turn(s,e); AI.turn(s,e)
-	check(not e.charging and s.party[0].hp < hp,"caster starts with ordinary attacks")
-	hp = s.party[0].hp; AI.turn(s,e); s.plan_enemies()
-	check(e.charging and s.intents.size() == 1 and s.party[0].hp == hp,"windup costs full action and survives planning")
-	s.party[0].pos += Vector2i.UP; AI.turn(s,e)
-	check(not e.charging and s.intents.is_empty() and s.party[0].hp == hp,"cell-locked spell can be dodged")
-	e.cast_cooldown = 0; AI.turn(s,e); hp = s.party[0].hp; AI.turn(s,e)
-	check(s.party[0].hp < hp and not e.charging,"spell hits after full windup")
-	e.cast_cooldown = 0; AI.turn(s,e)
-	s.damage(e,1,s.party[0].id,"IMPACT")
-	check(not e.charging and s.intents.is_empty(),"damage interrupts spell")
-	hp = s.party[0].hp; AI.turn(s,e)
-	check(s.party[0].hp == hp and e.cast_recovery == 0,"interruption loses next enemy action")
-	e.cast_cooldown = 0; AI.turn(s,e)
-	s.party[0].pos = e.pos+Vector2i.LEFT
-	s.floor_state.observe(s)
-	check(s.act("PUSH",e.pos),"push accepted")
-	check(not e.charging and s.intents.is_empty(),"push cancels windup even without damage")
-	f = fixture("CASTER"); s = f.s; c = f.c; e = s.enemies[0]; e.cast_cooldown = 0; AI.turn(s,e)
-	s.damage(e,999,s.party[0].id,"IMPACT"); s.plan_enemies()
-	check(s.intents.is_empty(),"dead caster leaves no warning")
+	AI.turn(s,e); AI.turn(s,e); AI.turn(s,e); s.plan_enemies()
+	check(s.party[0].hp < hp and not e.charging and s.intents.is_empty(),"caster uses its basic ranged attack without an active spell")
+	check(int(e.cast_cooldown) == 2,"basic caster attacks do not use a spell cooldown")
 	s = Session.new(731,true,true,true); s.depart()
 	check(s.enemies.all(func(a): return a.role in AI.ROLES and a.name.ends_with(AI.ROLES[a.role].label)),"generated roles are labelled")
 	check(s.enemies.any(func(a): return a.role != "MELEE"),"at least one backline enemy on the floor")

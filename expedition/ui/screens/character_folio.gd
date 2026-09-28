@@ -12,7 +12,6 @@ const CombatStats = preload("res://expedition/combat/combat_stats.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const Memory = preload("res://sim/party_memory_state.gd")
-const BuildSense = preload("res://expedition/ai/build_sense.gd")
 
 static func surface(color: Color, border: Color = Color("6d5b3f")) -> StyleBoxFlat:
 	var skin := StyleBoxFlat.new(); skin.bg_color = color; skin.border_color = border
@@ -198,6 +197,10 @@ static func personality(ui, list: VBoxContainer, actor: Dictionary) -> void:
 ## and the one number the tab is for — how often this member will get it wrong.
 ## The aptitudes themselves are not drawn; ⚠ and the tooltip carry them.
 static func stances(ui, list: VBoxContainer, actor: Dictionary) -> void:
+	if ui.session.MobileEffects.active(actor):
+		var live_box := card(list,"행동")
+		text(live_box,"실수 확률 %d%%" % Stances.mistake_chance(actor),13).name = "MistakeLine"
+		return
 	var index: int = ui.tactics_actor
 	var editable: bool = ui.session.phase == "CAMP"
 	var chosen: String = str(actor.get("stance",Stances.default_stance(actor.profile)))
@@ -217,10 +220,6 @@ static func stances(ui, list: VBoxContainer, actor: Dictionary) -> void:
 		pick.tooltip_text = "실수 확률 %d%%" % Stances.mistake_chance(probe)
 	var badge := text(box,Stances.NAMES[Stances.suggested(actor)],13)
 	badge.name = "StanceSuggestion"
-	var profile := BuildSense.subtype_profile(actor)
-	var types: Array = profile.keys()
-	types.sort_custom(func(a,b): return float(profile[a]) > float(profile[b]) if float(profile[a]) != float(profile[b]) else str(a) < str(b))
-	if not types.is_empty(): text(box," · ".join(types.slice(0,3).map(func(id): return "%s %d%%" % [BuildSense.Subtypes.label(str(id)),roundi(float(profile[id])*100)])),12).name = "BuildProfile"
 	var line := text(box,mistake_line(actor),13); line.name = "MistakeLine"
 	if not Stances.comfortable(actor.profile,chosen): line.add_theme_color_override("font_color",Color("d1a05f"))
 
@@ -232,19 +231,7 @@ static func mistake_line(actor: Dictionary) -> String:
 ## carelessness (only once it is a fault, C below 500), the stance the member
 ## was forced into, or what the stress multiplier piles on top.
 static func cause(actor: Dictionary) -> String:
-	var profile = actor.profile
-	var chosen: String = str(actor.get("stance",Stances.default_stance(profile)))
-	var careless: int = (1000-profile.value("C"))/60 if profile.value("C") < 500 else 0
-	var forced := 0
-	if not Stances.comfortable(profile,chosen):
-		var apt := Stances.aptitude(profile)
-		forced = mini(20,(int(apt[Stances.default_stance(profile)])-int(apt[chosen]))/40)
-	var before: int = Stances.MISTAKE_BASE+(1000-profile.value("C"))/60+forced
-	var after: int = before*2 if int(actor.stress) >= 150 else before*3/2 if int(actor.stress) >= 100 else before
-	var anxious: int = after-before
-	if careless > 0 and careless >= forced and careless >= anxious: return "성실 낮음"
-	if forced > 0 and forced >= anxious: return "태세 강제"
-	return "불안" if anxious > 0 else "안정"
+	return "극심한 스트레스" if int(actor.get("stress",0)) >= 150 else "안정"
 
 ## Taking a stance rebuilds the tab: the ⚠ badges and the mistake line both
 ## depend on it.

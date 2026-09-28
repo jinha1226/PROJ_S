@@ -27,13 +27,14 @@ func session() -> void:
 	check(t.party[1].equipped_abilities == [Essences.canonical("KOBOLD_SLING"),""],"empty slot allowed")
 	check(t.party.all(func(a): return a.hp == a.max_hp),"full health")
 	check(t.auto_stop_reason() == "BATTLE_START","starts stopped at battle start")
+	var initial_enemy_positions: Array = t.enemies.map(func(e): return e.pos)
 	var rounds := 0
 	while t.in_combat() and rounds < 60: t.auto_step(); rounds += 1
 	check(rounds > 0 and rounds < 60,"the fight resolves")
 	var custom := {"members":[["dcss_rat","MELEE"],["goblin","CASTER"]]}
 	var c = Session.arena_test(7,1,custom,[{"stance":"CHARGER","parts":["PUSH",""]}])
 	check(c.enemies.size() == 2 and c.party.size() == 1,"custom roster, light and party size")
-	check(Session.arena_test(42,3,Session.ARENA_PRESETS.opt_archers,members).enemies[0].pos == t.enemies[0].pos,"same seed, same layout")
+	check(Session.arena_test(42,3,Session.ARENA_PRESETS.opt_archers,members).enemies.map(func(e): return e.pos) == initial_enemy_positions,"same seed, same layout")
 	# Solo guardian is coerced to charger.
 	var g = Session.arena_test(1,1,Session.ARENA_PRESETS.early_hob,[{"stance":"GUARDIAN","parts":["",""]}])
 	check(g.party[0].stance == "CHARGER","solo cannot test as a guardian")

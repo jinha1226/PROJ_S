@@ -1,6 +1,6 @@
 extends SceneTree
 ## Monster signature parts: catalog shape, basic parts (PUSH/GUARD) as catalog
-## entries, passives, enemy telegraphs, camp-only equipping and drops.
+## entries, automatic monster effects, camp-only equipping and drops.
 const Session = preload("res://expedition/run/session.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
@@ -24,7 +24,7 @@ func run() -> void:
 	basic_parts()
 	bag()
 	species()
-	telegraph()
+	monster_stones_only()
 	await ui()
 	print("Parts: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
 
@@ -81,7 +81,7 @@ func catalog() -> void:
 			check(def.has(key),"%s has field %s" % [id,key])
 		check(def.effect in ["DAMAGE","SHIELD","HEAL","LUNGE","PUSH","GUARD","STANCE","TAUNT","CLEANSE","WARD_ALLIES","THORNS","MARK","FURNACE","DEVOUR","SUMMON"],"%s effect known" % id)
 		check(def.target in ["ENEMY","SELF","ALLY"],"%s target known" % id)
-		check(int(def.enemy.get("prep",-1)) >= 0 and int(def.enemy.get("prep",-1)) <= 2,"%s prep in 0..2" % id)
+		check(not def.enemy.has("prep") and str(def.enemy.get("target","")) == "NEAREST","%s has no ordinary-monster windup" % id)
 		check(Rules.catalog().has(id),"%s in the derived rule catalog" % id)
 		check(Rules.valid(Abilities.default_rule(id)),"%s default rule valid" % id)
 	check(not Abilities.DEFINITIONS.has("drop") and not "drop" in Abilities.DEFINITIONS.PUSH,"drop field removed")
@@ -182,7 +182,7 @@ func species() -> void:
 		check(owners.size() == 1,"%s has exactly one part" % row.species_id)
 		var def: Dictionary = Abilities.DEFINITIONS[id]
 		check(StoneEffects.species_effect(str(row.species_id)) == id,"%s's monsters carry its headline effect" % id)
-		check(int(def.enemy.prep) in [0,1,2],"%s prep is bounded" % id)
+		check(not def.enemy.has("prep"),"%s has no ordinary-monster windup" % id)
 		check(int(def.damage) <= 24,"%s damage stays within the active cap" % id)
 		check(Abilities.has(id),"%s signature ability exists" % id)
 
@@ -206,88 +206,27 @@ func give_part(foe: Dictionary, id: String) -> void:
 	foe.part_id = id
 	foe.species_id = str(Abilities.DEFINITIONS[id].species)
 
-func telegraph() -> void:
-	# Hobgoblin in contact: announces, resolves next round, cools down.
+func monster_stones_only() -> void:
 	var d := duel(); var s = d.s
 	give_part(d.foe,"ORE_SLAM"); d.foe.cooldowns = {}
-	MonsterAI.turn(s,d.foe)
-	check(d.foe.charging and d.foe.cast_id == "ORE_SLAM" and d.foe.cast_cell == d.hero.pos,"in contact the part is announced first")
-	check(s.intents.size() == 1 and s.intents[0].kind == "ORE_SLAM" and int(s.intents[0].damage) == 14 and s.intents[0].cell == d.hero.pos,"intent carries the part and its damage")
-	check(s.Rules.lethal_threat(s,d.hero) >= 14,"lethal threat reads the announced damage")
 	var hp: int = d.hero.hp
+	check("ORE_SLAM" in StoneEffects.effects(d.foe),"monster retains its species stone effect")
 	MonsterAI.turn(s,d.foe)
-	check(not d.foe.charging and s.intents.is_empty(),"resolved on the next turn")
-	check(d.hero.hp == hp-14,"club lands for its announced damage")
-	check(int(d.foe.cooldowns.ORE_SLAM) == 4,"cooldown set (3 + 1)")
-	check(int(s.battle_stats.enemy_parts.get("ORE_SLAM",0)) == 1,"enemy skill use counted")
+	check(d.hero.hp < hp and not d.foe.charging and s.intents.is_empty(),"stone bearer uses its basic attack without casting")
+	check(d.foe.cooldowns.is_empty() and s.battle_stats.enemy_parts.is_empty(),"basic attack never starts a signature skill cooldown")
+	# An old queued skill is discarded on the next turn.
+	d = duel(); s = d.s; give_part(d.foe,"ORC_CLEAVER")
+	d.foe.charging = true; d.foe.cast_id = "ORC_CLEAVER"; d.foe.cast_cell = d.hero.pos
 	MonsterAI.turn(s,d.foe)
-	check(not d.foe.charging and int(d.foe.cooldowns.ORE_SLAM) == 3,"on cooldown the role attack runs and the cooldown ticks")
-	# Interrupt by push: cooldown consumed, one round of recovery.
-	d = duel(); s = d.s; give_part(d.foe,"ORE_SLAM"); d.foe.cooldowns = {}
-	MonsterAI.turn(s,d.foe)
-	check(s.act("PUSH",d.foe.pos),"hero pushes the charging foe")
-	check(not d.foe.charging and s.intents.is_empty() and d.foe.cast_recovery == 1 and int(d.foe.cooldowns.ORE_SLAM) == 3,"push cancels the part and burns its cooldown")
-	check(s.battle_stats.interrupts == 1,"interrupt counted")
-	# Only 밀치기 breaks a part charge; an ordinary hit leaves it standing (spec §2.2).
-	# The caster role's own spell is still broken by damage — tests/monster_roles.gd "damage interrupts spell".
-	d = duel(); s = d.s; give_part(d.foe,"ORE_SLAM"); d.foe.cooldowns = {}
-	MonsterAI.turn(s,d.foe)
-	hp = d.hero.hp
-	check(s.act("ATTACK",d.foe.pos) and d.foe.charging and s.intents.size() == 1 and s.battle_stats.interrupts == 0,"a hit leaves the part charge standing")
-	MonsterAI.turn(s,d.foe)
-	check(d.hero.hp < hp and int(s.battle_stats.enemy_parts.get("ORE_SLAM",0)) == 1,"the club still resolves after its owner was hit")
-	# Target steps away: a radius-0 part misses.
-	d = duel(); s = d.s; give_part(d.foe,"ORE_SLAM"); d.foe.cooldowns = {}
-	MonsterAI.turn(s,d.foe)
-	d.hero.pos = d.c+Vector2i(-1,0); hp = d.hero.hp
-	MonsterAI.turn(s,d.foe)
-	check(d.hero.hp == hp and s.log_lines[-1].contains("빗나갔습니다"),"an empty announced cell is a miss")
-	# A single-cell bite keeps its own action label instead of posing as an explosion.
-	d = duel(); s = d.s; give_part(d.foe,"RAT_GNAW")
-	Abilities.resolve(s,d.foe,"RAT_GNAW",d.hero.pos)
-	var bite_effects: Array = s.effects.filter(func(effect): return str(effect.get("kind","")) == "ENEMY_ATTACK")
-	check(not bite_effects.is_empty() and not bite_effects[0].area and bite_effects[0].caption == "물기","rat bite uses its own single-target effect label")
-	# Area part spares the caster's own side.
-	d = duel(); s = d.s; give_part(d.foe,"ORC_CLEAVER"); d.foe.cooldowns = {}
-	var mate: Dictionary = s.enemies[1]; mate.hp = 30; mate.max_hp = 30; mate.alert = true; mate.pos = d.c+Vector2i(1,1); mate.part_id = ""
-	MonsterAI.turn(s,d.foe)
-	var ring: Array = Abilities.cells(s,d.foe,"ORC_CLEAVER",d.hero.pos)
-	check(ring.size() >= 2 and s.intents.size() == ring.size(),"an area part announces every cell it will hit")
-	check(s.intents.all(func(i): return i.kind == "ORC_CLEAVER" and int(i.damage) == 11),"every announced cell carries the part and its damage")
-	check(s.Rules.lethal_threat(s,d.ally) >= 11,"the ally in the ring is threatened, not only the centre")
-	var ally_hp: int = d.ally.hp; var mate_hp: int = mate.hp; hp = d.hero.hp
-	MonsterAI.turn(s,d.foe)
-	check(d.hero.hp < hp and d.ally.hp < ally_hp and mate.hp == mate_hp,"cleave hits both members in the square and no fellow monster")
-	# A telegraphed lunge never stabs a fellow monster who took the cell.
-	d = duel(); s = d.s; give_part(d.foe,"GOBLIN_SHIV"); d.foe.cooldowns = {}
-	d.foe.pos = d.c+Vector2i(2,0); s.floor_state.observe(s)
-	MonsterAI.turn(s,d.foe)
-	check(d.foe.charging and d.foe.cast_id == "GOBLIN_SHIV" and d.foe.cast_cell == d.hero.pos,"the shiv is announced on the hero's cell")
-	var cell: Vector2i = d.foe.cast_cell
-	d.hero.pos = d.c+Vector2i(-2,0)
-	var comrade: Dictionary = s.enemies[1]
-	comrade.hp = 30; comrade.max_hp = 30; comrade.alert = true; comrade.pos = cell; comrade.part_id = ""
-	s.floor_state.observe(s)
-	MonsterAI.turn(s,d.foe)
-	check(comrade.hp == 30,"the announced cell's new occupant is a fellow monster and takes nothing")
-	check(s.log_lines[-1].contains("빗나갔습니다"),"a lunge onto one's own side is a miss")
-	check(int(s.battle_stats.enemy_parts.get("GOBLIN_SHIV",0)) == 1,"the use is still counted")
-	# An immediate defensive part resolves without announcing a damaging cell.
-	d = duel(); s = d.s; give_part(d.foe,"BEETLE_CURL"); d.foe.cooldowns = {}
-	Abilities.resolve(s,d.foe,"BEETLE_CURL",d.foe.pos)
-	check(int(Abilities.DEFINITIONS.BEETLE_CURL.enemy.prep) == 0 and bool(d.foe.iron_guard),"prep 0 defensive part resolves immediately")
-	d = duel(); s = d.s; give_part(d.foe,"ORE_SLAM"); d.foe.cooldowns = {}
-	hp = d.hero.hp; MonsterAI.turn(s,d.foe)
-	d.foe.cast_left = 2
-	MonsterAI.turn(s,d.foe)
-	check(d.foe.charging and d.hero.hp == hp and s.intents.size() == 1 and d.foe.cast_left == 1,"a two-round charge is still announced after one more turn")
-	MonsterAI.turn(s,d.foe)
-	check(d.hero.hp < hp,"it resolves once the count runs out")
-	# Caster role keeps its spell when the part is on cooldown; the part goes first when both are ready.
-	d = duel(); s = d.s; give_part(d.foe,"KOBOLD_SLING"); d.foe.cooldowns = {}; d.foe.role = "CASTER"; d.foe.cast_cooldown = 0
+	check(not d.foe.charging and s.battle_stats.enemy_parts.is_empty(),"old pending monster active is discarded")
+	# Ranged reload belongs to the basic attack and remains in play.
+	d = duel(); s = d.s; give_part(d.foe,"KOBOLD_SLING"); d.foe.role = "RANGED"
 	d.foe.pos = d.c+Vector2i(3,0); s.floor_state.observe(s)
 	MonsterAI.turn(s,d.foe)
-	check(d.foe.charging and d.foe.cast_id == "KOBOLD_SLING","part before role spell")
+	hp = d.hero.hp
+	check(int(d.foe.reload) == 1 and s.battle_stats.enemy_parts.is_empty(),"basic ranged shot starts reload without a part active")
+	MonsterAI.turn(s,d.foe)
+	check(d.hero.hp == hp and int(d.foe.reload) == 0,"reload blocks the next ranged shot")
 	# Player use is immediate and grows with the melee axis.
 	d = duel(); s = d.s; d.hero.equipped_abilities = ["ORE_SLAM","GUARD"]; d.hero.cooldowns = {}
 	var foe_hp: int = d.foe.hp

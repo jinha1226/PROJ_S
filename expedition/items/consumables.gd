@@ -107,7 +107,7 @@ static func use(s, kind: String, target: Vector2i = NO_TARGET, recipient: int = 
 	if recipient < -1 or recipient >= s.party.size(): return false
 	var user: Dictionary = s.party[s.selected]
 	var actor: Dictionary = s.party[s.selected if recipient == -1 else recipient]
-	if user.hp <= 0 or actor.hp <= 0 or s.on_floor() and user.ap <= 0: return false
+	if user.hp <= 0 or actor.hp <= 0 or s.on_floor() and not s.manual_mode and user.ap <= 0: return false
 	var thrown: bool = target != NO_TARGET
 	if thrown:
 		if row["class"] != "potion" or recipient != -1 or not s.on_floor() or not s.inside(target): return false
@@ -134,11 +134,11 @@ static func use(s, kind: String, target: Vector2i = NO_TARGET, recipient: int = 
 	if not thrown or bool(row.area): identify(s,kind)
 	s.message(label(s,kind)+(" 투척" if thrown else " 사용"))
 	if s.on_floor():
-		user.ap -= 1
 		if s.manual_mode:
-			user.ap = 1
 			Scheduler.advance(s,100)
-		else: s.finish_player_action()
+		else:
+			user.ap -= 1
+			s.finish_player_action()
 	return true
 
 static func drink(s, kind: String, actor: Dictionary, user: Dictionary = {}) -> bool:

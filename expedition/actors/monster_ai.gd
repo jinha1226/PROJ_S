@@ -1,18 +1,16 @@
 extends RefCounted
-## Continuous-floor roles plus the species signature part. Firing-position
-## search adapts ../sim/stage_enemy_rules.gd. A monster that can use its part
-## announces it (`prep` rounds) and resolves it on the announced cell; the
-## caster role's own spell uses the same charging state with an empty cast_id.
-const Melee = preload("res://expedition/actors/floor_tactics_adapter.gd")
+## Ordinary monsters choose a basic move, attack or wait. Their species part
+## supplies an automatic soul-stone effect, not an active attack. Bosses keep
+## their separate encounter rules.
 const Abilities = preload("res://expedition/items/abilities.gd")
 const BossAI = preload("res://expedition/actors/boss_ai.gd")
 const StoneEffects = preload("res://expedition/progression/stone_effects.gd")
+const Utility = preload("res://expedition/ai/utility.gd")
 const ROLES := {
 	"MELEE":{"label":"추격병","range":1,"damage":7},
 	"RANGED":{"label":"궁수","range":5,"damage":6},
 	"CASTER":{"label":"술사","range":4,"damage":4},
 }
-const SPELL_DAMAGE := 14
 ## Outside the floor (room mode, boss trial) monsters keep the old fixed reach.
 
 ## Exploration visibility may be generous without waking monsters early.
@@ -42,43 +40,22 @@ static func can_attack_target(s, enemy: Dictionary, target: Dictionary) -> bool:
 	# a tile the player cannot see. Companions and NPCs still fight offscreen.
 	return s.party.is_empty() or target != s.party[0] or s.floor_state.visible.has(enemy.pos)
 
-## Cancels any charge. 밀치기 reaches this directly; ordinary damage goes
-## through on_hit(), which spares a part that is merely being wound up.
+## Compatibility for a pending cast loaded from an older save.
 static func interrupt(s, enemy: Dictionary) -> void:
 	if not enemy.get("charging",false): return
-	var id: String = str(enemy.get("cast_id",""))
 	enemy.charging = false
-	enemy.cast_recovery = 1
-	if id.is_empty(): enemy.cast_cooldown = 3
-	else:
-		enemy.cooldowns[id] = int(Abilities.definition(id).cooldown)
-		s.battle_stats.interrupts = int(s.battle_stats.get("interrupts",0))+1
 	enemy.cast_id = ""; enemy.cast_left = 0
 	s.intents = s.intents.filter(func(i): return i.id != enemy.id)
-	s.message(enemy.name+"의 시전이 끊겼습니다.")
 
-## A hit breaks the caster role's own spell (it needs concentration) but not a
-## signature part: a telegraphed part is answered by dodging, guarding or pushing.
+## A hit also cancels any cast left in an older save.
 static func on_hit(s, enemy: Dictionary) -> void:
 	if enemy.get("boss",false): return
-	if str(enemy.get("cast_id","")).is_empty(): interrupt(s,enemy)
+	interrupt(s,enemy)
 
 static func plan(s) -> void:
 	s.intents.clear()
 	for enemy in s.enemies:
-		if enemy.hp > 0 and enemy.get("boss",false): BossAI.plan(s,enemy); continue
-		if enemy.hp <= 0 or not enemy.get("charging",false): continue
-		var id: String = str(enemy.get("cast_id",""))
-		var amount: int = Abilities.scaled(enemy,int(Abilities.definition(id).damage) if Abilities.has(id) else SPELL_DAMAGE)
-		# An area part announces every cell it will hit, so threat assessment and
-		# the board see the whole ring, not just its centre.
-		var cells: Array = Abilities.cells(s,enemy,id,enemy.cast_cell) if Abilities.has(id) else [enemy.cast_cell]
-		for cell in cells:
-			var intent := {"id":enemy.id,"cell":cell,"damage":amount,"kind":id,"resolve_at":int(enemy.get("resolve_at",s.time+int(enemy.cast_left)*100))}
-			if s.free_movement:
-				intent.world_center = enemy.get("cast_world",s.Free.center(enemy.cast_cell))
-				intent.world_radius = maxf(0.5,float(Abilities.definition(id).get("radius",0)))
-			s.intents.append(intent)
+		if enemy.hp > 0 and enemy.get("boss",false): BossAI.plan(s,enemy)
 
 static func turn(s, enemy: Dictionary) -> void:
 	if s.time < int(enemy.get("sleep_until",0)): return
@@ -97,44 +74,17 @@ static func turn(s, enemy: Dictionary) -> void:
 		patrol(s,enemy)
 		return
 	if enemy.get("boss",false): BossAI.turn(s,enemy); return
-	if enemy.get("cast_recovery",0) > 0:
-		enemy.cast_recovery -= 1; return
-	var taunter: Dictionary = taunter_of(s,enemy)
-	if not taunter.is_empty() and not enemy.get("charging",false):
-		taunted_turn(s,enemy,taunter); return
-	var part: String = str(enemy.get("part_id",""))
-	if Abilities.has(part): enemy.cooldowns[part] = maxi(0,int(enemy.cooldowns.get(part,0))-1)
-	if enemy.get("charging",false):
-		if s.manual_mode:
-			if s.time < int(enemy.get("resolve_at",s.time)): return
-			enemy.cast_left = 0
-		else: enemy.cast_left = int(enemy.get("cast_left",1))-1
-		if enemy.cast_left > 0: plan(s); return
-		var id: String = str(enemy.get("cast_id",""))
-		var cell: Vector2i = enemy.cast_cell
-		enemy.charging = false; enemy.cast_id = ""; plan(s)
-		if id.is_empty(): resolve_spell(s,enemy,cell)
-		else: Abilities.resolve(s,enemy,id,cell)
+	# An old save can contain a queued active. Discard it instead of firing
+	# a skill that this combat model no longer has.
+	if enemy.get("charging",false): interrupt(s,enemy)
+	enemy.cast_recovery = 0
+	if str(enemy.get("role","")) == "RANGED" and int(enemy.get("reload",0)) > 0:
+		enemy.reload = int(enemy.reload)-1
+		s.message(enemy.name+" · 재장전")
 		return
-	# A guard's own active (방패 자세, 몸 말기, ...) goes up when a foe is in
-	# contact or the monster is under half health.
-	if Abilities.has(part) and int(enemy.cooldowns.get(part,0)) <= 0 and str(Abilities.definition(part).target) == "SELF":
-		var pressed: bool = targets.any(func(a): return s.melee_reach(enemy.pos,a.pos)) or int(enemy.hp)*2 < int(enemy.max_hp)
-		if pressed and Abilities.legal(s,enemy,part,enemy.pos):
-			Abilities.execute(s,enemy,part,enemy.pos); return
-	# A bound monster cannot work a manoeuvre that carries it anywhere; it is
-	# left with whatever it can already reach.
-	if Abilities.has(part) and int(enemy.cooldowns.get(part,0)) <= 0 and not s.status_blocks(enemy,"MOVE"):
-		targets.sort_custom(func(a,b): return distance(enemy.pos,a.pos) < distance(enemy.pos,b.pos))
-		for target in targets:
-			if not can_attack_target(s,enemy,target) or not line(s,enemy.pos,target.pos,seen) or not Abilities.legal(s,enemy,part,target.pos): continue
-			var prep: int = int(Abilities.definition(part).enemy.prep)
-			if prep <= 0: Abilities.execute(s,enemy,part,target.pos); return
-			enemy.charging = true; enemy.cast_id = part; enemy.cast_cell = target.pos; enemy.cast_left = prep
-			if s.free_movement: enemy.cast_world = s.Free.position(target)
-			enemy.resolve_at = s.time+prep*100
-			plan(s); s.message("%s · %s 준비" % [enemy.name,Abilities.definition(part).name])
-			return
+	var taunter: Dictionary = taunter_of(s,enemy)
+	if not taunter.is_empty():
+		taunted_turn(s,enemy,taunter); return
 	role_turn(s,enemy,targets,s.status_blocks(enemy,"MOVE"))
 
 ## An unalerted pack still takes its scheduled turns. Patrol stays near its
@@ -152,69 +102,42 @@ static func patrol(s, enemy: Dictionary) -> void:
 		enemy.patrol_heading = next_heading
 		return
 
-## The caster's own spell, cell-locked at SPELL_DAMAGE.
-static func resolve_spell(s, enemy: Dictionary, cell: Vector2i) -> void:
-	enemy.cast_cooldown = 3
-	if not line(s,enemy.pos,cell,4): return
-	var victim: Dictionary = s.Free.actor_at(s,enemy.get("cast_world",s.Free.center(cell)),0.5,false) if s.free_movement else s.at(cell)
-	if not victim.is_empty() and not can_attack_target(s,enemy,victim): return
-	s.enemy_attack_effect(enemy,[cell],true)
-	if not victim.is_empty() and (s.side_of(victim) != s.side_of(enemy) or s.wanderer(victim) and not s.dominated(enemy)): s.damage(victim,Abilities.scaled(enemy,SPELL_DAMAGE),enemy.id,"ELECTRIC")
-	s.message(enemy.name+"의 마법이 예고한 지점에 떨어졌습니다.")
-
 static func role_turn(s, enemy: Dictionary, targets: Array, held: bool = false) -> void:
 	if s.free_movement:
 		free_role_turn(s,enemy,targets,held); return
-	var role: String = enemy.get("role","MELEE")
-	if role == "MELEE":
-		var choice: Dictionary = Melee.new(s,enemy).choose(enemy)
-		if choice.kind == "MOVE":
-			if held: return
-			enemy.pos = choice.cell
-		elif choice.kind == "ATTACK": strike(s,enemy,s.at(choice.cell),7)
-		return
-	targets.sort_custom(func(a,b):
-		var da: int = distance(enemy.pos,a.pos)*4-s.MobileEffects.threat(s,enemy,a)
-		var db: int = distance(enemy.pos,b.pos)*4-s.MobileEffects.threat(s,enemy,b)
-		return da < db if da != db else int(a.id) < int(b.id))
-	# 고블린 궁수: its own stone's headline effect shoots two farther.
+	var role: String = str(enemy.get("role","MELEE"))
+	if not ROLES.has(role): role = "MELEE"
 	var reach: int = mini(int(ROLES[role].range),sight(s))+StoneEffects.range_bonus(enemy,s)
-	var ready: bool = enemy.get("cast_cooldown",2) <= 0
-	enemy.cast_cooldown = maxi(0,int(enemy.get("cast_cooldown",2))-1)
-	# An archer reloads for a round after every shot: half the volleys, and the
-	# round in which closing the distance is not punished.
-	var reloading: bool = role == "RANGED" and int(enemy.get("reload",0)) > 0
-	if reloading: enemy.reload = int(enemy.reload)-1
+	var options: Array = [{"kind":"WAIT","cell":enemy.pos,"reason":"대기"}]
 	for target in targets:
 		if not can_attack_target(s,enemy,target): continue
-		if s.melee_reach(enemy.pos,target.pos):
-			strike(s,enemy,target,4); return # No endless retreat loop.
-	for target in targets:
-		if reloading: break
-		if not can_attack_target(s,enemy,target): continue
-		if not line(s,enemy.pos,target.pos,reach): continue
-		if role == "CASTER" and ready:
-			enemy.charging = true; enemy.cast_id = ""; enemy.cast_cell = target.pos; enemy.cast_left = 1; enemy.resolve_at = s.time+100; plan(s)
-			s.message(enemy.name+" · 시전")
-		else:
-			strike(s,enemy,target,ROLES[role].damage)
-			if role == "RANGED": enemy.reload = 1
-		return
-	if reloading:
-		s.message(enemy.name+" · 재장전")
-		# Already in a firing spot: stand and reload rather than shuffle.
-		if targets.any(func(a): return line(s,enemy.pos,a.pos,reach)): return
-	# Search a bounded set of firing positions, then use the shared pathfinder.
-	var goals: Array = []
-	var target: Dictionary = targets[0]
-	for y in range(maxi(0,target.pos.y-reach),mini(s.BOARD_SIDE,target.pos.y+reach+1)):
-		for x in range(maxi(0,target.pos.x-reach),mini(s.BOARD_SIDE,target.pos.x+reach+1)):
-			var p := Vector2i(x,y)
-			if target == s.party[0] and not s.floor_state.visible.has(p): continue
-			if s.is_free(p) and distance(p,target.pos) >= 2 and line(s,p,target.pos,reach): goals.append(p)
-	if goals.is_empty() or held: return
-	var route: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,enemy.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100,100,20)
-	if route.found and route.path.size() > 1: enemy.pos = route.path[1]
+		var adjacent: bool = s.melee_reach(enemy.pos,target.pos)
+		if not adjacent and not line(s,enemy.pos,target.pos,reach): continue
+		var amount: int = int(enemy.get("basic_attack",ROLES[role].damage))
+		if role != "MELEE" and adjacent: amount = 4
+		options.append({"kind":"ATTACK","cell":target.pos,"target_id":int(target.id),"damage":amount,"reason":"공격"})
+	if not held:
+		var ordered: Array = targets.duplicate()
+		ordered.sort_custom(func(a,b): return distance(enemy.pos,a.pos) < distance(enemy.pos,b.pos) if distance(enemy.pos,a.pos) != distance(enemy.pos,b.pos) else int(a.id) < int(b.id))
+		if not ordered.is_empty():
+			var target: Dictionary = ordered[0]
+			var goals: Array = []
+			for y in range(maxi(0,target.pos.y-reach),mini(s.BOARD_SIDE,target.pos.y+reach+1)):
+				for x in range(maxi(0,target.pos.x-reach),mini(s.BOARD_SIDE,target.pos.x+reach+1)):
+					var p := Vector2i(x,y)
+					if not s.is_free(p) or distance(p,target.pos) > reach: continue
+					if role != "MELEE" and distance(p,target.pos) < 2: continue
+					if line(s,p,target.pos,reach): goals.append(p)
+			if not goals.is_empty():
+				var route: Dictionary = s.TurnCore.path(s.BOARD_SIDE,s.BOARD_SIDE,enemy.pos,goals,func(a,b): return s.can_step(a,b),func(_p): return 100,100,20)
+				if route.found and route.path.size() > 1: options.append({"kind":"MOVE","cell":route.path[1],"reason":"접근"})
+	var choice: Dictionary = Utility.combat_pick(s,enemy,options)
+	match str(choice.kind):
+		"MOVE": enemy.pos = choice.cell
+		"ATTACK":
+			var target: Dictionary = s.at(choice.cell)
+			strike(s,enemy,target,int(choice.damage))
+			if role == "RANGED" and not s.melee_reach(enemy.pos,target.pos): enemy.reload = 1
 
 static func strike(s, enemy: Dictionary, target: Dictionary, amount: int) -> void:
 	amount = int(enemy.basic_attack) if enemy.has("basic_attack") else Abilities.scaled(enemy,amount)
@@ -254,17 +177,7 @@ static func free_role_turn(s, enemy: Dictionary, targets: Array, held: bool) -> 
 	var role: String = str(enemy.get("role","MELEE"))
 	var reach: float = minf(float(ROLES[role].range),float(sight(s)))+StoneEffects.range_bonus(enemy,s)
 	var target: Dictionary = targets[0]
-	var reload: int = int(enemy.get("reload",0))
-	if reload > 0: enemy.reload = reload-1
 	if s.Free.reaches(s,enemy,target,reach) and can_attack_target(s,enemy,target):
-		if reload > 0: return
-		if role == "CASTER":
-			enemy.cast_cooldown = maxi(0,int(enemy.get("cast_cooldown",0))-1)
-			if enemy.cast_cooldown <= 0:
-				enemy.charging = true; enemy.cast_id = ""; enemy.cast_cell = target.pos
-				enemy.cast_world = s.Free.position(target); enemy.cast_left = 1; enemy.resolve_at = s.time+100; plan(s)
-			else: strike(s,enemy,target,int(ROLES[role].damage))
-		else:
-			strike(s,enemy,target,int(ROLES[role].damage))
-			if role == "RANGED": enemy.reload = 1
+		strike(s,enemy,target,int(ROLES[role].damage))
+		if role == "RANGED": enemy.reload = 1
 	elif not held: s.Free.monster_move(s,enemy,target,reach-0.05)

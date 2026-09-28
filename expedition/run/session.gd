@@ -147,9 +147,6 @@ var aw_overflows := 0
 var gear_bag: Array = []
 var effect_delays: Array = []
 var unrands_seen: Dictionary = {}
-var part_wishes: Dictionary = {}
-var aim_parts := true
-var finish_yielded: Dictionary = {}
 var manual_mode := false
 var selected := 0
 var intents: Array = []
@@ -217,6 +214,7 @@ func make_actor(id: int, actor_name: String, enemy: bool) -> Dictionary:
 		"body":Body.create(id, seed_value, enemy),
 		"profile":Hexaco.generated(seed_value, id + 1), "memory":Memory.new()}
 	actor["combat_profile"] = combat_profile if not enemy else "legacy"
+	if not enemy and combat_profile == MobileEffects.PROFILE: actor.erase("ap")
 	actor["species_id"] = "" if enemy else "human"
 	if enemy:
 		actor["power"] = 7; actor["speed"] = 100; actor["ac"] = 0; actor["ev"] = 3; actor["res"] = {}
@@ -400,7 +398,8 @@ func start_battle() -> void:
 	phase = "BATTLE"; round_number = 1
 	StoneEffects.battle_start(self)
 	for actor in party:
-		actor.reservation = {}; actor.ap = action_budget(actor)
+		actor.reservation = {}
+		if not manual_mode and not MobileEffects.active(actor): actor.ap = action_budget(actor)
 		actor["guarded"] = false; actor["protected_by"] = -1
 	selected = party.find(alive()[0]); plan_enemies()
 
@@ -500,7 +499,7 @@ func movement_cells(actor_index: int = -1) -> Array:
 	var result: Array = []
 	# The index is a party slot; an npc asks by its own (1000+) id instead.
 	var actor: Dictionary = party[selected] if actor_index < 0 else (party[actor_index] if actor_index < party.size() else actor_by_id(actor_index))
-	if actor.is_empty() or not on_floor() or actor.hp <= 0 or actor.ap <= 0: return result
+	if actor.is_empty() or not on_floor() or actor.hp <= 0 or not manual_mode and actor.ap <= 0: return result
 	var frontier: Array = [actor.pos]
 	var seen: Array = [actor.pos]
 	for step in range(1 if manual_mode else 2 if actor.move_factor == 100 else 1):
@@ -517,7 +516,7 @@ func attack_cells(actor_index: int = -1) -> Array:
 	var result: Array = []
 	# As in movement_cells: a party slot, or an npc asking by its own id.
 	var actor: Dictionary = party[selected] if actor_index < 0 else (party[actor_index] if actor_index < party.size() else actor_by_id(actor_index))
-	if actor.is_empty() or not on_floor() or actor.hp <= 0 or actor.ap <= 0: return result
+	if actor.is_empty() or not on_floor() or actor.hp <= 0 or not manual_mode and actor.ap <= 0: return result
 	if manual_mode:
 		var reach: int = int(CombatStats.stats(self,actor).range)
 		for y in range(maxi(0,actor.pos.y-reach),mini(BOARD_SIDE,actor.pos.y+reach+1)):
@@ -603,7 +602,6 @@ func submit(kind: String, target: Vector2i, value: String = "") -> bool:
 	if not on_floor() or party.is_empty() or party[0].hp <= 0: return false
 	manual_mode = true
 	var actor: Dictionary = party[0]
-	actor.ap = 1
 	if not can_submit(actor,kind,target,value): return false
 	if kind == "SWAP":
 		# Keep the tapped ally in place until the exchange; a due companion turn
@@ -612,7 +610,6 @@ func submit(kind: String, target: Vector2i, value: String = "") -> bool:
 		var swap_cost := action_cost(actor,kind,target)
 		if not act_as(actor,kind,target,false): return false
 		swapped_ally.ready_at = maxi(int(swapped_ally.ready_at),time+swap_cost)
-		actor.ap = 1
 		return Scheduler.advance(self,swap_cost)
 	if not Scheduler.flush_ready(self) or actor.hp <= 0: return false
 	if not pending_stone_drops.is_empty(): return false
@@ -624,11 +621,11 @@ func submit(kind: String, target: Vector2i, value: String = "") -> bool:
 		record_action(actor,"CAST",target,previous_position,previous_stacks)
 		return Scheduler.advance(self,cost)
 	if not act_as(actor,kind,target,false): return false
-	actor.ap = 1
 	return Scheduler.advance(self,cost)
 
 func can_submit(actor: Dictionary, kind: String, target: Vector2i, value: String = "") -> bool:
 	if Forms.attack_action(self,kind) and int(actor.get("effect_moved_round",-1)) == time/100 and StoneEffects.modifier(self,"no_attack_after_move",actor) > 0: return false
+	if MobileEffects.active(actor) and (kind == "CAST" or Abilities.has(kind)): return false
 	if kind == "CAST": return Spells.can_cast(self,actor,value,target)
 	if not inside(target): return false
 	if Abilities.has(kind): return Abilities.legal(self,actor,kind,target)
@@ -664,9 +661,8 @@ func _presentation_action(actor: Dictionary, kind: String, target: Vector2i) -> 
 	var choice := {"kind":kind,"cell":target}
 	return IntentUI.adapt(actor,choice,target_id,AutoBattle._intent_id(self,actor,choice,target_id))
 
-## One action by `actor`. `chain` runs the legacy follow-up (companions acting
-## after the hero, round end on empty AP); auto_step passes false and drives
-## the round itself.
+## One action by `actor`. Manual play advances through the time scheduler;
+## compatibility round play still consumes its own action budget.
 func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = true, intentional: bool = true) -> bool:
 	if free_movement and kind in ["MOVE","ATTACK","WAIT"]:
 		var world: Vector2 = Free.position(actor) if kind == "WAIT" else Free.point(self,target)
@@ -685,7 +681,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 	# on its own walks outside the party's sight.
 	var following: bool = resolving_companions or wanderer(actor)
 	if not floor_state.visible.has(target) and not following: return false
-	if actor.hp <= 0 or actor.ap <= 0 or (status_blocks(actor,kind) and not (MobileEffects.active(actor) and kind == "WAIT")): return false
+	if actor.hp <= 0 or not manual_mode and actor.ap <= 0 or (status_blocks(actor,kind) and not (MobileEffects.active(actor) and kind == "WAIT")): return false
 	var candidate: Dictionary = at(target)
 	match kind:
 		"WAIT":
@@ -717,12 +713,13 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 		if presentation != null: presentation.capture(self,actor.id,display_event)
 		if chain: finish_player_action()
 		return true
-	if actor.hp <= 0 or actor.ap <= 0 or (status_blocks(actor,kind) and not (MobileEffects.active(actor) and kind == "WAIT")): return false
+	if actor.hp <= 0 or not manual_mode and actor.ap <= 0 or (status_blocks(actor,kind) and not (MobileEffects.active(actor) and kind == "WAIT")): return false
 	var was: Vector2i = actor.pos
 	if Abilities.has(kind):
 		if not Abilities.execute(self,actor,kind,target): return false
 		record_action(actor,kind,target,was,previous_stacks)
-		actor.ap -= 1; check_battle_end()
+		if not manual_mode: actor.ap -= 1
+		check_battle_end()
 		if presentation != null: presentation.capture(self,actor.id,display_event)
 		if chain: finish_player_action()
 		return true
@@ -763,7 +760,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 				var hit := TurnCore.physical(StatSheet.legacy_power(actor,"MELEE",18) * actor.attack_factor / 100, 1000, 0, 2)
 				damage(victim,int(hit.damage),actor.id,"SLASH")
 			# A skirmisher with nothing to shoot strikes once, then breaks away.
-			if Stances.effective(actor) == "SKIRMISHER" and Stances.ranged_reach(self,actor) <= 1: actor.hit_and_run = true
+			if not MobileEffects.active(actor) and Stances.effective(actor) == "SKIRMISHER" and Stances.ranged_reach(self,actor) <= 1: actor.hit_and_run = true
 		"FIRE", "WATER", "ELECTRIC":
 			if distance(actor.pos, target) > 4 or tile(target).terrain == "wall": return false
 			if not preload("res://sim/combat_kernel.gd").sees(actor.pos, target,
@@ -775,7 +772,7 @@ func act_as(actor: Dictionary, kind: String, target: Vector2i, chain: bool = tru
 			else: discharge(target, actor.id)
 		_: return false
 	record_action(actor,kind,target,was,previous_stacks)
-	actor.ap -= 1
+	if not manual_mode: actor.ap -= 1
 	check_battle_end()
 	if presentation != null: presentation.capture(self,actor.id,display_event)
 	if chain: finish_player_action()
@@ -808,7 +805,7 @@ func finish_player_action() -> void:
 			if act(choice.kind,choice.cell): party[i].last_action = choice.reason
 	selected = leader
 	resolving_companions = false
-	if on_floor() and party[selected].ap <= 0: end_round()
+	if on_floor() and not manual_mode and party[selected].ap <= 0: end_round()
 
 func reservation_choice(actor: Dictionary) -> Dictionary: return AutoBattle.reservation_choice(self,actor)
 

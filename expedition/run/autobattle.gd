@@ -19,7 +19,7 @@ const AUTO_STOPS := ["BATTLE_START","BATTLE_END","DEATH","ALLY_LETHAL","HP_LOW"]
 static func auto_attack(s) -> bool:
 	if s.phase != "BATTLE": return false
 	var actor: Dictionary = s.party[s.selected]
-	if actor.hp <= 0 or actor.ap <= 0: return false
+	if actor.hp <= 0 or not s.manual_mode and actor.ap <= 0: return false
 	var targets: Array = s.combat_enemies()
 	targets.sort_custom(func(a,b):
 		var av: int = a.hp if actor.basic_target == "LOWEST_HP" else s.distance(actor.pos,a.pos)
@@ -39,7 +39,7 @@ static func auto_attack(s) -> bool:
 
 static func reservation_choice(s, actor: Dictionary) -> Dictionary:
 	var order: Dictionary = actor.reservation
-	if order.is_empty() or actor.hp <= 0 or actor.ap <= 0 or not s.on_floor(): return {}
+	if order.is_empty() or actor.hp <= 0 or not s.manual_mode and actor.ap <= 0 or not s.on_floor(): return {}
 	var cell: Vector2i = order.cell
 	var def: Dictionary = Abilities.definition(order.kind)
 	if order.kind == "ATTACK" or def.get("target","") == "ENEMY":
@@ -108,7 +108,7 @@ static func companion_choice(s, actor: Dictionary) -> Dictionary:
 		if s.party_command == "RETREAT":
 			var away: Vector2 = s.Free.retreat(s,actor)
 			return s.Free.choice(actor,"WAIT" if away == s.Free.position(actor) else "MOVE",away,"후퇴")
-		if s.floor_state.safe(s) or not s.Free.candidates(s,actor,s.Stances.effective(actor)).any(func(a): return a.kind == "ATTACK" or a.kind == "MOVE"):
+		if s.floor_state.safe(s) or not s.Free.candidates(s,actor,"" if s.MobileEffects.active(actor) else s.Stances.effective(actor)).any(func(a): return a.kind == "ATTACK" or a.kind == "MOVE"):
 			return s.Free.follow(s,actor)
 		return Tactics.choose(s,actor)
 	var rescue: Dictionary = s.Downed.choice(s,actor)
@@ -132,7 +132,7 @@ static func companion_intent_snapshot(s) -> Array:
 	var result: Array = []
 	if not s.in_combat(): return result
 	for actor in s.party:
-		if actor.hp <= 0 or actor.ap <= 0 or s.phase != "BATTLE": continue
+		if actor.hp <= 0 or not s.manual_mode and actor.ap <= 0 or s.phase != "BATTLE": continue
 		var choice: Dictionary = s.command_choice(actor)
 		if choice.is_empty(): choice = Tactics.choose(s,actor)
 		var target_id := -1
@@ -149,7 +149,7 @@ static func companion_intent_snapshot(s) -> Array:
 
 static func _intent_id(s, actor: Dictionary, choice: Dictionary, target_id: int) -> int:
 	var actor_id := int(actor.get("id",-1))
-	var signature := "%s|%s|%d|%s|%d" % [str(choice.get("kind","")),str(actor.get("pos",Vector2i.ZERO)),int(actor.get("ap",0)),str(choice.get("cell",Vector2i.ZERO)),target_id]
+	var signature := "%s|%s|%d|%s|%d" % [str(choice.get("kind","")),str(actor.get("pos",Vector2i.ZERO)),int(actor.get("ready_at",0)) if s.manual_mode else int(actor.get("ap",0)),str(choice.get("cell",Vector2i.ZERO)),target_id]
 	var cached: Dictionary = s.intent_preview_ids.get(actor_id,{})
 	if str(cached.get("signature","")) != signature:
 		s.intent_decision_serial += 1
@@ -160,6 +160,7 @@ static func _intent_id(s, actor: Dictionary, choice: Dictionary, target_id: int)
 ## One rules-driven round: every living member spends its AP through the
 ## command or the rules, then the round ends. Game UI and simulator both call this.
 static func auto_step(s) -> bool:
+	if s.manual_mode: return false
 	if not s.in_combat() or s.alive().is_empty(): return false
 	s.battle_stats.rounds = int(s.battle_stats.get("rounds",0))+1
 	# Snapshot before anyone acts: the stop events ask what changed *during* the
@@ -174,6 +175,7 @@ static func auto_step(s) -> bool:
 			var choice: Dictionary = s.Downed.choice(s,actor)
 			if choice.is_empty(): choice = s.command_choice(actor)
 			if choice.is_empty(): choice = Tactics.choose(s,actor)
+			choice = Tactics.execution_choice(s,actor,choice)
 			if not noted and str(choice.get("mistake","")) != "":
 				s.note_mistake(actor,str(choice.mistake)); noted = true
 			s.note_explain(actor,choice)
@@ -183,7 +185,6 @@ static func auto_step(s) -> bool:
 			s.active_intent_event = IntentUI.adapt(actor,choice,int(target.get("id",-1)),s.intent_decision_serial)
 			var acted: bool = s.act_as(actor,str(choice.get("kind","WAIT")),choice.get("cell",actor.pos),false)
 			if acted:
-				Tactics.BuildSense.committed(s,choice)
 				actor.last_action = str(choice.get("reason","대기"))
 			else:
 				var wait_choice := {"kind":"WAIT","cell":actor.pos,"reason":"대기"}
@@ -191,9 +192,9 @@ static func auto_step(s) -> bool:
 				if not s.act_as(actor,"WAIT",actor.pos,false): s.active_intent_event = {}; break
 				actor.last_action = "대기"
 			s.active_intent_event = {}
-		# Did the stance get what it wanted this round? One tally per member.
+		# Legacy sessions retain their stance tally for older battle reports.
 		var row: Dictionary = s.member_stats(actor.id)
-		if not row.is_empty() and actor.hp > 0:
+		if not row.is_empty() and actor.hp > 0 and not s.MobileEffects.active(actor):
 			row.role_rounds = row.get("role_rounds",{"in_role":0,"total":0})
 			row.role_rounds.total += 1
 			if Stances.in_role(s,actor): row.role_rounds.in_role += 1
@@ -205,7 +206,7 @@ static func auto_step(s) -> bool:
 ## member is about to make.
 static func open_battle_conflicts(s) -> void:
 	for actor in s.alive():
-		actor.conflicted = Knobs.conflicted(actor)
+		actor.conflicted = false if s.MobileEffects.active(actor) else Knobs.conflicted(actor)
 
 ## The end of a fight cancels the standing order: a retreat called against one
 ## pack must not still be running when the next one is sighted.
@@ -265,7 +266,7 @@ static func companion_previews(s) -> Array:
 	# `selected` is an index into the party, not an actor id.
 	for index in range(s.party.size()):
 		var actor: Dictionary = s.party[index]
-		if index == s.selected or actor.hp <= 0 or (actor.ap <= 0 and not s.manual_mode): continue
+		if index == s.selected or actor.hp <= 0 or not s.manual_mode and actor.ap <= 0: continue
 		var choice: Dictionary = s.companion_choice(actor).duplicate(true)
 		choice.actor = actor.id
 		previews.append(choice)

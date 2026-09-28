@@ -6,6 +6,7 @@ const Stances = preload("res://expedition/ai/stances.gd")
 const Knobs = preload("res://expedition/ai/knobs.gd")
 const Modes = preload("res://expedition/actors/npc_modes.gd")
 const Hostility = preload("res://expedition/actors/npc_hostility.gd")
+const Utility = preload("res://expedition/ai/utility.gd")
 const NOISE_RADIUS := 10
 const SLEEP_AFTER := 5
 const MATE_LABEL := "동료에게 이동 중"
@@ -29,7 +30,7 @@ static func sense(s, npc: Dictionary) -> bool:
 ## otherwise runs the field modes — approach, hold, rest, explore — off a small
 ## utility table, a duo's cohesion coming before the mode's own step.
 static func turn(s, npc: Dictionary) -> void:
-	npc.ap = 1
+	if not s.manual_mode: npc.ap = 1
 	if npc.get("aw_pet",false):
 		pet_turn(s,npc); return
 	if npc.get("fallen",false):
@@ -91,23 +92,26 @@ static func turn(s, npc: Dictionary) -> void:
 ## party member. It cannot target an unseen hero through walls.
 static func hostile_turn(s, npc: Dictionary, seen: int) -> void:
 	npc.activity = "적대 중"
-	# A monster in contact is an immediate danger even to a party-hating NPC.
-	var close_monsters: Array = s.enemies.filter(func(e): return e.hp > 0 and s.melee_reach(npc.pos,e.pos))
-	if not close_monsters.is_empty():
-		close_monsters.sort_custom(func(a,b): return int(a.id) < int(b.id))
-		if s.act_as(npc,"ATTACK",close_monsters[0].pos,false): return
 	var targets: Array = s.alive().filter(func(a): return MonsterAI.line(s,npc.pos,a.pos,seen))
+	# A stranger under attack may also hit a monster in contact.
+	var close_monsters: Array = []
+	for monster in s.enemies:
+		if monster.hp > 0 and s.melee_reach(npc.pos,monster.pos): close_monsters.append(monster)
+	if not close_monsters.is_empty(): targets = close_monsters
 	if targets.is_empty(): return
-	targets.sort_custom(func(a,b):
-		var da: int = s.distance(npc.pos,a.pos); var db: int = s.distance(npc.pos,b.pos)
-		if da != db: return da < db
-		var ha: float = float(a.hp)/maxf(1.0,float(a.max_hp)); var hb: float = float(b.hp)/maxf(1.0,float(b.max_hp))
-		return ha < hb if ha != hb else int(a.id) < int(b.id))
-	var target: Dictionary = targets[0]
-	if s.attack_reach(npc,target.pos,int(s.CombatStats.stats(s,npc).range)):
-		if s.act_as(npc,"ATTACK",target.pos,false): return
-	if s.status_blocks(npc,"MOVE"): return
-	close_on(s,npc,Stances.adjacent_free(s,target.pos),target.pos)
+	targets.sort_custom(func(a,b): return s.distance(npc.pos,a.pos) < s.distance(npc.pos,b.pos) if s.distance(npc.pos,a.pos) != s.distance(npc.pos,b.pos) else int(a.id) < int(b.id))
+	var options: Array = [{"kind":"WAIT","cell":npc.pos,"reason":"대기"}]
+	var reach: int = int(s.CombatStats.stats(s,npc).range)
+	for target in targets:
+		if s.attack_reach(npc,target.pos,reach):
+			options.append({"kind":"ATTACK","cell":target.pos,"target_id":int(target.id),"damage":int(s.CombatStats.stats(s,npc).damage),"reason":"공격"})
+	if not s.status_blocks(npc,"MOVE"):
+		var goals: Array = Stances.adjacent_free(s,targets[0].pos) if reach <= 1 else Stances.near_free(s,targets[0].pos,reach).filter(func(cell): return s.distance(cell,targets[0].pos) >= 2 and MonsterAI.line(s,cell,targets[0].pos,reach))
+		var steps: Array = Stances.steps_toward(s,npc,goals)
+		for cell in s.movement_cells(npc.id):
+			if s.distance(cell,targets[0].pos) < s.distance(npc.pos,targets[0].pos) and cell not in steps: steps.append(cell)
+		for cell in steps: options.append(Stances.move(npc,cell,"MOVE:approach","접근"))
+	perform(s,npc,Utility.combat_pick(s,npc,options,targets))
 
 ## One step along the route to `goals`. The route ties on a diagonal as often
 ## as not, so among the steps that close just as fast the one that ends nearest
@@ -166,6 +170,7 @@ static func explore_goal(s, npc: Dictionary) -> Vector2i:
 
 ## The chosen action, with a wait as the fallback when it will not run.
 static func perform(s, npc: Dictionary, choice: Dictionary) -> void:
+	choice = Tactics.execution_choice(s,npc,choice)
 	var kind: String = str(choice.get("kind","WAIT"))
 	var cell: Vector2i = choice.get("cell",npc.pos)
 	var intentional: bool = str(choice.get("mistake","")) != "HESITATE" and str(choice.get("tag","")) != "WAIT:yield"

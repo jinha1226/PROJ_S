@@ -295,7 +295,7 @@ static func perform(s, actor: Dictionary, action: Dictionary, intentional: bool 
 		actor.effect_move_action = int(s.action_serial); actor.effect_moved_round = int(s.time)/100; actor.moved_since_attack = true
 		actor.last_world_dir = (dest-start).normalized()
 		if old_cell == actor.pos: s.StoneEffects.fire(s,"MOVED",{"actor":actor,"from":old_cell,"to":actor.pos})
-	actor.ap = 1
+	if not s.manual_mode: actor.ap = 1
 	s.check_battle_end()
 	return true
 

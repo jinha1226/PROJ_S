@@ -7,6 +7,7 @@ const Knobs = preload("res://expedition/ai/knobs.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const Parts = preload("res://expedition/ai/parts_candidates.gd")
 const Lookahead = preload("res://expedition/ai/lookahead.gd")
+const Mobile = preload("res://expedition/progression/attack_wait.gd")
 ## Every (stance, tag) pair the candidate generators in stances.gd can emit.
 ## 호위형 runs the charger programme whenever it has no living protectee, so it
 ## needs the charger's columns as well as its own.
@@ -28,6 +29,7 @@ func run() -> void:
 	commitment()
 	parts()
 	lookahead()
+	mobile_lookahead()
 	oscillation()
 	signed_weights_never_reward()
 	retreat_needs_no_column()
@@ -230,6 +232,59 @@ func lookahead() -> void:
 	s.lookahead_enabled = false
 	check(Utility.inputs(s,hero,{"kind":"MOVE","cell":cell,"tag":"MOVE:approach"},ctx).la_self_hit == 0.0,"disabled: neutral is 0, not a paid bonus")
 	s.lookahead_enabled = true
+
+func mobile_stone(effect: String) -> String:
+	for id in Session.Essences.catalog():
+		if Mobile.effect_id(str(id)) == effect: return str(id)
+	for id in Session.Essences.catalog():
+		for element in Session.Essences.ELEMENTS:
+			if Mobile.effect_id(str(id)+"@"+str(element)) == effect: return str(id)+"@"+str(element)
+	return ""
+
+func mobile_lookahead() -> void:
+	var f := field(["CHARGER","CHARGER","CHARGER"])
+	var s = f.s
+	var hero: Dictionary = s.party[0]
+	var ally: Dictionary = s.party[1]
+	var foe: Dictionary = f.foes[0]
+	s.manual_mode = true
+	s.MobileEffects.enable(s,Mobile.PROFILE)
+	hero.level = 6
+	hero.equipped_abilities = ["","","","","",""]
+	ally.hp = 10
+	var wait_action := {"kind":"WAIT","cell":hero.pos}
+	var before_hp: int = ally.hp
+	s.Essences.bind(hero,mobile_stone("heal_wait"))
+	var healed: Dictionary = Lookahead.predict(s,hero,wait_action)
+	check(healed.allies < 0 and ally.hp == before_hp,"wait healing is predicted without changing the real ally")
+	check(s.act_as(hero,"WAIT",hero.pos,false) and ally.hp-before_hp == -int(healed.allies),"predicted wait healing matches the executed effect")
+	var blocked: int = healed.allies
+	Mobile.state(hero).cooldowns.heal_wait = s.time+300
+	check(Lookahead.predict(s,hero,wait_action).allies > blocked,"cooldown removes predicted healing")
+	Mobile.state(hero).cooldowns.clear(); hero.essences = {}; hero.equipped_abilities = ["","","","","",""]; ally.hp = ally.max_hp
+	s.Essences.bind(hero,mobile_stone("defense_defense"))
+	foe.pos = hero.pos+Vector2i.RIGHT; s.floor_state.observe(s)
+	var protected_wait: Dictionary = Lookahead.predict(s,hero,wait_action)
+	hero.essences = {}; hero.equipped_abilities = ["","","","","",""]
+	var unprotected_wait: Dictionary = Lookahead.predict(s,hero,wait_action)
+	check(protected_wait.self < unprotected_wait.self,"wait protection uses its actual reduction in the next-hit forecast")
+	s.Essences.bind(hero,mobile_stone("defense_threat"))
+	foe.pos = hero.pos+Vector2i(2,0); foe.role = "RANGED"; s.floor_state.observe(s)
+	var drawn: Dictionary = Lookahead.predict(s,hero,wait_action)
+	hero.essences = {}; hero.equipped_abilities = ["","","","","",""]
+	var not_drawn: Dictionary = Lookahead.predict(s,hero,wait_action)
+	check(drawn.allies < not_drawn.allies and hero.get("aw_state",{}).get("waits",0) == 0,"wait threat predicts target redirection without applying it")
+	foe.pos = hero.pos+Vector2i.RIGHT; foe.role = "MELEE"; s.floor_state.observe(s)
+	s.Essences.bind(hero,mobile_stone("rapid_hit"))
+	var strike := {"kind":"ATTACK","cell":foe.pos,"damage":10}
+	var extra: Dictionary = Lookahead.predict(s,hero,strike)
+	hero.essences = {}; hero.equipped_abilities = ["","","","","",""]
+	check(extra.enemies > Lookahead.predict(s,hero,strike).enemies and foe.hp == foe.max_hp,"hit extra attack contributes damage without firing")
+	s.Essences.bind(hero,mobile_stone("fire_wait"))
+	var fire: Dictionary = Lookahead.predict(s,hero,wait_action)
+	check(fire.mobile_value > 0 and not foe.statuses.has("burn"),"wait status has value but does not alter the enemy")
+	var weighed: Dictionary = Utility.score(s,hero,{"kind":"WAIT","cell":hero.pos,"tag":"WAIT:hold"},Utility.context(s,hero),"CHARGER",Knobs.DEFAULT)
+	check(weighed.mobile_score == fire.mobile_value,"the existing utility selector receives the lookahead's soulstone value")
 
 ## Commitment has to beat the flip-flop: four rounds against a stationary foe
 ## must not come out A-B-A-B.

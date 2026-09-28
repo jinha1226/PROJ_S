@@ -5,7 +5,7 @@ extends RefCounted
 ## instead of guessing from state diffs.
 static func step(s, policy: String) -> String:
 	var hero: Dictionary = s.party[s.selected]
-	if hero.hp <= 0 or hero.ap <= 0: return ""
+	if hero.hp <= 0 or not s.manual_mode and hero.ap <= 0: return ""
 	if policy == "tactical":
 		if hero.hp < 14 and int(s.bag.get("healing",0)) > 0 and s.use_item("healing"): return "HEAL"
 	if s.combat_enemies().is_empty() and approach(s,hero): return "MOVE"

@@ -125,9 +125,6 @@ static func member_card(ui, list: VBoxContainer, index: int, probe: Dictionary) 
 	box.name = "ArenaMember%d" % index
 	if str(ui.arena_config.get("profile","legacy")) == Session.MobileEffects.PROFILE:
 		auto_stones(ui,box,index,setup)
-		if index > 0:
-			var stances := HBoxContainer.new(); box.add_child(stances)
-			for id in Stances.IDS: ui.button(stances,Stances.NAMES[id],func(): choose_stance(ui,index,id))
 		return
 	var builds := OptionButton.new(); builds.name = "ArenaBuild_%d" % index
 	builds.size_flags_horizontal = Control.SIZE_EXPAND_FILL; builds.custom_minimum_size.y = 44; builds.clip_text = true

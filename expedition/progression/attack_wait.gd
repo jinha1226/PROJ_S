@@ -21,6 +21,8 @@ static func enable(s, profile: String) -> bool:
 	for actor in s.party+s.npcs+s.roster:
 		if not person(actor): continue
 		actor.combat_profile = profile
+		if profile == PROFILE: actor.erase("ap")
+		elif not actor.has("ap"): actor.ap = s.action_budget(actor)
 		actor.erase("aw_state")
 		Essences.sync_spells(actor)
 		s.StatSheet.refresh_pools(s,actor)

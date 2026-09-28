@@ -21,6 +21,7 @@ static func set_knob(s, index: int, key: String, value: int) -> bool:
 static func set_stance(s, index: int, stance: String) -> bool:
 	if not s.safe_management() or s.in_combat(): return false
 	if index < 0 or index >= s.party.size() or s.party[index].hp <= 0 or stance not in Stances.IDS: return false
+	if s.MobileEffects.active(s.party[index]): return false
 	if stance == "GUARDIAN" and s.party.size() == 1: return false
 	s.party[index].stance = stance
 	return true
