@@ -162,7 +162,10 @@ func defense() -> void:
 	var d := with_effects(["defense_defense","defense_threat"])
 	wait(d); wait(d); wait(d)
 	check(d.hero.aw_state.waits == 1,"one wait grants full lure without stacking")
-	check(Mobile.incoming(d.s,d.hero,d.foe,100,"HIT") == 80,"guard refresh never stacks reduction")
+	check(Mobile.incoming(d.s,d.hero,d.foe,100,"HIT") == 100,"a green guard does not switch on from waiting")
+	# Green (struck): the guard switches on when hit and holds until the next own action.
+	Mobile.struck(d.s,d.hero,d.foe,{"lost":4}); Mobile.struck(d.s,d.hero,d.foe,{"lost":4})
+	check(Mobile.incoming(d.s,d.hero,d.foe,100,"HIT") == 70,"guard refresh never stacks reduction")
 	check(Mobile.incoming(d.s,d.hero,d.foe,100,"MOBILE_DOT") == 100,"stance excludes DOT")
 	check(Mobile.threat(d.s,d.foe,d.hero) == 9,"known target threat bonus is bounded")
 	wait(d,false); check(d.hero.aw_state.waits == 0 and d.hero.aw_state.preps.is_empty(),"forced skip clears stance and threat")
@@ -217,12 +220,17 @@ func electricity() -> void:
 	Mobile.push(d.s,"HIT",d.hero,facts)
 	check(d.foe.hp == 196 and int(report.procs) == 2 and not d.s.effects.any(func(e): return e.get("kind","") == "PROC"),"no status change and no damage produces no fabricated proc")
 func support() -> void:
-	var d := with_effects(["heal_wait","heal_chain"],2)
+	var d := with_effects(["heal_wait"],2)
 	d.hero.hp = 50; d.s.party[1].hp = 10; d.s.party[1].max_hp = 100
 	wait(d); check(d.s.party[1].hp == 18,"wait heal chooses actual ally with lowest HP ratio")
 	d.s.time += 300; wait(d); check(d.s.party[1].hp == 26,"heal has two encounter uses")
 	d.s.time += 300; d.foe.pos = d.centre+Vector2i(20,0); wait(d); d.foe.pos = d.centre+Vector2i.RIGHT; wait(d)
 	check(d.s.party[1].hp == 26,"losing sight and reacquiring same foe does not recharge healing")
+	d = with_effects(["heal_chain"],2)
+	d.hero.hp = 50; d.s.party[1].hp = 10; d.s.party[1].max_hp = 100
+	wait(d); check(d.s.party[1].hp == 15,"small wait heal reaches the most hurt ally")
+	wait(d); check(d.s.party[1].hp == 15,"small wait heal waits out its cooldown")
+	d.s.time += 200; wait(d); check(d.s.party[1].hp == 20,"small wait heal returns after two turns")
 	d = with_effects(["heal_hit"]); d.hero.hp = 50; d.foe.hp = 1; hit(d)
 	check(d.hero.hp == 51,"lifesteal uses actual lost HP of overkill target")
 	d = with_effects(["poison_hit","bleed_kill"]); d.foe.hp = 2; d.s.Statuses.apply(d.s,d.foe,"poison",300,d.hero)
@@ -241,7 +249,7 @@ func pets() -> void:
 func physical() -> void:
 	var d := with_effects(["focus_wait"]); d.hero.gear.weapon = {"type":"bow","enchant":0}
 	wait(d); wait(d); wait(d); wait(d)
-	check(d.hero.aw_state.attack_preps.focus.percent == 20,"one wait fully prepares focus without stacking")
+	check(d.hero.aw_state.attack_preps.focus.percent == 50,"one wait fully prepares focus without stacking")
 	hit(d); check(d.hero.aw_state.attack_preps.is_empty(),"legal basic attack consumes focus preparation")
 	d = with_effects(["crush_hit","crush_chain"]); var blocked: Vector2i = d.foe.pos+Vector2i.RIGHT
 	d.s.tile(blocked).terrain = "wall"; hit(d)

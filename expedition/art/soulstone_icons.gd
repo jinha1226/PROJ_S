@@ -4,14 +4,14 @@ extends RefCounted
 const Mobile = preload("res://expedition/progression/attack_wait.gd")
 const ROOT := "res://assets/soulstone-icons-v1/png/"
 const FRAMES := ["red","purple","green"]
-const EFFECTS := ["bleed","poison","burn","freeze","shock","curse","extra_strike","crit","heal","guard","thorns","summon"]
+const EFFECTS := ["bleed","poison","burn","freeze","shock","curse","extra_strike","crit","heal","guard","thorns","summon","wet","push"]
 const BADGES := ["boost","burst"]
 const STATUS_EFFECT := {
 	"bleed":"bleed","poison":"poison","burn":"burn","slow":"freeze","freeze":"freeze",
 	"charge":"shock","stun":"shock","weak":"curse","vulnerable":"curse","confuse":"curse",
-	"death_mark":"curse","exposed":"crit","wet":"freeze","blessing":"guard","guard":"guard",
+	"death_mark":"curse","exposed":"crit","wet":"wet","blessing":"guard","guard":"guard",
 	"regen":"heal","healing":"heal"}
-const ICON_NAMES := {"bleed":"출혈","poison":"독","burn":"화상","freeze":"빙결","shock":"감전","curse":"저주","extra_strike":"연타","crit":"조준","heal":"회복","guard":"보호","thorns":"반격","summon":"소환"}
+const ICON_NAMES := {"bleed":"출혈","poison":"독","burn":"화상","freeze":"빙결","shock":"감전","curse":"저주","extra_strike":"연타","crit":"조준","heal":"회복","guard":"보호","thorns":"반격","summon":"소환","wet":"젖음","push":"밀치기"}
 static var cache: Dictionary = {}
 static var image_cache: Dictionary = {}
 static var effect_cache: Dictionary = {}

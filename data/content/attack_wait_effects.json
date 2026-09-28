@@ -162,7 +162,7 @@
     },
     "fire_wait": {
       "name": "화상 장막",
-      "text": "대기 시 3칸 화상",
+      "text": "대기 시 3칸 안 적 2명 화상 · 재사용 2턴",
       "family": "fire",
       "role": "OFFENSE",
       "event": "WAIT",
@@ -172,12 +172,13 @@
       "vfx": "fire",
       "status": "burn",
       "radius": 3,
-      "count": 0,
+      "count": 2,
       "damage": 0,
       "element": "physical",
       "colour": "purple",
       "icon": "burn",
-      "badge": ""
+      "badge": "",
+      "cooldown": 200
     },
     "poison_hit": {
       "name": "중독",
@@ -196,7 +197,7 @@
     },
     "poison_wait": {
       "name": "중독 장막",
-      "text": "대기 시 4칸 중독",
+      "text": "대기 시 3칸 안 적 2명 중독 · 재사용 2턴",
       "family": "poison",
       "role": "OFFENSE",
       "event": "WAIT",
@@ -205,13 +206,14 @@
       "ticks": 300,
       "vfx": "poison",
       "status": "poison",
-      "radius": 4,
-      "count": 0,
+      "radius": 3,
+      "count": 2,
       "damage": 0,
       "element": "physical",
       "colour": "purple",
       "icon": "poison",
-      "badge": ""
+      "badge": "",
+      "cooldown": 200
     },
     "ice_hit": {
       "name": "둔화",
@@ -230,7 +232,7 @@
     },
     "ice_wait": {
       "name": "둔화 장막",
-      "text": "대기 시 3칸 둔화",
+      "text": "대기 시 3칸 안 적 2명 둔화 · 재사용 2턴",
       "family": "ice",
       "role": "OFFENSE",
       "event": "WAIT",
@@ -240,12 +242,13 @@
       "vfx": "ice",
       "status": "slow",
       "radius": 3,
-      "count": 0,
+      "count": 2,
       "damage": 0,
       "element": "physical",
       "colour": "purple",
       "icon": "freeze",
-      "badge": ""
+      "badge": "",
+      "cooldown": 200
     },
     "air_hit": {
       "name": "전하",
@@ -267,7 +270,7 @@
     },
     "air_wait": {
       "name": "전하 장막",
-      "text": "대기 시 4칸 전하",
+      "text": "대기 시 3칸 안 적 2명 전하 · 재사용 2턴",
       "family": "air",
       "role": "OFFENSE",
       "event": "WAIT",
@@ -276,13 +279,14 @@
       "ticks": 300,
       "vfx": "lightning",
       "status": "charge",
-      "radius": 4,
-      "count": 1,
+      "radius": 3,
+      "count": 2,
       "damage": 2,
       "element": "air",
       "colour": "purple",
       "icon": "shock",
-      "badge": ""
+      "badge": "",
+      "cooldown": 200
     },
     "bleed_hit": {
       "name": "출혈",
@@ -301,7 +305,7 @@
     },
     "bleed_wait": {
       "name": "출혈 장막",
-      "text": "대기 시 1칸 출혈",
+      "text": "대기 시 1칸 안 적 2명 출혈 · 재사용 2턴",
       "family": "bleed",
       "role": "OFFENSE",
       "event": "WAIT",
@@ -311,12 +315,13 @@
       "vfx": "bleed",
       "status": "bleed",
       "radius": 1,
-      "count": 0,
+      "count": 2,
       "damage": 0,
       "element": "physical",
       "colour": "purple",
       "icon": "bleed",
-      "badge": ""
+      "badge": "",
+      "cooldown": 200
     },
     "mental_hit": {
       "name": "혼란",
@@ -335,7 +340,7 @@
     },
     "mental_wait": {
       "name": "혼란 장막",
-      "text": "대기 시 4칸 혼란",
+      "text": "대기 시 3칸 안 적 1명 혼란 · 재사용 3턴",
       "family": "mental",
       "role": "OFFENSE",
       "event": "WAIT",
@@ -344,13 +349,14 @@
       "ticks": 300,
       "vfx": "confuse",
       "status": "confuse",
-      "radius": 4,
+      "radius": 3,
       "count": 1,
       "damage": 0,
       "element": "physical",
       "colour": "purple",
       "icon": "curse",
-      "badge": ""
+      "badge": "",
+      "cooldown": 300
     },
     "hex_hit": {
       "name": "약화",
@@ -369,7 +375,7 @@
     },
     "hex_wait": {
       "name": "약화 장막",
-      "text": "대기 시 3칸 약화",
+      "text": "대기 시 3칸 안 적 2명 약화 · 재사용 2턴",
       "family": "hex",
       "role": "OFFENSE",
       "event": "WAIT",
@@ -384,7 +390,8 @@
       "element": "physical",
       "colour": "purple",
       "icon": "curse",
-      "badge": ""
+      "badge": "",
+      "cooldown": 200
     },
     "water_hit": {
       "name": "젖음",
@@ -398,12 +405,12 @@
       "vfx": "water",
       "status": "wet",
       "colour": "red",
-      "icon": "freeze",
+      "icon": "wet",
       "badge": ""
     },
     "water_wait": {
       "name": "젖음 장막",
-      "text": "대기 시 3칸 젖음",
+      "text": "대기 시 3칸 안 적 2명 젖음 · 재사용 2턴",
       "family": "water",
       "role": "OFFENSE",
       "event": "WAIT",
@@ -413,12 +420,13 @@
       "vfx": "water",
       "status": "wet",
       "radius": 3,
-      "count": 0,
+      "count": 2,
       "damage": 0,
       "element": "physical",
       "colour": "purple",
-      "icon": "guard",
-      "badge": ""
+      "icon": "wet",
+      "badge": "",
+      "cooldown": 200
     },
     "fire_chain": {
       "name": "화염 폭발",
@@ -575,19 +583,21 @@
     },
     "heal_chain": {
       "name": "방어 준비",
-      "text": "대기 시 받는 피해 20% 감소",
+      "text": "대기 시 2칸 안 가장 다친 아군 HP 5 회복 · 재사용 2턴",
       "family": "heal",
       "role": "DEFENSE",
       "event": "WAIT",
-      "op": "prepare",
+      "op": "heal_ally",
       "limit": 1,
       "ticks": 300,
       "vfx": "heal",
-      "key": "guard",
-      "reduction": 20,
       "colour": "purple",
-      "icon": "guard",
-      "badge": ""
+      "icon": "heal",
+      "badge": "",
+      "radius": 2,
+      "heal": 5,
+      "cooldown": 200,
+      "combat": true
     },
     "wind_chain": {
       "name": "추가타",
@@ -713,20 +723,20 @@
     },
     "ice_defense": {
       "name": "방어 준비",
-      "text": "대기 시 방어 +4",
+      "text": "맞으면 내 다음 행동까지 방어 +6",
       "family": "ice",
       "role": "DEFENSE",
-      "event": "WAIT",
+      "event": "STRUCK",
       "op": "prepare",
       "limit": 1,
       "ticks": 300,
       "vfx": "ice",
       "key": "ice_armour",
       "mods": {
-        "armour": 4
+        "armour": 6
       },
-      "colour": "purple",
-      "icon": "freeze",
+      "colour": "green",
+      "icon": "guard",
       "badge": ""
     },
     "mental_defense": {
@@ -767,41 +777,41 @@
     },
     "wind_defense": {
       "name": "방어 준비",
-      "text": "대기 시 회피 +15",
+      "text": "맞으면 내 다음 행동까지 회피 +20",
       "family": "wind",
       "role": "DEFENSE",
-      "event": "WAIT",
+      "event": "STRUCK",
       "op": "prepare",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
       "key": "wind_wall",
       "mods": {
-        "dodge": 15
+        "dodge": 20
       },
-      "colour": "purple",
+      "colour": "green",
       "icon": "guard",
       "badge": ""
     },
     "defense_defense": {
       "name": "방어 준비",
-      "text": "대기 시 직접 피해 20% 감소",
+      "text": "맞으면 내 다음 행동까지 받는 피해 30% 감소",
       "family": "defense",
       "role": "DEFENSE",
-      "event": "WAIT",
+      "event": "STRUCK",
       "op": "prepare",
       "limit": 1,
       "ticks": 300,
       "vfx": "shield",
       "key": "stance",
-      "reduction": 20,
-      "colour": "purple",
+      "reduction": 30,
+      "colour": "green",
       "icon": "guard",
       "badge": ""
     },
     "reflect_defense": {
       "name": "방어 준비",
-      "text": "대기 후 피격 피해 30% 반사",
+      "text": "맞으면 받은 피해 30% 반사",
       "family": "reflect",
       "role": "DEFENSE",
       "event": "STRUCK",
@@ -817,17 +827,17 @@
     },
     "crush_defense": {
       "name": "방어 준비",
-      "text": "대기 후 밀치기 저항",
+      "text": "맞으면 내 다음 행동까지 밀리지 않음",
       "family": "crush",
       "role": "DEFENSE",
-      "event": "WAIT",
+      "event": "STRUCK",
       "op": "prepare",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
       "key": "steadfast",
       "push_resist": true,
-      "colour": "purple",
+      "colour": "green",
       "icon": "guard",
       "badge": ""
     },
@@ -1127,19 +1137,19 @@
     },
     "regen_struck": {
       "name": "재생",
-      "text": "대기 시 HP 재생 · 재사용 3턴",
+      "text": "맞으면 재생 · 재사용 3턴",
       "family": "regen",
       "role": "DEFENSE",
-      "event": "WAIT",
+      "event": "STRUCK",
       "op": "regen",
       "limit": 1,
       "ticks": 300,
       "vfx": "heal",
       "heal": 2,
-      "pulses": 2,
+      "pulses": 3,
       "cooldown": 300,
       "combat": true,
-      "colour": "purple",
+      "colour": "green",
       "icon": "heal",
       "badge": ""
     },
@@ -1282,10 +1292,10 @@
     },
     "death_defense": {
       "name": "방어 준비",
-      "text": "소환수가 있으면 대기 시 피해 분담",
+      "text": "맞을 때 소환수가 있으면 내 다음 행동까지 피해 25% 분담",
       "family": "death",
       "role": "CHAIN",
-      "event": "WAIT",
+      "event": "STRUCK",
       "op": "prepare",
       "limit": 1,
       "ticks": 300,
@@ -1293,8 +1303,8 @@
       "key": "bone_share",
       "share": 25,
       "needs_pet": true,
-      "colour": "purple",
-      "icon": "guard",
+      "colour": "green",
+      "icon": "summon",
       "badge": "boost"
     },
     "death_chain": {
@@ -1356,7 +1366,7 @@
     },
     "crush_prep": {
       "name": "공격 준비",
-      "text": "대기 후 다음 공격 강타",
+      "text": "대기 후 다음 공격 강타 · 피해 +50%·밀치기",
       "family": "crush",
       "role": "OFFENSE",
       "event": "WAIT",
@@ -1365,10 +1375,10 @@
       "ticks": 300,
       "vfx": "buff",
       "key": "crush",
-      "percent": 20,
+      "percent": 50,
       "push": true,
       "colour": "purple",
-      "icon": "crit",
+      "icon": "push",
       "badge": ""
     },
     "bleed_prep": {
@@ -1389,7 +1399,7 @@
     },
     "wind_prep": {
       "name": "공격 준비",
-      "text": "대기 후 다음 공격 돌풍",
+      "text": "대기 후 다음 공격 돌풍 · 피해 +30%·밀치기",
       "family": "wind",
       "role": "OFFENSE",
       "event": "WAIT",
@@ -1400,8 +1410,9 @@
       "key": "gust",
       "push": true,
       "colour": "purple",
-      "icon": "crit",
-      "badge": ""
+      "icon": "push",
+      "badge": "",
+      "percent": 30
     },
     "rapid_hit": {
       "name": "추가타",
@@ -1471,7 +1482,7 @@
     },
     "volley_defense": {
       "name": "방어 준비",
-      "text": "대기 시 회피 +10",
+      "text": "대기 시 회피 +15",
       "family": "volley",
       "role": "DEFENSE",
       "event": "WAIT",
@@ -1481,7 +1492,7 @@
       "vfx": "buff",
       "key": "quick_guard",
       "mods": {
-        "dodge": 10
+        "dodge": 15
       },
       "colour": "purple",
       "icon": "extra_strike",
@@ -1489,7 +1500,7 @@
     },
     "focus_wait": {
       "name": "조준",
-      "text": "대기 후 다음 공격 피해 +20%",
+      "text": "조준: 대기 후 다음 공격 피해 +50%",
       "family": "focus",
       "role": "OFFENSE",
       "event": "WAIT",
@@ -1497,7 +1508,7 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "percent": 20,
+      "percent": 50,
       "key": "focus",
       "colour": "purple",
       "icon": "crit",
@@ -1520,7 +1531,7 @@
     },
     "focus_defense": {
       "name": "방어 준비",
-      "text": "대기 시 회피 +15",
+      "text": "대기 시 회피 +20",
       "family": "focus",
       "role": "DEFENSE",
       "event": "WAIT",
@@ -1530,7 +1541,7 @@
       "vfx": "buff",
       "key": "cover",
       "mods": {
-        "dodge": 15
+        "dodge": 20
       },
       "colour": "purple",
       "icon": "crit",
@@ -1590,18 +1601,18 @@
     },
     "vital_defense": {
       "name": "방어 준비",
-      "text": "대기 시 받는 피해 20% 감소",
+      "text": "맞으면 내 다음 행동까지 받는 피해 30% 감소",
       "family": "vital",
       "role": "DEFENSE",
-      "event": "WAIT",
+      "event": "STRUCK",
       "op": "prepare",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
       "key": "guard",
-      "reduction": 20,
-      "colour": "purple",
-      "icon": "crit",
+      "reduction": 30,
+      "colour": "green",
+      "icon": "guard",
       "badge": ""
     },
     "fury_hit": {
@@ -1621,19 +1632,19 @@
     },
     "fury_defense": {
       "name": "방어 준비",
-      "text": "대기 시 받는 피해 25% 감소",
+      "text": "맞으면 다음 공격 피해 +30%",
       "family": "fury",
       "role": "DEFENSE",
-      "event": "WAIT",
-      "op": "prepare",
+      "event": "STRUCK",
+      "op": "attack_prep",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "key": "rage_guard",
-      "reduction": 25,
-      "colour": "purple",
+      "key": "rage",
+      "colour": "green",
       "icon": "crit",
-      "badge": ""
+      "badge": "",
+      "percent": 30
     },
     "fury_kill": {
       "name": "회복",
@@ -1662,7 +1673,7 @@
       "vfx": "buff",
       "blocked_damage": 0,
       "colour": "red",
-      "icon": "extra_strike",
+      "icon": "push",
       "badge": ""
     },
     "crush_hit": {
@@ -1677,7 +1688,7 @@
       "vfx": "buff",
       "blocked_damage": 3,
       "colour": "red",
-      "icon": "extra_strike",
+      "icon": "push",
       "badge": ""
     },
     "crush_chain": {
@@ -1715,37 +1726,43 @@
     },
     "evasion_defense": {
       "name": "방어 준비",
-      "text": "대기 시 회피 +10",
+      "text": "피하면 내 다음 행동까지 회피 +15",
       "family": "evasion",
       "role": "DEFENSE",
-      "event": "WAIT",
+      "event": "STRUCK",
       "op": "prepare",
       "limit": 1,
       "ticks": 300,
       "vfx": "dodge",
       "key": "step_guard",
       "mods": {
-        "dodge": 10
+        "dodge": 15
       },
-      "colour": "purple",
+      "colour": "green",
       "icon": "guard",
-      "badge": ""
+      "badge": "",
+      "outcomes": [
+        "dodge"
+      ]
     },
     "wind_dodge": {
       "name": "공격 준비",
-      "text": "대기 후 다음 공격 피해 +20%",
+      "text": "피하면 다음 공격 피해 +30%",
       "family": "wind",
       "role": "OFFENSE",
-      "event": "WAIT",
+      "event": "STRUCK",
       "op": "attack_prep",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "percent": 20,
-      "key": "wind",
-      "colour": "purple",
+      "percent": 30,
+      "key": "counter_eye",
+      "colour": "green",
       "icon": "crit",
-      "badge": ""
+      "badge": "",
+      "outcomes": [
+        "dodge"
+      ]
     },
     "reflect_hit": {
       "name": "방어 준비",
@@ -1767,34 +1784,35 @@
     },
     "reflect_kill": {
       "name": "회복",
-      "text": "적중 시 HP 2 회복",
+      "text": "실제 피해 20% 회복 · 최대 5",
       "family": "reflect",
       "role": "OFFENSE",
       "event": "HIT",
-      "op": "heal_self",
+      "op": "drain",
       "limit": 1,
       "ticks": 300,
       "vfx": "reflect",
-      "heal": 2,
       "colour": "red",
       "icon": "heal",
-      "badge": ""
+      "badge": "",
+      "percent": 20,
+      "cap": 5
     },
     "water_cleanse": {
       "name": "방어 준비",
-      "text": "대기 시 받는 피해 20% 감소",
+      "text": "대기 시 곁의 아군 받는 피해 20% 감소",
       "family": "water",
       "role": "DEFENSE",
       "event": "WAIT",
-      "op": "prepare",
+      "op": "ally_guard",
       "limit": 1,
       "ticks": 300,
       "vfx": "water",
-      "key": "guard",
       "reduction": 20,
       "colour": "purple",
       "icon": "guard",
-      "badge": ""
+      "badge": "",
+      "radius": 1
     },
     "water_air": {
       "name": "연쇄 번개",
@@ -1934,19 +1952,19 @@
     },
     "wind_ranged": {
       "name": "방어 준비",
-      "text": "대기 시 회피 +10",
+      "text": "맞으면 내 다음 행동까지 회피 +15",
       "family": "wind",
       "role": "DEFENSE",
-      "event": "WAIT",
+      "event": "STRUCK",
       "op": "prepare",
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
       "key": "gust_guard",
       "mods": {
-        "dodge": 10
+        "dodge": 15
       },
-      "colour": "purple",
+      "colour": "green",
       "icon": "guard",
       "badge": ""
     },

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Soul stone icons v1: twelve effect glyphs, two link badges, three trigger
+"""Soul stone icons v1: fourteen effect glyphs, two link badges, three trigger
 frames (red = on attack, purple = on wait, green = when struck) and one sample
 stone per colour. Everything is plain SVG on a 128 grid so the set stays
 consistent and every piece can be recoloured or recombined by code.
@@ -148,11 +148,29 @@ def summon() -> str:
             + shine("M36 50 C36 38 44 30 54 28", 0.5))
 
 
+def wet() -> str:
+    """Water: a clear blue drop with a ripple, told apart from ice and poison."""
+    drop = 'path d="M64 18 C64 18 38 52 38 72 C38 88 50 98 64 98 C78 98 90 88 90 72 C90 52 64 18 64 18 Z"'
+    return (outlined(drop, "#3f8fe0")
+            + '<path d="M64 26 C60 34 46 54 45 70" fill="none" stroke="#8cc8ff" stroke-width="6" stroke-linecap="round"/>'
+            + shine("M52 76 C52 84 57 90 63 92", 0.55)
+            + line("M22 108 C34 102 46 114 58 108 C70 102 82 114 94 108 C100 105 104 106 108 108", "#3f8fe0", 5))
+
+
+def push() -> str:
+    """Knockback: a heavy arrow with speed lines."""
+    arrow = 'path d="M34 48 L70 48 L70 30 L106 64 L70 98 L70 80 L34 80 Z"'
+    return (outlined(arrow, "#e8c77a")
+            + '<path d="M40 56 L66 56" stroke="#fff3cf" stroke-width="5" stroke-linecap="round"/>'
+            + line("M12 50 L24 50 M8 64 L24 64 M12 78 L24 78", "#e8c77a", 5))
+
+
 EFFECTS = {
     "bleed": ("출혈", bleed), "poison": ("중독", poison), "burn": ("화상", burn),
     "freeze": ("빙결·둔화", freeze), "shock": ("감전", shock), "curse": ("약화·저주", curse),
     "extra_strike": ("추가 공격", extra_strike), "crit": ("치명타·조준", crit), "heal": ("회복", heal),
     "guard": ("보호·방어", guard), "thorns": ("반사·반격", thorns), "summon": ("소환", summon),
+    "wet": ("젖음", wet), "push": ("밀치기", push),
 }
 
 # ── badges, frames, stones ──────────────────────────────────────────────

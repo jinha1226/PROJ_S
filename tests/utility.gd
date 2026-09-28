@@ -262,7 +262,7 @@ func mobile_lookahead() -> void:
 	Mobile.state(hero).cooldowns.heal_wait = s.time+300
 	check(Lookahead.predict(s,hero,wait_action).allies > blocked,"cooldown removes predicted healing")
 	Mobile.state(hero).cooldowns.clear(); hero.essences = {}; hero.equipped_abilities = ["","","","","",""]; ally.hp = ally.max_hp
-	s.Essences.bind(hero,mobile_stone("defense_defense"))
+	s.Essences.bind(hero,mobile_stone("bless_defense"))
 	foe.pos = hero.pos+Vector2i.RIGHT; s.floor_state.observe(s)
 	var protected_wait: Dictionary = Lookahead.predict(s,hero,wait_action)
 	hero.essences = {}; hero.equipped_abilities = ["","","","","",""]

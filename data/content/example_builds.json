@@ -4,7 +4,7 @@
   {
    "id": "wall",
    "name": "철벽",
-   "group": "purple",
+   "group": "green",
    "subtype": "DEFENSE",
    "level": 10,
    "weapon": "mace",
