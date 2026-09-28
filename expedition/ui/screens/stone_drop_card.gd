@@ -4,6 +4,7 @@ const Drop = preload("res://expedition/progression/stone_drop.gd")
 const Tab = preload("res://expedition/ui/screens/essence_tab.gd")
 const Banners = preload("res://expedition/ui/screens/banners.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
+const Icons = preload("res://expedition/art/soulstone_icons.gd")
 var ui
 var source = null
 var token := -1
@@ -43,13 +44,15 @@ func update() -> void:
 	var stone: String = str(s.pending_stone_drops[0].stone)
 	ui.clear(content)
 	var heading := HBoxContainer.new(); content.add_child(heading)
-	var icon := TextureRect.new(); icon.texture = Art.part_icon(stone)
+	var hero: Dictionary = s.party[0] if not s.party.is_empty() else {}
+	var icon := TextureRect.new(); icon.name = "StoneDropIcon"; icon.texture = Icons.stone_icon(stone) if s.MobileEffects.active(hero) else Art.part_icon(stone)
 	icon.custom_minimum_size = Vector2(48,48); icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; heading.add_child(icon)
 	Tab.label(heading,Essences.title(stone),18).name = "StoneDropTitle"
+	if s.MobileEffects.active(hero):
+		Tab.label(content,str(s.MobileEffects.COLOURS.get(s.MobileEffects.colour(stone),"")),12).name = "StoneDropColour"
 	if s.pending_stone_drops.size() > 1: Tab.label(content,"남은 영혼석 %d" % s.pending_stone_drops.size(),12)
-	var hero: Dictionary = s.party[0] if not s.party.is_empty() else {}
-	Tab.label(content,Tab.stat_line(stone,hero),14).name = "StoneDropStats"
+	if not s.MobileEffects.active(hero): Tab.label(content,Tab.stat_line(stone,hero),14).name = "StoneDropStats"
 	Tab.label(content,Tab.effect_line(stone,hero),14).name = "StoneDropEffect"
 	var active := Tab.active_line(stone)
 	if not s.MobileEffects.active(hero) and not active.is_empty(): Tab.label(content,active,13)
@@ -69,7 +72,13 @@ func update() -> void:
 		if s.phase in ["DEFEAT","VICTORY"]: reason = "원정 종료"
 		var pick: Button = ui.button(box,"흡수" if reason.is_empty() else reason,func(): choose(index,s,choice_token))
 		pick.name = "StoneDropAbsorb_%d" % index; pick.disabled = not reason.is_empty()
-	ui.button(content,"가방에 보관",func(): choose(-1,s,choice_token)).name = "StoneDropKeep"
+	if Essences.bag_limit(s) > 0 and Essences.bag_count(s) > Essences.bag_limit(s):
+		Tab.label(content,"가방 %d/%d" % [Essences.bag_count(s)-1,Essences.bag_limit(s)],12)
+		for discard in s.parts_bag:
+			if int(s.parts_bag[discard]) <= (1 if discard == stone else 0): continue
+			ui.button(content,"%s 버리고 넣기" % Essences.title(str(discard)),func(): choose(-1,s,choice_token,str(discard))).name = "StoneDropReplace_"+Tab.node_key(str(discard))
+	else:
+		ui.button(content,"가방에 보관",func(): choose(-1,s,choice_token)).name = "StoneDropKeep"
 	ui.button(content,"두고 가기",func(): choose(-2,s,choice_token)).name = "StoneDropLeave"
 	var bounds: Vector2 = ui.get_viewport_rect().size.min(ui.size)
 	var width := maxi(1,mini(340,int(bounds.x)-32))
@@ -78,15 +87,15 @@ func update() -> void:
 	scroll.scroll_vertical = 0
 	popup_centered(Vector2i(width,height))
 
-func choose(index: int, expected_source = null, expected_token: int = -1) -> void:
+func choose(index: int, expected_source = null, expected_token: int = -1, discard_id: String = "") -> void:
 	if expected_source != null and (source != expected_source or token != expected_token): return
 	if source == null or source != ui.session: dismiss_preserving(); return
-	var reason: String = source.resolve_stone_drop(token,index)
+	var reason: String = source.resolve_stone_drop(token,index,discard_id)
 	if not reason.is_empty():
 		ui.notice = reason; return
 	dismiss_preserving(); ui.refresh()
 
 func on_closed() -> void:
 	if source != null and source == ui.session and token >= 0:
-		source.resolve_stone_drop(token,-1)
+		if Essences.bag_limit(source) == 0 or Essences.bag_count(source) <= Essences.bag_limit(source): source.resolve_stone_drop(token,-1)
 	source = null; token = -1

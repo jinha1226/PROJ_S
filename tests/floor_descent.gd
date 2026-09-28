@@ -34,4 +34,18 @@ func run() -> void:
 	s.food = 4; s.party[1].hp = 12; s.party[2].stress = 60
 	check(s.descend() and s.depth == 2 and s.floor_state.layout.theme_id == "F1_RUINS","descent stays in the zone theme")
 	check(s.food == 4 and s.party[1].hp == 12 and s.party[2].stress == 60,"state persists")
+	for boss_floor in [3,6,9]:
+		s.depth = boss_floor; s.phase = "EXPLORE"
+		for e in s.enemies: e.hp = 0
+		var next_stairs: Vector2i = s.floor_state.layout.stairs
+		s.party[0].pos = next_stairs
+		s.party[1].hp = 0; s.party[1].downed = true; s.party[1].bleedout_turns = 2
+		s.party[2].stress = 65
+		var before_food: int = s.food
+		s.pending_stone_drops = [{"token":boss_floor,"stone":"RAT_GNAW/cut"}]
+		check(not s.descend(),"pending boss drop blocks rest on floor %d" % boss_floor)
+		s.pending_stone_drops.clear()
+		check(s.descend() and s.phase == "REST" and s.depth == boss_floor,"boss floor %d enters rest before generating next floor" % boss_floor)
+		check(s.party[1].hp == s.party[1].max_hp and not s.party[1].downed and s.party[2].stress == 35 and s.food == before_food,"rest restores without food or turns")
+		check(s.leave_rest() and s.depth == boss_floor+1 and s.phase in ["EXPLORE","BATTLE"],"rest exits into next zone")
 	print("Floor descent: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)

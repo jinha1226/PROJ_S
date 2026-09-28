@@ -7,6 +7,7 @@ const ArenaSetup = preload("res://expedition/ui/screens/arena_setup.gd")
 const StartScreen = preload("res://expedition/ui/screens/start_screen.gd")
 const FloorHud = preload("res://expedition/ui/screens/floor_hud.gd")
 const CampScreen = preload("res://expedition/ui/screens/camp_screen.gd")
+const RestScreen = preload("res://expedition/ui/screens/rest_screen.gd")
 const ResultCard = preload("res://expedition/ui/screens/result_card.gd")
 const Popups = preload("res://expedition/ui/screens/popups.gd")
 const AutoBattleHud = preload("res://expedition/ui/screens/autobattle_hud.gd")
@@ -89,6 +90,8 @@ var item_buttons: Array = []
 var skill_buttons: Array = []
 var portrait_buttons: Array = []
 var tactics_actor := 0
+var rest_actor := 0
+var rest_selected_stone := ""
 var tactics_expanded := -1
 ## Auto battle (floor mode): the timer that drives the rounds, the sentence of
 ## the last stop event and whether this battle has been reported.
@@ -498,6 +501,7 @@ func refresh() -> void:
 		StartScreen.build_start_screen(self); return
 	map_view.session = session; map_view.queue_redraw()
 	if session.phase == "CAMP": CampScreen.build_camp_screen(self); show_choice_if_pending(); return
+	if session.phase == "REST": RestScreen.build(self); return
 	if session.phase in ["DEFEAT","VICTORY"]: ResultCard.build_result_card(self); return
 	FloorHud.build(self,elapsed,impact_elapsed)
 	show_choice_if_pending()

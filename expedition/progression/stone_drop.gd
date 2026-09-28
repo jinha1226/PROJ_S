@@ -20,8 +20,9 @@ static func unavailable(actor: Dictionary, stone: String) -> String:
 	return ""
 
 ## index -1 keeps the awarded stone in the bag, -2 leaves this one behind.
+## At capacity, discard_id names one existing stone to discard before keeping.
 ## Only the exact pending drop may bypass the ordinary safe-area restriction.
-static func resolve(s, token: int, index: int) -> String:
+static func resolve(s, token: int, index: int, discard_id: String = "") -> String:
 	if s.pending_stone_drops.is_empty() or int(s.pending_stone_drops[0].token) != token: return "지난 선택"
 	var stone: String = str(s.pending_stone_drops[0].stone)
 	if index < -2 or index >= s.party.size(): return "없는 인물"
@@ -37,6 +38,11 @@ static func resolve(s, token: int, index: int) -> String:
 		s.Codex.note_absorb(s,stone)
 		StatSheet.refresh_pools(s,actor)
 		s.message("%s · %s 흡수" % [actor.name,Essences.title(stone)])
+	elif index == -1 and Essences.bag_limit(s) > 0 and Essences.bag_count(s) > Essences.bag_limit(s):
+		discard_id = Essences.canonical(discard_id)
+		if discard_id.is_empty() or int(s.parts_bag.get(discard_id,0)) <= (1 if discard_id == stone else 0): return "버릴 영혼석 선택"
+		s.parts_bag[discard_id] = int(s.parts_bag[discard_id])-1
+		s.message(Essences.title(discard_id)+" 버림")
 	elif index == -2:
 		s.parts_bag[stone] = int(s.parts_bag[stone])-1
 		s.message(Essences.title(stone)+" 두고 감")

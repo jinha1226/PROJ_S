@@ -6,6 +6,7 @@ const Forms = preload("res://expedition/combat/forms.gd")
 ## rules. Moved out of main.gd; the popup nodes still live on `ui`.
 const Session = preload("res://expedition/run/session.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
+const Icons = preload("res://expedition/art/soulstone_icons.gd")
 const InventorySlot = preload("res://expedition/items/inventory_slot.gd")
 const CharacterUI = preload("res://expedition/ui/screens/character_folio.gd")
 const Equipment = preload("res://expedition/items/equipment.gd")
@@ -472,7 +473,7 @@ static func inventory_rows(ui) -> Array:
 	for id in session.parts_bag:
 		if session.parts_bag.get(id,0) <= 0: continue
 		if not Essences.has(str(id)): continue
-		rows.append({"id":id,"label":Essences.title(str(id)),"quantity":session.parts_bag[id],"category":"파츠","description":EssenceTab.stat_line(str(id),session.party[0])+"\n"+EssenceTab.effect_line(str(id),session.party[0]),"icon":Art.part_icon(id)})
+		rows.append({"id":id,"label":Essences.title(str(id)),"quantity":session.parts_bag[id],"category":"파츠","description":EssenceTab.stat_line(str(id),session.party[0])+"\n"+EssenceTab.effect_line(str(id),session.party[0]),"icon":Icons.stone_icon(str(id)) if session.MobileEffects.active(session.party[0]) else Art.part_icon(id)})
 	rows.append({"id":"food","label":"식량","quantity":session.food,"category":"자원","description":"야영","icon":Art.food_icon()})
 	return rows
 
@@ -484,7 +485,9 @@ static func build_inventory(ui) -> void:
 		pick.toggle_mode = true; pick.button_pressed = category == ui.inventory_filter
 		pick.add_theme_font_size_override("font_size",10)
 	var rows: Array = inventory_rows(ui).filter(func(r): return ui.inventory_filter == "전체" or r.category == ui.inventory_filter)
-	ui.label(ui.modal_content,"%s · %d종 보유" % [ui.inventory_filter,rows.size()],12)
+	var heading: String = "%s · %d종 보유" % [ui.inventory_filter,rows.size()]
+	if ui.inventory_filter == "파츠" and Essences.bag_limit(ui.session) > 0: heading += " · 가방 %d/%d" % [Essences.bag_count(ui.session),Essences.bag_limit(ui.session)]
+	ui.label(ui.modal_content,heading,12)
 	var scroll := ScrollContainer.new(); scroll.custom_minimum_size = Vector2(ui.popup_width(),minf(220,ui.size.y-420)); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; ui.modal_content.add_child(scroll)
 	var grid := GridContainer.new(); grid.columns = 4; grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL; grid.add_theme_constant_override("h_separation",4); grid.add_theme_constant_override("v_separation",4); scroll.add_child(grid)
 	ui.inventory_slots.clear()
@@ -549,6 +552,15 @@ static func show_item_detail(ui, id: String) -> void:
 			var caption: String = "%s · 이미 흡수함" % member.name if known else ("%s · 가득 참" % member.name if full else "%s 흡수" % member.name)
 			var absorb = ui.button(ui.item_detail,caption,func(): absorb_from_bag(ui,i,id),Essences.can_manage(session) and member.hp > 0 and Essences.has(id) and not known and not full)
 			absorb.name = "BagAbsorb%d" % i
+			if not known and Essences.can_manage(session) and member.hp > 0 and session.MobileEffects.active(member):
+				for slot_index in range(Essences.slot_count(member)):
+					if slot_index >= member.equipped_abilities.size(): continue
+					var old_id: String = str(member.equipped_abilities[slot_index])
+					if old_id.is_empty() or Essences.colour(old_id) != Essences.colour(id): continue
+					ui.button(ui.item_detail,"%s · %s 교체" % [member.name,Essences.title(old_id)],func():
+						var reason: String = session.swap_stone(i,slot_index,id)
+						if not reason.is_empty(): ui.notice = reason
+						else: ui.item_popup.hide(); ui.refresh(); show_supplies(ui)).name = "BagSwap%d_%d" % [i,slot_index]
 	ui.button(ui.item_detail,"닫기",func(): ui.item_popup.hide()); ui.popup_item_detail(); ui.item_popup.grab_focus()
 
 static func popup_list(ui) -> VBoxContainer:

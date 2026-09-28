@@ -60,6 +60,8 @@ const Orders = preload("res://expedition/run/orders.gd")
 const ArenaTest = preload("res://expedition/run/arena_test.gd")
 const RunResult = preload("res://expedition/run/run_result.gd")
 var parts_bag: Dictionary = {}
+## Zero disables the limit in test and arena sessions. Departing enables it.
+var stone_bag_limit := 0
 var essence_seen: Dictionary = {}
 const Codex = preload("res://expedition/progression/codex.gd")
 const EffectReport = preload("res://expedition/progression/effect_report.gd")
@@ -376,9 +378,19 @@ func stairs_sealed() -> bool: return Descent.stairs_sealed(self)
 
 func descend() -> bool: return Descent.descend(self)
 
+func leave_rest() -> bool: return Descent.leave_rest(self)
+
+func swap_stone(index: int, slot: int, id: String) -> String:
+	if index < 0 or index >= party.size(): return "없는 인물"
+	return Essences.swap_same_colour(self,party[index],slot,id)
+
+func overwrite_stone(index: int, slot: int, id: String) -> String:
+	if index < 0 or index >= party.size(): return "없는 인물"
+	return Essences.overwrite(self,party[index],slot,id)
+
 func grant_part(id: String, present: bool = false) -> void: Gear.grant_part(self,id,present)
 
-func resolve_stone_drop(token: int, index: int) -> String: return StoneDrop.resolve(self,token,index)
+func resolve_stone_drop(token: int, index: int, discard_id: String = "") -> String: return StoneDrop.resolve(self,token,index,discard_id)
 
 func push_event(event: Dictionary) -> void:
 	events.append(event)

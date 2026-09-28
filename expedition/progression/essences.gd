@@ -187,8 +187,25 @@ static func spell_cap(actor: Dictionary) -> int:
 	return clampi(int(actor.get("level",1)),1,MAX_LEVEL)
 
 static func can_manage(s) -> bool:
-	if s.phase in ["IDLE","CAMP"]: return true
+	if s.phase in ["IDLE","CAMP","REST"]: return true
 	return s.phase == "EXPLORE" and s.floor_state.safe(s)
+
+static func colour(id: String) -> String:
+	return str(row(id,"attack_wait_v1").get("colour",""))
+
+static func automatic_effect_id(id: String) -> String:
+	var legacy_effect: String = str(row(id).get("effect",base_of(id)))
+	var automatic: Dictionary = Bestiary.automatic_content
+	return str(automatic.get("variants",{}).get(variant_element(id),{}).get(legacy_effect,
+		automatic.get("bindings",{}).get(legacy_effect,automatic.get("bindings",{}).get(base_of(id),""))))
+
+static func bag_count(s) -> int:
+	var count := 0
+	for amount in s.parts_bag.values(): count += maxi(0,int(amount))
+	return count
+
+static func bag_limit(s) -> int:
+	return maxi(0,int(s.get("stone_bag_limit")))
 
 ## The first six levels open one permanent absorption each.
 static func sync_slots(actor: Dictionary) -> void:
@@ -236,6 +253,59 @@ static func absorb(s, actor: Dictionary, id: String) -> String:
 	s.parts_bag[id] = int(s.parts_bag[id])-1
 	s.Codex.note_absorb(s,id)
 	return ""
+
+static func replace_slot(s, actor: Dictionary, slot: int, bag_id: String, same_colour: bool) -> String:
+	bag_id = canonical(bag_id)
+	if bag_id.is_empty(): return "없는 영혼석"
+	if actor not in s.party: return "없는 인물"
+	if int(actor.get("hp",0)) <= 0: return "쓰러짐"
+	if not can_manage(s): return "전투 중"
+	if not same_colour and s.phase != "REST": return "휴식처에서만 교체"
+	if slot < 0 or slot >= slot_count(actor): return "없는 칸"
+	var slots: Array = actor.get("equipped_abilities",[])
+	if slot >= slots.size(): return "빈 칸"
+	var old_id: String = canonical(str(slots[slot]))
+	if old_id.is_empty(): return "빈 칸"
+	if same_colour != (colour(old_id) == colour(bag_id)): return "색이 맞지 않음"
+	s.parts_bag = normalize_keys(s.parts_bag,true)
+	if int(s.parts_bag.get(bag_id,0)) <= 0: return "가방에 없음"
+	if absorbed(actor,bag_id): return "이미 흡수함"
+	var old_held: Array = Abilities.held(actor)
+	var old_effect: String = automatic_effect_id(old_id)
+	s.parts_bag[bag_id] = int(s.parts_bag[bag_id])-1
+	if same_colour: s.parts_bag[old_id] = int(s.parts_bag.get(old_id,0))+1
+	actor.equipped_abilities[slot] = bag_id
+	actor.get_or_add("essences",{}).erase(old_id)
+	actor.essences[bag_id] = 1
+	actor.get_or_add("sealed",{}).erase(old_id)
+	actor.get_or_add("essence_spells",{}).erase(old_id)
+	actor.essence_spells.erase(bag_id)
+	var choices := spell_choices(actor,bag_id)
+	if not choices.is_empty(): actor.essence_spells[bag_id] = choices[0]
+	actor.reservation = {}
+	if not old_effect.is_empty() and old_effect != automatic_effect_id(bag_id) and not equipped(actor).any(func(stone): return automatic_effect_id(str(stone)) == old_effect):
+		var automatic_state: Dictionary = actor.get("aw_state",{})
+		for field in ["cooldowns","uses"]:
+			if automatic_state.has(field): automatic_state[field].erase(old_effect)
+		for key in automatic_state.get("attack_preps",{}).keys():
+			if str(automatic_state.attack_preps[key].get("id","")) == old_effect: automatic_state.attack_preps.erase(key)
+	var new_held: Array = Abilities.held(actor)
+	var abandoned: Array = []
+	for skill in old_held:
+		if skill not in new_held: abandoned.append(Abilities.base_id(str(skill)))
+	actor.rules = actor.get("rules",[]).filter(func(rule): return Abilities.base_id(str(rule.get("skill",""))) not in abandoned)
+	for key in actor.get("cooldowns",{}).keys():
+		if Abilities.base_id(str(key)) in abandoned: actor.cooldowns.erase(key)
+	sync_rules(actor); sync_spells(actor)
+	s.Codex.note_absorb(s,bag_id)
+	preload("res://expedition/progression/stat_sheet.gd").refresh_pools(s,actor)
+	return ""
+
+static func swap_same_colour(s, actor: Dictionary, slot: int, bag_id: String) -> String:
+	return replace_slot(s,actor,slot,bag_id,true)
+
+static func overwrite(s, actor: Dictionary, slot: int, bag_id: String) -> String:
+	return replace_slot(s,actor,slot,bag_id,false)
 
 ## Compatibility entry points refuse the retired re-slotting operation.
 static func equip(_s, _actor: Dictionary, _slot: int, _id: String) -> bool: return false

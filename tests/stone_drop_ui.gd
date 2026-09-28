@@ -22,7 +22,7 @@ func run() -> void:
 	s.grant_part("FIRE_CALLER/cut",true); ui.refresh(); await frames()
 	check(ui.stone_drop_card.visible and ui.popup_open(),"loot opens an exclusive card without selecting a character")
 	check(ui.find_child("StoneDropTitle",true,false).text == s.Essences.title("FIRE_CALLER/cut"),"card displays the concrete stone name")
-	check(ui.find_child("StoneDropStats",true,false).text.contains("공격력 +2") and not ui.find_child("StoneDropStats",true,false).text.contains("MP"),"card displays active-profile stats")
+	check(ui.find_child("StoneDropStats",true,false) == null and ui.find_child("StoneDropIcon",true,false).texture != null,"card shows one effect icon and keeps fixed stats in details")
 	check(ui.find_child("StoneDropEffect",true,false).text.contains("화상"),"card displays actual effect")
 	check(ui.find_child("StoneDropFit_0",true,false).text.contains("연계") and ui.find_child("StoneDropFit_1",true,false).text.contains("준비 필요"),"fit is evaluated independently for hero and companion")
 	check(ui.find_child("StoneDropAbsorb_2",true,false).disabled,"downed member button is disabled")

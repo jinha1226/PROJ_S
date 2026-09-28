@@ -118,6 +118,7 @@ static func roll_part(s, enemy: Dictionary, reward_actors: Variant = null) -> vo
 ## Playtest helper: one of every catalog part in the bag, so loadouts can be tried without farming.
 static func grant_test_loadout(s) -> bool:
 	if s.party.is_empty(): return false
+	s.stone_bag_limit = 0
 	var added := 0
 	s.parts_bag = Essences.normalize_keys(s.parts_bag,true)
 	for id in Essences.catalog():

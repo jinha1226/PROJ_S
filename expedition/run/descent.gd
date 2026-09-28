@@ -12,6 +12,7 @@ static func depart(s) -> bool:
 	var kit: Dictionary = CombatStats.kit(s.kit_id)
 	if kit.is_empty(): return false
 	s.depth = 1; s.score = 0; s.run_stats = {"mistakes":0,"kills":0}
+	s.stone_bag_limit = 3
 	s.bag.clear(); s.known.clear(); s.pending_choice.clear()
 	s.pending_stone_drops.clear()
 	s.essence_seen.clear(); s.events.clear()
@@ -50,9 +51,16 @@ static func descend(s) -> bool:
 	if not s.pending_stone_drops.is_empty(): return false
 	if s.depth >= Zones.FINAL_DEPTH: return false
 	if s.phase != "EXPLORE" or not s.floor_state.safe(s) or s.stairs_sealed(): return false
-	if s.party.any(func(actor): return s.Downed.is_downed(actor)): return false
+	if s.depth not in [3,6,9] and s.party.any(func(actor): return s.Downed.is_downed(actor)): return false
 	var stairs: Vector2i = s.floor_state.layout.get("stairs",Vector2i(-1,-1))
 	if stairs.x < 0 or not s.alive().any(func(a): return s.distance(a.pos,stairs) <= 1): return false
+	if s.depth in [3,6,9]:
+		s.Codex.flush(s)
+		preload("res://expedition/run/rest.gd").enter(s)
+		return true
+	return next_floor(s)
+
+static func next_floor(s) -> bool:
 	s.Codex.flush(s)
 	s.depth += 1; s.score += 20
 	s.effect_delays.clear()
@@ -62,6 +70,10 @@ static func descend(s) -> bool:
 	if s.roster.is_empty(): NpcRoster.generate(s)
 	NpcRoster.place(s)
 	s.message("%d층 진입" % s.depth); return true
+
+static func leave_rest(s) -> bool:
+	if s.phase != "REST": return false
+	return next_floor(s)
 
 static func gain_level_xp(s, actor: Dictionary, amount: int) -> int:
 	var before := int(actor.get("level",1))
