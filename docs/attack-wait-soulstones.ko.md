@@ -61,52 +61,52 @@ NPC는 첫 실제 등장 층에서 **방어·근접·원거리·마법·지원**
 | `RAT_GNAW/cut` | 쥐 꼬리 | 방어형 | bless | 대기 | 대기 시 주변 2칸 아군 보호 | — |
 | `RAT_GNAW/cut@air` | 쥐 꼬리 · air | 공격형 | air | 적중 | 적중 시 전하·전기 피해 | — |
 | `RAT_GNAW/cut@will` | 쥐 꼬리 · will | 연쇄형 | bless | 적중 | 축복 중 적중 시 보호 | — |
-| `RAT_GNAW/cut@bleed` | 쥐 꼬리 · bleed | 공격형 | bleed | 대기 | 대기 시 1칸 출혈 | — |
+| `RAT_GNAW/cut@bleed` | 쥐 꼬리 · bleed | 공격형 | bleed | 대기 | 대기 시 1칸 안 적 2명 출혈 · 재사용 2턴 | 2턴 |
 | `RAT_GNAW/broken` | 쥐 앞니 | 공격형 | bleed | 적중 | 적중 시 출혈 | — |
 | `RAT_GNAW/pierced` | 쥐 심장 | 연쇄형 | bless | 적중 | 축복 중 공격 시 주변 아군 HP 2 회복 | — |
 | `LIZARD_TAIL/cut` | 목도리 도마뱀 꼬리 | 공격형 | evasion | 적중 | 적중 시 추가타 | — |
 | `LIZARD_TAIL/cut@air` | 목도리 도마뱀 꼬리 · air | 연쇄형 | air | 적중 | 전하 상태의 적 공격 시 주변에 전하 전이 | — |
-| `LIZARD_TAIL/cut@will` | 목도리 도마뱀 꼬리 · will | 방어형 | vital | 대기 | 대기 시 받는 피해 20% 감소 | — |
+| `LIZARD_TAIL/cut@will` | 목도리 도마뱀 꼬리 · will | 방어형 | vital | 피격 | 맞으면 내 다음 행동까지 받는 피해 30% 감소 | — |
 | `LIZARD_TAIL/broken` | 목도리 도마뱀 목도리 | 공격형 | reflect | 적중 | 적중 후 다음 직접 피격 반사 | — |
-| `LIZARD_TAIL/pierced` | 목도리 도마뱀 눈 | 공격형 | wind | 대기 | 대기 후 다음 공격 피해 +20% | — |
-| `KOBOLD_SLING/cut` | 코볼트 가죽 | 방어형 | evasion | 대기 | 대기 시 회피 +10 | — |
+| `LIZARD_TAIL/pierced` | 목도리 도마뱀 눈 | 공격형 | wind | 피격 | 피하면 다음 공격 피해 +30% | — |
+| `KOBOLD_SLING/cut` | 코볼트 가죽 | 방어형 | evasion | 피격 | 피하면 내 다음 행동까지 회피 +15 | — |
 | `KOBOLD_SLING/broken` | 코볼트 손뼈 | 공격형 | rapid | 적중 | 기본 적중 후 추가타 | — |
-| `KOBOLD_SLING/broken@air` | 코볼트 손뼈 · air | 공격형 | wind | 대기 | 대기 후 다음 공격 돌풍 | — |
+| `KOBOLD_SLING/broken@air` | 코볼트 손뼈 · air | 공격형 | wind | 대기 | 대기 후 다음 공격 돌풍 · 피해 +30%·밀치기 | — |
 | `KOBOLD_SLING/broken@bleed` | 코볼트 손뼈 · bleed | 공격형 | rapid | 대기 | 대기 후 다음 공격 연타 | — |
-| `KOBOLD_SLING/pierced` | 코볼트 심장 | 공격형 | focus | 대기 | 대기 후 다음 공격 피해 +20% | — |
+| `KOBOLD_SLING/pierced` | 코볼트 심장 | 공격형 | focus | 대기 | 조준: 대기 후 다음 공격 피해 +50% | — |
 | `GOBLIN_SHIV/cut` | 고블린 귀 | 연쇄형 | vital | 적중 | 약점 상태의 적 공격 시 추가 피해 4 | — |
 | `GOBLIN_SHIV/broken` | 고블린 이빨 | 연쇄형 | hex | 적중 | 약화 적중 시 취약 | — |
 | `GOBLIN_SHIV/pierced` | 고블린 심장 | 공격형 | vital | 적중 | 적중 시 약점 표식 | — |
 | `ORC_CLEAVER/cut` | 오크 가죽 | 연쇄형 | bleed | 적중 | 출혈 적중 시 추가타 | — |
 | `ORC_CLEAVER/broken` | 오크 뼈 | 공격형 | rapid | 대기 | 대기 후 다음 공격 연타 | — |
-| `ORC_CLEAVER/pierced` | 오크 심장 | 방어형 | fury | 대기 | 대기 시 받는 피해 25% 감소 | — |
+| `ORC_CLEAVER/pierced` | 오크 심장 | 방어형 | fury | 피격 | 맞으면 다음 공격 피해 +30% | — |
 | `GNOLL_SPEAR/cut` | 놀 가죽 | 공격형 | fury | 적중 | 적중 시 HP 2 회복 | — |
 | `GNOLL_SPEAR/broken` | 놀 뼈 | 방어형 | regen | 대기 | 대기 시 부상 재생 · 재사용 3턴 | 3턴 |
 | `GNOLL_SPEAR/pierced` | 놀 심장 | 공격형 | fury | 공격 확정 | 공격 시 피해 +15% | — |
 | `RIVER_RAT_SPLASH/cut` | 강쥐 꼬리 | 공격형 | water | 적중 | 적중 시 젖음 | — |
-| `RIVER_RAT_SPLASH/cut@fire` | 강쥐 꼬리 · fire | 방어형 | fire | 대기 | 대기 후 인접 피격 시 화염막 | — |
+| `RIVER_RAT_SPLASH/cut@fire` | 강쥐 꼬리 · fire | 방어형 | fire | 피격 | 인접 피격 시 화염막 | — |
 | `RIVER_RAT_SPLASH/cut@ice` | 강쥐 꼬리 · ice | 연쇄형 | water | 적중 | 젖은 적 공격 시 빙결 | — |
 | `RIVER_RAT_SPLASH/cut@air` | 강쥐 꼬리 · air | 연쇄형 | water | 적중 | 젖은 적 공격 시 최대 4명 연쇄 번개 | — |
-| `RIVER_RAT_SPLASH/broken` | 강쥐 이빨 | 방어형 | bleed | 대기 | 대기 후 인접 피격 시 출혈 | — |
+| `RIVER_RAT_SPLASH/broken` | 강쥐 이빨 | 방어형 | bleed | 피격 | 인접 피격 시 출혈 | — |
 | `RIVER_RAT_SPLASH/pierced` | 강쥐 심장 | 방어형 | water | 대기 | 대기 시 화염 저항 +30 | — |
 | `FIRE_CALLER/cut` | 코볼트 화염술사 손 | 연쇄형 | fire | 적중 | 화상 적중 시 주변 폭발 | — |
-| `FIRE_CALLER/broken` | 코볼트 화염술사 뼈 | 공격형 | fire | 대기 | 대기 시 3칸 화상 | — |
+| `FIRE_CALLER/broken` | 코볼트 화염술사 뼈 | 공격형 | fire | 대기 | 대기 시 3칸 안 적 2명 화상 · 재사용 2턴 | 2턴 |
 | `FIRE_CALLER/pierced` | 코볼트 화염술사 심장 | 공격형 | fire | 적중 | 적중 시 화상 | — |
 | `FIRE_CALLER/pierced@poison` | 코볼트 화염술사 심장 · poison | 연쇄형 | fire | 적중 | 중독 상태의 적 공격 시 주변 독성 폭발 | — |
 | `FIRE_CALLER/pierced@will` | 코볼트 화염술사 심장 · will | 방어형 | mental | 대기 | 대기 시 의지 저항 +30 | — |
 | `FROST_IMP/cut` | 서리 도깨비 발톱 | 연쇄형 | ice | 적중 | 둔화 적중 시 빙결 | — |
-| `FROST_IMP/broken` | 서리 도깨비 뿔 | 공격형 | ice | 대기 | 대기 시 3칸 둔화 | — |
+| `FROST_IMP/broken` | 서리 도깨비 뿔 | 공격형 | ice | 대기 | 대기 시 3칸 안 적 2명 둔화 · 재사용 2턴 | 2턴 |
 | `FROST_IMP/pierced` | 서리 도깨비 심장 | 공격형 | ice | 적중 | 적중 시 둔화 | — |
-| `STORM_BAT/cut` | 폭풍 박쥐 날개 | 공격형 | air | 대기 | 대기 시 4칸 전하 | — |
-| `STORM_BAT/cut@fire` | 폭풍 박쥐 날개 · fire | 공격형 | fire | 대기 | 대기 시 3칸 화상 | — |
-| `STORM_BAT/cut@ice` | 폭풍 박쥐 날개 · ice | 공격형 | water | 대기 | 대기 시 3칸 젖음 | — |
-| `STORM_BAT/cut@will` | 폭풍 박쥐 날개 · will | 공격형 | mental | 대기 | 대기 시 4칸 혼란 | — |
+| `STORM_BAT/cut` | 폭풍 박쥐 날개 | 공격형 | air | 대기 | 대기 시 3칸 안 적 2명 전하 · 재사용 2턴 | 2턴 |
+| `STORM_BAT/cut@fire` | 폭풍 박쥐 날개 · fire | 공격형 | fire | 대기 | 대기 시 3칸 안 적 2명 화상 · 재사용 2턴 | 2턴 |
+| `STORM_BAT/cut@ice` | 폭풍 박쥐 날개 · ice | 공격형 | water | 대기 | 대기 시 3칸 안 적 2명 젖음 · 재사용 2턴 | 2턴 |
+| `STORM_BAT/cut@will` | 폭풍 박쥐 날개 · will | 공격형 | mental | 대기 | 대기 시 3칸 안 적 1명 혼란 · 재사용 3턴 | 3턴 |
 | `STORM_BAT/cut@bleed` | 폭풍 박쥐 날개 · bleed | 공격형 | wind | 적중 | 적중 시 밀치기 | — |
 | `STORM_BAT/broken` | 폭풍 박쥐 뼈 | 연쇄형 | air | 적중 | 전하 적중 시 최대 3명 연쇄 | — |
-| `STORM_BAT/pierced` | 폭풍 박쥐 귀 | 방어형 | air | 대기 | 대기 후 피격 시 공격자 마비 · 재사용 3턴 | 3턴 |
+| `STORM_BAT/pierced` | 폭풍 박쥐 귀 | 방어형 | air | 피격 | 피격 시 공격자 마비 · 재사용 3턴 | 3턴 |
 | `GOBLIN_HEXER/cut` | 고블린 주술사 손 | 공격형 | hex | 적중 | 적중 시 약화 | — |
 | `GOBLIN_HEXER/broken` | 고블린 주술사 두개골 | 연쇄형 | hex | 적중 | 약화 상태의 적 공격 시 정신 피해 | — |
-| `GOBLIN_HEXER/pierced` | 고블린 주술사 눈 | 공격형 | hex | 대기 | 대기 시 3칸 약화 | — |
+| `GOBLIN_HEXER/pierced` | 고블린 주술사 눈 | 공격형 | hex | 대기 | 대기 시 3칸 안 적 2명 약화 · 재사용 2턴 | 2턴 |
 | `GNOLL_SUMMONER/cut` | 놀 소환사 가죽 | 연쇄형 | summon | 대기 | 소환수가 있으면 대기 시 다음 소환수 공격 강화 | — |
 | `GNOLL_SUMMONER/broken` | 놀 소환사 뼈 | 방어형 | summon | 대기 | 대기 시 호위 소환수 · 공용 한도 1 | 3턴 · 소환 1명 |
 | `GNOLL_SUMMONER/pierced` | 놀 소환사 심장 | 공격형 | summon | 대기 | 대기 시 사냥개 · 최대 1 · 재사용 3턴 | 3턴 · 소환 1명 |
@@ -116,9 +116,9 @@ NPC는 첫 실제 등장 층에서 **방어·근접·원거리·마법·지원**
 | `HOB_TAUNT/pierced` | 홉고블린 심장 | 방어형 | defense | 대기 | 대기 시 적의 시선 끌기 | — |
 | `GOBLIN_AIM/cut` | 고블린 궁수 깃 | 공격형 | focus | 적중 | 적중 시 추가 피해 3 | — |
 | `GOBLIN_AIM/broken` | 고블린 궁수 손가락뼈 | 연쇄형 | focus | 적중 | 약점 상태의 적 공격 시 추가타 | — |
-| `GOBLIN_AIM/pierced` | 고블린 궁수 눈 | 방어형 | focus | 대기 | 대기 시 회피 +15 | — |
+| `GOBLIN_AIM/pierced` | 고블린 궁수 눈 | 방어형 | focus | 대기 | 대기 시 회피 +20 | — |
 | `SHIELD_STANCE/cut` | 고블린 방패병 가죽 | 공격형 | defense | 공격 확정 | 공격 시 피해 +10% | — |
-| `SHIELD_STANCE/broken` | 고블린 방패병 팔뼈 | 방어형 | defense | 대기 | 대기 시 직접 피해 20% 감소 | — |
+| `SHIELD_STANCE/broken` | 고블린 방패병 팔뼈 | 방어형 | defense | 피격 | 맞으면 내 다음 행동까지 받는 피해 30% 감소 | — |
 | `SHIELD_STANCE/pierced` | 고블린 방패병 심장 | 연쇄형 | bless | 적중 | 축복 중 공격 시 주변 아군 보호 | — |
 | `ORC_THROW/cut` | 오크 투척병 팔 | 공격형 | volley | 적중 | 적중 시 추가타 | — |
 | `ORC_THROW/cut@air` | 오크 투척병 팔 · air | 연쇄형 | wind | 적중 | 둔화된 적 공격 시 추가타 | — |
@@ -127,40 +127,40 @@ NPC는 첫 실제 등장 층에서 **방어·근접·원거리·마법·지원**
 | `SPIDER_WEB/cut` | 동굴 거미 다리 | 방어형 | rapid | 적중 | 적중 후 회피 +10 | — |
 | `SPIDER_WEB/broken` | 동굴 거미 껍질 | 연쇄형 | mental | 적중 | 혼란 적중 시 정신 피해 | — |
 | `SPIDER_WEB/pierced` | 동굴 거미 실샘 | 공격형 | mental | 적중 | 적중 시 혼란 | — |
-| `BEETLE_CURL/cut` | 바위 딱정벌레 날개 | 방어형 | crush | 대기 | 대기 후 밀치기 저항 | — |
-| `BEETLE_CURL/broken` | 바위 딱정벌레 껍질 | 방어형 | ice | 대기 | 대기 시 방어 +4 | — |
-| `BEETLE_CURL/pierced` | 바위 딱정벌레 핵 | 방어형 | regen | 대기 | 대기 시 HP 재생 · 재사용 3턴 | 3턴 |
+| `BEETLE_CURL/cut` | 바위 딱정벌레 날개 | 방어형 | crush | 피격 | 맞으면 내 다음 행동까지 밀리지 않음 | — |
+| `BEETLE_CURL/broken` | 바위 딱정벌레 껍질 | 방어형 | ice | 피격 | 맞으면 내 다음 행동까지 방어 +6 | — |
+| `BEETLE_CURL/pierced` | 바위 딱정벌레 핵 | 방어형 | regen | 피격 | 맞으면 재생 · 재사용 3턴 | 3턴 |
 | `ORE_SLAM/cut` | 광석 골렘 광맥 | 연쇄형 | ice | 적중 | 빙결 상태의 적 공격 시 파쇄 | — |
-| `ORE_SLAM/broken` | 광석 골렘 몸돌 | 공격형 | crush | 대기 | 대기 후 다음 공격 강타 | — |
+| `ORE_SLAM/broken` | 광석 골렘 몸돌 | 공격형 | crush | 대기 | 대기 후 다음 공격 강타 · 피해 +50%·밀치기 | — |
 | `ORE_SLAM/pierced` | 광석 골렘 핵 | 연쇄형 | ice | 적중 | 기존 빙결 적중 시 파쇄 | — |
 | `LEECH_LATCH/cut` | 거대 거머리 입 | 공격형 | bleed | 대기 | 대기 후 다음 공격 출혈 | — |
 | `LEECH_LATCH/broken` | 거대 거머리 몸마디 | 연쇄형 | fire | 적중 | 출혈 상태의 적 공격 시 추가 화염 피해 | — |
 | `LEECH_LATCH/pierced` | 거대 거머리 흡반 | 공격형 | heal | 적중 | 실제 피해 15% 회복 · 최대 4 | 최대 4 |
 | `TOAD_SPIT/cut` | 늪 두꺼비 혀 | 연쇄형 | poison | 적중 | 중독 적중 시 주변 전이 | — |
-| `TOAD_SPIT/broken` | 늪 두꺼비 뼈 | 방어형 | poison | 대기 | 대기 후 인접 피격 시 중독 | — |
+| `TOAD_SPIT/broken` | 늪 두꺼비 뼈 | 방어형 | poison | 피격 | 인접 피격 시 중독 | — |
 | `TOAD_SPIT/pierced` | 늪 두꺼비 독샘 | 공격형 | poison | 적중 | 적중 시 중독 | — |
 | `SERPENT_SHED/cut` | 신전 뱀 허물 | 방어형 | heal | 대기 | 대기 시 주변 아군 상태이상 1개 해제 | — |
-| `SERPENT_SHED/broken` | 신전 뱀 비늘 | 공격형 | poison | 대기 | 대기 시 4칸 중독 | — |
+| `SERPENT_SHED/broken` | 신전 뱀 비늘 | 공격형 | poison | 대기 | 대기 시 3칸 안 적 2명 중독 · 재사용 2턴 | 2턴 |
 | `SERPENT_SHED/pierced` | 신전 뱀 독니 | 연쇄형 | poison | 적중 | 중독 상태의 적 공격 시 주변 중독 연장 | — |
-| `WATER_WAVE/cut` | 물의 정령 물살 | 방어형 | water | 대기 | 대기 시 받는 피해 20% 감소 | — |
-| `WATER_WAVE/broken` | 물의 정령 물방울 | 방어형 | heal | 대기 | 대기 시 받는 피해 20% 감소 | — |
+| `WATER_WAVE/cut` | 물의 정령 물살 | 방어형 | water | 대기 | 대기 시 곁의 아군 받는 피해 20% 감소 | — |
+| `WATER_WAVE/broken` | 물의 정령 물방울 | 방어형 | heal | 대기 | 대기 시 2칸 안 가장 다친 아군 HP 5 회복 · 재사용 2턴 | 2턴 |
 | `WATER_WAVE/pierced` | 물의 정령 핵 | 방어형 | heal | 대기 | 대기 시 주변 아군 HP 8 회복 · 전투당 2회 · 재사용 3턴 | 3턴 · 조우당 2회 |
 | `SKELETON_WALL/cut` | 해골 병사 팔 | 연쇄형 | bless | 대기 | 소환수가 있으면 대기 시 소환수 축복 | — |
-| `SKELETON_WALL/broken` | 해골 병사 갈비뼈 | 연쇄형 | death | 대기 | 소환수가 있으면 대기 시 피해 분담 | — |
+| `SKELETON_WALL/broken` | 해골 병사 갈비뼈 | 연쇄형 | death | 피격 | 맞을 때 소환수가 있으면 내 다음 행동까지 피해 25% 분담 | — |
 | `SKELETON_WALL/pierced` | 해골 병사 두개골 | 연쇄형 | death | 적중 | 낙인 상태의 적 공격 시 해골 소환 · 최대 1 · 재사용 3턴 | 3턴 · 소환 1명 |
 | `SKELETON_VOLLEY/cut` | 해골 궁수 손가락 | 연쇄형 | water | 적중 | 젖은 적 공격 시 최대 4명 연쇄 번개 | — |
-| `SKELETON_VOLLEY/broken` | 해골 궁수 등뼈 | 방어형 | volley | 대기 | 대기 시 회피 +10 | — |
+| `SKELETON_VOLLEY/broken` | 해골 궁수 등뼈 | 방어형 | volley | 대기 | 대기 시 회피 +15 | — |
 | `SKELETON_VOLLEY/pierced` | 해골 궁수 눈구멍 | 연쇄형 | water | 적중 | 젖은 적 공격 시 빙결 | — |
 | `GHOUL_CLAW/cut` | 구울 발톱 | 연쇄형 | bleed | 적중 | 출혈 상태의 적 공격 시 HP 2 회복 | — |
 | `GHOUL_CLAW/broken` | 구울 턱 | 연쇄형 | fire | 적중 | 화상 상태의 적 공격 시 주변에 화상 전이 | — |
 | `GHOUL_CLAW/pierced` | 구울 심장 | 연쇄형 | fire | 적중 | 중독 상태의 적 공격 시 주변 독성 폭발 | — |
 | `VAMPIRE_BITE/cut` | 흡혈 박쥐 날개 | 공격형 | evasion | 공격 확정 | 공격 시 피해 +10% | — |
 | `VAMPIRE_BITE/broken` | 흡혈 박쥐 이빨 | 공격형 | regen | 적중 | 실제 피해 후 HP 2 재생 | 3턴 |
-| `VAMPIRE_BITE/pierced` | 흡혈 박쥐 심장 | 공격형 | reflect | 적중 | 적중 시 HP 2 회복 | — |
-| `THORN_ARMOUR/cut` | 망령 기사 망토 | 방어형 | hex | 대기 | 대기 후 피격 시 공격자 약화 | — |
-| `THORN_ARMOUR/broken` | 망령 기사 갑주 | 방어형 | reflect | 대기 | 대기 후 피격 피해 30% 반사 | — |
-| `THORN_ARMOUR/broken@air` | 망령 기사 갑주 · air | 방어형 | wind | 대기 | 대기 시 회피 +15 | — |
-| `THORN_ARMOUR/pierced` | 망령 기사 핵 | 방어형 | wind | 대기 | 대기 시 회피 +10 | — |
+| `VAMPIRE_BITE/pierced` | 흡혈 박쥐 심장 | 공격형 | reflect | 적중 | 실제 피해 20% 회복 · 최대 5 | 최대 5 |
+| `THORN_ARMOUR/cut` | 망령 기사 망토 | 방어형 | hex | 피격 | 피격 시 공격자 약화 | — |
+| `THORN_ARMOUR/broken` | 망령 기사 갑주 | 방어형 | reflect | 피격 | 맞으면 받은 피해 30% 반사 | — |
+| `THORN_ARMOUR/broken@air` | 망령 기사 갑주 · air | 방어형 | wind | 피격 | 맞으면 내 다음 행동까지 회피 +20 | — |
+| `THORN_ARMOUR/pierced` | 망령 기사 핵 | 방어형 | wind | 피격 | 맞으면 내 다음 행동까지 회피 +15 | — |
 | `WRAITH/cut` | 원혼 수의 | 연쇄형 | hex | 적중 | 약화 상태의 적 공격 시 주변에 약화 전이 | — |
 | `WRAITH/broken` | 원혼 뼈 | 연쇄형 | death | 적중 | 낙인 상태의 적 공격 시 추가 정신 피해 3 | — |
 | `WRAITH/pierced` | 원혼 핵 | 공격형 | death | 적중 | 적중 시 사령 낙인·정신 피해 | — |
@@ -168,9 +168,9 @@ NPC는 첫 실제 등장 층에서 **방어·근접·원거리·마법·지원**
 | `GRAVEKEEPER/cut` | 묘지기 손 | 연쇄형 | summon | 대기 | 소환수가 있으면 대기 시 지속 +1턴 · 재사용 3턴 | 3턴 |
 | `GRAVEKEEPER/broken` | 묘지기 뼈 | 연쇄형 | death | 적중 | 낙인 상태의 적 공격 시 주변에 약화 | — |
 | `GRAVEKEEPER/pierced` | 묘지기 등불 | 공격형 | death | 대기 | 대기 시 해골 · 최대 1 · 재사용 3턴 | 3턴 · 소환 1명 |
-| `GRAVEKEEPER/pierced@poison` | 묘지기 등불 · poison | 공격형 | poison | 대기 | 대기 시 4칸 중독 | — |
+| `GRAVEKEEPER/pierced@poison` | 묘지기 등불 · poison | 공격형 | poison | 대기 | 대기 시 3칸 안 적 2명 중독 · 재사용 2턴 | 2턴 |
 | `GOBLIN_CHIEF` | 족장의 뿔나팔 | 공격형 | bless | 적중 | 적중 후 다음 공격 축복 | — |
-| `FURNACE_HEART` | 용광로 심장 | 방어형 | fire | 대기 | 대기 후 인접 피격 시 화염막 | — |
+| `FURNACE_HEART` | 용광로 심장 | 방어형 | fire | 피격 | 인접 피격 시 화염막 | — |
 | `SOUL_EATER` | 포식자의 핵 | 방어형 | mental | 대기 | 대기 시 의지 저항 +30 | — |
 
 ## 검증
