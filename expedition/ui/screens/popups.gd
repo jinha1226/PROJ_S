@@ -170,7 +170,7 @@ static func npc_build_info(ui, page: VBoxContainer, npc: Dictionary, prefix: Str
 		var card := PanelContainer.new(); card.name = prefix+"Stone_"+EssenceTab.node_key(str(id))
 		card.add_theme_stylebox_override("panel",EssenceTab.surface(EssenceTab.border_for(str(id)))); page.add_child(card)
 		var row := HBoxContainer.new(); row.add_theme_constant_override("separation",8); card.add_child(row)
-		var icon := TextureRect.new(); icon.texture = Art.part_icon(str(id)); icon.custom_minimum_size = Vector2(28,28)
+		var icon := TextureRect.new(); icon.texture = Icons.stone_icon(str(id)) if Session.MobileEffects.active(npc) else Art.part_icon(str(id)); icon.custom_minimum_size = Vector2(28,28)
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.size_flags_vertical = Control.SIZE_SHRINK_BEGIN; row.add_child(icon)
 		var text := VBoxContainer.new(); text.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(text)

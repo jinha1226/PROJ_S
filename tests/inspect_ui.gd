@@ -7,6 +7,7 @@ const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const Forms = preload("res://expedition/combat/forms.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
 const EssenceTab = preload("res://expedition/ui/screens/essence_tab.gd")
+const Icons = preload("res://expedition/art/soulstone_icons.gd")
 var failures := 0
 var checks := 0
 
@@ -62,6 +63,8 @@ func run() -> void:
 		scene.on_cell(npc.pos)
 		for _i in range(4): await process_frame
 		check(scene.details_popup.visible and scene.modal_content.find_children("NpcStone_*","PanelContainer",true,false).size() == 2,"a visible distant NPC can be inspected with both stones")
+		var stone_card: Node = scene.modal_content.find_children("NpcStone_*","PanelContainer",true,false)[0]
+		check(stone_card.find_children("*","TextureRect",true,false)[0].texture == Icons.stone_icon(str(npc.equipped_abilities[0])),"NPC stone cards use the coloured soulstone icon")
 		check(scene.find_child("ProposeButton",true,false).disabled and not s.propose(npc).accepted and s.time == time_before and s.roll_serial == roll_before,"distant inspection cannot recruit or advance the world")
 		check(scene.details_popup.size.x <= scene.get_viewport_rect().size.x and scene.details_popup.size.y <= scene.get_viewport_rect().size.y,"NPC inspection stays inside the mobile viewport (popup %s, viewport %s)" % [scene.details_popup.size,scene.get_viewport_rect().size])
 		check(scene.modal_content.find_child("StoneStats",true,false).text == EssenceTab.stat_line("GOBLIN_SHIV/pierced",npc),"NPC stone rewards use the actor's current combat profile")
@@ -69,7 +72,7 @@ func run() -> void:
 	npc.pos = c+Vector2i.RIGHT; s.floor_state.observe(s); s.pending_offer = npc.id
 	scene.Popups.update_offer_popup(scene)
 	for _i in range(3): await process_frame
-	check(scene.offer_popup.visible and scene.offer_content.find_children("OfferNpcStone_*","PanelContainer",true,false).size() == 2 and scene.offer_content.find_child("OfferNpcLevel",true,false).text == "Lv.2 · 근접","an NPC's own offer also reveals its full build before acceptance")
+	check(scene.offer_popup.visible and scene.offer_content.find_children("OfferNpcStone_*","PanelContainer",true,false).size() == 2 and scene.offer_content.find_child("OfferNpcLevel",true,false).text == "Lv.2 · 공격","an NPC's own offer also reveals its full build before acceptance (red stone → 공격)")
 	scene.offer_popup.hide(); s.pending_offer = -1
 	scene.details_popup.hide(); scene.queue_free(); await process_frame
 	print("Inspect UI: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)
