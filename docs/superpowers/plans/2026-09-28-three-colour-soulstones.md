@@ -1,6 +1,6 @@
 # 3색 영혼석: 색 = 발동 시점, 아이콘 = 효과 — 설계·구현 계획
 
-작성일: 2026-09-28 · 상태: **방향 합의됨, 구현 전** · 아이콘 시안: `assets/soulstone-icons-v1/preview.png`
+작성일: 2026-09-28 · 상태: **기본 원정 구현됨; 모바일 실기기 검토 대기** · 아이콘 시안: `assets/soulstone-icons-v1/preview.png`
 기준 규칙: [공격·대기 영혼석 실행 매핑](../../attack-wait-soulstones.ko.md)(`attack_wait_v1`, 일반 원정 기본), [휴식처](../specs/2026-09-28-rest-stops-design.md), [성장 방식 결정](../specs/2026-09-28-soulstone-progression-directions.md)
 데이터: `data/content/attack_wait_effects.json`(효과 106개: `event` = HIT·ATTACK·WAIT, `role` = OFFENSE·DEFENSE·CHAIN, `family`, `op`, `role_stats`), `data/content/essences.json`(부위·변형), `expedition/progression/attack_wait.gd`
 

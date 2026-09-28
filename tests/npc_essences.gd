@@ -74,4 +74,9 @@ func run() -> void:
 	var kept: Dictionary = other.essences.duplicate(); var worn: Array = other.equipped_abilities.duplicate()
 	s.Recruit.join(s,other)
 	check(s.party[-1].essences == kept and s.party[-1].equipped_abilities == worn,"recruiting keeps the essences and the loadout")
+	var mobile = Session.new_run(732,"sword","attack_wait_v1")
+	var starters: Array = mobile.roster.filter(func(n): return not str(n.get("build_role","")).is_empty())
+	check(not starters.is_empty(),"automatic-profile NPCs receive a starter build")
+	for npc in starters:
+		check(mobile.MobileEffects.COLOURS.has(str(npc.build_role)) and NpcEssences.role_name(npc) == str(mobile.MobileEffects.COLOURS[npc.build_role]),"NPC starter role is shown as a trigger colour")
 	print("NPC essences: %d checks, %d failures" % [checks,failures]); quit(1 if failures else 0)

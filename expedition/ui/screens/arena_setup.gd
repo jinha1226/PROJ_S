@@ -189,7 +189,7 @@ static func auto_stones(ui, box: VBoxContainer, index: int, setup: Dictionary) -
 		for id in ids:
 			var effect: Dictionary = Session.MobileEffects.row(str(id))
 			pick.add_item(Session.Essences.title(str(id)))
-			pick.get_popup().set_item_tooltip(pick.item_count-1,"%s · %s" % [Session.MobileEffects.ROLE_NAMES.get(effect.get("role",""),""),str(effect.get("text",""))])
+			pick.get_popup().set_item_tooltip(pick.item_count-1,"%s · %s" % [Session.MobileEffects.COLOURS.get(effect.get("colour",""),""),Session.MobileEffects.display_text(effect)])
 			if str(id) in selected and str(id) != str(selected[slot]): pick.set_item_disabled(pick.item_count-1,true)
 		pick.select(ids.find(str(selected[slot]))+1)
 		pick.item_selected.connect(func(choice):
@@ -199,6 +199,6 @@ static func auto_stones(ui, box: VBoxContainer, index: int, setup: Dictionary) -
 		if not str(selected[slot]).is_empty():
 			var effect: Dictionary = Session.MobileEffects.row(str(selected[slot]))
 			var detail := Label.new(); detail.name = "AutoStoneDetail_%d_%d" % [index,slot]
-			detail.text = "%s · %s" % [Session.MobileEffects.ROLE_NAMES.get(effect.get("role",""),""),effect.get("text","")]
+			detail.text = "%s · %s" % [Session.MobileEffects.COLOURS.get(effect.get("colour",""),""),Session.MobileEffects.display_text(effect)]
 			detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; detail.add_theme_font_size_override("font_size",11)
 			cell.add_child(detail)

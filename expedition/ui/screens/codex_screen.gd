@@ -2,6 +2,8 @@ extends RefCounted
 ## Soul stones by species, equipment, and arena-ready example builds.
 const Codex = preload("res://expedition/progression/codex.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
+const Icons = preload("res://expedition/art/soulstone_icons.gd")
+const Mobile = preload("res://expedition/progression/attack_wait.gd")
 const Keywords = preload("res://expedition/ui/screens/keyword_popup.gd")
 const Subtypes = preload("res://expedition/progression/subtypes.gd")
 const Builds = preload("res://expedition/progression/example_builds.gd")
@@ -82,12 +84,23 @@ static func monster_detail(ui, list: VBoxContainer, entry: Dictionary) -> void:
 	text(ui,box,"처치 %d" % int(entry.kills))
 
 static func stones(ui, list: VBoxContainer, data: Dictionary, filter: String) -> void:
+	var automatic: bool = Mobile.active(actor_of(ui))
 	var group: String = filter if Subtypes.GROUP_NAMES.has(filter) else str(Subtypes.GROUP.get(filter,""))
 	var chips := HFlowContainer.new(); list.add_child(chips)
-	for id in Subtypes.GROUP_NAMES:
-		var chip = ui.button(chips,str(Subtypes.GROUP_NAMES[id]),func(): show(ui,"stones","","" if group == id else id))
-		chip.name = "CodexGroup_"+str(id); chip.toggle_mode = true; chip.button_pressed = group == id
-	if not group.is_empty():
+	if automatic:
+		for id in Mobile.COLOURS:
+			var chip = ui.button(chips,str(Mobile.COLOURS[id]),func(): show(ui,"stones","","" if filter == id else id))
+			chip.name = "CodexColour_"+str(id); chip.toggle_mode = true; chip.button_pressed = filter == id
+		var icons := HFlowContainer.new(); list.add_child(icons)
+		for id in Mobile.ICONS:
+			var chip = ui.button(icons,str(Icons.ICON_NAMES.get(id,id)),func(): show(ui,"stones","","" if filter == id else id))
+			chip.name = "CodexIcon_"+str(id); chip.toggle_mode = true; chip.button_pressed = filter == id
+			chip.icon = Icons.effect_icon(str(id)); chip.add_theme_constant_override("icon_max_width",18)
+	else:
+		for id in Subtypes.GROUP_NAMES:
+			var chip = ui.button(chips,str(Subtypes.GROUP_NAMES[id]),func(): show(ui,"stones","","" if group == id else id))
+			chip.name = "CodexGroup_"+str(id); chip.toggle_mode = true; chip.button_pressed = group == id
+	if not automatic and not group.is_empty():
 		var subs := HFlowContainer.new(); list.add_child(subs)
 		for id in Subtypes.IDS:
 			if Subtypes.GROUP[id] != group: continue
@@ -104,6 +117,7 @@ static func stones(ui, list: VBoxContainer, data: Dictionary, filter: String) ->
 		var ids: Array = all_stones.filter(func(id): return Codex.Essences.base_of(str(id)) == base)
 		if not filter.is_empty():
 			ids = ids.filter(func(id):
+				if automatic: return Mobile.colour(str(id)) == filter if Mobile.COLOURS.has(filter) else str(Mobile.row(str(id)).get("icon","")) == filter
 				var e := Codex.stone_entry(data,str(id))
 				return e.subtype == filter if Subtypes.NAMES.has(filter) else e.group == filter)
 			if ids.is_empty(): continue
@@ -117,13 +131,26 @@ static func stones(ui, list: VBoxContainer, data: Dictionary, filter: String) ->
 		picture.texture = Art.enemy_sprite(species) if not m.boss else Art.portrait_face(0) if species == "boss:fallen" else Art.enemy_sprite(str(Codex.BossAI.SPRITES.get(species.trim_prefix("boss:"),"dcss_hobgoblin")))
 		if not e.known: picture.modulate = Color.BLACK
 		header.add_child(picture)
-		var pick = ui.button(header,"%s\n%s · 처치 %d" % [str(e.get("name","???")),str(e.get("role","")),int(e.get("kills",0))],func(): show(ui,"stones",species),e.known)
+		var group_text: String = str(e.get("role",""))
+		if automatic:
+			var names: Array = []
+			for id in ids:
+				var colour_name: String = str(Mobile.COLOURS.get(Mobile.colour(str(id)),""))
+				if not colour_name.is_empty() and colour_name not in names: names.append(colour_name)
+			group_text = "·".join(names)
+		var pick = ui.button(header,"%s\n%s · 처치 %d" % [str(e.get("name","???")),group_text,int(e.get("kills",0))],func(): show(ui,"stones",species),e.known)
 		pick.clip_text = true; pick.add_theme_font_size_override("font_size",13)
 		for id in ids: stone_row(ui,list,Codex.stone_entry(data,str(id)))
 
 static func stone_row(ui, list: VBoxContainer, entry: Dictionary) -> void:
 	var row := VBoxContainer.new(); row.name = name_for(str(entry.key)); list.add_child(row)
-	var head := text(ui,row,str(entry.name)+("  ✓흡수" if entry.absorbed else ""),14)
+	var automatic: bool = Mobile.active(actor_of(ui))
+	var heading := HBoxContainer.new(); row.add_child(heading)
+	if automatic:
+		var symbol := TextureRect.new(); symbol.texture = Icons.stone_icon(str(entry.key))
+		symbol.custom_minimum_size = Vector2(28,28); symbol.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		symbol.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; heading.add_child(symbol)
+	var head := text(ui,heading,str(entry.name)+("  ✓흡수" if entry.absorbed else ""),14)
 	if not entry.found:
 		head.modulate = Color(1,1,1,0.45)
 		if entry.species_known: text(ui,row,str(entry.hint))
@@ -151,10 +178,11 @@ static func items(ui, list: VBoxContainer, data: Dictionary) -> void:
 			if e.has("keywords"): Keywords.chips(ui,row,e.keywords)
 
 static func build_list(ui, list: VBoxContainer) -> void:
+	var automatic: bool = Mobile.active(actor_of(ui))
 	for b in Builds.data.builds:
 		var box := VBoxContainer.new(); list.add_child(box)
 		var pick = ui.button(box,str(b.name),func(): show(ui,"builds",str(b.id))); pick.name = "CodexBuild_"+str(b.id)
-		text(ui,box,Subtypes.long_label(str(b.subtype))+" · "+str(Codex.Equipment.content.weapons[b.weapon].name))
+		text(ui,box,(str(Mobile.COLOURS.get(b.group,b.group)) if automatic else Subtypes.long_label(str(b.subtype)))+" · "+str(Codex.Equipment.content.weapons[b.weapon].name))
 		text(ui,box,str(b.flow[0]))
 	text(ui,list,"3인 파티",16)
 	for p in Builds.data.parties:
@@ -163,7 +191,7 @@ static func build_list(ui, list: VBoxContainer) -> void:
 static func build_detail(ui, list: VBoxContainer, data: Dictionary, b: Dictionary) -> void:
 	var box := VBoxContainer.new(); box.name = "CodexBuildDetail"; box.set_meta("key",b.id); list.add_child(box)
 	ui.button(box,"← 목록",func(): show(ui,"builds"))
-	text(ui,box,str(b.name),18); text(ui,box,Subtypes.long_label(str(b.subtype))+" · 레벨 %d" % int(b.level))
+	text(ui,box,str(b.name),18); text(ui,box,(str(Mobile.COLOURS.get(b.group,b.group)) if Mobile.active(actor_of(ui)) else Subtypes.long_label(str(b.subtype)))+" · 레벨 %d" % int(b.level))
 	var gear: PackedStringArray = []
 	for slot in ["weapon","offhand","armour"]:
 		if not str(b.get(slot,"")).is_empty(): gear.append(Codex.Equipment.title({"type":str(b[slot])}))
@@ -171,6 +199,10 @@ static func build_detail(ui, list: VBoxContainer, data: Dictionary, b: Dictionar
 	var counts: Dictionary = {}
 	for id in b.stones:
 		var info := Codex.Essences.row(str(id)); var sub := Subtypes.of(str(info.effect))
+		if Mobile.active(actor_of(ui)):
+			var row := VBoxContainer.new(); row.name = "CodexBuildStone_"+str(id).replace("/","_"); box.add_child(row)
+			text(ui,row,Codex.Essences.title(str(id))+" · "+Tab.effect_line(str(id),actor_of(ui)),13)
+			continue
 		var role: String = str(info.role); counts[role] = int(counts.get(role,0))+1
 		var collected: bool = int(data.get("stones",{}).get(id,{}).get("found",0)) > 0
 		var row := VBoxContainer.new(); row.name = "CodexBuildStone_"+str(id).replace("/","_"); box.add_child(row)
@@ -179,6 +211,7 @@ static func build_detail(ui, list: VBoxContainer, data: Dictionary, b: Dictionar
 		if not collected: row.modulate = Color(1,1,1,0.65)
 	for line in b.flow: text(ui,box,str(line),13)
 	for role in counts:
+		if Mobile.active(actor_of(ui)): break
 		var bracket: int = Sets.bracket_of(int(counts[role]))
 		if bracket > 0: text(ui,box,"%s %d개 · %d구간 — %s" % [Subtypes.GROUP_NAMES.get(role,role),int(counts[role]),bracket,Sets.ROLE_TEXT.get(role,{}).get(bracket,"")])
 	var test = ui.button(box,"전투 시험에서 해보기",func(): ui.show_arena_setup_with([str(b.id)])); test.name = "CodexTryBuild"
@@ -189,5 +222,5 @@ static func party_detail(ui, list: VBoxContainer, p: Dictionary) -> void:
 	for id in p.members:
 		var b := Builds.build(str(id))
 		ui.button(box,str(b.name),func(): show(ui,"builds",str(id)))
-		text(ui,box,Subtypes.long_label(str(b.subtype)))
+		text(ui,box,str(Mobile.COLOURS.get(b.group,b.group)) if Mobile.active(actor_of(ui)) else Subtypes.long_label(str(b.subtype)))
 	var test = ui.button(box,"파티로 전투 시험",func(): ui.show_arena_setup_with(p.members.duplicate())); test.name = "CodexTryParty"

@@ -4,6 +4,7 @@ const Builds = preload("res://expedition/progression/example_builds.gd")
 const Essences = preload("res://expedition/progression/essences.gd")
 const Equipment = preload("res://expedition/items/equipment.gd")
 const Sets = preload("res://expedition/progression/tag_sets.gd")
+const Mobile = preload("res://expedition/progression/attack_wait.gd")
 var checks := 0
 var failures := 0
 func check(ok: bool, why: String) -> void:
@@ -33,8 +34,8 @@ func run() -> void:
 		check(int(hero.max_hp)-int(hero.pool_bonus.hp) == hp_base+36 and int(hero.max_mp)-int(hero.pool_bonus.mp) == mp_base+18,"level-ten growth applied exactly once: "+str(b.id))
 		check(Equipment.worn(hero).weapon.type == b.weapon and Equipment.worn(hero).armour.type == b.armour,"gear applied: "+str(b.id))
 		check(Equipment.hands(Equipment.worn(hero).weapon) != 2 or Equipment.worn(hero).offhand.is_empty(),"switching clears offhand: "+str(b.id))
-		var count: int = b.stones.filter(func(id): return Essences.role(str(id)) == b.group).size()
-		check(Sets.bracket(hero,b.group) == Sets.bracket_of(count),"actual combo matches stones: "+str(b.id))
+		var count: int = b.stones.filter(func(id): return Mobile.colour(str(id)) == b.group).size()
+		check(Mobile.COLOURS.has(str(b.group)) and count >= 3,"display group matches the build's dominant stone colour: "+str(b.id))
 		check(s.parts_bag == bag and s.essence_seen == seen and s.codex == {"version":1} and not s.codex_dirty,"loadouts never record discoveries")
 		for id in hero.essence_spells:
 			check(str(hero.essence_spells[id]) in Essences.spell_choices(hero,str(id)),"spell is legal at ten")

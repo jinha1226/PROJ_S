@@ -4,7 +4,7 @@
   {
    "id": "wall",
    "name": "철벽",
-   "group": "TANK",
+   "group": "purple",
    "subtype": "DEFENSE",
    "level": 10,
    "weapon": "mace",
@@ -30,7 +30,7 @@
   {
    "id": "blood_giant",
    "name": "피의 거인",
-   "group": "TANK",
+   "group": "red",
    "subtype": "REGEN",
    "level": 10,
    "weapon": "axe",
@@ -56,7 +56,7 @@
   {
    "id": "blood_hunter",
    "name": "피의 사냥꾼",
-   "group": "MELEE",
+   "group": "red",
    "subtype": "BLEED",
    "level": 10,
    "weapon": "axe",
@@ -82,7 +82,7 @@
   {
    "id": "bone_breaker",
    "name": "뼈 부수는 자",
-   "group": "MELEE",
+   "group": "red",
    "subtype": "CRUSH",
    "level": 10,
    "weapon": "mace",
@@ -108,7 +108,7 @@
   {
    "id": "vital_hunter",
    "name": "급소 사냥꾼",
-   "group": "MELEE",
+   "group": "red",
    "subtype": "VITAL",
    "level": 10,
    "weapon": "dagger",
@@ -134,7 +134,7 @@
   {
    "id": "hawk_eye",
    "name": "매의 눈",
-   "group": "RANGED",
+   "group": "red",
    "subtype": "SNIPE",
    "level": 10,
    "weapon": "bow",
@@ -160,7 +160,7 @@
   {
    "id": "plague_archer",
    "name": "역병 궁수",
-   "group": "RANGED",
+   "group": "red",
    "subtype": "VENOM",
    "level": 10,
    "weapon": "bow",
@@ -188,7 +188,7 @@
   {
    "id": "elementalist",
    "name": "원소술사",
-   "group": "MAGIC",
+   "group": "red",
    "subtype": "ELEMENT",
    "level": 10,
    "weapon": "staff",
@@ -221,7 +221,7 @@
   {
    "id": "lord_of_dead",
    "name": "망자의 군주",
-   "group": "MAGIC",
+   "group": "purple",
    "subtype": "SUMMON",
    "level": 10,
    "weapon": "staff",
@@ -252,7 +252,7 @@
   {
    "id": "hexer",
    "name": "저주술사",
-   "group": "SUPPORT",
+   "group": "red",
    "subtype": "HEX",
    "level": 10,
    "weapon": "staff",
@@ -282,7 +282,7 @@
   {
    "id": "water_priest",
    "name": "물의 사제",
-   "group": "SUPPORT",
+   "group": "purple",
    "subtype": "HEAL",
    "level": 10,
    "weapon": "mace",

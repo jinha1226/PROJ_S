@@ -1,6 +1,7 @@
 # 휴식처와 영혼석 덮어쓰기
 
-작성일: 2026-09-28 · 상태: **합의됨(§0), 세부 수치는 초안**
+작성일: 2026-09-28 · 상태: **기본 원정 구현됨**
+교체 규칙은 [3색 영혼석 계획](../plans/2026-09-28-three-colour-soulstones.md) §4가 우선한다. 같은 색은 안전한 곳에서 가방과 맞바꿀 수 있고, 다른 색은 휴식처에서 덮어쓴다.
 근거: [영혼석 성장 방식 검토](2026-09-28-soulstone-progression-directions.md)의 A안(무작위 드롭)을 유지하고, 칸이 막혔을 때만 **구역 보스 뒤 휴식처**에서 바꿀 수 있게 한다(데드셀의 구역 사이 통로처럼).
 현재 규칙: [영혼석 — 6개 영구 흡수](../../soulstones.ko.md). 구현되면 그 문서의 "교체·해제 불가"를 "휴식처에서만 덮어쓰기"로 바꾼다.
 기존 코드: `expedition/progression/essences.gd`(`absorb`·`bind`·`free_slot`, `equip`/`unequip`/`put`/`take`는 지금 항상 거부), `expedition/progression/stone_drop.gd`(드롭 즉시 선택: 흡수 / 가방 / 두고 감), `expedition/run/descent.gd`(`descend`), `expedition/level/zones.gd`(`is_boss_floor`: 3·6·9·12층), `expedition/run/camp.gd`

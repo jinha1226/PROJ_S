@@ -23,6 +23,12 @@ static func floor_pool(depth: int) -> Array:
 	return Essences.catalog().filter(func(id): return str(Essences.row(str(id)).get("species","")) in species)
 
 static func role_name(npc: Dictionary) -> String:
+	if Mobile.active(npc):
+		var colour: String = str(npc.get("build_role",""))
+		if not Mobile.COLOURS.has(colour):
+			var stones := Essences.equipped(npc)
+			if not stones.is_empty(): colour = Essences.colour(str(stones[0]))
+		return str(Mobile.COLOURS.get(colour,"모험가"))
 	var role := str(npc.get("build_role",""))
 	if role.is_empty():
 		var stones := Essences.equipped(npc)
@@ -49,13 +55,15 @@ static func seed_build(s, npc: Dictionary) -> void:
 	var existing := Essences.equipped(npc)
 	# Preserve stones on returning/legacy NPCs rather than re-rolling them.
 	if not existing.is_empty():
-		npc.build_role = str(Essences.role(str(existing[0])))
+		npc.build_role = Essences.colour(str(existing[0])) if Mobile.active(npc) else str(Essences.role(str(existing[0])))
 		npc.starting_build_floor = int(s.depth)
 		return
-	var roles: Array = ROLE_NAMES.keys().filter(func(role): return pool.any(func(id): return Essences.role(str(id)) == role and starter_usable(str(id),[])))
+	var automatic: bool = Mobile.active(npc)
+	var roles: Array = Mobile.COLOURS.keys() if automatic else ROLE_NAMES.keys()
+	roles = roles.filter(func(role): return pool.any(func(id): return (Essences.colour(str(id)) if automatic else Essences.role(str(id))) == role and starter_usable(str(id),[])))
 	if roles.is_empty(): return
 	var role: String = str(roles[Hexaco.sample(s.seed_value,lane,"npc_build_role",roles.size())])
-	var candidates: Array = pool.filter(func(id): return Essences.role(str(id)) == role)
+	var candidates: Array = pool.filter(func(id): return (Essences.colour(str(id)) if automatic else Essences.role(str(id))) == role)
 	var picked: Array = []
 	var want: int = 1+Hexaco.sample(s.seed_value,lane,"npc_build_count",2)
 	for i in range(want):
@@ -64,7 +72,7 @@ static func seed_build(s, npc: Dictionary) -> void:
 		if choices.is_empty(): break
 		picked.append(choices[Hexaco.sample(s.seed_value,lane,"npc_build_stone_%d" % i,choices.size())])
 	if picked.size() > int(npc.level): s.gain_level_xp(npc,65-int(npc.get("level_xp",0)))
-	var weapons: Array = ROLE_WEAPONS[role]
+	var weapons: Array = {"red":["sword","axe","bow"],"purple":["staff","spear"],"green":["sword","mace"]}.get(role,ROLE_WEAPONS.get(role,["sword"]))
 	npc.gear.weapon = {"type":str(weapons[Hexaco.sample(s.seed_value,lane,"npc_build_weapon",weapons.size())]),"enchant":0}
 	npc.build_role = role; npc.starting_build_floor = int(s.depth)
 	for id in picked: Essences.bind(npc,str(id))
