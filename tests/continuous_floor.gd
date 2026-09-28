@@ -52,10 +52,10 @@ func run() -> void:
 	s.party[1].pos = Fixture.beside(s,s.party[0].pos)
 	check(s.party[1].pos.x >= 0,"adjacent free cell exists")
 	s.floor_state.observe(s)
-	var hp: int = s.party[0].hp
-	foe.part_id = "" # Role behaviour only; the signature part would be announced first (tests/parts.gd).
+	var hp: int = int(s.party[0].hp)+int(s.party[1].hp)
+	foe.part_id = "" # Basic role attack without a species stone.
 	s.floor_state.enemy_turn(s,foe)
-	check(s.party[0].hp < hp,"legacy tactical selector attacks adjacent enemy")
+	check(int(s.party[0].hp)+int(s.party[1].hp) < hp,"monster attacks an adjacent party member")
 	var scene = load("res://expedition/ui/main.gd").new(); scene.session = s
 	root.size = Vector2i(390,844); root.add_child(scene)
 	for frame in range(3): await process_frame
