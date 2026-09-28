@@ -123,10 +123,12 @@ static func row(id: String, profile: String = "legacy") -> Dictionary:
 	var part: String = part_of(id)
 	var piece: Dictionary = base.get("parts",{}).get(part,{})
 	var role: String = str(base.get("role",""))
-	var stats: Dictionary = Bestiary.essence_stats(role,str(base.get("school","")),profile) if not role.is_empty() else (base.get("stats",{}) as Dictionary).duplicate()
+	var effect: String = str(piece.get("effect",base.get("effect",base_of(id))))
+	var colour: String = Bestiary.automatic_colour(effect,base_of(id),variant_element(id)) if profile == "attack_wait_v1" else ""
+	var stats: Dictionary = Bestiary.essence_stats(role,str(base.get("school","")),profile,colour) if not role.is_empty() else (base.get("stats",{}) as Dictionary).duplicate()
 	var result := {"name":str(base.get("name","")),"stats":stats,"role":role,"element":str(base.get("element","")),
 		"school":str(base.get("school","")),"species":str(base.get("species","")),"family":str(base.get("family","")),
-		"part":part,"part_name":str(piece.get("name","")),"active":str(piece.get("active","")),"effect":str(piece.get("effect",base.get("effect",""))),
+		"part":part,"part_name":str(piece.get("name","")),"active":str(piece.get("active","")),"effect":str(piece.get("effect",base.get("effect",""))),"colour":colour,
 		"spells":piece.get("spells",base.get("spells",[])).duplicate()}
 	if not part.is_empty(): result.name = result.part_name
 	var element := variant_element(id)

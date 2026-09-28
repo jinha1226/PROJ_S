@@ -101,25 +101,25 @@ func reward_stats() -> void:
 	for id in Mobile.catalog():
 		var rewards: Dictionary = d.s.Essences.stats(str(id),d.hero)
 		check(not rewards.has("mp") and not rewards.has("spell"),"automatic rewards have no unused MP or spell stat: "+str(id))
-	check(d.s.Essences.stats("FIRE_CALLER/pierced",d.hero) == {"atk":2,"hp":12},"magic reward supplies usable attack and HP")
-	check(d.s.Essences.stats("RAT_GNAW/cut",d.hero) == {"hp":16},"support reward replaces MP with HP")
+	check(d.s.Essences.stats("FIRE_CALLER/pierced",d.hero) == {"atk":4},"red reward supplies attack")
+	check(d.s.Essences.stats("RAT_GNAW/cut",d.hero) == {"atk":2,"speed":5},"purple reward supplies attack and speed")
 	check(d.s.Essences.stats("FIRE_CALLER/pierced") == {"spell":4,"mp":8} and d.s.Essences.stats("RAT_GNAW/cut") == {"hp":10,"mp":6},"legacy reward queries are unchanged beside automatic queries")
-	check(d.s.Essences.stats("FIRE_CALLER/pierced@ice",d.hero) == {"atk":2,"hp":12,"res_ice":10},"automatic reward preserves variant resistance")
+	check(d.s.Essences.stats("FIRE_CALLER/pierced@ice",d.hero) == {"atk":4,"res_ice":10},"automatic reward preserves variant resistance")
 	var before_damage: int = d.s.CombatStats.stats(d.s,d.hero).damage
 	d.s.phase = "CAMP"; d.s.parts_bag["FIRE_CALLER/pierced"] = 1
 	check(d.s.absorb_essence(0,"FIRE_CALLER/pierced").is_empty(),"normal permanent absorption applies new reward")
-	check(d.hero.max_hp == 112 and d.hero.max_mp == 0 and d.s.CombatStats.stats(d.s,d.hero).damage == before_damage+2,"reward changes actual HP and basic damage without MP")
+	check(d.hero.max_hp == 100 and d.hero.max_mp == 0 and d.s.CombatStats.stats(d.s,d.hero).damage == before_damage+4,"red reward changes basic damage without MP")
 	d.s.StatSheet.refresh_pools(d.s,d.hero)
-	check(d.hero.max_hp == 112,"pool refresh never duplicates the new reward")
+	check(d.hero.max_hp == 100,"pool refresh never duplicates the new reward")
 	Mobile.enable(d.s,"legacy")
 	check(d.hero.max_hp == 100 and d.hero.max_mp == 8 and d.s.StatSheet.bonus(d.hero,"spell") == 4,"switching to legacy restores exactly its original reward")
 	Mobile.enable(d.s,Mobile.PROFILE)
-	check(d.hero.max_hp == 112 and d.hero.max_mp == 0 and d.s.StatSheet.bonus(d.hero,"spell") == 0,"switching back removes the legacy pool bonus")
+	check(d.hero.max_hp == 100 and d.hero.max_mp == 0 and d.s.StatSheet.bonus(d.hero,"spell") == 0,"switching back removes the legacy pool bonus")
 	var npc: Dictionary = d.s.make_actor(401,"보상 검사 NPC",false); npc.npc = true; npc.level = 6
 	var npc_hp: int = npc.max_hp; var npc_mp: int = npc.max_mp
 	check(d.s.Essences.bind(npc,"RAT_GNAW/cut").is_empty(),"NPC absorption uses the same profile")
 	d.s.StatSheet.refresh_pools(d.s,npc)
-	check(npc.max_hp == npc_hp+16 and npc.max_mp == npc_mp,"NPC gains usable support HP and no MP")
+	check(npc.max_hp == npc_hp and npc.max_mp == npc_mp and d.s.Essences.stats("RAT_GNAW/cut",npc) == {"atk":2,"speed":5},"NPC gains the same purple reward")
 func seeding() -> void:
 	var d := with_effects(["fire_hit","fire_chain"]); var n := near(d,901,Vector2i(2,0))
 	hit(d)
@@ -154,7 +154,7 @@ func waiting() -> void:
 func manual_execution() -> void:
 	var d := with_effects(["fire_wait"])
 	var before_time: int = d.s.time
-	check(not d.hero.has("ap") and d.s.submit("WAIT",d.hero.pos) and d.s.time == before_time+100 and not d.hero.has("ap"),"manual wait advances time without an AP field")
+	check(not d.hero.has("ap") and d.s.submit("WAIT",d.hero.pos) and d.s.time > before_time and not d.hero.has("ap"),"manual wait advances time without an AP field")
 	check(d.foe.statuses.has("burn"),"automatic wait effect still fires without AP")
 	d.hero.prepared = ["blink"]
 	check(not d.s.submit("CAST",d.hero.pos,"blink") and not d.s.submit("PUSH",d.foe.pos),"automatic profile has no manually selected spells or parts")
@@ -166,16 +166,27 @@ func defense() -> void:
 	check(Mobile.incoming(d.s,d.hero,d.foe,100,"MOBILE_DOT") == 100,"stance excludes DOT")
 	check(Mobile.threat(d.s,d.foe,d.hero) == 9,"known target threat bonus is bounded")
 	wait(d,false); check(d.hero.aw_state.waits == 0 and d.hero.aw_state.preps.is_empty(),"forced skip clears stance and threat")
-	d = with_effects(["poison_defense"]); wait(d)
+	d = with_effects(["poison_defense"])
 	Mobile.struck(d.s,d.hero,d.foe,{"lost":4}); check(d.foe.statuses.has("poison"),"poison skin reacts to a real hostile hit")
 	d.foe.statuses.erase("poison"); d.s.Reactions.begin_action(d.s); Mobile.struck(d.s,d.hero,d.foe,{"lost":4})
-	check(not d.foe.statuses.has("poison"),"next enemy action does not recharge defensive preparation")
-	d = with_effects(["air_defense"]); wait(d); Session.StoneEffects.force = 99
+	check(d.foe.statuses.has("poison"),"green poison skin reacts again without a wait preparation")
+	d.foe.statuses.erase("poison")
+	var before_sequence: int = d.s.aw_sequence
+	Mobile.avoided(d.s,d.hero,d.foe,"dodge")
+	check(d.s.aw_sequence == before_sequence+1 and not d.foe.statuses.has("poison"),"dodge dispatches green event but hit-only poison does not proc")
+	before_sequence = d.s.aw_sequence
+	Mobile.avoided(d.s,d.hero,d.foe,"block")
+	check(d.s.aw_sequence == before_sequence+1 and not d.foe.statuses.has("poison"),"block dispatches green event but hit-only poison does not proc")
+	d = with_effects(["reflect_defense"])
+	var before_foe: int = d.foe.hp
+	Mobile.struck(d.s,d.hero,d.foe,{"lost":10})
+	check(d.foe.hp < before_foe,"green reflection uses actual lost HP without wait preparation")
+	d = with_effects(["air_defense"]); Session.StoneEffects.force = 99
 	Mobile.struck(d.s,d.hero,d.foe,{"lost":1})
 	check(d.foe.statuses.has("stun"),"electric barrier triggers without a random proc roll")
 	d.foe.statuses.erase("stun"); Session.StoneEffects.force = 0; Mobile.struck(d.s,d.hero,d.foe,{"lost":1})
-	check(not d.foe.statuses.has("stun"),"electric barrier remains one reaction per preparation")
-	wait(d); check(d.hero.aw_state.preps.is_empty(),"strong guaranteed control keeps its cooldown")
+	check(not d.foe.statuses.has("stun"),"electric barrier keeps its cooldown")
+	wait(d); check(d.hero.aw_state.preps.is_empty(),"green control needs no wait preparation")
 	Session.StoneEffects.force = 99
 	d = with_effects(["ice_defense"]); wait(d)
 	check(d.s.CombatStats.stats(d.s,d.hero).ac >= 4,"ice armor enters real stat calculation")

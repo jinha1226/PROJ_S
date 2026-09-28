@@ -3,7 +3,8 @@ extends RefCounted
 ## weighs on a floor, and what a soul stone of a role gives. Every number here
 ## is a table the difficulty gate tunes, never a per-species constant.
 static var content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/floor_monsters.json"))
-static var automatic_rewards: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/attack_wait_effects.json")).get("role_stats",{})
+static var automatic_content: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/attack_wait_effects.json"))
+static var automatic_rewards: Dictionary = automatic_content.get("role_stats",{})
 const FAMILIES := ["rat","goblin","reptile","kobold","orc","elemental","insect","gnoll","undead","bat"]
 const ROLES := ["PACK","BERSERK","AMBUSH","GUARD","ARCHER","CASTER"]
 const ZONE_HP := {1:30,2:70,3:110,4:160}
@@ -59,6 +60,13 @@ static func monster_stats(species_id: String, depth: int) -> Dictionary:
 		"attack_percent":int(ZONE_ATTACK[zone])*step/ACTIVE_BASE_ATTACK}
 
 ## A soul stone of `role`: the same for every stone of that role.
-static func essence_stats(role: String, _school: String = "", profile: String = "legacy") -> Dictionary:
+static func automatic_colour(effect: String, base: String, variant: String = "") -> String:
+	var id: String = str(automatic_content.get("variants",{}).get(variant,{}).get(effect,
+		automatic_content.get("bindings",{}).get(effect,automatic_content.get("bindings",{}).get(base,""))))
+	return str(automatic_content.get("effects",{}).get(id,{}).get("colour",""))
+
+static func essence_stats(role: String, _school: String = "", profile: String = "legacy", colour: String = "") -> Dictionary:
 	var points: Dictionary = automatic_rewards if profile == "attack_wait_v1" else ROLE_POINTS
-	return (points.get(role,{}) as Dictionary).duplicate()
+	# Older automatic tables were keyed by the five display roles. Keep them
+	# readable while current content uses the attack/wait/struck colour.
+	return (points.get(colour,points.get(role,{})) as Dictionary).duplicate()

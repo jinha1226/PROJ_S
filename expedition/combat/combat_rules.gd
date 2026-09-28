@@ -44,12 +44,16 @@ static func attack(s, source: Dictionary, target: Dictionary, extra_damage: int 
 	var evaded: bool = roll(s, source, target, "dodge", 100) < dodge
 	if hit_form == "HIT": s.MobileEffects.attempted(target)
 	if evaded:
-		if hit_form == "HIT": StoneEffects.fire(s,"DODGE",StoneEffects.context(s,source,target))
+		if hit_form == "HIT":
+			StoneEffects.fire(s,"DODGE",StoneEffects.context(s,source,target))
+			s.MobileEffects.avoided(s,target,source,"dodge")
 		out.evaded = true; s.message(str(target.name) + " 회피")
 		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"회피","vfx":"dodge","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
 		return out
 	if roll(s, source, target, "block", 100) < int(defense.sh):
-		if hit_form == "HIT": StoneEffects.fire(s,"BLOCK",StoneEffects.context(s,source,target))
+		if hit_form == "HIT":
+			StoneEffects.fire(s,"BLOCK",StoneEffects.context(s,source,target))
+			s.MobileEffects.avoided(s,target,source,"block")
 		out.blocked = true; s.message(str(target.name) + " 방패 방어")
 		s.effects.append({"kind":"MISS","from":source.pos,"cell":target.pos,"text":"막음","vfx":"shield","enemy":bool(target.get("enemy",false)) or bool(target.get("hostile",false))})
 		if StoneEffects.has(target,"SHIELD_STANCE"): StoneEffects.proc(s,target.pos,"막음!","buff")

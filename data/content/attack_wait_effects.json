@@ -2,24 +2,16 @@
   "version": 2,
   "profile": "attack_wait_v1",
   "role_stats": {
-    "SUPPORT": {
-      "hp": 16
+    "red": {
+      "atk": 4
     },
-    "MELEE": {
-      "atk": 4,
-      "hp": 8
-    },
-    "TANK": {
-      "hp": 20,
-      "ac": 3
-    },
-    "RANGED": {
-      "atk": 3,
+    "purple": {
+      "atk": 2,
       "speed": 5
     },
-    "MAGIC": {
-      "atk": 2,
-      "hp": 12
+    "green": {
+      "hp": 20,
+      "ac": 3
     }
   },
   "bindings": {
@@ -163,7 +155,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "fire",
-      "status": "burn"
+      "status": "burn",
+      "colour": "red",
+      "icon": "burn",
+      "badge": ""
     },
     "fire_wait": {
       "name": "화상 장막",
@@ -179,7 +174,10 @@
       "radius": 3,
       "count": 0,
       "damage": 0,
-      "element": "physical"
+      "element": "physical",
+      "colour": "purple",
+      "icon": "burn",
+      "badge": ""
     },
     "poison_hit": {
       "name": "중독",
@@ -191,7 +189,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "poison",
-      "status": "poison"
+      "status": "poison",
+      "colour": "red",
+      "icon": "poison",
+      "badge": ""
     },
     "poison_wait": {
       "name": "중독 장막",
@@ -207,7 +208,10 @@
       "radius": 4,
       "count": 0,
       "damage": 0,
-      "element": "physical"
+      "element": "physical",
+      "colour": "purple",
+      "icon": "poison",
+      "badge": ""
     },
     "ice_hit": {
       "name": "둔화",
@@ -219,7 +223,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "ice",
-      "status": "slow"
+      "status": "slow",
+      "colour": "red",
+      "icon": "freeze",
+      "badge": ""
     },
     "ice_wait": {
       "name": "둔화 장막",
@@ -235,7 +242,10 @@
       "radius": 3,
       "count": 0,
       "damage": 0,
-      "element": "physical"
+      "element": "physical",
+      "colour": "purple",
+      "icon": "freeze",
+      "badge": ""
     },
     "air_hit": {
       "name": "전하",
@@ -250,7 +260,10 @@
       "status": "charge",
       "damage": 2,
       "element": "air",
-      "direct_element": true
+      "direct_element": true,
+      "colour": "red",
+      "icon": "shock",
+      "badge": ""
     },
     "air_wait": {
       "name": "전하 장막",
@@ -266,7 +279,10 @@
       "radius": 4,
       "count": 1,
       "damage": 2,
-      "element": "air"
+      "element": "air",
+      "colour": "purple",
+      "icon": "shock",
+      "badge": ""
     },
     "bleed_hit": {
       "name": "출혈",
@@ -278,7 +294,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "bleed",
-      "status": "bleed"
+      "status": "bleed",
+      "colour": "red",
+      "icon": "bleed",
+      "badge": ""
     },
     "bleed_wait": {
       "name": "출혈 장막",
@@ -294,7 +313,10 @@
       "radius": 1,
       "count": 0,
       "damage": 0,
-      "element": "physical"
+      "element": "physical",
+      "colour": "purple",
+      "icon": "bleed",
+      "badge": ""
     },
     "mental_hit": {
       "name": "혼란",
@@ -306,7 +328,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "confuse",
-      "status": "confuse"
+      "status": "confuse",
+      "colour": "red",
+      "icon": "curse",
+      "badge": ""
     },
     "mental_wait": {
       "name": "혼란 장막",
@@ -322,7 +347,10 @@
       "radius": 4,
       "count": 1,
       "damage": 0,
-      "element": "physical"
+      "element": "physical",
+      "colour": "purple",
+      "icon": "curse",
+      "badge": ""
     },
     "hex_hit": {
       "name": "약화",
@@ -334,7 +362,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "hex",
-      "status": "weak"
+      "status": "weak",
+      "colour": "red",
+      "icon": "curse",
+      "badge": ""
     },
     "hex_wait": {
       "name": "약화 장막",
@@ -350,7 +381,10 @@
       "radius": 3,
       "count": 2,
       "damage": 0,
-      "element": "physical"
+      "element": "physical",
+      "colour": "purple",
+      "icon": "curse",
+      "badge": ""
     },
     "water_hit": {
       "name": "젖음",
@@ -362,7 +396,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "water",
-      "status": "wet"
+      "status": "wet",
+      "colour": "red",
+      "icon": "freeze",
+      "badge": ""
     },
     "water_wait": {
       "name": "젖음 장막",
@@ -378,7 +415,10 @@
       "radius": 3,
       "count": 0,
       "damage": 0,
-      "element": "physical"
+      "element": "physical",
+      "colour": "purple",
+      "icon": "guard",
+      "badge": ""
     },
     "fire_chain": {
       "name": "화염 폭발",
@@ -395,7 +435,10 @@
       ],
       "radius": 1,
       "damage": 3,
-      "element": "fire"
+      "element": "fire",
+      "colour": "red",
+      "icon": "burn",
+      "badge": "burst"
     },
     "poison_chain": {
       "name": "중독 전이",
@@ -411,7 +454,10 @@
         "poison"
       ],
       "status": "poison",
-      "radius": 1
+      "radius": 1,
+      "colour": "red",
+      "icon": "poison",
+      "badge": "burst"
     },
     "ice_chain": {
       "name": "빙결",
@@ -426,7 +472,10 @@
       "requires": [
         "slow"
       ],
-      "status": "freeze"
+      "status": "freeze",
+      "colour": "red",
+      "icon": "freeze",
+      "badge": "boost"
     },
     "air_chain": {
       "name": "연쇄 번개",
@@ -445,7 +494,10 @@
       "count": 3,
       "damage": 3,
       "element": "air",
-      "consume": "charge"
+      "consume": "charge",
+      "colour": "red",
+      "icon": "shock",
+      "badge": "burst"
     },
     "bleed_chain": {
       "name": "추가타",
@@ -460,7 +512,10 @@
       "requires": [
         "bleed"
       ],
-      "damage_percent": 35
+      "damage_percent": 35,
+      "colour": "red",
+      "icon": "extra_strike",
+      "badge": "boost"
     },
     "mental_chain": {
       "name": "추가 피해",
@@ -476,7 +531,10 @@
         "confuse"
       ],
       "damage": 3,
-      "element": "will"
+      "element": "will",
+      "colour": "red",
+      "icon": "curse",
+      "badge": "boost"
     },
     "hex_chain": {
       "name": "취약",
@@ -491,7 +549,10 @@
       "requires": [
         "weak"
       ],
-      "status": "vulnerable"
+      "status": "vulnerable",
+      "colour": "red",
+      "icon": "curse",
+      "badge": "boost"
     },
     "bless_chain": {
       "name": "방어 준비",
@@ -507,7 +568,10 @@
         "blessing"
       ],
       "key": "guard",
-      "reduction": 20
+      "reduction": 20,
+      "colour": "red",
+      "icon": "guard",
+      "badge": "boost"
     },
     "heal_chain": {
       "name": "방어 준비",
@@ -520,7 +584,10 @@
       "ticks": 300,
       "vfx": "heal",
       "key": "guard",
-      "reduction": 20
+      "reduction": 20,
+      "colour": "purple",
+      "icon": "guard",
+      "badge": ""
     },
     "wind_chain": {
       "name": "추가타",
@@ -535,7 +602,10 @@
       "damage_percent": 30,
       "requires": [
         "slow"
-      ]
+      ],
+      "colour": "red",
+      "icon": "extra_strike",
+      "badge": "boost"
     },
     "ice_shatter": {
       "name": "파쇄",
@@ -552,85 +622,94 @@
       "element": "physical",
       "requires": [
         "freeze"
-      ]
+      ],
+      "colour": "red",
+      "icon": "freeze",
+      "badge": "boost"
     },
     "fire_defense": {
       "name": "방어 준비",
-      "text": "대기 후 인접 피격 시 화염막",
+      "text": "인접 피격 시 화염막",
       "family": "fire",
       "role": "DEFENSE",
-      "event": "WAIT",
-      "op": "prepare",
+      "event": "STRUCK",
+      "op": "burst",
       "limit": 1,
       "ticks": 300,
       "vfx": "fire",
-      "key": "fire_barrier",
-      "reaction": "burst",
       "radius": 1,
       "damage": 3,
       "element": "fire",
-      "reach": 1
+      "reach": 1,
+      "colour": "green",
+      "icon": "burn",
+      "badge": "",
+      "centre": "owner"
     },
     "poison_defense": {
       "name": "방어 준비",
-      "text": "대기 후 인접 피격 시 중독",
+      "text": "인접 피격 시 중독",
       "family": "poison",
       "role": "DEFENSE",
-      "event": "WAIT",
-      "op": "prepare",
+      "event": "STRUCK",
+      "op": "status",
       "limit": 1,
       "ticks": 300,
       "vfx": "poison",
-      "key": "poison_skin",
-      "reaction": "status",
       "status": "poison",
-      "reach": 1
+      "reach": 1,
+      "colour": "green",
+      "icon": "poison",
+      "badge": ""
     },
     "bleed_defense": {
       "name": "방어 준비",
-      "text": "대기 후 인접 피격 시 출혈",
+      "text": "인접 피격 시 출혈",
       "family": "bleed",
       "role": "DEFENSE",
-      "event": "WAIT",
-      "op": "prepare",
+      "event": "STRUCK",
+      "op": "status",
       "limit": 1,
       "ticks": 300,
       "vfx": "bleed",
-      "key": "thorns",
-      "reaction": "status",
       "status": "bleed",
-      "reach": 1
+      "reach": 1,
+      "colour": "green",
+      "icon": "bleed",
+      "badge": ""
     },
     "air_defense": {
       "name": "방어 준비",
-      "text": "대기 후 피격 시 공격자 마비 · 재사용 3턴",
+      "text": "피격 시 공격자 마비 · 재사용 3턴",
       "family": "air",
       "role": "DEFENSE",
-      "event": "WAIT",
-      "op": "prepare",
+      "event": "STRUCK",
+      "op": "status",
       "limit": 1,
       "ticks": 100,
       "vfx": "lightning",
-      "key": "electric_barrier",
-      "reaction": "status",
       "status": "stun",
       "reach": 3,
-      "cooldown": 300
+      "cooldown": 300,
+      "colour": "green",
+      "icon": "shock",
+      "badge": ""
     },
     "hex_defense": {
       "name": "방어 준비",
-      "text": "대기 후 피격 시 공격자 약화",
+      "text": "피격 시 공격자 약화",
       "family": "hex",
       "role": "DEFENSE",
-      "event": "WAIT",
-      "op": "prepare",
+      "event": "STRUCK",
+      "op": "status",
       "limit": 1,
       "ticks": 300,
       "vfx": "hex",
-      "key": "hex_barrier",
-      "reaction": "status",
       "status": "weak",
-      "reach": 3
+      "reach": 3,
+      "colour": "green",
+      "icon": "curse",
+      "badge": ""
     },
     "ice_defense": {
       "name": "방어 준비",
@@ -645,7 +724,10 @@
       "key": "ice_armour",
       "mods": {
         "armour": 4
-      }
+      },
+      "colour": "purple",
+      "icon": "freeze",
+      "badge": ""
     },
     "mental_defense": {
       "name": "방어 준비",
@@ -660,7 +742,10 @@
       "key": "mind_wall",
       "mods": {
         "res.will": 30
-      }
+      },
+      "colour": "purple",
+      "icon": "curse",
+      "badge": ""
     },
     "water_defense": {
       "name": "방어 준비",
@@ -675,7 +760,10 @@
       "key": "water_wall",
       "mods": {
         "res.fire": 30
-      }
+      },
+      "colour": "purple",
+      "icon": "guard",
+      "badge": ""
     },
     "wind_defense": {
       "name": "방어 준비",
@@ -690,7 +778,10 @@
       "key": "wind_wall",
       "mods": {
         "dodge": 15
-      }
+      },
+      "colour": "purple",
+      "icon": "guard",
+      "badge": ""
     },
     "defense_defense": {
       "name": "방어 준비",
@@ -703,22 +794,26 @@
       "ticks": 300,
       "vfx": "shield",
       "key": "stance",
-      "reduction": 20
+      "reduction": 20,
+      "colour": "purple",
+      "icon": "guard",
+      "badge": ""
     },
     "reflect_defense": {
       "name": "방어 준비",
       "text": "대기 후 피격 피해 30% 반사",
       "family": "reflect",
       "role": "DEFENSE",
-      "event": "WAIT",
-      "op": "prepare",
+      "event": "STRUCK",
+      "op": "reflect",
       "limit": 1,
       "ticks": 300,
       "vfx": "reflect",
-      "key": "mirror",
-      "reaction": "reflect",
       "percent": 30,
-      "reach": 5
+      "reach": 5,
+      "colour": "green",
+      "icon": "thorns",
+      "badge": ""
     },
     "crush_defense": {
       "name": "방어 준비",
@@ -731,7 +826,10 @@
       "ticks": 300,
       "vfx": "buff",
       "key": "steadfast",
-      "push_resist": true
+      "push_resist": true,
+      "colour": "purple",
+      "icon": "guard",
+      "badge": ""
     },
     "bless_defense": {
       "name": "아군 보호",
@@ -744,7 +842,10 @@
       "ticks": 300,
       "vfx": "buff",
       "radius": 2,
-      "reduction": 20
+      "reduction": 20,
+      "colour": "purple",
+      "icon": "guard",
+      "badge": ""
     },
     "bless_hit": {
       "name": "축복",
@@ -756,7 +857,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "percent": 20
+      "percent": 20,
+      "colour": "red",
+      "icon": "guard",
+      "badge": ""
     },
     "bless_kill": {
       "name": "치유",
@@ -772,7 +876,10 @@
         "blessing"
       ],
       "radius": 2,
-      "heal": 2
+      "heal": 2,
+      "colour": "red",
+      "icon": "heal",
+      "badge": "boost"
     },
     "fire_kill": {
       "name": "화상 전이",
@@ -788,7 +895,10 @@
         "burn"
       ],
       "status": "burn",
-      "radius": 1
+      "radius": 1,
+      "colour": "red",
+      "icon": "burn",
+      "badge": "burst"
     },
     "poison_kill": {
       "name": "독 연장",
@@ -805,7 +915,10 @@
       ],
       "status": "poison",
       "radius": 1,
-      "extend": 100
+      "extend": 100,
+      "colour": "red",
+      "icon": "poison",
+      "badge": "boost"
     },
     "air_kill": {
       "name": "전하 전이",
@@ -822,7 +935,10 @@
       ],
       "status": "charge",
       "radius": 3,
-      "count": 1
+      "count": 1,
+      "colour": "red",
+      "icon": "shock",
+      "badge": "burst"
     },
     "bleed_kill": {
       "name": "회복",
@@ -837,7 +953,10 @@
       "requires": [
         "bleed"
       ],
-      "heal": 2
+      "heal": 2,
+      "colour": "red",
+      "icon": "heal",
+      "badge": "boost"
     },
     "mental_kill": {
       "name": "공격 준비",
@@ -852,7 +971,10 @@
       "requires": [
         "confuse"
       ],
-      "percent": 20
+      "percent": 20,
+      "colour": "red",
+      "icon": "crit",
+      "badge": "boost"
     },
     "hex_kill": {
       "name": "약화 전이",
@@ -869,7 +991,10 @@
       ],
       "status": "weak",
       "radius": 1,
-      "count": 1
+      "count": 1,
+      "colour": "red",
+      "icon": "curse",
+      "badge": "burst"
     },
     "defense_hit": {
       "name": "방어 준비",
@@ -882,7 +1007,10 @@
       "ticks": 300,
       "vfx": "shield",
       "key": "guard",
-      "reduction": 15
+      "reduction": 15,
+      "colour": "red",
+      "icon": "guard",
+      "badge": ""
     },
     "defense_threat": {
       "name": "위협",
@@ -894,7 +1022,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "shield",
-      "amount": 9
+      "amount": 9,
+      "colour": "purple",
+      "icon": "guard",
+      "badge": ""
     },
     "defense_counter": {
       "name": "공격 강화",
@@ -906,7 +1037,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "shield",
-      "percent": 10
+      "percent": 10,
+      "colour": "red",
+      "icon": "crit",
+      "badge": ""
     },
     "evasion_counter": {
       "name": "연타",
@@ -918,7 +1052,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "dodge",
-      "damage_percent": 25
+      "damage_percent": 25,
+      "colour": "red",
+      "icon": "extra_strike",
+      "badge": ""
     },
     "heal_hit": {
       "name": "흡혈",
@@ -931,7 +1068,10 @@
       "ticks": 300,
       "vfx": "heal",
       "percent": 15,
-      "cap": 4
+      "cap": 4,
+      "colour": "red",
+      "icon": "heal",
+      "badge": ""
     },
     "heal_wait": {
       "name": "치유",
@@ -947,7 +1087,10 @@
       "heal": 8,
       "uses": 2,
       "cooldown": 300,
-      "combat": true
+      "combat": true,
+      "colour": "purple",
+      "icon": "heal",
+      "badge": ""
     },
     "heal_cleanse": {
       "name": "정화",
@@ -959,7 +1102,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "heal",
-      "radius": 1
+      "radius": 1,
+      "colour": "purple",
+      "icon": "heal",
+      "badge": ""
     },
     "regen_wait": {
       "name": "재생",
@@ -974,7 +1120,10 @@
       "heal": 2,
       "pulses": 2,
       "cooldown": 300,
-      "combat": true
+      "combat": true,
+      "colour": "purple",
+      "icon": "heal",
+      "badge": ""
     },
     "regen_struck": {
       "name": "재생",
@@ -989,7 +1138,10 @@
       "heal": 2,
       "pulses": 2,
       "cooldown": 300,
-      "combat": true
+      "combat": true,
+      "colour": "purple",
+      "icon": "heal",
+      "badge": ""
     },
     "regen_hit": {
       "name": "재생",
@@ -1003,7 +1155,10 @@
       "vfx": "heal",
       "heal": 2,
       "pulses": 1,
-      "cooldown": 300
+      "cooldown": 300,
+      "colour": "red",
+      "icon": "heal",
+      "badge": ""
     },
     "summon_wait": {
       "name": "사냥개",
@@ -1018,7 +1173,10 @@
       "kind": "hound",
       "cap": 1,
       "cooldown": 300,
-      "combat": true
+      "combat": true,
+      "colour": "purple",
+      "icon": "summon",
+      "badge": ""
     },
     "summon_defense": {
       "name": "호위",
@@ -1034,7 +1192,10 @@
       "guard": true,
       "cap": 1,
       "cooldown": 300,
-      "combat": true
+      "combat": true,
+      "colour": "purple",
+      "icon": "summon",
+      "badge": ""
     },
     "summon_focus": {
       "name": "목표 집중",
@@ -1046,7 +1207,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "summon",
-      "needs_pet": true
+      "needs_pet": true,
+      "colour": "red",
+      "icon": "summon",
+      "badge": "boost"
     },
     "summon_chain": {
       "name": "결속",
@@ -1059,7 +1223,10 @@
       "ticks": 300,
       "vfx": "summon",
       "needs_pet": true,
-      "percent": 20
+      "percent": 20,
+      "colour": "purple",
+      "icon": "summon",
+      "badge": "boost"
     },
     "summon_kill": {
       "name": "지속 연장",
@@ -1073,7 +1240,10 @@
       "vfx": "summon",
       "needs_pet": true,
       "extend": 100,
-      "cooldown": 300
+      "cooldown": 300,
+      "colour": "purple",
+      "icon": "summon",
+      "badge": "boost"
     },
     "death_hit": {
       "name": "사령 낙인",
@@ -1087,7 +1257,10 @@
       "vfx": "hex",
       "status": "death_mark",
       "damage": 2,
-      "element": "will"
+      "element": "will",
+      "colour": "red",
+      "icon": "curse",
+      "badge": ""
     },
     "death_wait": {
       "name": "해골",
@@ -1102,7 +1275,10 @@
       "kind": "skeleton",
       "cap": 1,
       "cooldown": 300,
-      "combat": true
+      "combat": true,
+      "colour": "purple",
+      "icon": "summon",
+      "badge": ""
     },
     "death_defense": {
       "name": "방어 준비",
@@ -1116,7 +1292,10 @@
       "vfx": "hex",
       "key": "bone_share",
       "share": 25,
-      "needs_pet": true
+      "needs_pet": true,
+      "colour": "purple",
+      "icon": "guard",
+      "badge": "boost"
     },
     "death_chain": {
       "name": "해골",
@@ -1133,7 +1312,10 @@
       ],
       "kind": "skeleton",
       "cap": 1,
-      "cooldown": 300
+      "cooldown": 300,
+      "colour": "red",
+      "icon": "summon",
+      "badge": "boost"
     },
     "death_end": {
       "name": "사령 폭발",
@@ -1151,7 +1333,10 @@
       "status": "weak",
       "requires": [
         "death_mark"
-      ]
+      ],
+      "colour": "red",
+      "icon": "curse",
+      "badge": "burst"
     },
     "rapid_prep": {
       "name": "공격 준비",
@@ -1164,7 +1349,10 @@
       "ticks": 300,
       "vfx": "buff",
       "key": "rapid",
-      "extra": 1
+      "extra": 1,
+      "colour": "purple",
+      "icon": "crit",
+      "badge": ""
     },
     "crush_prep": {
       "name": "공격 준비",
@@ -1178,7 +1366,10 @@
       "vfx": "buff",
       "key": "crush",
       "percent": 20,
-      "push": true
+      "push": true,
+      "colour": "purple",
+      "icon": "crit",
+      "badge": ""
     },
     "bleed_prep": {
       "name": "공격 준비",
@@ -1191,7 +1382,10 @@
       "ticks": 300,
       "vfx": "bleed",
       "key": "bleed_prep",
-      "status": "bleed"
+      "status": "bleed",
+      "colour": "purple",
+      "icon": "crit",
+      "badge": ""
     },
     "wind_prep": {
       "name": "공격 준비",
@@ -1204,7 +1398,10 @@
       "ticks": 300,
       "vfx": "buff",
       "key": "gust",
-      "push": true
+      "push": true,
+      "colour": "purple",
+      "icon": "crit",
+      "badge": ""
     },
     "rapid_hit": {
       "name": "추가타",
@@ -1216,7 +1413,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "damage_percent": 30
+      "damage_percent": 30,
+      "colour": "red",
+      "icon": "extra_strike",
+      "badge": ""
     },
     "rapid_defense": {
       "name": "방어 준비",
@@ -1231,7 +1431,10 @@
       "key": "quick_guard",
       "mods": {
         "dodge": 10
-      }
+      },
+      "colour": "red",
+      "icon": "extra_strike",
+      "badge": ""
     },
     "volley_hit": {
       "name": "추가타",
@@ -1243,7 +1446,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "damage_percent": 30
+      "damage_percent": 30,
+      "colour": "red",
+      "icon": "extra_strike",
+      "badge": ""
     },
     "volley_chain": {
       "name": "추가타",
@@ -1258,7 +1464,10 @@
       "damage_percent": 40,
       "requires": [
         "exposed"
-      ]
+      ],
+      "colour": "red",
+      "icon": "extra_strike",
+      "badge": "boost"
     },
     "volley_defense": {
       "name": "방어 준비",
@@ -1273,7 +1482,10 @@
       "key": "quick_guard",
       "mods": {
         "dodge": 10
-      }
+      },
+      "colour": "purple",
+      "icon": "extra_strike",
+      "badge": ""
     },
     "focus_wait": {
       "name": "조준",
@@ -1286,7 +1498,10 @@
       "ticks": 300,
       "vfx": "buff",
       "percent": 20,
-      "key": "focus"
+      "key": "focus",
+      "colour": "purple",
+      "icon": "crit",
+      "badge": ""
     },
     "focus_hit": {
       "name": "추가 피해",
@@ -1298,7 +1513,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "damage": 3
+      "damage": 3,
+      "colour": "red",
+      "icon": "crit",
+      "badge": ""
     },
     "focus_defense": {
       "name": "방어 준비",
@@ -1313,7 +1531,10 @@
       "key": "cover",
       "mods": {
         "dodge": 15
-      }
+      },
+      "colour": "purple",
+      "icon": "crit",
+      "badge": ""
     },
     "focus_chain": {
       "name": "추가타",
@@ -1328,7 +1549,10 @@
       "damage_percent": 35,
       "requires": [
         "exposed"
-      ]
+      ],
+      "colour": "red",
+      "icon": "extra_strike",
+      "badge": "boost"
     },
     "vital_hit": {
       "name": "급소",
@@ -1340,7 +1564,10 @@
       "limit": 1,
       "ticks": 200,
       "vfx": "buff",
-      "status": "exposed"
+      "status": "exposed",
+      "colour": "red",
+      "icon": "crit",
+      "badge": ""
     },
     "vital_chain": {
       "name": "공격 강화",
@@ -1356,7 +1583,10 @@
         "exposed"
       ],
       "consume": "exposed",
-      "damage": 4
+      "damage": 4,
+      "colour": "red",
+      "icon": "crit",
+      "badge": "boost"
     },
     "vital_defense": {
       "name": "방어 준비",
@@ -1369,7 +1599,10 @@
       "ticks": 300,
       "vfx": "buff",
       "key": "guard",
-      "reduction": 20
+      "reduction": 20,
+      "colour": "purple",
+      "icon": "crit",
+      "badge": ""
     },
     "fury_hit": {
       "name": "공격 강화",
@@ -1381,7 +1614,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "percent": 15
+      "percent": 15,
+      "colour": "red",
+      "icon": "crit",
+      "badge": ""
     },
     "fury_defense": {
       "name": "방어 준비",
@@ -1394,7 +1630,10 @@
       "ticks": 300,
       "vfx": "buff",
       "key": "rage_guard",
-      "reduction": 25
+      "reduction": 25,
+      "colour": "purple",
+      "icon": "crit",
+      "badge": ""
     },
     "fury_kill": {
       "name": "회복",
@@ -1406,7 +1645,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "heal": 2
+      "heal": 2,
+      "colour": "red",
+      "icon": "heal",
+      "badge": ""
     },
     "wind_hit": {
       "name": "강타",
@@ -1418,7 +1660,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "blocked_damage": 0
+      "blocked_damage": 0,
+      "colour": "red",
+      "icon": "extra_strike",
+      "badge": ""
     },
     "crush_hit": {
       "name": "강타",
@@ -1430,7 +1675,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "buff",
-      "blocked_damage": 3
+      "blocked_damage": 3,
+      "colour": "red",
+      "icon": "extra_strike",
+      "badge": ""
     },
     "crush_chain": {
       "name": "추가 피해",
@@ -1445,7 +1693,10 @@
       "damage": 3,
       "requires": [
         "exposed"
-      ]
+      ],
+      "colour": "red",
+      "icon": "extra_strike",
+      "badge": "boost"
     },
     "evasion_hit": {
       "name": "공격 강화",
@@ -1457,7 +1708,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "dodge",
-      "percent": 10
+      "percent": 10,
+      "colour": "red",
+      "icon": "crit",
+      "badge": ""
     },
     "evasion_defense": {
       "name": "방어 준비",
@@ -1472,7 +1726,10 @@
       "key": "step_guard",
       "mods": {
         "dodge": 10
-      }
+      },
+      "colour": "purple",
+      "icon": "guard",
+      "badge": ""
     },
     "wind_dodge": {
       "name": "공격 준비",
@@ -1485,7 +1742,10 @@
       "ticks": 300,
       "vfx": "buff",
       "percent": 20,
-      "key": "wind"
+      "key": "wind",
+      "colour": "purple",
+      "icon": "crit",
+      "badge": ""
     },
     "reflect_hit": {
       "name": "방어 준비",
@@ -1500,7 +1760,10 @@
       "key": "mirror",
       "reaction": "reflect",
       "percent": 20,
-      "reach": 5
+      "reach": 5,
+      "colour": "red",
+      "icon": "thorns",
+      "badge": ""
     },
     "reflect_kill": {
       "name": "회복",
@@ -1512,7 +1775,10 @@
       "limit": 1,
       "ticks": 300,
       "vfx": "reflect",
-      "heal": 2
+      "heal": 2,
+      "colour": "red",
+      "icon": "heal",
+      "badge": ""
     },
     "water_cleanse": {
       "name": "방어 준비",
@@ -1525,7 +1791,10 @@
       "ticks": 300,
       "vfx": "water",
       "key": "guard",
-      "reduction": 20
+      "reduction": 20,
+      "colour": "purple",
+      "icon": "guard",
+      "badge": ""
     },
     "water_air": {
       "name": "연쇄 번개",
@@ -1543,7 +1812,10 @@
       "count": 4,
       "radius": 3,
       "damage": 3,
-      "element": "air"
+      "element": "air",
+      "colour": "red",
+      "icon": "shock",
+      "badge": "burst"
     },
     "water_ice": {
       "name": "빙결",
@@ -1558,7 +1830,10 @@
       "requires": [
         "wet"
       ],
-      "status": "freeze"
+      "status": "freeze",
+      "colour": "red",
+      "icon": "freeze",
+      "badge": "boost"
     },
     "fire_poison": {
       "name": "화염 폭발",
@@ -1575,7 +1850,10 @@
       ],
       "radius": 1,
       "damage": 3,
-      "element": "poison"
+      "element": "poison",
+      "colour": "red",
+      "icon": "burn",
+      "badge": "burst"
     },
     "fire_bleed": {
       "name": "추가 피해",
@@ -1591,7 +1869,10 @@
         "bleed"
       ],
       "damage": 3,
-      "element": "fire"
+      "element": "fire",
+      "colour": "red",
+      "icon": "burn",
+      "badge": "boost"
     },
     "ice_crush": {
       "name": "파쇄",
@@ -1607,7 +1888,10 @@
       "damage": 4,
       "requires": [
         "freeze"
-      ]
+      ],
+      "colour": "red",
+      "icon": "freeze",
+      "badge": "boost"
     },
     "hex_mental": {
       "name": "추가 피해",
@@ -1623,7 +1907,10 @@
         "weak"
       ],
       "damage": 3,
-      "element": "will"
+      "element": "will",
+      "colour": "red",
+      "icon": "curse",
+      "badge": "boost"
     },
     "bless_defense_link": {
       "name": "아군 보호",
@@ -1640,7 +1927,10 @@
       ],
       "radius": 2,
       "count": 1,
-      "reduction": 20
+      "reduction": 20,
+      "colour": "red",
+      "icon": "guard",
+      "badge": "boost"
     },
     "wind_ranged": {
       "name": "방어 준비",
@@ -1655,7 +1945,10 @@
       "key": "gust_guard",
       "mods": {
         "dodge": 10
-      }
+      },
+      "colour": "purple",
+      "icon": "guard",
+      "badge": ""
     },
     "hex_death": {
       "name": "해골 강화",
@@ -1671,7 +1964,10 @@
         "death_mark"
       ],
       "damage": 3,
-      "element": "will"
+      "element": "will",
+      "colour": "red",
+      "icon": "curse",
+      "badge": "boost"
     },
     "bless_summon": {
       "name": "소환 축복",
@@ -1684,7 +1980,10 @@
       "ticks": 300,
       "vfx": "buff",
       "percent": 20,
-      "needs_pet": true
+      "needs_pet": true,
+      "colour": "purple",
+      "icon": "summon",
+      "badge": "boost"
     }
   }
 }

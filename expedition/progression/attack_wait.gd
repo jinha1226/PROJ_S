@@ -4,8 +4,10 @@ const Essences = preload("res://expedition/progression/essences.gd")
 const Conditions = preload("res://expedition/progression/effect_conditions.gd")
 const PROFILE := "attack_wait_v1"
 const ROLE_NAMES := {"OFFENSE":"공격형","DEFENSE":"방어형","CHAIN":"연쇄형"}
-const EVENTS := ["ATTACK","HIT","WAIT"]
-const OPS := ["status","status_area","burst","spread","extend","damage","lightning","extra","prepare","bless","attack_prep","aim","threat","ally_guard","heal_self","heal_ally","drain","cleanse","regen","summon","pet_focus","pet_bond","pet_extend","pet_buff","pet_bless","pet_burst","push","attack_bonus"]
+const EVENTS := ["ATTACK","HIT","WAIT","STRUCK"]
+const COLOURS := {"red":"공격","purple":"전술","green":"생존"}
+const ICONS := ["bleed","poison","burn","freeze","shock","curse","extra_strike","crit","heal","guard","thorns","summon"]
+const OPS := ["status","status_area","burst","spread","extend","damage","lightning","extra","prepare","bless","attack_prep","aim","threat","ally_guard","heal_self","heal_ally","drain","cleanse","regen","summon","pet_focus","pet_bond","pet_extend","pet_buff","pet_bless","pet_burst","push","attack_bonus","reflect"]
 const MAX_EVENTS := 512
 static var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/content/attack_wait_effects.json"))
 
@@ -44,6 +46,9 @@ static func catalog() -> Array:
 
 static func row(stone: String) -> Dictionary:
 	return data.effects.get(effect_id(stone),{})
+
+static func colour(stone: String) -> String:
+	return str(row(stone).get("colour",""))
 
 static func effects(actor: Dictionary) -> Array:
 	var result: Array = []
@@ -201,6 +206,8 @@ static func resolve(s, owner: Dictionary, event: String, ctx: Dictionary, e: Dic
 		var r: Dictionary = data.effects[id].duplicate(true)
 		r.id = str(id)
 		if str(r.event) != event or not ready(s,owner,str(id),r): continue
+		if event == "STRUCK" and str(ctx.get("outcome","hit")) not in r.get("outcomes",["hit"]): continue
+		if event == "STRUCK" and r.has("reach") and not valid(s,owner,ctx.get("target",{}),owner.pos,int(r.reach)): continue
 		if str(r.role) == "CHAIN" and chain_ctx.is_empty():
 			chain_ctx = ctx.duplicate()
 			# Copy only the condition snapshot, keep real actors for mutation.
@@ -274,6 +281,7 @@ static func execute(s, owner: Dictionary, r: Dictionary, ctx: Dictionary) -> boo
 				var pet: Dictionary = ctx.get("pet",{})
 				if not bool(ctx.get("died",false)) or str(pet.get("summon_kind","")) != "skeleton" or not bool(ctx.get("hostile_death",false)): return false
 				target = pet
+			if str(r.get("centre","")) == "owner": target = owner
 			if target.is_empty(): return false
 			var success := false
 			for foe in targets(s,owner,target.pos,int(r.radius)):
@@ -385,6 +393,9 @@ static func execute(s, owner: Dictionary, r: Dictionary, ctx: Dictionary) -> boo
 				pet.aw_attack_percent = int(r.percent); status(s,owner,pet,"blessing",ticks)
 			return not pets.is_empty()
 		"push": return shove(s,owner,target,r,ctx)
+		"reflect":
+			if int(ctx.get("lost",0)) <= 0 or target.is_empty(): return false
+			return damage(s,owner,target,r,maxi(1,int(ctx.lost)*int(r.percent)/100),"MOBILE_REFLECT") > 0
 		"attack_bonus":
 			ctx.attack_percent = int(ctx.get("attack_percent",0))+int(r.percent)
 			if r.has("consume"): target.statuses.erase(r.consume)
@@ -487,7 +498,11 @@ static func struck(s, owner: Dictionary, attacker: Dictionary, ctx: Dictionary) 
 		if str(r.reaction) == "reflect": damage(s,owner,attacker,r,maxi(1,int(ctx.lost)*int(r.percent)/100),"MOBILE_REFLECT")
 		else: execute(s,owner,reaction,{"target":owner if str(r.reaction) == "burst" else attacker})
 		s.effect_source = previous
-	push(s,"STRUCK",owner,{"target":attacker,"attacker":attacker,"lost":ctx.lost})
+	push(s,"STRUCK",owner,{"target":attacker,"attacker":attacker,"lost":ctx.lost,"outcome":"hit"})
+
+static func avoided(s, owner: Dictionary, attacker: Dictionary, outcome: String) -> void:
+	if not active(owner) or not hostile(s,owner,attacker) or outcome not in ["dodge","block"]: return
+	push(s,"STRUCK",owner,{"target":attacker,"attacker":attacker,"lost":0,"outcome":outcome})
 
 static func ranged_dodge(s, target: Dictionary, source: Dictionary) -> int:
 	if not active(target) or distance(source.pos,target.pos) <= 1: return 0
@@ -555,7 +570,7 @@ static func estimate(s, actor: Dictionary, kind: String, target: Dictionary = {}
 
 static func summary(actor: Dictionary) -> String:
 	var lines: Array = []
-	for group in [["공격",["ATTACK","HIT"]],["대기",["WAIT"]]]:
+	for group in [["공격",["ATTACK","HIT"]],["대기",["WAIT"]],["피격",["STRUCK"]]]:
 		var texts: Array = []
 		for id in effects(actor):
 			var r: Dictionary = data.effects[id]
@@ -570,6 +585,9 @@ static func validate() -> Array:
 	for id in data.effects:
 		var r: Dictionary = data.effects[id]
 		if str(r.get("event","")) not in EVENTS: errors.append(str(id)+": event")
+		if str(r.get("colour","")) != {"ATTACK":"red","HIT":"red","WAIT":"purple","STRUCK":"green"}.get(str(r.get("event","")),""): errors.append(str(id)+": colour")
+		if str(r.get("icon","")) not in ICONS: errors.append(str(id)+": icon")
+		if str(r.get("badge","")) not in ["","boost","burst"]: errors.append(str(id)+": badge")
 		if str(r.get("op","")) not in OPS: errors.append(str(id)+": operation")
 		if str(r.get("role","")) not in ROLE_NAMES: errors.append(str(id)+": role")
 		if int(r.get("limit",0)) < 1: errors.append(str(id)+": unbounded rule")
