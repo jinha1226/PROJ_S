@@ -118,7 +118,10 @@ func monsters() -> void:
 	var d := duo(); var s = d.s
 	d.foe.part_id = "BEETLE_CURL"
 	MonsterAI.turn(s,d.foe)
-	check(d.foe.iron_guard,"a monster in contact curls up on its own")
+	# Ordinary monsters no longer fire species actives (2026-09-28 unified
+	# utility); the species stone stays on as a passive.
+	check(not bool(d.foe.get("iron_guard",false)),"an ordinary monster in contact never raises its species active")
+	check(preload("res://expedition/progression/stone_effects.gd").incoming(s,d.foe,100) == 85,"its species stone still takes fifteen percent off a blow")
 	d = duo(); s = d.s
 	d.foe.part_id = "SHIELD_STANCE"; d.foe.pos = d.c+Vector2i(5,0); d.foe.hp = 40; s.floor_state.observe(s)
 	MonsterAI.turn(s,d.foe)

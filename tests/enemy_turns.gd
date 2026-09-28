@@ -33,17 +33,18 @@ func run() -> void:
 	check(s.party[0].hp < hp and enemy.pos == f.center+Vector2i(4,0),"archer attacks from range")
 	hp = s.party[0].hp; s.enemy_attack_turn(enemy)
 	check(s.party[0].hp == hp,"archer reloads before the next shot")
+	# Casters no longer telegraph a spell (2026-09-28 unified utility): they
+	# pick a basic attack, move or wait like everyone else.
 	f = setup("CASTER",Vector2i(4,0)); s = f.s; enemy = f.enemy
+	hp = s.party[0].hp
 	s.enemy_attack_turn(enemy)
-	check(s.intents.is_empty(),"caster first lowers its cooldown")
+	check(s.intents.is_empty() and not bool(enemy.get("charging",false)),"caster marks no target cell")
+	check(s.party[0].hp < hp,"caster strikes from its reach at once")
+	check(enemy.pos == f.center+Vector2i(4,0),"caster in reach does not step closer")
+	enemy.charging = true; enemy.cast_id = ""; enemy.resolve_at = s.time
+	s.intents.append({"id":enemy.id,"cell":s.party[0].pos,"damage":14,"kind":"","resolve_at":s.time})
 	s.enemy_attack_turn(enemy)
-	check(s.intents.is_empty(),"caster second action is still cooling down")
-	s.enemy_attack_turn(enemy)
-	check(enemy.charging and s.intents.any(func(i): return i.id == enemy.id),"caster telegraphs the target cell")
-	hp = s.party[0].hp; s.party[0].pos = f.center+Vector2i(0,1); s.floor_state.observe(s)
-	s.time = int(enemy.resolve_at)
-	s.enemy_attack_turn(enemy)
-	check(s.party[0].hp == hp and s.intents.is_empty(),"moving off the marked cell dodges the spell")
+	check(not bool(enemy.charging) and not s.intents.any(func(i): return i.id == enemy.id),"a cast queued in an older save is discarded, not fired")
 	f = setup("MELEE",Vector2i(1,0)); s = f.s; enemy = f.enemy
 	enemy.hp = 0; hp = s.party[0].hp
 	s.enemy_attack_turn(enemy)
@@ -83,11 +84,12 @@ func unseen() -> void:
 	check(s.act("WAIT",s.party[0].pos),"hero waits on an otherwise quiet floor")
 	check(enemy.pos != was,"scheduled unseen enemy acts during exploration")
 
-## A telegraphed spell dies with its caster: the marked cell goes with it.
+## A telegraph left in an older save dies with its caster: the marked cell goes with it.
 func dead_caster() -> void:
 	var f: Dictionary = setup("CASTER",Vector2i(4,0))
 	var s = f.s; var enemy: Dictionary = f.enemy
-	for i in range(3): s.enemy_attack_turn(enemy)
+	enemy.charging = true; enemy.cast_id = ""; enemy.resolve_at = s.time
+	s.intents.append({"id":enemy.id,"cell":s.party[0].pos,"damage":14,"kind":"","resolve_at":s.time})
 	check(enemy.charging and not s.intents.is_empty(),"the caster is charging")
 	enemy.hp = 0
 	var hp: int = s.party[0].hp
