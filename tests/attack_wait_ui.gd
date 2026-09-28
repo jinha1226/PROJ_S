@@ -2,6 +2,7 @@ extends SceneTree
 const Scene = preload("res://expedition/ui/main.tscn")
 const Session = preload("res://expedition/run/session.gd")
 const Fixture = preload("res://tests/floor_fixture.gd")
+const EssenceTab = preload("res://expedition/ui/screens/essence_tab.gd")
 var checks := 0
 var failures := 0
 func _initialize() -> void: call_deferred("run")
@@ -157,7 +158,8 @@ func run() -> void:
 		ui.details_popup.hide()
 	s.grant_part("FIRE_CALLER/pierced"); ui.show_supplies(); ui.show_item_detail("FIRE_CALLER/pierced"); await process_frame
 	var preview: Array = ui.item_detail.find_children("*","Label",true,false).map(func(l): return l.text)
-	check(preview.any(func(t): return t.contains("공격력 +2") and t.contains("최대 HP +12") and not t.contains("MP") and not t.contains("주문력")),"inventory preview uses the same automatic reward as absorption")
+	var expected_reward: String = EssenceTab.stat_line("FIRE_CALLER/pierced",s.party[0])
+	check(preview.any(func(t): return t.contains(expected_reward) and not t.contains("MP") and not t.contains("주문력")),"inventory preview uses the same colour reward as absorption")
 	ui.item_popup.hide(); ui.details_popup.hide()
 	ui.session.party.append(ui.session.make_actor(1,"브란",false)); ui.session.party.append(ui.session.make_actor(2,"세라",false))
 	ui.session.companions = true; ui.refresh(); await process_frame

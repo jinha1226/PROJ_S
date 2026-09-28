@@ -11,24 +11,28 @@ const StatSheet = preload("res://expedition/progression/stat_sheet.gd")
 const Abilities = preload("res://expedition/items/abilities.gd")
 const Forms = preload("res://expedition/combat/forms.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
+const Icons = preload("res://expedition/art/soulstone_icons.gd")
 const Summary = preload("res://expedition/ui/screens/essence_summary.gd")
 const COLUMNS := 3
 const BORDER := Color("6d5b3f")
 const ELEMENT_COLORS := {"fire":Color("d9643a"),"ice":Color("6fb7e0"),"air":Color("e0cf52"),"poison":Color("79b84a"),"will":Color("a57ad6")}
+const STONE_COLORS := {"red":Color("d94b45"),"purple":Color("9458cc"),"green":Color("48a66a")}
 const SCHOOL_NAMES := {"fire":"화염","ice":"냉기","air":"전기","hex":"변이","summon":"소환"}
 
 static func node_key(id: String) -> String:
 	return Essences.canonical(id).replace("/","_").replace("@","_")
 
 ## A variant essence ("<BASE>@<element>") wears its element's colour.
-static func border_for(id: String, fallback: Color = BORDER) -> Color:
+static func border_for(id: String, fallback: Color = BORDER, actor: Dictionary = {}) -> Color:
+	if Mobile.active(actor): return STONE_COLORS.get(Mobile.colour(id),fallback)
 	if not id.contains("@"): return fallback
 	return ELEMENT_COLORS.get(Essences.element(id),fallback)
 
 static func tag_name(tag: String) -> String:
 	return str(Essences.ROLES.get(tag,Essences.ELEMENTS.get(tag,tag)))
 
-static func tag_line(id: String) -> String:
+static func tag_line(id: String, actor: Dictionary = {}) -> String:
+	if Mobile.active(actor): return str(Mobile.COLOURS.get(Mobile.colour(id),""))
 	var tags: Array = []
 	if not str(Essences.role(id)).is_empty(): tags.append(tag_name(str(Essences.role(id))))
 	if not str(Essences.element(id)).is_empty(): tags.append(tag_name(str(Essences.element(id))))
@@ -45,7 +49,9 @@ static func stat_line(id: String, actor: Dictionary = {}) -> String:
 static func effect_line(id: String, actor: Dictionary = {}) -> String:
 	if Mobile.active(actor):
 		var effect := Mobile.row(id)
-		return "%s · %s" % [Mobile.ROLE_NAMES.get(effect.get("role",""),""),effect.get("text","")]
+		var description: String = Mobile.display_text(effect)
+		var passive: String = str(effect.get("passive",""))
+		return description if passive.is_empty() else description+"\n"+passive
 	var effect: String = StoneEffects.effect_of(id)
 	if effect.is_empty(): return "효과 없음"
 	var row: Dictionary = StoneEffects.EFFECTS[effect]
@@ -107,11 +113,11 @@ static func slot_cell(ui, grid: GridContainer, actor: Dictionary, slot: int, ope
 	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cell.clip_text = true
 	if not id.is_empty():
-		cell.icon = Art.part_icon(id)
+		cell.icon = Icons.stone_icon(id) if Mobile.active(actor) else Art.part_icon(id)
 		cell.add_theme_constant_override("icon_max_width",24)
 	cell.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	cell.add_theme_font_size_override("font_size",11)
-	if not id.is_empty(): cell.add_theme_stylebox_override("normal",surface(border_for(id,Color("c6a34c"))))
+	if not id.is_empty(): cell.add_theme_stylebox_override("normal",surface(border_for(id,Color("c6a34c"),actor)))
 
 static func pressed_slot(ui, slot: int) -> void:
 	var actor: Dictionary = ui.session.party[ui.tactics_actor]
@@ -169,10 +175,11 @@ static func slot_detail(ui, slot: int, id: String) -> void:
 	var actor: Dictionary = ui.session.party[index]
 	ui.clear(ui.item_detail)
 	label(ui.item_detail,Essences.title(id),20)
-	if not tag_line(id).is_empty(): label(ui.item_detail,tag_line(id),13)
+	if not tag_line(id,actor).is_empty(): label(ui.item_detail,tag_line(id,actor),13)
 	label(ui.item_detail,stat_line(id,actor),13)
 	label(ui.item_detail,effect_line(id,actor),13).custom_minimum_size.x = minf(ui.popup_width(),ui.size.x-40)
 	if Mobile.active(actor):
+		if ui.session.phase == "REST": label(ui.item_detail,"가방에서 영혼석을 골라 교체",13)
 		ui.button(ui.item_detail,"닫기",func(): ui.item_popup.hide()); ui.popup_item_detail(); return
 	Keywords.chips(ui,ui.item_detail,StoneEffects.EFFECTS.get(StoneEffects.effect_of(id),{}).get("keywords",[]))
 	var extra: String = str(Essences.row(id).get("active",""))

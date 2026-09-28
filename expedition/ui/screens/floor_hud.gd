@@ -6,6 +6,7 @@ const Session = preload("res://expedition/run/session.gd")
 const Board = preload("res://expedition/ui/board.gd")
 const MapView = preload("res://expedition/ui/map_view.gd")
 const Art = preload("res://expedition/art/mobile_art.gd")
+const Icons = preload("res://expedition/art/soulstone_icons.gd")
 const Stances = preload("res://expedition/ai/stances.gd")
 const Popups = preload("res://expedition/ui/screens/popups.gd")
 const AutoBattleHud = preload("res://expedition/ui/screens/autobattle_hud.gd")
@@ -28,6 +29,19 @@ static func portrait_state(actor: Dictionary) -> String:
 			var effect: Dictionary = Session.MobileEffects.data.effects.get(id,{})
 			if effect.has("uses"): details.append("치유 %d" % maxi(0,int(effect.uses)-int(state.uses[id])))
 	return " · ".join(details)
+
+static func green_icons(parent: Control, session, actor: Dictionary) -> void:
+	if not Session.MobileEffects.active(actor): return
+	var green: Array = Session.Essences.equipped(actor).filter(func(id): return Session.MobileEffects.colour(str(id)) == "green")
+	if green.is_empty(): return
+	var flow := HBoxContainer.new(); flow.name = "GreenEffects"
+	flow.mouse_filter = Control.MOUSE_FILTER_IGNORE; flow.add_theme_constant_override("separation",2); parent.add_child(flow)
+	for stone in green.slice(0,3):
+		var icon := TextureRect.new(); icon.texture = Icons.stone_icon(str(stone))
+		icon.custom_minimum_size = Vector2(17,17); icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.tooltip_text = Session.MobileEffects.display_text(Session.MobileEffects.row(str(stone)))
+		flow.add_child(icon)
 
 static func build(ui, elapsed: float, impact_elapsed: float) -> void:
 	var session = ui.session
@@ -193,6 +207,7 @@ static func build_manual_controls(ui) -> void:
 			var state: Label = ui.label(compact,portrait_state(actor),9)
 			state.name = "HeroState" if i == 0 else "MemberState%d" % i
 			state.clip_text = true; state.tooltip_text = state.text
+			green_icons(compact,session,actor)
 			continue
 		var content := HBoxContainer.new(); content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		content.add_theme_constant_override("separation",6)
@@ -214,6 +229,7 @@ static func build_manual_controls(ui) -> void:
 		var state = ui.label(values,portrait_state(actor),10)
 		state.name = "HeroState" if i == 0 else "MemberState%d" % i
 		state.clip_text = true; state.tooltip_text = state.text
+		green_icons(values,session,actor)
 	if automatic:
 		var triggers := HBoxContainer.new(); triggers.name = "AutoEffectBar"
 		triggers.add_theme_constant_override("separation",3); ui.root_layout.add_child(triggers)
@@ -223,10 +239,10 @@ static func build_manual_controls(ui) -> void:
 			for stone in Session.Essences.equipped(session.party[0]):
 				var effect: Dictionary = Session.MobileEffects.row(str(stone))
 				if str(effect.get("event","")) not in [event,"ATTACK" if event == "HIT" else event]: continue
-				var glyph := TextureRect.new(); glyph.texture = Art.part_icon(str(stone))
+				var glyph := TextureRect.new(); glyph.texture = Icons.stone_icon(str(stone))
 				glyph.set_meta("stone",str(stone))
 				glyph.custom_minimum_size = Vector2(20,20); glyph.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-				glyph.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; glyph.tooltip_text = str(effect.text)
+				glyph.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; glyph.tooltip_text = Session.MobileEffects.display_text(effect)
 				if not Session.MobileEffects.ready(session,session.party[0],Session.MobileEffects.effect_id(str(stone)),effect): glyph.modulate.a = 0.35
 				flow.add_child(glyph)
 	var nav := HBoxContainer.new(); nav.name = "BottomActions"

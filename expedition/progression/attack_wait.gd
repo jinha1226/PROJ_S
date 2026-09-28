@@ -50,6 +50,21 @@ static func row(stone: String) -> Dictionary:
 static func colour(stone: String) -> String:
 	return str(row(stone).get("colour",""))
 
+## The coloured frame already tells the player when an effect fires. Preserve
+## prerequisites, but leave the repeated trigger phrase off compact cards.
+static func display_text(effect: Dictionary) -> String:
+	var result: String = str(effect.get("text",""))
+	for prefix in ["적중 시 ","공격 시 ","대기 시 ","피격 시 "]:
+		if result.begins_with(prefix): return result.trim_prefix(prefix)
+	if result.begins_with("인접 피격 시 "): return "인접 공격자: "+result.trim_prefix("인접 피격 시 ")
+	if result.begins_with("대기 후 "): return result.trim_prefix("대기 후 ")
+	if result.begins_with("적중 후 "): return result.trim_prefix("적중 후 ")
+	for phrase in [" 상태의 적 공격 시 "," 상태의 적 적중 시 "," 적중 시 "," 적 공격 시 "]:
+		if result.contains(phrase): return result.replace(phrase," 대상: ")
+	if result.begins_with("소환수가 있으면 대기 시 "): return "소환수 보유: "+result.trim_prefix("소환수가 있으면 대기 시 ")
+	if result.begins_with("소환수가 있으면 공격 시 "): return "소환수 보유: "+result.trim_prefix("소환수가 있으면 공격 시 ")
+	return result
+
 static func effects(actor: Dictionary) -> Array:
 	var result: Array = []
 	for stone in Essences.equipped(actor):

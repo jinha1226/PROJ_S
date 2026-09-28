@@ -2,6 +2,7 @@ extends RefCounted
 ## Small repeating marks attached to the actor, not the floor. Rendering is
 ## read-only; the wall clock animates them without advancing combat time.
 const Vfx = preload("res://expedition/ui/effect_vfx.gd")
+const Icons = preload("res://expedition/art/soulstone_icons.gd")
 const ORDER := ["freeze","slow","burn","poison","bleed","charge","wet","bind","stun","confuse","dominate","weak","death_mark","brittle","distort","fracture","exposed","marked","vulnerable","taunted","taunt","blessing","ward","immune","shield_stance","haste"]
 
 static func styles(actor: Dictionary, time: int) -> Array:
@@ -18,6 +19,16 @@ static func styles(actor: Dictionary, time: int) -> Array:
 static func draw(canvas, actor: Dictionary, time: int, foot: Vector2, size: float, clock: float) -> void:
 	var phase := clock+posmod(int(actor.get("id",0)),13)*0.137
 	for style in styles(actor,time): draw_style(canvas,str(style),foot,size,phase)
+	var marks: Array = []
+	var statuses: Dictionary = actor.get("statuses",{})
+	for id in ORDER:
+		if statuses.has(id) and int(statuses[id]) >= time and Icons.status_icon(id) != null and not marks.has(str(Icons.STATUS_EFFECT[id])):
+			marks.append(str(Icons.STATUS_EFFECT[id]))
+		if marks.size() >= 3: break
+	var icon_size := clampf(size*0.55,8,15)
+	for i in range(marks.size()):
+		var image: Texture2D = Icons.effect_icon(marks[i])
+		canvas.draw_texture_rect(image,Rect2(foot+Vector2((i-(marks.size()-1)*0.5)*icon_size-icon_size*0.5,-size*2.9-icon_size),Vector2.ONE*icon_size),false)
 
 static func drop(canvas, p: Vector2, size: float, color: Color) -> void:
 	canvas.draw_colored_polygon(PackedVector2Array([p+Vector2(0,-size*1.8),p+Vector2(size*0.85,0),p+Vector2(0,size*0.65),p-Vector2(size*0.85,0)]),color)
