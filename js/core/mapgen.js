@@ -16,12 +16,12 @@ export function genFloor() {
   let tile, room, rooms, corr;
   for (let attempt = 0; attempt < 30; attempt++) {
     tile = new Uint8Array(N); room = new Int16Array(N).fill(-1); rooms = []; corr = new Uint8Array(N);
-    for (let a = 0; a < 600 && rooms.length < 10; a++) {
+    for (let a = 0; a < 1200 && rooms.length < 14; a++) {
       const w = ri(4, 8), h = ri(4, 7), x = ri(1, W - w - 1), y = ri(1, H - h - 1);
       if (rooms.some((r) => x < r.x + r.w + 1 && x + w + 1 > r.x && y < r.y + r.h + 1 && y + h + 1 > r.y)) continue;
       rooms.push({ x, y, w, h, cx: x + (w >> 1), cy: y + (h >> 1) });
     }
-    if (rooms.length >= 7) break;
+    if (rooms.length >= 10) break;
   }
   rooms.forEach((r, k) => { for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) { tile[I(x, y)] = T_FLOOR; room[I(x, y)] = k; } });
   // 최소 신장 트리 + 고리 두어 개
@@ -85,7 +85,8 @@ export function genFloor() {
   // 적 무리
   const cand = rooms.map((_, k) => k).filter((k) => k > 0 && dist[I(rooms[k].cx, rooms[k].cy)] >= 7);
   const order = shuffle(cand.length >= 3 ? cand : rooms.map((_, k) => k).filter((k) => k > 0));
-  const packs = boss ? F.packs.slice(0, 3) : G.zf === 1 ? F.packs.slice(0, 4) : F.packs;
+  // 넓어진 층: 무리 전부 + 방 네 개마다 무리 하나 더(1구역이 너무 쉬웠다)
+  const packs = boss ? F.packs.slice(0, 4) : [...F.packs, ...Array.from({ length: Math.floor(rooms.length / 4) }, () => pick(F.packs))];
   packs.forEach(([type, cnt], j) => {
     const r = rooms[order[j % order.length]];
     for (let c = 0; c < cnt; c++) for (let t = 0; t < 40; t++) {
@@ -107,7 +108,7 @@ export function genFloor() {
   }
   // 재료
   G.mats = new Map();
-  for (let k = 0, placed = 0; k < 200 && placed < 4; k++) {
+  for (let k = 0, placed = 0; k < 300 && placed < 6; k++) {
     const r = rooms[ri(1, rooms.length - 1)], x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1), i = I(x, y);
     if (tile[i] !== T_FLOOR || G.mats.has(i)) continue;
     const sf = surf[i], nearWall = D4.some(([dx, dy]) => tile[I(x + dx, y + dy)] === T_WALL);
@@ -115,7 +116,7 @@ export function genFloor() {
     G.mats.set(i, m); placed++;
   }
   // 소모품
-  for (let k = 0, placed = 0; k < 200 && placed < F.items; k++) {
+  for (let k = 0, placed = 0; k < 300 && placed < F.items + 2; k++) {
     const r = rooms[ri(0, rooms.length - 1)], x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1), i = I(x, y);
     if (tile[i] !== T_FLOOR || G.items.has(i) || G.mats.has(i) || (x === start.x && y === start.y)) continue;
     G.items.set(i, wpick(ITEM_W)); placed++;

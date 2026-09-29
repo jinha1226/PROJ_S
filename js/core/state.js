@@ -1,7 +1,7 @@
 import { T_DOOR, T_WALL } from '../data/terrain.js';
 
 /* ================= 상태 ================= */
-export const G = { W: 30, H: 30 };
+export const G = { W: 40, H: 40 }; // 층 크기(넓어진 던전)
 
 export const I = (x, y) => y * G.W + x;
 

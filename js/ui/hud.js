@@ -8,7 +8,7 @@ import { BOSSES } from '../data/enemies.js';
 import { weaponOf } from '../data/gear.js';
 import { CAT_ICON, ITEMS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
-import { T_OPEN, T_STAIRS, ZONES } from '../data/terrain.js';
+import { T_OPEN, T_STAIRS, T_WALL, ZONES } from '../data/terrain.js';
 import { torchTier } from '../data/torch.js';
 import { CRITS, FORMS, SHAPES } from '../data/weapons.js';
 import { Anim, act, descend } from '../flow.js';
@@ -185,8 +185,16 @@ Object.assign(UI, {
   openHudOverlay(html) { $('#hud-overlay-body').innerHTML = html; $('#hud-overlay').classList.remove('hidden'); },
   closeHudOverlay() { $('#hud-overlay').classList.add('hidden'); $('#hud-overlay-body').innerHTML = ''; },
   openMap() {
-    this.openHudOverlay('<h2>전체 지도</h2><canvas id="fullmap"></canvas><p>노랑: 나 · 빨강: 적 · 금빛: 등잔 · 파랑: 계단</p>');
-    this.drawMap($('#fullmap'));
+    this.openHudOverlay('<h2>전체 지도</h2><canvas id="fullmap"></canvas><p>누른 곳으로 걸어간다. 노랑: 나 · 빨강: 적 · 금빛: 등잔 · 파랑: 계단</p>');
+    const cv = $('#fullmap'); this.drawMap(cv);
+    cv.onclick = (ev) => { // 지도에서 누른 곳으로: 가 본 바닥 중 가장 가까운 칸
+      const r = cv.getBoundingClientRect(), tx = Math.floor(((ev.clientX - r.left) / r.width) * G.W), ty = Math.floor(((ev.clientY - r.top) / r.height) * G.H);
+      let best = null, bd = 99;
+      for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const x = tx + dx, y = ty + dy; if (x < 0 || y < 0 || x >= G.W || y >= G.H) continue; const i = I(x, y); if (!G.seen[i] || G.tile[i] === T_WALL) continue; const d = Math.abs(dx) + Math.abs(dy); if (d < bd) { bd = d; best = [x, y]; } }
+      if (!best) { this.toast('아직 가 보지 않은 곳이다'); return; }
+      this.closeHudOverlay(); if (Anim.active || G.over || (best[0] === G.player.x && best[1] === G.player.y)) return;
+      this.explore = false; this.rest = null; this.startTravel(best[0], best[1]);
+    };
   },
   openLog() {
     this.openHudOverlay('<h2>기록</h2>' + this.logLines.map((q) => `<div class="entry ${q.cls || ''}"></div>`).join(''));

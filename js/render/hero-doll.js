@@ -1,8 +1,6 @@
 import * as THREE from 'three';
-import { G } from '../core/state.js';
 import { BRANDS, EGOS, ELEM, GEAR_BASES, MAT_COLOR, SLOTS, weaponId } from '../data/gear.js';
 import { COLORS } from '../data/stones.js';
-import { torchTier } from '../data/torch.js';
 import { WEAPONS } from '../data/weapons.js';
 import { SKIN, _w } from './common.js';
 import * as K from './diorama.js';
@@ -47,8 +45,8 @@ export function heroSpec(eq = {}) {
     { s: 'torus', p: [0, 0.525, 0], r: [Math.PI / 2, 0, 0], k: [0.1, 0.09, 0.1], tube: 0.45, c: shirtCol }, // 옷깃
     ...arm(-1, [[-0.18 * T, 0.465, 0], [-0.25 * T, 0.41, 0.02], [-0.275, 0.355, 0.05]]),
     { s: 'sphere', p: [-0.28, 0.335, 0.055], k: 0.068 * hs, c: handCol },
-    ...(two ? [...arm(1, [[0.18 * T, 0.465, 0], [0.245 * T, 0.38, 0.07], [0.215, 0.31, 0.12]]), { s: 'cyl', p: [0.24, 0.28, 0.1], r: [0.3, 0, -0.5], k: [0.024, 0.22, 0.024], c: 0x5a3a22 }, { s: 'cyl', p: [0.29, 0.37, 0.125], k: [0.042, 0.04, 0.042], c: 0x3a2a1a }]
-      : [...arm(1, [[0.18 * T, 0.465, 0], [0.265 * T, 0.43, 0.04], [0.28, 0.415, 0.07]]), { s: 'sphere', p: [0.28, 0.4, 0.07], k: 0.07 * hs, c: handCol }, { s: 'cyl', p: [0.31, 0.5, 0.09], r: [0.15, 0, -0.15], k: [0.026, 0.32, 0.026], c: 0x5a3a22 }, { s: 'cyl', p: [0.33, 0.64, 0.1], top: 1.15, bot: 0.8, k: [0.048, 0.06, 0.048], c: 0x3a2a1a }]),
+    ...(two ? [...arm(1, [[0.18 * T, 0.465, 0], [0.245 * T, 0.38, 0.07], [0.215, 0.31, 0.12]]), ]
+      : [...arm(1, [[0.18 * T, 0.465, 0], [0.235 * T, 0.38, 0.02], [0.25, 0.32, 0.05]]), { s: 'sphere', p: [0.255, 0.3, 0.06], k: 0.068 * hs, c: handCol }]), // 빈 손(횃불 빛은 조명이 맡는다)
   ];
   // 여행 장비: 어깨끈 + 허리 주머니(천·가죽)
   if (mat === 'cloth' || mat === 'leather') parts.push(
@@ -77,19 +75,15 @@ export function heroSpec(eq = {}) {
   // 보조손: 방패(속성이면 테두리에 그 색). 오브는 extra에서 왼손 옆에 띄운다
   if (sh && !ob) { const r = sh.base === 'shield' ? 0.2 : 0.14, rim = sh.ego && sh.idX ? (EGOS[sh.ego].res ? ELEM[EGOS[sh.ego].res].hex : 0xd8c8a8) : sh.un ? 0xffcf4a : sh.art ? 0xd0a0ff : 0x9aa6b8; parts.push({ s: 'cyl', p: [-0.38, 0.4, 0.06], r: [0, 0, Math.PI / 2], k: [r, 0.05, r], c: 0x9a6a3e }, { s: 'torus', p: [-0.41, 0.4, 0.06], r: [0, Math.PI / 2, 0], k: r, tube: 0.12, c: rim }, { s: 'sphere', p: [-0.43, 0.4, 0.06], k: [0.03, 0.05, 0.05], c: 0xffd35a }); }
   const all = SLOTS.map((k) => eq[k]).filter(Boolean), legend = all.some((it) => it.un), art = all.some((it) => it.art);
-  const top = legend ? 'unrand' : art ? 'randart' : null, bright = all.some((it) => it.plus >= 3), torchBig = false;
+  const top = legend ? 'unrand' : art ? 'randart' : null, bright = all.some((it) => it.plus >= 3);
   const pw = eq.weapon && eq.weapon.idX && eq.weapon.brand ? BRANDS[eq.weapon.brand] : null, elemGlow = pw && pw.elem ? new THREE.Color(ELEM[pw.elem].hex).multiplyScalar(0.12).toArray() : null;
   return {
-    h: 1.15, col: bodyCol, scale: 1, glow: GLOW[top] || elemGlow, gloss: 0.75 + (bright ? 0.45 : 0) + (top ? 0.2 : 0),
+    h: 1.15, col: bodyCol, scale: 1, glow: GLOW[top] || elemGlow, gloss: 0.22 + (bright ? 0.35 : 0) + (top ? 0.15 : 0), // 광택은 낮게(플라스틱처럼 번들거리지 않게)
     parts,
     extra: (d) => {
-      const f = new THREE.Group(), fs2 = torchBig ? 1.5 : 1;
-      const o = new THREE.Mesh(new THREE.ConeGeometry(0.08 * fs2, 0.22 * fs2, 7).translate(0, 0.11 * fs2, 0), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 0.9, 0.2) }));
-      const i = new THREE.Mesh(new THREE.ConeGeometry(0.045 * fs2, 0.14 * fs2, 7).translate(0, 0.07 * fs2, 0), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2.5, 1) }));
-      f.add(o, i); f.position.set(...(two ? [0.295, 0.37, 0.13] : [0.335, 0.66, 0.1])); d.body.add(f);
       const wh = new THREE.Group(); wh.position.set(-0.28, 0.37, 0.06); wh.rotation.x = 0.5; d.body.add(wh);
       // 양손 무기: 둘째 손이 자루를 함께 쥔다(무기와 같이 휘두른다, setWeapon이 지우지 않게 keep)
-      if (two && GRIP2[wid]) { const h2 = K.doll([{ s: 'sphere', k: 0.075 * hs, c: handCol }], { gloss: 0.75 }).root; h2.position.set(...GRIP2[wid]); h2.userData.keep = true; wh.add(h2); }
+      if (two && GRIP2[wid]) { const h2 = K.doll([{ s: 'sphere', k: 0.075 * hs, c: handCol }], { gloss: 0.22 }).root; h2.position.set(...GRIP2[wid]); h2.userData.keep = true; wh.add(h2); }
       // 오브: 그 색으로 빛나는 구슬이 왼손 옆에 떠서 천천히 돈다
       let orb = null;
       if (ob) {
@@ -104,12 +98,6 @@ export function heroSpec(eq = {}) {
         wh,
         update(dt, t) {
           if (orb) { orb.position.y = 0.42 + Math.sin(t * 2) * 0.03; orb.userData.ring.rotation.set(1.1, t * 1.2, 0); }
-          const tier = torchTier(G.torch ?? 100), size = { high: 1, mid: 0.72, low: 0.4, out: 0.16 }[tier];
-          const s = 1 + Math.sin(t * 20) * 0.12 + Math.sin(t * 33) * 0.08;
-          o.scale.set(size, size * s, size); i.scale.set(size, size * s * 1.05, size);
-          o.material.color.setHex(tier === 'out' ? 0x713327 : tier === 'low' ? 0xff7137 : 0xff9c35);
-          i.visible = tier !== 'out'; f.rotation.z = Math.sin(t * 6) * 0.1;
-          if (tier !== 'out' && Math.random() < dt * 8 * fs2 * size) { f.getWorldPosition(_w); _w.y += 0.2; View.dio.sparks.emit({ pos: _w, n: 1, color: 0xff9a3a, color2: 0xffe36a, speed: 0.3, up: 1.2, grav: 0.6, life: 0.6, size: 0.07 }); }
           if (legend && d.root.visible && Math.random() < dt * 14) { // 전설: 몸 주위를 도는 작은 불꽃
             const a = t * 2.4 + Math.floor(Math.random() * 5) * 1.2566; d.root.getWorldPosition(_w);
             View.dio.sparks.emit({ pos: _w.set(_w.x + Math.cos(a) * 0.5, _w.y + 0.5 + Math.sin(t * 3 + a) * 0.15, _w.z + Math.sin(a) * 0.5), n: 1, color: 0xff8a2a, color2: 0xffd84a, speed: 0.1, up: 0.4, grav: 0, life: 0.5, size: 0.1 });

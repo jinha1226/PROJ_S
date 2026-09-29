@@ -16,7 +16,7 @@ export function burnTorch() {
   G.torch = Math.max(0, Math.round((before - rate) * 100) / 100);
   if (META?.hero) META.hero.torch = G.torch;
   if (before >= 50 && G.torch < 50) log('횃불이 약해져 시야가 좁아진다', 'bad');
-  if (before >= 25 && G.torch < 25) log('불씨가 희미하다 — 어둠이 다가온다', 'bad');
+  if (before >= 25 && G.torch < 25) log('불씨가 희미하다. 어둠 속에서 적들이 사나워진다.', 'bad');
   if (before > 0 && G.torch === 0) { G.darkAmbushUsed = false; log('횃불이 꺼졌다! 적이 먼저 알아챈다', 'bad'); }
 }
 export function refillTorch(amount) {
@@ -34,7 +34,7 @@ export function placeLamps() {
     if (G.ents.some((e) => e.alive && e.x === x && e.y === y) || Math.max(Math.abs(x - G.player.x), Math.abs(y - G.player.y)) < 5) continue;
     free.push(i);
   }
-  for (let n = Math.min(free.length, 1 + Math.floor(rand() * 2)); n > 0; n--) {
+  for (let n = Math.min(free.length, 2 + Math.floor(rand() * 2)); n > 0; n--) { // 넓어진 층: 등잔 2~3개
     const i = free.splice(Math.floor(rand() * free.length), 1)[0];
     G.lamps.set(i, OLD_KEEPERS[Math.floor(rand() * OLD_KEEPERS.length)]);
   }

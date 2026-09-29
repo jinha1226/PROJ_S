@@ -24,7 +24,7 @@ export function dollSpec(e) {
 export function dollSpecBase(e) {
   if (e.type === 'npc') {
     const cage = e.caged;
-    return { h: 1.05, col: e.npcData.look.cloth, scale: 0.92, parts: npcParts(e.npcData),
+    return { h: 1.05, col: e.npcData.look.cloth, scale: 0.92, gloss: 0.22, parts: npcParts(e.npcData),
       extra: (d) => {
         if (!cage) return {};
         const bars = [];

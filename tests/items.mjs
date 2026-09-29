@@ -50,8 +50,8 @@ const s3 = await page.evaluate(() => { const g = window.__game, G = arena(); con
 check('강화 두루마리: +1, 상한(무기 +6), 유물 불가', s3.a === 6 && s3.capped === 6 && s3.left === 2, JSON.stringify(s3));
 
 // 4. 화염 브랜드: 풀 위의 적 → 불이 번진다
-const s4 = await page.evaluate(() => { const g = window.__game, surf = {}; for (let x = 16; x <= 18; x++) surf[x + 15 * 30] = 2; const G = arena([[1, 0, { hp: 999, max: 999 }]], surf); G.eq.weapon = g.makeGear('sword', { brand: 'fire', known: true }); g.refreshStats();
-  g.act(() => { g.playerMove(1, 0); return true; }); drain(); g.act(() => g.playerWait()); drain(); return { fire: G.fire[16 + 15 * 30] > 0 || G.surf[16 + 15 * 30] === 5, spread: G.fire[17 + 15 * 30] > 0 || G.surf[17 + 15 * 30] === 5 }; });
+const s4 = await page.evaluate(() => { const g = window.__game, surf = {}; for (let x = 16; x <= 18; x++) surf[x + 15 * 40] = 2; const G = arena([[1, 0, { hp: 999, max: 999 }]], surf); G.eq.weapon = g.makeGear('sword', { brand: 'fire', known: true }); g.refreshStats();
+  g.act(() => { g.playerMove(1, 0); return true; }); drain(); g.act(() => g.playerWait()); drain(); return { fire: G.fire[16 + 15 * 40] > 0 || G.surf[16 + 15 * 40] === 5, spread: G.fire[17 + 15 * 40] > 0 || G.surf[17 + 15 * 40] === 5 }; });
 check('화염 브랜드로 풀 위의 적을 치면 불이 번진다', s4.fire && s4.spread, JSON.stringify(s4));
 
 // 5. 색의 반지: 그 색 영혼석 기본 쿨타임 −1

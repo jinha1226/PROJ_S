@@ -10,7 +10,7 @@ export class EntView {
   constructor(e) {
     this.id = e.id; this.type = e.type;
     const sp = dollSpec(e);
-    this.d = K.doll(sp.parts, { scale: sp.scale * 1.3, gloss: sp.gloss ?? 0.75 });
+    this.d = K.doll(sp.parts, { scale: sp.scale * 1.3, gloss: sp.gloss ?? 0.32 });
     this.h = sp.h * sp.scale * 1.3; this.col = sp.col;
     this.extra = sp.extra ? sp.extra(this.d) : {};
     View.dio.scene.add(this.d.root);
@@ -33,7 +33,7 @@ export class EntView {
   redress(e) {
     const old = this.d, sp = dollSpec(e);
     View.dio.scene.remove(old.root); old.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
-    this.d = K.doll(sp.parts, { scale: sp.scale * 1.3, gloss: sp.gloss ?? 0.75 }); this.h = sp.h * sp.scale * 1.3; this.col = sp.col;
+    this.d = K.doll(sp.parts, { scale: sp.scale * 1.3, gloss: sp.gloss ?? 0.32 }); this.h = sp.h * sp.scale * 1.3; this.col = sp.col;
     this.extra = sp.extra ? sp.extra(this.d) : {}; this.baseEm = sp.glow || null;
     this.ice = this.stars = this.vmark = this.bubble = null;
     View.dio.scene.add(this.d.root); this.d.root.position.copy(this.cur); this.d.root.rotation.y = this.yaw; this.sqv -= 7;

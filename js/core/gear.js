@@ -1,6 +1,7 @@
 import { kindOf } from '../data/enemies.js';
 import { AMULETS, ART_A, ART_B, BAG_MAX, BASE_EVA, BRANDS, CAPS, EGOS, ELEM, GEAR_BASES, GEAR_DROP, JEWEL_LOOK, QUALITY, RANDART_COSTS, RANDART_PROPS, RINGS, SLOTS, SLOT_NAME, UNRANDS, clampRes, dropTable, fitsSlot, hasQuality, isJewel, isWeapon, newBase, plusMax, twoHanded, weaponOf } from '../data/gear.js';
 import { T_FLOOR, T_STAIRS } from '../data/terrain.js';
+import { DARK, torchTier } from '../data/torch.js';
 import { WEAPONS, WEAPON_IDS, WPN } from '../data/weapons.js';
 import { pick, rand, ri, shuffle, wpick } from '../util/rng.js';
 import { addLoot } from './combat.js';
@@ -355,7 +356,7 @@ export function placeGear(it, x, y, from) {
 /** 몬스터 5%(갑옷 고블린·돌진형 15%), 보스 1개 확정(유물 이상 30%) */
 export function dropGearFrom(e) {
   if (e.boss) { placeGear(rollGear(G.floor, rand() < 0.3 ? 'art' : null), e.x, e.y); return; }
-  const chance = GEAR_DROP[kindOf(e)] ?? GEAR_DROP.default;
+  const chance = (GEAR_DROP[kindOf(e)] ?? GEAR_DROP.default) * DARK[torchTier(G.torch ?? 100)].drop; // 어두울수록 더 남긴다
   if (rand() * 100 < chance) placeGear(rollGear(G.floor), e.x, e.y);
 }
 /** 바닥의 장비 1~2개 + 죽은 등불지기가 남긴 유품 */

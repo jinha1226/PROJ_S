@@ -8,6 +8,7 @@ import { QUALITY, SLOTS, SLOT_ICON, hasQuality, isWeapon, slotKind } from '../da
 import { ITEMS, MATS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { ZONES } from '../data/terrain.js';
+import { JAR_WOOD } from '../data/torch.js';
 import { BLD, CRAFT_B, JOBS, MOODS, RECIPES, TRAITS, adj } from '../data/town.js';
 import { LANDS } from '../data/visitors.js';
 import { enterDungeon } from '../flow.js';
@@ -162,7 +163,11 @@ Object.assign(Town, {
   rest() {
     const h = META.hero, D = View.dio, b = { x: SCX, y: SCY };
     D.pool.flash(W3(b.x, b.y), 0xffa040, 90, 0.8, 7); D.sparks.emit({ pos: W3(b.x, b.y, 0.5), n: 30, color: 0xff9a3a, color2: 0xffe36a, speed: 2, up: 2.5, grav: 0.5, life: 1, size: 0.15 }); Sfx.play('fire');
-    this.sheet(`<h3>🔥 모닥불 <button class="close">닫기</button></h3>${this.hearthInfo()}`);
+    const S = META.settle, jar = JAR_WOOD;
+    const sh = this.sheet(`<h3>🔥 모닥불 <button class="close">닫기</button></h3>${this.hearthInfo()}
+      <div class="sec">불씨 단지 <small>던전에서 쓰면 횃불을 채운다. 창고 ${META.items.ember_jar || 0}개 · 출발문에서 챙긴다</small></div>
+      <button class="wbtn" id="btn-jar" style="width:100%" ${(S.stock.나무 || 0) >= jar ? '' : 'disabled'}>🏺 모닥불 불씨를 단지에 담기 <small>🪵 나무 ${jar} (지금 ${S.stock.나무 || 0})</small></button>`);
+    sh.querySelector('#btn-jar').onclick = () => { if ((S.stock.나무 || 0) < jar) return; S.stock.나무 -= jar; META.items.ember_jar = (META.items.ember_jar || 0) + 1; saveMeta(); Sfx.play('fire'); UI.toast('불씨 단지를 하나 채웠다.'); this.rest(); };
     if (!h) { UI.toast(META.needSuccessor ? '횃불을 들 사람을 골라야 한다 — 출발문' : '출발문에서 새 등불지기가 나선다'); return; }
     h.hp = h.max; saveMeta(); this.renderHud();
     const n = META.npcs.slice().sort((a, c) => c.t.E + c.t.A - (a.t.E + a.t.A))[0];

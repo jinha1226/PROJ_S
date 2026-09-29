@@ -1,6 +1,7 @@
 import { CATS, DROPS, catOf, kindOf } from '../data/enemies.js';
 import { COLORS, STONE, levelOf } from '../data/stones.js';
 import { S_ASH, S_GRASS, S_NONE, S_WATER } from '../data/terrain.js';
+import { DARK, STONE_DROP, torchTier } from '../data/torch.js';
 import { HIDDEN_BY_ELEM } from '../data/visitors.js';
 import { D8, cheb, sgn } from '../util/grid.js';
 import { pick, rand, shuffle } from '../util/rng.js';
@@ -15,8 +16,9 @@ import { G, I, TL, emit, entAt, isFoe, log, newSt, standable } from './state.js'
 export function synergy(text, elem) { G.stats.combos++; emit('banner', { text, elem }); log(text, 'syn'); if (G.ctx && (G.ctx.stones > 0 || G.ctx.origin !== 'enemy')) bumpStage(G.ctx); }
 
 export function dropStone(e, f) {
-  // 몬스터별 랜덤: 가진 세 색 중 하나(각 1/3). 확률은 그대로 — 무기로 쓰러뜨리면 확실히, 아니면 40%
-  if (!f && rand() >= 0.4) { if (G.dropHint++ < 2) log('영혼이 흩어졌다 — 무기로 쓰러뜨려야 영혼석이 확실히 남는다', 'info'); return; }
+  // 몬스터별 랜덤: 가진 세 색 중 하나(각 1/3). 무기로 쓰러뜨리면 45%, 아니면 15% — 횃불이 어두울수록 더 잘 남는다. 보스는 확실히
+  const chance = Math.min(0.95, (f ? STONE_DROP.weapon : STONE_DROP.other) * DARK[torchTier(G.torch ?? 100)].drop);
+  if (!e.boss && rand() >= chance) { if (!f && G.dropHint++ < 2) log('영혼이 흩어졌다. 무기로 쓰러뜨려야 더 잘 남는다.', 'info'); return; }
   const color = pick(['red', 'purple', 'green']);
   const id = DROPS[kindOf(e)][color], spot = freeDropSpot(e.x, e.y); if (!spot) return;
   G.stones.set(I(spot[0], spot[1]), id);

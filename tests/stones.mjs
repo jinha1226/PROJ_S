@@ -39,7 +39,7 @@ await page.evaluate(() => { const g = window.__game, G = g.G;
     for (const k of Object.keys(G.eq)) G.eq[k] = null; G.eq.weapon = g.makeGear('sword'); g.refreshStats(); G.ps.eva = 0; G.ps.block = 0; g.computeFOV(); return G; };
   window.put = (k, id, cd = 0) => Object.assign(G.slots[k], { stone: id, color: g.STONE[id].color, cd, usedRound: -1, redRound: -1 });
 });
-const I = (x, y) => y * 30 + x;
+const I = (x, y) => y * 40 + x;
 
 // 1. 스킬 5개 버튼이 사라지고 영혼석 칸이 버튼
 const s1 = await page.evaluate(() => { const g = window.__game, G = arena([[2, 0]]); drain(); put(0, 'r_fire'); g.UI.renderSlots({ slots: G.slots.map((q) => ({ ...q })), bag: [] }); const n = document.querySelectorAll('#souls .slot').length; document.querySelectorAll('#souls .slot')[0].click(); const mode = g.UI.mode, valid = g.UI.valid.size; g.UI.exitTarget(); return { skills: !!document.querySelector('#skills'), n, mode, valid, ready: document.querySelectorAll('#souls .slot')[0].classList.contains('ready') }; });
@@ -65,15 +65,15 @@ check('전투가 끝나면 모든 쿨타임 0', s5.every((v) => v === 0), JSON.s
 
 // 6. 옛 스킬 효과를 이어받았다
 const s6 = await page.evaluate(() => { const g = window.__game, out = {}, grass = {}, oil = {}, water = {};
-  for (let x = 16; x <= 18; x++) grass[x + 15 * 30] = 2; // 풀
-  { const G = arena([[3, 3]], grass); put(0, 'r_fire'); g.act(() => g.useStone(0, 16, 15)); drain(); out.grass = G.fire[17 + 15 * 30] > 0 || G.surf[17 + 15 * 30] === 5; }
-  for (let x = 16; x <= 18; x++) oil[x + 15 * 30] = 3; // 기름
-  { const G = arena([[2, 0], [3, 3]], oil); put(0, 'r_fire'); g.act(() => g.useStone(0, 16, 15)); drain(); out.oil = G.ents[1].hp < 30 && G.surf[17 + 15 * 30] !== 3; }
-  for (let x = 17; x <= 19; x++) water[x + 15 * 30] = 1; // 물
+  for (let x = 16; x <= 18; x++) grass[x + 15 * 40] = 2; // 풀
+  { const G = arena([[3, 3]], grass); put(0, 'r_fire'); g.act(() => g.useStone(0, 16, 15)); drain(); out.grass = G.fire[17 + 15 * 40] > 0 || G.surf[17 + 15 * 40] === 5; }
+  for (let x = 16; x <= 18; x++) oil[x + 15 * 40] = 3; // 기름
+  { const G = arena([[2, 0], [3, 3]], oil); put(0, 'r_fire'); g.act(() => g.useStone(0, 16, 15)); drain(); out.oil = G.ents[1].hp < 30 && G.surf[17 + 15 * 40] !== 3; }
+  for (let x = 17; x <= 19; x++) water[x + 15 * 40] = 1; // 물
   { const G = arena([[2, 0], [4, 0], [3, 3]], water); put(0, 'r_shock'); g.act(() => g.useStone(0, 17, 15)); drain(); out.conduct = G.ents[1].hp < 30 && G.ents[2].hp < 30; }
-  { const G = arena([[2, 0], [3, 3]], water); put(0, 'r_freeze'); g.act(() => g.useStone(0, 17, 15)); drain(); out.freezeWater = G.surf[18 + 15 * 30] === 4 && G.ents[1].st.frozen > 0; }
+  { const G = arena([[2, 0], [3, 3]], water); put(0, 'r_freeze'); g.act(() => g.useStone(0, 17, 15)); drain(); out.freezeWater = G.surf[18 + 15 * 40] === 4 && G.ents[1].st.frozen > 0; }
   { const G = arena([[2, 0, { st: { stun: 9 } }], [3, 0, { st: { stun: 9 } }], [3, 3]]); put(0, 'r_poison'); put(1, 'r_fire'); G.ents[2].st.poison = 5; g.act(() => g.useStone(0, 17, 15)); drain(); const psn = G.ents[1].st.poison > 0, ban = []; const on = g.View.on.bind(g.View); g.View.on = (t, d) => { if (t === 'banner') ban.push(d.text); return on(t, d); }; g.act(() => g.useStone(1, 17, 15)); drain(); g.View.on = on; out.venomBlast = psn && ban.some((t) => t.includes('독 폭발')); }
-  { const G = arena([[1, 0], [3, 3]]); G.tile[18 + 15 * 30] = 0; put(0, 'r_push'); let stun = 0; const on = g.View.on.bind(g.View); g.View.on = (t, d) => { if (t === 'status' && d.id === G.ents[1].id && d.st.stun > 0) stun++; return on(t, d); }; g.act(() => g.useStone(0, 16, 15)); drain(); g.View.on = on; out.pushWall = stun > 0 && G.ents[1].hp <= 25 && G.ents[1].x === 17; }
+  { const G = arena([[1, 0], [3, 3]]); G.tile[18 + 15 * 40] = 0; put(0, 'r_push'); let stun = 0; const on = g.View.on.bind(g.View); g.View.on = (t, d) => { if (t === 'status' && d.id === G.ents[1].id && d.st.stun > 0) stun++; return on(t, d); }; g.act(() => g.useStone(0, 16, 15)); drain(); g.View.on = on; out.pushWall = stun > 0 && G.ents[1].hp <= 25 && G.ents[1].x === 17; }
   return out; });
 for (const [k, v] of Object.entries(s6)) check(`옛 효과: ${{ grass: '불씨 → 풀 번짐', oil: '불씨 → 기름 폭발', conduct: '번개 → 물 전도', freezeWater: '냉기 → 물이 얼음', venomBlast: '독침 → 불씨 독 폭발', pushWall: '밀치기 → 벽 충돌' }[k]}`, v);
 
@@ -93,6 +93,21 @@ check('칸 → 미리보기 → 대상 탭으로 발동, 자기 대상은 두 �
 // 지속 효과: 번개 갑주가 때린 적에게 되갚고, 남은 라운드가 칸에 뜬다
 const s9 = await page.evaluate(() => { const g = window.__game, G = arena([[1, 0]]); put(0, 'g_shock'); g.act(() => g.useStone(0)); drain(); const r = document.querySelectorAll('#souls .slot')[0].querySelector('.aur').textContent; return { hp: G.ents[1].hp, aura: G.auras.storm, r }; });
 check('번개 갑주: 때린 적에게 번개, 남은 라운드 표시', s9.hp < 30 && s9.aura > 0 && /R/.test(s9.r), JSON.stringify(s9));
+// 어둠: 횃불이 약할수록 적 공격 +, 영혼석이 더 잘 남는다 / 넓어진 층 / 지도에서 누른 곳으로
+const s11 = await page.evaluate(async () => { const g = window.__game, C = await import('/js/core/combat.js'), St = await import('/js/core/stones.js'), G = arena([[1, 0, { hp: 999, max: 999 }]]), p = G.player, foe = G.ents[1];
+  G.ps.def = 0; G.ps.eva = 0; G.ps.block = 0; G.darkAmbushUsed = true; const hit = (torch) => { G.torch = torch; p.hp = 40; p.shield = 0; return C.damage(p, 2, 'hit', { src: foe }); };
+  const bright = hit(100), low = hit(10), out = hit(0);
+  const rate = (torch, f) => { G.torch = torch; let n = 0; for (let k = 0; k < 400; k++) { G.stones.clear(); St.dropStone({ ...foe, x: 15, y: 15, boss: null }, f); n += G.stones.size; } return n / 400; };
+  const r = { weapon: rate(100, 'slash'), other: rate(100, null), dark: rate(0, 'slash') }; G.torch = 100;
+  return { bright, low, out, ...Object.fromEntries(Object.entries(r).map(([k, v]) => [k, +v.toFixed(2)])), W: G.W }; });
+check('어둠: 적 공격 +1·+2, 영혼석 45%/15% → 어두우면 ×2', s11.bright === 2 && s11.low === 3 && s11.out === 4 && s11.weapon > 0.35 && s11.weapon < 0.55 && s11.other < 0.24 && s11.dark > 0.8, JSON.stringify(s11));
+const s12 = await page.evaluate(async () => { const g = window.__game; g.regen(); const G = g.G; drain(); const foes = G.ents.filter((e) => e.alive && !e.ally && e !== G.player).length;
+  const i = G.seen.findIndex((v, k) => v && G.tile[k] !== 0 && (k % G.W !== G.player.x || ((k / G.W) | 0) !== G.player.y));
+  g.UI.openMap(); const cv = document.querySelector('#fullmap'), r = cv.getBoundingClientRect(), x = i % G.W, y = (i / G.W) | 0;
+  cv.onclick({ clientX: r.left + ((x + 0.5) / G.W) * r.width, clientY: r.top + ((y + 0.5) / G.H) * r.height });
+  const moving = !!g.UI.travel; g.UI.travel = null; drain(); return { W: G.W, rooms: G.rooms.length, foes, lamps: G.lamps.size, closed: document.querySelector('#hud-overlay').classList.contains('hidden'), moving }; });
+check('넓어진 층(40칸·방 10개 이상·적 늘어남) · 지도에서 누른 곳으로 간다', s12.W === 40 && s12.rooms >= 10 && s12.foes >= 12 && s12.lamps >= 2 && s12.closed && s12.moving, JSON.stringify(s12));
+
 // 발밑 영혼석: 두고 가기 / 고르지 않고 움직이면 바로 흩어진다
 const s10 = await page.evaluate(() => { const g = window.__game, G = arena(), i = (x, y) => y * G.W + x;
   G.stones.set(i(16, 15), 'r_fire'); g.act(() => g.playerMove(1, 0)); drain(); const offered = G.stoneOffer === i(16, 15) && !document.querySelector('#sheet').classList.contains('hidden');

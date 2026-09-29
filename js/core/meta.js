@@ -14,7 +14,7 @@ export let META = null;
 
 export function defaultMeta() {
   META = { v: 9, gen: 0, visits: 0, cleared: [false, false, false, false], npcs: [], newNpcs: [], buildings: { plaza: { shown: true }, gate: { shown: true }, altar: { shown: true }, storage: { shown: true }, forge: { shown: true } },
-    mats: { 약초: 2, 가죽: 1, 광석: 2 }, items: { heal: 1 }, gear: [], recipes: {}, hero: null, fallen: [], closed: {}, buff: null, ending: null,
+    mats: { 약초: 2, 가죽: 1, 광석: 2 }, items: { heal: 1, ember_jar: 1 }, gear: [], recipes: {}, hero: null, fallen: [], closed: {}, buff: null, ending: null,
     lit: [false, false, false, false], visitors: [], lore: [], glowMods: [], rememberedKeepers: [], needSuccessor: false, watcher: null, unrandsSeen: [], relics: [] };
   const k = makeNpc('keeper'), b = makeNpc('blacksmith'); META.npcs.push(k); initRel(k); META.npcs.push(b); initRel(b);
   migrateTown(META); // 모닥불 · 출발문 · 재료 더미 · 제단 + 대장간

@@ -1,9 +1,10 @@
 import { PHYS } from '../data/colors.js';
 import { CATS, catOf, monRes } from '../data/enemies.js';
 import { CAPS, RES_MUL, clampRes, weaponOf } from '../data/gear.js';
-import { STONE } from '../data/stones.js';
 import { MATS } from '../data/items.js';
+import { STONE } from '../data/stones.js';
 import { S_ASH, S_ICE, S_NONE, S_WATER, T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrain.js';
+import { DARK, torchTier } from '../data/torch.js';
 import { JOBS } from '../data/town.js';
 import { FORMS } from '../data/weapons.js';
 import { D8, cheb, sgn } from '../util/grid.js';
@@ -43,6 +44,7 @@ export function damage(e, amt, kind = 'hit', o = {}) {
       G.darkAmbushUsed = true; amt = Math.ceil(amt * 1.5); label = '어둠 속 기습';
       log('어둠 속에서 기습당했다!', 'bad');
     }
+    if (amt > 0 && PHYS[kind] && src && isFoe(src)) amt += DARK[torchTier(G.torch ?? 100)].atk; // 어둠 속 적은 사납다
     if (amt > 0 && ps.legend.has('thornPlate')) amt = Math.ceil(amt * 1.2);
     // 줄이기: 물리 = 0~방어 무작위(최소 1) · 원소 = 저항 단계 배율 (docs/밸런스_기준.md §2~§3)
     if (amt > 0 && PHYS[kind] && ps.def) amt = Math.max(1, amt - ri(0, ps.def));
