@@ -210,8 +210,9 @@ export const View = {
     const pev = this.evs.get(0);
     if (pev) { D.rig.focusT.set(pev.cur.x, 0, pev.cur.z); this.lightPos.copy(pev.d.root.position); }
     const tier = torchTier(G.torch ?? 100);
-    D.lights.torch.distance = tier === 'out' ? 1.8 : tier === 'low' ? 4 : tier === 'mid' ? 6 : 10;
-    D.lights.base = tier === 'out' ? 1.5 : tier === 'low' ? 13 : tier === 'mid' ? 26 : 42;
+    // 밝기: 가장 어두울 때(꺼짐)가 예전의 가장 밝을 때(거리 10 · 세기 42), 밝을수록 더 밝다
+    D.lights.torch.distance = tier === 'out' ? 10 : tier === 'low' ? 11 : tier === 'mid' ? 12.5 : 14;
+    D.lights.base = tier === 'out' ? 42 : tier === 'low' ? 50 : tier === 'mid' ? 60 : 72;
     this.syncLamps();
     for (const [i, g] of this.lamps) { g.visible = !!G.seen[i]; g.userData.flame.scale.y = .85 + Math.sin(time * 9 + i) * .16; g.userData.halo.material.opacity = .35 + Math.sin(time * 7 + i) * .08; }
     for (const [, d] of this.itemMeshes) { if (!d.root.visible) continue; d.root.position.y = 0.05 + Math.abs(Math.sin(time * 2.4 + d.root.userData.ph)) * 0.09; d.root.rotation.y = time * 0.9 + d.root.userData.ph; }
