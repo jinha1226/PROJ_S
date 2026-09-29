@@ -36,7 +36,7 @@ export class Battle {
   }
   /** 화면 연출에 알린다(전투 규칙은 바꾸지 않는다). pace는 턴제에서 다음 유닛까지 기다릴 시간(ms) */
   fx(type, o = {}, pace = 0) { this.pace = Math.max(this.pace, pace); if (!this.cancelled) this.onFx?.(type, o); }
-  takePace() { const ms = Math.max(180, this.pace); this.pace = 0; return ms; }
+  takePace() { const ms = Math.max(180, this.pace) / this.speed; this.pace = 0; return ms; } // 턴제 배속: 유닛 사이 기다림을 줄인다
   get living() { return this.units.filter((u) => u.hp > 0); }
   get party() { return this.units.slice(0, 5); }
   get foes() { return this.units.filter((u) => u.role === 'boss' || u.role === 'add').filter((u) => u.hp > 0); }
@@ -83,7 +83,7 @@ export class Battle {
     let i = 0;
     const next = () => {
       if (this.cancelled) return;
-      if (this.finished || i >= queue.length) { this.busy = false; this.checkEnd(); this.changed(); if (this.command === 'auto' && !this.finished) setTimeout(() => this.heroTurn({ type: 'auto' }), 220); return; }
+      if (this.finished || i >= queue.length) { this.busy = false; this.checkEnd(); this.changed(); if (this.command === 'auto' && !this.finished) setTimeout(() => this.heroTurn({ type: 'auto' }), 220 / this.speed); return; }
       const unit = queue[i++];
       if (unit.hp > 0) unit.boss ? this.bossAct() : unit.role === 'add' ? this.addAct(unit) : this.allyAct(unit);
       this.checkEnd(); this.changed();

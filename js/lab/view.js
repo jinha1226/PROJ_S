@@ -42,7 +42,7 @@ export class LabView {
       return x === 0 || y === 0 || x === 15 || y === 15 || walls.has(`${x},${y}`) ? 'wall' : 'floor';
     }, palette, wallH: 1.2 });
     this.grid.setTerrain({ surf }); this.dio.grid = this.grid;
-    this.actors = new Map(); this.areas = []; this.later = []; this.time = 0; this.slowT = 0; this.battle = null;
+    this.actors = new Map(); this.areas = []; this.later = []; this.time = 0; this.slowT = 0; this.baseScale = 1; this.battle = null;
     this.dio.onFrame = (dt, real) => { this.update(dt, real ?? dt); this.onFrame?.(dt); };
     const light = new THREE.PointLight(0xffbe78, 13, 8); light.position.set(3, 2, 8); this.dio.scene.add(light);
     const wake = () => Sfx.init(); // 브라우저는 첫 입력 뒤에만 소리를 낸다
@@ -51,7 +51,7 @@ export class LabView {
   /** 새 전투: 쓰러진 인형·남은 연출을 치운다 */
   reset() {
     for (const a of this.actors.values()) { this.dio.scene.remove(a.doll.root); a.doll.root.traverse((o) => o.geometry?.dispose()); }
-    this.actors.clear(); this.later.length = 0; this.dio.labels.clear(); this.dio.timeScale = 1; this.slowT = 0;
+    this.actors.clear(); this.later.length = 0; this.dio.labels.clear(); this.dio.timeScale = this.baseScale; this.slowT = 0;
     this.clearAreas(); this.tele = null; this.hurtEl.classList.remove('on');
   }
   makeActor(u) {
@@ -111,6 +111,8 @@ export class LabView {
       this.area(new THREE.RingGeometry(0.3, 0.4, 28), target.x, target.y, 0xffbb6e, 0.9);
     }
   }
+  /** 연출 속도(턴제 배속). 파수병이 무너지는 느린 장면 중이면 끝난 뒤에 적용된다 */
+  setSpeed(k) { if (this.baseScale === k) return; this.baseScale = k; if (this.slowT <= 0) this.dio.timeScale = k; }
   after(sec, fn) { if (sec <= 0) fn(); else this.later.push({ t: sec, fn }); }
 
   /* ---------------- 전투가 알리는 일 ---------------- */
@@ -290,7 +292,7 @@ export class LabView {
   update(dt, real) {
     this.time += dt;
     for (let i = this.later.length - 1; i >= 0; i--) { const l = this.later[i]; l.t -= dt; if (l.t <= 0) { this.later.splice(i, 1); l.fn(); } }
-    if (this.slowT > 0) { this.slowT -= real; if (this.slowT <= 0) this.dio.timeScale = 1; }
+    if (this.slowT > 0) { this.slowT -= real; if (this.slowT <= 0) this.dio.timeScale = this.baseScale; }
     const b = this.battle; if (!b) return;
     const boss = this.actors.get('boss');
     // 예고 범위: 테두리는 깜빡이고 안쪽은 터질 때가 다가올수록 차오른다(턴제는 반쯤 찬 채 숨 쉰다)

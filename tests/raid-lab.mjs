@@ -23,6 +23,10 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}/raid-lab.html`);
   await page.waitForFunction(() => !!window.__raidLab, null, { timeout: 30000 });
   check('모바일 레이드 실험실 로드', await page.locator('.party .member').count() === 5 && await page.locator('#stage canvas').count() > 0);
+  // A도 배속: 유닛 사이 기다림과 연출이 함께 빨라진다
+  await page.locator('#speed').click(); // 1× → 2×
+  const fast = await page.evaluate(() => { const b = window.__raidLab.battle; b.pace = 300; return { speed: b.speed, ms: b.takePace(), scale: window.__raidLab.view.dio.timeScale }; });
+  check('A 턴제 2배속', fast.speed === 2 && fast.ms === 150 && fast.scale === 2);
   await page.locator('[data-mode="B"]').click();
   check('B는 일시 정지로 시작', await page.evaluate(() => window.__raidLab.battle.paused));
   await page.locator('#pause').click();

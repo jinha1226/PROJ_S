@@ -41,7 +41,7 @@ function render() {
   $('#pause').textContent = b.mode === 'A' ? '턴제' : b.paused ? '▶ 재개' : '⏸ 멈춤';
   $('#pause').disabled = b.mode === 'A';
   $('#speed').textContent = `${b.speed}×`;
-  $('#speed').classList.toggle('off', b.mode === 'A');
+  view.setSpeed(b.mode === 'A' ? b.speed : 1); // 턴제 배속은 연출도 같이 빨리 감는다
   $('#autopause').textContent = `${b.mode === 'D' ? '첫 기믹 멈춤' : '자동 멈춤'} ${b.autoPause ? '켬' : '끔'}`;
   $('#autopause').classList.toggle('off', b.mode !== 'B' && b.mode !== 'D');
   $('#hint').textContent = b.mode === 'A' ? '칸을 탭해 이동하거나 공격한다.' : b.mode === 'B' ? '칸을 탭하면 다음 행동에 움직인다. 멈춘 채 지시할 수 있다.' : b.mode === 'D' ? '칸을 탭하면 바로 걷는다. 누른 채 끌면 그쪽으로 계속 걷는다.' : '왼쪽 원을 밀어 움직인다. 적을 탭하면 공격한다.';
@@ -98,7 +98,7 @@ $('#wait').onclick = () => { battle.input(); battle.heroTurn({ type: 'wait' }); 
 $('#reset').onclick = () => launch(battle.mode);
 $('#compare').onclick = compare;
 $('#pause').onclick = () => battle.setPause(!battle.paused);
-$('#speed').onclick = () => { if (battle.mode === 'A') return; battle.speed = battle.speed === 0.5 ? 1 : battle.speed === 1 ? 2 : 0.5; battle.input(); render(); };
+$('#speed').onclick = () => { battle.speed = battle.speed === 0.5 ? 1 : battle.speed === 1 ? 2 : 0.5; battle.input(); render(); };
 $('#autopause').onclick = () => { if (battle.mode !== 'B' && battle.mode !== 'D') return; battle.autoPause = !battle.autoPause; battle.input(); render(); };
 
 const joyEl = $('#joystick'), stick = $('#stick');
