@@ -25,8 +25,9 @@ for (const f of files) {
     const names = d.type === 'VariableDeclaration' ? d.declarations.map((x) => x.id.name).filter(Boolean) : d.id ? [d.id.name] : [];
     for (const n of names) { top.add(n); if (st.type === 'ExportNamedDeclaration') exp.push(n); }
   }
-  for (const n of exp) if (!exportsOf[n] && !f.endsWith('render/diorama.js')) exportsOf[n] = f;
-  info[f] = { src, ast, imports, top };
+  // 빠진 import를 채울 때 쓰는 이름표: 레이드 실험실(js/lab)은 따로 노는 페이지라 본편에 이름을 빌려주지 않는다
+  for (const n of exp) if (!exportsOf[n] && !f.endsWith('render/diorama.js') && !f.includes(`${path.sep}lab${path.sep}`)) exportsOf[n] = f;
+  info[f] = { src, ast, imports, top, exp };
 }
 let problems = 0;
 for (const f of files) {
@@ -56,7 +57,7 @@ for (const f of files) {
     if (!im.source.value.startsWith('.')) continue;
     const tgt = path.resolve(path.dirname(f), im.source.value), T = info[tgt];
     if (!T) { problems++; console.log(`${path.relative(ROOT, f)}: 없는 파일 ${im.source.value}`); continue; }
-    const exp = new Set(Object.entries(exportsOf).filter(([, v]) => v === tgt).map(([k]) => k));
+    const exp = new Set(T.exp); // 그 파일이 실제로 내보내는 것(같은 이름을 두 파일이 내보내도)
     for (const s of im.specifiers) if (s.type === 'ImportSpecifier' && !exp.has(s.imported.name) && !tgt.endsWith('render/diorama.js')) { problems++; console.log(`${path.relative(ROOT, f)}: ${path.relative(ROOT, tgt)}에 ${s.imported.name} 없음`); }
   }
   // 쓰지 않는 import
