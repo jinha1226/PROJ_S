@@ -142,7 +142,7 @@ Object.assign(UI, {
     sh.querySelectorAll('[data-st]').forEach((b) => { b.onclick = () => { this.invSel = { from: 'stash', i: +b.dataset.st }; this.renderInv(); }; });
     sh.querySelectorAll('[data-tab]').forEach((b) => { b.onclick = () => { this.invSel = { ...this.invSel, slot: b.dataset.tab }; this.renderInv(); }; });
     sh.querySelectorAll('[data-act]').forEach((b) => { b.onclick = () => this.invAct(b.dataset.act, b.dataset.slot); });
-    sh.querySelectorAll('[data-itab]').forEach((b) => { b.onclick = () => { this.invTab = b.dataset.itab; this.invSel = null; this.selBag = -1; Sfx.play('ui'); this.renderInv(); }; });
+    sh.querySelectorAll('[data-itab]').forEach((b) => { b.onclick = () => { this.invTab = b.dataset.itab; this.invSel = null; this.selBag = -1; this.itemSel = null; Sfx.play('ui'); this.renderInv(); }; });
     if (tab === 'items') this.bindItems(sh);
     if (tab === 'stones') this.bindStones(sh);
   },
