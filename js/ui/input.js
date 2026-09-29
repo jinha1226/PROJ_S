@@ -21,7 +21,7 @@ Object.assign(UI, {
     if (!$('#info').classList.contains('hidden')) { this.hideInfo(); return; }
     if (Game.mode === 'town') { Town.tap(sx, sy); return; }
     const t = View.pickTile(sx, sy); if (!t || !inb(t.x, t.y)) return;
-    this.travel = null; this.rest = null;
+    this.travel = null; this.explore = false; this.rest = null;
     if (Anim.active) { if (this.mode === 'normal') this.buffered = t; return; }
     this.tapTile(t.x, t.y);
   },
@@ -30,7 +30,8 @@ Object.assign(UI, {
     if (Game.mode === 'town') { Town.tap(sx, sy); return; }
     const t = View.pickTile(sx, sy); if (!t || !inb(t.x, t.y)) return;
     const e = entAt(t.x, t.y);
-    if (e && !isP(e) && G.vis[I(t.x, t.y)]) this.showEnemy(e); else this.showTile(t.x, t.y);
+    if (e && !isP(e) && G.vis[I(t.x, t.y)]) { this.highlightEnemy = e.id; this.showEnemy(e); View.refreshDecals(); }
+    else this.showTile(t.x, t.y);
   },
   tapTile(x, y) {
     if (G.over || G.player.st.frozen || G.player.st.stun) return;
@@ -51,14 +52,58 @@ Object.assign(UI, {
   travelStep() {
     const tr = this.travel; if (!tr) return;
     const p = G.player;
-    if (!tr.first && (visibleFoes().length || G.hurt)) { this.travel = null; if (visibleFoes().length) this.toast('적이 보인다 — 멈춤'); return; }
+    if (!tr.first && (visibleFoes().length || G.hurt || (this.explore && this.exploreDiscovery()))) { this.travel = null; this.explore = false; if (visibleFoes().length) this.toast('적이 보인다 — 멈춤'); return; }
     const [nx, ny] = tr.path[0];
     if (cheb(nx, ny, p.x, p.y) !== 1 || entAt(nx, ny)) { this.travel = null; return; }
     if (G.tile[I(nx, ny)] !== T_DOOR) tr.path.shift();
     tr.first = false; if (!tr.path.length) this.travel = null;
     act(() => playerMove(nx - p.x, ny - p.y));
   },
-  waitBtn() { if (G.player.st.frozen || G.player.st.stun) return; this.travel = null; this.rest = null; if (this.mode === 'target') this.exitTarget(); act(() => playerWait()); },
+  attackBtn() {
+    if (Anim.active || G.over || this.overlayOpen()) return;
+    const foes = visibleFoes().filter((e) => e.alive).sort((a, b) => cheb(a.x, a.y, G.player.x, G.player.y) - cheb(b.x, b.y, G.player.x, G.player.y));
+    const target = foes.find((e) => e.id === this.selectedEnemy) || foes[0];
+    if (!target) { this.toast('보이는 적이 없다'); return; }
+    this.explore = false; this.travel = null; this.rest = null;
+    const p = G.player, d = cheb(p.x, p.y, target.x, target.y);
+    if (d <= 2 && canReach(target.x, target.y)) { act(() => { playerMelee(target); return true; }); return; }
+    let best = null;
+    for (let yy = target.y - 1; yy <= target.y + 1; yy++) for (let xx = target.x - 1; xx <= target.x + 1; xx++) {
+      if (!inb(xx, yy) || entAt(xx, yy) || G.tile[I(xx, yy)] === T_WALL) continue;
+      const path = findPath(p.x, p.y, xx, yy); if (path && (!best || path.length < best.length)) best = path;
+    }
+    if (!best?.length) { this.toast('적에게 다가갈 길이 없다'); return; }
+    const [x, y] = best[0]; act(() => playerMove(x - p.x, y - p.y));
+  },
+  exploreDiscovery() {
+    if (visibleFoes().length) return true;
+    if (G.vis[G.stairs] || [...(G.lamps || new Map()).keys()].some((i) => G.vis[i])) return true;
+    if ([...G.items.keys(), ...G.gear.keys(), ...G.stones.keys()].some((i) => G.vis[i])) return true;
+    return G.ents.some((e) => e.npc && e.alive && !e.freed && G.vis[I(e.x, e.y)]);
+  },
+  startExplore() {
+    if (Anim.active || G.over || this.overlayOpen()) return;
+    if (visibleFoes().length) { this.toast('적이 보여서 탐험할 수 없다'); return; }
+    this.explore = true; this.rest = null;
+    this.exploreStep();
+  },
+  exploreStep() {
+    if (!this.explore) return;
+    if (this.exploreDiscovery() || G.hurt) { this.explore = false; this.travel = null; this.toast('무언가 발견했다 — 탐험 멈춤'); return; }
+    const p = G.player, targets = [];
+    for (let i = 0; i < G.seen.length; i++) {
+      if (!G.seen[i] || G.tile[i] === T_WALL) continue;
+      const x = i % G.W, y = (i / G.W) | 0;
+      if (![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => inb(x + dx, y + dy) && !G.seen[I(x + dx, y + dy)])) continue;
+      if (x === p.x && y === p.y) continue;
+      const path = findPath(p.x, p.y, x, y);
+      if (path?.length) targets.push(path);
+    }
+    targets.sort((a, b) => a.length - b.length);
+    if (!targets.length) { this.explore = false; this.toast('더 탐험할 곳이 없다'); return; }
+    this.travel = { path: targets[0], first: true }; this.travelStep();
+  },
+  waitBtn() { if (G.player.st.frozen || G.player.st.stun) return; this.travel = null; this.explore = false; this.rest = null; if (this.mode === 'target') this.exitTarget(); act(() => playerWait()); },
   startRest() {
     if (Anim.active || G.over) return;
     if (visibleFoes().length) { this.toast('적이 보여서 쉴 수 없다'); return; }
@@ -81,6 +126,7 @@ Object.assign(UI, {
     }
     if (this.buffered) { const b = this.buffered; this.buffered = null; this.tapTile(b.x, b.y); return; }
     if (this.travel) { setTimeout(() => this.travelStep(), 30); return; }
+    if (this.explore) { setTimeout(() => this.exploreStep(), 30); return; }
     if (this.rest) { setTimeout(() => this.restStep(), 20); }
   },
   /* ---- 대상 지정 ---- */

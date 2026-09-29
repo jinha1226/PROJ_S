@@ -34,6 +34,10 @@ export function damage(e, amt, kind = 'hit', o = {}) {
       if (rand() * 100 < eva) { emit('dodge', { id: 0 }); return 0; }
       if (ps.block && rand() * 100 < ps.block) { emit('block', { id: 0 }); amt = 0; }
     }
+    if (amt > 0 && src && isFoe(src) && G.torch === 0 && !G.darkAmbushUsed) {
+      G.darkAmbushUsed = true; amt = Math.ceil(amt * 1.5); label = '어둠 속 기습';
+      log('어둠 속에서 기습당했다!', 'bad');
+    }
     if (amt > 0 && PHYS[kind] && ps.def) amt = Math.max(1, amt - ps.def);
     if (amt > 0 && el && ps.res[el]) amt = Math.max(1, Math.round(amt * (1 - ps.res[el] / 100)));
     if (amt > 0 && ps.legend.has('thornPlate')) amt = Math.ceil(amt * 1.2);

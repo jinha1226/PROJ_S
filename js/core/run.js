@@ -10,6 +10,7 @@ import { genFloor } from './mapgen.js';
 import { emitIntents, emitSlots, snapHud, snapVis } from './snap.js';
 import { G, TL, emit, isFoe, log, newSt } from './state.js';
 import { endRound, tickStones, withCtx } from './stones.js';
+import { burnTorch } from './torch.js';
 
 /* ================= 새 게임 · 층 생성 ================= */
 export function newRun() {
@@ -30,12 +31,14 @@ export function newRun() {
   G.bag = []; G.heroBase = 30; G.legendsDropped = new Set(); G.ps = calcStats(G.eq);
   G.slots = Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 }));
   G.sbag = []; G.weakKnown = {}; G.ctx = null; G.curSrc = null; G.dropHint = 0; G.zoneFlags = { npc: false, recall: false }; G.perk = null; G.round = 0; G.auras = {}; G.combatDmg = 0; G.glowVision = 0; G.recallArm = false;
+  G.torchMax = 100; G.torch = 100;
   genFloor();
 }
 
 /* ================= 턴 ================= */
 export function endTurn() {
   const p = G.player;
+  burnTorch();
   if (p.st.haste > 0 && !G.hasteFlip) { G.hasteFlip = true; computeFOV(); snapVis(); emitIntents(); snapHud(); return; }
   G.hasteFlip = false;
   worldTick();

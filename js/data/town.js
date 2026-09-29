@@ -41,6 +41,7 @@ export const RECIPES = [
   { id: 'o_torch', b: 'hunter', gear: 'torch', in: { 기름: 1, 뼈: 1 } },
   { id: 'i_ident', b: 'library', out: 'ident', n: 1, in: { 심장: 1, 약초: 1 } },
   { id: 'i_heal', b: 'herb', out: 'heal', n: 1, in: { 약초: 2 } },
+  { id: 'i_ember', b: 'inn', out: 'ember_jar', n: 1, in: { 기름: 1, 약초: 1 } },
   { id: 'i_cure', b: 'herb', out: 'cure', n: 1, in: { 약초: 1, 심장: 1 } },
   { id: 'i_haste', b: 'herb', out: 'haste', n: 1, in: { 심장: 1, 얼음: 1 }, hidden: true },
   { id: 'i_oil', b: 'hunter', out: 'oil', n: 2, in: { 기름: 1 } },

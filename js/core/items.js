@@ -1,4 +1,6 @@
 import { ITEMS } from '../data/items.js';
+import { JAR_REFILL } from '../data/torch.js';
+import { refillTorch } from './torch.js';
 import { C_SMOKE, S_ICE, S_OIL, S_WATER, T_DOOR, T_WALL } from '../data/terrain.js';
 import { D8, cheb, sgn } from '../util/grid.js';
 import { pick, ri } from '../util/rng.js';
@@ -40,6 +42,7 @@ export function useItem(k, tx, ty) {
   TL.wait(140);
   identify(k);
   if (k === 'heal') { heal(p, Math.round(15 * (1 + (G.ps ? G.ps.potion : 0) / 100))); if (p.st.burn) { p.st.burn = 0; emitStatus(p); } }
+  else if (k === 'ember_jar') { const n = refillTorch(JAR_REFILL); log(`모닥불 불씨를 옮겼다 — 횃불 +${n}`, 'good'); computeFOV(); snapVis(); }
   else if (k === 'ident') { const n = identifyGear(); log(n ? `장비 ${n}개의 정체가 드러났다!` : '정체를 모르는 장비가 없다', n ? 'syn' : ''); }
   else if (k === 'cure') { Object.assign(p.st, { poison: 0, burn: 0, wet: 0, immune: 12 }); emitStatus(p); log('몸이 깨끗해졌다 (12턴 중독 면역)', 'good'); }
   else if (k === 'haste') { p.st.haste = 8; emitStatus(p); log('몸이 가벼워졌다! 8턴 동안 두 배로 움직인다', 'good'); }

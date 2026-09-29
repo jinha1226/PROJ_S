@@ -4,6 +4,7 @@ export const ITEMS = {
   heal: { cat: 'potion', name: '회복 물약', desc: 'HP 15 회복, 화상 해제.' },
   cure: { cat: 'potion', name: '해독 물약', desc: '중독·화상·젖음을 없애고 12턴간 중독되지 않는다.' },
   haste: { cat: 'potion', name: '가속 물약', desc: '8턴 동안 적이 한 번 움직일 때 두 번 행동한다.' },
+  ember_jar: { cat: 'potion', name: '모닥불 불씨 단지', desc: '모닥불의 불씨로 횃불을 60 채운다.' },
   tele: { cat: 'scroll', name: '순간이동 두루마리', desc: '이 층의 먼 곳으로 순간이동한다.' },
   fear: { cat: 'scroll', name: '공포 두루마리', desc: '보이는 적 모두 6턴간 도망치고, 준비 중인 공격이 취소된다.' },
   blaze: { cat: 'scroll', name: '불꽃 두루마리', desc: '주변 8칸에 불길이 솟는다(4 화염). 풀·기름 위라면 조심.' },
@@ -19,7 +20,7 @@ export const ITEM_W = [['heal', 16], ['cure', 9], ['haste', 8], ['tele', 8], ['f
 export const ITEM_COL = { oil: 0x3a3440, water: 0x4d97ff, smoke: 0x9aa0aa };
 
 export const APPEAR = {
-  potion: [['붉은 물약', 0xff4a5a], ['탁한 초록 물약', 0x6fae4a], ['금빛 물약', 0xffc84a], ['푸른 거품 물약', 0x4aa8ff], ['보랏빛 물약', 0xb45aff]],
+  potion: [['붉은 물약', 0xff4a5a], ['탁한 초록 물약', 0x6fae4a], ['금빛 물약', 0xffc84a], ['푸른 거품 물약', 0x4aa8ff], ['보랏빛 물약', 0xb45aff], ['불씨 단지', 0xffc45c]],
   scroll: [['두루마리 「ZAR VOK」', 0xe8d6a8], ['두루마리 「MIRU TEL」', 0xe8c890], ['두루마리 「OSS KANDA」', 0xf0dcb8], ['두루마리 「PHEN NOR」', 0xdcc8a0], ['두루마리 「VEL ORIM」', 0xe0d0b0], ['두루마리 「KAS DUN」', 0xd8c0a0]],
   throw: [['금이 간 병', 0xb89a70], ['묵직한 병', 0x7a8090], ['흔들리는 유리구슬', 0x88c8d0], ['밀랍 봉한 항아리', 0xb07050]],
 };

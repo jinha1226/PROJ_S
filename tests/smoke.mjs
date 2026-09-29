@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = path.join(root, 'test-results');
 fs.mkdirSync(outDir, { recursive: true });
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.png': 'image/png' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png' };
 const server = http.createServer((req, res) => {
   const p = path.join(root, decodeURIComponent(new URL(req.url, 'http://x').pathname));
   if (!p.startsWith(root) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { res.writeHead(404); res.end(); return; }
@@ -41,6 +41,7 @@ try {
     check(`${f} 로드`, errors.length === before, errors.slice(before).join(' | '));
     await p.close();
   }
+  { const p = await openPage('dungeon.html'); check('dungeon.html 주소에서 최신 게임 로드', new URL(p.url()).pathname === '/index.html'); await p.close(); }
 
   const page = await openPage('index.html');
   await page.screenshot({ path: path.join(outDir, '0-title.png') });
@@ -57,6 +58,19 @@ try {
   const d = await page.evaluate(() => ({ mode: window.__game.Game.mode, ents: window.__game.G.ents.length, zone: window.__game.G.zone }));
   check('원정 출발 → 던전', d.mode === 'dungeon' && d.ents > 1, JSON.stringify(d));
   await page.screenshot({ path: path.join(outDir, '2-dungeon.png') });
+  const hud = await page.evaluate(() => {
+    const g = window.__game, { G, UI, Anim } = g, before = G.torch;
+    UI.waitBtn(); let n = 0; while (Anim.active && n++ < 800) Anim.step(1000);
+    const burn = before - G.torch;
+    G.torch = 40; G.lamps.set(G.player.y * G.W + G.player.x, '이솔');
+    const known = (g.META.rememberedKeepers || []).length;
+    UI.syncAll(); UI.ctxBtn();
+    const lamp = G.torch === 80 && !G.lamps.has(G.player.y * G.W + G.player.x) && g.META.rememberedKeepers.length === known + 1;
+    G.torch = before; g.META.hero.torch = before; UI.syncAll();
+    return { burn, lamp, slots: getComputedStyle(document.querySelector('#souls')).gridTemplateColumns.split(' ').length, actions: document.querySelectorAll('#actions button').length };
+  });
+  check('모바일 HUD 3×2 영혼석 · 5개 행동', hud.slots === 3 && hud.actions === 5, JSON.stringify(hud));
+  check('횃불 소모와 등잔 보충', hud.burn === 0.5 && hud.lamp, JSON.stringify(hud));
 
   // 무작위 200턴 (연출은 즉시 소화)
   const play = await page.evaluate(() => {

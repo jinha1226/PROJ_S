@@ -140,7 +140,7 @@ Object.assign(Town, {
       <div class="sec">소모품</div><div class="gtxt">${it}</div>
       <div class="sec">장비 ${META.gear.length} <small>🛡 장비 창에서 가방으로 옮긴다</small></div><div class="gtxt">${ws}</div>
       <div class="sec">구역</div><div class="gtxt">${ZONES.map((z, k) => `${META.cleared[k] ? '✓' : '·'} ${k + 1}. ${z.name} — ${BOSSES[z.boss].name}`).join('<br>')}</div>
-      <div class="sec">기억할 이름들</div><div class="gtxt">${fallen}</div>`);
+      <div class="sec">기억할 이름들</div><div class="gtxt">${(META.rememberedKeepers || []).map((name) => `<div>🕯 ${name} — 등잔의 불씨를 이어받았다</div>`).join('') || '<div>아직 기억해 낸 이름이 없다.</div>'}${fallen}</div>`);
   },
   rest() {
     const h = META.hero, D = View.dio, b = BLD.plaza;

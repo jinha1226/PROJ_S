@@ -10,6 +10,7 @@ import { makeGear, placeChests } from './gear.js';
 import { META, makeNpc } from './meta.js';
 import { placeHidden, stockHidden } from './hidden.js';
 import { G, I, entAt, inb, newSt } from './state.js';
+import { placeLamps } from './torch.js';
 
 export function genFloor() {
   const Z = ZONES[G.zone - 1], boss = G.zf === 3, F = FLOORS[boss && Z.lastTheme != null ? Z.lastTheme : Z.theme], W = G.W, H = G.H, N = W * H;
@@ -141,6 +142,8 @@ export function genFloor() {
     G.mats.set(i, '기록'); break;
   }
   stockHidden();
+  G.intents = { decals: [], tags: {}, casting: [], winding: [] };
+  placeLamps();
   computeFOV();
 }
 

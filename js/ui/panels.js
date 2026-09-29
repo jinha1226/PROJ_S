@@ -56,6 +56,7 @@ Object.assign(UI, {
   },
   /* ---- 정보 카드 ---- */
   showEnemy(e) {
+    this.selectedEnemy = e.id;
     if (e.ally) { this.info(`<h3>👻 영혼 고블린 <small style="color:#9aa2bd">남은 ${e.life}턴</small></h3><div>보이는 적에게 달려가 공격한다. 부딪히면 자리를 바꾼다.</div>`); return; }
     const B = ENEMY[e.type], st = stIcons(e.st), cat = catOf(e), C = CATS[cat], kd = kindOf(e);
     let extra = '';

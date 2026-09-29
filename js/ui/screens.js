@@ -26,11 +26,11 @@ Object.assign(UI, {
     Town.enter({ reason: had ? 'resume' : 'first' });
   },
   toTown() {
-    Game.mode = 'town'; this.exitTarget(); this.hideInfo();
+    Game.mode = 'town'; this.exitTarget(); this.hideInfo(); this.closeHudOverlay(); this.explore = false; this.logLines = [];
     $('#hud').classList.add('hidden'); $('#townhud').classList.remove('hidden'); $('#floorcard').classList.remove('on'); $('#log').innerHTML = '';
     this.layout();
   },
-  toDungeon() { Game.mode = 'dungeon'; $('#sheet').classList.add('hidden'); this.hideInfo(); $('#townhud').classList.add('hidden'); $('#hud').classList.remove('hidden'); this.layout(); },
+  toDungeon() { Game.mode = 'dungeon'; $('#sheet').classList.add('hidden'); this.hideInfo(); this.closeHudOverlay(); this.logLines = []; $('#townhud').classList.add('hidden'); $('#hud').classList.remove('hidden'); this.layout(); },
   gameOver() {
     this.screen(`<h2>쓰러졌다</h2><p>구역 ${G.zone}-${G.zf} — ${G.theme.name}</p>${this.statsHtml()}<p style="color:#ff9aa4;font-size:13px">영혼석과 이번 원정의 전리품을 잃었다. 정착지와 마을 사람들은 남는다.</p><button class="bigbtn" id="btn-again">정착지로 — 새 모험가가 나선다</button>`);
     $('#btn-again').onclick = () => { $('#screen').classList.add('hidden'); returnToTown('death'); };

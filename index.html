@@ -261,6 +261,7 @@ details{margin-top:4px;font-size:13px}details summary{cursor:pointer}details sum
 .slot .minus{position:absolute;left:50%;top:-4px;transform:translateX(-50%);font-size:17px;font-weight:900;text-shadow:0 2px 0 #000,0 0 8px currentColor;animation:mup .9s ease-out forwards;pointer-events:none}
 @keyframes mup{from{opacity:1;transform:translate(-50%,0)}to{opacity:0;transform:translate(-50%,-26px)}}
 </style>
+<link rel="stylesheet" href="./js/ui/hud.css">
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -275,27 +276,29 @@ details{margin-top:4px;font-size:13px}details summary{cursor:pointer}details sum
 <div id="labels"></div>
 <div id="hud">
   <div id="top">
-    <div class="hprow">
-      <div id="hpbar"><div id="hpghost"></div><div id="hpfill"></div><span id="hptext">30 / 30</span></div>
-      <button id="btn-sound" class="round" title="소리">🔊</button>
-      <button id="btn-help" class="round" title="도감">?</button>
+    <div class="hud-topline">
+      <button id="btn-map" aria-label="전체 지도 열기"><canvas id="minimap" width="90" height="90"></canvas></button>
+      <div class="hud-location"><div><b id="floorname">구역 1-1</b> <span id="turns">턴 0</span></div><div id="torch" class="high"><span class="torch-flame">🔥</span><span>횃불 <b id="torchval">100</b></span></div><div><span id="enemycount">👁 0</span> <span id="lootcount"></span></div></div>
+      <div class="hud-toptools"><button id="btn-sound" class="round" title="소리">🔊</button><button id="btn-help" class="round" title="도감">?</button></div>
     </div>
-    <div class="subrow"><span id="floorname">B1</span><span id="turns">턴 0</span><span id="lootcount"></span><span id="pstatus"></span></div>
     <div id="bossbar" class="hidden"><span id="bossname"></span><div class="bb"><i id="bossfill"></i></div></div>
-    <div id="log"></div>
   </div>
+  <button id="log" aria-label="전체 기록 열기"></button>
   <div id="bottom">
     <div id="targetbar"><span id="targettext"></span><button id="btn-cancel">✕ 취소</button></div>
+    <div id="vitals"><div id="hpbar"><div id="hpghost"></div><div id="hpfill"></div><span id="hptext">30 / 30</span></div><button id="pstatus" aria-label="상태 보기"></button></div>
     <div id="souls"></div>
     <div id="actions">
-      <button id="btn-bag">🎒<small>가방</small><b id="bagcount"></b></button>
-      <button id="btn-gear">🛡<small>장비</small><b id="gearcount"></b></button>
-      <button id="btn-wpn">⚔<small>무기</small></button>
-      <button id="btn-wait">⏳<small>대기 · 길게 누르면 휴식</small></button>
+      <button id="btn-attack">⚔<small>공격</small></button>
+      <button id="btn-wait">⏳<small>대기</small></button>
+      <button id="btn-explore">🧭<small>탐험</small></button>
       <button id="btn-ctx" disabled>·<small>—</small></button>
+      <button id="btn-bag">🎒<small>가방</small><b id="bagcount"></b></button>
     </div>
+    <button id="btn-wpn" class="hidden" aria-label="무기 교체"></button><span id="gearcount" class="hidden"></span><button id="btn-gear" class="hidden"></button>
   </div>
 </div>
+<div id="hud-overlay" class="hidden"><button id="hud-overlay-close">닫기 ✕</button><div id="hud-overlay-body"></div></div>
 <div id="townhud" class="hidden">
   <div id="ttop"><div class="hprow"><b id="tname">🏕 정착지</b><span style="flex:1"></span><button id="btn-sound2" class="round">🔊</button><button id="btn-help2" class="round">?</button></div><div id="tinfo"></div></div>
   <div id="tbottom"><div id="tbtns">

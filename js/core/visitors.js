@@ -20,6 +20,7 @@ export function glowParts() {
   if (good) parts.push([`사이좋은 짝 ${good}`, good * GLOW.goodPair]);
   if (bad) parts.push([`사이 나쁜 짝 ${bad}`, bad * GLOW.badPair]);
   const sh = shardCount(); if (sh) parts.push([`넣은 등불 조각 ${sh}`, sh * GLOW.shard]);
+  if (META.rememberedKeepers?.length) parts.push([`기억한 등불지기 ${META.rememberedKeepers.length}명`, META.rememberedKeepers.length]);
   for (const m of META.glowMods || []) parts.push([m.why, m.v]);
   return parts;
 }

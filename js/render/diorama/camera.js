@@ -10,7 +10,7 @@ export class CameraRig {
     this.yaw = 0; this.yawT = 0; this.pitch = this.TOP; this.pitchT = this.TOP;
     this.focus = new THREE.Vector3(); this.focusT = new THREE.Vector3();
     this.shakeAmt = 0; this.shakeOff = new THREE.Vector3(); this.viewShiftY = 0;
-    this.onTap = null; this.onLongPress = null;
+    this.onTap = null; this.onLongPress = null; this.onLongRelease = null;
     this.ptr = new Map(); this.tap = null; this.g = null; this.lp = 0;
     const d = dom;
     d.addEventListener('pointerdown', (e) => this._down(e));
@@ -54,6 +54,7 @@ export class CameraRig {
     if (this.ptr.size < 2) this.g = null;
     if (this.ptr.size === 0) {
       clearTimeout(this.lp); const t = this.tap; this.tap = null;
+      if (t?.long) this.onLongRelease?.();
       if (ok && t && !t.multi && !t.moved && !t.long && !t.rot && performance.now() - t.t < 650) this.onTap?.(t.x, t.y);
     }
   }

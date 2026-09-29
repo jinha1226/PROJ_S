@@ -1,6 +1,7 @@
 import { G, I, XY, entAt, inb, isFoe, opaque } from './state.js';
 import { T_WALL } from '../data/terrain.js';
 import { D8, cheb } from '../util/grid.js';
+import { torchSight } from '../data/torch.js';
 
 export function bfsDist(tile, sx, sy) {
   const d = new Int16Array(G.W * G.H).fill(9999), q = [I(sx, sy)]; d[q[0]] = 0;
@@ -31,7 +32,7 @@ export const FOV_R = 7;
 
 export function computeFOV() {
   const p = G.player; G.vis.fill(0);
-  const R = FOV_R + (G.ps ? G.ps.vision : 0) + (G.glowVision || 0);
+  const R = torchSight(G.torch ?? 100, FOV_R + (G.ps ? G.ps.vision : 0) + (G.glowVision || 0));
   for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
     if (dx * dx + dy * dy > R * R + R) continue;
     const x = p.x + dx, y = p.y + dy; if (!inb(x, y)) continue;
@@ -40,7 +41,7 @@ export function computeFOV() {
 }
 
 export function canSee(e, t) {
-  const d = cheb(e.x, e.y, t.x, t.y); if (d > 8) return false;
+  const d = cheb(e.x, e.y, t.x, t.y); if (d > (t === G.player && G.torch === 0 ? 10 : 8)) return false;
   if (d > 1 && (G.cloud[I(t.x, t.y)] || G.cloud[I(e.x, e.y)])) return false;
   return los(e.x, e.y, t.x, t.y);
 }

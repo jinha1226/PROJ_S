@@ -7,6 +7,7 @@ import { MATS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrain.js';
 import { FORMS } from '../data/weapons.js';
+import { torchTier } from '../data/torch.js';
 import { D8 } from '../util/grid.js';
 import { W3, _tv, _w } from './common.js';
 import * as K from './diorama.js';
@@ -17,6 +18,8 @@ import { Sfx } from './sfx.js';
 
 export const View = {
   gems: new Map(),
+  lamps: new Map(),
+  heroFlame: null,
 
   matMeshes: new Map(),
   portal: null,
@@ -39,6 +42,7 @@ export const View = {
     dio.lightTarget = this.lightPos;
     dio.rig.onTap = (x, y) => ports.UI.onTap(x, y);
     dio.rig.onLongPress = (x, y) => ports.UI.onLongPress(x, y);
+    dio.rig.onLongRelease = () => ports.UI.hideInfo();
     dio.onFrame = (sdt) => (Game.mode === 'town' ? ports.Town.frame(sdt) : this.frame(sdt));
   },
   clear() {
@@ -48,6 +52,8 @@ export const View = {
     for (const m of this.itemMeshes.values()) this.dio.scene.remove(m.root); this.itemMeshes.clear();
     if (this.stairs) this.dio.scene.remove(this.stairs); this.stairs = null;
     for (const g of this.gems.values()) this.dio.scene.remove(g); this.gems.clear();
+    for (const g of this.lamps.values()) this.dio.scene.remove(g); this.lamps.clear();
+    if (this.heroFlame) { this.dio.scene.remove(this.heroFlame); this.heroFlame = null; }
     this.clearGear();
     for (const m of this.matMeshes.values()) this.dio.scene.remove(m); this.matMeshes.clear();
     if (this.portal) { this.dio.scene.remove(this.portal); this.portal = null; }
@@ -68,6 +74,9 @@ export const View = {
     this.applyVis(G.vis, G.seen);
     this.syncItems(itemSnap());
     this.syncGems([...G.stones.entries()]); this.syncGear([...G.gear.entries()]); this.syncChests();
+    this.syncLamps();
+    this.heroFlame = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.28, 7), new THREE.MeshBasicMaterial({ color: 0xffd06b, transparent: true }));
+    this.dio.scene.add(this.heroFlame);
     this.setWeapon(weaponId(G.eq.weapon)); this.shield = G.player.shield || 0;
     this.intents = { decals: [], tags: {}, casting: [], winding: [] };
     const p = G.player; this.lightPos.set(p.x, 0, p.y); this.dio.lightTarget = this.lightPos;
@@ -159,9 +168,26 @@ export const View = {
         list.push({ x, y, kind: 1, color: foe ? HEX.danger : G.tile[i] === T_DOOR ? 0xffd27a : 0xffffff, alpha: foe ? 0.95 : 0.5 });
       }
     }
+    const hi = G.ents.find((e) => e.id === ports.UI.highlightEnemy && e.alive);
+    if (hi) {
+      list.push({ x: hi.x, y: hi.y, kind: 4, color: 0xffdf79, alpha: 1, blink: 0.5 });
+      for (const q of this.intents.decals) if (q.kind !== 1) list.push({ ...q, alpha: 1 });
+    }
     list.push({ x: p.x, y: p.y, kind: 4, color: 0xffc070, alpha: 0.65 });
     if (G.seen[G.stairs] && G.tile[G.stairs] === T_STAIRS) list.push({ x: G.stairs % G.W, y: (G.stairs / G.W) | 0, kind: 4, color: 0x7fb8ff, alpha: 0.9, blink: 0.6, scale: 1.15 });
     this.grid.setDecals(list);
+  },
+  syncLamps() {
+    for (const [i, g] of this.lamps) if (!G.lamps?.has(i)) { this.dio.scene.remove(g); this.lamps.delete(i); }
+    for (const [i] of G.lamps || []) if (!this.lamps.has(i)) {
+      const g = new THREE.Group(), x = i % G.W, y = (i / G.W) | 0;
+      g.position.set(x, 0, y);
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(.045, .06, .38, 6), new THREE.MeshStandardMaterial({ color: 0x6e5435 }));
+      stem.position.y = .2;
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(.1, .22, 7), new THREE.MeshBasicMaterial({ color: 0xffd878 }));
+      flame.position.y = .49; g.add(stem, flame); g.userData.flame = flame;
+      this.dio.scene.add(g); this.lamps.set(i, g);
+    }
   },
   frame(sdt) {
     ports.Anim.step(sdt * 1000);
@@ -174,6 +200,16 @@ export const View = {
     }
     const pev = this.evs.get(0);
     if (pev) { D.rig.focusT.set(pev.cur.x, 0, pev.cur.z); this.lightPos.copy(pev.d.root.position); }
+    const tier = torchTier(G.torch ?? 100), scale = { high: 1, mid: .7, low: .38, out: .08 }[tier];
+    if (this.heroFlame && pev) {
+      this.heroFlame.position.set(pev.cur.x + .25, 1.05 + Math.sin(time * 14) * .015, pev.cur.z + .1);
+      this.heroFlame.scale.set(scale * (1 + Math.sin(time * 17) * .13), scale, scale);
+      this.heroFlame.material.color.setHex(tier === 'out' ? 0x7a3322 : tier === 'low' ? 0xff7a39 : 0xffd06b);
+    }
+    D.lights.torch.distance = tier === 'out' ? 1.8 : tier === 'low' ? 4 : tier === 'mid' ? 6 : 10;
+    D.lights.base = tier === 'out' ? 1.5 : tier === 'low' ? 13 : tier === 'mid' ? 26 : 42;
+    this.syncLamps();
+    for (const [i, g] of this.lamps) { g.visible = !!G.seen[i]; g.userData.flame.scale.y = .85 + Math.sin(time * 9 + i) * .16; }
     for (const [, d] of this.itemMeshes) { if (!d.root.visible) continue; d.root.position.y = 0.05 + Math.abs(Math.sin(time * 2.4 + d.root.userData.ph)) * 0.09; d.root.rotation.y = time * 0.9 + d.root.userData.ph; }
     for (const [, d] of this.doors) { const tgt = d.open ? -1.5 : 0; d.a += (tgt - d.a) * Math.min(1, sdt * 12); d.hinge.rotation.y = d.a; }
     if (this.stairs) this.stairs.userData.glow.material.opacity = 0.55 + Math.sin(time * 2.5) * 0.25;

@@ -5,6 +5,7 @@ import { META, saveMeta } from './core/meta.js';
 import { endTurn } from './core/run.js';
 import { G, Game, I, TL, newSt } from './core/state.js';
 import { hearthGlow } from './core/visitors.js';
+import { startTorch } from './core/torch.js';
 import { SLOTS } from './data/gear.js';
 import { T_STAIRS } from './data/terrain.js';
 import { GLOW } from './data/visitors.js';
@@ -79,6 +80,7 @@ export function enterDungeon(zone) {
   G.loot = { mats: {}, npcs: [] };
   G.zoneFlags = { npc: false, recall: false }; G.perk = h.perk || null; G.sbagMax = h.sbagMax || 3; G.recallArm = false;
   const glow = hearthGlow(); G.glowVision = glow >= GLOW.vision ? 1 : 0;
+  startTorch();
   if (glow >= GLOW.shield) G.player.shield += 4;
   genFloor();
   UI.toDungeon(); View.buildFloor(); UI.exitTarget(); UI.floorCard(); UI.syncAll();

@@ -1,13 +1,15 @@
-import { closeDoor } from '../core/combat.js';
+import { closeDoor, playerMove } from '../core/combat.js';
 import { gearName, pickGear, swapHands } from '../core/gear.js';
 import { G, I, entAt } from '../core/state.js';
 import { stoneCd } from '../core/stones.js';
 import { BOSSES } from '../data/enemies.js';
 import { RARITY, isWeapon, weaponOf } from '../data/gear.js';
 import { COLORS, STONE } from '../data/stones.js';
-import { T_OPEN, ZONES } from '../data/terrain.js';
+import { T_OPEN, T_STAIRS, ZONES } from '../data/terrain.js';
 import { FORMS } from '../data/weapons.js';
 import { Anim, act, descend } from '../flow.js';
+import { useLamp } from '../core/torch.js';
+import { torchTier } from '../data/torch.js';
 import { Sfx } from '../render/sfx.js';
 import { $, UI } from './ui.js';
 
@@ -72,7 +74,7 @@ Object.assign(UI, {
   pstatus(st) {
     this.lastSt = st;
     const L = [['wet', '💧', '젖음'], ['frozen', '🧊', '빙결'], ['burn', '🔥', '화상'], ['poison', '☠', '중독'], ['stun', '💫', '기절'], ['haste', '💨', '가속'], ['immune', '🛡', '해독']];
-    $('#pstatus').innerHTML = (this.shieldV > 0 ? `<span class="pill" style="border-color:#9fd8ff">🛡 보호막 ${this.shieldV}</span> ` : '') + L.filter(([k]) => st[k] > 0).map(([k, ic, nm]) => `<span class="pill">${ic} ${nm} ${st[k]}</span>`).join(' ');
+    $('#pstatus').innerHTML = (this.shieldV > 0 ? `<span class="pill" style="border-color:#9fd8ff">🛡${this.shieldV}</span> ` : '') + L.filter(([k]) => st[k] > 0).map(([k, ic]) => `<span class="pill">${ic}${st[k]}</span>`).join(' ');
   },
   hud(d) {
     this.lastHud = d; this.shieldV = d.shield;
@@ -80,11 +82,20 @@ Object.assign(UI, {
     $('#turns').textContent = `턴 ${d.turn}`;
     $('#floorname').textContent = `구역 ${G.zone}-${G.zf} ${G.theme.name}`;
     $('#lootcount').textContent = G.loot ? `🎒 ${Object.values(G.loot.mats).reduce((a, b) => a + b, 0)}` : '';
+    $('#torchval').textContent = Number.isInteger(d.torch) ? d.torch : d.torch.toFixed(1);
+    $('#torch').className = torchTier(d.torch);
+    $('#enemycount').textContent = `👁 ${d.enemyCount}`; $('#enemycount').classList.toggle('zero', d.enemyCount === 0);
+    $('#btn-explore').disabled = d.enemyCount > 0;
+    $('#hud').classList.toggle('danger', !!d.danger);
+    this.drawMap($('#minimap'));
     this.bossBar(d.boss);
     $('#bagcount').textContent = d.inv ? d.inv : '';
     const c = $('#btn-ctx');
     if (d.stairs) { c.disabled = false; c.classList.add('live'); c.innerHTML = '⬇<small>내려가기</small>'; c.dataset.act = 'stairs'; }
+    else if (d.lamp) { c.disabled = false; c.classList.add('live'); c.innerHTML = '🕯<small>불씨 옮기기</small>'; c.dataset.act = 'lamp'; }
     else if (d.gear) { c.disabled = false; c.classList.add('live'); c.innerHTML = `✋<small style="color:${RARITY[d.gear.rarity].css}">${d.gear.name} 줍기</small>`; c.dataset.act = 'gear'; }
+    else if (d.rescue) { c.disabled = false; c.classList.add('live'); c.innerHTML = '🤝<small>구하기</small>'; c.dataset.act = 'rescue'; c.dataset.x = d.rescue[0]; c.dataset.y = d.rescue[1]; }
+    else if (d.closedDoor) { c.disabled = false; c.classList.add('live'); c.innerHTML = '🚪<small>문 열기</small>'; c.dataset.act = 'open'; c.dataset.x = d.closedDoor[0]; c.dataset.y = d.closedDoor[1]; }
     else if (d.door) { c.disabled = false; c.classList.remove('live'); c.innerHTML = '🚪<small>문 닫기</small>'; c.dataset.act = 'door'; c.dataset.x = d.door[0]; c.dataset.y = d.door[1]; }
     else { c.disabled = true; c.classList.remove('live'); c.innerHTML = '·<small>—</small>'; c.dataset.act = ''; }
   },
@@ -92,12 +103,15 @@ Object.assign(UI, {
     if (Anim.active || G.over) return;
     const c = $('#btn-ctx');
     if (c.dataset.act === 'stairs') descend();
+    else if (c.dataset.act === 'lamp') this.instant(() => { useLamp(); this.drawMap($('#minimap')); });
     else if (c.dataset.act === 'gear') { this.instant(() => pickGear()); this.renderWeapon(); }
+    else if (c.dataset.act === 'open' || c.dataset.act === 'rescue') { const x = +c.dataset.x, y = +c.dataset.y; act(() => playerMove(x - G.player.x, y - G.player.y)); }
     else if (c.dataset.act === 'door') { const x = +c.dataset.x, y = +c.dataset.y; if (G.tile[I(x, y)] === T_OPEN && !entAt(x, y)) act(() => closeDoor(x, y)); }
   },
   log(t, cls) {
+    this.logLines.push({ t, cls }); if (this.logLines.length > 120) this.logLines.shift();
     const el = $('#log'); const div = document.createElement('div'); div.textContent = t; if (cls) div.className = cls;
-    el.appendChild(div); while (el.children.length > 3) el.firstChild.remove();
+    el.appendChild(div); while (el.children.length > 4) el.firstChild.remove();
     [...el.children].forEach((c, k, a) => c.classList.toggle('old', k < a.length - 1));
     setTimeout(() => { div.style.opacity = '0'; setTimeout(() => div.remove(), 700); }, 6000);
   },
@@ -115,5 +129,37 @@ Object.assign(UI, {
   bossBar(b) {
     const el = $('#bossbar'); if (!b) { el.classList.add('hidden'); return; }
     el.classList.remove('hidden'); $('#bossname').textContent = '👑 ' + b.name; $('#bossfill').style.width = Math.max(0, b.hp / b.max * 100) + '%';
+  },
+  drawMap(canvas) {
+    if (!G.seen || !canvas) return;
+    const ctx = canvas.getContext('2d'), w = G.W, h = G.H;
+    canvas.width = w * 3; canvas.height = h * 3;
+    ctx.fillStyle = '#090d19'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < G.seen.length; i++) {
+      if (!G.seen[i]) continue;
+      const x = i % w * 3, y = ((i / w) | 0) * 3;
+      ctx.fillStyle = G.tile[i] === 0 ? '#555766' : G.vis[i] ? '#a7a58a' : '#5c6071';
+      if (G.tile[i] === T_STAIRS) ctx.fillStyle = '#a5caff';
+      if (G.lamps?.has(i)) ctx.fillStyle = '#ffd578';
+      ctx.fillRect(x, y, 3, 3);
+    }
+    for (const e of G.ents) if (e.alive && !e.ally && G.vis[I(e.x, e.y)]) { ctx.fillStyle = '#ff5b62'; ctx.fillRect(e.x * 3, e.y * 3, 3, 3); }
+    ctx.fillStyle = '#fff5a0'; ctx.fillRect(G.player.x * 3 - 1, G.player.y * 3 - 1, 5, 5);
+  },
+  openHudOverlay(html) { $('#hud-overlay-body').innerHTML = html; $('#hud-overlay').classList.remove('hidden'); },
+  closeHudOverlay() { $('#hud-overlay').classList.add('hidden'); $('#hud-overlay-body').innerHTML = ''; },
+  openMap() {
+    this.openHudOverlay('<h2>전체 지도</h2><canvas id="fullmap"></canvas><p>노랑: 나 · 빨강: 적 · 금빛: 등잔 · 파랑: 계단</p>');
+    this.drawMap($('#fullmap'));
+  },
+  openLog() {
+    this.openHudOverlay('<h2>기록</h2>' + this.logLines.map((q) => `<div class="entry ${q.cls || ''}"></div>`).join(''));
+    [...$('#hud-overlay-body').querySelectorAll('.entry')].forEach((el, i) => { el.textContent = this.logLines[i].t; });
+    $('#hud-overlay').scrollTop = $('#hud-overlay').scrollHeight;
+  },
+  openStatus() {
+    const s = this.lastSt || {}, names = { wet: '젖음', frozen: '빙결', burn: '화상', poison: '중독', stun: '기절', haste: '가속', immune: '해독', bleed: '출혈', frac: '골절', vital: '급소 노출' };
+    const rows = Object.entries(names).filter(([k]) => s[k] > 0).map(([k, name]) => `<div class="entry">${name} · ${s[k]}턴</div>`).join('');
+    this.openHudOverlay(`<h2>상태</h2><div class="entry">HP ${G.player.hp}/${G.player.max} · 보호막 ${G.player.shield || 0}</div>${rows || '<p>상태 이상 없음</p>'}`);
   },
 });
