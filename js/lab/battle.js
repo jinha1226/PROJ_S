@@ -11,6 +11,10 @@ const BOSS = { id: 'boss', name: '잊힌 파수병', role: 'boss', hp: 120, max:
 const DATA = { bolt: { name: '번개', cd: 4 }, water: { name: '물벼락', cd: 4 }, counter: { name: '반격 자세', cd: 5 } };
 export const MODES = { A: '턴제', B: '격자 실시간', C: '완전 실시간' };
 const now = () => performance.now();
+/** C: 걷는 속도(칸/초)와 한 번 행동하는 간격(초). 걷기는 매 프레임, 판단·공격만 간격마다 */
+const SPEED = { boss: 1.5, add: 1.9, hero: 3.8 };
+const PERIOD = { boss: 1.2, add: 0.75 };
+const period = (u) => PERIOD[u.role] || 0.6;
 /** 턴제에서 한 방이 보이고 나서 다음 유닛이 움직이기까지(ms). 근접은 휘두름, 원거리는 날아가는 시간까지 */
 const PACE = { slash: 300, blunt: 320, arrow: 380, orb: 360, water: 420, bolt: 460, counter: 420, cleave: 650, scatter: 650 };
 
@@ -22,7 +26,7 @@ export class Battle {
     this.command = 'focus'; this.target = 'boss'; this.skill = null;
     this.round = 0; this.elapsed = 0; this.speed = 1; this.paused = mode !== 'A'; this.autoPause = true;
     this.tele = null; this.bossActs = 0; this.summoned = false; this.wet = new Set(); this.guard = 0;
-    this.cooldowns = { bolt: 0, water: 0, counter: 0 }; this.timers = Object.fromEntries(this.units.map((u) => [u.id, 0]));
+    this.cooldowns = { bolt: 0, water: 0, counter: 0 }; this.timers = Object.fromEntries(this.units.map((u) => [u.id, mode === 'C' ? Math.random() * period(u) : 0])); // C는 모두 한 박자에 치지 않게 흩어 둔다
     this.events = ['잊힌 파수병이 길을 막았다.']; this.finished = null; this.busy = false; this.cancelled = false;
     this.metrics = { inputs: 0, pauses: 0, pausedSeconds: 0, waitingSeconds: 0, dodged: 0, hit: 0, fallen: 0, started: now() };
     this._lastDanger = false; this.onFx = null; this.pace = 0;
@@ -87,7 +91,7 @@ export class Battle {
   heroAct(action = { type: 'auto' }) {
     const h = this.hero; if (h.hp <= 0) return;
     if (action.type === 'wait') { this.log('등불지기가 숨을 고른다.'); return; }
-    if (action.type === 'auto') action = { type: 'attack', target: this.target };
+    if (action.type === 'auto') action = { type: 'attack', target: this.target, auto: true };
     if (action.type === 'skill') {
       const target = this.foes.find((u) => distance(u, action.point) < 1.1) || this.boss;
       if (this.cooldowns[action.key]) return;
@@ -99,10 +103,11 @@ export class Battle {
     if (action.type === 'move') { this.moveTo(h, action.point); return; }
     const target = this.foes.find((u) => u.id === action.target) || this.boss;
     if (distance(h, target) <= 1.6) this.damage(target, 5, '장검', { from: h, kind: 'slash' });
-    else this.moveTo(h, target);
+    else if (this.mode !== 'C' || !action.auto || this.command === 'auto') this.moveTo(h, target, false, 1.3); // C는 적을 탭했거나 자동일 때만 쫓아간다(피한 뒤 저절로 돌아가지 않게)
   }
-  moveTo(unit, point, away = false) {
-    if (this.mode === 'C') { labStepToward(unit, point, this.living, true, away); return; }
+  /** A·B는 한 칸 옮기고, C는 목표만 정해 두고 tick이 매 프레임 걸어간다. stop: 목표에서 멈출 거리 */
+  moveTo(unit, point, away = false, stop = point.hp !== undefined ? 1.3 : 0.1) {
+    if (this.mode === 'C') { unit.goal = { to: point, away, stop, left: away ? 0.7 : 4 }; return; }
     labStepToward(unit, point, this.living, false, away);
     this.changed();
   }
@@ -121,7 +126,7 @@ export class Battle {
     this.summoned = true;
     for (const [i, x] of [1, 14].entries()) {
       const u = { id: `add${i}`, name: '해골 궁수', role: 'add', hp: 14, max: 14, x, y: 8, color: '#b5b9c6' };
-      this.units.push(u); this.timers[u.id] = 0;
+      this.units.push(u); this.timers[u.id] = this.mode === 'C' ? Math.random() * period(u) : 0;
     }
     this.fx('summon', { units: this.units.filter((u) => u.role === 'add') }, 500);
     this.log('벽 틈에서 해골 궁수 둘이 나온다.');
@@ -133,7 +138,7 @@ export class Battle {
       const near = this.party.filter((p) => p !== u && p.hp > 0).sort((a, b) => distance(a, u) - distance(b, u))[0];
       if (near && distance(near, u) < 2.2) { this.moveTo(u, near, true); return; }
     }
-    if (this.command === 'gather' && distance(u, this.hero) > 2.3) { this.moveTo(u, this.hero); return; }
+    if (this.command === 'gather' && distance(u, this.hero) > 2.3) { this.moveTo(u, this.hero, false, 2); return; }
     if (this.command === 'retreat' && u.x > 3) { this.moveTo(u, { x: 2, y: u.y }); return; }
     if (u.role === 'healer') {
       const patient = this.party.filter((p) => p.hp > 0).sort((a, b) => a.hp / a.max - b.hp / b.max)[0];
@@ -145,13 +150,13 @@ export class Battle {
     if (distance(u, target) <= range) {
       const amount = u.role === 'sword' ? 5 : u.role === 'archer' ? 4 : u.role === 'guard' ? 3 : 2;
       this.damage(target, amount, u.name, { from: u, kind: ({ sword: 'slash', archer: 'arrow', guard: 'blunt', healer: 'orb' })[u.role] });
-    } else this.moveTo(u, target);
+    } else this.moveTo(u, target, false, range - 0.3);
   }
   addAct(u) {
     const targets = this.party.filter((p) => p.hp > 0);
     if (!targets.length) return;
     const t = targets.sort((a, b) => distance(a, u) - distance(b, u))[0];
-    if (distance(u, t) <= 7) this.damage(t, 3, '해골 궁수', { from: u, kind: 'arrow' }); else this.moveTo(u, t);
+    if (distance(u, t) <= 7) this.damage(t, 3, '해골 궁수', { from: u, kind: 'arrow' }); else this.moveTo(u, t, false, 6.5);
   }
   bossAct() {
     if (this.boss.hp <= 0) return;
@@ -161,7 +166,8 @@ export class Battle {
     if (!live.length) return;
     const target = this.taunt > 0 && this.party[1].hp > 0 ? this.party[1] : live.sort((a, b) => distance(a, this.boss) - distance(b, this.boss))[0];
     this.taunt = Math.max(0, (this.taunt || 0) - 1);
-    if (distance(this.boss, target) > 3.2) { this.moveTo(this.boss, target); return; }
+    if (distance(this.boss, target) > 3.2) { this.moveTo(this.boss, target, false, 2.9); return; }
+    this.boss.goal = null; // 기믹을 예고하면 제자리에서 힘을 모은다
     const type = this.bossActs % 3 === 0 ? 'scatter' : 'cleave';
     this.tele = { type, target: target.id, aim: { x: target.x, y: target.y }, at: this.party.filter((u) => u.hp > 0).map((u) => ({ id: u.id, x: u.x, y: u.y })), remaining: type === 'scatter' ? 2 : 1.5 };
     this.fx('tele', { type, target }, 360);
@@ -200,12 +206,13 @@ export class Battle {
     if (this.elapsed >= 90) { this.end('격노'); return; }
     for (const k of Object.keys(this.cooldowns)) this.cooldowns[k] = Math.max(0, this.cooldowns[k] - delta);
     if (this.tele) { this.tele.remaining -= delta; if (this.tele.remaining <= 0) this.resolveTele(); }
+    if (this.mode === 'C') this.walk(delta);
     for (const u of this.units) {
       if (u.hp <= 0 || this.finished) continue;
-      const period = u.role === 'boss' ? 1.2 : u.role === 'add' ? 0.75 : 0.6;
+      const p = period(u);
       this.timers[u.id] += delta;
-      if (this.timers[u.id] < period) continue;
-      this.timers[u.id] -= period;
+      if (this.timers[u.id] < p) continue;
+      this.timers[u.id] -= this.mode === 'C' ? p * (0.85 + Math.random() * 0.3) : p;
       if (u.role === 'hero') {
         if (this.order?.type === 'move') this.moveTo(u, this.order.point);
         else if (this.order?.type === 'skill') { this.heroAct(this.order); this.order = null; }
@@ -216,8 +223,20 @@ export class Battle {
     }
     this.checkEnd();
   }
+  /** C: 목표가 있는 유닛은 매 프레임 조금씩 걷는다(벽·몸은 sweep이 막는다) */
+  walk(dt) {
+    for (const u of this.living) {
+      const g = u.goal; if (!g) continue;
+      g.left -= dt;
+      const d = distance(u, g.to);
+      if (g.left <= 0 || (g.to.hp !== undefined && g.to.hp <= 0) || (!g.away && d <= g.stop)) { u.goal = null; continue; }
+      const step = Math.min((SPEED[u.role] || 2.6) * dt, g.away ? Infinity : d - g.stop), k = (g.away ? -step : step) / (d || 1);
+      Object.assign(u, sweep(u, (g.to.x - u.x) * k, (g.to.y - u.y) * k, this.living));
+    }
+  }
   continuousMove(dx, dy, dt) {
     if (this.mode !== 'C' || this.paused || this.finished || this.hero.hp <= 0) return;
+    this.hero.goal = null; if (this.order?.type === 'move') this.order = null; // 조이스틱이 탭 이동보다 먼저
     Object.assign(this.hero, sweep(this.hero, dx * dt * 3.8, dy * dt * 3.8, this.living));
   }
   checkEnd() {

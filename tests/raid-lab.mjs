@@ -38,6 +38,13 @@ try {
   await page.waitForTimeout(350);
   await page.mouse.up();
   check('C 조이스틱으로 연속 이동', await page.evaluate(() => window.__raidLab.battle.hero.x) > before);
+  // C는 동료도 매 프레임 조금씩 걷는다(0.6초마다 뚝 옮기지 않는다)
+  const walk = await page.evaluate(() => new Promise((done) => {
+    const b = window.__raidLab.battle, u = b.party[2]; let last = u.x, moved = 0, jump = 0, n = 0;
+    const f = () => { const d = Math.abs(u.x - last); if (d > 0.001) moved++; jump = Math.max(jump, d); last = u.x; if (++n < 40) requestAnimationFrame(f); else done({ moved, jump }); };
+    requestAnimationFrame(f);
+  }));
+  check('C 동료가 끊기지 않고 걷는다', walk.moved >= 12 && walk.jump < 0.25);
   await page.evaluate(() => { const b = window.__raidLab.battle; b.damage(b.boss, 120, '검증'); });
   await page.waitForSelector('#save');
   await page.locator('#fun').selectOption('4');
