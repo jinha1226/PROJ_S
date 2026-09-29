@@ -113,27 +113,27 @@ export class GridView {
     base.position.set(w / 2 - 0.5, -0.34, h / 2 - 0.5); this.group.add(base);
 
     const nF = this.floorIdx.length, nW = this.wallIdx.length;
-    this.floorMesh = new THREE.InstancedMesh(tileGeo(0.955, 0.3, 0.955, 1.0, 0.6), toon({ vertexColors: true, gloss: 0.16 }), nF);
+    this.floorMesh = new THREE.InstancedMesh(tileGeo(0.955, 0.3, 0.955, 1.0, 0.6), toon({ vertexColors: true, desat: 0.25 }), nF);
     this.floorMesh.receiveShadow = true;
     this.floorBase = this.floorIdx.map((i) => { const x = i % w, y = (i / w) | 0; return this.cFloor.clone().lerp(this.cFloor2, ((x + y) & 1) ? 0.85 : 0.1 + hash(i) * 0.3).multiplyScalar(0.93 + hash(i + 7) * 0.12); });
 
     const wg = tileGeo(1.0, wallH, 1.0, 1.0, 0.72);
     this.wallFade = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, nW)), 1);
     wg.setAttribute('aFade', this.wallFade);
-    this.wallMesh = new THREE.InstancedMesh(wg, toon({ vertexColors: true, gloss: 0.22, fade: true }), nW);
+    this.wallMesh = new THREE.InstancedMesh(wg, toon({ vertexColors: true, fade: true, desat: 0.25 }), nW);
     this.wallMesh.castShadow = true; this.wallMesh.receiveShadow = true;
     const wog = outlineGeo(wg); wog.setAttribute('aFade', this.wallFade);
-    this.wallOL = new THREE.InstancedMesh(wog, outlineMaterial({ width: 0.035, fade: true }), nW);
+    this.wallOL = new THREE.InstancedMesh(wog, outlineMaterial({ width: 0.05, fade: true }), nW);
     this.wallBase = this.wallIdx.map((i) => this.cWall.clone().lerp(this.cWall2, hash(i * 3.1)).multiplyScalar(0.9 + hash(i + 3) * 0.15));
 
     this.water = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), liquidMaterial('water'), nF);
     this.oil = new THREE.InstancedMesh(roundedRectGeo(0.97, 0.24), liquidMaterial('oil'), nF);
-    this.ice = new THREE.InstancedMesh(tileGeo(0.99, 0.12, 0.99, 1, 0.78), toon({ color: 0xd4f3ff, vertexColors: true, gloss: 1.3, emissive: 0x0d2a3d }), nF);
+    this.ice = new THREE.InstancedMesh(tileGeo(0.99, 0.12, 0.99, 1, 0.78), toon({ color: 0xd4f3ff, vertexColors: true, gloss: 1.3, emissive: 0x0d2a3d, desat: 0 }), nF);
     this.ice.receiveShadow = true;
     const blade = new THREE.ConeGeometry(0.055, 0.44, 3).translate(0, 0.22, 0);
     { const pa = blade.getAttribute('position'), col = new Float32Array(pa.count * 3); for (let i = 0; i < pa.count; i++) { const t = pa.getY(i) / 0.44; const v = 0.45 + t * 0.75; col[i * 3] = v * 0.75; col[i * 3 + 1] = v; col[i * 3 + 2] = v * 0.55; } blade.setAttribute('color', new THREE.BufferAttribute(col, 3)); }
     this.BLADES = 10;
-    this.grass = new THREE.InstancedMesh(blade, toon({ color: 0x6cc24a, vertexColors: true, gloss: 0.2, sway: true }), nF * this.BLADES);
+    this.grass = new THREE.InstancedMesh(blade, toon({ color: 0x5a7048, vertexColors: true, sway: true, desat: 0.35 }), nF * this.BLADES);
 
     const flame = (r, hh) => new THREE.ConeGeometry(r, hh, 7).translate(0, hh / 2, 0);
     this.flameO = new THREE.InstancedMesh(flame(0.22, 0.62), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.0, 0.42, 0.06), toneMapped: false }), 240);

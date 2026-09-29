@@ -10,7 +10,7 @@ export class EntView {
   constructor(e) {
     this.id = e.id; this.type = e.type;
     const sp = dollSpec(e);
-    this.d = K.doll(sp.parts, { scale: sp.scale * 1.3, gloss: sp.gloss ?? 0.75 });
+    this.d = K.doll(sp.parts, { scale: sp.scale * 1.3, gloss: sp.gloss ?? 0, rim: sp.rim ?? 0.8, desat: sp.desat ?? 0.25 });
     this.h = sp.h * sp.scale * 1.3; this.col = sp.col;
     this.extra = sp.extra ? sp.extra(this.d) : {};
     View.dio.scene.add(this.d.root);
@@ -33,7 +33,7 @@ export class EntView {
   redress(e) {
     const old = this.d, sp = dollSpec(e);
     View.dio.scene.remove(old.root); old.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
-    this.d = K.doll(sp.parts, { scale: sp.scale * 1.3, gloss: sp.gloss ?? 0.75 }); this.h = sp.h * sp.scale * 1.3; this.col = sp.col;
+    this.d = K.doll(sp.parts, { scale: sp.scale * 1.3, gloss: sp.gloss ?? 0, rim: sp.rim ?? 0.8, desat: sp.desat ?? 0.25 }); this.h = sp.h * sp.scale * 1.3; this.col = sp.col;
     this.extra = sp.extra ? sp.extra(this.d) : {}; this.baseEm = sp.glow || null;
     this.ice = this.stars = this.vmark = this.bubble = null;
     View.dio.scene.add(this.d.root); this.d.root.position.copy(this.cur); this.d.root.rotation.y = this.yaw; this.sqv -= 7;
@@ -52,9 +52,10 @@ export class EntView {
       this.cur.lerpVectors(this.from, this.to, this.mk === 'step' ? easeInOut(this.t) : easeOut(this.t));
       if (this.t >= 1 && this.hop > 0.08) this.sqv -= 3.2;
     }
-    const hopY = this.t < 1 ? Math.sin(Math.PI * this.t) * this.hop : 0;
+    const hopY = this.t < 1 ? Math.sin(Math.PI * this.t) * this.hop * 0.4 : 0;
     let lx = 0, lz = 0;
-    if (this.lt < 1) { this.lt = Math.min(1, this.lt + dt / 0.17); const s = Math.sin(Math.PI * this.lt); lx = this.ld[0] * s * this.la; lz = this.ld[1] * s * this.la; }
+    // 공격: 짧은 예비 동작(뒤로) → 묵직한 휘두름(앞으로)
+    if (this.lt < 1) { this.lt = Math.min(1, this.lt + dt / 0.26); const k = this.lt, s = k < 0.35 ? -0.3 * Math.sin(Math.PI * k / 0.35) : Math.sin(Math.PI * (k - 0.35) / 0.65); lx = this.ld[0] * s * this.la; lz = this.ld[1] * s * this.la; }
     const a = -420 * this.sq - 17 * this.sqv; this.sqv += a * dt; this.sq += this.sqv * dt;
     this.jolt.multiplyScalar(Math.exp(-dt * 11));
     let dy = this.yawT - this.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2; this.yaw += dy * Math.min(1, dt * 16);
@@ -64,8 +65,8 @@ export class EntView {
     if (this.winding && !frozen) wx = Math.sin(time * 40) * 0.035;
     r.position.set(this.cur.x + this.jolt.x + lx + wx, sy + hopY + this.jolt.y, this.cur.z + this.jolt.z + lz);
     r.rotation.y = this.yaw;
-    const sq = frozen ? 0 : this.sq;
-    this.d.pivot.scale.set(1 - sq * 0.5, 1 + sq, 1 - sq * 0.5);
+    const sq = frozen || this.dead ? 0 : this.sq * 0.35; // 통통 튀는 탄성을 줄여 무게감을
+    if (!this.dead) this.d.pivot.scale.set(1 - sq * 0.5, 1 + sq, 1 - sq * 0.5);
     this.d.pivot.position.y = frozen || this.dead ? 0 : Math.abs(Math.sin(time * 3.2 + this.phase)) * 0.02;
     if (this.id !== 0) { const k = Math.min(1, dt * 8), fr = this.st.frac > 0 && !this.dead; this.d.pivot.rotation.z += ((fr ? 0.32 : 0) - this.d.pivot.rotation.z) * k; this.d.pivot.rotation.x += ((fr ? 0.14 : 0) - this.d.pivot.rotation.x) * k; }
     this.flash = Math.max(0, this.flash - dt * 7);
@@ -73,12 +74,19 @@ export class EntView {
     if (frozen) em.setRGB(0.1, 0.24, 0.36);
     else if (this.st.burn > 0) em.setRGB(0.28 + 0.14 * Math.sin(time * 14), 0.08, 0);
     else if (this.st.poison > 0) em.setRGB(0.03, 0.13 + 0.06 * Math.sin(time * 6), 0.02);
-    if (this.flash > 0) em.addScalar(this.flash * 1.7);
+    if (this.flash > 0) { em.r += this.flash * 1.6; em.g += this.flash * 0.12; em.b += this.flash * 0.1; } // 피격: 붉은 번쩍임
     this.statusFx(dt, time, frozen);
     if (this.dead) {
-      this.deadT += dt; const k = this.deadT / 0.34;
-      const s = k < 0.3 ? 1 + k * 0.8 : Math.max(0, 1.24 * (1 - (k - 0.3) / 0.7));
-      this.d.pivot.scale.set(s * 1.1, s * (k < 0.3 ? 0.75 : 1.05), s * 1.1); r.rotation.y += dt * 12;
+      // 죽음: 쓰러진 뒤 재와 불씨로 부서져 흩어진다
+      this.deadT += dt; const k = Math.min(1, this.deadT / 0.9), fall = Math.min(1, this.deadT / 0.22);
+      this.d.pivot.rotation.x = -fall * 1.25; this.d.pivot.position.y = -Math.max(0, k - 0.3) * 0.25;
+      const s = k < 0.35 ? 1 : 1 - (k - 0.35) / 0.65; this.d.pivot.scale.set(1 + (1 - s) * 0.3, Math.max(0.01, s), 1 + (1 - s) * 0.3);
+      em.setRGB(0.3 * (1 - k), 0.08 * (1 - k), 0); this.d.mat.color.setScalar(1 - k * 0.85);
+      if (k > 0.2 && r.visible && Math.random() < dt * 40) {
+        const D = View.dio, h = this.h * s * 0.6;
+        D.puffs.emit({ pos: _w.set(r.position.x + (Math.random() - 0.5) * 0.5, h * Math.random() + 0.1, r.position.z + (Math.random() - 0.5) * 0.5), n: 1, color: 0x3a3634, color2: 0x1a1818, speed: 0.3, up: 0.9, grav: 0, life: 1.2, size: 0.18, grow: 0.8 });
+        D.sparks.emit({ pos: _w.set(r.position.x + (Math.random() - 0.5) * 0.4, h * Math.random() + 0.1, r.position.z + (Math.random() - 0.5) * 0.4), n: 1, color: 0xff6a1a, color2: 0xffb050, speed: 0.4, up: 1.3, grav: -0.2, life: 1, size: 0.06 });
+      }
       if (k >= 1) { r.visible = false; this.gone = true; }
     } else r.visible = this.visible;
     this.extra.update?.(dt, time, this);

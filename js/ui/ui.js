@@ -7,6 +7,8 @@ import { View } from '../render/view.js';
 
 /* ================= 입력 · 화면 ================= */
 export const $ = (s) => document.querySelector(s);
+/** 로그·배너 문구의 이모지를 걷어 낸다(쓸쓸한 톤) */
+export const noEmoji = (t) => String(t).replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '').replace(/\s{2,}/g, ' ').trim();
 
 export const UI = {
   mode: 'normal',

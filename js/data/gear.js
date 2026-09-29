@@ -15,7 +15,7 @@ export const RARITY = {
 export const RARITY_ORDER = ['common', 'magic', 'rare', 'legend'];
 
 const MAT = { cloth: '천', leather: '가죽', chain: '사슬', plate: '판금' };
-export const MAT_COLOR = { cloth: 0xe8d8b0, leather: 0x9a6a3a, chain: 0x7e8796, plate: 0xaeb9c8 };
+export const MAT_COLOR = { cloth: 0x4a4238, leather: 0x5a4230, chain: 0x5a5c62, plate: 0x6e6a64 };
 const armorBase = (slot, mat, name, def, eva) => ({ slot, mat, name, def, eva });
 export const GEAR_BASES = {
   ...Object.fromEntries(Object.keys(WEAPONS).map((k) => [k, { slot: 'weapon', weapon: k, name: WEAPONS[k].name }])),

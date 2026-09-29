@@ -14,7 +14,7 @@ export function dollSpec(e) {
   if (e.boss) {
     sp.scale *= BOSSES[e.boss].scale;
     const top = e.type === 'mage' ? 1.5 : e.type === 'charger' ? 0.86 : 0.82, z = e.type === 'charger' ? 0.3 : 0;
-    sp.parts = [...sp.parts, { s: 'cyl', p: [0, top, z], k: [0.17, 0.08, 0.17], c: 0xffc83a }, ...[0, 1, 2, 3, 4].map((k) => ({ s: 'cone', p: [Math.cos(k * 1.2566) * 0.14, top + 0.1, z + Math.sin(k * 1.2566) * 0.14], k: [0.035, 0.1, 0.035], c: 0xffd84a })), { s: 'sphere', p: [0, top + 0.02, z + 0.17], k: 0.03, c: 0xff3a5a }];
+    sp.parts = [...sp.parts, { s: 'cyl', p: [0, top, z], k: [0.17, 0.07, 0.17], c: 0x3e3834 }, ...[0, 1, 2, 3, 4, 5, 6].map((k) => ({ s: 'cone', p: [Math.cos(k * 0.8976) * 0.15, top + 0.1 + (k % 2) * 0.05, z + Math.sin(k * 0.8976) * 0.15], k: [0.03, 0.14 + (k % 2) * 0.08, 0.03], c: 0x4a4440 })), { s: 'oct', p: [0, top + 0.03, z + 0.17], k: 0.035, c: 0xff2a1a, glow: true }];
   }
   return sp;
 }
@@ -31,83 +31,96 @@ export function dollSpecBase(e) {
         const c = K.doll(bars, { gloss: 0.9 }); d.root.add(c.root); return { cage: c.root };
       } };
   }
-  const feet = (c, s = 1) => [{ s: 'sphere', p: [-0.1 * s, 0.07, 0.03], k: [0.09 * s, 0.07, 0.12 * s], c }, { s: 'sphere', p: [0.1 * s, 0.07, 0.03], k: [0.09 * s, 0.07, 0.12 * s], c }];
-  const eyes = (y, z, sp = 0.09, c = 0x1a1420, k = [0.04, 0.055, 0.03]) => [
-    { s: 'sphere', p: [-sp, y, z], k, c }, { s: 'sphere', p: [sp, y, z], k, c },
-    { s: 'sphere', p: [-sp + 0.012, y + 0.02, z + 0.022], k: 0.014, c: 0xffffff }, { s: 'sphere', p: [sp + 0.012, y + 0.02, z + 0.022], k: 0.014, c: 0xffffff }];
-  if (e.type === 'hero') return heroSpec(e.eq || G.eq);
+  const feet = (c, s = 1) => [{ s: 'sphere', p: [-0.1 * s, 0.06, 0.03], k: [0.08 * s, 0.06, 0.11 * s], c }, { s: 'sphere', p: [0.1 * s, 0.06, 0.03], k: [0.08 * s, 0.06, 0.11 * s], c }];
+  const glowEyes = (y, z, sp, c, k = 0.02) => [{ s: 'sphere', p: [-sp, y, z], k: [k, k * 0.8, k * 0.6], c, glow: true }, { s: 'sphere', p: [sp, y, z], k: [k, k * 0.8, k * 0.6], c, glow: true }];
+  if (e.type === 'hero') return heroSpec(e.eq || G.eq, G.heroLook);
   if (e.type === 'goblin') {
-    const skin = e.poison ? 0x9ccf6a : 0x86c05a, tunic = e.poison ? 0x7a3f9a : 0xa0573a;
+    // 굶주려 뼈가 드러난 마른 몸, 굽은 등, 긴 손, 녹슨 칼을 끈다
+    const skin = e.poison ? 0x5e6a4e : 0x6b7156, dark = e.poison ? 0x46503a : 0x4e533f, blade = e.poison ? 0x6aa04a : 0x6a5446;
     return {
       h: 0.95, col: skin, scale: 0.9,
-      parts: [...feet(0x4a3322, 0.9),
-        { s: 'sphere', p: [0, 0.27, 0], k: [0.2, 0.2, 0.18], c: tunic },
-        { s: 'sphere', p: [0, 0.6, 0], k: [0.26, 0.23, 0.23], c: skin },
-        { s: 'cone', p: [-0.3, 0.64, -0.02], r: [0, 0, Math.PI / 2 + 0.35], k: [0.07, 0.22, 0.05], c: skin },
-        { s: 'cone', p: [0.3, 0.64, -0.02], r: [0, 0, -Math.PI / 2 - 0.35], k: [0.07, 0.22, 0.05], c: skin },
-        { s: 'sphere', p: [-0.095, 0.63, 0.18], k: [0.065, 0.075, 0.045], c: 0xfff3a0 }, { s: 'sphere', p: [0.095, 0.63, 0.18], k: [0.065, 0.075, 0.045], c: 0xfff3a0 },
-        { s: 'sphere', p: [-0.095, 0.62, 0.22], k: 0.032, c: 0x111111 }, { s: 'sphere', p: [0.095, 0.62, 0.22], k: 0.032, c: 0x111111 },
-        { s: 'sphere', p: [0, 0.55, 0.23], k: [0.05, 0.045, 0.05], c: e.poison ? 0x7aa84a : 0x6a9c44 },
-        { s: 'box', p: [0, 0.48, 0.2], r: [0.3, 0, 0], k: [0.1, 0.02, 0.02], c: 0x3a1a1a },
-        { s: 'sphere', p: [-0.21, 0.3, 0.06], k: 0.06, c: skin }, { s: 'sphere', p: [0.21, 0.3, 0.06], k: 0.06, c: skin },
-        { s: 'box', p: [0.24, 0.38, 0.15], r: [0.5, 0, 0], k: [0.035, 0.22, 0.07], c: e.poison ? 0x7dff6a : 0xd8dee8 },
-        ...(e.armor ? [{ s: 'sphere', p: [0, 0.73, -0.02], k: [0.275, 0.16, 0.255], c: 0x8a93a8 }, { s: 'cone', p: [0, 0.92, -0.02], k: [0.05, 0.13, 0.05], c: 0xc8d0e0 }, { s: 'sphere', p: [0, 0.29, 0.03], k: [0.215, 0.17, 0.18], c: 0x8a93a8 }, { s: 'sphere', p: [-0.21, 0.42, 0], k: [0.08, 0.06, 0.08], c: 0xa8b0c4 }, { s: 'sphere', p: [0.21, 0.42, 0], k: [0.08, 0.06, 0.08], c: 0xa8b0c4 }] : [])],
+      parts: [...feet(0x2e2820, 0.85),
+        { s: 'cyl', p: [-0.08, 0.17, 0], k: [0.04, 0.24, 0.04], c: dark }, { s: 'cyl', p: [0.08, 0.17, 0], k: [0.04, 0.24, 0.04], c: dark },
+        { s: 'sphere', p: [0, 0.29, 0], k: [0.14, 0.09, 0.12], c: 0x3a2e24 },
+        { s: 'sphere', p: [0, 0.42, 0.02], r: [0.35, 0, 0], k: [0.15, 0.19, 0.12], c: skin },
+        ...[0.36, 0.43, 0.5].map((y) => ({ s: 'torus', p: [0, y, 0.05], r: [Math.PI / 2 + 0.35, 0, 0], k: [0.13, 0.1, 0.1], tube: 0.08, arc: Math.PI, c: dark })),
+        { s: 'sphere', p: [0, 0.56, 0.16], k: [0.19, 0.16, 0.17], c: skin },
+        { s: 'cone', p: [-0.25, 0.6, 0.12], r: [0, 0, Math.PI / 2 + 0.3], k: [0.055, 0.24, 0.035], c: dark }, { s: 'cone', p: [0.25, 0.6, 0.12], r: [0, 0, -Math.PI / 2 - 0.3], k: [0.055, 0.24, 0.035], c: dark },
+        { s: 'sphere', p: [-0.08, 0.53, 0.3], k: [0.04, 0.02, 0.02], c: 0x14100c }, { s: 'sphere', p: [0.08, 0.53, 0.3], k: [0.04, 0.02, 0.02], c: 0x14100c },
+        ...glowEyes(0.58, 0.31, 0.075, e.poison ? 0xa8ff6a : 0xffd84a, 0.022),
+        { s: 'box', p: [0, 0.48, 0.3], r: [0.2, 0, 0], k: [0.1, 0.018, 0.02], c: 0x1a0e0c }, { s: 'cone', p: [-0.03, 0.465, 0.31], r: [Math.PI, 0, 0], k: [0.012, 0.03, 0.012], c: 0xb8ad8a }, { s: 'cone', p: [0.04, 0.465, 0.31], r: [Math.PI, 0, 0], k: [0.012, 0.03, 0.012], c: 0xb8ad8a },
+        // 긴 팔: 손이 무릎 아래까지
+        { s: 'cyl', p: [-0.2, 0.33, 0.1], r: [0.2, 0, -0.18], k: [0.035, 0.34, 0.035], c: skin }, { s: 'cyl', p: [0.2, 0.33, 0.1], r: [0.2, 0, 0.18], k: [0.035, 0.34, 0.035], c: skin },
+        { s: 'sphere', p: [-0.24, 0.16, 0.14], k: [0.055, 0.045, 0.06], c: dark }, { s: 'sphere', p: [0.24, 0.16, 0.14], k: [0.055, 0.045, 0.06], c: dark },
+        { s: 'box', p: [0.27, 0.1, 0.32], r: [1.25, 0, 0], k: [0.035, 0.34, 0.08], c: blade }, { s: 'box', p: [0.27, 0.15, 0.2], r: [1.25, 0, 0], k: [0.08, 0.03, 0.03], c: 0x3a2e24 },
+        ...(e.poison ? [{ s: 'sphere', p: [0.27, 0.06, 0.46], k: 0.025, c: 0x9dff6a, glow: true }] : []),
+        // 갑옷 고블린: 몸에 안 맞는 찌그러진 판금
+        ...(e.armor ? [{ s: 'sphere', p: [0.02, 0.66, 0.12], r: [0.25, 0, 0.3], k: [0.21, 0.12, 0.2], c: 0x5a5856 }, { s: 'box', p: [0.08, 0.72, 0.12], r: [0, 0, 0.35], k: [0.03, 0.08, 0.2], c: 0x4a4644 }, { s: 'box', p: [0, 0.44, 0.16], r: [0.4, 0.15, -0.12], k: [0.28, 0.22, 0.05], c: 0x5e5a56 }, { s: 'box', p: [-0.2, 0.52, 0.06], r: [0, 0, 0.5], k: [0.14, 0.06, 0.16], c: 0x4e4a46 }, { s: 'sphere', p: [0.2, 0.5, 0.05], k: [0.09, 0.05, 0.09], c: 0x6a4028 }] : [])],
     };
   }
   if (e.type === 'mage') {
-    const M = MAGE[e.elem];
+    // 긴 두건 속은 완전히 어둡고 두 점의 빛만. 손끝에 원소 빛
+    const M = MAGE[e.elem], robe = new THREE.Color(M.robe).multiplyScalar(0.45).getHex();
     return {
-      h: 1.45, col: M.robe, scale: 1,
+      h: 1.5, col: robe, scale: 1,
       parts: [
-        { s: 'cone', p: [0, 0.33, 0], k: [0.3, 0.62, 0.3], c: M.robe },
-        { s: 'sphere', p: [0, 0.58, 0], k: [0.17, 0.08, 0.17], c: 0xe8d8a0 },
-        { s: 'sphere', p: [0, 0.75, 0], k: 0.23, c: 0xece2c8 },
-        { s: 'sphere', p: [-0.078, 0.76, 0.18], k: [0.065, 0.06, 0.035], c: 0x1a1420 }, { s: 'sphere', p: [0.078, 0.76, 0.18], k: [0.065, 0.06, 0.035], c: 0x1a1420 },
-        { s: 'box', p: [0, 0.66, 0.2], k: [0.1, 0.03, 0.03], c: 0xfaf4e4 },
-        { s: 'sphere', p: [-0.075, 0.76, 0.2], k: [0.045, 0.035, 0.02], c: M.color }, { s: 'sphere', p: [0.075, 0.76, 0.2], k: [0.045, 0.035, 0.02], c: M.color },
-        { s: 'cyl', p: [0, 0.9, 0], k: [0.37, 0.03, 0.37], c: M.robe },
-        { s: 'cyl', p: [0, 0.95, 0], k: [0.25, 0.05, 0.25], c: 0xe8d8a0 },
-        { s: 'cone', p: [0, 1.2, -0.04], r: [-0.2, 0, 0], k: [0.25, 0.56, 0.25], c: M.robe },
-        { s: 'sphere', p: [-0.25, 0.42, 0.1], k: 0.06, c: 0xece2c8 }, { s: 'sphere', p: [0.28, 0.46, 0.08], k: 0.06, c: 0xece2c8 },
-        { s: 'cyl', p: [0.3, 0.55, 0.08], k: [0.025, 0.95, 0.025], c: 0x6a4526 }],
+        { s: 'cone', p: [0, 0.36, 0], k: [0.3, 0.72, 0.3], c: robe },
+        ...[0, 1, 2, 3, 4].map((k) => ({ s: 'box', p: [Math.cos(k * 1.26) * 0.25, 0.05, Math.sin(k * 1.26) * 0.25], r: [0, -k * 1.26, 0.1], k: [0.12, 0.1, 0.02], c: robe })),
+        { s: 'sphere', p: [0, 0.72, 0], k: [0.2, 0.14, 0.18], c: robe },
+        { s: 'sphere', p: [0, 0.86, 0.04], k: [0.17, 0.17, 0.14], c: 0x050406 },
+        { s: 'cone', p: [0, 1.08, -0.06], r: [-0.25, 0, 0], k: [0.24, 0.62, 0.24], c: robe },
+        { s: 'torus', p: [0, 0.86, 0.1], k: [0.18, 0.2, 0.12], tube: 0.2, c: robe },
+        ...glowEyes(0.87, 0.19, 0.055, M.color, 0.024),
+        { s: 'cyl', p: [-0.24, 0.5, 0.1], r: [0.3, 0, -0.25], k: [0.03, 0.26, 0.03], c: 0xb3a98a }, { s: 'sphere', p: [-0.27, 0.38, 0.14], k: 0.04, c: 0xb3a98a },
+        { s: 'sphere', p: [0.28, 0.46, 0.08], k: 0.045, c: 0xb3a98a },
+        { s: 'cyl', p: [0.3, 0.58, 0.08], k: [0.022, 1.0, 0.022], c: 0x2e2218 }, { s: 'torus', p: [0.3, 1.07, 0.08], r: [Math.PI / 2, 0, 0], k: 0.07, tube: 0.25, c: 0x3a3028 }],
       extra: (d) => {
-        const orb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 14, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(M.color).multiplyScalar(2.2) }));
-        orb.position.set(0.3, 1.1, 0.08); d.body.add(orb);
-        return { update(dt, t, ev) { const c = ev.casting; orb.scale.setScalar(1 + Math.sin(t * 5) * 0.08 + (c ? 0.7 + Math.sin(t * 22) * 0.25 : 0)); if (c && Math.random() < dt * 30) { orb.getWorldPosition(_w); View.dio.sparks.emit({ pos: _w, n: 1, color: M.color, color2: 0xffffff, speed: 1, grav: 0, life: 0.4, size: 0.12 }); } } };
+        const orb = new THREE.Mesh(new THREE.SphereGeometry(0.08, 14, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(M.color).multiplyScalar(2.4), toneMapped: false }));
+        orb.position.set(0.3, 1.14, 0.08); d.body.add(orb);
+        return { update(dt, t, ev) { const c = ev.casting; orb.scale.setScalar(1 + Math.sin(t * 5) * 0.08 + (c ? 0.7 + Math.sin(t * 22) * 0.25 : 0)); if (Math.random() < dt * (c ? 30 : 3)) { orb.getWorldPosition(_w); View.dio.sparks.emit({ pos: _w, n: 1, color: M.color, color2: 0xffffff, speed: c ? 1 : 0.2, up: 0.3, grav: 0, life: 0.5, size: 0.08 }); } } };
       },
     };
   }
   if (e.type === 'charger') return {
-    h: 1.2, col: 0x7b5134, scale: 1.12,
+    // 뿔 달린 거대한 짐승, 쇠사슬과 가시 박힌 갑주
+    h: 1.25, col: 0x3a2e28, scale: 1.18,
     parts: [
-      { s: 'cyl', p: [-0.18, 0.1, 0.15], k: [0.08, 0.2, 0.08], c: 0x3a2618 }, { s: 'cyl', p: [0.18, 0.1, 0.15], k: [0.08, 0.2, 0.08], c: 0x3a2618 },
-      { s: 'cyl', p: [-0.18, 0.1, -0.22], k: [0.08, 0.2, 0.08], c: 0x3a2618 }, { s: 'cyl', p: [0.18, 0.1, -0.22], k: [0.08, 0.2, 0.08], c: 0x3a2618 },
-      { s: 'sphere', p: [0, 0.4, -0.05], k: [0.34, 0.3, 0.42], c: 0x7b5134 },
-      { s: 'box', p: [0, 0.63, -0.12], r: [0.15, 0, 0], k: [0.4, 0.1, 0.4], c: 0x8f98ab },
-      { s: 'cone', p: [0, 0.72, -0.34], r: [-1.1, 0, 0], k: [0.08, 0.26, 0.2], c: 0x4a2e1d },
-      { s: 'sphere', p: [0, 0.52, 0.32], k: [0.25, 0.23, 0.22], c: 0x8a5c3c },
-      { s: 'cyl', p: [0, 0.47, 0.52], r: [Math.PI / 2, 0, 0], k: [0.11, 0.1, 0.09], c: 0xf0a4a0 },
-      { s: 'sphere', p: [-0.04, 0.48, 0.57], k: 0.022, c: 0x3a1a1a }, { s: 'sphere', p: [0.04, 0.48, 0.57], k: 0.022, c: 0x3a1a1a },
-      { s: 'cone', p: [-0.12, 0.47, 0.5], r: [-0.4, 0, 0.35], k: [0.035, 0.15, 0.035], c: 0xfff6e0 }, { s: 'cone', p: [0.12, 0.47, 0.5], r: [-0.4, 0, -0.35], k: [0.035, 0.15, 0.035], c: 0xfff6e0 },
-      { s: 'sphere', p: [-0.1, 0.6, 0.47], k: [0.035, 0.045, 0.03], c: 0x140c0c }, { s: 'sphere', p: [0.1, 0.6, 0.47], k: [0.035, 0.045, 0.03], c: 0x140c0c },
-      { s: 'box', p: [-0.1, 0.665, 0.47], r: [0, 0, -0.45], k: [0.1, 0.025, 0.03], c: 0x3a2215 }, { s: 'box', p: [0.1, 0.665, 0.47], r: [0, 0, 0.45], k: [0.1, 0.025, 0.03], c: 0x3a2215 },
-      { s: 'sphere', p: [0, 0.66, 0.3], k: [0.21, 0.1, 0.19], c: 0x9aa6ba },
-      { s: 'cone', p: [-0.21, 0.78, 0.3], r: [0, 0, 0.7], k: [0.05, 0.22, 0.05], c: 0xf2ead8 }, { s: 'cone', p: [0.21, 0.78, 0.3], r: [0, 0, -0.7], k: [0.05, 0.22, 0.05], c: 0xf2ead8 }],
+      ...[[-0.2, 0.15], [0.2, 0.15], [-0.2, -0.24], [0.2, -0.24]].map(([x, z]) => ({ s: 'cyl', p: [x, 0.12, z], k: [0.09, 0.24, 0.09], c: 0x221a16 })),
+      { s: 'sphere', p: [0, 0.44, -0.06], k: [0.36, 0.32, 0.46], c: 0x3a2e28 },
+      { s: 'box', p: [0, 0.66, -0.14], r: [0.12, 0, 0], k: [0.46, 0.1, 0.46], c: 0x46464c },
+      ...[[-0.16, -0.32], [0.16, -0.32], [0, -0.12], [-0.16, 0.05], [0.16, 0.05]].map(([x, z]) => ({ s: 'cone', p: [x, 0.8, z], k: [0.045, 0.16, 0.045], c: 0x5a5a60 })),
+      ...[-0.02, 0.2].map((z) => ({ s: 'torus', p: [0, 0.44, z], r: [0, 0, 0], k: [0.37, 0.33, 0.33], tube: 0.05, c: 0x4a4a50 })),
+      { s: 'sphere', p: [0, 0.46, 0.36], k: [0.24, 0.22, 0.22], c: 0x2e2420 },
+      { s: 'cyl', p: [0, 0.4, 0.54], r: [Math.PI / 2, 0, 0], k: [0.1, 0.09, 0.08], c: 0x4a3a34 },
+      // 뿔: 크게 휘어 앞으로
+      { s: 'cone', p: [-0.22, 0.62, 0.42], r: [0.9, 0, 0.9], k: [0.06, 0.34, 0.06], c: 0xb8ad90 }, { s: 'cone', p: [0.22, 0.62, 0.42], r: [0.9, 0, -0.9], k: [0.06, 0.34, 0.06], c: 0xb8ad90 },
+      { s: 'cone', p: [-0.34, 0.74, 0.62], r: [1.5, 0, 0.4], k: [0.04, 0.2, 0.04], c: 0xa89c80 }, { s: 'cone', p: [0.34, 0.74, 0.62], r: [1.5, 0, -0.4], k: [0.04, 0.2, 0.04], c: 0xa89c80 },
+      { s: 'cone', p: [-0.1, 0.38, 0.56], r: [-0.4, 0, 0.35], k: [0.03, 0.13, 0.03], c: 0xb8ad90 }, { s: 'cone', p: [0.1, 0.38, 0.56], r: [-0.4, 0, -0.35], k: [0.03, 0.13, 0.03], c: 0xb8ad90 },
+      ...glowEyes(0.54, 0.52, 0.11, 0xff4020, 0.025),
+      { s: 'box', p: [0, 0.3, 0.2], r: [0.3, 0, 0], k: [0.05, 0.25, 0.03], c: 0x4a4a50 }],
   };
+  // 해골 궁수: 금 가고 이가 빠진 뼈, 너덜너덜한 천, 눈구멍의 희미한 불빛
+  const bone = 0xb3a98a, boneD = 0x8a8068;
   return {
-    h: 1.05, col: 0x4d7d3c, scale: 0.95,
-    parts: [...feet(0x3a2a1a),
-      { s: 'sphere', p: [0, 0.3, 0], k: [0.21, 0.23, 0.19], c: 0x4d7d3c },
-      { s: 'cone', p: [0, 0.38, -0.1], k: [0.26, 0.5, 0.18], c: 0x355a2a },
-      { s: 'sphere', p: [0, 0.66, 0.01], k: 0.215, c: 0xeee4cc }, { s: 'box', p: [0, 0.575, 0.185], k: [0.11, 0.035, 0.03], c: 0xfaf4e4 },
-      { s: 'sphere', p: [0, 0.71, -0.06], k: [0.255, 0.245, 0.245], c: 0x3f6d31 },
-      { s: 'cone', p: [0, 0.86, -0.3], r: [-1.1, 0, 0], k: [0.1, 0.24, 0.1], c: 0x3f6d31 },
-      ...eyes(0.665, 0.19, 0.075, 0x241a1a, [0.05, 0.06, 0.03]),
-      { s: 'torus', p: [-0.27, 0.42, 0.12], r: [0, -Math.PI / 2, -Math.PI / 2], k: 0.3, tube: 0.08, arc: Math.PI, c: 0x8a5a2a },
-      { s: 'cyl', p: [-0.27, 0.42, 0.12], k: [0.008, 0.58, 0.008], c: 0xeeeeee },
-      { s: 'sphere', p: [-0.24, 0.42, 0.12], k: 0.06, c: 0xeee4cc }, { s: 'sphere', p: [0.22, 0.34, 0.06], k: 0.06, c: 0xeee4cc },
-      { s: 'cyl', p: [0.12, 0.45, -0.2], r: [0.3, 0, -0.3], k: [0.07, 0.34, 0.07], c: 0x7a4a28 },
-      { s: 'cone', p: [0.18, 0.65, -0.26], k: [0.045, 0.09, 0.045], c: 0xe04a3a }],
+    h: 1.1, col: bone, scale: 0.95,
+    parts: [...feet(boneD, 0.8),
+      { s: 'cyl', p: [-0.08, 0.2, 0], k: [0.03, 0.3, 0.03], c: bone }, { s: 'cyl', p: [0.08, 0.2, 0], k: [0.03, 0.3, 0.03], c: bone },
+      { s: 'sphere', p: [0, 0.34, 0], k: [0.13, 0.06, 0.1], c: boneD },
+      { s: 'cyl', p: [0, 0.45, -0.03], k: [0.03, 0.24, 0.03], c: boneD },
+      ...[0.44, 0.51, 0.58].map((y, k) => ({ s: 'torus', p: [0, y, 0], r: [Math.PI / 2, 0, 0], k: [0.15 - k * 0.01, 0.12, 0.11], tube: 0.1, c: bone })),
+      ...[0, 1, 2, 3].map((k) => ({ s: 'box', p: [-0.12 + k * 0.08, 0.36 - (k % 2) * 0.05, 0.1], r: [0.1, 0, (k - 1.5) * 0.1], k: [0.06, 0.2 + (k % 2) * 0.08, 0.015], c: 0x2a2624 })),
+      { s: 'box', p: [0, 0.52, -0.13], r: [0.2, 0, 0], k: [0.3, 0.3, 0.02], c: 0x2e2a26 },
+      { s: 'sphere', p: [0, 0.78, 0.01], k: [0.19, 0.18, 0.18], c: bone },
+      { s: 'box', p: [0, 0.66, 0.1], k: [0.15, 0.06, 0.1], c: bone },
+      { s: 'sphere', p: [-0.07, 0.78, 0.15], k: [0.05, 0.05, 0.03], c: 0x0a0806 }, { s: 'sphere', p: [0.07, 0.78, 0.15], k: [0.05, 0.05, 0.03], c: 0x0a0806 },
+      ...glowEyes(0.78, 0.165, 0.07, 0x7a9ad8, 0.016),
+      ...[-0.05, -0.02, 0.04].map((x) => ({ s: 'box', p: [x, 0.64, 0.155], k: [0.018, 0.025, 0.01], c: 0xd8cca8 })),
+      { s: 'box', p: [0.05, 0.86, 0.12], r: [0, 0, 0.5], k: [0.012, 0.1, 0.01], c: 0x2a2420 },
+      { s: 'sphere', p: [-0.24, 0.44, 0.12], k: 0.04, c: bone }, { s: 'sphere', p: [0.22, 0.36, 0.06], k: 0.04, c: bone },
+      { s: 'cyl', p: [-0.2, 0.52, 0.08], r: [0, 0, -0.35], k: [0.022, 0.2, 0.022], c: bone }, { s: 'cyl', p: [0.2, 0.46, 0.04], r: [0, 0, 0.35], k: [0.022, 0.2, 0.022], c: bone },
+      { s: 'torus', p: [-0.27, 0.44, 0.12], r: [0, -Math.PI / 2, -Math.PI / 2], k: 0.3, tube: 0.07, arc: Math.PI, c: 0x3a2e22 },
+      { s: 'cyl', p: [-0.27, 0.44, 0.12], k: [0.006, 0.58, 0.006], c: 0x8a8070 },
+      { s: 'cyl', p: [0.12, 0.52, -0.18], r: [0.3, 0, -0.3], k: [0.06, 0.3, 0.06], c: 0x3a2a1e }],
   };
 }
 
@@ -177,36 +190,46 @@ export function matProp(m) {
 export const weaponDoll = (id) => K.doll(WEAPON_PARTS[id.replace('+', '')], { gloss: id.endsWith('+') ? 1.8 : 1.1 });
 
 /* ---------- 정착지 인형 · 건물 ---------- */
+/** 정착지 주민: 두건과 누더기, 직업 도구. 얼굴은 드러나지만 눈매가 지치고 볼이 패였다 */
 export function npcParts(n) {
-  const L = n.look, S = L.skin, Hc = L.hair, C = L.cloth, eye = 0x1a1420;
+  const L = n.look, S = new THREE.Color(L.skin).multiplyScalar(0.78).getHex(), Sd = new THREE.Color(L.skin).multiplyScalar(0.55).getHex(), Hc = new THREE.Color(L.hair).multiplyScalar(0.7).getHex(), C = L.cloth, eye = 0x0e0a0a;
   const P = [
-    { s: 'sphere', p: [-0.09, 0.07, 0.03], k: [0.085, 0.065, 0.11], c: 0x4a3322 }, { s: 'sphere', p: [0.09, 0.07, 0.03], k: [0.085, 0.065, 0.11], c: 0x4a3322 },
-    { s: 'sphere', p: [0, 0.31, 0], k: [0.22, 0.24, 0.2], c: C },
-    { s: 'sphere', p: [0, 0.72, 0], k: 0.25, c: S },
-    { s: 'sphere', p: [0, 0.79, -0.05], k: [0.265, 0.22, 0.26], c: Hc },
-    { s: 'sphere', p: [-0.085, 0.7, 0.22], k: [0.035, 0.05, 0.03], c: eye }, { s: 'sphere', p: [0.085, 0.7, 0.22], k: [0.035, 0.05, 0.03], c: eye },
-    { s: 'sphere', p: [-0.074, 0.72, 0.245], k: 0.012, c: 0xffffff }, { s: 'sphere', p: [0.096, 0.72, 0.245], k: 0.012, c: 0xffffff },
-    { s: 'sphere', p: [-0.15, 0.63, 0.19], k: [0.04, 0.022, 0.02], c: 0xff9a9a }, { s: 'sphere', p: [0.15, 0.63, 0.19], k: [0.04, 0.022, 0.02], c: 0xff9a9a },
-    { s: 'sphere', p: [-0.24, 0.33, 0.04], k: 0.065, c: S }, { s: 'sphere', p: [0.24, 0.33, 0.04], k: 0.065, c: S },
+    { s: 'sphere', p: [-0.09, 0.06, 0.03], k: [0.08, 0.06, 0.11], c: 0x2a2018 }, { s: 'sphere', p: [0.09, 0.06, 0.03], k: [0.08, 0.06, 0.11], c: 0x2a2018 },
+    { s: 'cone', p: [0, 0.3, 0], k: [0.25, 0.56, 0.23], c: C },
+    ...[0, 1, 2, 3].map((k) => ({ s: 'box', p: [Math.cos(k * 1.57 + 0.4) * 0.21, 0.04, Math.sin(k * 1.57 + 0.4) * 0.19], r: [0, -k * 1.57, 0.12], k: [0.11, 0.08, 0.02], c: C })),
+    { s: 'sphere', p: [0, 0.5, 0], k: [0.2, 0.12, 0.17], c: C },
+    { s: 'sphere', p: [0, 0.72, 0.02], k: [0.2, 0.21, 0.19], c: S },
+    { s: 'sphere', p: [-0.1, 0.67, 0.13], k: [0.05, 0.035, 0.03], c: Sd }, { s: 'sphere', p: [0.1, 0.67, 0.13], k: [0.05, 0.035, 0.03], c: Sd },
+    { s: 'sphere', p: [-0.065, 0.735, 0.185], k: [0.03, 0.018, 0.012], c: eye }, { s: 'sphere', p: [0.065, 0.735, 0.185], k: [0.03, 0.018, 0.012], c: eye },
+    { s: 'sphere', p: [-0.065, 0.712, 0.182], k: [0.03, 0.012, 0.01], c: Sd }, { s: 'sphere', p: [0.065, 0.712, 0.182], k: [0.03, 0.012, 0.01], c: Sd },
+    { s: 'box', p: [0, 0.65, 0.19], k: [0.05, 0.008, 0.01], c: 0x2a1a16 },
+    { s: 'sphere', p: [0, 0.77, -0.05], k: [0.21, 0.18, 0.2], c: Hc },
+    { s: 'sphere', p: [-0.22, 0.42, 0.06], k: 0.055, c: S }, { s: 'sphere', p: [0.22, 0.42, 0.06], k: 0.055, c: S },
   ];
+  const hood = (c) => [{ s: 'sphere', p: [0, 0.79, -0.03], k: [0.24, 0.24, 0.23], c }, { s: 'torus', p: [0, 0.74, 0.1], k: [0.19, 0.19, 0.12], tube: 0.2, c }, { s: 'box', p: [0.04, 0.62, -0.16], r: [0.2, 0, 0.1], k: [0.3, 0.2, 0.03], c }];
   switch (n.job) {
-    case 'blacksmith': P.push({ s: 'box', p: [0, 0.3, 0.17], k: [0.3, 0.32, 0.06], c: 0x7a4a28 }, { s: 'sphere', p: [0, 0.6, 0.17], k: [0.15, 0.1, 0.08], c: Hc }, { s: 'cyl', p: [0.27, 0.42, 0.08], k: [0.022, 0.3, 0.022], c: 0x6a4526 }, { s: 'box', p: [0.27, 0.58, 0.08], k: [0.14, 0.08, 0.08], c: 0x8a92a4 }); break;
-    case 'herbalist': P.push({ s: 'sphere', p: [0, 0.82, -0.04], k: [0.29, 0.25, 0.29], c: 0x5a9a4a }, { s: 'cone', p: [0, 1.02, -0.14], r: [-0.6, 0, 0], k: [0.08, 0.2, 0.08], c: 0x5a9a4a }, { s: 'cyl', p: [-0.28, 0.28, 0.06], k: [0.1, 0.1, 0.1], c: 0xb08a4a }, { s: 'sphere', p: [-0.28, 0.35, 0.06], k: [0.08, 0.04, 0.08], c: 0x6ac84a }); break;
-    case 'hunter': P.push({ s: 'sphere', p: [0, 0.86, -0.02], k: [0.27, 0.16, 0.27], c: 0x8a6a4a }, { s: 'cone', p: [-0.15, 1.0, 0], k: [0.05, 0.1, 0.05], c: 0x8a6a4a }, { s: 'cone', p: [0.15, 1.0, 0], k: [0.05, 0.1, 0.05], c: 0x8a6a4a }, { s: 'torus', p: [0, 0.38, -0.2], r: [0, 0, Math.PI / 2], k: 0.26, tube: 0.07, arc: Math.PI, c: 0x7a4a28 }); break;
-    case 'scholar': P.push({ s: 'cone', p: [0, 0.3, 0], k: [0.27, 0.56, 0.27], c: C }, { s: 'torus', p: [-0.085, 0.7, 0.24], k: 0.05, tube: 0.2, c: 0x2a2a2a }, { s: 'torus', p: [0.085, 0.7, 0.24], k: 0.05, tube: 0.2, c: 0x2a2a2a }, { s: 'box', p: [-0.25, 0.38, 0.12], r: [0.3, 0, 0], k: [0.16, 0.2, 0.05], c: 0xa03a3a }); break;
-    case 'cook': P.push({ s: 'cyl', p: [0, 0.98, -0.02], k: [0.18, 0.2, 0.18], c: 0xffffff }, { s: 'sphere', p: [0, 1.12, -0.02], k: [0.22, 0.1, 0.22], c: 0xffffff }, { s: 'box', p: [0, 0.3, 0.17], k: [0.28, 0.3, 0.05], c: 0xffffff }); break;
-    default: P.push({ s: 'cone', p: [0, 1.0, -0.03], k: [0.27, 0.42, 0.27], c: 0x8a7ab0 }, { s: 'oct', p: [0.27, 0.52, 0.1], k: 0.07, c: 0xb45aff });
+    case 'blacksmith': P.push({ s: 'box', p: [0, 0.3, 0.17], k: [0.28, 0.32, 0.05], c: 0x3a2618 }, { s: 'cyl', p: [0.26, 0.4, 0.08], k: [0.02, 0.3, 0.02], c: 0x3a2818 }, { s: 'box', p: [0.26, 0.56, 0.08], k: [0.13, 0.07, 0.07], c: 0x4a4644 }, { s: 'sphere', p: [0, 0.6, 0.15], k: [0.13, 0.08, 0.07], c: Hc }); break;
+    case 'herbalist': P.push(...hood(0x3e4a34), { s: 'cyl', p: [-0.27, 0.3, 0.06], k: [0.1, 0.1, 0.1], c: 0x5a4630 }, { s: 'sphere', p: [-0.27, 0.36, 0.06], k: [0.08, 0.04, 0.08], c: 0x4a6a3a }); break;
+    case 'hunter': P.push(...hood(0x4a3a28), { s: 'torus', p: [0, 0.4, -0.2], r: [0, 0, Math.PI / 2], k: 0.26, tube: 0.06, arc: Math.PI, c: 0x3a2818 }, { s: 'box', p: [0.14, 0.36, -0.18], r: [0.3, 0, 0], k: [0.06, 0.28, 0.06], c: 0x4a3a2a }); break;
+    case 'scholar': P.push(...hood(0x34324a), { s: 'torus', p: [-0.065, 0.735, 0.2], k: 0.045, tube: 0.18, c: 0x1a1a1a }, { s: 'torus', p: [0.065, 0.735, 0.2], k: 0.045, tube: 0.18, c: 0x1a1a1a }, { s: 'cyl', p: [-0.24, 0.4, 0.12], r: [0, 0, Math.PI / 2], k: [0.05, 0.22, 0.05], c: 0xb8a878 }); break;
+    case 'cook': P.push({ s: 'cyl', p: [0, 0.94, -0.02], k: [0.17, 0.12, 0.17], c: 0x8a8274 }, { s: 'box', p: [0, 0.3, 0.17], k: [0.26, 0.3, 0.04], c: 0x7a7266 }, { s: 'cyl', p: [0.26, 0.45, 0.1], k: [0.015, 0.34, 0.015], c: 0x4a3a2a }, { s: 'sphere', p: [0.26, 0.28, 0.1], k: [0.05, 0.03, 0.05], c: 0x3a3230 }); break;
+    case 'fisher': P.push(...hood(0x34424e), { s: 'cyl', p: [0.24, 0.62, 0.06], r: [0.2, 0, -0.35], k: [0.012, 0.9, 0.012], c: 0x4a3a2a }, { s: 'sphere', p: [-0.2, 0.25, -0.1], k: [0.13, 0.12, 0.1], c: 0x5a5448 }); break;
+    case 'boatman': P.push({ s: 'cyl', p: [0, 0.9, -0.02], k: [0.3, 0.02, 0.3], c: 0x3a3228 }, { s: 'sphere', p: [0, 0.92, -0.02], k: [0.17, 0.1, 0.17], c: 0x3a3228 }, { s: 'cyl', p: [0.26, 0.55, 0.06], k: [0.02, 1.0, 0.02], c: 0x4a3a2a }, { s: 'box', p: [0.26, 0.1, 0.06], k: [0.1, 0.2, 0.02], c: 0x4a3a2a }); break;
+    case 'gravekeeper': P.push(...hood(0x2a2a30), { s: 'cyl', p: [0.26, 0.45, 0.06], r: [0, 0, 0.1], k: [0.018, 0.7, 0.018], c: 0x3a2e24 }, { s: 'box', p: [0.29, 0.1, 0.06], k: [0.1, 0.14, 0.02], c: 0x4a4644 }, { s: 'cyl', p: [-0.26, 0.3, 0.1], k: [0.05, 0.1, 0.05], c: 0x3a3632 }, { s: 'sphere', p: [-0.26, 0.3, 0.1], k: 0.03, c: 0xffb050, glow: true }); break;
+    case 'miner': P.push({ s: 'sphere', p: [0, 0.82, -0.01], k: [0.23, 0.14, 0.23], c: 0x5a5046 }, { s: 'sphere', p: [0, 0.84, 0.21], k: 0.035, c: 0xffd070, glow: true }, { s: 'cyl', p: [0.26, 0.42, 0.06], k: [0.018, 0.4, 0.018], c: 0x4a3a2a }, { s: 'box', p: [0.26, 0.62, 0.06], r: [0, 0, 0.2], k: [0.26, 0.04, 0.04], c: 0x4a4644 }); break;
+    case 'pilgrim': P.push({ s: 'cyl', p: [0, 0.88, -0.02], k: [0.36, 0.02, 0.36], c: 0x4a4436 }, { s: 'cone', p: [0, 0.96, -0.02], k: [0.2, 0.14, 0.2], c: 0x4a4436 }, { s: 'cyl', p: [0.26, 0.55, 0.06], k: [0.02, 1.1, 0.02], c: 0x4a3a2a }, { s: 'torus', p: [0.26, 1.1, 0.06], k: 0.05, tube: 0.3, c: 0x6a5a40 }); break;
+    default: P.push(...hood(0x3a3448), { s: 'oct', p: [0.26, 0.5, 0.1], k: 0.06, c: 0xb45aff, glow: true });
   }
   return P;
 }
 
 export function buildingModel(id) {
   const g = new THREE.Group(), anim = {};
-  const add = (parts) => { const d = K.doll(parts, { gloss: 0.45 }); d.mesh.receiveShadow = true; g.add(d.root); return d; };
+  const add = (parts) => { const d = K.doll(parts, { desat: 0.55 }); d.mat.color.setScalar(0.62); d.mesh.receiveShadow = true; g.add(d.root); return d; }; // 황혼: 바랜 나무와 돌
   const roof = (w, h, y, c, x = 0, z = 0) => ({ s: 'cone', p: [x, y + h / 2, z], r: [0, Math.PI / 4, 0], k: [w, h, w], seg: 4, c });
   if (id === 'gate') {
     add([{ s: 'box', p: [-0.78, 0.9, 0], k: [0.34, 1.8, 0.4], c: 0xa8a294 }, { s: 'box', p: [0.78, 0.9, 0], k: [0.34, 1.8, 0.4], c: 0xa8a294 }, { s: 'box', p: [0, 1.9, 0], k: [2.0, 0.32, 0.46], c: 0x948e80 }, { s: 'box', p: [0, 2.12, 0], k: [0.3, 0.2, 0.5], c: 0xb45aff }, { s: 'box', p: [-0.78, 0.08, 0], k: [0.46, 0.16, 0.5], c: 0x8a8476 }, { s: 'box', p: [0.78, 0.08, 0], k: [0.46, 0.16, 0.5], c: 0x8a8476 }]);
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.6, 32), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.7, 0.45, 1.6), transparent: true, opacity: 0.75, side: THREE.DoubleSide }));
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.6, 32), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.32, 0.2, 0.62), transparent: true, opacity: 0.55, side: THREE.DoubleSide }));
     disc.position.set(0, 0.95, 0); disc.scale.set(1, 1.35, 1); g.add(disc); anim.disc = disc;
   } else if (id === 'altar') {
     add([{ s: 'cyl', p: [0, 0.1, 0], k: [0.85, 0.2, 0.85], c: 0xb8b2a4 }, { s: 'cyl', p: [0, 0.3, 0], k: [0.62, 0.2, 0.62], c: 0xc8c2b4 }, { s: 'cyl', p: [0, 0.75, 0], k: [0.2, 0.7, 0.2], c: 0xd8d2c4 }, { s: 'sphere', p: [0, 1.12, 0], k: [0.32, 0.1, 0.32], c: 0xa89a8a }]);

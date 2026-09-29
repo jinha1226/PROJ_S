@@ -24,6 +24,7 @@ import { $, UI } from './ui/ui.js';
 import './render/fx.js';
 import './render/gear-view.js';
 import './render/hidden-view.js';
+import './render/sconce-view.js';
 import './ui/inventory.js';
 import './ui/input.js';
 import './ui/hud.js';

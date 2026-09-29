@@ -55,13 +55,17 @@ Object.assign(Town, {
       d.root.position.set(x, 0, z); d.root.rotation.y = (Math.random() - 0.5) * 0.3; d.mesh.userData.pick = { grave: f };
       D.scene.add(d.root); this.objs.push(d.root); this.graves.push({ d, flame, f });
     });
+    // 모닥불 불꽃: 밝기에 따라 크기가 바뀐다
+    const fl = new THREE.Group(), fm = (r, h, c) => new THREE.Mesh(new THREE.ConeGeometry(r, h, 7).translate(0, h / 2, 0), new THREE.MeshBasicMaterial({ color: new THREE.Color(...c), toneMapped: false }));
+    this.flames = [0, 1, 2, 3, 4].map((k) => { const o = fm(0.16, 0.7, [2.4, 0.7, 0.12]), i = fm(0.08, 0.45, [2.8, 1.9, 0.6]), g = new THREE.Group(); g.add(o, i); g.position.set(Math.cos(k * 1.26) * (k ? 0.15 : 0), 0.05, Math.sin(k * 1.26) * (k ? 0.15 : 0)); g.userData.ph = k * 1.7; fl.add(g); return g; });
+    fl.position.set(BLD.plaza.x, 0, BLD.plaza.y); D.scene.add(fl); this.objs.push(fl); this.hearthFl = fl;
     this.visitorDolls = [];
     for (const v of META.visitors) if (!skipVisitors.includes(v)) this.spawnVisitor(v);
     this.applyGlow(true);
   },
   tintLand(s) { const k = 0.12 + 0.88 * s.k; s.d.mat.color.setRGB(k, k, k); for (const m of s.pts) m.material.opacity = s.k; },
   spawnVisitor(v) {
-    const D = View.dio, k = this.visitorDolls.length, [x, z] = VISIT_SPOT[k % VISIT_SPOT.length], d = K.doll(npcParts(v.npc), { scale: 1.2, gloss: 0 });
+    const D = View.dio, k = this.visitorDolls.length, [x, z] = VISIT_SPOT[k % VISIT_SPOT.length], d = K.doll(npcParts(v.npc), { scale: 1.2, rim: 0.7 });
     d.root.position.set(x, 0, z); d.root.rotation.y = Math.atan2(BLD.plaza.x - x, BLD.plaza.y - z); d.mesh.userData.pick = { visitor: v }; D.scene.add(d.root);
     const tag = document.createElement('div'); tag.className = 'btag visit'; tag.textContent = `❔ ${v.npc.name}`; View.labelRoot.appendChild(tag); this.tags.push(tag);
     const q = { v, d, tag, ph: Math.random() * 6 }; this.visitorDolls.push(q); this.objs.push(d.root); return q;
@@ -80,6 +84,11 @@ Object.assign(Town, {
       q.d.root.rotation.y += Math.sin(time * 0.9 + q.ph) * sdt * 0.9; // 두리번
       D.labels.toScreen(_w.set(q.d.root.position.x, 1.85, q.d.root.position.z), s);
       q.tag.style.transform = `translate(${s.x.toFixed(1)}px,${s.y.toFixed(1)}px) translate(-50%,-100%)`;
+    }
+    if (this.hearthFl) {
+      const g = View.dio.lights.glow ?? this.glow ?? 30, k = 0.45 + g / 100 * 1.1, low = g <= GLOW.low;
+      this.flames.forEach((f, j) => { const w = Math.sin(time * (9 + j) + f.userData.ph) * 0.12 + Math.sin(time * 17 + j * 2) * 0.08 + (low ? Math.sin(time * 4.3 + j) * 0.3 : 0); f.scale.set(k * (j ? 0.75 : 1), Math.max(0.2, k * (j ? 0.8 : 1.15) * (1 + w)), k * (j ? 0.75 : 1)); f.rotation.z = Math.sin(time * 3 + j) * 0.12; });
+      if (Math.random() < sdt * (6 + g * 0.15)) D.sparks.emit({ pos: _w.set(BLD.plaza.x, 0.6 * k, BLD.plaza.y), n: 1, color: 0xff8a2a, color2: 0xffd060, speed: 0.4, up: 1.2 + k, grav: 0.3, life: 1.1, size: 0.08, spread: 0.25 });
     }
     if (this.glow <= GLOW.low && Math.random() < sdt * 2) D.pool.flash(W3(BLD.plaza.x, BLD.plaza.y), 0x6070a0, 6, 0.4, 3);
     const orbs = this.orbs || [];

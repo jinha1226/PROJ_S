@@ -52,6 +52,7 @@ export const View = {
     for (const m of this.matMeshes.values()) this.dio.scene.remove(m); this.matMeshes.clear();
     if (this.portal) { this.dio.scene.remove(this.portal); this.portal = null; }
     for (const m of this.blocks.values()) this.dio.scene.remove(m.root); this.blocks.clear();
+    for (const s of this.sconces) this.dio.scene.remove(s.g); this.sconces = [];
     this.dio.labels.clear();
   },
   buildFloor() {
@@ -62,7 +63,7 @@ export const View = {
     this.dio.grid = this.grid;
     for (let i = 0; i < G.W * G.H; i++) if (G.tile[i] === T_DOOR || G.tile[i] === T_OPEN) this.makeDoor(i);
     if (!G.bossFloor) this.makeStairs(G.stairs); else if (G.exitOpen) this.makePortal(G.stairs);
-    this.syncMats(); this.syncBlocks();
+    this.syncMats(); this.syncBlocks(); this.syncSconces();
     for (const e of G.ents) this.evs.set(e.id, new EntView(e));
     this.grid.setTerrain({ surf: G.surf, fire: G.fire, cloud: G.cloud, cloudT: G.cloudT });
     this.applyVis(G.vis, G.seen);
@@ -189,7 +190,7 @@ export const View = {
       } else g.position.y = 0.04 + Math.sin(time * 2.2 + u.ph) * 0.05;
       u.crystal.rotation.y = time * 1.6 + u.ph; u.glow.material.opacity = 0.5 + 0.3 * Math.sin(time * 3 + u.ph);
     }
-    this.gearFrame(sdt, time);
+    this.gearFrame(sdt, time); this.sconceFrame(time);
     const s = {};
     for (const ev of this.evs.values()) {
       const r = ev.d.root, txtIntent = this.intents.tags[ev.id] || '', txtSt = stIcons(ev.st), show = r.visible && !ev.dead && (ev.id !== 0 || txtSt);

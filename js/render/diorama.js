@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CameraRig } from './diorama/camera.js';
 import { Labels, Particles, Transients } from './diorama/effects.js';
 import { LightPool, dungeonLights, settlementLights } from './diorama/lights.js';
-import { SHARED } from './diorama/materials.js';
+import { LOOK, SHARED } from './diorama/materials.js';
 import { createPost } from './diorama/post.js';
 
 /* ---------------- 조립 ---------------- */
@@ -22,6 +22,7 @@ export function createDiorama(container, o = {}) {
   const labels = new Labels(o.labelRoot || document.body, camera);
   const post = createPost(renderer, scene, camera);
   const raycaster = new THREE.Raycaster(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const fog = groundFog(); scene.add(fog);
   const dio = { THREE, renderer, scene, camera, rig, lights, preset: o.preset || 'dungeon', pool, sparks, puffs, fx, labels, post, onFrame: null, timeScale: 1, lightTarget: null, grid: null, pr: 1, _stop: 0 };
   dio.pr = Math.min(window.devicePixelRatio || 1, 2);
   function resize() {
@@ -34,17 +35,19 @@ export function createDiorama(container, o = {}) {
   }
   addEventListener('resize', resize); resize();
   dio.resize = resize;
-  /** 던전(어둡고 차가움) ↔ 정착지(낮, 따뜻함) 전환. 조명·배경·후처리만 바꾸고 나머지는 그대로 쓴다. */
+  /** 던전(칠흑·횃불) ↔ 정착지(황혼·모닥불) 전환. 조명·배경·후처리·안개만 바꾸고 나머지는 그대로 쓴다. */
+  const LOOKS = {
+    dungeon: { bg: 0x030305, exposure: 1.2, post: { vig: 0.62, grain: 0.022, blur: 0.6, sat: 0.84, shadowTint: 0x05070e }, fog: [0x1c2440, 0.2], shadow: 0.22 },
+    settlement: { bg: 0x0a0d16, exposure: 1.15, post: { vig: 0.5, grain: 0.02, blur: 0.5, sat: 0.82, shadowTint: 0x060912 }, fog: [0x2a3452, 0.24], shadow: 0.26 },
+  };
+  const applyLook = (name) => { const L = LOOKS[name]; scene.background.set(L.bg); renderer.toneMappingExposure = L.exposure; post.setLook(L.post); fog.material.uniforms.uCol.value.set(L.fog[0]); fog.material.uniforms.uA.value = L.fog[1]; LOOK.uShadow.value = L.shadow; };
+  applyLook(dio.preset);
   dio.setPreset = (name, opt = {}) => {
     if (name === dio.preset) return;
     for (const L of lights.objs) scene.remove(L);
     lights = dio.lights = (name === 'settlement' ? settlementLights : dungeonLights)(scene);
-    dio.preset = name;
-    const day = name === 'settlement';
-    scene.background.set(opt.background ?? (day ? 0x6f9a5a : 0x05060b));
-    renderer.toneMappingExposure = day ? 1.0 : 1.15;
-    post.tv.uniforms.uVig.value = day ? 0.28 : 0.55;
-    rig.tilesAcross = opt.tilesAcross ?? (day ? 11.5 : 9.5);
+    dio.preset = name; applyLook(name);
+    rig.tilesAcross = opt.tilesAcross ?? (name === 'settlement' ? 11.5 : 9.5);
     resize();
   };
   dio.hitstop = (ms) => { dio._stop = Math.max(dio._stop, ms / 1000); };
@@ -64,12 +67,42 @@ export function createDiorama(container, o = {}) {
     pool.update(sdt); sparks.update(sdt); puffs.update(sdt); fx.update(sdt); labels.update(dt);
     dio.grid?.update(sdt, SHARED.uTime.value, dio.lightTarget || rig.focus, camera.position);
     const s = labels.toScreen(dio.lightTarget || rig.focus); post.setFocus(1 - s.y / labels.H);
-    post.render();
+    fog.position.set(rig.focus.x, 0.14, rig.focus.z);
+    motes(sdt, dio);
+    post.render(SHARED.uTime.value);
     frames++; acc += dt;
     if (acc > 2.5) { const avg = acc / frames; if (avg > 0.024 && dio.pr > 1) { dio.pr = Math.max(1, dio.pr - 0.25); resize(); } acc = 0; frames = 0; }
   }
   requestAnimationFrame(frame);
   return dio;
+}
+
+/** 바닥에 낮게 깔리는 안개 — 천천히 흐르는 잡음 한 장 */
+function groundFog() {
+  const m = new THREE.ShaderMaterial({
+    uniforms: { uTime: SHARED.uTime, uCol: { value: new THREE.Color(0x1a2238) }, uA: { value: 0.32 } },
+    vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: `uniform float uTime; uniform vec3 uCol; uniform float uA; varying vec3 vW;
+float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
+void main(){
+  vec2 p = vW.xz * 0.35;
+  float v = n(p + vec2(uTime * 0.05, uTime * 0.03)) * 0.6 + n(p * 2.3 - vec2(uTime * 0.08, 0.0)) * 0.4;
+  gl_FragColor = vec4(uCol, uA * smoothstep(0.25, 0.85, v));
+}`,
+    transparent: true, depthWrite: false,
+  });
+  const f = new THREE.Mesh(new THREE.PlaneGeometry(60, 60).rotateX(-Math.PI / 2), m); f.renderOrder = 9; f.frustumCulled = false;
+  return f;
+}
+
+/** 공중에 천천히 떠다니는 불씨와 먼지(개수 제한) */
+let moteT = 0;
+function motes(dt, dio) {
+  moteT += dt; if (moteT < 0.12) return; moteT = 0;
+  const f = dio.rig.focus, x = f.x + (Math.random() - 0.5) * 12, z = f.z + (Math.random() - 0.5) * 16;
+  if (Math.random() < 0.55) dio.sparks.emit({ pos: new THREE.Vector3(x, 0.2 + Math.random() * 1.5, z), n: 1, color: 0xff8a3a, color2: 0xffc070, speed: 0.08, up: 0.25, grav: -0.05, life: 3.5, size: 0.045, spread: 0.2, drag: 0.2 });
+  else dio.puffs.emit({ pos: new THREE.Vector3(x, 0.3 + Math.random() * 1.8, z), n: 1, color: 0x6a6a78, speed: 0.05, up: 0.05, grav: 0, life: 4, size: 0.035, drag: 0.1 });
 }
 
 // DioramaKit 전체를 한 이름공간으로 (import * as K from './render/diorama.js')

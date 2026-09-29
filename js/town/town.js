@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import { META, processReturn, rel, saveMeta } from '../core/meta.js';
-import { Game } from '../core/state.js';
+import { G, Game } from '../core/state.js';
 import { weaponId } from '../data/gear.js';
-import { S_GRASS, S_NONE, S_WATER } from '../data/terrain.js';
 import { WORKTALK } from '../data/lines.js';
+import { S_GRASS, S_NONE, S_WATER } from '../data/terrain.js';
 import { BLD, JOBS, TH, TOWN_PAL, TW } from '../data/town.js';
 import { W3, _tv, _w } from '../render/common.js';
 import * as K from '../render/diorama.js';
-import { buildingModel, dollSpec, matProp, weaponDoll } from '../render/dolls.js';
+import { buildingModel, matProp, weaponDoll } from '../render/dolls.js';
+import { heroSpec } from '../render/hero-doll.js';
 import { Sfx } from '../render/sfx.js';
 import { View } from '../render/view.js';
 import { UI } from '../ui/ui.js';
@@ -71,7 +72,6 @@ export const Town = {
       const i = y * TW + x, path = x === 5 || y === 7 || (Math.abs(x - 5) <= 1 && Math.abs(y - 7) <= 1);
       surf[i] = (x >= 8 && y <= 2) ? S_WATER : path ? S_NONE : foot.has(i) ? S_NONE : S_GRASS;
     }
-    fire[7 * TW + 5] = 3;
     this.grid.setTerrain({ surf, fire, cloud: new Uint8Array(N), cloudT: new Uint8Array(N) });
     this.grid.setVisibility(new Uint8Array(N).fill(2)); this.grid.setDecals([]);
     for (const id of Object.keys(META.buildings)) this.placeBuilding(id, META.buildings[id].shown);
@@ -79,13 +79,15 @@ export const Town = {
     const trees = new THREE.Group();
     for (let k = 0; k < 26; k++) {
       const side = k % 4, t = Math.random(), x = side === 0 ? -1.3 : side === 1 ? TW + 0.3 : t * (TW + 1) - 0.5, z = side === 2 ? -1.3 : side === 3 ? TH + 0.3 : t * (TH + 1) - 0.5;
-      const s = 0.8 + Math.random() * 0.6, d = K.doll([{ s: 'cyl', p: [0, 0.35, 0], k: [0.12, 0.7, 0.12], c: 0x6a4526 }, { s: 'ico', detail: 1, p: [0, 1.05, 0], k: [0.55, 0.6, 0.55], c: 0x4f9a3f }, { s: 'ico', detail: 1, p: [0.15, 1.45, 0.05], k: [0.38, 0.4, 0.38], c: 0x62b24f }], { gloss: 0.3, scale: s });
+      // 앙상한 죽은 나무
+      const s = 0.8 + Math.random() * 0.6, a = Math.random() * 6, br = [0, 1, 2, 3].map((j) => { const b = a + j * 1.7, y = 0.7 + j * 0.22; return { s: 'cone', p: [Math.cos(b) * 0.2, y + 0.2, Math.sin(b) * 0.2], r: [Math.sin(b) * 0.9, 0, -Math.cos(b) * 0.9], k: [0.035, 0.55 - j * 0.08, 0.035], c: 0x221c18 }; });
+      const d = K.doll([{ s: 'cone', p: [0, 0.75, 0], r: [0.08, 0, 0.06], k: [0.11, 1.6, 0.11], c: 0x2a221c }, ...br], { scale: s, desat: 0.4 });
       d.root.position.set(x, 0, z); d.root.rotation.y = Math.random() * 6; trees.add(d.root);
     }
     D.scene.add(trees); this.objs.push(trees);
     for (const n of META.npcs) this.npcs.push(new TownNPC(n));
     if (META.hero) {
-      const sp = dollSpec({ type: 'hero', face: [0, 1], eq: META.hero.eq }), d = K.doll(sp.parts, { scale: 1.3, gloss: sp.gloss }); const ex = sp.extra(d); if (META.hero.eq.weapon) ex.wh.add(weaponDoll(weaponId(META.hero.eq.weapon)).root);
+      G.heroLook = META.hero.npcLook || null; const sp = heroSpec(META.hero.eq, G.heroLook), d = K.doll(sp.parts, { scale: 1.3, gloss: sp.gloss, rim: 1 }); const ex = sp.extra(d); if (META.hero.eq.weapon) ex.wh.add(weaponDoll(weaponId(META.hero.eq.weapon)).root);
       d.root.position.set(4.1, 0, 8.1); d.root.rotation.y = 0.6; d.mesh.userData.pick = { hero: true }; D.scene.add(d.root); this.objs.push(d.root); this.hero = d;
     }
     this.buildHearth(skipVisitors);
@@ -94,7 +96,7 @@ export const Town = {
   /** 장비를 바꾸면 광장의 모험가 인형도 다시 입힌다 */
   redressHero() {
     if (!this.hero || !META.hero) return;
-    const D = View.dio, old = this.hero, sp = dollSpec({ type: 'hero', face: [0, 1], eq: META.hero.eq }), d = K.doll(sp.parts, { scale: 1.3, gloss: sp.gloss }), ex = sp.extra(d);
+    const D = View.dio, old = this.hero, sp = heroSpec(META.hero.eq, META.hero.npcLook), d = K.doll(sp.parts, { scale: 1.3, gloss: sp.gloss, rim: 1 }), ex = sp.extra(d);
     if (META.hero.eq.weapon) ex.wh.add(weaponDoll(weaponId(META.hero.eq.weapon)).root);
     d.root.position.copy(old.root.position); d.root.rotation.y = old.root.rotation.y; d.mesh.userData.pick = { hero: true };
     D.scene.remove(old.root); this.objs.splice(this.objs.indexOf(old.root), 1, d.root); D.scene.add(d.root); this.hero = d;
@@ -165,10 +167,9 @@ export const Town = {
     const D = View.dio, time = K.SHARED.uTime.value;
     for (const t of this.npcs) t.update(sdt, time);
     this.hearthFrame(sdt, time);
-    if (Math.random() < sdt * 12) D.sparks.emit({ pos: _w.set(BLD.plaza.x, 0.5, BLD.plaza.y), n: 1, color: 0xff8a2a, color2: 0xffe36a, speed: 0.4, up: 1.6, grav: 0.4, life: 0.9, size: 0.1, spread: 0.25 });
     for (const [id, m] of Object.entries(this.blds)) {
       const a = m.anim;
-      if (a.disc) a.disc.material.opacity = 0.6 + Math.sin(time * 3) * 0.15;
+      if (a.disc) a.disc.material.opacity = 0.45 + Math.sin(time * 1.7) * 0.1;
       if (a.gems) a.gems.forEach((g) => { const k = g.userData.k, an = time * 1.2 + k * 2.09; g.position.set(Math.cos(an) * 0.35, 1.45 + Math.sin(time * 2 + k) * 0.08, Math.sin(an) * 0.35); g.rotation.y = time * 2; });
       if (a.ember) a.ember.scale.y = 0.8 + Math.sin(time * 9) * 0.2;
       if (a.smoke && Math.random() < sdt * 3) { const b = BLD[id]; D.puffs.emit({ pos: _w.set(b.x + a.smoke[0], a.smoke[1], b.y + a.smoke[2]), n: 1, color: 0xe8e4dc, color2: 0xbab4aa, speed: 0.2, up: 0.9, grav: 0, life: 2.2, size: 0.45, grow: 0.8, drag: 0.6 }); }
