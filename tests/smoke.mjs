@@ -67,9 +67,9 @@ try {
     UI.syncAll(); UI.ctxBtn();
     const lamp = G.torch === 80 && !G.lamps.has(G.player.y * G.W + G.player.x) && g.META.rememberedKeepers.length === known + 1;
     G.torch = before; g.META.hero.torch = before; UI.syncAll();
-    return { burn, lamp, slots: getComputedStyle(document.querySelector('#souls')).gridTemplateColumns.split(' ').length, actions: document.querySelectorAll('#actions button').length };
+    return { burn, lamp, slots: getComputedStyle(document.querySelector('#souls')).gridTemplateColumns.split(' ').length, quick: document.querySelectorAll('#quick .qs').length, actions: document.querySelectorAll('#actions button').length };
   });
-  check('모바일 HUD 3×2 영혼석 · 5개 행동', hud.slots === 3 && hud.actions === 5, JSON.stringify(hud));
+  check('모바일 HUD 퀵슬롯 6 · 영혼석 6 한 줄 · 5개 행동', hud.slots === 6 && hud.quick === 6 && hud.actions === 5, JSON.stringify(hud));
   check('횃불 소모와 등잔 보충', hud.burn === 0.5 && hud.lamp, JSON.stringify(hud));
 
   // 무작위 200턴 (연출은 즉시 소화)
