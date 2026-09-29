@@ -1,15 +1,13 @@
 import * as THREE from 'three';
-import { critReady, hitRange } from '../core/combat.js';
-import { G, Game, I, XY, entAt, inb, itemSnap, tileAt } from '../core/state.js';
-import { HEX } from '../data/colors.js';
+import { hitRange } from '../core/combat.js';
+import { G, Game, I, XY, itemSnap, tileAt } from '../core/state.js';
 import { CATS } from '../data/enemies.js';
 import { weaponId } from '../data/gear.js';
 import { MATS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrain.js';
-import { FORMS } from '../data/weapons.js';
 import { torchTier } from '../data/torch.js';
-import { D8 } from '../util/grid.js';
+import { FORMS } from '../data/weapons.js';
 import { W3, _tv, _w } from './common.js';
 import * as K from './diorama.js';
 import { GLOW_TEX, itemDoll, makeGem, matProp, propDoll, weaponDoll } from './dolls.js';
@@ -160,20 +158,12 @@ export const View = {
     if (!this.grid) return;
     const list = [...this.intents.decals], p = G.player;
     if (ports.UI.mode === 'target') list.push(...ports.UI.targetDecals());
-    else if (!G.over) {
-      for (const [dx, dy] of D8) {
-        const x = p.x + dx, y = p.y + dy; if (!inb(x, y)) continue; const i = I(x, y);
-        if (!G.seen[i] || G.tile[i] === T_WALL) continue;
-        const e = entAt(x, y), foe = e && G.vis[i];
-        list.push({ x, y, kind: 1, color: foe ? HEX.danger : G.tile[i] === T_DOOR ? 0xffd27a : 0xffffff, alpha: foe ? 0.95 : 0.5 });
-      }
-    }
     const hi = G.ents.find((e) => e.id === ports.UI.highlightEnemy && e.alive);
     if (hi) {
       list.push({ x: hi.x, y: hi.y, kind: 4, color: 0xffdf79, alpha: 1, blink: 0.5 });
       for (const q of this.intents.decals) if (q.kind !== 1) list.push({ ...q, alpha: 1 });
     }
-    list.push({ x: p.x, y: p.y, kind: 4, color: 0xffc070, alpha: 0.65 });
+    list.push({ x: p.px ?? p.x, y: p.py ?? p.y, kind: 4, color: 0xffc070, alpha: 0.65 }); // 발밑 고리는 실제 위치에
     if (G.seen[G.stairs] && G.tile[G.stairs] === T_STAIRS) list.push({ x: G.stairs % G.W, y: (G.stairs / G.W) | 0, kind: 4, color: 0x7fb8ff, alpha: 0.9, blink: 0.6, scale: 1.15 });
     this.grid.setDecals(list);
   },
@@ -202,6 +192,7 @@ export const View = {
     ports.Loop.frame(sdt);
     const time = K.SHARED.uTime.value, D = this.dio;
     const casting = new Set(this.intents.casting), winding = new Set(this.intents.winding);
+    const pe0 = this.evs.get(0), P = G.player; if (pe0 && P && P.px != null) pe0.follow(P.px, P.py, sdt);
     for (const [id, ev] of this.evs) {
       ev.casting = casting.has(id); ev.winding = winding.has(id);
       ev.update(sdt, time);
@@ -243,8 +234,6 @@ export const View = {
         if (G.weakKnown[ev.cat]) extra += `<span class="wk">${FORMS[CATS[ev.cat].weak].icon}</span>`;
         const e = G.ents.find((q) => q.id === ev.id); // ◆ 한 방에 쓰러뜨릴 수 있음 · ×2 치명 조건 충족
         if (e && ev.hp <= hitRange(e)[1]) extra += '<b class="fin" style="color:#ffe38a">◆</b>';
-        if (e && critReady(e)) extra += '<b class="x2" style="color:#ff6a4a">×2</b>';
-        if (e && e.speed) extra += e.speed === 'fast' ? '<b class="spd" style="color:#ff9a6a">»</b>' : '<b class="spd" style="color:#9ab8ff">«</b>'; // 빠름 · 느림
       }
       const txt = txtIntent + extra + txtSt;
       if (txt !== ev.tagTxt) { ev.tagTxt = txt; ev.tagIco.innerHTML = txt; ev.tagIco.className = 'ico' + (txtIntent && txtIntent !== '💤' ? ' intent' : ''); }

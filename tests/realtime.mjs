@@ -126,6 +126,17 @@ check('창을 연 채 키를 누르고 있으면 흐르지 않는다', f4 === fa
 const f5 = await page.evaluate(() => { arena(); const U = window.__game.UI; U.joyKeys.add('d'); dispatchEvent(new Event('blur')); U.feedIntent(); return { keys: U.joyKeys.size, flowing: M.C.flowing() }; });
 check('포커스가 빠지면 눌린 키를 비운다', f5.keys === 0 && !f5.flowing, JSON.stringify(f5));
 
+// ---------- 과제 4: 화면 ----------
+await page.evaluate(() => arena());
+await page.keyboard.down('d'); await page.waitForTimeout(1000);
+const v1 = await page.evaluate(() => { const g = window.__game, ev = g.View.evs.get(0), p = g.G.player; return { gap: Math.hypot(ev.cur.x - p.px, ev.cur.z - p.py), turns: document.querySelector('#turns').textContent }; });
+await page.keyboard.up('d'); await page.waitForTimeout(300);
+const v2 = await page.evaluate(() => document.querySelector('#turns').textContent);
+check('인형이 걷는 위치를 따라간다', v1.gap < 0.35, JSON.stringify(v1));
+check('시계는 초로, 멈추면 "멈춤"', /초/.test(v1.turns) && !/멈춤/.test(v1.turns) && /멈춤/.test(v2), JSON.stringify({ v1: v1.turns, v2 }));
+const v3 = await page.evaluate(() => { arena([[1, 0]]); window.__game.View.refreshDecals(); return window.__game.View.grid.lastDecals.filter((d) => d.kind === 1).length; });
+check('칸 이동 표시(주변 8칸 테)가 없다', v3 === 0, String(v3));
+
 // (과제 2~5의 검사가 여기 이어진다)
 
 check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));

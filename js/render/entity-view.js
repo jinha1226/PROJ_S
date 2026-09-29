@@ -45,6 +45,14 @@ export class EntView {
     if (kind === 'tele') { this.cur.set(x, 0, y); this.t = 1; }
   }
   lunge(dx, dy, amt = 0.36) { this.ld = [dx, dy]; this.la = amt; this.lt = 0; if (dx || dy) this.yawT = Math.atan2(dx, dy); this.sqv += this.id === 0 ? 2.5 : 1.2; }
+  /** 연속 위치를 매 프레임 따라간다(등불지기). 밀치기·미끄러짐 트윈이 도는 동안은 트윈에 맡긴다 */
+  follow(x, y, dt) {
+    if (this.t < 1) return;
+    const dx = x - this.cur.x, dz = y - this.cur.z, d = Math.hypot(dx, dz);
+    if (d > 2) { this.cur.set(x, 0, y); return; } // 순간이동·층 이동
+    const k = 1 - Math.exp(-dt * 18); this.cur.x += dx * k; this.cur.z += dz * k;
+    if (d > 0.02) { this.yawT = Math.atan2(dx, dz); this.walkT = (this.walkT || 0) + d * k; if (this.walkT > 0.9) { this.walkT = 0; this.sqv -= 2.2; } } // 한 걸음마다 살짝 눌린다
+  }
   update(dt, time) {
     const r = this.d.root;
     if (this.t < 1) {

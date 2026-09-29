@@ -264,6 +264,7 @@ export class GridView {
     }
   }
   setDecals(list) {
+    this.lastDecals = list; // 마지막 목록(테스트가 읽는다)
     const n = Math.min(list.length, this.DCAP);
     for (let k = 0; k < n; k++) {
       const d = list[k], sc = d.scale ?? 1;

@@ -116,7 +116,7 @@ Object.assign(UI, {
   hud(d) {
     this.lastHud = d; this.shieldV = d.shield;
     this.hp(d.hp, d.max); this.pstatus(d.st);
-    $('#turns').textContent = `턴 ${d.turn}`;
+    $('#turns').textContent = `${Math.floor(d.clock || 0)}초`;
     $('#floorname').textContent = `구역 ${G.zone}-${G.zf} ${G.theme.name}`;
     $('#lootcount').textContent = G.loot ? `🎒 ${Object.values(G.loot.mats).reduce((a, b) => a + b, 0)}` : '';
     $('#torchval').textContent = Number.isInteger(d.torch) ? d.torch : d.torch.toFixed(1);

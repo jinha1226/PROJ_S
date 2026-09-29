@@ -113,6 +113,7 @@ Object.assign(UI, {
     if (this.explore && !G.walk) this.exploreStep();
     if (this.travel && !G.walk) this.travel = null;
     document.body.classList.toggle('frozen', Game.mode === 'dungeon' && !G.over && !flowing());
+    const fz = document.body.classList.contains('frozen'), tt = $('#turns'); if (tt) { const base = `${Math.floor(G.clock || 0)}초`, txt = fz ? `${base} · 멈춤` : base; if (tt.textContent !== txt) tt.textContent = txt; }
     if (n > 0) { View.refreshDecals(); this.syncButtons(); }
   },
   /* ---- 대상 지정 ---- */

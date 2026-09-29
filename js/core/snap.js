@@ -20,7 +20,7 @@ export function snapHud() {
   for (const [dx, dy] of D8) { const x = p.x + dx, y = p.y + dy; if (!inb(x, y)) continue; const j = I(x, y); if (!closedDoor && G.tile[j] === T_DOOR) closedDoor = [x, y]; const e = entAt(x, y); if (!rescue && e?.npc && !e.freed) rescue = [x, y]; }
   const enemyCount = G.ents.filter((e) => e.alive && !e.ally && e !== p && seesEnt(e)).length;
   const danger = (G.intents?.decals || []).some((q) => q.x === p.x && q.y === p.y && q.kind !== 1);
-  emit('hud', { hp: p.hp, max: p.max, st: { ...p.st }, turn: G.stats.turns, floor: G.floor, torch: G.torch ?? 100, torchMax: G.torchMax ?? 100, enemyCount, danger, stairs: G.tile[i] === T_STAIRS, lamp: G.lamps?.has(i), door, closedDoor, rescue, inv: G.inv.reduce((a, b) => a + b.n, 0), gear: G.gear.has(i) ? { name: gearName(G.gear.get(i)), css: gearCss(G.gear.get(i)) } : null, shield: p.shield || 0, boss: (() => { const b = G.ents.find((e) => e.boss); return b && b.alive && b.awake ? { name: b.name, hp: b.hp, max: b.max } : null; })() });
+  emit('hud', { hp: p.hp, max: p.max, st: { ...p.st }, turn: G.stats.turns, clock: G.clock || 0, floor: G.floor, torch: G.torch ?? 100, torchMax: G.torchMax ?? 100, enemyCount, danger, stairs: G.tile[i] === T_STAIRS, lamp: G.lamps?.has(i), door, closedDoor, rescue, inv: G.inv.reduce((a, b) => a + b.n, 0), gear: G.gear.has(i) ? { name: gearName(G.gear.get(i)), css: gearCss(G.gear.get(i)) } : null, shield: p.shield || 0, boss: (() => { const b = G.ents.find((e) => e.boss); return b && b.alive && b.awake ? { name: b.name, hp: b.hp, max: b.max } : null; })() });
 }
 
 export function emitIntents() {
