@@ -93,6 +93,13 @@ check('칸 → 미리보기 → 대상 탭으로 발동, 자기 대상은 두 �
 // 지속 효과: 번개 갑주가 때린 적에게 되갚고, 남은 라운드가 칸에 뜬다
 const s9 = await page.evaluate(() => { const g = window.__game, G = arena([[1, 0]]); put(0, 'g_shock'); g.act(() => g.useStone(0)); drain(); const r = document.querySelectorAll('#souls .slot')[0].querySelector('.aur').textContent; return { hp: G.ents[1].hp, aura: G.auras.storm, r }; });
 check('번개 갑주: 때린 적에게 번개, 남은 라운드 표시', s9.hp < 30 && s9.aura > 0 && /R/.test(s9.r), JSON.stringify(s9));
+// 발밑 영혼석: 두고 가기 / 고르지 않고 움직이면 바로 흩어진다
+const s10 = await page.evaluate(() => { const g = window.__game, G = arena(), i = (x, y) => y * G.W + x;
+  G.stones.set(i(16, 15), 'r_fire'); g.act(() => g.playerMove(1, 0)); drain(); const offered = G.stoneOffer === i(16, 15) && !document.querySelector('#sheet').classList.contains('hidden');
+  document.querySelector('#sheet [data-a="leave"]').click(); drain(); const left = !G.stones.has(i(16, 15)) && G.stoneOffer == null;
+  G.stones.set(i(17, 15), 'p_wet'); g.act(() => g.playerMove(1, 0)); drain(); document.querySelector('#sheet').classList.add('hidden'); g.act(() => g.playerMove(-1, 0)); drain();
+  return { offered, left, walked: !G.stones.has(i(17, 15)) && G.stoneOffer == null }; });
+check('발밑 영혼석: 흡수·가방에 넣지 않으면 바로 흩어진다', s10.offered && s10.left && s10.walked, JSON.stringify(s10));
 await page.screenshot({ path: path.join(outDir, 'stones.png') });
 
 check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));

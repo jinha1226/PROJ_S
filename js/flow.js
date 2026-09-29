@@ -4,6 +4,7 @@ import { genFloor } from './core/mapgen.js';
 import { META, saveMeta } from './core/meta.js';
 import { endTurn } from './core/run.js';
 import { G, Game, I, TL, newSt } from './core/state.js';
+import { leaveStone } from './core/stones.js';
 import { startTorch } from './core/torch.js';
 import { hearthGlow } from './core/visitors.js';
 import { ALWAYS_KNOWN } from './data/items.js';
@@ -21,6 +22,7 @@ import { jo } from './util/text.js';
 export function act(fn) {
   if (Anim.active || G.over || Game.mode !== 'dungeon') return false; // 늦게 온 자동 턴(기절·빙결)이 정착지에서 돌지 않게
   TL.reset(); G.hurt = false; G.prevWaited = G.waited; G.waited = false; // 대검: 직전 턴에 대기했는가
+  if (G.stoneOffer != null) leaveStone(); // 고르지 않고 움직이면 발밑 영혼석은 흩어진다
   const took = fn();
   if (took) endTurn();
   Anim.start();

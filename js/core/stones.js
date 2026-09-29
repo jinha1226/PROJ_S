@@ -193,6 +193,13 @@ export function addStone(id) {
   return false;
 }
 
+/** 흡수하지도 가방에 넣지도 않은 영혼석은 바로 흩어진다 */
+export function leaveStone() {
+  const i = G.stoneOffer; G.stoneOffer = null; if (i == null || !G.stones.has(i)) return false;
+  const id = G.stones.get(i); G.stones.delete(i);
+  emit('stoneFade', { x: i % G.W, y: (i / G.W) | 0, id }); log(`영혼석 「${STONE[id].name}」이 흩어졌다`, 'info');
+  return true;
+}
 /** 발밑 영혼석을 거둔다. mode: 'absorb'(칸에 흡수 — slot을 주면 그 칸의 같은 색 영혼석과 바꾸고, 빠진 것은 가방으로) | 'bag' */
 export function takeStone(mode, slot) {
   const p = G.player, i = I(p.x, p.y), id = G.stones.get(i); if (!id) return false;

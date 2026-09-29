@@ -2,7 +2,7 @@ import { closeDoor, colorMul, playerMove } from '../core/combat.js';
 import { gearCss, gearName, pickGear, swapSet } from '../core/gear.js';
 import { itemName } from '../core/items.js';
 import { G, I, entAt } from '../core/state.js';
-import { stoneCd, takeStone } from '../core/stones.js';
+import { leaveStone, stoneCd, takeStone } from '../core/stones.js';
 import { useLamp } from '../core/torch.js';
 import { BOSSES } from '../data/enemies.js';
 import { weaponOf } from '../data/gear.js';
@@ -54,7 +54,7 @@ Object.assign(UI, {
     this.useFromBag(q.k);
   },
   quickInfo(k) { const q = G.inv[k]; if (!q) return; const def = ITEMS[q.k]; this.info(`<h3>${CAT_ICON[def.cat]} ${itemName(q.k)} ×${q.n}</h3><div>${G.known[q.k] ? def.desc : '정체를 모른다 — 써 보면 알게 된다'}</div>`); },
-  /* ---- 발밑 영혼석: 흡수 / 가방 / 두고 가기 ---- */
+  /* ---- 발밑 영혼석: 흡수 / 가방 / 두고 가기(흩어짐) ---- */
   stoneOffer(d) {
     const id = d.id, S = STONE[id], C = COLORS[S.color], empty = G.slots.some((q, k) => !q.stone && k < (G.level || 6)), same = G.slots.map((q, k) => [q, k]).filter(([q, k]) => q.stone && q.color === S.color && k < (G.level || 6)), full = G.sbag.length >= (G.sbagMax || 3);
     const swap = !empty && same.length ? `<div class="sec">바꿔 끼울 칸 <small>빠진 영혼석은 가방으로${full ? ' — 가방이 차서 흩어진다' : ''}</small></div><div class="gems" style="grid-template-columns:repeat(${Math.min(6, same.length)},1fr)">${same.map(([q, k]) => `<button class="gch" style="--c:${C.css}" data-sw="${k}">${STONE[q.stone].icon}<small>${STONE[q.stone].name}</small></button>`).join('')}</div>` : '';
@@ -63,12 +63,12 @@ Object.assign(UI, {
       <div class="wrow" style="grid-template-columns:1fr 1fr 1fr;margin-top:10px">
         <button class="wbtn" data-a="absorb" ${empty ? '' : 'disabled style="opacity:.4"'}>흡수<small>${empty ? '빈 칸에 끼워 스킬로' : '열린 빈 칸 없음'}</small></button>
         <button class="wbtn" data-a="bag" ${full ? 'disabled style="opacity:.4"' : ''}>가방에<small>${G.sbag.length}/${G.sbagMax || 3}</small></button>
-        <button class="wbtn" data-a="leave">두고 가기<small>바닥에 남긴다</small></button></div>${swap}`;
+        <button class="wbtn" data-a="leave">두고 가기<small>바로 흩어진다</small></button></div>${swap}`;
     sh.classList.remove('hidden');
     const done = (ok) => { sh.classList.add('hidden'); if (ok) this.renderWeapon?.(); if (this.explore) setTimeout(() => this.exploreStep(), 60); };
     sh.querySelector('[data-a="absorb"]').onclick = () => { let ok = false; this.instant(() => { ok = takeStone('absorb'); }); done(ok); };
     sh.querySelector('[data-a="bag"]').onclick = () => { let ok = false; this.instant(() => { ok = takeStone('bag'); }); done(ok); };
-    sh.querySelector('[data-a="leave"]').onclick = () => { G.stoneOffer = null; (this.exploreSkip ||= new Set()).add(d.i); done(false); };
+    sh.querySelector('[data-a="leave"]').onclick = () => { this.instant(() => leaveStone()); done(false); };
     sh.querySelectorAll('[data-sw]').forEach((b) => { b.onclick = () => { let ok = false; this.instant(() => { ok = takeStone('absorb', +b.dataset.sw); }); done(ok); }; });
   },
   legendFlash() { const el = $('#legendflash'); el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); },

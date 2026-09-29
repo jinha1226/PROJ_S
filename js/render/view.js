@@ -296,6 +296,11 @@ export const View = {
         this.dio.sparks.emit({ pos: W3(d.x, d.y, 0.4), n: 20, color: COLORS[STONE[d.id].color].hex, color2: 0xffffff, speed: 2, up: 2, grav: 0, life: 0.6, size: 0.13 });
         Sfx.play('pickgem'); break;
       }
+      case 'stoneFade': {
+        const i = I(d.x, d.y), g = this.gems.get(i); if (g) { this.gems.delete(i); const s0 = g.scale.x; this.dio.fx.add(g, 0.45, (k) => { g.scale.setScalar(s0 * (1 - k)); g.position.y += 0.004; }, false); }
+        this.dio.puffs.emit({ pos: W3(d.x, d.y, 0.4), n: 12, color: COLORS[STONE[d.id].color].hex, speed: 1.2, grav: 0, life: 0.6, size: 0.25 });
+        break;
+      }
       case 'spawn': { const nv = new EntView(d.e); nv.visible = d.seen == null ? true : !!d.seen; this.evs.set(d.e.id, nv); this.dio.puffs.emit({ pos: W3(d.e.x, d.e.y, 0.5), n: 14, color: 0xc8a0ff, color2: 0xffffff, speed: 1.8, grav: 0, life: 0.6, size: 0.35, grow: 1 }); Sfx.play('tele'); break; }
       case 'vanish': if (ev) { ev.dead = true; ev.deadT = 0; this.dio.puffs.emit({ pos: W3(ev.cur.x, ev.cur.z, 0.5), n: 10, color: 0xc8a0ff, speed: 1.5, grav: 0, life: 0.5, size: 0.3 }); } break;
       case 'shield': this.shield = d.v; { const pe = this.evs.get(0); if (pe) { pe.bubbleHit = 1; this.dio.labels.pop(W3(pe.cur.x, pe.cur.z, 1.4), `🛡+${d.add}`, { color: '#9fd8ff', cls: 'word', vx: 0 }); } } ports.UI.shieldV = d.v; ports.UI.pstatus(ports.UI.lastSt || G.player.st); Sfx.play('shield'); break;
