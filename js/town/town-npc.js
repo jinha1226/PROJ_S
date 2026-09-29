@@ -1,12 +1,22 @@
 import * as THREE from 'three';
 import * as K from '../render/diorama.js';
-import { JOBS, TALK, TRAITS } from '../data/town.js';
+import { DIM, SULK, TALK } from '../data/lines.js';
+import { GLOW } from '../data/visitors.js';
+import { dominant } from '../core/meta.js';
+import { hearthGlow } from '../core/visitors.js';
+import { JOBS } from '../data/town.js';
 import { _w } from '../render/common.js';
 import { npcParts } from '../render/dolls.js';
 import { View } from '../render/view.js';
 import { Town } from './town.js';
 
-export function talkLine(n) { let best = 'X'; for (const [k] of TRAITS) if (Math.abs(n.t[k]) > Math.abs(n.t[best])) best = k; const L = TALK[best][n.t[best] >= 0 ? 'hi' : 'lo']; return L[Math.floor(Math.random() * L.length)]; }
+const one = (L) => L[Math.floor(Math.random() * L.length)];
+/** 상황에 맞는 한마디: 불이 약하면 불안, 기분이 나쁘면 퉁명, 아니면 가장 두드러진 성격대로 */
+export function talkLine(n) {
+  if (hearthGlow() <= GLOW.low && Math.random() < 0.6) return one(DIM);
+  if (n.mood <= -1 && Math.random() < 0.6) return one(SULK);
+  const k = dominant(n); return one(TALK[k[0]][k[1] === '+' ? 'hi' : 'lo']);
+}
 
 export class TownNPC {
   constructor(n, spawnAt) {

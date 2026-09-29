@@ -75,14 +75,15 @@ for (const f of files) {
   console.log(`${path.relative(ROOT, f)}: 빠짐 ${JSON.stringify(Object.fromEntries(Object.entries(missing).map(([k, v]) => [path.relative(ROOT, k), v])))}${unused.length ? ' · 안 씀 ' + unused.join(',') : ''}`);
   if (CHECK) continue;
   // 고치기: import 줄 다시 쓰기
-  const want = {};
+  const want = {}, bare = [];
   for (const im of imports) {
     const key = im.source.value;
+    if (!im.specifiers.length) { bare.push(src.slice(im.start, im.end)); continue; } // 부수 효과 import는 원래 순서대로 맨 뒤에
     if (im.specifiers.some((s) => s.type !== 'ImportSpecifier')) { (want[key] ||= { raw: src.slice(im.start, im.end) }); continue; }
     for (const s of im.specifiers) if (!unused.includes(s.local.name)) ((want[key] ||= { names: new Set() }).names ||= new Set()).add(s.local.name);
   }
   for (const [file, ns] of Object.entries(missing)) { const key = rel(f, file); for (const n of ns) ((want[key] ||= { names: new Set() }).names ||= new Set()).add(n); }
-  const lines = Object.entries(want).sort(([a], [b]) => (a.startsWith('.') - b.startsWith('.')) || a.localeCompare(b)).map(([k, v]) => v.raw || (v.names.size ? `import { ${[...v.names].sort().join(', ')} } from '${k}';` : '')).filter(Boolean);
+  const lines = Object.entries(want).sort(([a], [b]) => (a.startsWith('.') - b.startsWith('.')) || a.localeCompare(b)).map(([k, v]) => v.raw || (v.names.size ? `import { ${[...v.names].sort().join(', ')} } from '${k}';` : '')).filter(Boolean).concat(bare);
   const first = imports.length ? imports[0].start : 0, last = imports.length ? imports[imports.length - 1].end : 0;
   const out = src.slice(0, first) + lines.join('\n') + (imports.length ? '' : '\n\n') + src.slice(last);
   fs.writeFileSync(f, out);

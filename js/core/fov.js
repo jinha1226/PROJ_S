@@ -31,7 +31,7 @@ export const FOV_R = 7;
 
 export function computeFOV() {
   const p = G.player; G.vis.fill(0);
-  const R = FOV_R + (G.ps ? G.ps.vision : 0);
+  const R = FOV_R + (G.ps ? G.ps.vision : 0) + (G.glowVision || 0);
   for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
     if (dx * dx + dy * dy > R * R + R) continue;
     const x = p.x + dx, y = p.y + dy; if (!inb(x, y)) continue;

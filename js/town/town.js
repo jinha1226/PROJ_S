@@ -1,9 +1,10 @@
 import * as THREE from 'three';
-import { META, processReturn, saveMeta } from '../core/meta.js';
+import { META, processReturn, rel, saveMeta } from '../core/meta.js';
 import { Game } from '../core/state.js';
 import { weaponId } from '../data/gear.js';
 import { S_GRASS, S_NONE, S_WATER } from '../data/terrain.js';
-import { BLD, JOBS, TH, TOWN_PAL, TW, WORKTALK } from '../data/town.js';
+import { WORKTALK } from '../data/lines.js';
+import { BLD, JOBS, TH, TOWN_PAL, TW } from '../data/town.js';
 import { W3, _tv, _w } from '../render/common.js';
 import * as K from '../render/diorama.js';
 import { buildingModel, dollSpec, matProp, weaponDoll } from '../render/dolls.js';
@@ -28,17 +29,25 @@ export const Town = {
   enter(r = {}) {
     Game.mode = 'town';
     const res = processReturn(r); saveMeta();
-    UI.toTown(); View.clear(); this.build();
+    UI.toTown(); View.clear();
+    // 조각을 넣기 전의 원경, 아직 오지 않은 방문자로 짓고 연출로 바꾼다
+    if (res.shard) META.lit[res.shard - 1] = false;
+    this.build(res.visitors);
+    if (res.shard) META.lit[res.shard - 1] = true;
     this.busy = true;
-    const hasLoot = r.loot && Object.keys(r.loot).length;
-    setTimeout(() => {
-      if (hasLoot) this.lootShower(r.loot);
-      setTimeout(() => {
-        const newB = Object.keys(META.buildings).filter((b) => !META.buildings[b].shown);
-        newB.forEach((b, k) => setTimeout(() => this.rise(b), k * 900));
-        setTimeout(() => { this.busy = false; this.report(r, res); }, newB.length * 900 + (newB.length ? 700 : 0));
-      }, hasLoot ? 2600 : 300);
-    }, 500);
+    if (res.dark) { setTimeout(() => { this.busy = false; this.afterReport = () => this.endingDark(); this.report(r, res); }, 700); this.renderHud(); return; }
+    const hasLoot = r.loot && Object.keys(r.loot).length, steps = [];
+    if (hasLoot) steps.push((next) => { this.lootShower(r.loot); setTimeout(next, 2600); });
+    if (res.shard) steps.push((next) => this.shardScene(res.shard, next));
+    steps.push((next) => { const newB = Object.keys(META.buildings).filter((b) => !META.buildings[b].shown); newB.forEach((b, k) => setTimeout(() => this.rise(b), k * 900)); setTimeout(next, newB.length * 900 + (newB.length ? 700 : 0)); });
+    for (const v of res.visitors) steps.push((next) => this.visitorArrive(v, () => setTimeout(next, 300)));
+    steps.push(() => {
+      this.busy = false;
+      this.afterReport = () => { if (res.ending) this.endingDawn(); else if (META.needSuccessor) this.successionSheet(); };
+      this.report(r, res);
+    });
+    const run = (k) => steps[k] && steps[k](() => run(k + 1));
+    setTimeout(() => run(0), 500);
     this.renderHud();
   },
   clear() {
@@ -48,9 +57,9 @@ export const Town = {
     for (const n of this.npcs) D.scene.remove(n.d.root); this.npcs = [];
     for (const t of this.tags) t.remove(); this.tags = [];
     for (const s of this.shower) D.scene.remove(s.o); this.shower = [];
-    this.blds = {}; this.hero = null; this.rising = [];
+    this.blds = {}; this.hero = null; this.rising = []; this.lands = []; this.graves = []; this.visitorDolls = []; this.orbs = [];
   },
-  build() {
+  build(skipVisitors = []) {
     const D = View.dio; this.clear();
     D.setPreset('settlement');
     const N = TW * TH, kind = (i) => { const x = i % TW, y = (i / TW) | 0; return x === 0 || y === 0 || x === TW - 1 || y === TH - 1 ? 'wall' : 'floor'; };
@@ -79,6 +88,7 @@ export const Town = {
       const sp = dollSpec({ type: 'hero', face: [0, 1], eq: META.hero.eq }), d = K.doll(sp.parts, { scale: 1.3, gloss: sp.gloss }); const ex = sp.extra(d); if (META.hero.eq.weapon) ex.wh.add(weaponDoll(weaponId(META.hero.eq.weapon)).root);
       d.root.position.set(4.1, 0, 8.1); d.root.rotation.y = 0.6; d.mesh.userData.pick = { hero: true }; D.scene.add(d.root); this.objs.push(d.root); this.hero = d;
     }
+    this.buildHearth(skipVisitors);
     D.lightTarget = this.center; D.rig.focusT.copy(this.center); D.rig.snap();
   },
   /** 장비를 바꾸면 광장의 모험가 인형도 다시 입힌다 */
@@ -131,7 +141,7 @@ export const Town = {
       for (let k = 0; k < 8; k++) {
         const a = Math.random() * 6.28, x = this.center.x + Math.cos(a) * 1.9, z = this.center.z + Math.sin(a) * 1.7, x2 = this.center.x + Math.cos(a + 0.5) * 1.9, z2 = this.center.z + Math.sin(a + 0.5) * 1.7;
         if (!ok(x, z)) continue;
-        t.partner = f; f.partner = t;
+        t.partner = f; f.partner = t; rel(n, f.n, 2); // 수다를 떨면 조금씩 가까워진다
         t.goto(x, z, 'chat', 6, [x2, z2]); f.goto(x2, z2, 'chat', 6, [x, z]); return;
       }
     }
@@ -154,6 +164,7 @@ export const Town = {
   frame(sdt) {
     const D = View.dio, time = K.SHARED.uTime.value;
     for (const t of this.npcs) t.update(sdt, time);
+    this.hearthFrame(sdt, time);
     if (Math.random() < sdt * 12) D.sparks.emit({ pos: _w.set(BLD.plaza.x, 0.5, BLD.plaza.y), n: 1, color: 0xff8a2a, color2: 0xffe36a, speed: 0.4, up: 1.6, grav: 0.4, life: 0.9, size: 0.1, spread: 0.25 });
     for (const [id, m] of Object.entries(this.blds)) {
       const a = m.anim;
@@ -192,6 +203,8 @@ export const Town = {
       const p = h.object.userData.pick; if (!p) continue;
       if (p.npc) { const n = META.npcs.find((q) => q.id === p.npc); if (n) { this.npcCard(n); const t = this.npcs.find((q) => q.n === n); if (t) this.bubble(t); } return; }
       if (p.hero) { this.heroCard(); return; }
+      if (p.visitor) { this.visitorCard(p.visitor); return; }
+      if (p.grave) { this.graveInfo(p.grave); return; }
       if (p.bld) { this.open(p.bld); return; }
     }
   },

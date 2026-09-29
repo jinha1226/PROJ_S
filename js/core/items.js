@@ -33,6 +33,7 @@ export function teleSpot() {
 
 export function useItem(k, tx, ty) {
   const p = G.player, cat = ITEMS[k].cat;
+  if (k === 'recall' && G.bossFloor) { log('보스의 어둠이 짙어 두루마리 빛이 모이지 않는다', 'bad'); return false; }
   if (cat === 'throw') return throwItem(k, tx, ty);
   if (!takeItem(k)) return false;
   emit(cat === 'potion' ? 'drink' : 'read', { color: G.look[k].color });
@@ -50,7 +51,7 @@ export function useItem(k, tx, ty) {
     for (const e of G.ents) if (isFoe(e) && e.alive && G.vis[I(e.x, e.y)]) { e.st.fear = 6; e.awake = true; cancelIntent(e); emitStatus(e); emit('scare', { id: e.id }); n++; }
     log(n ? `적 ${n}명이 겁에 질려 달아난다!` : '공포가 텅 빈 방에 퍼졌다', n ? 'good' : '');
   } else if (k === 'recall') {
-    emit('poof', { x: p.x, y: p.y }); log('두루마리가 빛난다 — 정착지로!', 'syn'); G.pendingReturn = 'recall';
+    emit('recallGlow', { x: p.x, y: p.y }); log('두루마리에 빛이 모인다 — 다음 턴에 정착지로!', 'syn'); G.recallArm = true;
   } else if (k === 'blaze') {
     emit('ring', { x: p.x, y: p.y, elem: 'fire' }); TL.wait(90);
     for (const [dx, dy] of D8) { const x = p.x + dx, y = p.y + dy; if (inb(x, y) && G.tile[I(x, y)] !== T_WALL) fireAt(x, y, 4); }

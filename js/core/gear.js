@@ -3,6 +3,8 @@ import { AFFIXES, BAG_MAX, BASE_EVA, CAPS, GEAR_BASES, GEAR_DROP, LEGENDS, RARE_
 import { T_FLOOR, T_STAIRS } from '../data/terrain.js';
 import { WPN } from '../data/weapons.js';
 import { pick, rand, ri, wpick } from '../util/rng.js';
+import { addLoot } from './combat.js';
+import { addItem } from './items.js';
 import { META } from './meta.js';
 import { G, Game, I, emit, inb, log, standable } from './state.js';
 
@@ -203,14 +205,19 @@ export function dropGearFrom(e) {
 export function openChest(x, y) {
   const i = I(x, y), c = G.chests.get(i); if (!c || c.open) return false;
   c.open = true; emit('chest', { x, y });
-  G.chests.delete(i); placeGear(rollGear(G.floor), x, y); G.chests.set(i, c);
+  G.chests.delete(i);
+  let it = rollGear(G.floor + (c.rare ? 3 : 0)); if (c.rare && it.rarity === 'common') it = rollGear(G.floor + 6);
+  placeGear(it, x, y); G.chests.set(i, c);
   log('상자를 열었다!', 'good');
+  // 귀환 두루마리: 구역마다 최대 1개, 상자에서만 10%
+  if (G.zoneFlags && !G.zoneFlags.recall && rand() < 0.1) { G.zoneFlags.recall = true; addItem('recall'); log('상자 바닥에 귀환 두루마리가 있었다!', 'syn'); }
+  if (rand() < 0.08) { addLoot('마석', 1); emit('loot', { x, y, m: '마석' }); log('🔮 마석 한 조각', 'good'); }
   return true;
 }
-/** 층마다 상자 1~2개 */
-export function placeChests(rooms, tile) {
+/** 층마다 상자 1~2개(+extra) */
+export function placeChests(rooms, tile, extra = 0) {
   G.chests = new Map();
-  const n = ri(1, 2);
+  const n = ri(1, 2) + extra;
   for (let k = 0, placed = 0; k < 200 && placed < n; k++) {
     const r = rooms[ri(1, rooms.length - 1)], x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1), i = I(x, y);
     if (tile[i] !== T_FLOOR || G.items.has(i) || G.mats.has(i) || G.gear.has(i) || G.chests.has(i)) continue;

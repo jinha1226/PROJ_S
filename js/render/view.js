@@ -51,17 +51,18 @@ export const View = {
     this.clearGear();
     for (const m of this.matMeshes.values()) this.dio.scene.remove(m); this.matMeshes.clear();
     if (this.portal) { this.dio.scene.remove(this.portal); this.portal = null; }
+    for (const m of this.blocks.values()) this.dio.scene.remove(m.root); this.blocks.clear();
     this.dio.labels.clear();
   },
   buildFloor() {
     this.clear();
     const F = G.theme;
     this.dio.setPreset('dungeon');
-    this.grid = new K.GridView(this.dio.scene, { w: G.W, h: G.H, kind: (i) => (G.tile[i] === T_WALL ? 'wall' : G.tile[i] === T_STAIRS ? 'void' : 'floor'), palette: F.pal, wallH: 1.2 });
+    this.grid = new K.GridView(this.dio.scene, { w: G.W, h: G.H, kind: this.tileKind, palette: F.pal, wallH: 1.2 });
     this.dio.grid = this.grid;
     for (let i = 0; i < G.W * G.H; i++) if (G.tile[i] === T_DOOR || G.tile[i] === T_OPEN) this.makeDoor(i);
     if (!G.bossFloor) this.makeStairs(G.stairs); else if (G.exitOpen) this.makePortal(G.stairs);
-    this.syncMats();
+    this.syncMats(); this.syncBlocks();
     for (const e of G.ents) this.evs.set(e.id, new EntView(e));
     this.grid.setTerrain({ surf: G.surf, fire: G.fire, cloud: G.cloud, cloudT: G.cloudT });
     this.applyVis(G.vis, G.seen);
@@ -106,6 +107,7 @@ export const View = {
     for (const [i, d] of this.itemMeshes) d.root.visible = sn(i);
     for (const [i, g] of this.gems) if (!g.userData.drop) g.visible = sn(i);
     for (const [i, m] of this.matMeshes) m.visible = sn(i);
+    for (const [i, m] of this.blocks) m.root.visible = sn(i);
   },
   syncGems(list) {
     const keep = new Set(list.map(([i]) => i));
@@ -209,7 +211,7 @@ export const View = {
   },
   /* ---------- 사건 → 연출 ---------- */
   on(type, d) {
-    if (this.gearOn(type, d)) return;
+    if (this.gearOn(type, d) || this.storyOn(type, d)) return;
     const D = this.dio, ev = d && d.id != null ? this.evs.get(d.id) : null;
     switch (type) {
       case 'move': if (ev) { ev.moveTo(d.x, d.y, d.dur, d.hop, d.kind); ev.visible = d.id === 0 || !!d.seen; if (d.kind === 'step' && ev.visible) D.puffs.emit({ pos: W3(ev.cur.x, ev.cur.z, 0.06), n: 2, color: 0x8a8098, speed: 0.4, grav: 0, life: 0.4, size: 0.18, flat: true }); if (d.id === 0 && d.kind === 'step') Sfx.play('step'); if (d.kind === 'dash') D.puffs.emit({ pos: W3(ev.cur.x, ev.cur.z, 0.1), n: 3, color: 0x9a8e80, speed: 0.8, grav: 0, life: 0.5, size: 0.3, flat: true }); } break;
@@ -234,7 +236,7 @@ export const View = {
       case 'swing': if (ev) { ev.swing = { t: 0, form: d.form }; ev.lunge(d.dx, d.dy, d.form === 'pierce' ? 0.45 : 0.3); } this.swingFx(d, ev); break;
       case 'stone': this.stoneFx(d); break;
       case 'free': if (ev) { if (ev.extra.cage) { const c = ev.extra.cage; this.dio.fx.add(c, 0.4, (k) => { c.position.y = k * 1.5; c.scale.setScalar(1 - k); }, false); } ev.sqv += 6; this.dio.labels.pop(W3(ev.cur.x, ev.cur.z, 1.4), '고마워요!', { color: '#9dffb5', cls: 'word', vx: 0 }); this.dio.sparks.emit({ pos: W3(ev.cur.x, ev.cur.z, 0.6), n: 20, color: 0xfff2b0, color2: 0xffffff, speed: 2, up: 1.5, grav: 0, life: 0.6, size: 0.12 }); Sfx.play('pick'); } break;
-      case 'loot': this.dio.labels.pop(W3(d.x, d.y, 1.0), `+${MATS[d.m]} ${d.m}`, { color: '#ffe38a', cls: 'word', vx: 20, rise: 40, dur: 1.1, delay: 0.25 }); break;
+      case 'loot': this.dio.labels.pop(W3(d.x, d.y, 1.0), `+${MATS[d.m] || '📜'} ${d.m}`, { color: '#ffe38a', cls: 'word', vx: 20, rise: 40, dur: 1.1, delay: 0.25 }); break;
       case 'matPick': { const i = I(d.x, d.y), m = this.matMeshes.get(i); if (m) { this.dio.scene.remove(m); this.matMeshes.delete(i); } this.dio.labels.pop(W3(d.x, d.y, 0.9), `+${MATS[d.m]} ${d.m}`, { color: '#ffe38a', cls: 'word', vx: 0 }); this.dio.sparks.emit({ pos: W3(d.x, d.y, 0.3), n: 14, color: 0xfff2b0, speed: 1.5, up: 1.5, grav: 0, life: 0.5, size: 0.1 }); Sfx.play('pick'); break; }
       case 'portal': this.makePortal(I(d.x, d.y)); this.dio.fx.ring(W3(d.x, d.y), 0x7fb8ff, 0.2, 3, 0.8); this.dio.pool.flash(W3(d.x, d.y), 0x9fd0ff, 80, 1, 9); Sfx.play('tele'); break;
       case 'horn': if (ev) { ev.sqv += 7; this.dio.labels.pop(W3(ev.cur.x, ev.cur.z, ev.h + 0.4), '📯 뿌우우!', { color: '#ffd08a', cls: 'word', vx: 0, rise: 40 }); this.dio.fx.ring(W3(ev.cur.x, ev.cur.z), 0xffd08a, 0.3, 3, 0.6); this.dio.rig.shake(0.3); Sfx.play('snort'); } break;

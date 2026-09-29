@@ -3,6 +3,8 @@ import { conductSet, fireAt, frostCast, oilSet, shock, venomAt } from './element
 import { los } from './fov.js';
 import { G, I, TL, XY, emit, entAt, inb, isFoe, isP, standable } from './state.js';
 import { withCtx } from './stones.js';
+import { blockAt, openHidden } from './hidden.js';
+import { HIDDEN, HIDDEN_BY_SKILL } from '../data/visitors.js';
 import { HEX } from '../data/colors.js';
 import { ITEMS, ITEM_COL } from '../data/items.js';
 import { SK } from '../data/skills.js';
@@ -17,6 +19,13 @@ export function useSkillRaw(id, tx, ty) {
   G.cd[id] = sk.cd - ((G.ps && G.ps.skillCd[id]) || 0);
   const sd = G.ps ? G.ps.skillDmg : 0;
   emit('pcast', { elem: id });
+  // 숨은 방 입구
+  if (blockAt(tx, ty) === HIDDEN_BY_SKILL[id]) {
+    if (id === 'push') { emit('lunge', { id: 0, dx, dy }); TL.wait(90); }
+    else if (id === 'bolt') { emit('bolt', { from: [p.x, p.y], to: [tx, ty] }); TL.wait(70); }
+    else { const dur = 90 + d * 45; emit('proj', { kind: id === 'fire' ? 'fire' : 'frost', from: [p.x, p.y], to: [tx, ty], dur }); TL.wait(dur); }
+    openHidden(tx, ty, id); TL.wait(120); return true;
+  }
   if (id === 'push') {
     const e = entAt(tx, ty); if (!e) return false;
     emit('lunge', { id: 0, dx, dy }); TL.wait(90); emit('shove', { x: tx, y: ty, dx, dy });
@@ -42,6 +51,7 @@ export function targetsFor(pend) {
   for (let dy = -pend.range; dy <= pend.range; dy++) for (let dx = -pend.range; dx <= pend.range; dx++) {
     if (!dx && !dy) continue;
     const x = p.x + dx, y = p.y + dy; if (!inb(x, y)) continue; const i = I(x, y);
+    if (pend.kind === 'skill' && G.vis[i] && blockAt(x, y) === HIDDEN_BY_SKILL[pend.id] && los(p.x, p.y, x, y)) { set.add(i); continue; }
     if (!G.vis[i] || G.tile[i] === T_WALL || G.tile[i] === T_DOOR) continue;
     if (pend.needsEnemy) { const e = entAt(x, y); if (!e || !isFoe(e)) continue; }
     if (!los(p.x, p.y, x, y)) continue;
@@ -53,6 +63,8 @@ export function targetsFor(pend) {
 export function previewFor(pend, x, y) {
   const p = G.player, i = I(x, y), c = entAt(x, y), extra = [], id = pend.id; let note = '', warn = '';
   const add = (tx, ty, color, kind = 0, alpha = 0.85, rot = 0) => extra.push({ x: tx, y: ty, kind, color, alpha, rot });
+  const bk = blockAt(x, y);
+  if (bk && HIDDEN_BY_SKILL[id] === bk) { add(x, y, pend.color, 5, 0.9); return { extra, note: `→ ${HIDDEN[bk].name}을(를) 연다 — 너머에 무언가 있다` }; }
   if (id === 'push') {
     const dx = sgn(x - p.x), dy = sgn(y - p.y), rot = Math.atan2(dx, -dy); let cx = x, cy = y, left = 2, n = 0;
     while (left > 0 && n < 12) {

@@ -5,8 +5,10 @@ import { G, I } from '../core/state.js';
 import { swapStone } from '../core/stones.js';
 import { CATS, DROPS, ENEMY, MAGE, catOf, kindOf } from '../data/enemies.js';
 import { CAT_ICON, ITEMS, ITEM_COL } from '../data/items.js';
+import { SK } from '../data/skills.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { C_STEAM, S_ASH, S_GRASS, S_ICE, S_OIL, S_WATER, T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrain.js';
+import { HIDDEN } from '../data/visitors.js';
 import { FORMS } from '../data/weapons.js';
 import { Anim, act } from '../flow.js';
 import { stIcons } from '../render/entity-view.js';
@@ -70,7 +72,8 @@ Object.assign(UI, {
   },
   showTile(x, y) {
     const i = I(x, y); if (!G.seen[i]) return;
-    const s = G.surf[i], t = G.tile[i];
+    const s = G.surf[i], t = G.tile[i], bk = G.block && G.block.get(i);
+    if (bk) { const H = HIDDEN[bk]; this.info(`<div><b>${H.name}</b> — ${H.hint}.<br><small>${SK[H.skill].icon} ${SK[H.skill].name}을(를) 이 칸에 쓰면 열린다</small></div>`); return; }
     const T = { [S_WATER]: '💧 물웅덩이 — 들어가면 젖는다. 번개가 이어진 물 전체로 흐른다. 냉기를 맞으면 얼음이 된다.', [S_GRASS]: '🌿 풀 — 불이 붙으면 매 턴 옆 풀로 번진다.', [S_OIL]: '🛢 기름 — 불이 닿으면 이어진 기름이 차례로 폭발한다.', [S_ICE]: '🧊 얼음 — 올라서면 같은 방향으로 끝까지 미끄러진다. 불에 녹는다.', [S_ASH]: '재 — 불탄 자리.' };
     let txt = T[s] || (t === T_DOOR ? '🚪 닫힌 문 — 시야를 막는다. 부딪히면 열린다.' : t === T_OPEN ? '🚪 열린 문 — 옆에 서서 ⬇ 옆 버튼으로 닫을 수 있다.' : t === T_STAIRS ? '⬇ 계단 — 올라서서 내려간다.' : t === T_WALL ? '벽 — 밀쳐서 부딪히게 하면 충돌 피해.' : '돌바닥');
     if (G.fire[i]) txt += '<br>🔥 불타는 중';

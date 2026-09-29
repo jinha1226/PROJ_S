@@ -11,6 +11,7 @@ import { jo } from '../util/text.js';
 import { applyFire, fireAt } from './elements.js';
 import { dropGearFrom, gearName, openChest } from './gear.js';
 import { addItem, identify, itemName } from './items.js';
+import { META, saveMeta } from './meta.js';
 import { emitSlots, emitStatus, snapTerrain } from './snap.js';
 import { G, I, TL, emit, entAt, inb, isFoe, isP, itemSnap, log, standable } from './state.js';
 import { addStone, dropStone, trigger, withCtx } from './stones.js';
@@ -128,7 +129,8 @@ export function onEnter(e) {
       if (addStone(id)) { G.stones.delete(i); emit('stonePick', { x: e.x, y: e.y, id }); emitSlots(); }
       else log('영혼석 칸과 가방이 가득 찼다 — 가방에서 하나를 버려야 한다', 'bad');
     }
-    if (G.mats.has(i)) { const m = G.mats.get(i); G.mats.delete(i); addLoot(m, 1); emit('matPick', { x: e.x, y: e.y, m }); log(`${MATS[m]} ${m} 채집`, 'good'); }
+    if (G.mats.get(i) === '기록') { G.mats.delete(i); emit('matPick', { x: e.x, y: e.y, m: '기록' }); if (!META.lore.includes(G.zone)) { META.lore.push(G.zone); saveMeta(); } emit('lore', { zone: G.zone }); log('옛 등불지기의 기록 한 장을 주웠다', 'syn'); }
+    else if (G.mats.has(i)) { const m = G.mats.get(i); G.mats.delete(i); addLoot(m, 1); emit('matPick', { x: e.x, y: e.y, m }); log(`${MATS[m]} ${m} 채집`, 'good'); }
     if (G.gear.has(i)) log(`${gearName(G.gear.get(i))}이 떨어져 있다 — 줍기 버튼`, 'info');
     if (G.tile[i] === T_STAIRS) log('계단이다. ⬇ 버튼으로 내려간다.', 'info');
   }

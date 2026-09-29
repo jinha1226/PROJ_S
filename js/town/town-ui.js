@@ -1,11 +1,13 @@
 import { craftArmor, craftWeapon, gearName, makeGear } from '../core/gear.js';
 import { META, craftNote, invAdd, invCount, moodAdd, newHero, packLimit, recipeName, saveMeta } from '../core/meta.js';
+import { cap, hearthGlow } from '../core/visitors.js';
 import { BOSSES } from '../data/enemies.js';
 import { RARITY, SLOTS, SLOT_ICON, slotKind } from '../data/gear.js';
 import { ITEMS, MATS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { ZONES } from '../data/terrain.js';
 import { BLD, CRAFT_B, JOBS, MOODS, RECIPES, TRAITS, adj } from '../data/town.js';
+import { LANDS } from '../data/visitors.js';
 import { enterDungeon } from '../flow.js';
 import { W3 } from '../render/common.js';
 import { Sfx } from '../render/sfx.js';
@@ -19,12 +21,13 @@ import { Town } from './town.js';
 Object.assign(Town, {
   renderHud() {
     const h = META.hero, cl = META.cleared.map((c, k) => (c ? `✓${k + 1}` : '')).filter(Boolean).join(' ');
-    $('#tinfo').innerHTML = `마을 사람 ${META.npcs.length} · 건물 ${Object.keys(META.buildings).length} · ${h ? `모험가 ${h.name}(${h.gen}대) HP ${h.hp}/${h.max}` : `다음 모험가 ${META.gen + 1}대째`}${cl ? ` · 구역 ${cl}` : ''}`;
+    $('#tinfo').innerHTML = `<b class="glow">🔥 ${hearthGlow()}</b> · 주민 ${META.npcs.length}/${cap()}${META.visitors.length ? ` · 방문자 ${META.visitors.length}` : ''} · ${h ? `등불지기 ${h.name}(${h.gen}대) HP ${h.hp}/${h.max}` : META.needSuccessor ? '횃불을 들 사람을 골라야 한다' : `다음 등불지기 ${META.gen + 1}대째`}${cl ? ` · 구역 ${cl}` : ''}`;
   },
   sheet(html) { const sh = $('#sheet'); sh.innerHTML = html; sh.classList.remove('hidden'); sh.querySelector('.close')?.addEventListener('click', () => sh.classList.add('hidden')); return sh; },
   /* ---- 출발문: 구역 선택 · 준비 ---- */
   gate() {
-    if (!META.hero) { META.hero = newHero(); saveMeta(); this.build(); this.renderHud(); UI.toast(`새 모험가 ${jo(META.hero.name, '이가')} 나섰다 (${META.hero.gen}대째)`); }
+    if (!META.hero && META.needSuccessor) { this.successionSheet(); return; }
+    if (!META.hero) { META.hero = newHero(); saveMeta(); this.build(); this.renderHud(); UI.toast(`새 등불지기 ${jo(META.hero.name, '이가')} 나섰다 (${META.hero.gen}대째)`); }
     const h = META.hero;
     if (!this.prep) this.prep = { zone: Math.min(3, META.cleared.findIndex((c) => !c) < 0 ? 3 : META.cleared.findIndex((c) => !c)), items: {} };
     const P = this.prep, lim = packLimit(), carried = invCount(h.inv) + Object.values(P.items).reduce((a, b) => a + b, 0);
@@ -39,7 +42,7 @@ Object.assign(Town, {
       ${META.buff === 'feast' ? '<div class="gtxt" style="margin-top:6px">🍲 든든한 한 끼 — 출발 시 보호막 +6</div>' : ''}
       <button class="bigbtn" id="btn-depart">구역 ${P.zone + 1}로 출발</button>`);
     sh.querySelectorAll('[data-z]').forEach((b) => { b.onclick = () => { P.zone = +b.dataset.z; this.gate(); }; });
-    sh.querySelectorAll('[data-p]').forEach((b) => { b.onclick = () => { const k = b.dataset.p; if (carried >= lim) { UI.toast('더는 못 챙긴다'); return; } if ((P.items[k] || 0) < META.items[k]) { P.items[k] = (P.items[k] || 0) + 1; this.gate(); } }; });
+    sh.querySelectorAll('[data-p]').forEach((b) => { b.onclick = () => { const k = b.dataset.p; if (carried >= lim) { UI.toast('더는 못 챙긴다'); return; } if (k === 'recall' && (P.items.recall || 0) + (h.inv.find((q) => q.k === 'recall')?.n || 0) >= 1) { UI.toast('귀환 두루마리는 한 원정에 하나만'); return; } if ((P.items[k] || 0) < META.items[k]) { P.items[k] = (P.items[k] || 0) + 1; this.gate(); } }; });
     sh.querySelectorAll('[data-m]').forEach((b) => { b.onclick = () => { const k = b.dataset.m; if (P.items[k]) { P.items[k]--; this.gate(); } }; });
     sh.querySelector('[data-inv]').onclick = () => UI.openInv();
     sh.querySelector('#btn-depart').onclick = () => this.depart();
@@ -142,7 +145,8 @@ Object.assign(Town, {
   rest() {
     const h = META.hero, D = View.dio, b = BLD.plaza;
     D.pool.flash(W3(b.x, b.y), 0xffa040, 90, 0.8, 7); D.sparks.emit({ pos: W3(b.x, b.y, 0.5), n: 30, color: 0xff9a3a, color2: 0xffe36a, speed: 2, up: 2.5, grav: 0.5, life: 1, size: 0.15 }); Sfx.play('fire');
-    if (!h) { UI.toast('쉬어 갈 모험가가 없다 — 출발문에서 새 모험가가 나선다'); return; }
+    this.sheet(`<h3>🔥 모닥불 <button class="close">닫기</button></h3>${this.hearthInfo()}`);
+    if (!h) { UI.toast(META.needSuccessor ? '횃불을 들 사람을 골라야 한다 — 출발문' : '출발문에서 새 등불지기가 나선다'); return; }
     h.hp = h.max; saveMeta(); this.renderHud();
     const n = META.npcs.slice().sort((a, c) => c.t.E + c.t.A - (a.t.E + a.t.A))[0];
     UI.toast(`${h.name} HP 회복 (${h.max})`);
@@ -160,18 +164,22 @@ Object.assign(Town, {
     UI.info(`<h3>🧭 ${h.name} <small style="color:#9aa2bd">${h.gen}대째 모험가 · HP ${h.hp}/${h.max}</small></h3><div class="gtxt">장비: ${SLOTS.filter((k) => h.eq[k]).map((k) => `<span style="color:${RARITY[h.eq[k].rarity].css}">${SLOT_ICON[k]}${gearName(h.eq[k])}</span>`).join(' ')}<br>영혼석: ${h.slots.filter((q) => q.stone).map((q) => `<span style="color:${COLORS[q.color].css}">${STONE[q.stone].icon}${STONE[q.stone].name}</span>`).join(' ') || '없음'}<br>가방: ${h.inv.map((q) => `${ITEMS[q.k].name}×${q.n}`).join(', ') || '비어 있음'}</div>`);
   },
   report(r, res) {
-    const W = { boss: `🏆 구역 ${r.zone} 보스 격파!${r.first ? ' 다음 구역이 열렸다.' : ''}`, recall: `📜 귀환 두루마리로 구역 ${r.zone}-${r.zf}에서 돌아왔다. 이 구역은 처음부터 다시.`, death: `🕯 ${jo(r.hero, '이가')} 구역 ${r.zone}-${r.zf}에서 쓰러졌다. 영혼석과 전리품을 잃었다.`, first: '🏕 작은 정착지. 출발문에서 원정을 떠나고, 전리품으로 마을을 키운다.', resume: '🏕 정착지로 돌아왔다.' }[r.reason] || '';
+    const W = { boss: `🏆 구역 ${r.zone} 보스 격파!${r.first ? ' 다음 구역이 열렸다.' : ''}`, recall: `📜 귀환 두루마리로 구역 ${r.zone}-${r.zf}에서 돌아왔다. 이 구역은 처음부터 다시.`, death: `🕯 ${jo(r.hero, '이가')} 구역 ${r.zone}-${r.zf}에서 쓰러졌다. 영혼석과 전리품을 잃었다. 이름을 비석에 새긴다.`, first: '🔥 세상에 남은 마지막 모닥불. 불은 장작이 아니라 사람으로 탄다 — 곁에 모인 사람들이 서로를 기억하는 동안.', resume: '🏕 정착지로 돌아왔다.' }[r.reason] || '';
     const loot = r.loot && Object.keys(r.loot).length ? Object.entries(r.loot).map(([m, n]) => `${MATS[m]}${m} ${n}`).join(' · ') : '';
     const lost = r.lost && Object.keys(r.lost).length ? Object.entries(r.lost).map(([m, n]) => `${m} ${n}`).join(' · ') : '';
     const arr = res.arrived.map((n) => `<div>🙋 ${n.name} (${JOBS[n.job].name}) — ${adj(n, 'X')}, ${adj(n, 'C')}</div>`).join('');
     const blt = res.built.map((b) => `<div>🏗 ${BLD[b].icon} ${jo(BLD[b].name, '이가')} 생겼다</div>`).join('');
     const evs = res.events.map((e) => `<div>${e.icon} ${e.text}</div>`).join('');
-    if (!W && !loot && !arr && !evs) return;
-    this.sheet(`<h3>귀환 보고 <button class="close">확인</button></h3><div class="gtxt">${W}</div>
-      ${res.ending ? '<div class="gtxt" style="color:#ffe38a;margin-top:6px">✨ 심연의 파수꾼이 쓰러졌다. 이 마을의 이야기는 계속된다 — 다른 빌드로 다시 도전해 보자.</div>' : ''}
+    const after = () => { const f = this.afterReport; this.afterReport = null; if (f) f(); };
+    const vis = res.visitors.map((v) => `<div>❔ ${v.npc.name} (${JOBS[v.npc.job].name}) — 모닥불 앞에서 기다린다</div>`).join('') + res.left.map((v) => `<div>🚶 기다리던 ${jo(v.npc.name, '이가')} 떠났다</div>`).join('');
+    const sh2 = [res.shard ? `<div>🔥 ${LANDS[res.shard - 1].name}의 등불 조각을 모닥불에 넣었다</div>` : '', res.recallReward ? '<div>📜 보스 첫 처치 — 귀환 두루마리 1개</div>' : ''].join('');
+    if (!W && !loot && !arr && !evs && !vis && !sh2) { after(); return; }
+    const rs = this.sheet(`<h3>귀환 보고 <button class="close">확인</button></h3><div class="gtxt">${W}</div>${sh2 ? `<div class="gtxt" style="color:#f0c070;margin-top:6px">${sh2}</div>` : ''}
+      ${res.dark ? '<div class="gtxt" style="color:#8a9ab8;margin-top:6px">정착지에는 아무도 남아 있지 않다…</div>' : ''}${vis ? `<div class="sec">방문자</div><div class="gtxt">${vis}</div>` : ''}
       ${loot ? `<div class="sec">가져온 것</div><div class="gtxt">${loot}</div>` : ''}${lost ? `<div class="sec">잃은 것</div><div class="gtxt" style="color:#ff9aa4">${lost}</div>` : ''}
       ${arr || blt ? `<div class="sec">새 얼굴 · 새 건물</div><div class="gtxt">${arr}${blt}</div>` : ''}
       ${evs ? `<div class="sec">그동안 마을에서는</div><div class="gtxt">${evs}</div>` : ''}`);
+    rs.querySelector('.close').addEventListener('click', after);
     this.renderHud();
   },
 });

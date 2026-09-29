@@ -8,13 +8,13 @@ export const ITEMS = {
   fear: { cat: 'scroll', name: '공포 두루마리', desc: '보이는 적 모두 6턴간 도망치고, 준비 중인 공격이 취소된다.' },
   blaze: { cat: 'scroll', name: '불꽃 두루마리', desc: '주변 8칸에 불길이 솟는다(4 화염). 풀·기름 위라면 조심.' },
   ident: { cat: 'scroll', name: '확인 두루마리', desc: '가진 장비의 정체를 모두 드러낸다.' },
-  recall: { cat: 'scroll', name: '귀환 두루마리', desc: '전리품을 들고 정착지로 돌아간다. 이 구역은 처음부터 다시.' },
+  recall: { cat: 'scroll', name: '귀환 두루마리', desc: '한 턴 동안 빛이 모인 뒤 정착지로 돌아간다(그 사이 맞으면 피해는 받는다). 전리품은 챙기지만 이 구역은 처음부터 다시. 보스 층에서는 쓸 수 없다.' },
   oil: { cat: 'throw', name: '기름병', desc: '십자 5칸에 기름을 쏟는다. 불이 닿으면 연쇄 폭발.' },
   water: { cat: 'throw', name: '물병', desc: '십자 5칸에 물웅덩이. 닿은 적은 젖는다 → 번개가 번지고, 얼면 오래 간다.' },
   smoke: { cat: 'throw', name: '연막탄', desc: '3×3 연기(6턴). 연기 너머로는 보이지 않아 궁수·마법사가 조준하지 못한다.' },
 };
 
-export const ITEM_W = [['heal', 16], ['cure', 9], ['haste', 8], ['tele', 8], ['fear', 9], ['blaze', 10], ['recall', 3], ['ident', 6], ['oil', 14], ['water', 14], ['smoke', 12]];
+export const ITEM_W = [['heal', 16], ['cure', 9], ['haste', 8], ['tele', 8], ['fear', 9], ['blaze', 10], ['ident', 6], ['oil', 14], ['water', 14], ['smoke', 12]];
 
 export const ITEM_COL = { oil: 0x3a3440, water: 0x4d97ff, smoke: 0x9aa0aa };
 

@@ -151,7 +151,7 @@ export function boneArrow(e, dmg) {
 export function addStone(id) {
   const sl = G.slots.find((q) => !q.stone);
   if (sl) { sl.stone = id; sl.color = STONE[id].color; G.stats.stones++; log(`영혼석 「${STONE[id].icon} ${STONE[id].name}」 장착 — ${STONE[id].line}`, 'syn'); return true; }
-  if (G.sbag.length < 3) { G.sbag.push(id); G.stats.stones++; log(`영혼석 「${STONE[id].icon} ${STONE[id].name}」 → 가방 (같은 색 칸과 교체 가능)`, 'good'); return true; }
+  if (G.sbag.length < (G.sbagMax || 3)) { G.sbag.push(id); G.stats.stones++; log(`영혼석 「${STONE[id].icon} ${STONE[id].name}」 → 가방 (같은 색 칸과 교체 가능)`, 'good'); return true; }
   return false;
 }
 
@@ -159,7 +159,7 @@ export function summon() {
   const p = G.player; let spot = null;
   for (const [dx, dy] of shuffle(D8.slice())) { const x = p.x + dx, y = p.y + dy; if (standable(x, y) && !entAt(x, y)) { spot = [x, y]; break; } }
   if (!spot) return;
-  const a = { id: G.nextId++, type: 'goblin', ally: true, name: '영혼 고블린', x: spot[0], y: spot[1], hp: 5, max: 5, atk: 2, st: newSt(), alive: true, awake: true, face: [...p.face], life: 4 };
+  const a = { id: G.nextId++, type: 'goblin', ally: true, name: '영혼 고블린', x: spot[0], y: spot[1], hp: 5, max: 5, atk: 2, st: newSt(), alive: true, awake: true, face: [...p.face], life: 4 + (G.perk === 'A+' ? 1 : 0) };
   G.ents.push(a);
   emit('spawn', { e: { ...a, st: { ...a.st } } });
   log('영혼 고블린이 곁에 섰다', 'good');

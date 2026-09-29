@@ -7,7 +7,8 @@ import { D4, D8, cheb, sgn } from '../util/grid.js';
 import { pick, rand, ri, shuffle, wpick } from '../util/rng.js';
 import { bfsDist, computeFOV } from './fov.js';
 import { makeGear, placeChests } from './gear.js';
-import { makeNpc } from './meta.js';
+import { META, makeNpc } from './meta.js';
+import { placeHidden, stockHidden } from './hidden.js';
 import { G, I, entAt, inb, newSt } from './state.js';
 
 export function genFloor() {
@@ -78,6 +79,7 @@ export function genFloor() {
   for (let y = start.y - 1; y <= start.y + 1; y++) for (let x = start.x - 1; x <= start.x + 1; x++) if (inb(x, y)) surf[I(x, y)] = S_NONE;
   surf[far] = S_NONE;
 
+  placeHidden(rooms, tile, room, surf);
   Object.assign(G, { tile, surf, room, rooms, fire: new Uint8Array(N), cloud: new Uint8Array(N), cloudT: new Uint8Array(N), vis: new Uint8Array(N), seen: new Uint8Array(N), items: new Map(), stones: new Map(), gear: new Map(), chests: new Map(), stairs: far });
   const p = G.player; p.x = start.x; p.y = start.y; p.face = [0, 1];
   G.ents = [p];
@@ -94,14 +96,14 @@ export function genFloor() {
     }
   });
   if (boss) { tile[far] = T_FLOOR; const b = mkBoss(Z.boss, far % W, (far / W) | 0); G.ents.push(b); G.bossId = b.id; }
-  // 길 잃은 NPC
-  if (!boss && rand() < 0.6 && typeof makeNpc === 'function') {
+  // 길 잃은 사람: 구역마다 최대 1명(넉살 좋은 등불지기는 더 잘 만난다)
+  if (!boss && !G.zoneFlags.npc && rand() < (G.perk === 'X+' ? 0.6 : 0.35)) {
     for (let t = 0; t < 80; t++) {
       const r = rooms[order[ri(0, order.length - 1)]], x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1);
       if (tile[I(x, y)] !== T_FLOOR || entAt(x, y) || surf[I(x, y)] === S_OIL) continue;
       const data = makeNpc(null), caged = rand() < 0.55;
       G.ents.push({ id: G.nextId++, type: 'npc', ally: true, npc: true, npcData: data, caged, freed: false, name: data.name, x, y, hp: 12, max: 12, st: newSt(), alive: true, awake: true, face: [0, 1] });
-      break;
+      G.zoneFlags.npc = true; break;
     }
   }
   // 재료
@@ -131,7 +133,14 @@ export function genFloor() {
       G.gear.set(i, makeGear(wid, rand() < 0.3 ? 'magic' : 'common', n >= 7 ? 2 : 1)); break;
     }
   }
-  placeChests(rooms, tile);
+  placeChests(rooms, tile, G.perk === 'H-' && G.zf === 1 ? 1 : 0);
+  // 옛 등불지기의 기록: 보스 층 첫 방에
+  if (boss && !(META?.lore || []).includes(G.zone)) for (let k = 0; k < 60; k++) {
+    const r = rooms[0], x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1), i = I(x, y);
+    if (tile[i] !== T_FLOOR || (x === start.x && y === start.y) || G.items.has(i) || G.mats.has(i)) continue;
+    G.mats.set(i, '기록'); break;
+  }
+  stockHidden();
   computeFOV();
 }
 

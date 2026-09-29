@@ -8,7 +8,7 @@ import { calcStats, makeGear } from './gear.js';
 import { addItem } from './items.js';
 import { genFloor } from './mapgen.js';
 import { emitIntents, emitSlots, snapHud, snapVis } from './snap.js';
-import { G, TL, emit, isFoe, newSt } from './state.js';
+import { G, TL, emit, isFoe, log, newSt } from './state.js';
 import { withCtx } from './stones.js';
 
 /* ================= 새 게임 · 층 생성 ================= */
@@ -30,7 +30,7 @@ export function newRun() {
   G.eq = { weapon: makeGear(starts[0]), off: makeGear(starts[1]), head: null, body: makeGear('body_cloth'), hands: null, feet: null, neck: null, ring1: null, ring2: null };
   G.bag = []; G.heroBase = 30; G.legendsDropped = new Set(); G.ps = calcStats(G.eq);
   G.slots = Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 }));
-  G.sbag = []; G.weakKnown = {}; G.ctx = null; G.curSrc = null; G.dropHint = 0;
+  G.sbag = []; G.weakKnown = {}; G.ctx = null; G.curSrc = null; G.dropHint = 0; G.zoneFlags = { npc: false, recall: false }; G.perk = null; G.glowVision = 0; G.recallArm = false;
   genFloor();
 }
 
@@ -56,4 +56,6 @@ export function worldTick() {
   for (const sl of G.slots) if (sl.cd > 0) sl.cd--;
   if (p.alive && G.stats.turns % 6 === 0 && p.hp < p.max && !p.st.poison && !p.st.burn) { p.hp++; emit('hp', { id: 0, hp: p.hp, max: p.max }); }
   computeFOV(); snapVis(); emitIntents(); snapHud(); emitSlots();
+  // 귀환 두루마리: 빛이 모인 한 턴이 지나면 사라진다
+  if (G.recallArm && p.alive && !G.over) { G.recallArm = false; emit('poof', { x: p.x, y: p.y }); log('빛에 싸여 사라졌다 — 정착지로', 'syn'); G.pendingReturn = 'recall'; }
 }
