@@ -11,6 +11,8 @@ const BOSS = { id: 'boss', name: '잊힌 파수병', role: 'boss', hp: 120, max:
 const DATA = { bolt: { name: '번개', cd: 4 }, water: { name: '물벼락', cd: 4 }, counter: { name: '반격 자세', cd: 5 } };
 export const MODES = { A: '턴제', B: '격자 실시간', C: '완전 실시간' };
 const now = () => performance.now();
+/** 턴제에서 한 방이 보이고 나서 다음 유닛이 움직이기까지(ms). 근접은 휘두름, 원거리는 날아가는 시간까지 */
+const PACE = { slash: 300, blunt: 320, arrow: 380, orb: 360, water: 420, bolt: 460, counter: 420, cleave: 650, scatter: 650 };
 
 export class Battle {
   constructor(mode, changed = () => {}) {
@@ -23,8 +25,11 @@ export class Battle {
     this.cooldowns = { bolt: 0, water: 0, counter: 0 }; this.timers = Object.fromEntries(this.units.map((u) => [u.id, 0]));
     this.events = ['잊힌 파수병이 길을 막았다.']; this.finished = null; this.busy = false; this.cancelled = false;
     this.metrics = { inputs: 0, pauses: 0, pausedSeconds: 0, waitingSeconds: 0, dodged: 0, hit: 0, fallen: 0, started: now() };
-    this._lastDanger = false;
+    this._lastDanger = false; this.onFx = null; this.pace = 0;
   }
+  /** 화면 연출에 알린다(전투 규칙은 바꾸지 않는다). pace는 턴제에서 다음 유닛까지 기다릴 시간(ms) */
+  fx(type, o = {}, pace = 0) { this.pace = Math.max(this.pace, pace); if (!this.cancelled) this.onFx?.(type, o); }
+  takePace() { const ms = Math.max(180, this.pace); this.pace = 0; return ms; }
   get living() { return this.units.filter((u) => u.hp > 0); }
   get party() { return this.units.slice(0, 5); }
   get foes() { return this.units.filter((u) => u.role === 'boss' || u.role === 'add').filter((u) => u.hp > 0); }
@@ -61,7 +66,7 @@ export class Battle {
     }
   }
   heroTurn(action) {
-    if (this.finished || this.busy) return;
+    if (this.finished || this.busy || this.cancelled) return;
     this.busy = true; this.round++;
     for (const k of Object.keys(this.cooldowns)) this.cooldowns[k] = Math.max(0, this.cooldowns[k] - 1);
     this.heroAct(action);
@@ -75,9 +80,9 @@ export class Battle {
       const unit = queue[i++];
       if (unit.hp > 0) unit.boss ? this.bossAct() : unit.role === 'add' ? this.addAct(unit) : this.allyAct(unit);
       this.checkEnd(); this.changed();
-      if (!this.finished) setTimeout(next, 180); else this.busy = false;
+      if (!this.finished) setTimeout(next, this.takePace()); else this.busy = false;
     };
-    setTimeout(next, 180); this.changed();
+    setTimeout(next, this.takePace()); this.changed();
   }
   heroAct(action = { type: 'auto' }) {
     const h = this.hero; if (h.hp <= 0) return;
@@ -86,14 +91,14 @@ export class Battle {
     if (action.type === 'skill') {
       const target = this.foes.find((u) => distance(u, action.point) < 1.1) || this.boss;
       if (this.cooldowns[action.key]) return;
-      if (action.key === 'water') { this.wet.add(target.id); this.damage(target, 5, '물벼락'); }
-      else if (action.key === 'bolt') { const bonus = this.wet.has(target.id) ? 8 : 0; this.damage(target, 9 + bonus, bonus ? '젖은 몸에 번개' : '번개'); this.wet.delete(target.id); }
-      else { this.guard = 2; this.log('등불지기가 반격 자세를 잡았다.'); }
+      if (action.key === 'water') { this.wet.add(target.id); this.damage(target, 5, '물벼락', { from: h, kind: 'water' }); }
+      else if (action.key === 'bolt') { const bonus = this.wet.has(target.id) ? 8 : 0; this.wet.delete(target.id); this.damage(target, 9 + bonus, bonus ? '젖은 몸에 번개' : '번개', { from: h, kind: 'bolt', crit: !!bonus }); }
+      else { this.guard = 2; this.fx('guard', { unit: h }, 300); this.log('등불지기가 반격 자세를 잡았다.'); }
       this.cooldowns[action.key] = DATA[action.key].cd; return;
     }
     if (action.type === 'move') { this.moveTo(h, action.point); return; }
     const target = this.foes.find((u) => u.id === action.target) || this.boss;
-    if (distance(h, target) <= 1.6) this.damage(target, 5, '장검');
+    if (distance(h, target) <= 1.6) this.damage(target, 5, '장검', { from: h, kind: 'slash' });
     else this.moveTo(h, target);
   }
   moveTo(unit, point, away = false) {
@@ -101,13 +106,15 @@ export class Battle {
     labStepToward(unit, point, this.living, false, away);
     this.changed();
   }
-  damage(unit, n, source) {
+  damage(unit, n, source, how = {}) {
     if (unit.hp <= 0) return;
-    const amount = Math.max(1, Math.round(n));
+    const amount = Math.max(1, Math.round(n)), phase = this.phase;
     unit.hp = Math.max(0, unit.hp - amount);
+    this.fx('hit', { unit, amount, source, from: how.from, kind: how.kind, crit: how.crit, killed: unit.hp === 0 }, PACE[how.kind] || 260);
+    if (unit === this.boss && unit.hp > 0 && this.phase !== phase) this.fx('phase', { phase: this.phase }, 500);
     this.log(`${source} · ${unit.name} −${amount}`);
     if (unit.hp === 0 && unit.role !== 'boss' && unit.role !== 'add' && unit.role !== 'hero') this.metrics.fallen++;
-    if (unit === this.boss && unit.hp <= 72 && !this.summoned) this.summon();
+    if (unit === this.boss && unit.hp > 0 && unit.hp <= 72 && !this.summoned) this.summon();
     this.checkEnd();
   }
   summon() {
@@ -116,6 +123,7 @@ export class Battle {
       const u = { id: `add${i}`, name: '해골 궁수', role: 'add', hp: 14, max: 14, x, y: 8, color: '#b5b9c6' };
       this.units.push(u); this.timers[u.id] = 0;
     }
+    this.fx('summon', { units: this.units.filter((u) => u.role === 'add') }, 500);
     this.log('벽 틈에서 해골 궁수 둘이 나온다.');
   }
   allyAct(u) {
@@ -129,21 +137,21 @@ export class Battle {
     if (this.command === 'retreat' && u.x > 3) { this.moveTo(u, { x: 2, y: u.y }); return; }
     if (u.role === 'healer') {
       const patient = this.party.filter((p) => p.hp > 0).sort((a, b) => a.hp / a.max - b.hp / b.max)[0];
-      if (patient && patient.hp < patient.max * 0.78) { patient.hp = Math.min(patient.max, patient.hp + 8); this.log(`치유사가 ${patient.name}을 돌봤다.`); return; }
+      if (patient && patient.hp < patient.max * 0.78) { const was = patient.hp; patient.hp = Math.min(patient.max, patient.hp + 8); this.fx('heal', { from: u, unit: patient, amount: patient.hp - was }, 300); this.log(`치유사가 ${patient.name}을 돌봤다.`); return; }
     }
-    if (u.role === 'guard' && this.bossActs % 4 === 0) { this.taunt = 2; this.log('수호자가 파수병을 끌어당겼다.'); }
+    if (u.role === 'guard' && this.bossActs % 4 === 0) { this.taunt = 2; this.fx('taunt', { from: u }, 260); this.log('수호자가 파수병을 끌어당겼다.'); }
     const target = this.foes.find((e) => e.id === this.target) || this.foes.find((e) => e.role === 'add') || boss;
     const range = u.role === 'archer' || u.role === 'healer' ? 6.5 : 1.7;
     if (distance(u, target) <= range) {
       const amount = u.role === 'sword' ? 5 : u.role === 'archer' ? 4 : u.role === 'guard' ? 3 : 2;
-      this.damage(target, amount, u.name);
+      this.damage(target, amount, u.name, { from: u, kind: ({ sword: 'slash', archer: 'arrow', guard: 'blunt', healer: 'orb' })[u.role] });
     } else this.moveTo(u, target);
   }
   addAct(u) {
     const targets = this.party.filter((p) => p.hp > 0);
     if (!targets.length) return;
     const t = targets.sort((a, b) => distance(a, u) - distance(b, u))[0];
-    if (distance(u, t) <= 7) this.damage(t, 3, '해골 궁수'); else this.moveTo(u, t);
+    if (distance(u, t) <= 7) this.damage(t, 3, '해골 궁수', { from: u, kind: 'arrow' }); else this.moveTo(u, t);
   }
   bossAct() {
     if (this.boss.hp <= 0) return;
@@ -156,6 +164,7 @@ export class Battle {
     if (distance(this.boss, target) > 3.2) { this.moveTo(this.boss, target); return; }
     const type = this.bossActs % 3 === 0 ? 'scatter' : 'cleave';
     this.tele = { type, target: target.id, aim: { x: target.x, y: target.y }, at: this.party.filter((u) => u.hp > 0).map((u) => ({ id: u.id, x: u.x, y: u.y })), remaining: type === 'scatter' ? 2 : 1.5 };
+    this.fx('tele', { type, target }, 360);
     this.log(type === 'scatter' ? '흩어져라! 발밑에 원이 번진다.' : `파수병이 ${target.name}을 노린다.`);
     if (this.mode === 'B' && this.autoPause) this.setPause(true, true);
   }
@@ -171,12 +180,13 @@ export class Battle {
     const hit = this.party.filter((u) => u.hp > 0 && this.inDanger(u, tele));
     const dodge = this.party.filter((u) => u.hp > 0 && !this.inDanger(u, tele)).length;
     this.metrics.dodged += dodge; this.metrics.hit += hit.length;
+    this.fx('slam', { type: tele.type, aim: tele.aim, at: tele.at, hit, dodge: this.party.filter((u) => u.hp > 0 && !hit.includes(u)) }, 650);
     for (const u of hit) {
       const overlap = tele.type === 'scatter' && this.party.some((v) => v !== u && v.hp > 0 && distance(u, v) < 1.5);
       let dmg = tele.type === 'cleave' ? 12 : overlap ? 12 : 6;
       if (u.role === 'guard') dmg = Math.ceil(dmg * 0.55);
-      if (u === this.hero && this.guard) { dmg = Math.ceil(dmg * 0.4); this.damage(this.boss, 7, '반격'); this.guard = 0; }
-      this.damage(u, dmg, tele.type === 'cleave' ? '내려치기' : '흩어져라');
+      if (u === this.hero && this.guard) { dmg = Math.ceil(dmg * 0.4); this.damage(this.boss, 7, '반격', { from: u, kind: 'counter' }); this.guard = 0; }
+      this.damage(u, dmg, tele.type === 'cleave' ? '내려치기' : '흩어져라', { from: this.boss, kind: tele.type });
     }
     this.log(hit.length ? `${hit.length}명 피격 · ${dodge}명 회피` : '모두 피했다.');
     this.tele = null;

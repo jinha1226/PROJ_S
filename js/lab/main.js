@@ -5,7 +5,7 @@ const $ = (q) => document.querySelector(q);
 const $$ = (q) => [...document.querySelectorAll(q)];
 const STORE = 'torch-raid-lab-v1';
 const safe = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-let battle, saved = false, hudTime = 0, keys = new Set(), joy = { x: 0, y: 0, pointer: null };
+let battle, saved = false, lastHp = {}, hurtUntil = {}, hudTime = 0, keys = new Set(), joy = { x: 0, y: 0, pointer: null };
 const view = new LabView($('#stage'), (point) => battle.direct(point));
 
 function records() { try { return JSON.parse(localStorage.getItem(STORE) || '[]'); } catch { return []; } }
@@ -13,8 +13,9 @@ function writeRecord(r) { try { localStorage.setItem(STORE, JSON.stringify([...r
 function launch(mode) {
   if (!MODES[mode]) mode = 'A';
   if (battle) battle.cancelled = true;
-  view.clearAreas(); view.tele = null;
+  view.reset(); lastHp = {}; hurtUntil = {};
   battle = new Battle(mode, () => { if (battle) render(); });
+  battle.onFx = (type, o) => view.fx(type, o, battle);
   saved = false; hudTime = 0; keys.clear(); joy.x = joy.y = 0;
   $('#overlay').hidden = true;
   $$('.modebar button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
@@ -26,12 +27,15 @@ function render() {
   if (!battle) return;
   const b = battle;
   view.show(b);
-  $('#bosshp').style.width = `${Math.max(0, b.boss.hp / b.boss.max * 100)}%`;
+  const t = performance.now();
+  for (const u of b.units) { if (lastHp[u.id] !== undefined && u.hp < lastHp[u.id]) hurtUntil[u.id] = t + 260; lastHp[u.id] = u.hp; }
+  $('#bosshp').style.width = $('#bosslag').style.width = `${Math.max(0, b.boss.hp / b.boss.max * 100)}%`;
+  $('.bossline').classList.toggle('hit', hurtUntil.boss > t);
   $('#bossnum').textContent = `${b.boss.hp}/${b.boss.max}`;
   $('#phase').textContent = `${b.phase}단계`;
   $('#clock').textContent = b.mode === 'A' ? `${b.round}/30R` : `${Math.ceil(90 - b.elapsed)}초`;
   $('#warning').textContent = b.tele ? `${b.tele.type === 'cleave' ? '내려치기' : '흩어져라'} ${b.mode === 'A' ? '다음 턴' : `${Math.max(0, b.tele.remaining).toFixed(1)}초`}` : '';
-  $('#party').innerHTML = b.party.map((u) => `<div class="member ${u.hp ? '' : 'dead'}" style="--c:${u.color}"><b>${u.name}</b><div class="life"><i style="width:${u.hp / u.max * 100}%"></i></div><small>${u.hp}/${u.max}</small></div>`).join('');
+  $('#party').innerHTML = b.party.map((u) => `<div class="member ${u.hp ? '' : 'dead'} ${hurtUntil[u.id] > t ? 'hurt' : ''}" style="--c:${u.color}"><b>${u.name}</b><div class="life"><i style="width:${u.hp / u.max * 100}%"></i></div><small>${u.hp}/${u.max}</small></div>`).join('');
   $('#log').innerHTML = b.events.map((s) => `<div>${safe(s)}</div>`).join('');
   $('#pause').textContent = b.mode === 'A' ? '턴제' : b.paused ? '▶ 재개' : '⏸ 멈춤';
   $('#pause').disabled = b.mode === 'A';
@@ -46,7 +50,8 @@ function render() {
     el.querySelector('small').textContent = cd > 0 ? b.mode === 'A' ? `${Math.ceil(cd)}R` : `${cd.toFixed(1)}초` : '';
   });
   $$('.commands button').forEach((el) => el.classList.toggle('on', b.command === el.dataset.command));
-  if (b.finished && !saved) { saved = true; showResult(); }
+  // 결과 창은 마지막 한 방(파수병이 무너지는 느린 장면)을 본 뒤에 연다
+  if (b.finished && !saved) { saved = true; setTimeout(() => { if (battle === b) showResult(); }, b.finished === '승리' ? 1500 : 900); }
 }
 function panel(html) { $('#overlay').innerHTML = `<div class="panel">${html}</div>`; $('#overlay').hidden = false; }
 function showResult() {
