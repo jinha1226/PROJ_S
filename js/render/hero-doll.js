@@ -19,51 +19,68 @@ const NECK_GEM = { memory: 0xffd070, regen: 0x6ae08a, chain: 0xb45aff, reflect: 
 export function heroSpec(eq = {}) {
   const B = (slot) => eq[slot] && GEAR_BASES[eq[slot].base];
   const body = B('body'), head = B('head'), hands = B('hands'), feet = B('feet'), sh = eq.off, ob = sh && GEAR_BASES[sh.base]?.orb;
-  const bodyCol = body ? MAT_COLOR[body.mat] : 0x3f86d8, th = body ? THICK[body.mat] : 1;
+  const bodyCol = body ? MAT_COLOR[body.mat] : 0xe8d8b0, th = body ? THICK[body.mat] : 1;
+  const coatCol = !body || body.mat === 'cloth' ? 0x557660 : bodyCol;
+  const shirtCol = !body || body.mat === 'cloth' ? 0xe8d8b0 : bodyCol;
   const handCol = hands ? MAT_COLOR[hands.mat] : SKIN, hs = hands ? LIMB[hands.mat] : 1;
   const footCol = feet ? MAT_COLOR[feet.mat] : 0x6b3f25, fs = feet ? LIMB[feet.mat] : 1;
   const wid = eq.weapon && weaponId(eq.weapon), two = !!(wid && WEAPONS[wid]?.hands === 2); // 양손 무기: 왼손도 자루를 쥐고 횃불은 허리에
   const eyes = [
-    { s: 'sphere', p: [-0.085, 0.76, 0.272], k: [0.038, 0.05, 0.025], c: 0x24222d },
-    { s: 'sphere', p: [0.085, 0.76, 0.272], k: [0.038, 0.05, 0.025], c: 0x24222d },
-    { s: 'sphere', p: [-0.074, 0.778, 0.292], k: 0.012, c: 0xffffff },
-    { s: 'sphere', p: [0.096, 0.778, 0.292], k: 0.012, c: 0xffffff }];
+    { s: 'sphere', p: [-0.087, 0.765, 0.27], k: [0.052, 0.068, 0.023], c: 0xfff8e9, outline: false },
+    { s: 'sphere', p: [0.087, 0.765, 0.27], k: [0.052, 0.068, 0.023], c: 0xfff8e9, outline: false },
+    { s: 'sphere', p: [-0.08, 0.758, 0.29], k: [0.027, 0.047, 0.014], c: 0x3b4b40, outline: false },
+    { s: 'sphere', p: [0.094, 0.758, 0.29], k: [0.027, 0.047, 0.014], c: 0x3b4b40, outline: false },
+    { s: 'sphere', p: [-0.068, 0.782, 0.302], k: 0.011, c: 0xffffff, outline: false },
+    { s: 'sphere', p: [0.106, 0.782, 0.302], k: 0.011, c: 0xffffff, outline: false }];
   const parts = [
-    { s: 'sphere', p: [-0.105, 0.075, 0.035], k: [0.105 * fs, 0.08 * fs, 0.135 * fs], c: footCol },
-    { s: 'sphere', p: [0.105, 0.075, 0.035], k: [0.105 * fs, 0.08 * fs, 0.135 * fs], c: footCol },
-    { s: 'sphere', p: [0, 0.325, 0], k: [0.245 * th, 0.255 * th, 0.215 * th], c: bodyCol },
-    { s: 'sphere', p: [0, 0.33, 0.175 * th], k: [0.145, 0.165, 0.065], c: body ? MAT_COLOR[body.mat] : 0x7ab5e2 },
-    { s: 'cyl', p: [0, 0.235, 0], k: [0.235 * th, 0.045, 0.21 * th], c: 0x704a31 },
-    { s: 'sphere', p: [0, 0.235, 0.213 * th], k: [0.048, 0.04, 0.024], c: 0xefcb78 },
-    { s: 'cyl', p: [0, 0.505, 0], k: [0.155, 0.07, 0.155], c: 0xbd4a44 },
-    { s: 'cone', p: [0.125, 0.42, 0.15], r: [0, 0, 0.25], k: [0.065, 0.21, 0.035], c: 0xbd4a44 },
-    { s: 'sphere', p: [0, 0.755, 0.025], k: [0.29, 0.29, 0.27], c: head ? 0x5a382e : 0x316fa4 },
-    { s: 'sphere', p: [0, 0.74, 0.145], k: [0.235, 0.225, 0.145], c: SKIN },
+    { s: 'cyl', p: [-0.115, 0.19, 0], k: [0.072, 0.18, 0.075], c: 0x49453e },
+    { s: 'cyl', p: [0.115, 0.19, 0], k: [0.072, 0.18, 0.075], c: 0x49453e },
+    { s: 'sphere', p: [-0.115, 0.075, 0.045], k: [0.102 * fs, 0.078 * fs, 0.145 * fs], c: footCol },
+    { s: 'sphere', p: [0.115, 0.075, 0.045], k: [0.102 * fs, 0.078 * fs, 0.145 * fs], c: footCol },
+    { s: 'cyl', p: [-0.115, 0.145, 0], k: [0.083 * fs, 0.07, 0.085 * fs], c: footCol },
+    { s: 'cyl', p: [0.115, 0.145, 0], k: [0.083 * fs, 0.07, 0.085 * fs], c: footCol },
+    { s: 'cyl', p: [0, 0.235, 0], top: 0.82, bot: 1.13, k: [0.23 * th, 0.19, 0.2 * th], c: coatCol },
+    { s: 'sphere', p: [0, 0.37, 0], k: [0.23 * th, 0.22, 0.19 * th], c: coatCol },
+    { s: 'sphere', p: [0, 0.36, 0.175 * th], k: [0.13, 0.175, 0.052], c: shirtCol, outline: false },
+    { s: 'cyl', p: [0, 0.245, 0], k: [0.23 * th, 0.045, 0.2 * th], c: 0x775239 },
+    { s: 'sphere', p: [0, 0.245, 0.205 * th], k: [0.05, 0.04, 0.022], c: 0xc6a267, outline: false },
+    { s: 'sphere', p: [-0.23 * th, 0.445, 0], k: [0.095, 0.12, 0.1], c: coatCol },
+    { s: 'sphere', p: [0.23 * th, 0.445, 0], k: [0.095, 0.12, 0.1], c: coatCol },
+    { s: 'cyl', p: [0, 0.535, 0], k: [0.135, 0.055, 0.13], c: shirtCol },
+    { s: 'sphere', p: [0, 0.76, 0.025], k: [0.27, 0.275, 0.255], c: SKIN },
+    { s: 'sphere', p: [-0.266, 0.725, 0.04], k: [0.054, 0.075, 0.035], c: SKIN },
+    { s: 'sphere', p: [0.266, 0.725, 0.04], k: [0.054, 0.075, 0.035], c: SKIN },
     ...eyes,
-    { s: 'sphere', p: [-0.16, 0.69, 0.239], k: [0.04, 0.023, 0.015], c: 0xd99b8b },
-    { s: 'sphere', p: [0.16, 0.69, 0.239], k: [0.04, 0.023, 0.015], c: 0xd99b8b },
-    { s: 'sphere', p: [-0.23 * th, 0.405, 0], k: [0.095, 0.13, 0.105], c: bodyCol },
-    { s: 'sphere', p: [0.23 * th, 0.405, 0], k: [0.095, 0.13, 0.105], c: bodyCol },
-    { s: 'sphere', p: [-0.28, 0.32, 0.055], k: 0.073 * hs, c: handCol },
+    { s: 'sphere', p: [0, 0.694, 0.284], k: [0.026, 0.025, 0.018], c: 0xe7b48e, outline: false },
+    { s: 'sphere', p: [-0.165, 0.695, 0.218], k: [0.036, 0.018, 0.014], c: 0xd9a698, outline: false },
+    { s: 'sphere', p: [0.165, 0.695, 0.218], k: [0.036, 0.018, 0.014], c: 0xd9a698, outline: false },
+    { s: 'sphere', p: [-0.28, 0.34, 0.055], k: 0.073 * hs, c: handCol },
     ...(two ? [{ s: 'cyl', p: [0.24, 0.28, 0.1], r: [0.3, 0, -0.5], k: [0.024, 0.22, 0.024], c: 0x5a3a22 }, { s: 'cyl', p: [0.29, 0.37, 0.125], k: [0.042, 0.04, 0.042], c: 0x3a2a1a }]
       : [{ s: 'sphere', p: [0.28, 0.4, 0.07], k: 0.075 * hs, c: handCol }, { s: 'cyl', p: [0.31, 0.5, 0.09], r: [0.15, 0, -0.15], k: [0.028, 0.32, 0.028], c: 0x5a3a22 }, { s: 'cyl', p: [0.33, 0.64, 0.1], k: [0.05, 0.05, 0.05], c: 0x3a2a1a }]),
   ];
+  if (!body || body.mat === 'cloth' || body.mat === 'leather') parts.push(
+    { s: 'box', p: [0, 0.38, 0.224 * th], r: [0, 0, -0.52], k: [0.035, 0.36, 0.018], c: 0x8b6846, outline: false },
+    { s: 'sphere', p: [-0.255 * th, 0.265, 0.08], k: [0.09, 0.105, 0.065], c: 0x76563b },
+    { s: 'sphere', p: [-0.255 * th, 0.31, 0.14], k: [0.07, 0.035, 0.02], c: 0xb48955, outline: false },
+  );
   // 몸통 재질: 가죽 끈 / 사슬 줄무늬 / 판금 어깨받이
   if (body?.mat === 'leather') parts.push({ s: 'box', p: [0, 0.36, 0.19 * th], r: [0, 0, 0.7], k: [0.06, 0.42, 0.03], c: 0x5a3a22 });
   if (body?.mat === 'chain') for (const y of [0.22, 0.32, 0.42]) parts.push({ s: 'torus', p: [0, y, 0], r: [Math.PI / 2, 0, 0], k: [0.23 * th, 0.2 * th, 0.2 * th], tube: 0.06, c: 0x6a7280 });
   if (body?.mat === 'plate') parts.push({ s: 'sphere', p: [-0.24, 0.47, 0], k: [0.1, 0.07, 0.1], c: 0xe8eef6 }, { s: 'sphere', p: [0.24, 0.47, 0], k: [0.1, 0.07, 0.1], c: 0xe8eef6 }, { s: 'box', p: [0, 0.36, 0.2 * th], k: [0.2, 0.18, 0.03], c: 0xf2f6fa });
   // 머리
   const legendHead = eq.head && eq.head.un === 'namelessHelm';
-  if (!head) parts.push(
-    { s: 'sphere', p: [0, 0.895, -0.025], k: [0.285, 0.16, 0.275], c: 0x316fa4 },
-    { s: 'sphere', p: [-0.23, 0.735, 0.105], k: [0.065, 0.17, 0.095], c: 0x316fa4 },
-    { s: 'sphere', p: [0.23, 0.735, 0.105], k: [0.065, 0.17, 0.095], c: 0x316fa4 },
-    { s: 'sphere', p: [0, 0.895, 0.228], k: [0.18, 0.055, 0.065], c: 0x234f7c },
+  if (!head || legendHead) parts.push(
+    { s: 'sphere', p: [0, 0.875, -0.045], k: [0.292, 0.208, 0.278], c: 0x664630 },
+    { s: 'sphere', p: [-0.225, 0.77, 0.045], k: [0.077, 0.18, 0.12], c: 0x664630 },
+    { s: 'sphere', p: [0.225, 0.77, 0.045], k: [0.077, 0.18, 0.12], c: 0x664630 },
+    { s: 'cone', p: [-0.128, 0.882, 0.222], r: [0, 0, 2.85], k: [0.078, 0.16, 0.065], c: 0x795237 },
+    { s: 'cone', p: [0.015, 0.893, 0.244], r: [0, 0, 3.3], k: [0.083, 0.19, 0.068], c: 0x795237 },
+    { s: 'cone', p: [0.14, 0.895, 0.215], r: [0, 0, 3.55], k: [0.075, 0.15, 0.064], c: 0x664630 },
   );
-  else if (legendHead) parts.push({ s: 'cyl', p: [0, 0.95, 0], k: [0.2, 0.08, 0.2], c: 0xffc83a }, ...[0, 1, 2, 3, 4].map((k) => ({ s: 'cone', p: [Math.cos(k * 1.2566) * 0.17, 1.05, Math.sin(k * 1.2566) * 0.17], k: [0.04, 0.12, 0.04], c: 0xffd84a })));
-  else if (head.mat === 'cloth') parts.push({ s: 'sphere', p: [0, 0.82, -0.04], k: [0.3, 0.27, 0.3], c: MAT_COLOR.cloth }, { s: 'cone', p: [0, 1.02, -0.16], r: [-0.6, 0, 0], k: [0.08, 0.22, 0.08], c: MAT_COLOR.cloth });
-  else if (head.mat === 'leather') parts.push({ s: 'cyl', p: [0, 0.88, 0], k: [0.38, 0.03, 0.38], c: 0x7a4a28 }, { s: 'sphere', p: [0, 0.93, -0.02], k: [0.24, 0.14, 0.24], c: 0x9a6a3a });
-  else parts.push({ s: 'sphere', p: [0, 0.86, -0.01], k: [0.29, 0.21, 0.29], c: MAT_COLOR[head.mat] }, { s: 'box', p: [0, 0.76, 0.27], k: [0.035, 0.14, 0.03], c: 0x8a92a0 },
+  if (legendHead) parts.push({ s: 'cyl', p: [0, 0.95, 0], k: [0.2, 0.08, 0.2], c: 0xffc83a }, ...[0, 1, 2, 3, 4].map((k) => ({ s: 'cone', p: [Math.cos(k * 1.2566) * 0.17, 1.05, Math.sin(k * 1.2566) * 0.17], k: [0.04, 0.12, 0.04], c: 0xffd84a })));
+  else if (head?.mat === 'cloth') parts.push({ s: 'sphere', p: [0, 0.82, -0.04], k: [0.3, 0.27, 0.3], c: MAT_COLOR.cloth }, { s: 'cone', p: [0, 1.02, -0.16], r: [-0.6, 0, 0], k: [0.08, 0.22, 0.08], c: MAT_COLOR.cloth });
+  else if (head?.mat === 'leather') parts.push({ s: 'cyl', p: [0, 0.88, 0], k: [0.38, 0.03, 0.38], c: 0x7a4a28 }, { s: 'sphere', p: [0, 0.93, -0.02], k: [0.24, 0.14, 0.24], c: 0x9a6a3a });
+  else if (head) parts.push({ s: 'sphere', p: [0, 0.86, -0.01], k: [0.29, 0.21, 0.29], c: MAT_COLOR[head.mat] }, { s: 'box', p: [0, 0.76, 0.27], k: [0.035, 0.14, 0.03], c: 0x8a92a0 },
     ...(head.mat === 'plate' ? [{ s: 'cone', p: [-0.24, 1.0, 0], r: [0, 0, 0.7], k: [0.05, 0.22, 0.05], c: 0xf2ead8 }, { s: 'cone', p: [0.24, 1.0, 0], r: [0, 0, -0.7], k: [0.05, 0.22, 0.05], c: 0xf2ead8 }] : []));
   // 목걸이: 보석 색은 종류, 첫 불씨 등잔은 가슴의 작은 등잔
   if (eq.neck && eq.neck.un === 'firstLamp') parts.push({ s: 'cyl', p: [0, 0.44, 0.21 * th], k: [0.06, 0.09, 0.06], c: 0x6a4a2a }, { s: 'sphere', p: [0, 0.45, 0.22 * th], k: 0.045, c: 0xffd070 });

@@ -125,7 +125,10 @@ export function doll(parts, o = {}) {
   const geo = mergeGeometries(parts.map(partGeo));
   const mat = toon({ vertexColors: true, gloss: o.gloss ?? 0.6 });
   const mesh = new THREE.Mesh(geo, mat); mesh.castShadow = o.shadow !== false; mesh.receiveShadow = !!o.receive;
-  const ol = new THREE.Mesh(outlineGeo(geo), o.outline || OUTLINE);
+  const silhouette = parts.filter((p) => p.outline !== false);
+  const outlineSource = !silhouette.length || silhouette.length === parts.length ? geo : mergeGeometries(silhouette.map(partGeo));
+  const ol = new THREE.Mesh(outlineGeo(outlineSource), o.outline || OUTLINE);
+  if (outlineSource !== geo) outlineSource.dispose();
   const body = new THREE.Group(); body.add(mesh, ol); body.scale.setScalar(o.scale ?? 1);
   const pivot = new THREE.Group(); pivot.add(body);
   const root = new THREE.Group(); root.add(pivot);
