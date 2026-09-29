@@ -25,7 +25,7 @@ try {
   check('모바일 레이드 실험실 로드', await page.locator('.party .member').count() === 5 && await page.locator('#stage canvas').count() > 0);
   // A도 배속: 유닛 사이 기다림과 연출이 함께 빨라진다
   await page.locator('#speed').click(); // 1× → 2×
-  const fast = await page.evaluate(() => { const b = window.__raidLab.battle; b.pace = 300; return { speed: b.speed, ms: b.takePace(), scale: window.__raidLab.view.dio.timeScale }; });
+  const fast = await page.evaluate(() => { const b = window.__raidLab.battle; b.pace = 300; return { speed: b.speed, ms: b.takePace(), scale: window.__raidLab.view.baseScale }; });
   check('A 턴제 2배속', fast.speed === 2 && fast.ms === 150 && fast.scale === 2);
   await page.locator('[data-mode="B"]').click();
   check('B는 일시 정지로 시작', await page.evaluate(() => window.__raidLab.battle.paused));
@@ -62,6 +62,21 @@ try {
     return { stepped, first, second: b.paused };
   });
   check('D 탭하면 바로 걷고 처음 보는 기믹만 멈춘다', d.stepped && d.first && !d.second);
+  // E: 손을 떼면 시간이 멈추고, 조이스틱에 손을 대고 있는 동안만 흐른다. 닿은 적은 저절로 벤다
+  await page.locator('[data-mode="E"]').click();
+  await page.waitForTimeout(400);
+  const still = await page.evaluate(() => ({ t: window.__raidLab.battle.elapsed, frozen: document.querySelector('#app').classList.contains('frozen') }));
+  await page.evaluate(() => { const b = window.__raidLab.battle; b.hero.x = b.boss.x - 1.2; b.hero.y = b.boss.y; });
+  const joy = await page.locator('#joystick').boundingBox();
+  await page.mouse.move(joy.x + joy.width / 2, joy.y + joy.height / 2);
+  await page.mouse.down();
+  await page.waitForFunction(() => window.__raidLab.battle.boss.hp < 120, null, { timeout: 8000 });
+  await page.mouse.up();
+  await page.waitForFunction(() => window.__raidLab.view.dio.timeScale === 0, null, { timeout: 5000 }); // 손을 떼면 짧게 느려지다 멈춘다
+  const t1 = await page.evaluate(() => window.__raidLab.battle.elapsed);
+  await page.waitForTimeout(500);
+  const t2 = await page.evaluate(() => window.__raidLab.battle.elapsed);
+  check('E 손을 떼면 멈추고 대고 있으면 흐르며 저절로 벤다', still.t < 0.05 && still.frozen && t1 > 0.2 && t2 === t1);
   await page.evaluate(() => { const b = window.__raidLab.battle; b.damage(b.boss, 120, '검증'); });
   await page.waitForSelector('#save');
   await page.locator('#fun').selectOption('4');

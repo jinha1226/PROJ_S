@@ -43,7 +43,7 @@ export class LabView {
     }, palette, wallH: 1.2 });
     this.grid.setTerrain({ surf }); this.dio.grid = this.grid;
     this.actors = new Map(); this.areas = []; this.later = []; this.time = 0; this.slowT = 0; this.baseScale = 1; this.battle = null;
-    this.dio.onFrame = (dt, real) => { this.update(dt, real ?? dt); this.onFrame?.(dt); };
+    this.dio.onFrame = (dt, real = dt) => { this.update(dt, real); this.onFrame?.(dt, real); };
     const light = new THREE.PointLight(0xffbe78, 13, 8); light.position.set(3, 2, 8); this.dio.scene.add(light);
     const wake = () => Sfx.init(); // 브라우저는 첫 입력 뒤에만 소리를 낸다
     addEventListener('pointerdown', wake); addEventListener('keydown', wake);
@@ -112,7 +112,7 @@ export class LabView {
     }
   }
   /** 연출 속도(턴제 배속). 파수병이 무너지는 느린 장면 중이면 끝난 뒤에 적용된다 */
-  setSpeed(k) { if (this.baseScale === k) return; this.baseScale = k; if (this.slowT <= 0) this.dio.timeScale = k; }
+  setSpeed(k, now = false) { this.baseScale = k; if (now) this.dio.timeScale = k; } // update가 부드럽게 따라간다(E에서 손을 떼면 짧게 느려지며 멈춘다)
   after(sec, fn) { if (sec <= 0) fn(); else this.later.push({ t: sec, fn }); }
 
   /* ---------------- 전투가 알리는 일 ---------------- */
@@ -292,7 +292,8 @@ export class LabView {
   update(dt, real) {
     this.time += dt;
     for (let i = this.later.length - 1; i >= 0; i--) { const l = this.later[i]; l.t -= dt; if (l.t <= 0) { this.later.splice(i, 1); l.fn(); } }
-    if (this.slowT > 0) { this.slowT -= real; if (this.slowT <= 0) this.dio.timeScale = this.baseScale; }
+    if (this.slowT > 0) this.slowT -= real;
+    else { const D = this.dio, gap = this.baseScale - D.timeScale; D.timeScale = Math.abs(gap) < 0.04 ? this.baseScale : D.timeScale + gap * Math.min(1, real * 15); }
     const b = this.battle; if (!b) return;
     const boss = this.actors.get('boss');
     // 예고 범위: 테두리는 깜빡이고 안쪽은 터질 때가 다가올수록 차오른다(턴제는 반쯤 찬 채 숨 쉰다)
@@ -309,7 +310,7 @@ export class LabView {
       const gap = Math.hypot(u.x - a.cur.x, u.y - a.cur.z);
       if (!a.dying) {
         if (gap > 0.02) {
-          const k = 1 - Math.exp(-dt * (b.mode === 'C' ? 18 : b.mode === 'D' ? 16 : 12));
+          const k = 1 - Math.exp(-dt * (b.free ? 18 : b.mode === 'D' ? 16 : 12));
           if (!a.lunge) this.face(a, { x: u.x, z: u.y });
           a.cur.x += (u.x - a.cur.x) * k; a.cur.z += (u.y - a.cur.z) * k;
         } else if (!a.lunge && a !== boss && boss && !isFoe(u)) this.face(a, boss.cur);

@@ -9,7 +9,9 @@ const ALLIES = [
 const HERO = { id: 'hero', name: '등불지기', role: 'hero', hp: 40, max: 40, x: 3, y: 8, color: '#ffd478' };
 const BOSS = { id: 'boss', name: '잊힌 파수병', role: 'boss', hp: 120, max: 120, x: 11, y: 8, color: '#e78a54', boss: true };
 const DATA = { bolt: { name: '번개', cd: 4 }, water: { name: '물벼락', cd: 4 }, counter: { name: '반격 자세', cd: 5 } };
-export const MODES = { A: '턴제', B: '격자 실시간', C: '완전 실시간', D: '격자 액션' };
+export const MODES = { A: '턴제', B: '격자 실시간', C: '완전 실시간', D: '격자 액션', E: '움직일 때만 흐름' };
+/** E: 스킬을 쓰면 시전하는 동안(초) 손을 떼도 시간이 흐른다 */
+const CAST = 0.5;
 /** D: 등불지기 한 걸음 · 한 번 베기 사이 쉬는 시간(초) */
 const STEP = 0.28, SWING = 0.6;
 const now = () => performance.now();
@@ -26,9 +28,10 @@ export class Battle {
     this.units = [structuredClone(HERO), ...structuredClone(ALLIES), structuredClone(BOSS)];
     this.hero = this.units[0]; this.boss = this.units[5];
     this.command = 'focus'; this.target = 'boss'; this.skill = null;
-    this.round = 0; this.elapsed = 0; this.speed = 1; this.paused = mode !== 'A'; this.autoPause = true;
+    this.round = 0; this.elapsed = 0; this.speed = 1; this.paused = mode !== 'A' && mode !== 'E'; this.autoPause = true;
+    this.free = mode === 'C' || mode === 'E'; this.castT = 0; // free: 연속 좌표. E의 시간은 main이 흘려 준다(손을 떼면 dt 0)
     this.tele = null; this.bossActs = 0; this.summoned = false; this.wet = new Set(); this.guard = 0;
-    this.cooldowns = { bolt: 0, water: 0, counter: 0 }; this.timers = Object.fromEntries(this.units.map((u) => [u.id, mode === 'C' || mode === 'D' ? Math.random() * period(u) : 0])); // C·D는 모두 한 박자에 치지 않게 흩어 둔다
+    this.cooldowns = { bolt: 0, water: 0, counter: 0 }; this.timers = Object.fromEntries(this.units.map((u) => [u.id, mode === 'C' || mode === 'D' || mode === 'E' ? Math.random() * period(u) : 0])); // C·D·E는 모두 한 박자에 치지 않게 흩어 둔다
     this.events = ['잊힌 파수병이 길을 막았다.']; this.finished = null; this.busy = false; this.cancelled = false;
     this.metrics = { inputs: 0, pauses: 0, pausedSeconds: 0, waitingSeconds: 0, dodged: 0, hit: 0, fallen: 0, started: now() };
     this._lastDanger = false; this.onFx = null; this.pace = 0;
@@ -50,7 +53,7 @@ export class Battle {
     if (this.mode === 'A' && key === 'auto' && !this.finished && !this.busy) this.heroTurn({ type: 'auto' });
   }
   setPause(value, automatic = false) {
-    if (this.mode === 'A' || this.finished || this.paused === value) return;
+    if (this.mode === 'A' || this.mode === 'E' || this.finished || this.paused === value) return;
     this.paused = value;
     if (value) this.metrics.pauses++;
     this.log(value ? (automatic ? '파수병이 움직인다. 시간이 멈췄다.' : '시간이 멈췄다.') : '시간이 흐른다.');
@@ -67,6 +70,9 @@ export class Battle {
     if (this.mode === 'A') {
       if (this.busy) return;
       this.heroTurn(this.skill ? { type: 'skill', key: this.skill, point } : foe ? { type: 'attack', target: foe.id } : { type: 'move', point });
+    } else if (this.mode === 'E') { // 이동은 조이스틱, 공격은 저절로. 탭은 노릴 적 고르기와 스킬 쓰기뿐
+      if (this.skill) { this.heroAct({ type: 'skill', key: this.skill, point }); this.skill = null; this.castT = CAST; }
+      this.changed();
     } else {
       this.order = this.skill ? { type: 'skill', key: this.skill, point } : foe ? { type: 'attack', target: foe.id } : { type: 'move', point };
       this.skill = null; this.changed();
@@ -110,7 +116,7 @@ export class Battle {
   }
   /** A·B는 한 칸 옮기고, C는 목표만 정해 두고 tick이 매 프레임 걸어간다. stop: 목표에서 멈출 거리 */
   moveTo(unit, point, away = false, stop = point.hp !== undefined ? 1.3 : 0.1) {
-    if (this.mode === 'C') { unit.goal = { to: point, away, stop, left: away ? 0.7 : 4 }; return; }
+    if (this.free) { unit.goal = { to: point, away, stop, left: away ? 0.7 : 4 }; return; }
     labStepToward(unit, point, this.living, false, away);
     this.changed();
   }
@@ -129,7 +135,7 @@ export class Battle {
     this.summoned = true;
     for (const [i, x] of [1, 14].entries()) {
       const u = { id: `add${i}`, name: '해골 궁수', role: 'add', hp: 14, max: 14, x, y: 8, color: '#b5b9c6' };
-      this.units.push(u); this.timers[u.id] = this.mode === 'C' || this.mode === 'D' ? Math.random() * period(u) : 0;
+      this.units.push(u); this.timers[u.id] = this.mode === 'C' || this.mode === 'D' || this.mode === 'E' ? Math.random() * period(u) : 0;
     }
     this.fx('summon', { units: this.units.filter((u) => u.role === 'add') }, 500);
     this.log('벽 틈에서 해골 궁수 둘이 나온다.');
@@ -211,15 +217,17 @@ export class Battle {
     if (this.elapsed >= 90) { this.end('격노'); return; }
     for (const k of Object.keys(this.cooldowns)) this.cooldowns[k] = Math.max(0, this.cooldowns[k] - delta);
     if (this.tele) { this.tele.remaining -= delta; if (this.tele.remaining <= 0) this.resolveTele(); }
-    if (this.mode === 'C') this.walk(delta);
+    if (this.free) this.walk(delta);
+    this.castT = Math.max(0, this.castT - delta);
     if (this.mode === 'D') this.rush(delta);
     for (const u of this.units) {
       if (u.hp <= 0 || this.finished || (u.role === 'hero' && this.mode === 'D')) continue;
       const p = period(u);
       this.timers[u.id] += delta;
       if (this.timers[u.id] < p) continue;
-      this.timers[u.id] -= this.mode === 'C' || this.mode === 'D' ? p * (0.85 + Math.random() * 0.3) : p;
-      if (u.role === 'hero') {
+      this.timers[u.id] -= this.mode !== 'B' ? p * (0.85 + Math.random() * 0.3) : p;
+      if (u.role === 'hero' && this.mode === 'E') this.autoSwing(u);
+      else if (u.role === 'hero') {
         if (this.order?.type === 'move') this.moveTo(u, this.order.point);
         else if (this.order?.type === 'skill') { this.heroAct(this.order); this.order = null; }
         else this.heroAct(this.order || { type: 'auto' });
@@ -244,6 +252,14 @@ export class Battle {
     if (distance(h, target) <= 1.6) { if (this.swingCd <= 0) { this.damage(target, 5, '장검', { from: h, kind: 'slash' }); this.swingCd = SWING; } }
     else if ((o?.type === 'attack' || this.command === 'auto') && this.stepCd <= 0) { this.moveTo(h, target, false, 1.3); this.stepCd = STEP; }
   }
+  /** E: 닿는 적이 있으면 저절로 벤다. 고른 적이 닿으면 그 적, 아니면 가장 가까운 적. 쫓아가지는 않는다 */
+  autoSwing(h) {
+    const near = this.foes.filter((u) => distance(h, u) <= 1.6).sort((a, b) => distance(h, a) - distance(h, b));
+    const target = near.find((u) => u.id === this.target) || near[0];
+    if (target) this.damage(target, 5, '장검', { from: h, kind: 'slash' });
+  }
+  /** E: 지금 시간이 흐르는가. 조이스틱·⏩를 누르고 있거나 스킬을 시전하는 중 */
+  flowing(input) { return this.mode === 'E' && !this.finished && (input || this.castT > 0); }
   /** D: 누른 채 끌면 손가락 밑 칸으로 계속 걷는다. null이면 손을 뗐다 */
   hold(point) {
     if (this.mode !== 'D' || this.finished) return;
@@ -262,7 +278,7 @@ export class Battle {
     }
   }
   continuousMove(dx, dy, dt) {
-    if (this.mode !== 'C' || this.paused || this.finished || this.hero.hp <= 0) return;
+    if (!this.free || this.paused || this.finished || this.hero.hp <= 0) return;
     this.hero.goal = null; if (this.order?.type === 'move') this.order = null; // 조이스틱이 탭 이동보다 먼저
     Object.assign(this.hero, sweep(this.hero, dx * dt * 3.8, dy * dt * 3.8, this.living));
   }
