@@ -33,7 +33,7 @@ export const UI = {
     // 영혼석 6칸(한 줄) = 스킬 버튼. 탭 = 조준/발동, 길게 = 설명
     for (let k = 0; k < 6; k++) { const b = document.createElement('button'); b.className = 'slot'; b.innerHTML = '<span class="si"></span><small class="sn"></small><span class="scd"></span><b class="aur"></b>'; this.hold(b, () => this.stoneBtn(k), () => this.slotInfo(k)); souls.appendChild(b); }
     this.hold($('#btn-wpn'), () => this.swapWeapon(), () => this.weaponInfo());
-    $('#btn-bag').onclick = () => { Sfx.play('ui'); this.openBag(); };
+    $('#btn-bag').onclick = () => { Sfx.play('ui'); this.openInv(); }; // 가방 = 장비 창(서브탭으로 소모품·영혼석)
     $('#btn-ctx').onclick = () => this.ctxBtn();
     $('#btn-status').onclick = () => this.openStatus();
     $('#btn-tilt').onclick = () => { const q = View.dio.rig.toggleTilt(); this.toast(q ? '45도 쿼터뷰' : '탑뷰'); };

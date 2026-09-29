@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { visibleFoes } from '../core/fov.js';
 import { itemName, useItem } from '../core/items.js';
-import { G, I } from '../core/state.js';
+import { G, Game, I } from '../core/state.js';
 import { swapStone } from '../core/stones.js';
 import { CATS, DROPS, ENEMY, MAGE, catOf, kindOf } from '../data/enemies.js';
 import { CAT_ICON, ITEMS, ITEM_COL } from '../data/items.js';
@@ -14,39 +14,41 @@ import { stIcons } from '../render/entity-view.js';
 import { $, UI } from './ui.js';
 
 Object.assign(UI, {
-  /* ---- 가방 ---- */
-  openBag() { if (G.over || Anim.active) return; this.selBag = -1; this.renderBag(); $('#sheet').classList.remove('hidden'); },
-  renderBag() {
-    const sh = $('#sheet'), safe = !visibleFoes().some((e) => e.awake), sel = this.selBag ?? -1, selId = sel >= 0 ? G.sbag[sel] : null;
-    const chip = (id, attrs, cls = '') => { if (!id) return `<button class="gch empty" ${attrs}>·<small>빈 칸</small></button>`; const d = STONE[id]; return `<button class="gch ${cls}" style="--c:${COLORS[d.color].css}" ${attrs}>${d.icon}<small>${d.name}</small></button>`; };
-    const slots = G.slots.map((q, k) => chip(q.stone, `data-s="${k}"`, selId && q.stone && q.color === STONE[selId].color ? 'ok' : '')).join('');
-    const bag = [0, 1, 2].map((k) => chip(G.sbag[k], `data-b="${k}"`, k === sel ? 'sel' : '')).join('');
-    const line = selId ? `<b style="color:${COLORS[STONE[selId].color].css}">${STONE[selId].icon} ${STONE[selId].name}</b> — ${STONE[selId].line}${safe ? ' · 반짝이는 같은 색 칸을 탭하면 교체' : ' · <span style="color:#ff9aa4">적이 보여서 지금은 교체할 수 없다</span>'} <button class="close" data-drop="1" style="height:28px;margin-left:6px">버리기</button>` : '영혼석을 탭하면 설명이 나온다';
-    const rows = G.inv.length ? G.inv.map((q) => {
-      const def = ITEMS[q.k], known = G.known[q.k], col = '#' + new THREE.Color(G.look[q.k].color).getHexString();
+  /* ---- 가방 = 장비 창(서브탭: 장비 · 소모품 · 영혼석) ---- */
+  openBag(tab) { if (G.over || Anim.active) return; if (tab) this.invTab = tab; this.openInv(); },
+  /** 소모품 탭: 물약·두루마리·던지는 것. 던전에서만 쓴다 */
+  itemsHtml(inv) {
+    return inv.length ? inv.map((q) => {
+      const def = ITEMS[q.k], known = G.known[q.k], col = '#' + new THREE.Color(G.look[q.k] ? G.look[q.k].color : 0xffffff).getHexString();
       return `<button class="item" data-k="${q.k}"><span class="sw" style="background:${col}">${CAT_ICON[def.cat]}</span><span class="nm">${itemName(q.k)}${known ? '' : ' <span style="color:#ffe38a">?</span>'}<small>${known ? def.desc : def.cat === 'throw' ? '던지면 정체를 안다' : '써 보면 정체를 안다'}</small></span><span class="n">×${q.n}</span></button>`;
     }).join('') : '<p style="color:#9aa2bd;font-size:13px">비어 있다. 바닥의 반짝이는 물건을 밟으면 줍는다.</p>';
-    sh.innerHTML = `<h3>가방 <button class="close">닫기</button></h3>
-      <button class="wbtn" data-inv="1" style="width:100%;margin-top:4px">🛡 장비 창 열기 <small>무기·방어구·장신구 · 가방 ${G.bag.length}/20</small></button>
-      <div class="sec">영혼석 6칸 <small>칸 = 스킬 · 🔴 적중 · 🟣 대기 · 🟢 피격 때 쿨타임 −1</small></div><div class="gems">${slots}</div>
-      <div class="sec">영혼석 가방 ${G.sbag.length}/3 <small>같은 색 칸하고만 교체 · 적이 안 보일 때</small></div><div class="gems" style="grid-template-columns:repeat(3,1fr)">${bag}</div>
-      <div class="gline">${line}</div>
-      <div class="sec">물건</div>${rows}`;
-    sh.querySelector('.close').onclick = () => sh.classList.add('hidden');
-    sh.querySelector('[data-inv]').onclick = () => this.openInv();
-    sh.querySelectorAll('[data-b]').forEach((b) => { b.onclick = () => { const k = +b.dataset.b; this.selBag = G.sbag[k] && this.selBag !== k ? k : -1; this.renderBag(); }; });
+  },
+  bindItems(sh) { sh.querySelectorAll('.item').forEach((b) => { b.onclick = () => { if (Game.mode !== 'dungeon') { this.toast('정착지에서는 쓸 수 없다 — 출발문에서 챙겨 간다'); return; } sh.classList.add('hidden'); sh.classList.remove('tall'); this.useFromBag(b.dataset.k); }; }); },
+  /** 영혼석 탭: 6칸 · 가방 · 같은 색 교체 · 버리기 */
+  stonesHtml() {
+    const safe = !visibleFoes().some((e) => e.awake), sel = this.selBag ?? -1, selId = sel >= 0 ? G.sbag[sel] : null, max = G.sbagMax || 3;
+    const chip = (id, attrs, cls = '') => { if (!id) return `<button class="gch empty" ${attrs}>·<small>빈 칸</small></button>`; const d = STONE[id]; return `<button class="gch ${cls}" style="--c:${COLORS[d.color].css}" ${attrs}>${d.icon}<small>${d.name}</small></button>`; };
+    const slots = G.slots.map((q, k) => chip(q.stone, `data-s="${k}"`, selId && q.stone && q.color === STONE[selId].color ? 'ok' : '')).join('');
+    const bag = Array.from({ length: max }, (_, k) => chip(G.sbag[k], `data-b="${k}"`, k === sel ? 'sel' : '')).join('');
+    const line = selId ? `<b style="color:${COLORS[STONE[selId].color].css}">${STONE[selId].icon} ${STONE[selId].name}</b> — ${STONE[selId].line}${safe ? ' · 반짝이는 같은 색 칸을 탭하면 교체' : ' · <span style="color:#ff9aa4">적이 보여서 지금은 교체할 수 없다</span>'} <button class="close" data-drop="1" style="height:28px;margin-left:6px">버리기</button>` : '영혼석을 탭하면 설명이 나온다';
+    return `<div class="sec">영혼석 6칸 <small>칸 = 스킬 · 🔴 적중 · 🟣 대기 · 🟢 피격 때 쿨타임 −1</small></div><div class="gems">${slots}</div>
+      <div class="sec">영혼석 가방 ${G.sbag.length}/${max} <small>같은 색 칸하고만 교체 · 적이 안 보일 때</small></div><div class="gems" style="grid-template-columns:repeat(${max},1fr)">${bag}</div>
+      <div class="gline">${line}</div>`;
+  },
+  bindStones(sh) {
+    const safe = !visibleFoes().some((e) => e.awake), sel = this.selBag ?? -1, selId = sel >= 0 ? G.sbag[sel] : null;
+    sh.querySelectorAll('[data-b]').forEach((b) => { b.onclick = () => { const k = +b.dataset.b; this.selBag = G.sbag[k] && this.selBag !== k ? k : -1; this.renderInv(); }; });
     sh.querySelectorAll('[data-s]').forEach((b) => { b.onclick = () => {
       const k = +b.dataset.s, q = G.slots[k];
       if (selId && q.stone) {
         if (q.color !== STONE[selId].color) { this.toast('다른 색으로 바꾸는 건 정착지에서만 할 수 있다'); return; }
         if (!safe) { this.toast('적이 보이는 곳에서는 바꿀 수 없다'); return; }
-        this.instant(() => swapStone(sel, k)); this.selBag = -1; this.renderBag(); return;
+        this.instant(() => swapStone(sel, k)); this.selBag = -1; this.renderInv(); return;
       }
-      this.selBag = -1; this.renderBag();
-      if (q.stone) sh.querySelector('.gline').innerHTML = `<b style="color:${COLORS[q.color].css}">${STONE[q.stone].icon} ${STONE[q.stone].name}</b> — ${STONE[q.stone].line}`;
+      this.selBag = -1; this.renderInv();
+      if (q.stone) $('#sheet').querySelector('.gline').innerHTML = `<b style="color:${COLORS[q.color].css}">${STONE[q.stone].icon} ${STONE[q.stone].name}</b> — ${STONE[q.stone].line}`;
     }; });
-    const drop = sh.querySelector('[data-drop]'); if (drop) drop.onclick = () => { const id = G.sbag.splice(sel, 1)[0]; this.selBag = -1; this.toast(`「${STONE[id].name}」을 버렸다`); this.instant(() => {}); this.renderBag(); };
-    sh.querySelectorAll('.item').forEach((b) => { b.onclick = () => { sh.classList.add('hidden'); this.useFromBag(b.dataset.k); }; });
+    const drop = sh.querySelector('[data-drop]'); if (drop) drop.onclick = () => { const id = G.sbag.splice(sel, 1)[0]; this.selBag = -1; this.toast(`「${STONE[id].name}」을 버렸다`); this.instant(() => {}); this.renderInv(); };
   },
   useFromBag(k) {
     const def = ITEMS[k];

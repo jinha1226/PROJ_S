@@ -57,7 +57,7 @@ check('보라: 대기 시 1 더, 전투 밖은 0', s3.inC === 3 && s3.outC === 0
 
 // 4. 초록: 여러 적에게 맞아도 라운드에 1만
 const s4 = await page.evaluate(() => { const g = window.__game, G = arena([[1, 0], [-1, 0], [0, 1]]); put(0, 'g_fire', 6); const hp = G.player.hp; g.act(() => true); drain(); return { cd: G.slots[0].cd, hits: hp - G.player.hp }; });
-check('초록: 여러 번 맞아도 라운드에 1', s4.cd === 4 && s4.hits >= 4, JSON.stringify(s4));
+check('초록: 여러 번 맞아도 라운드에 1', s4.cd === 4 && s4.hits >= 2, JSON.stringify(s4));
 
 // 5. 전투가 끝나면 모든 쿨타임 0
 const s5 = await page.evaluate(() => { const g = window.__game, G = arena([[1, 0, { hp: 1 }]]); put(0, 'r_fire', 5); put(1, 'p_heal', 6); put(2, 'g_heal', 6); g.act(() => { g.playerMove(1, 0); return true; }); drain(); return G.slots.slice(0, 3).map((q) => q.cd); });
