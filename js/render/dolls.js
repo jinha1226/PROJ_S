@@ -6,6 +6,7 @@ import { COLORS, STONE } from '../data/stones.js';
 import { OLD_WEAPON, WEAPONS } from '../data/weapons.js';
 import { _w } from './common.js';
 import * as K from './diorama.js';
+import { hatParts, headParts } from './heads.js';
 import { heroSpec } from './hero-doll.js';
 import { View } from './view.js';
 
@@ -218,30 +219,56 @@ export function weaponDoll(id, it) {
 }
 
 /* ---------- 정착지 인형 · 건물 ---------- */
-export function npcParts(n) {
-  const L = n.look, S = L.skin, Hc = L.hair, C = L.cloth, eye = 0x1a1420;
-  const P = [
-    { s: 'sphere', p: [-0.09, 0.07, 0.03], k: [0.085, 0.065, 0.11], c: 0x4a3322 }, { s: 'sphere', p: [0.09, 0.07, 0.03], k: [0.085, 0.065, 0.11], c: 0x4a3322 },
-    { s: 'sphere', p: [0, 0.31, 0], k: [0.22, 0.24, 0.2], c: C },
-    { s: 'sphere', p: [0, 0.72, 0], k: 0.25, c: S },
-    { s: 'sphere', p: [0, 0.79, -0.05], k: [0.265, 0.22, 0.26], c: Hc },
-    { s: 'sphere', p: [-0.085, 0.7, 0.22], k: [0.035, 0.05, 0.03], c: eye }, { s: 'sphere', p: [0.085, 0.7, 0.22], k: [0.035, 0.05, 0.03], c: eye },
-    { s: 'sphere', p: [-0.074, 0.72, 0.245], k: 0.012, c: 0xffffff }, { s: 'sphere', p: [0.096, 0.72, 0.245], k: 0.012, c: 0xffffff },
-    { s: 'sphere', p: [-0.15, 0.63, 0.19], k: [0.04, 0.022, 0.02], c: 0xff9a9a }, { s: 'sphere', p: [0.15, 0.63, 0.19], k: [0.04, 0.022, 0.02], c: 0xff9a9a },
-    { s: 'sphere', p: [-0.24, 0.33, 0.04], k: 0.065, c: S }, { s: 'sphere', p: [0.24, 0.33, 0.04], k: 0.065, c: S },
+/* ---------- 주민 인형: 매끈한 몸(단면 회전 겉옷 · 굽은 팔다리) + 머리 모양 + 직업 옷차림과 도구 ---------- */
+const HAIR_STYLES = ['short', 'bob', 'pony', 'long', 'buzz', 'short', 'bob'];
+const hashId = (s) => { let h = 7; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; };
+const tone = (c, k) => { const f = (v) => Math.max(0, Math.min(255, Math.round(v * k))); return (f((c >> 16) & 255) << 16) | (f((c >> 8) & 255) << 8) | f(c & 255); };
+/** 몸: robe = 발목까지 오는 긴 옷, apron = 앞치마 색, pose = 오른손 높이(도구를 들면 위로) */
+function npcBody({ cloth, skin, shirt = 0xe8dcc4, pants = 0x4a4038, boots = 0x4a3322, robe = false, apron = null, belt = 0x6a4a30 }) {
+  const hem = robe ? 0.02 : 0.12, coat = [[0, hem + 0.01], [0.21, hem], [robe ? 0.25 : 0.235, hem + 0.012], [0.215, 0.2], [0.18, 0.27], [0.195, 0.34], [0.205, 0.4], [0.195, 0.455], [0.148, 0.5], [0.082, 0.528], [0, 0.54]];
+  const paint = [{ c: shirt, a: 0.55, vee: true, y0: 0.32, y1: 0.54 }];
+  if (apron) paint.push({ c: apron, a: 0.75, y0: hem, y1: 0.43 });
+  const parts = [
+    { s: 'lathe', pts: coat, k: [1, 1, 0.86], seg: 26, wave: robe ? 0.05 : 0.07, waveN: 7, waveTop: 0.26, c: cloth, paint, shade: 0.24 },
+    { s: 'torus', p: [0, 0.27, 0], r: [Math.PI / 2, 0, 0], k: [0.186, 0.162, 0.12], tube: 0.2, c: belt },
+    { s: 'torus', p: [0, 0.52, 0], r: [Math.PI / 2, 0, 0], k: [0.095, 0.085, 0.1], tube: 0.45, c: shirt },
   ];
+  for (const sx of [-1, 1]) {
+    if (!robe) parts.push({ s: 'tube', path: [[0.095 * sx, 0.3, 0], [0.105 * sx, 0.2, 0.01], [0.11 * sx, 0.12, 0.01]], r0: 0.066, r1: 0.056, c: pants, shade: 0.2 });
+    parts.push({ s: 'lathe', p: [0.11 * sx, 0, 0.01], pts: [[0, 0.005], [0.075, 0.006], [0.082, 0.045], [0.075, 0.12], [0, 0.125]], seg: 14, c: boots, shade: 0.25 }, { s: 'sphere', p: [0.11 * sx, 0.045, 0.065], k: [0.072, 0.045, 0.09], c: boots });
+    parts.push({ s: 'tube', path: [[0.17 * sx, 0.455, 0], [0.235 * sx, 0.38, 0.02], [0.245 * sx, 0.32, 0.05]], r0: 0.07, r1: 0.052, c: cloth, shade: 0.12 }, { s: 'sphere', p: [0.25 * sx, 0.3, 0.06], k: 0.062, c: skin });
+  }
+  return parts;
+}
+export function npcParts(n) {
+  const L = n.look, S = L.skin, Hc = L.hair, C = L.cloth, h = hashId(n.id || n.name), style = L.style || HAIR_STYLES[h % HAIR_STYLES.length];
+  const head = (o = {}) => headParts({ skin: S, hair: Hc, eye: 0x2a2030, style, mood: n.mood || 0, ...o });
+  const tool = (parts) => parts; // 오른손(x 0.25, y 0.3)에 쥔 도구
+  let P;
   switch (n.job) {
-    case 'blacksmith': P.push({ s: 'box', p: [0, 0.3, 0.17], k: [0.3, 0.32, 0.06], c: 0x7a4a28 }, { s: 'sphere', p: [0, 0.6, 0.17], k: [0.15, 0.1, 0.08], c: Hc }, { s: 'cyl', p: [0.27, 0.42, 0.08], k: [0.022, 0.3, 0.022], c: 0x6a4526 }, { s: 'box', p: [0.27, 0.58, 0.08], k: [0.14, 0.08, 0.08], c: 0x8a92a4 }); break;
-    case 'herbalist': P.push({ s: 'sphere', p: [0, 0.82, -0.04], k: [0.29, 0.25, 0.29], c: 0x5a9a4a }, { s: 'cone', p: [0, 1.02, -0.14], r: [-0.6, 0, 0], k: [0.08, 0.2, 0.08], c: 0x5a9a4a }, { s: 'cyl', p: [-0.28, 0.28, 0.06], k: [0.1, 0.1, 0.1], c: 0xb08a4a }, { s: 'sphere', p: [-0.28, 0.35, 0.06], k: [0.08, 0.04, 0.08], c: 0x6ac84a }); break;
-    case 'hunter': P.push({ s: 'sphere', p: [0, 0.86, -0.02], k: [0.27, 0.16, 0.27], c: 0x8a6a4a }, { s: 'cone', p: [-0.15, 1.0, 0], k: [0.05, 0.1, 0.05], c: 0x8a6a4a }, { s: 'cone', p: [0.15, 1.0, 0], k: [0.05, 0.1, 0.05], c: 0x8a6a4a }, { s: 'torus', p: [0, 0.38, -0.2], r: [0, 0, Math.PI / 2], k: 0.26, tube: 0.07, arc: Math.PI, c: 0x7a4a28 }); break;
-    case 'scholar': P.push({ s: 'cone', p: [0, 0.3, 0], k: [0.27, 0.56, 0.27], c: C }, { s: 'torus', p: [-0.085, 0.7, 0.24], k: 0.05, tube: 0.2, c: 0x2a2a2a }, { s: 'torus', p: [0.085, 0.7, 0.24], k: 0.05, tube: 0.2, c: 0x2a2a2a }, { s: 'box', p: [-0.25, 0.38, 0.12], r: [0.3, 0, 0], k: [0.16, 0.2, 0.05], c: 0xa03a3a }); break;
-    case 'cook': P.push({ s: 'cyl', p: [0, 0.98, -0.02], k: [0.18, 0.2, 0.18], c: 0xffffff }, { s: 'sphere', p: [0, 1.12, -0.02], k: [0.22, 0.1, 0.22], c: 0xffffff }, { s: 'box', p: [0, 0.3, 0.17], k: [0.28, 0.3, 0.05], c: 0xffffff }); break;
-    case 'fisher': P.push({ s: 'cyl', p: [0, 0.92, -0.02], k: [0.33, 0.03, 0.33], c: 0xe8c860 }, { s: 'cone', p: [0, 1.0, -0.02], k: [0.2, 0.14, 0.2], c: 0xe8c860 }, { s: 'cyl', p: [0.27, 0.62, 0.08], r: [0.2, 0, -0.35], k: [0.014, 0.9, 0.014], c: 0x8a5a32 }, { s: 'sphere', p: [-0.24, 0.24, -0.08], k: [0.12, 0.1, 0.09], c: 0xc8b890 }); break;
-    case 'boatman': P.push({ s: 'sphere', p: [0, 0.86, -0.02], k: [0.27, 0.13, 0.27], c: 0x2a4a6a }, { s: 'cyl', p: [0.27, 0.5, 0.08], k: [0.022, 1.0, 0.022], c: 0x9a6a3a }, { s: 'box', p: [0.27, 0.05, 0.08], k: [0.11, 0.2, 0.025], c: 0x9a6a3a }); break;
-    case 'gravekeeper': P.push({ s: 'sphere', p: [0, 0.82, -0.04], k: [0.29, 0.25, 0.29], c: 0x5a5a6a }, { s: 'cyl', p: [0.27, 0.42, 0.08], k: [0.02, 0.62, 0.02], c: 0x6a4526 }, { s: 'box', p: [0.27, 0.08, 0.08], k: [0.11, 0.14, 0.025], c: 0x9aa2b4 }, { s: 'cyl', p: [-0.27, 0.3, 0.1], k: [0.055, 0.1, 0.055], c: 0x3a3a44 }, { s: 'sphere', p: [-0.27, 0.3, 0.1], k: 0.035, c: 0xffd070 }); break;
-    case 'miner': P.push({ s: 'sphere', p: [0, 0.86, -0.01], k: [0.27, 0.16, 0.27], c: 0xe8b83a }, { s: 'sphere', p: [0, 0.88, 0.25], k: 0.04, c: 0xfff4c0 }, { s: 'cyl', p: [0.27, 0.42, 0.08], k: [0.02, 0.42, 0.02], c: 0x6a4526 }, { s: 'box', p: [0.27, 0.62, 0.08], r: [0, 0, 0.2], k: [0.28, 0.045, 0.045], c: 0x9aa2b4 }); break;
-    case 'pilgrim': P.push({ s: 'cyl', p: [0, 0.9, -0.02], k: [0.38, 0.025, 0.38], c: 0xb89a6a }, { s: 'cone', p: [0, 0.98, -0.02], k: [0.21, 0.14, 0.21], c: 0xb89a6a }, { s: 'cyl', p: [0.27, 0.55, 0.08], k: [0.022, 1.1, 0.022], c: 0x8a5a32 }, { s: 'torus', p: [0.27, 1.1, 0.08], k: 0.05, tube: 0.3, c: 0xffd84a }); break;
-    default: P.push({ s: 'cone', p: [0, 1.0, -0.03], k: [0.27, 0.42, 0.27], c: 0x8a7ab0 }, { s: 'oct', p: [0.27, 0.52, 0.1], k: 0.07, c: 0xb45aff });
+    case 'blacksmith': P = [...npcBody({ cloth: C, skin: S, apron: 0x3a2618 }), ...head(), { s: 'tube', path: [[-0.085, 0.665, 0.25], [-0.04, 0.692, 0.272], [0, 0.686, 0.277], [0.04, 0.692, 0.272], [0.085, 0.665, 0.25]], r0: 0.02, r1: 0.02, rs: 8, c: tone(Hc, 1.15) }, // 콧수염
+      ...tool([{ s: 'cyl', p: [0.26, 0.4, 0.07], k: [0.022, 0.28, 0.022], c: 0x6a4526 }, { s: 'box', p: [0.26, 0.55, 0.07], k: [0.14, 0.075, 0.075], c: 0x8a92a4 }])]; break;
+    case 'herbalist': P = [...npcBody({ cloth: C, skin: S, apron: 0x8ab070 }), ...head({ cover: 2 }), ...hatParts('hood', { c: 0x5a9a4a, trim: 0x3f7a35 }),
+      { s: 'lathe', p: [-0.3, 0.2, 0.08], pts: [[0, 0], [0.08, 0.005], [0.1, 0.1], [0, 0.1]], seg: 14, c: 0xb08a4a, paint: [{ c: 0x8a6a34, band: 0.025 }] }, ...[0, 1, 2].map((k) => ({ s: 'sphere', p: [-0.3 + (k - 1) * 0.04, 0.31, 0.08], k: [0.035, 0.05, 0.035], c: [0x6ac84a, 0x8ad86a, 0xe86a8a][k] }))]; break;
+    case 'hunter': P = [...npcBody({ cloth: C, skin: S, shirt: 0xc8a878 }), ...head({ cover: 1 }), { s: 'lathe', p: [0, 0.76, 0.005], pts: [[0.3, 0.08], [0.295, 0.18], [0.24, 0.27], [0.13, 0.32], [0, 0.33]], seg: 22, wave: 0.05, waveN: 14, waveTop: 0.2, c: 0x8a6a4a, shade: 0.15, paint: [{ c: 0xd8c8a8, y0: 0.82, y1: 0.87 }] },
+      ...[-1, 1].map((sx) => ({ s: 'cone', p: [0.15 * sx, 1.07, 0], r: [0, 0, -0.3 * sx], k: [0.05, 0.1, 0.035], c: 0x8a6a4a })), { s: 'torus', p: [0, 0.38, -0.2], r: [0, 0, Math.PI / 2], k: 0.26, tube: 0.06, arc: Math.PI, c: 0x7a4a28 }, { s: 'tube', path: [[0, 0.64, -0.21], [0, 0.38, -0.23], [0, 0.12, -0.21]], r0: 0.006, r1: 0.006, rs: 4, c: 0xe8e0c8, outline: false }]; break;
+    case 'scholar': P = [...npcBody({ cloth: C, skin: S, robe: true, shirt: 0xd8d0e8 }), ...head(), ...[-1, 1].map((sx) => ({ s: 'torus', p: [0.087 * sx, 0.762, 0.305], k: 0.066, tube: 0.14, c: 0x3a2a1a, outline: false })), { s: 'tube', path: [[-0.022, 0.77, 0.305], [0, 0.78, 0.31], [0.022, 0.77, 0.305]], r0: 0.008, r1: 0.008, rs: 5, c: 0x3a2a1a, outline: false },
+      { s: 'box', p: [-0.27, 0.34, 0.11], r: [0.3, 0.2, 0], k: [0.16, 0.2, 0.05], c: 0xa03a3a }, { s: 'box', p: [-0.265, 0.34, 0.14], r: [0.3, 0.2, 0], k: [0.14, 0.18, 0.02], c: 0xf2ead8 }]; break;
+    case 'cook': P = [...npcBody({ cloth: C, skin: S, apron: 0xf4f0e8 }), ...head({ cover: 1 }), { s: 'lathe', p: [0, 0.76, 0.005], pts: [[0.24, 0.17], [0.23, 0.3], [0.26, 0.36], [0.3, 0.42], [0.25, 0.5], [0.12, 0.53], [0, 0.535]], seg: 22, wave: 0.08, waveN: 8, waveTop: 0.55, c: 0xffffff, shade: 0.12 },
+      ...tool([{ s: 'cyl', p: [0.26, 0.42, 0.07], k: [0.018, 0.26, 0.018], c: 0x9a6a3a }, { s: 'sphere', p: [0.26, 0.56, 0.07], k: [0.05, 0.03, 0.05], c: 0x9a6a3a }])]; break;
+    case 'fisher': P = [...npcBody({ cloth: C, skin: S, shirt: 0xdad2b8 }), ...head({ cover: 1 }), ...hatParts('hat', { c: 0xe8c860, trim: 0xc8a040 }),
+      { s: 'cyl', p: [0.27, 0.62, 0.08], r: [0.2, 0, -0.35], k: [0.014, 0.9, 0.014], c: 0x8a5a32 }, { s: 'lathe', p: [-0.24, 0.16, -0.08], pts: [[0, 0], [0.11, 0.01], [0.12, 0.09], [0.09, 0.14], [0, 0.145]], seg: 14, c: 0xc8b890, shade: 0.2 }]; break;
+    case 'boatman': P = [...npcBody({ cloth: C, skin: S, shirt: 0x9ab8d0 }), ...head({ cover: 1 }), { s: 'lathe', p: [0, 0.76, 0.005], pts: [[0.29, 0.1], [0.3, 0.16], [0.27, 0.25], [0.16, 0.31], [0, 0.325]], seg: 22, c: 0x2a4a6a, shade: 0.15, paint: [{ c: 0x3a6a8a, y0: 0.85, y1: 0.93 }] },
+      { s: 'cyl', p: [0.27, 0.5, 0.08], k: [0.022, 1.0, 0.022], c: 0x9a6a3a }, { s: 'lathe', p: [0.27, -0.03, 0.08], pts: [[0, 0], [0.06, 0.02], [0.07, 0.14], [0.03, 0.2], [0, 0.2]], k: [1, 1, 0.3], seg: 12, c: 0x9a6a3a }]; break;
+    case 'gravekeeper': P = [...npcBody({ cloth: C, skin: S, robe: true, shirt: 0x9a9aa8 }), ...head({ cover: 2 }), ...hatParts('hood', { c: 0x5a5a6a, trim: 0x44444f }),
+      { s: 'cyl', p: [0.27, 0.42, 0.08], k: [0.02, 0.62, 0.02], c: 0x6a4526 }, { s: 'lathe', p: [0.27, 0.02, 0.08], pts: [[0, 0], [0.06, 0.03], [0.065, 0.13], [0, 0.14]], k: [1, 1, 0.25], seg: 12, c: 0x9aa2b4 },
+      { s: 'cyl', p: [-0.27, 0.26, 0.1], k: [0.055, 0.1, 0.055], c: 0x3a3a44 }, { s: 'sphere', p: [-0.27, 0.26, 0.1], k: 0.038, c: 0xffd070, outline: false }]; break;
+    case 'miner': P = [...npcBody({ cloth: C, skin: S, shirt: 0xc8b890 }), ...head({ cover: 2 }), ...hatParts('helm', { c: 0xe8b83a, trim: 0xb88a20 }).slice(0, 2), { s: 'sphere', p: [0, 0.9, 0.29], k: 0.045, c: 0xfff4c0, outline: false },
+      { s: 'cyl', p: [0.27, 0.42, 0.08], k: [0.02, 0.42, 0.02], c: 0x6a4526 }, { s: 'tube', path: [[0.12, 0.6, 0.08], [0.27, 0.64, 0.08], [0.42, 0.6, 0.08]], r0: 0.024, r1: 0.012, rs: 6, c: 0x9aa2b4 }]; break;
+    case 'pilgrim': P = [...npcBody({ cloth: C, skin: S, robe: true, shirt: 0xe8dcc0 }), ...head({ cover: 1 }), ...hatParts('hat', { c: 0xb89a6a, trim: 0x8a6a3a }),
+      { s: 'cyl', p: [0.27, 0.55, 0.08], k: [0.022, 1.1, 0.022], c: 0x8a5a32 }, { s: 'torus', p: [0.27, 1.12, 0.08], k: 0.05, tube: 0.3, c: 0xffd84a }]; break;
+    default: P = [...npcBody({ cloth: C, skin: S, robe: true, shirt: 0xd8c8f0 }), ...head({ cover: 2 }), { s: 'lathe', p: [0, 0.78, 0], r: [-0.12, 0, 0], pts: [[0.34, 0], [0.32, 0.05], [0.22, 0.2], [0.1, 0.4], [0.02, 0.55], [0, 0.56]], seg: 20, wave: 0.04, waveN: 5, waveTop: 0.3, c: 0x8a7ab0, shade: 0.2, paint: [{ c: 0xc8a8f0, y0: 0.78, y1: 0.84 }] },
+      { s: 'oct', p: [0.27, 0.46, 0.1], k: 0.07, c: 0xb45aff }];
   }
   return P;
 }
