@@ -32,7 +32,12 @@ Object.assign(UI, {
   },
   toDungeon() { Game.mode = 'dungeon'; $('#sheet').classList.add('hidden'); this.hideInfo(); this.closeHudOverlay(); this.logLines = []; $('#townhud').classList.add('hidden'); $('#hud').classList.remove('hidden'); this.layout(); },
   gameOver() {
-    this.screen(`<h2>쓰러졌다</h2><p>구역 ${G.zone}-${G.zf} — ${G.theme.name}</p>${this.statsHtml()}<p style="color:#ff9aa4;font-size:13px">영혼석과 이번 원정의 전리품을 잃었다. 정착지와 마을 사람들은 남는다.</p><button class="bigbtn" id="btn-again">정착지로 — 새 모험가가 나선다</button>`);
+    // 사망 요약: 누구에게, 무엇으로. 마지막 다섯 번의 피해와 비석에 새길 한 줄 (docs/설계_던전_확장.md §7)
+    const by = G.deathBy, name = (META.hero && META.hero.name) || G.player.name || '등불지기';
+    const last = (G.hurtLog || []).slice(-5).map((q) => `<div>턴 ${q.turn} · ${q.who} <b style="color:#ff9aa4">−${q.amt}</b></div>`).join('');
+    const epitaph = `${name}, 구역 ${G.zone}의 ${G.zf}층에서 ${by ? by.who + '에게' : '어둠 속에서'} 쓰러지다.`;
+    this.screen(`<h2>쓰러졌다</h2><p>구역 ${G.zone}-${G.zf} — ${G.theme.name}${by ? ` · <b style="color:#ff9aa4">${by.who}에게</b>` : ''} · ${G.stats.turns}턴</p>
+      ${last ? `<div class="gtxt" style="text-align:left;margin:6px auto;max-width:300px">${last}</div>` : ''}<p style="color:#c8b890;font-size:13px">“${epitaph}”</p>${this.statsHtml()}<p style="color:#ff9aa4;font-size:13px">영혼석과 이번 원정의 전리품을 잃었다. 정착지와 마을 사람들은 남는다.</p><button class="bigbtn" id="btn-again">정착지로 — 새 모험가가 나선다</button>`);
     $('#btn-again').onclick = () => { $('#screen').classList.add('hidden'); returnToTown('death'); };
   },
   victory() { returnToTown('boss'); },

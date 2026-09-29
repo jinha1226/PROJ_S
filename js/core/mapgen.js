@@ -87,13 +87,20 @@ export function genFloor() {
   const order = shuffle(cand.length >= 3 ? cand : rooms.map((_, k) => k).filter((k) => k > 0));
   // 넓어진 층: 무리 전부 + 방 네 개마다 무리 하나 더(1구역이 너무 쉬웠다)
   const packs = boss ? F.packs.slice(0, 4) : [...F.packs, ...Array.from({ length: Math.floor(rooms.length / 4) }, () => pick(F.packs))];
-  packs.forEach(([type, cnt], j) => {
-    const r = rooms[order[j % order.length]];
-    for (let c = 0; c < cnt; c++) for (let t = 0; t < 40; t++) {
+  // 무리: [종류, 수, 곁에 붙는 하나(주술사 등)]. 거머리는 물속에
+  const water = []; for (let i = 0; i < N; i++) if (surf[i] === S_WATER && tile[i] === T_FLOOR && cheb(i % W, (i / W) | 0, start.x, start.y) >= 6) water.push(i);
+  const spawn = (type, r) => {
+    if (type === 'leech' && water.length) { for (let t = 0; t < 40; t++) { const i = water[ri(0, water.length - 1)]; if (entAt(i % W, (i / W) | 0)) continue; G.ents.push(mkEnemy(type, i % W, (i / W) | 0, F)); return; } }
+    for (let t = 0; t < 40; t++) {
       const x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1);
       if (tile[I(x, y)] !== T_FLOOR || entAt(x, y) || cheb(x, y, start.x, start.y) < 5) continue;
-      G.ents.push(mkEnemy(type, x, y, F)); break;
+      G.ents.push(mkEnemy(type, x, y, F)); return;
     }
+  };
+  packs.forEach(([type, cnt, extra], j) => {
+    const r = rooms[order[j % order.length]];
+    for (let c = 0; c < cnt; c++) spawn(type, r);
+    if (extra) spawn(extra, r);
   });
   if (boss) { tile[far] = T_FLOOR; const b = mkBoss(Z.boss, far % W, (far / W) | 0); G.ents.push(b); G.bossId = b.id; }
   // 길 잃은 사람: 구역마다 최대 1명(넉살 좋은 등불지기는 더 잘 만난다)
@@ -148,7 +155,8 @@ export function mkBoss(kind, x, y) {
 export function mkEnemy(type, x, y, F) {
   const B = ENEMY[type], hp = Math.round(B.hp * (1 + 0.05 * (G.floor - 1))); // 층마다 +5%(20층 ≈ ×2)
   const e = { id: G.nextId++, type, x, y, hp, max: hp, atk: B.atk + (G.zone - 1), // 구역마다 공격 +1(기준안)
-    st: newSt(), alive: true, awake: false, face: [0, 1], cd: ri(0, 1), cast: null, charge: null, aim: false, name: B.name };
+    speed: B.speed || null, hidden: type === 'leech' && !!G.surf && G.surf[I(x, y)] === S_WATER, // 거머리는 물속에 숨는다
+    st: newSt(), alive: true, awake: type === 'leech', face: [0, 1], cd: ri(0, 1), cast: null, charge: null, aim: false, name: B.name };
   if (type === 'mage') { const m = G.mageOf[G.zone - 1]; e.elem = m === 'mix' ? pick(['bolt', 'fire', 'frost']) : m; e.name = '해골 ' + MAGE[e.elem].name; }
   if (type === 'goblin' && F.poison && rand() < 0.5) { e.poison = true; e.name = '독칼 고블린'; }
   else if (type === 'goblin' && G.floor >= 2 && rand() < 0.4) { e.armor = true; e.name = '갑옷 고블린'; e.hp += 2; e.max += 2; }

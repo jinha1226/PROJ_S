@@ -80,6 +80,7 @@ Object.assign(UI, {
     const inj = [e.st.bleed ? `🩸 출혈 ${e.st.bleed}` : '', e.st.frac ? `🦴 골절 ${e.st.frac} (한 턴씩 쉰다)` : '', e.st.vital ? '✧ 급소 노출 — 다음 찌르기 치명타' : ''].filter(Boolean).join(' · ');
     const drops = ['red', 'purple', 'green'].map((c) => { const S = STONE[DROPS[kd][c]], col = COLORS[c].css; return `<div><b style="color:${col}">● ${S.icon} ${S.name}</b> <span style="color:#9aa2bd">${S.line}</span></div>`; }).join('');
     this.info(`<h3>${e.name} <small style="color:#9aa2bd">${C.name} · HP ${e.hp}/${e.max} ${st}</small></h3><div>${B.desc}${extra}</div><div class="hint">💡 ${B.tip}</div>
+      ${B.speed || B.danger ? `<div style="margin-top:4px">${B.speed === 'fast' ? '<b style="color:#ff9a6a">» 빠르다. 도망칠 수 없다.</b> ' : B.speed === 'slow' ? '<b style="color:#9ab8ff">« 느리다. 걸어서 떼어 놓을 수 있다.</b> ' : ''}${B.danger ? `⚠ ${B.danger}` : ''}</div>` : ''}
       ${inj ? `<div style="margin-top:4px">${inj}</div>` : ''}
       <div style="margin-top:6px">약점: ${G.weakKnown[cat] ? `<b style="color:#ffe14a">${FORMS[C.weak].icon} ${FORMS[C.weak].name}</b> (피해 1.5배·부상 강화)` : '? — 맞혀 보면 드러난다'}</div>
       <div style="margin-top:4px;font-size:12.5px">저항: ${['fire', 'frost', 'bolt', 'poison'].map((el) => { const r = monRes(e, el); return `${ELEM[el].name} <b style="color:${r > 0 ? '#9fd8ff' : r < 0 ? '#ff9a9a' : '#9aa2bd'}">${r > 0 ? '●'.repeat(r) : r < 0 ? '▼'.repeat(-r) : '—'}</b>`; }).join(' · ')}</div>

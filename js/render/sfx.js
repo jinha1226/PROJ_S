@@ -70,6 +70,9 @@ export const Sfx = {
       case 'pickgem': T(988, 0.08, 'sine', 0.06); T(1480, 0.14, 'sine', 0.05, 0, 0.07); break;
       case 'shield': T(520, 0.18, 'triangle', 0.05, 300); break;
       case 'slow': T(220, 0.7, 'sine', 0.12, -120); N(0.6, 0.12, 300, 0.5); break;
+      case 'heart': T(62, 0.12, 'sine', 0.28, -12); T(56, 0.16, 'sine', 0.22, -12, 0.17); break; // 빈사: 심장 소리
+      case 'rumble': T(46, 1.0, 'sawtooth', 0.06, -10); N(0.9, 0.14, 160, 0.5); break; // 처음 보는 적 · 불길한 기운
+      case 'bighit': N(0.22, 0.5, 280, 0.7); T(78, 0.32, 'sine', 0.3, -40); break; // 큰 피해
       default: break;
     }
   },

@@ -94,6 +94,7 @@ Object.assign(UI, {
     if (Anim.active || G.over || this.overlayOpen()) return;
     if (visibleFoes().length) { this.toast('적이 보여서 탐험할 수 없다'); return; }
     if (this.underAttack()) { this.toast('공격받고 있어서 탐험할 수 없다'); return; }
+    if (G.player.hp <= G.player.max * 0.3) { this.toast('너무 다쳐서 탐험할 수 없다'); return; } // 빈사
     this.explore = true; this.rest = null; this.exploreSkip = new Set();
     this.exploreStep();
   },
@@ -126,12 +127,12 @@ Object.assign(UI, {
     if (visibleFoes().length) { this.toast('적이 보여서 쉴 수 없다'); return; }
     if (this.underAttack()) { this.toast('공격받고 있어서 쉴 수 없다'); return; }
     if (G.player.hp >= G.player.max && !G.player.st.poison) { this.toast('쉴 필요가 없다'); return; }
-    this.rest = { n: 0 }; this.toast('휴식 중… (탭하면 멈춤)'); this.restStep();
+    this.rest = { n: 0 }; G.restN = 0; this.toast('휴식 중… (탭하면 멈춤)'); this.restStep();
   },
   restStep() {
     const r = this.rest; if (!r) return; const p = G.player;
     if (visibleFoes().length || G.hurt || r.n >= 40 || (p.hp >= p.max && !p.st.poison && !p.st.burn)) { this.rest = null; if (G.hurt && !p.st.poison && !p.st.burn) this.toast('공격받았다. 휴식을 멈춘다.'); return; }
-    r.n++; act(() => playerWait());
+    r.n++; act(() => { G.resting = true; return playerWait(); }); // 휴식 턴: 횃불 두 배 · 3턴마다 HP · 방랑하는 적
   },
   afterTurn() {
     View.refreshDecals(); this.syncButtons();

@@ -29,6 +29,7 @@ export function damage(e, amt, kind = 'hit', o = {}) {
   if (isFoe(e) && G.ctx && G.ctx.color === 'red' && G.ps && G.ps.orb.red && !DOT[kind] && (!o.src || o.src === G.player)) amt += G.ps.orb.red;
   if (e.st.frozen > 0 && PHYS[kind]) { amt = Math.ceil(amt * 1.5); if (!label) label = '빙결 강타'; }
   if (isFoe(e) && !e.awake) e.awake = true;
+  if (e.hidden) reveal(e); // 숨어 있던 적은 맞으면 드러난다
   const src = o.src || G.curSrc;
   // 장비: 내가 맞을 때 회피·막기·방어·저항, 내가 칠 때 원소 피해
   const struck = isP(e) && src && src !== e && isFoe(src);
@@ -60,6 +61,7 @@ export function damage(e, amt, kind = 'hit', o = {}) {
   if (isFoe(e) && amt > 0 && (!src || src === G.player) && G.ctx && G.ctx.origin !== 'enemy' && !DOT[kind]) reduceColor('red');
   if (amt > 0) {
     e.hp -= amt;
+    if (isP(e)) { (G.hurtLog ||= []).push({ turn: G.stats.turns, who: src && src !== e ? src.name : HURT_BY[kind] || '알 수 없는 것', amt, kind }); if (G.hurtLog.length > 8) G.hurtLog.shift(); } // 사망 요약
     emit('hit', { id: e.id, amt, kind, dx: o.dx || 0, dy: o.dy || 0, label, big: !!o.big || amt >= 7, crit: !!o.crit });
     emit('hp', { id: e.id, hp: Math.max(0, e.hp), max: e.max });
   }
@@ -74,7 +76,7 @@ export function kill(e) {
   const shatter = e.st.frozen > 0;
   e.alive = false; e.cast = e.charge = null; e.aim = false;
   emit('die', { id: e.id, shatter });
-  if (isP(e)) { G.over = true; log('쓰러졌다…', 'bad'); emit('gameover'); return; }
+  if (isP(e)) { G.over = true; G.deathBy = (G.hurtLog || []).slice(-1)[0] || null; log('쓰러졌다…', 'bad'); emit('gameover'); return; }
   if (e.ally) return;
   if (e.npc) { log(`${jo(e.name, '을를')} 잃었다…`, 'bad'); return; }
   G.stats.kills++; gainXp(e);
@@ -96,6 +98,15 @@ export function kill(e) {
   dropGearFrom(e);
 }
 
+/** 숨은 적이 드러난다 */
+export function reveal(e) {
+  if (!e.hidden) return; e.hidden = false; e.revealed = true;
+  emit('move', { id: e.id, x: e.x, y: e.y, dur: 1, hop: 0, kind: 'step', seen: G.vis[I(e.x, e.y)] ? 1 : 0 });
+  if (G.vis[I(e.x, e.y)]) { emit('splash', { x: e.x, y: e.y }); log(`물속에서 ${jo(e.name, '이가')} 튀어나왔다.`, 'bad'); }
+}
+/** 주인공을 다치게 한 것(적이 아닐 때) */
+const HURT_BY = { burn: '불길', fire: '불길', blast: '폭발', shock: '번개', frost: '냉기', poison: '독', bleed: '출혈', wall: '벽', impact: '충돌', steam: '증기' };
+
 export function addLoot(m, n) { G.loot.mats[m] = (G.loot.mats[m] || 0) + n; }
 
 export function freeDropSpot(x, y) {
@@ -115,7 +126,7 @@ export function moveEnt(e, x, y, o = {}) {
   const fx = e.x, fy = e.y; e.x = x; e.y = y;
   if (G.curSrc === e && isFoe(e) && G.player && cheb(x, y, G.player.x, G.player.y) < cheb(fx, fy, G.player.x, G.player.y)) e.appr = G.stats.turns; // 창: 이번 적 턴에 다가온 적
   if (o.face !== false && (x !== fx || y !== fy)) e.face = [sgn(x - fx), sgn(y - fy)];
-  emit('move', { id: e.id, x, y, dur: o.dur ?? 115, hop: o.hop ?? 0.16, kind: o.kind || 'step', seen: isP(e) || G.vis[I(x, y)] ? 1 : 0 });
+  emit('move', { id: e.id, x, y, dur: o.dur ?? 115, hop: o.hop ?? 0.1, kind: o.kind || 'step', seen: isP(e) || (G.vis[I(x, y)] && !e.hidden) ? 1 : 0 });
 }
 
 export function stepEnt(e, dx, dy) {

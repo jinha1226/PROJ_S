@@ -1,7 +1,7 @@
 import { closeDoor, colorMul, playerMove } from '../core/combat.js';
 import { gearCss, gearName, pickGear } from '../core/gear.js';
 import { itemName } from '../core/items.js';
-import { G, I, entAt } from '../core/state.js';
+import { G, Game, I, entAt } from '../core/state.js';
 import { leaveStone, stoneCd, takeStone } from '../core/stones.js';
 import { useLamp } from '../core/torch.js';
 import { BOSSES } from '../data/enemies.js';
@@ -103,6 +103,9 @@ Object.assign(UI, {
   /* ---- HUD ---- */
   hp(hp, max) {
     const w = Math.max(0, hp / max) * 100;
+    // 빈사(30% 이하): 화면 가장자리가 조여 들고 심장이 뛴다
+    const low = hp > 0 && hp <= max * 0.3; $('#lowhp').style.opacity = low ? String(0.45 + 0.55 * (1 - hp / (max * 0.3))) : '0';
+    if (low && !this.heartT) this.heartT = setInterval(() => { const p = G.player; if (Game.mode === 'dungeon' && p && p.alive && p.hp <= p.max * 0.3) Sfx.play('heart'); else { clearInterval(this.heartT); this.heartT = 0; } }, 1000);
     $('#hpfill').style.width = w + '%'; $('#hpghost').style.width = w + '%'; $('#hptext').textContent = `${Math.max(0, hp)} / ${max}`;
   },
   pstatus(st) {
@@ -155,7 +158,7 @@ Object.assign(UI, {
     const el = $('#banner'); const C = { bolt: '#ffe14a', fire: '#ff9a3a', poison: '#9dff6a', ice: '#9fe2ff', steam: '#f2f6ff', push: '#ffd08a', info: '#c8d4ff' };
     el.textContent = text; el.style.color = C[elem] || '#fff'; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
   },
-  hurt() { const el = $('#hurt'); el.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('on'))); },
+  hurt(big) { const el = $('#hurt'); el.classList.toggle('big', !!big); el.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('on'))); },
   floorCard() {
     const F = G.theme, el = $('#floorcard'), B = G.bossFloor ? BOSSES[ZONES[G.zone - 1].boss] : null;
     el.querySelector('.k').textContent = `구역 ${G.zone} · ${G.zf} / ${ZONE_FLOORS}층${B ? ' · 보스' : ''}`; el.querySelector('.n').textContent = B ? `${F.name} — ${B.name}` : F.name; el.querySelector('.t').textContent = '💡 ' + (B ? `${B.desc} ${B.tip}` : F.tip);

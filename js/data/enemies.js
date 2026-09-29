@@ -1,8 +1,13 @@
 export const ENEMY = {
-  goblin: { name: '고블린', hp: 6, atk: 2, desc: '약한 무리. 몰려와서 에워싼다.', tip: '좁은 복도·문간에 서면 한 번에 한 마리만 붙는다. 뭉쳐서 물을 건널 때 번개 한 방.' },
-  mage: { name: '마법사', hp: 9, atk: 2, desc: '바닥에 붉은 표식을 남기고, 다음 턴에 그 자리로 주문을 떨어뜨린다. 가까이 오면 물러선다.', tip: '표식 밖으로 비켜서라. 적을 표식 안으로 밀면 대신 맞는다. 얼리거나 기절시키면 주문이 끊긴다.' },
-  charger: { name: '철갑 멧돼지', hp: 16, atk: 4, desc: '일직선(가로·세로·대각)에 서면 화살표로 돌진 경로를 예고하고, 다음 턴 끝까지 돌진한다(8 피해).', tip: '경로에서 비켜서면 벽에 머리를 박고 5 피해 + 기절. 경로 위의 다른 적도 들이받는다.' },
-  archer: { name: '해골 궁수', hp: 7, atk: 4, desc: '거리를 두고 조준(붉은 점선)한 뒤 다음 턴에 쏜다. 붙으면 도망간다.', tip: '벽·문·연기로 시야를 끊으면 쏘지 못한다. 모퉁이에서 기다렸다가 붙어라.' },
+  goblin: { name: '고블린', hp: 6, atk: 2, danger: '무리로 에워싼다.', desc: '약한 무리. 몰려와서 에워싼다.', tip: '좁은 복도·문간에 서면 한 번에 한 마리만 붙는다. 뭉쳐서 물을 건널 때 번개 한 방.' },
+  mage: { name: '마법사', hp: 9, atk: 2, danger: '표식이 뜬 칸에 주문이 떨어진다.', desc: '바닥에 붉은 표식을 남기고, 다음 턴에 그 자리로 주문을 떨어뜨린다. 가까이 오면 물러선다.', tip: '표식 밖으로 비켜서라. 적을 표식 안으로 밀면 대신 맞는다. 얼리거나 기절시키면 주문이 끊긴다.' },
+  charger: { name: '철갑 멧돼지', hp: 16, atk: 4, danger: '돌진은 8 피해.', desc: '일직선(가로·세로·대각)에 서면 화살표로 돌진 경로를 예고하고, 다음 턴 끝까지 돌진한다(8 피해).', tip: '경로에서 비켜서면 벽에 머리를 박고 5 피해 + 기절. 경로 위의 다른 적도 들이받는다.' },
+  archer: { name: '해골 궁수', hp: 7, atk: 4, danger: '멀리서 쏜다.', desc: '거리를 두고 조준(붉은 점선)한 뒤 다음 턴에 쏜다. 붙으면 도망간다.', tip: '벽·문·연기로 시야를 끊으면 쏘지 못한다. 모퉁이에서 기다렸다가 붙어라.' },
+  // 1구역에 새로 (docs/설계_던전_확장.md §4.2) — speed: fast(한 턴 두 번 움직임, 공격은 한 번) · slow(두 턴에 한 번)
+  rat: { name: '굶주린 쥐', hp: 2, atk: 1, speed: 'fast', desc: '떼로 몰려와 에워싼다. 한 턴에 두 칸을 달린다.', tip: '도망칠 수 없다. 복도로 물러나 한 줄로 받는다.', danger: '빠르다. 도망칠 수 없다.' },
+  leech: { name: '거머리', hp: 5, atk: 2, speed: 'slow', desc: '물속에 숨어 있다가 붙으면 피를 빤다(출혈 2).', tip: '물을 피하거나 번개로 물째 친다.', danger: '물속에서는 보이지 않는다.' },
+  shaman: { name: '고블린 주술사', hp: 7, atk: 1, desc: '두 턴마다 다친 동료의 HP를 4 채운다. 붙으면 물러난다.', tip: '먼저 쓰러뜨린다.', danger: '동료를 치유한다.' },
+
 };
 
 export const MAGE = { bolt: { name: '번개 마법사', icon: '⚡', color: 0xffe14a, robe: 0x3a4aa0 }, fire: { name: '화염 마법사', icon: '🔥', color: 0xff6a1a, robe: 0x9a2f3a }, frost: { name: '냉기 마법사', icon: '❄', color: 0x8fdcff, robe: 0x2f6a9a } };
@@ -18,6 +23,9 @@ export const DROPS = {
   mage_bolt: { red: 'r_shock', purple: 'p_shock', green: 'g_shock' },
   mage_fire: { red: 'r_fire', purple: 'p_fire', green: 'g_fire' },
   mage_frost: { red: 'r_freeze', purple: 'p_wet', green: 'g_freeze' },
+  rat: { red: 'r_bleed', purple: 'p_poison', green: 'g_poison' },
+  leech: { red: 'r_bleed', purple: 'p_heal', green: 'g_heal' },
+  shaman: { red: 'r_poison', purple: 'p_heal', green: 'g_shield' },
 };
 
 export const BOSSES = {
@@ -29,11 +37,11 @@ export const BOSSES = {
 
 export const kindOf = (e) => (e.type === 'goblin' ? (e.armor ? 'goblin_armor' : e.poison ? 'goblin_poison' : 'goblin') : e.type === 'mage' ? 'mage_' + e.elem : e.type);
 
-export const catOf = (e) => (e.type === 'goblin' ? (e.armor ? 'armor' : 'beast') : e.type === 'charger' ? 'armor' : 'bone');
+export const catOf = (e) => (e.type === 'goblin' ? (e.armor ? 'armor' : 'beast') : e.type === 'charger' ? 'armor' : ['rat', 'leech', 'shaman'].includes(e.type) ? 'beast' : 'bone');
 
 /** 몬스터 원소 저항 −3~+3 (docs/밸런스_기준.md §3.1). 보스는 약점 하나를 반드시 둔다 */
 export const MON_RES = {
-  goblin: {}, goblin_poison: { poison: 2 }, goblin_armor: { bolt: -1 }, charger: { bolt: -1 }, archer: { frost: 1, poison: 3 },
+  goblin: {}, rat: {}, leech: { bolt: -1 }, shaman: { poison: 1 }, goblin_poison: { poison: 2 }, goblin_armor: { bolt: -1 }, charger: { bolt: -1 }, archer: { frost: 1, poison: 3 },
   mage_bolt: { bolt: 3, poison: 3 }, mage_fire: { fire: 3, frost: -1, poison: 3 }, mage_frost: { fire: -2, frost: 3, poison: 3 },
   chief: { fire: -1 }, lich: { bolt: 2, fire: -1, poison: 3 }, boarking: { bolt: -1, fire: 1 }, abyss: { fire: 2, frost: -1, poison: 3 },
 };

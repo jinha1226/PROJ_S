@@ -14,6 +14,8 @@ export const newSt = () => ({ wet: 0, frozen: 0, burn: 0, poison: 0, stun: 0, fe
 export const isFoe = (e) => e !== G.player && !e.ally;
 
 export const isP = (e) => e === G.player;
+/** 보이는가: 시야 안이고 숨어 있지 않다(물속 거머리 등) */
+export const seesEnt = (e) => isP(e) || (!!G.vis[I(e.x, e.y)] && !e.hidden);
 
 export function entAt(x, y) { for (const e of G.ents) if (e.alive && e.x === x && e.y === y) return e; return null; }
 

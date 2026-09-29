@@ -11,7 +11,7 @@ export const FLOORS = [
   { name: '물이 스민 지하실', tip: '물에 선 적에게 ⚡번개 — 이어진 물 전체가 감전된다. 좁은 복도로 무리를 한 줄로 세워라.',
     pal: { floor: 0x5a6788, floor2: 0x4d5877, wall: 0x7788b0, wall2: 0x61709a, void: 0x04050a, grassFloor: 0x3f5a3a, waterFloor: 0x1b2d5e },
     surf: { water: 0.62, grass: 0.12 }, corr: [S_WATER, 0.1], mage: 'bolt',
-    packs: [['goblin', 3], ['goblin', 2], ['mage', 1], ['goblin', 3], ['goblin', 2]], items: 5 },
+    packs: [['goblin', 3, 'shaman'], ['rat', 5], ['mage', 1], ['leech', 2], ['goblin', 2], ['rat', 4]], items: 5 }, // 쥐 떼·거머리·주술사(docs/설계_던전_확장.md §4.2)
   { name: '이끼 덮인 납골당', tip: '풀밭은 불이 번진다 — 적도, 나도. 궁수의 붉은 점선이 보이면 벽·문 뒤로 숨어 시야를 끊어라.',
     pal: { floor: 0x5b6552, floor2: 0x4e5847, wall: 0x78866c, wall2: 0x626f58, void: 0x040604, grassFloor: 0x416e33, waterFloor: 0x1c3048 },
     surf: { grass: 0.62, water: 0.2 }, corr: [S_GRASS, 0.2], mage: 'fire',

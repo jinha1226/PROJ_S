@@ -21,6 +21,9 @@ button{font-family:inherit;color:inherit;cursor:pointer}
 #labels{position:fixed;inset:0;pointer-events:none;overflow:hidden}
 #hurt{position:fixed;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,transparent 45%,rgba(255,30,50,.55));transition:opacity .35s}
 #hurt.on{opacity:1;transition:none}
+#hurt.big{background:radial-gradient(ellipse at center,transparent 30%,rgba(200,10,30,.8))}
+#lowhp{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .6s;background:radial-gradient(ellipse at center,transparent 38%,rgba(10,0,4,.9));animation:lowhp 0.9s ease-in-out infinite}
+@keyframes lowhp{0%,100%{transform:scale(1)}15%{transform:scale(0.985)}}
 
 /* ---------- HUD ---------- */
 #hud{position:fixed;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between}
@@ -297,7 +300,7 @@ details{margin-top:4px;font-size:13px}details summary{cursor:pointer}details sum
 </head>
 <body>
 <div id="stage"></div>
-<div id="hurt"></div>
+<div id="hurt"></div><div id="lowhp"></div>
 <div id="legendflash"></div>
 <div id="labels"></div>
 <div id="hud">

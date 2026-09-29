@@ -1,7 +1,7 @@
-import { G, I, XY, entAt, inb, isFoe, opaque } from './state.js';
 import { T_WALL } from '../data/terrain.js';
-import { D8, cheb } from '../util/grid.js';
 import { torchSight } from '../data/torch.js';
+import { D8, cheb } from '../util/grid.js';
+import { G, I, XY, entAt, inb, isFoe, opaque, seesEnt } from './state.js';
 
 export function bfsDist(tile, sx, sy) {
   const d = new Int16Array(G.W * G.H).fill(9999), q = [I(sx, sy)]; d[q[0]] = 0;
@@ -55,7 +55,7 @@ export function distMap(tx, ty) {
   return dm;
 }
 
-export function visibleFoes() { return G.ents.filter((e) => e.alive && isFoe(e) && G.vis[I(e.x, e.y)]); }
+export function visibleFoes() { return G.ents.filter((e) => e.alive && isFoe(e) && seesEnt(e)); }
 
 export function findPath(sx, sy, tx, ty) {
   const N = G.W * G.H, prev = new Int32Array(N).fill(-1), start = I(sx, sy), goal = I(tx, ty), q = [start]; prev[start] = start;

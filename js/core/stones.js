@@ -11,7 +11,7 @@ import { refreshStats } from './gear.js';
 import { blockAt, openHidden } from './hidden.js';
 import { adjFoes, areaTiles, arrowPath, castBolt, castFire, castFrost, castPush, castVenom, sdmg, wetTarget } from './skills.js';
 import { emitSlots, emitStatus, snapTerrain } from './snap.js';
-import { G, I, TL, emit, entAt, isFoe, log, newSt, standable } from './state.js';
+import { G, I, TL, emit, entAt, isFoe, log, newSt, seesEnt, standable } from './state.js';
 
 export function synergy(text, elem) { G.stats.combos++; emit('banner', { text, elem }); log(text, 'syn'); if (G.ctx && (G.ctx.stones > 0 || G.ctx.origin !== 'enemy')) bumpStage(G.ctx); }
 
@@ -45,7 +45,7 @@ export function bumpStage(ctx) {
 
 /* ---------- 영혼석 스킬: 쿨타임 + 색 감소 (docs/설계_영혼석_스킬.md §2) ---------- */
 /** 전투 중인가: 보이는 깨어 있는 적이 있다 */
-export const inCombat = () => G.ents.some((e) => e.alive && isFoe(e) && e.awake && G.vis[I(e.x, e.y)]);
+export const inCombat = () => G.ents.some((e) => e.alive && isFoe(e) && e.awake && seesEnt(e));
 /** 기본 쿨타임 + 색의 반지·유물 보정(줄였으면 최소 2) — docs/밸런스_기준.md §5 */
 export const stoneCd = (id) => { const S = STONE[id], m = G.ps ? G.ps.colorCd[S.color] || 0 : 0; return m < 0 ? Math.max(2, S.cd + m) : S.cd + m; };
 
@@ -76,11 +76,7 @@ export function endRound() {
   const A = G.auras || (G.auras = {}); let ch = false;
   for (const k of Object.keys(A)) { A[k]--; ch = true; if (A[k] <= 0) delete A[k]; }
   if (ch) emit('aura', { ...A });
-  if (!inCombat()) {
-    let reset = false; for (const sl of G.slots) if (sl.cd > 0) { sl.cd = 0; reset = true; }
-    G.combatDmg = 0;
-    if (reset) { emitSlots(); emit('stonesReady'); }
-  }
+  if (!inCombat()) G.combatDmg = 0; // 쿨타임은 전투가 끝나도 초기화하지 않는다: 턴으로만 준다 (docs/설계_던전_확장.md §3.2)
 }
 
 /** 영혼석 스킬 사용(행동 한 번). 대상이 필요 없는 스킬은 tx,ty 생략 */
@@ -155,11 +151,11 @@ export function auraOnHurt(src) {
   if (A.frost && src.alive) freezeUnit(src, src.st.wet > 0 ? 3 : 1);
 }
 
-export const nearFoes = (r) => G.ents.filter((e) => e.alive && isFoe(e) && G.vis[I(e.x, e.y)] && cheb(e.x, e.y, G.player.x, G.player.y) <= r);
+export const nearFoes = (r) => G.ents.filter((e) => e.alive && isFoe(e) && seesEnt(e) && cheb(e.x, e.y, G.player.x, G.player.y) <= r);
 
 export function nearestFoe(except) {
   let best = null, bd = 99;
-  for (const e of G.ents) { if (!e.alive || !isFoe(e) || e === except || !G.vis[I(e.x, e.y)]) continue; const d = cheb(e.x, e.y, G.player.x, G.player.y); if (d < bd) { bd = d; best = e; } }
+  for (const e of G.ents) { if (!e.alive || !isFoe(e) || e === except || !seesEnt(e)) continue; const d = cheb(e.x, e.y, G.player.x, G.player.y); if (d < bd) { bd = d; best = e; } }
   return best;
 }
 
@@ -230,7 +226,8 @@ export function gainXp(e) {
   const lv = levelOf(G.xp);
   while ((G.level || 1) < lv) {
     G.level = (G.level || 1) + 1; G.heroBase += 2; G.player.hp += 2; refreshStats();
-    emit('levelUp', { level: G.level }); log(`레벨 ${G.level} — 영혼석 칸이 하나 열렸다 (최대 HP +2)`, 'syn');
+    const lost = G.player.max - G.player.hp; if (lost > 0) heal(G.player, Math.ceil(lost / 2)); // 레벨업: 잃은 HP의 절반
+    emit('levelUp', { level: G.level }); log(`레벨 ${G.level}. 영혼석 칸이 하나 열리고 상처가 반쯤 아문다.`, 'syn');
     emitSlots();
   }
 }

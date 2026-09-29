@@ -91,7 +91,7 @@ export function returnToTown(reason) {
   if (reason === 'death') {
     leaveRelics(); // 입고 있던 픽다트는 그 층에 남는다
     rep.lost = { ...G.loot.mats }; rep.hero = h.name; rep.npcs = G.loot.npcs.slice();
-    META.fallen.push({ name: h.name, gen: h.gen, zone: G.zone, zf: G.zf, kills: G.stats.kills }); META.hero = null;
+    META.fallen.push({ name: h.name, gen: h.gen, zone: G.zone, zf: G.zf, kills: G.stats.kills, by: G.deathBy ? G.deathBy.who : null }); META.hero = null;
   } else {
     rescueFollowers(); rep.npcs = G.loot.npcs.slice();
     for (const [m, n] of Object.entries(G.loot.mats)) META.mats[m] = (META.mats[m] || 0) + n;

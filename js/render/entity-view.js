@@ -44,7 +44,7 @@ export class EntView {
     if (kind !== 'push' && kind !== 'slide' && kind !== 'tele' && Math.abs(dx) + Math.abs(dz) > 0.01) this.yawT = Math.atan2(dx, dz);
     if (kind === 'tele') { this.cur.set(x, 0, y); this.t = 1; }
   }
-  lunge(dx, dy, amt = 0.36) { this.ld = [dx, dy]; this.la = amt; this.lt = 0; if (dx || dy) this.yawT = Math.atan2(dx, dy); this.sqv += 2.5; }
+  lunge(dx, dy, amt = 0.36) { this.ld = [dx, dy]; this.la = amt; this.lt = 0; if (dx || dy) this.yawT = Math.atan2(dx, dy); this.sqv += this.id === 0 ? 2.5 : 1.2; }
   update(dt, time) {
     const r = this.d.root;
     if (this.t < 1) {
@@ -54,7 +54,11 @@ export class EntView {
     }
     const hopY = this.t < 1 ? Math.sin(Math.PI * this.t) * this.hop : 0;
     let lx = 0, lz = 0;
-    if (this.lt < 1) { this.lt = Math.min(1, this.lt + dt / 0.17); const s = Math.sin(Math.PI * this.lt); lx = this.ld[0] * s * this.la; lz = this.ld[1] * s * this.la; }
+    if (this.lt < 1) { // 적의 공격은 한 번 물러났다가 무겁게 내딛는다
+      const heavy = this.id !== 0; this.lt = Math.min(1, this.lt + dt / (heavy ? 0.3 : 0.17)); const k = this.lt;
+      const s = heavy ? (k < 0.45 ? -0.45 * Math.sin((Math.PI * k) / 0.45) : Math.sin((Math.PI * (k - 0.45)) / 0.55) * 1.15) : Math.sin(Math.PI * k);
+      lx = this.ld[0] * s * this.la; lz = this.ld[1] * s * this.la;
+    }
     const a = -420 * this.sq - 17 * this.sqv; this.sqv += a * dt; this.sq += this.sqv * dt;
     this.jolt.multiplyScalar(Math.exp(-dt * 11));
     let dy = this.yawT - this.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2; this.yaw += dy * Math.min(1, dt * 16);

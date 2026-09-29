@@ -70,7 +70,7 @@ export const Town = {
   enter(r = {}) {
     Game.mode = 'town';
     const res = processReturn(r); saveMeta();
-    UI.toTown(); View.clear();
+    UI.toTown(); View.clear(); $('#lowhp').style.opacity = '0';
     // 조각을 넣기 전의 원경, 아직 오지 않은 방문자로 짓고 연출로 바꾼다
     if (res.shard) META.lit[res.shard - 1] = false;
     this.build(res.visitors);

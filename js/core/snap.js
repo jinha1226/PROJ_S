@@ -5,12 +5,12 @@ import { D8 } from '../util/grid.js';
 import { chargePath } from './ai.js';
 import { canSee, lineTiles } from './fov.js';
 import { gearCss, gearName } from './gear.js';
-import { G, I, emit, entAt, inb, isP } from './state.js';
+import { G, I, emit, entAt, inb, isP, seesEnt } from './state.js';
 
 /* ================= 스냅샷 사건 ================= */
 export function snapTerrain() { emit('terrain', { tile: G.tile.slice(), surf: G.surf.slice(), fire: G.fire.slice(), cloud: G.cloud.slice(), cloudT: G.cloudT.slice() }); }
 
-export function snapVis() { emit('vis', { vis: G.vis.slice(), seen: G.seen.slice(), ents: G.ents.filter((e) => e.alive).map((e) => [e.id, isP(e) || G.vis[I(e.x, e.y)] ? 1 : 0]) }); }
+export function snapVis() { emit('vis', { vis: G.vis.slice(), seen: G.seen.slice(), ents: G.ents.filter((e) => e.alive).map((e) => [e.id, seesEnt(e) ? 1 : 0]) }); }
 
 export function emitStatus(e) { emit('status', { id: e.id, st: { ...e.st } }); }
 
@@ -18,7 +18,7 @@ export function snapHud() {
   const p = G.player, i = I(p.x, p.y); let door = null, closedDoor = null, rescue = null;
   for (const [dx, dy] of D8) { const x = p.x + dx, y = p.y + dy; if (inb(x, y) && G.tile[I(x, y)] === T_OPEN && !entAt(x, y) && !G.items.has(I(x, y))) { door = [x, y]; break; } }
   for (const [dx, dy] of D8) { const x = p.x + dx, y = p.y + dy; if (!inb(x, y)) continue; const j = I(x, y); if (!closedDoor && G.tile[j] === T_DOOR) closedDoor = [x, y]; const e = entAt(x, y); if (!rescue && e?.npc && !e.freed) rescue = [x, y]; }
-  const enemyCount = G.ents.filter((e) => e.alive && !e.ally && e !== p && G.vis[I(e.x, e.y)]).length;
+  const enemyCount = G.ents.filter((e) => e.alive && !e.ally && e !== p && seesEnt(e)).length;
   const danger = (G.intents?.decals || []).some((q) => q.x === p.x && q.y === p.y && q.kind !== 1);
   emit('hud', { hp: p.hp, max: p.max, st: { ...p.st }, turn: G.stats.turns, floor: G.floor, torch: G.torch ?? 100, torchMax: G.torchMax ?? 100, enemyCount, danger, stairs: G.tile[i] === T_STAIRS, lamp: G.lamps?.has(i), door, closedDoor, rescue, inv: G.inv.reduce((a, b) => a + b.n, 0), gear: G.gear.has(i) ? { name: gearName(G.gear.get(i)), css: gearCss(G.gear.get(i)) } : null, shield: p.shield || 0, boss: (() => { const b = G.ents.find((e) => e.boss); return b && b.alive && b.awake ? { name: b.name, hp: b.hp, max: b.max } : null; })() });
 }

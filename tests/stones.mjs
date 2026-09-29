@@ -50,18 +50,18 @@ const s2 = await page.evaluate(() => { const g = window.__game, G = arena([[1, 0
   g.act(() => { g.playerMove(1, 0); return true; }); drain(); return { afterExtra: a, afterHit: [G.slots[0].cd, G.slots[1].cd] }; });
 check('빨강: 적중 시 1 더 (라운드당 한 번, 방금 쓴 스킬 제외)', s2.afterExtra[0] === 2 && s2.afterExtra[1] === 4 && s2.afterHit[0] === 0 && s2.afterHit[1] === 2, JSON.stringify(s2));
 
-// 3. 보라: 대기하면 1 더 — 전투 밖에서는 이미 0
+// 3. 보라: 대기하면 1 더(전투 중). 전투 밖에서는 턴마다 1만 준다
 const s3 = await page.evaluate(() => { const g = window.__game, G = arena([[3, 3]]); put(0, 'p_shield', 5); g.act(() => g.playerWait()); drain(); const inC = G.slots[0].cd;
   arena([]); put(0, 'p_shield', 5); g.act(() => g.playerWait()); drain(); return { inC, outC: G.slots[0].cd }; });
-check('보라: 대기 시 1 더, 전투 밖은 0', s3.inC === 3 && s3.outC === 0, JSON.stringify(s3));
+check('보라: 대기 시 1 더, 전투 밖에서는 턴마다 1만', s3.inC === 3 && s3.outC === 4, JSON.stringify(s3));
 
 // 4. 초록: 여러 적에게 맞아도 라운드에 1만
 const s4 = await page.evaluate(() => { const g = window.__game, G = arena([[1, 0], [-1, 0], [0, 1]]); put(0, 'g_fire', 6); const hp = G.player.hp; g.act(() => true); drain(); return { cd: G.slots[0].cd, hits: hp - G.player.hp }; });
 check('초록: 여러 번 맞아도 라운드에 1', s4.cd === 4 && s4.hits >= 2, JSON.stringify(s4));
 
-// 5. 전투가 끝나면 모든 쿨타임 0
+// 5. 전투가 끝나도 쿨타임은 초기화되지 않는다(턴으로만 준다) — docs/설계_던전_확장.md §3.2
 const s5 = await page.evaluate(() => { const g = window.__game, G = arena([[1, 0, { hp: 1 }]]); put(0, 'r_fire', 5); put(1, 'p_heal', 6); put(2, 'g_heal', 6); g.act(() => { g.playerMove(1, 0); return true; }); drain(); return G.slots.slice(0, 3).map((q) => q.cd); });
-check('전투가 끝나면 모든 쿨타임 0', s5.every((v) => v === 0), JSON.stringify(s5));
+check('전투가 끝나도 쿨타임은 그대로(턴마다 1만)', s5[0] === 3 && s5[1] === 5 && s5[2] === 5, JSON.stringify(s5));
 
 // 6. 옛 스킬 효과를 이어받았다
 const s6 = await page.evaluate(() => { const g = window.__game, out = {}, grass = {}, oil = {}, water = {};

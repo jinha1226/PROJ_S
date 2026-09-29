@@ -10,9 +10,9 @@ export function startTorch() {
   G.torch = G.torchMax;
   if (META?.hero) META.hero.torch = G.torch;
 }
-export function burnTorch() {
+export function burnTorch(mult = 1) {
   const before = G.torch || 0;
-  const ps = G.ps, rate = TORCH_BURN * (1 - (ps ? ps.torchSlow : 0) / 100) * (1 + (ps ? ps.torchCost : 0) / 100); // 불씨 품기·기억 목걸이 / 유물의 대가
+  const ps = G.ps, rate = TORCH_BURN * mult * (1 - (ps ? ps.torchSlow : 0) / 100) * (1 + (ps ? ps.torchCost : 0) / 100); // 불씨 품기·기억 목걸이 / 유물의 대가
   G.torch = Math.max(0, Math.round((before - rate) * 100) / 100);
   if (META?.hero) META.hero.torch = G.torch;
   if (before >= 50 && G.torch < 50) log('횃불이 약해져 시야가 좁아진다', 'bad');

@@ -1,13 +1,14 @@
-import { damage, faceTo, moveEnt, onEnter, openDoor, push, stepEnt } from './combat.js';
+import { C_STEAM, S_WATER, T_DOOR, T_WALL } from '../data/terrain.js';
+import { D4, D8, cheb, sgn } from '../util/grid.js';
+import { rand, ri, shuffle } from '../util/rng.js';
+import { jo } from '../util/text.js';
+import { damage, faceTo, heal, moveEnt, onEnter, openDoor, push, reveal, stepEnt } from './combat.js';
 import { fireAt, freezeAt, shock } from './elements.js';
 import { canSee, los } from './fov.js';
 import { mkEnemy } from './mapgen.js';
 import { emitStatus, snapTerrain } from './snap.js';
 import { G, I, TL, emit, entAt, inb, isFoe, isP, log, standable } from './state.js';
 import { dirFrom, synergy } from './stones.js';
-import { C_STEAM, S_WATER, T_DOOR, T_WALL } from '../data/terrain.js';
-import { D4, D8, cheb, sgn } from '../util/grid.js';
-import { rand, ri, shuffle } from '../util/rng.js';
 
 /* ================= 적 AI ================= */
 export const plus = (x, y) => [[x, y], ...D4.map(([dx, dy]) => [x + dx, y + dy])].filter(([a, b]) => inb(a, b) && G.tile[I(a, b)] !== T_WALL);
@@ -25,7 +26,9 @@ export function enemyAct(e, dm) {
     if (sees) { e.awake = true; emit('alert', { id: e.id }); wakeAround(e); } return; }
   if (e.st.fear > 0) { e.st.fear--; emitStatus(e); flee(e, dm); return; }
   if (e.boss === 'chief') { actChief(e, dm, d, sees); return; }
-  if (e.type === 'goblin') { if (d === 1) return enemyMelee(e, P); stepToward(e, dm); }
+  if (e.type === 'goblin' || e.type === 'rat') { if (d === 1) return enemyMelee(e, P); stepToward(e, dm); }
+  else if (e.type === 'leech') actLeech(e, dm, d);
+  else if (e.type === 'shaman') actShaman(e, dm, d);
   else if (e.type === 'archer') actArcher(e, dm, d, sees);
   else if (e.type === 'mage') actMage(e, dm, d, sees);
   else if (e.type === 'charger') actCharger(e, dm, d, sees);
@@ -65,12 +68,42 @@ export function reposition(e) {
 }
 
 export function enemyMelee(e, t) {
-  atkGate(); faceTo(e, t);
+  atkGate(); reveal(e); faceTo(e, t); e.didAttack = true;
   const dx = sgn(t.x - e.x), dy = sgn(t.y - e.y);
-  emit('lunge', { id: e.id, dx, dy }); TL.wait(85);
+  emit('lunge', { id: e.id, dx, dy }); TL.wait(150); // 물러났다 내딛는 무거운 동작(entity-view lunge)
   damage(t, Math.max(1, e.atk + ri(-1, e.type === 'goblin' ? 0 : 1)), 'hit', { dx, dy });
+  if (e.type === 'leech' && t.alive) { t.st.bleed = Math.max(t.st.bleed || 0, 2); emitStatus(t); } // 피를 빤다
   if (e.poison && t.alive && !t.st.immune && rand() < 0.6) { t.st.poison = Math.max(t.st.poison, 4); emitStatus(t); if (isP(t)) log('독칼에 베였다 — 중독! (불 조심)', 'bad'); }
   TL.wait(110);
+}
+
+/** 거머리: 물속으로만 다가가고, 물속에서는 보이지 않는다. 땅 위에서는 그냥 기어 온다 */
+export function actLeech(e, dm, d) {
+  const P = G.player, wet = (x, y) => G.surf[I(x, y)] === S_WATER;
+  if (d === 1) { enemyMelee(e, P); return; }
+  if (!wet(e.x, e.y)) { stepToward(e, dm); }
+  else {
+    let best = null, bs = dm[I(e.x, e.y)];
+    for (const [dx, dy] of D8) { const nx = e.x + dx, ny = e.y + dy; if (!inb(nx, ny) || !wet(nx, ny) || entAt(nx, ny)) continue; const v = dm[I(nx, ny)]; if (v < bs) { bs = v; best = [dx, dy]; } }
+    if (best) stepEnt(e, best[0], best[1]);
+  }
+  const hide = wet(e.x, e.y) && cheb(e.x, e.y, P.x, P.y) > 1;
+  if (hide && !e.hidden) { e.hidden = true; emit('move', { id: e.id, x: e.x, y: e.y, dur: 1, hop: 0, kind: 'step', seen: 0 }); }
+}
+
+/** 고블린 주술사: 두 턴마다 가장 다친 동료(4칸 안)의 HP 4를 채운다. 붙으면 물러나고, 멀면 다가온다 */
+export function actShaman(e, dm, d) {
+  const P = G.player; e.healCd = (e.healCd || 0) - 1;
+  const hurt = G.ents.filter((o) => o.alive && isFoe(o) && o !== e && o.hp < o.max && cheb(o.x, o.y, e.x, e.y) <= 4).sort((a, b) => a.hp / a.max - b.hp / b.max)[0];
+  if (hurt && e.healCd <= 0) {
+    atkGate(); faceTo(e, hurt); emit('lunge', { id: e.id, dx: 0, dy: 0, amt: 0 }); TL.wait(90);
+    heal(hurt, 4); e.healCd = 2;
+    if (G.vis[I(e.x, e.y)]) log(`${jo(e.name, '이가')} ${jo(hurt.name, '을를')} 치유한다.`, 'bad');
+    return;
+  }
+  if (d === 1 && rand() < 0.5) { enemyMelee(e, P); return; }
+  if (d <= 2) { flee(e, dm); return; }
+  if (d > 4) stepToward(e, dm);
 }
 
 export function summonFoes(e, type, n) {

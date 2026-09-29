@@ -82,7 +82,9 @@ Object.assign(View, {
     const phys = PHYS[d.kind] || d.kind === 'blast';
     if (phys) D.hitstop(d.big ? 100 : 55);
     D.rig.shake((player ? 0.2 + d.amt * 0.03 : 0.05 + d.amt * 0.02) * B);
-    if (player) ports.UI.hurt();
+    const mx = player && G.player ? G.player.max : ev.max, heavy = player && mx && d.amt >= mx * 0.2; // 큰 피해(최대 HP의 20% 이상): 멈칫 · 흔들림 · 붉은 테
+    if (heavy) { D.hitstop(120); D.rig.shake(0.55); Sfx.play('bighit'); }
+    if (player) ports.UI.hurt(heavy);
     Sfx.play(player ? 'hurt' : { fire: 'fire', burn: 'tick', shock: 'zap', frost: 'freeze', poison: 'tick', steam: 'hiss', blast: 'boom', bleed: 'tick' }[d.kind] || (d.crit ? 'crit' : 'hit'));
   },
   dieFx(ev, d) {
@@ -123,6 +125,7 @@ Object.assign(View, {
       case 'splash': D.sparks.emit({ pos: P(d.x, d.y, 0.05), n: d.small ? 5 : 12, color: d.color ?? 0x4d97ff, color2: d.color ? 0x6a6070 : 0xbfe4ff, speed: 1.6, up: 2.6, grav: -9, life: 0.5, size: 0.1 }); if (!d.small) D.fx.ring(P(d.x, d.y), d.color ?? 0x4d97ff, 0.1, 0.8, 0.3); Sfx.play(d.small ? 'step' : 'splash'); break;
       case 'splat': D.puffs.emit({ pos: P(d.x, d.y, 0.4), n: 6, color: 0x79e05a, color2: 0x3a8a2a, speed: 1.4, grav: -2, life: 0.5, size: 0.22 }); break;
       case 'proj': this.projectile(d); break;
+      case 'firstSeen': if (ev) { D.labels.pop(W3(ev.cur.x, ev.cur.z, ev.h + 0.55), '처음 보는 적', { color: '#ffb070', cls: 'word', vx: 0, rise: 26, dur: 1.6 }); Sfx.play('rumble'); } break;
       case 'alert': if (ev) { ev.sqv += 5; D.labels.pop(W3(ev.cur.x, ev.cur.z, ev.h + 0.3), '!', { color: '#ffe14a', cls: 'big', vx: 0, rise: 20, dur: 0.8 }); Sfx.play('alert'); } break;
       case 'cast': if (ev) { ev.sqv += 3; D.pool.flash(W3(ev.cur.x, ev.cur.z), MAGE[d.elem].color, 25, 0.5, 4); Sfx.play('cast'); } break;
       case 'release': if (ev) { ev.sqv -= 5; ev.flash = 0.6; } break;

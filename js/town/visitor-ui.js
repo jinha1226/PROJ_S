@@ -88,6 +88,6 @@ Object.assign(Town, {
     View.dio.lights.setGlow?.(0);
     $('#btn-dark').onclick = () => { resetMeta(); UI.title(); };
   },
-  graveInfo(f) { UI.info(`<h3>🕯 ${f.name}</h3><div class="gtxt">${f.gen}대 등불지기 · 구역 ${f.zone}-${f.zf}에서 쓰러졌다 · ${f.kills}마리를 쓰러뜨렸다</div><div class="gtxt" style="color:#9aa2bd">기억하는 것도 불을 지키는 일이다.</div>`); },
+  graveInfo(f) { UI.info(`<h3>🕯 ${f.name}</h3><div class="gtxt">${f.gen}대 등불지기 · 구역 ${f.zone}-${f.zf}에서 ${f.by ? f.by + '에게 ' : ''}쓰러졌다 · ${f.kills}마리를 쓰러뜨렸다</div><div class="gtxt" style="color:#9aa2bd">기억하는 것도 불을 지키는 일이다.</div>`); },
   loreInfo(zone) { UI.info(`<h3>옛 등불지기의 기록</h3><div class="gtxt">${LORE[zone - 1]}</div><div class="gtxt" style="color:#9aa2bd">기록 ${META.lore.length}/4</div>`); },
 });

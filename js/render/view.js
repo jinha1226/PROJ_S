@@ -243,6 +243,7 @@ export const View = {
         const e = G.ents.find((q) => q.id === ev.id); // ◆ 한 방에 쓰러뜨릴 수 있음 · ×2 치명 조건 충족
         if (e && ev.hp <= hitRange(e)[1]) extra += '<b class="fin" style="color:#ffe38a">◆</b>';
         if (e && critReady(e)) extra += '<b class="x2" style="color:#ff6a4a">×2</b>';
+        if (e && e.speed) extra += e.speed === 'fast' ? '<b class="spd" style="color:#ff9a6a">»</b>' : '<b class="spd" style="color:#9ab8ff">«</b>'; // 빠름 · 느림
       }
       const txt = txtIntent + extra + txtSt;
       if (txt !== ev.tagTxt) { ev.tagTxt = txt; ev.tagIco.innerHTML = txt; ev.tagIco.className = 'ico' + (txtIntent && txtIntent !== '💤' ? ' intent' : ''); }

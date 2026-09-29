@@ -79,6 +79,36 @@ export function dollSpecBase(e) {
       },
     };
   }
+  // 1구역 새 적 (docs/설계_던전_확장.md §4.2)
+  if (e.type === 'rat') return {
+    h: 0.5, col: 0x7a6a5a, scale: 0.85,
+    parts: [
+      { s: 'sphere', p: [0, 0.2, -0.02], k: [0.17, 0.15, 0.26], c: 0x7a6a5a },
+      { s: 'sphere', p: [0, 0.25, 0.23], k: [0.12, 0.11, 0.14], c: 0x8a7a6a },
+      { s: 'cone', p: [0, 0.23, 0.38], r: [Math.PI / 2, 0, 0], k: [0.06, 0.12, 0.06], c: 0x8a7a6a },
+      { s: 'sphere', p: [0, 0.23, 0.45], k: 0.025, c: 0xe08a8a, outline: false },
+      ...[-1, 1].flatMap((sx) => [{ s: 'sphere', p: [0.08 * sx, 0.35, 0.2], k: [0.06, 0.07, 0.02], c: 0xe8a8a8 }, { s: 'sphere', p: [0.055 * sx, 0.29, 0.34], k: 0.022, c: 0xff3a3a, outline: false },
+        { s: 'sphere', p: [0.1 * sx, 0.05, 0.14], k: [0.04, 0.035, 0.06], c: 0xd8a8a0 }, { s: 'sphere', p: [0.1 * sx, 0.05, -0.16], k: [0.045, 0.035, 0.06], c: 0xd8a8a0 }]),
+      { s: 'tube', path: [[0, 0.18, -0.26], [0, 0.12, -0.45], [0.1, 0.08, -0.6]], r0: 0.03, r1: 0.01, rs: 6, c: 0xd8a8a0 }],
+  };
+  if (e.type === 'leech') return {
+    h: 0.32, col: 0x3a4a2a, scale: 1,
+    parts: [
+      { s: 'tube', path: [[0, 0.07, -0.36], [0.08, 0.09, -0.12], [-0.06, 0.11, 0.1], [0, 0.1, 0.3]], r0: 0.06, r1: 0.11, rs: 10, ts: 12, c: 0x3a4a2a, shade: 0.2 },
+      ...[-0.2, -0.02, 0.16].map((z) => ({ s: 'torus', p: [0, 0.1, z], k: [0.1, 0.1, 0.1], tube: 0.12, c: 0x2a3620, outline: false })),
+      { s: 'torus', p: [0, 0.1, 0.4], k: 0.075, tube: 0.4, c: 0x8a2a2a },
+      { s: 'sphere', p: [0, 0.1, 0.4], k: [0.05, 0.05, 0.02], c: 0x2a0a0a, outline: false }],
+  };
+  if (e.type === 'shaman') {
+    const g = dollSpecBase({ ...e, type: 'goblin', poison: false, armor: false });
+    return { ...g, h: 1.05, col: 0x8a4a6a,
+      parts: [...g.parts.filter((q) => !(q.s === 'box' && q.p && q.p[0] === 0.24)), // 칼 대신 지팡이
+        { s: 'lathe', p: [0, 0.6, -0.02], pts: [[0.3, -0.06], [0.29, 0.06], [0.24, 0.16], [0.14, 0.24], [0.03, 0.3], [0, 0.3]], phi0: 0.9, phiLen: Math.PI * 2 - 1.8, seg: 18, wave: 0.06, waveN: 7, waveTop: 0.05, c: 0x6a3a5a, shade: 0.2 }, // 두건
+        { s: 'sphere', p: [0, 0.27, 0.02], k: [0.22, 0.2, 0.19], c: 0x7a4a6a },
+        { s: 'cyl', p: [0.26, 0.45, 0.12], k: [0.022, 0.7, 0.022], c: 0x6a4526 },
+        { s: 'sphere', p: [0.26, 0.82, 0.12], k: [0.07, 0.065, 0.07], c: 0xeee4cc }, { s: 'sphere', p: [0.26, 0.81, 0.18], k: [0.02, 0.02, 0.01], c: 0x1a1420, outline: false },
+        { s: 'cone', p: [0.3, 0.74, 0.1], r: [0, 0, -0.5], k: [0.02, 0.1, 0.01], c: 0x62e27a }, { s: 'cone', p: [0.22, 0.74, 0.1], r: [0, 0, 0.5], k: [0.02, 0.1, 0.01], c: 0xff5a6a }] };
+  }
   if (e.type === 'charger') return {
     h: 1.2, col: 0x7b5134, scale: 1.12,
     parts: [

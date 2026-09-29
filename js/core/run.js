@@ -1,15 +1,17 @@
+import { kindOf } from '../data/enemies.js';
 import { APPEAR, ITEMS } from '../data/items.js';
 import { cheb } from '../util/grid.js';
-import { mulberry32, pick, seedOr, setR, shuffle } from '../util/rng.js';
+import { mulberry32, pick, rand, ri, seedOr, setR, shuffle } from '../util/rng.js';
 import { allyAct, enemyAct } from './ai.js';
 import { heal } from './combat.js';
 import { envTick } from './elements.js';
 import { computeFOV, distMap } from './fov.js';
 import { calcStats, newJewelLook, starterKit, tickWorn } from './gear.js';
 import { addItem } from './items.js';
-import { genFloor } from './mapgen.js';
+import { genFloor, mkEnemy } from './mapgen.js';
+import { META, saveMeta } from './meta.js';
 import { emitIntents, emitSlots, snapHud, snapVis } from './snap.js';
-import { G, TL, emit, isFoe, log, newSt } from './state.js';
+import { G, I, TL, emit, entAt, isFoe, log, newSt, seesEnt, standable } from './state.js';
 import { endRound, inCombat, tickStones, withCtx } from './stones.js';
 import { burnTorch } from './torch.js';
 
@@ -34,6 +36,41 @@ export function newRun() {
   genFloor();
 }
 
+/* ================= 휴식 · 방랑하는 적 · 처음 보는 적 (docs/설계_던전_확장.md §3.3 · §4.4) ================= */
+/** 휴식 한 턴: 횃불을 한 번 더 태우고(모두 1), 3턴마다 HP 1, 가끔 방랑하는 무리가 온다 */
+function restTick() {
+  const p = G.player; burnTorch(1);
+  G.restN = (G.restN || 0) + 1;
+  if (G.restN % 3 === 0 && p.hp < p.max && !p.st.poison && !p.st.burn) heal(p, 1);
+  if (rand() < ((G.torch ?? 100) < 25 ? 0.04 : 0.02)) wanderers();
+}
+/** 보이지 않는 먼 방에 무리 하나가 생겨 깨어 다가온다 */
+export function wanderers() {
+  const p = G.player, rooms = (G.rooms || []).filter((r) => cheb(r.cx, r.cy, p.x, p.y) >= 8 && !G.vis[I(r.cx, r.cy)]);
+  if (!rooms.length || !G.theme) return false;
+  const r = pick(rooms), [type, cnt] = pick(G.theme.packs.filter(([t]) => t !== 'leech'));
+  let n = 0;
+  for (let k = 0; k < cnt * 12 && n < cnt; k++) {
+    const x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1);
+    if (!standable(x, y) || entAt(x, y)) continue;
+    const e = mkEnemy(type, x, y, G.theme); e.awake = true; G.ents.push(e); n++;
+    emit('spawn', { e: { ...e, st: { ...e.st } }, seen: 0 });
+  }
+  if (n) log('어디선가 발소리가 다가온다.', 'bad');
+  return n > 0;
+}
+/** 처음 보는 적: 한 번 알리고 기억한다 */
+export function noticeFoes() {
+  if (!META) return;
+  const seen = (META.seenFoes ||= []);
+  for (const e of G.ents) {
+    if (!e.alive || !isFoe(e) || e.npc || !seesEnt(e)) continue;
+    const k = e.boss || kindOf(e); if (seen.includes(k)) continue;
+    seen.push(k); saveMeta(); e.firstSeen = true;
+    emit('firstSeen', { id: e.id, name: e.name }); log(`처음 보는 적: ${e.name}.`, 'info');
+  }
+}
+
 /* ================= 턴 ================= */
 export function endTurn() {
   const p = G.player;
@@ -54,10 +91,17 @@ export function worldTick() {
   const dm = distMap(p.x, p.y);
   for (const a of G.ents.filter((e) => e.alive && e.ally)) if (a.alive && !G.over) allyAct(a, dm);
   const foes = G.ents.filter((e) => e.alive && isFoe(e)).sort((a, b) => cheb(a.x, a.y, p.x, p.y) - cheb(b.x, b.y, p.x, p.y));
-  for (const e of foes) { if (G.over) break; if (e.alive) { G.curSrc = e; withCtx('enemy', () => enemyAct(e, dm)); G.curSrc = null; } }
+  for (const e of foes) {
+    if (G.over) break; if (!e.alive) continue;
+    if (e.speed === 'slow' && e.awake) { e.slowSkip = !e.slowSkip; if (e.slowSkip) continue; } // 느림: 두 턴에 한 번
+    G.curSrc = e; e.didAttack = false; withCtx('enemy', () => enemyAct(e, dm));
+    if (e.speed === 'fast' && e.alive && e.awake && !e.didAttack && !G.over) withCtx('enemy', () => enemyAct(e, dm)); // 빠름: 한 번 더(공격은 한 번)
+    G.curSrc = null;
+  }
   if (!G.over) envTick();
+  if (G.resting && !G.over) { G.resting = false; restTick(); }
   if (p.alive && G.stats.turns % 6 === 0 && p.hp < p.max && !p.st.poison && !p.st.burn) { p.hp++; emit('hp', { id: 0, hp: p.hp, max: p.max }); }
-  computeFOV(); snapVis(); endRound(); emitIntents(); snapHud(); emitSlots();
+  computeFOV(); snapVis(); noticeFoes(); endRound(); emitIntents(); snapHud(); emitSlots();
   // 귀환 두루마리: 빛이 모인 한 턴이 지나면 사라진다
   if (G.recallArm && p.alive && !G.over) { G.recallArm = false; emit('poof', { x: p.x, y: p.y }); log('빛에 싸여 사라졌다 — 정착지로', 'syn'); G.pendingReturn = 'recall'; }
 }
