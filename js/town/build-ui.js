@@ -7,6 +7,7 @@ import { JOBS, MOODS } from '../data/town.js';
 import { Sfx } from '../render/sfx.js';
 import { View } from '../render/view.js';
 import { $, UI } from '../ui/ui.js';
+import { jo } from '../util/text.js';
 import { Town } from './town.js';
 
 /* ================= 건설 모드 (docs/설계_정착지_건설.md §4 · §8) =================
@@ -103,16 +104,16 @@ Object.assign(Town, {
     this.sv?.setPreview(); this.sv?.setSelect(null); this.magnify(null);
     if (bm.tool === 'cut') {
       const r = cutArea(a.x, a.y, b.x, b.y);
-      if (r.n) { const c = META.settle.bp.length ? commit(META.settle, false) : null; UI.toast(`${Object.entries(r.gained).map(([m, n]) => `${m} ${n}`).join(', ')}을 얻었다.${c && c.built ? ` 청사진 ${c.built}개를 마저 지었다.` : ''}`); Sfx.play('blunt'); }
+      if (r.n) { const c = META.settle.bp.length ? commit(META.settle, false) : null; UI.toast(`얻은 재료: ${Object.entries(r.gained).map(([m, n]) => `${m} ${n}`).join(', ')}.${c && c.built ? ` 청사진 ${c.built}개를 마저 지었다.` : ''}`); Sfx.play('blunt'); }
       else UI.toast('빛 안의 나무·바위·광맥·폐허를 고른다.');
-    } else if (bm.tool === 'del') { const r = demolish(a.x, a.y, b.x, b.y); if (r.n) { const back = Object.entries(r.back).map(([m, n]) => `${m} ${n}`).join(', '); UI.toast(back ? `철거했다. ${back}을 돌려받았다.` : '철거했다.'); Sfx.play('blunt'); } }
+    } else if (bm.tool === 'del') { const r = demolish(a.x, a.y, b.x, b.y); if (r.n) { const back = Object.entries(r.back).map(([m, n]) => `${m} ${n}`).join(', '); UI.toast(back ? `철거했다. 돌려받은 재료: ${back}.` : '철거했다.'); Sfx.play('blunt'); } }
     else if (bm.tool === 'zone') { const n = paintZone(a.x, a.y, b.x, b.y, bm.zone === 'erase' ? null : bm.zone); if (!n) UI.toast('빛 안의 빈 땅을 고른다.'); }
     else { this.place(this.rectBps(a, b)); return; }
     this.afterEdit();
   },
   /** 놓고 바로 짓는다(한 번의 되돌리기). 재료가 모자란 것은 청사진으로 남는다 */
   place(list) {
-    if (!list.length) { UI.toast('방은 3×3보다 크게 그린다.'); return; }
+    if (!list.length) { UI.toast('방은 가로세로 세 칸보다 크게 그린다.'); return; }
     const r = placeBps(list);
     if (!r.ok.length) { if (r.bad.length) UI.toast(r.bad[0].why + '.'); this.afterEdit(); return; }
     const c = commit(META.settle, false);
@@ -137,7 +138,7 @@ Object.assign(Town, {
       const [k, x] = v.split(':'); bm.stage = 'draw';
       if (k === 'draw') this.setTool('room');
       else if (k === 'copy') this.setTool('copy');
-      else if (k === 'preset') { bm.preset = x; if (!PRESETS[x][bm.size]) bm.size = 'S'; this.setTool('preset'); this.showSpots(); if (!bm.spots.length) UI.toast('빛 안에 놓을 자리가 없다. 나무를 베거나 더 작은 방을 고르자.'); this.renderBuild(); }
+      else if (k === 'preset') { bm.preset = x; if (!PRESETS[x][bm.size]) bm.size = 'S'; this.setTool('preset'); this.showSpots(); if (!bm.spots.length) UI.toast('빛 안에 놓을 자리가 없다.'); this.renderBuild(); }
       else if (k === 'wall') { bm.wall = x; this.setTool('wall'); }
       else if (k === 'door') this.setTool('door');
       else if (k === 'floor') { bm.floor = x; this.setTool('floor'); }
@@ -153,8 +154,8 @@ Object.assign(Town, {
     if (a === 'more') bm.more = !bm.more;
     if (a === 'auto') {
       const r = autoPlan(), c = r.placed.length ? commit(META.settle, false) : null;
-      if (r.placed.length) UI.toast(`${r.placed.map((k) => ROOMS[k].name).join(', ')}을 놓았다.${c && c.left ? ` ${missText(c.missing)} 모자라 일부는 청사진으로 남았다.` : ''}`); else if (!r.failed.length) UI.toast('지금은 모자란 방이 없다.');
-      if (r.failed.length) UI.toast(`${r.failed.map((k) => ROOMS[k].name).join(', ')}을 놓을 자리가 없다.`);
+      if (r.placed.length) UI.toast(`${jo(r.placed.map((k) => ROOMS[k].name).join(', '), '을를')} 놓았다.${c && c.left ? ` ${missText(c.missing)} 모자라 일부는 청사진으로 남았다.` : ''}`); else if (!r.failed.length) UI.toast('지금은 모자란 방이 없다.');
+      if (r.failed.length) UI.toast(`${jo(r.failed.map((k) => ROOMS[k].name).join(', '), '을를')} 놓을 자리가 없다.`);
       this.afterEdit(); return;
     }
     if (a === 'undo') { if (undo()) this.afterEdit(); return; }
@@ -177,7 +178,7 @@ Object.assign(Town, {
     }
     if (bm.start) return '끝 칸을 누르거나 끌어서 사각형을 만든다.';
     const T = bm.tool;
-    if (T === 'preset') { const s = bm.spots[0]; return s ? `${ROOMS[bm.preset].icon} ${SIZE_NAME[bm.size]} ${ROOMS[bm.preset].name} · 반짝이는 자리를 누른다 · ${costText(s.cost, S)}` : '놓을 자리가 없다. 나무를 베거나 크기를 줄이자.'; }
+    if (T === 'preset') { const s = bm.spots[0]; return s ? `${ROOMS[bm.preset].icon} ${SIZE_NAME[bm.size]} ${ROOMS[bm.preset].name} · 반짝이는 자리를 누른다 · ${costText(s.cost, S)}` : '놓을 자리가 없다. 나무를 베거나 크기를 줄이면 자리가 난다.'; }
     if (T === 'copy') return '떠 올 방을 누른다.';
     if (T === 'paste') return '붙일 자리(왼쪽 위)를 누른다.';
     if (T === 'furn') return `${FURN[bm.furn].icon} ${FURN[bm.furn].name} · 놓을 칸을 누른다 · ${costText(FURN[bm.furn].cost, S)}`;

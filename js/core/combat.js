@@ -1,7 +1,6 @@
 import { PHYS } from '../data/colors.js';
 import { CATS, catOf, monRes } from '../data/enemies.js';
 import { CAPS, RES_MUL, clampRes, weaponOf } from '../data/gear.js';
-import { MATS } from '../data/items.js';
 import { STONE } from '../data/stones.js';
 import { S_ASH, S_ICE, S_NONE, S_WATER, T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrain.js';
 import { DARK, torchTier } from '../data/torch.js';
@@ -43,14 +42,14 @@ export function damage(e, amt, kind = 'hit', o = {}) {
     }
     if (amt > 0 && src && isFoe(src) && G.torch === 0 && !G.darkAmbushUsed) {
       G.darkAmbushUsed = true; amt = Math.ceil(amt * 1.5); label = '어둠 속 기습';
-      log('어둠 속에서 기습당했다!', 'bad');
+      log('어둠 속에서 기습당했다.', 'bad');
     }
     if (amt > 0 && PHYS[kind] && src && isFoe(src)) amt += DARK[torchTier(G.torch ?? 100)].atk; // 어둠 속 적은 사납다
     if (amt > 0 && ps.legend.has('thornPlate')) amt = Math.ceil(amt * 1.2);
     // 줄이기: 물리 = 0~방어 무작위(최소 1) · 원소 = 저항 단계 배율 (docs/밸런스_기준.md §2~§3)
     if (amt > 0 && PHYS[kind] && ps.def) amt = Math.max(1, amt - ri(0, ps.def));
     if (amt > 0 && el && ps.res[el]) amt = Math.max(ps.res[el] >= 3 ? 0 : 1, Math.round(amt * RES_MUL[ps.res[el]]));
-  } else if (isFoe(e) && ELEM_OF[kind]) { const r = monRes(e, ELEM_OF[kind]); if (r) { amt = Math.max(r >= 3 ? 0 : 1, Math.round(amt * RES_MUL[clampRes(r)])); if (r >= 2 && !label) label = '저항'; if (r <= -1 && !label) label = '약함!'; } if (amt <= 0) { emit('immune', { id: e.id }); return 0; } }
+  } else if (isFoe(e) && ELEM_OF[kind]) { const r = monRes(e, ELEM_OF[kind]); if (r) { amt = Math.max(r >= 3 ? 0 : 1, Math.round(amt * RES_MUL[clampRes(r)])); if (r >= 2 && !label) label = '저항'; if (r <= -1 && !label) label = '약함'; } if (amt <= 0) { emit('immune', { id: e.id }); return 0; } }
   if (struck && G.ps && G.ps.vengeance) G.vengeance = G.ps.vengeance; // 되갚음: 다음 무기 공격 +2
   if (struck && G.ps && G.ps.thorns && src.alive && PHYS[kind] && cheb(src.x, src.y, e.x, e.y) === 1) { const s0 = src; TL.wait(40); damage(s0, G.ps.thorns, 'impact', { label: '가시', src: G.player }); } // 가시
   if (struck) reduceColor('green'); // 초록: 적에게 맞았을 때(0 피해·보호막이 막아도)
@@ -87,11 +86,11 @@ export function kill(e) {
     G.exitOpen = true; G.tile[G.stairs] = T_STAIRS; snapTerrain();
     addLoot('마석', 1); addLoot(pick(['가죽', '뼈', '심장']), 2);
     emit('portal', { x: G.stairs % G.W, y: (G.stairs / G.W) | 0 }); emit('banner', { text: `${e.name} 격파!`, elem: 'chain' });
-    log('귀환의 문이 열렸다 — 올라서서 ⬇ 버튼', 'syn');
+    log('귀환의 문이 열렸다.', 'syn');
   }
-  log(`${e.name} 처치${shatter ? ' — 산산조각!' : ''}${part ? ` · ${part}` : ''}`, 'good');
+  log(`${shatter ? `${jo(e.name, '이가')} 산산이 부서졌다.` : `${jo(e.name, '을를')} 쓰러뜨렸다.`}${part ? ` ${jo(part, '이가')} 남았다.` : ''}`, 'good');
   if (e.st.bleed > 0 && G.ps && G.ps.legend.has('bloodFang')) {
-    emit('bloodBurst', { x: e.x, y: e.y }); log('피의 송곳니 — 피가 터진다!', 'syn');
+    emit('bloodBurst', { x: e.x, y: e.y }); log('피의 송곳니에서 피가 터졌다.', 'syn');
     for (const [dx, dy] of D8) { const o = entAt(e.x + dx, e.y + dy); if (o && o.alive && isFoe(o) && !CATS[catOf(o)].noBleed) { o.st.bleed += 2; emitStatus(o); } }
   }
   dropStone(e, f);
@@ -137,7 +136,7 @@ export function stepEnt(e, dx, dy) {
     if (!standable(nx, ny) || entAt(nx, ny)) break;
     TL.wait(n === 0 ? 100 : 70); moveEnt(e, nx, ny, { dur: 75, hop: 0, kind: 'slide' }); n++;
   }
-  if (n) { if (isP(e)) log('얼음 위에서 미끄러졌다', 'info'); else if (G.vis[I(e.x, e.y)]) log(`${e.name}이(가) 미끄러진다`, 'info'); TL.wait(70); }
+  if (n) { if (isP(e)) log('얼음 위에서 미끄러졌다.', 'info'); else if (G.vis[I(e.x, e.y)]) log(`${jo(e.name, '이가')} 미끄러진다.`, 'info'); TL.wait(70); }
   onEnter(e);
 }
 
@@ -156,13 +155,13 @@ export function onEnter(e) {
     if (G.items.has(i)) {
       const k = G.items.get(i); G.items.delete(i); addItem(k); G.stats.items++;
       if (G.ps && G.ps.autoId && !G.known[k]) identify(k);
-      emit('items', itemSnap()); emit('pickup', { x: e.x, y: e.y }); log(`${itemName(k)} 획득`, 'good');
+      emit('items', itemSnap()); emit('pickup', { x: e.x, y: e.y }); log(`${jo(itemName(k), '을를')} 주웠다.`, 'good');
     }
     if (G.stones.has(i)) { G.stoneOffer = i; emit('stoneOffer', { i, id: G.stones.get(i) }); } // 흡수할지, 가방에 넣을지 고른다
-    if (G.mats.get(i) === '기록') { G.mats.delete(i); emit('matPick', { x: e.x, y: e.y, m: '기록' }); if (!META.lore.includes(G.zone)) { META.lore.push(G.zone); saveMeta(); } emit('lore', { zone: G.zone }); log('옛 등불지기의 기록 한 장을 주웠다', 'syn'); }
-    else if (G.mats.has(i)) { const m = G.mats.get(i); G.mats.delete(i); addLoot(m, 1); emit('matPick', { x: e.x, y: e.y, m }); log(`${MATS[m]} ${m} 채집`, 'good'); }
-    if (G.gear.has(i)) log(`${gearName(G.gear.get(i))}이 떨어져 있다 — 줍기 버튼`, 'info');
-    if (G.tile[i] === T_STAIRS) log('계단이다. ⬇ 버튼으로 내려간다.', 'info');
+    if (G.mats.get(i) === '기록') { G.mats.delete(i); emit('matPick', { x: e.x, y: e.y, m: '기록' }); if (!META.lore.includes(G.zone)) { META.lore.push(G.zone); saveMeta(); } emit('lore', { zone: G.zone }); log('옛 등불지기의 기록 한 장을 주웠다.', 'syn'); }
+    else if (G.mats.has(i)) { const m = G.mats.get(i); G.mats.delete(i); addLoot(m, 1); emit('matPick', { x: e.x, y: e.y, m }); log(`${jo(m, '을를')} 채집했다.`, 'good'); }
+    if (G.gear.has(i)) log(`${jo(gearName(G.gear.get(i)), '이가')} 떨어져 있다.`, 'info');
+    if (G.tile[i] === T_STAIRS) log('내려가는 계단이다.', 'info');
   }
 }
 
@@ -183,7 +182,7 @@ export function push(e, dx, dy, n) {
     const o = entAt(nx, ny);
     if (o) {
       emit('bump', { id: e.id, dx, dy }); TL.wait(30);
-      damage(e, 3, 'impact', { dx, dy, label: '충돌!' }); damage(o, 3, 'impact', { dx, dy });
+      damage(e, 3, 'impact', { dx, dy, label: '충돌' }); damage(o, 3, 'impact', { dx, dy });
       emit('shake', { a: 0.3 }); break;
     }
     moveEnt(e, nx, ny, { dur: 85, hop: 0.05, kind: 'push', face: false }); TL.wait(85); k++; left--;
@@ -203,12 +202,12 @@ export function playerMove(dx, dy) {
   if (t === T_WALL) return false;
   const e = entAt(nx, ny);
   if (e) {
-    if (e.npc && !e.freed) { e.freed = true; faceTo(p, e); emit('free', { id: e.id }); log(`${e.name}(${JOBS[e.npcData.job].name})을 풀어 주었다 — 곁에 둔 채 계단까지 데려가자`, 'good'); return true; }
+    if (e.npc && !e.freed) { e.freed = true; faceTo(p, e); emit('free', { id: e.id }); log(`${JOBS[e.npcData.job].name} ${jo(e.name, '을를')} 풀어 주었다.`, 'good'); return true; }
     if (e.ally) { moveEnt(e, p.x, p.y); stepEnt(p, dx, dy); return true; }
     playerMelee(e); return true;
   }
   if (G.chests.has(I(nx, ny)) && !G.chests.get(I(nx, ny)).open) { p.face = [dx, dy]; emit('face', { id: 0, dx, dy }); openChest(nx, ny); return true; }
-  if (t === T_DOOR) { p.face = [dx, dy]; emit('face', { id: 0, dx, dy }); openDoor(nx, ny); log('문을 열었다', 'info'); return true; }
+  if (t === T_DOOR) { p.face = [dx, dy]; emit('face', { id: 0, dx, dy }); openDoor(nx, ny); log('문을 열었다.', 'info'); return true; }
   stepEnt(p, dx, dy);
   return true;
 }
@@ -227,7 +226,7 @@ export function playerWait() {
     snapTerrain(); emit('splash', { x: p.x, y: p.y });
   }
   reduceColor('purple');
-  if (G.reload && G.eq.weapon && G.reload === G.eq.weapon.uid) { G.reload = null; G.aimed = true; emit('reload', { aimed: true }); log('숨을 고르며 장전했다 — 다음 첫 발은 치명', 'good'); } // 석궁
+  if (G.reload && G.eq.weapon && G.reload === G.eq.weapon.uid) { G.reload = null; G.aimed = true; emit('reload', { aimed: true }); log('숨을 고르며 겨누었다. 다음 발은 치명타다.', 'good'); } // 석궁
   if (G.ps && G.ps.patience) addShield(G.ps.patience); // 기다림 망토
   G.waited = true; // 고요 목걸이
   return true;
@@ -291,10 +290,10 @@ export function weaponAttack(t, ctx) {
   if (!t || !t.alive) return;
   const p = G.player, it = G.eq.weapon, w = curW(), dx = sgn(t.x - p.x), dy = sgn(t.y - p.y), T = G.stats.turns;
   if (dx || dy) { p.face = [dx, dy]; emit('face', { id: 0, dx, dy }); }
-  if (w.reload && it && G.reload === it.uid) { G.reload = null; emit('reload', { aimed: false }); log('석궁을 장전했다 (대기하며 장전하면 다음 첫 발 치명)', 'info'); TL.wait(160); return; }
+  if (w.reload && it && G.reload === it.uid) { G.reload = null; emit('reload', { aimed: false }); log('석궁을 장전했다.', 'info'); TL.wait(160); return; }
   const cond = critCond(t, w);
   switch (w.shape) {
-    case 'fan': { const fs = fanFoes(t), all = fs.length >= 3; emit('swing', { id: 0, dx, dy, form: w.form, tx: t.x, ty: t.y, shape: 'fan' }); TL.wait(80); if (all) log('도리깨가 셋을 휩쓴다 — 전부 치명!', 'syn'); for (const e of fs) weaponHit(e, ctx, { crit: all, quiet: true }); TL.wait(60); break; }
+    case 'fan': { const fs = fanFoes(t), all = fs.length >= 3; emit('swing', { id: 0, dx, dy, form: w.form, tx: t.x, ty: t.y, shape: 'fan' }); TL.wait(80); if (all) log('도리깨가 셋을 한꺼번에 휩쓸었다.', 'syn'); for (const e of fs) weaponHit(e, ctx, { crit: all, quiet: true }); TL.wait(60); break; }
     case 'twin': weaponHit(t, ctx, { crit: cond, noMark: true }); TL.wait(40); if (t.alive) weaponHit(t, ctx, { crit: cond, extra: true }); break;
     case 'sweep': { const fs = RING.map(([a, b]) => foeAt(p.x + a, p.y + b)).filter(Boolean); emit('swing', { id: 0, dx, dy, form: w.form, tx: t.x, ty: t.y, shape: 'sweep' }); emit('ring', { x: p.x, y: p.y, elem: 'push' }); TL.wait(90); for (const e of fs) weaponHit(e, ctx, { crit: cond, quiet: true }); TL.wait(60); break; }
     case 'smash': weaponHit(t, ctx, { crit: cond, noPush: true }); if (t.alive) { emit('shove', { x: t.x, y: t.y, dx, dy }); push(t, dx, dy, 1 + (G.ps.fracPush ? 1 : 0)); } break;
@@ -332,15 +331,15 @@ export function weaponHit(t, ctx, o = {}) {
   const p = G.player, w = curW(), f = w.form, dx = sgn(t.x - p.x), dy = sgn(t.y - p.y), ps = G.ps;
   if (dx || dy) p.face = [dx, dy];
   if (!o.quiet) { emit('swing', { id: 0, dx, dy, form: f, tx: t.x, ty: t.y, extra: !!o.extra, counter: !!o.counter }); TL.wait(o.extra ? 60 : 80); }
-  if (ps.acc < 0 && rand() * 100 < -ps.acc) { emit('miss', { x: t.x, y: t.y }); log('빗나갔다', 'info'); TL.wait(90); return; }
+  if (ps.acc < 0 && rand() * 100 < -ps.acc) { emit('miss', { x: t.x, y: t.y }); log('빗나갔다.', 'info'); TL.wait(90); return; }
   const cat = catOf(t), C = CATS[cat], weak = C.weak === f;
   // 더하기: 기본 + 품질·강화치·반지 힘(ps.dmg), 되갚음 → 색 배율 → 곱하기: 약점·치명 (docs/밸런스_기준.md §2)
   const venge = G.vengeance || 0; G.vengeance = 0;
   let dmg = Math.round((ri(w.dmg[0], w.dmg[1]) + ps.dmg + (o.bonus || 0) + venge) * colorMul(w)), label = o.counter ? '반격' : o.extra ? '추가 타격' : venge ? '되갚음' : '', crit = false;
   if (weak) {
     dmg = Math.ceil(dmg * 1.5) + ps.weakDmg;
-    if (!G.weakKnown[cat]) { G.weakKnown[cat] = true; emit('weakReveal', { id: t.id, form: f }); log(`약점 발견 — ${C.name}은(는) ${FORMS[f].name}에 약하다!`, 'syn'); }
-    label = label || '약점!';
+    if (!G.weakKnown[cat]) { G.weakKnown[cat] = true; emit('weakReveal', { id: t.id, form: f }); log(`${jo(C.name, '은는')} ${FORMS[f].name}에 약하다.`, 'syn'); }
+    label = label || '약점';
   }
   const cm = ps.critMul + (weak ? 0.5 : 0); // 꿰뚫기: ×3
   if (o.crit ?? critCond(t, w)) { crit = true; dmg = Math.ceil(dmg * cm); label = '치명!'; if (w.crit === 'riposte') G.riposte = -1; }
@@ -352,9 +351,9 @@ export function weaponHit(t, ctx, o = {}) {
   if (ps.vamp && dealt > 0 && !C.noBleed) heal(p, Math.max(1, Math.floor(dealt * 0.3))); // 흡혈(해골 제외)
   if (t.alive) {
     if (f === 'slash' && !C.noBleed) t.st.bleed += (weak ? 5 : 3) + ps.bleed;
-    if (f === 'blunt') { t.st.frac = Math.max(t.st.frac, (weak ? 5 : 3) + ps.fracBonus); if (t.charge) { t.charge = null; log(`${t.name}의 다리가 부러져 돌진이 끊겼다`, 'good'); } }
+    if (f === 'blunt') { t.st.frac = Math.max(t.st.frac, (weak ? 5 : 3) + ps.fracBonus); if (t.charge) { t.charge = null; log(`${t.name}의 다리가 부러져 돌진이 끊겼다.`, 'good'); } }
     if (f === 'pierce' && !crit && !o.noMark) t.st.vital = 1;
-    if (w.stun && rand() * 100 < w.stun) { t.st.stun = Math.max(t.st.stun, 1); cancelIntent(t); log(`${t.name} 기절!`, 'good'); } // 철퇴
+    if (w.stun && rand() * 100 < w.stun) { t.st.stun = Math.max(t.st.stun, 1); cancelIntent(t); log(`${jo(t.name, '이가')} 기절했다.`, 'good'); } // 철퇴
     emitStatus(t);
     if (f === 'blunt' && ps.fracPush && !o.noPush) push(t, dx, dy, 1);
     weaponBrand(t, ps.brand);
@@ -376,7 +375,7 @@ export function resistOk(e, el) {
   return r <= 0 || (r < 3 && rand() < Math.pow(0.5, r));
 }
 
-export function closeDoor(x, y) { G.tile[I(x, y)] = T_DOOR; emit('door', { x, y, open: false }); snapTerrain(); log('문을 닫았다 — 시야가 끊긴다', 'info'); return true; }
+export function closeDoor(x, y) { G.tile[I(x, y)] = T_DOOR; emit('door', { x, y, open: false }); snapTerrain(); log('문을 닫았다.', 'info'); return true; }
 
 /** 층을 시작할 때 보호막(뼈 흉갑 같은 장비) */
 export const armorShield = () => (G.ps ? G.ps.floorShield : 0);

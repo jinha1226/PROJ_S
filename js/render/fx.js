@@ -137,7 +137,7 @@ Object.assign(View, {
       case 'stoneOffer': ports.UI.stoneOffer(d); break;
       case 'cdReduce': ports.UI.cdFlash(d.slots, d.color); { const pe = this.evs.get(0); if (pe) D.sparks.emit({ pos: W3(pe.cur.x, pe.cur.z, 0.8), n: 6 * d.slots.length, color: COLORS[d.color].hex, color2: 0xffffff, speed: 1.2, up: 1.2, grav: 0, life: 0.5, size: 0.09 }); } Sfx.chime(1); break;
       case 'aura': this.setAuras(d); ports.UI.renderAuras(); break;
-      case 'stonesReady': ports.UI.toast('전투가 끝났다 — 영혼석 스킬이 모두 준비됐다'); break;
+      case 'stonesReady': ports.UI.toast('전투가 끝났다.'); break;
       case 'venomCloud': for (let k = 0; k < 8; k++) { const a = k * 0.785; D.puffs.emit({ pos: P(d.x + Math.cos(a), d.y + Math.sin(a), 0.4), n: 3, color: 0x79e05a, color2: 0x3a8a2a, speed: 0.4, up: 0.4, grav: 0, life: 1.4, size: 0.45, grow: 1 }); } Sfx.play('hiss'); break;
       case 'pickup': D.sparks.emit({ pos: P(d.x, d.y, 0.4), n: 16, color: 0xffe38a, color2: 0xffffff, speed: 1.5, up: 1.5, grav: 0, life: 0.6, size: 0.12 }); Sfx.play('pick'); break;
       case 'identify': ports.UI.banner('✦ ' + d.text, 'info'); break;

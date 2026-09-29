@@ -73,7 +73,7 @@ export function enemyMelee(e, t) {
   emit('lunge', { id: e.id, dx, dy }); TL.wait(150); // 물러났다 내딛는 무거운 동작(entity-view lunge)
   damage(t, Math.max(1, e.atk + ri(-1, e.type === 'goblin' ? 0 : 1)), 'hit', { dx, dy });
   if (e.type === 'leech' && t.alive) { t.st.bleed = Math.max(t.st.bleed || 0, 2); emitStatus(t); } // 피를 빤다
-  if (e.poison && t.alive && !t.st.immune && rand() < 0.6) { t.st.poison = Math.max(t.st.poison, 4); emitStatus(t); if (isP(t)) log('독칼에 베였다 — 중독! (불 조심)', 'bad'); }
+  if (e.poison && t.alive && !t.st.immune && rand() < 0.6) { t.st.poison = Math.max(t.st.poison, 4); emitStatus(t); if (isP(t)) log('독칼에 베여 중독됐다.', 'bad'); }
   TL.wait(110);
 }
 
@@ -114,14 +114,14 @@ export function summonFoes(e, type, n) {
     const m = mkEnemy(type, x, y, G.theme); m.awake = true; G.ents.push(m); c++;
     emit('spawn', { e: { ...m, st: { ...m.st } }, seen: G.vis[I(x, y)] ? 1 : 0 });
   }
-  if (c) log(`${e.name}이(가) 부하를 불렀다!`, 'bad');
+  if (c) log(`${jo(e.name, '이가')} 부하를 불렀다.`, 'bad');
 }
 
 export function actChief(e, dm, d, sees) {
   const P = G.player;
   if (e.hornOn) { e.hornOn = false; e.horn = 6; atkGate(); emit('horn', { id: e.id }); TL.wait(150); summonFoes(e, 'goblin', 2); return; }
   if (e.horn > 0) e.horn--;
-  if (sees && e.horn <= 0) { e.hornOn = true; emit('windup', { id: e.id }); log('족장이 뿔나팔을 든다 — 다음 턴에 부하가 온다!', 'bad'); return; }
+  if (sees && e.horn <= 0) { e.hornOn = true; emit('windup', { id: e.id }); log('족장이 뿔나팔을 든다.', 'bad'); return; }
   if (d === 1) return enemyMelee(e, P);
   stepToward(e, dm);
 }
@@ -133,9 +133,9 @@ export function actArcher(e, dm, d, sees) {
   if (e.aim) {
     e.aim = false;
     if (sees) { atkGate(); faceTo(e, P); const dur = 70 + d * 40; emit('proj', { kind: 'arrow', from: [e.x, e.y], to: [P.x, P.y], dur }); TL.wait(dur);
-      if (G.ps && G.ps.reflect && rand() * 100 < G.ps.reflect) { emit('proj', { kind: 'arrow', from: [P.x, P.y], to: [e.x, e.y], dur }); TL.wait(dur); log('화살을 되돌렸다!', 'syn'); damage(e, e.atk, 'hit', { label: '반사', src: P }); TL.wait(90); return; } // 반사 목걸이
+      if (G.ps && G.ps.reflect && rand() * 100 < G.ps.reflect) { emit('proj', { kind: 'arrow', from: [P.x, P.y], to: [e.x, e.y], dur }); TL.wait(dur); log('화살을 되돌렸다.', 'syn'); damage(e, e.atk, 'hit', { label: '반사', src: P }); TL.wait(90); return; } // 반사 목걸이
       damage(P, e.atk, 'hit', { dx: sgn(P.x - e.x), dy: sgn(P.y - e.y) }); TL.wait(90); return; }
-    log('궁수가 과녁을 놓쳤다', 'info');
+    log('궁수가 과녁을 놓쳤다.', 'info');
   }
   if (d <= 2 && reposition(e)) return;
   if (d === 1) return enemyMelee(e, P);
@@ -152,13 +152,13 @@ export function actMage(e, dm, d, sees) {
     if (d <= 1 && e.blink <= 0) {
       let best = null, bd = -1;
       for (let k = 0; k < 40; k++) { const x = e.x + ri(-6, 6), y = e.y + ri(-6, 6); if (!inb(x, y) || !standable(x, y) || entAt(x, y)) continue; const dd = cheb(x, y, P.x, P.y); if (dd >= 3 && dd <= 6 && dd > bd && los(x, y, P.x, P.y)) { bd = dd; best = [x, y]; } }
-      if (best) { e.blink = 3; emit('poof', { x: e.x, y: e.y }); moveEnt(e, best[0], best[1], { dur: 1, hop: 0, kind: 'tele' }); emit('poof', { x: best[0], y: best[1] }); log(`${e.name}이(가) 순간이동했다`, 'info'); return; }
+      if (best) { e.blink = 3; emit('poof', { x: e.x, y: e.y }); moveEnt(e, best[0], best[1], { dur: 1, hop: 0, kind: 'tele' }); emit('poof', { x: best[0], y: best[1] }); log(`${jo(e.name, '이가')} 순간이동했다.`, 'info'); return; }
     }
     if (e.boss === 'abyss') { if (e.sum > 0) e.sum--; else if (sees) { e.sum = 7; summonFoes(e, 'archer', 2); return; } }
   }
   if (sees && d <= 6 && e.cd <= 0) {
     e.cast = { tiles: e.boss ? square3(P.x, P.y) : plus(P.x, P.y) }; faceTo(e, P);
-    emit('cast', { id: e.id, elem: e.elem }); log(`${e.name}이(가) 주문을 외운다 — 붉은 칸에서 벗어나라!`, 'bad'); return;
+    emit('cast', { id: e.id, elem: e.elem }); log(`${jo(e.name, '이가')} 주문을 외운다.`, 'bad'); return;
   }
   if (d <= 2 && reposition(e)) return;
   if (d === 1) return enemyMelee(e, P);
@@ -203,7 +203,7 @@ export function actCharger(e, dm, d, sees) {
   const dx = P.x - e.x, dy = P.y - e.y, aligned = dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy);
   if (sees && aligned && d >= 2 && d <= (e.boss ? 7 : 6) && e.cd <= 0 && !e.st.frac && clearLine(e.x, e.y, P.x, P.y)) {
     e.charge = { dx: sgn(dx), dy: sgn(dy) }; faceTo(e, P);
-    emit('windup', { id: e.id }); log(`${e.name}이(가) 발을 구른다 — 화살표 경로에서 비켜라!`, 'bad'); return;
+    emit('windup', { id: e.id }); log(`${jo(e.name, '이가')} 발을 구른다.`, 'bad'); return;
   }
   if (d === 1) return enemyMelee(e, P);
   stepToward(e, dm, (x, y) => { const ax = P.x - x, ay = P.y - y; return ax === 0 || ay === 0 || Math.abs(ax) === Math.abs(ay) ? -0.6 : 0; });
@@ -222,12 +222,12 @@ export function doCharge(e) {
   if (victim) {
     emit('lunge', { id: e.id, dx, dy }); TL.wait(40);
     damage(victim, e.boss ? 11 : 8, 'charge', { dx, dy, label: '돌진!', big: true }); emit('shake', { a: 0.55 });
-    if (!isP(victim)) synergy(`${victim.name}을(를) 들이받았다!`, 'push');
+    if (!isP(victim)) synergy(`${jo(victim.name, '을를')} 들이받았다.`, 'push');
     if (victim.alive) push(victim, dx, dy, 1);
   } else if (wall) {
     emit('bump', { id: e.id, dx, dy });
-    damage(e, 5, 'wall', { dx, dy, label: '쾅! 벽 충돌', big: true }); emit('shake', { a: 0.6 });
-    if (e.alive) { e.st.stun = Math.max(e.st.stun, e.boss ? 3 : 2); emitStatus(e); synergy('벽에 머리를 박았다 — 기절!', 'push'); }
+    damage(e, 5, 'wall', { dx, dy, label: '벽 쾅!', big: true }); emit('shake', { a: 0.6 });
+    if (e.alive) { e.st.stun = Math.max(e.st.stun, e.boss ? 3 : 2); emitStatus(e); synergy('벽에 머리를 박고 기절했다.', 'push'); }
   }
   onEnter(e);
   TL.wait(80);

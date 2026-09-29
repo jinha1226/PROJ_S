@@ -33,7 +33,7 @@ export function poisonBurst(e, chain) {
   if (chain.has(e.id) || !e.alive) return;
   chain.add(e.id);
   e.st.poison = 0; emitStatus(e);
-  synergy(chain.size > 1 ? `독 폭발 연쇄 ×${chain.size}!` : '독 폭발!', 'poison');
+  synergy(chain.size > 1 ? `독 폭발 ${chain.size}연쇄!` : '독 폭발!', 'poison');
   emit('explosion', { x: e.x, y: e.y, elem: 'poison' });
   damage(e, 7, 'blast', { label: '독 폭발', big: true });
   TL.wait(160);
@@ -69,7 +69,7 @@ export function oilSet(x0, y0) {
 
 export function oilBlast(x0, y0, chain = new Set()) {
   const { layers, all } = oilSet(x0, y0); if (!all.length) return;
-  synergy(all.length > 1 ? `기름 연쇄 폭발 ×${all.length}!` : '기름 폭발!', 'fire');
+  synergy(all.length > 1 ? `기름 폭발 ${all.length}연쇄!` : '기름 폭발!', 'fire');
   const hit = new Set();
   for (const L of layers) {
     for (const i of L) { G.surf[i] = S_ASH; G.fire[i] = 2; const [x, y] = XY(i); emit('explosion', { x, y, elem: 'fire', small: L.length > 2 }); }
@@ -116,7 +116,7 @@ export function shock(x0, y0, dmg, o = {}) {
   const hitSet = o.hitSet || new Set();
   const { layers, edges, seen } = conductSet(x0, y0);
   const who = [...seen].map((i) => entAt(...XY(i))).filter(Boolean);
-  if (seen.size > 1 && who.length > 1) synergy(`감전 확산 ×${who.length}!`, 'bolt');
+  if (seen.size > 1 && who.length > 1) synergy(`감전 ${who.length}연쇄!`, 'bolt');
   else if (seen.size > 1) emit('banner', { text: '물을 타고 번진다!', elem: 'bolt' });
   for (let L = 0; L < layers.length; L++) {
     for (const [a, b, l] of edges) if (l === L) emit('arc', { a: XY(a), b: XY(b) });
@@ -144,7 +144,7 @@ export function freezeAt(x, y, dmg, o) {
   if (dmg) damage(c, dmg, 'frost');
   if (!c.alive || !resistOk(c, 'frost')) return;
   let dur = wet ? 5 : 2; if (isP(c)) dur = Math.min(dur, 2);
-  if (wet && !o.said) { o.said = true; synergy(isP(c) ? '젖은 채로 얼었다!' : '젖은 채 빙결 — 5턴!', 'ice'); }
+  if (wet && !o.said) { o.said = true; synergy(isP(c) ? '젖은 채로 얼었다!' : '젖은 채 얼어붙었다!', 'ice'); }
   c.st.frozen = Math.max(c.st.frozen, dur); c.st.wet = 0; c.st.burn = 0; emitStatus(c); if (!isP(c)) cancelIntent(c);
 }
 
@@ -174,7 +174,7 @@ export function envTick() {
   let changed = false;
   for (let i = 0; i < N; i++) if (G.fire[i] > 0) { G.fire[i]--; changed = true; if (!G.fire[i] && G.surf[i] === S_GRASS) G.surf[i] = S_ASH; }
   for (const j of spread) { G.fire[j] = 3; const [x, y] = XY(j); emit('ignite', { x, y, small: true }); }
-  if (spread.size && [...spread].some((j) => G.vis[j])) log('불길이 풀밭을 타고 번진다', 'info');
+  if (spread.size && [...spread].some((j) => G.vis[j])) log('불길이 풀밭을 타고 번진다.', 'info');
   for (let i = 0; i < N; i++) if (G.cloudT[i] > 0) { G.cloudT[i]--; if (!G.cloudT[i]) G.cloud[i] = 0; changed = true; }
   if (changed || spread.size) snapTerrain();
   for (const j of oilIgn) if (G.surf[j] === S_OIL) oilBlast(...XY(j));

@@ -12,13 +12,14 @@ import { blockAt, openHidden } from './hidden.js';
 import { adjFoes, areaTiles, arrowPath, castBolt, castFire, castFrost, castPush, castVenom, sdmg, wetTarget } from './skills.js';
 import { emitSlots, emitStatus, snapTerrain } from './snap.js';
 import { G, I, TL, emit, entAt, isFoe, log, newSt, seesEnt, standable } from './state.js';
+import { jo } from '../util/text.js';
 
 export function synergy(text, elem) { G.stats.combos++; emit('banner', { text, elem }); log(text, 'syn'); if (G.ctx && (G.ctx.stones > 0 || G.ctx.origin !== 'enemy')) bumpStage(G.ctx); }
 
 export function dropStone(e, f) {
   // 몬스터별 랜덤: 가진 세 색 중 하나(각 1/3). 무기로 쓰러뜨리면 45%, 아니면 15% — 횃불이 어두울수록 더 잘 남는다. 보스는 확실히
   const chance = Math.min(0.95, (f ? STONE_DROP.weapon : STONE_DROP.other) * DARK[torchTier(G.torch ?? 100)].drop);
-  if (!e.boss && rand() >= chance) { if (!f && G.dropHint++ < 2) log('영혼이 흩어졌다. 무기로 쓰러뜨려야 더 잘 남는다.', 'info'); return; }
+  if (!e.boss && rand() >= chance) { if (!f && G.dropHint++ < 2) log('영혼이 흩어졌다. 무기로 쓰러뜨리면 더 잘 남는다.', 'info'); return; }
   const color = pick(['red', 'purple', 'green']);
   const id = DROPS[kindOf(e)][color], spot = freeDropSpot(e.x, e.y); if (!spot) return;
   G.stones.set(I(spot[0], spot[1]), id);
@@ -122,15 +123,15 @@ export function useStoneRaw(slot, tx, ty, ctx) {
         const i = I(x, y); if (G.surf[i] === S_NONE || G.surf[i] === S_ASH || G.surf[i] === S_GRASS) G.surf[i] = S_WATER; G.fire[i] = 0;
         const e = entAt(x, y); if (e && e.alive && !e.st.frozen) { e.st.wet = Math.max(e.st.wet, 3); e.st.burn = 0; emitStatus(e); if (isFoe(e)) emit('splash', { x, y }); }
       }
-      snapTerrain(); log('물벼락 — 번개가 이어진 물을 따라 번진다', 'info'); break;
+      snapTerrain(); log('물벼락이 쏟아졌다.', 'info'); break;
     }
     case 'g_counter': case 'g_shield': case 'g_poison': case 'g_shock': case 'g_freeze': {
       const A = G.auras || (G.auras = {}); A[S.aura] = S.rounds + 1; // 이번 라운드 끝에 1 줄어 다음 적 턴까지
       if (id === 'g_shield') addShield(3, 10);
-      emit('aura', { ...A }); log(`${S.name} — ${S.line}`, 'syn'); break;
+      emit('aura', { ...A }); log(`${jo(S.name, '을를')} 썼다.`, 'syn'); break;
     }
     case 'g_push': if (t) { castPush(tx, ty, 3); if (t.alive) { t.st.stun = Math.max(t.st.stun, 1); cancelIntent(t); emitStatus(t); } } break;
-    case 'g_heal': { const v = Math.min(8, Math.ceil((G.combatDmg || 0) / 2)); if (v > 0) heal(p, v); else log('아직 봉합할 상처가 없다', 'info'); break; }
+    case 'g_heal': { const v = Math.min(8, Math.ceil((G.combatDmg || 0) / 2)); if (v > 0) heal(p, v); else log('아직 봉합할 상처가 없다.', 'info'); break; }
     case 'g_fire': emit('ring', { x: p.x, y: p.y, elem: 'fire' }); TL.wait(80); for (const e of adjFoes()) if (e.alive) fireAt(e.x, e.y, 3 + sd); break;
     default: break;
   }
@@ -186,8 +187,8 @@ export function boneArrow(e, dmg) {
 
 export function addStone(id) {
   const sl = G.slots.find((q, k) => !q.stone && k < (G.level || 6));
-  if (sl) { sl.stone = id; sl.color = STONE[id].color; G.stats.stones++; log(`영혼석 스킬 「${STONE[id].icon} ${STONE[id].name}」 — ${STONE[id].line}`, 'syn'); return true; }
-  if (G.sbag.length < (G.sbagMax || 3)) { G.sbag.push(id); G.stats.stones++; log(`영혼석 「${STONE[id].icon} ${STONE[id].name}」 → 가방 (같은 색 칸과 교체 가능)`, 'good'); return true; }
+  if (sl) { sl.stone = id; sl.color = STONE[id].color; G.stats.stones++; log(`영혼석 ${jo(STONE[id].name, '을를')} 흡수했다.`, 'syn'); return true; }
+  if (G.sbag.length < (G.sbagMax || 3)) { G.sbag.push(id); G.stats.stones++; log(`영혼석 ${jo(STONE[id].name, '을를')} 가방에 넣었다.`, 'good'); return true; }
   return false;
 }
 
@@ -195,7 +196,7 @@ export function addStone(id) {
 export function leaveStone() {
   const i = G.stoneOffer; G.stoneOffer = null; if (i == null || !G.stones.has(i)) return false;
   const id = G.stones.get(i); G.stones.delete(i);
-  emit('stoneFade', { x: i % G.W, y: (i / G.W) | 0, id }); log(`영혼석 「${STONE[id].name}」이 흩어졌다`, 'info');
+  emit('stoneFade', { x: i % G.W, y: (i / G.W) | 0, id }); log(`영혼석 ${jo(STONE[id].name, '이가')} 흩어졌다.`, 'info');
   return true;
 }
 /** 발밑 영혼석을 거둔다. mode: 'absorb'(칸에 흡수 — slot을 주면 그 칸의 같은 색 영혼석과 바꾸고, 빠진 것은 가방으로) | 'bag' */
@@ -203,17 +204,17 @@ export function takeStone(mode, slot) {
   const p = G.player, i = I(p.x, p.y), id = G.stones.get(i); if (!id) return false;
   const S = STONE[id], max = G.sbagMax || 3;
   if (mode === 'bag') {
-    if (G.sbag.length >= max) { log('영혼석 가방이 가득 찼다', 'bad'); return false; }
-    G.sbag.push(id); log(`영혼석 「${S.icon} ${S.name}」 → 가방`, 'good');
+    if (G.sbag.length >= max) { log('영혼석 가방이 가득 찼다.', 'bad'); return false; }
+    G.sbag.push(id); log(`영혼석 ${jo(S.name, '을를')} 가방에 넣었다.`, 'good');
   } else {
     let sl = slot != null ? G.slots[slot] : G.slots.find((q, k) => !q.stone && k < (G.level || 6));
-    if (!sl || G.slots.indexOf(sl) >= (G.level || 6)) { log('열린 빈 칸이 없다 — 같은 색 칸과 바꾸거나 가방에', 'bad'); return false; }
+    if (!sl || G.slots.indexOf(sl) >= (G.level || 6)) { log('열린 빈 칸이 없다.', 'bad'); return false; }
     if (sl.stone) {
-      if (sl.color !== S.color) { log('다른 색 칸에는 흡수할 수 없다', 'bad'); return false; }
-      const old = sl.stone; if (G.sbag.length < max) { G.sbag.push(old); log(`「${STONE[old].name}」은 가방으로`, 'info'); } else log(`「${STONE[old].name}」은 흩어졌다`, 'info');
+      if (sl.color !== S.color) { log('다른 색 칸에는 흡수할 수 없다.', 'bad'); return false; }
+      const old = sl.stone; if (G.sbag.length < max) { G.sbag.push(old); log(`${jo(STONE[old].name, '이가')} 가방으로 들어갔다.`, 'info'); } else log(`${jo(STONE[old].name, '이가')} 흩어졌다.`, 'info');
     }
     sl.stone = id; sl.color = S.color; sl.cd = 0;
-    log(`영혼석 스킬 「${S.icon} ${S.name}」 — ${S.line}`, 'syn');
+    log(`영혼석 ${jo(S.name, '을를')} 흡수했다.`, 'syn');
   }
   G.stones.delete(i); G.stoneOffer = null; G.stats.stones++;
   emit('stonePick', { x: p.x, y: p.y, id }); emitSlots();
@@ -240,12 +241,12 @@ export function summon(at, extra = 0) {
   const a = { id: G.nextId++, type: 'goblin', ally: true, name: '영혼 고블린', x: spot[0], y: spot[1], hp: 5, max: 5, atk: 2, st: newSt(), alive: true, awake: true, face: [...p.face], life: 4 + extra + (G.perk === 'A+' ? 1 : 0) };
   G.ents.push(a);
   emit('spawn', { e: { ...a, st: { ...a.st } } });
-  log('영혼 고블린이 곁에 섰다', 'good');
+  log('영혼 고블린이 곁에 섰다.', 'good');
 }
 
 export function swapStone(bagIdx, slotIdx) {
   const id = G.sbag[bagIdx], sl = G.slots[slotIdx];
   if (!id || !sl.stone || sl.color !== STONE[id].color) return false;
   G.sbag[bagIdx] = sl.stone; sl.stone = id; sl.cd = 0; // 교체는 적이 안 보일 때만 — 쿨타임도 비어 있다
-  log(`「${STONE[id].name}」을 끼웠다`, 'good'); emitSlots(); return false;
+  log(`${jo(STONE[id].name, '을를')} 끼웠다.`, 'good'); emitSlots(); return false;
 }

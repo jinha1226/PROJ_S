@@ -307,7 +307,7 @@ export const View = {
       case 'vanish': if (ev) { ev.dead = true; ev.deadT = 0; this.dio.puffs.emit({ pos: W3(ev.cur.x, ev.cur.z, 0.5), n: 10, color: 0xc8a0ff, speed: 1.5, grav: 0, life: 0.5, size: 0.3 }); } break;
       case 'shield': this.shield = d.v; { const pe = this.evs.get(0); if (pe) { pe.bubbleHit = 1; this.dio.labels.pop(W3(pe.cur.x, pe.cur.z, 1.4), `🛡+${d.add}`, { color: '#9fd8ff', cls: 'word', vx: 0 }); } } ports.UI.shieldV = d.v; ports.UI.pstatus(ports.UI.lastSt || G.player.st); Sfx.play('shield'); break;
       case 'shieldHit': this.shield = d.left; { const pe = this.evs.get(0); if (pe) { pe.bubbleHit = 1; this.dio.labels.pop(W3(pe.cur.x, pe.cur.z, 1.2), `🛡${d.absorbed}`, { color: '#9fd8ff', cls: 'big' }); this.dio.sparks.emit({ pos: W3(pe.cur.x, pe.cur.z, 0.6), n: 16, color: 0x9fd8ff, color2: 0xffffff, speed: 3, life: 0.35, size: 0.12 }); } } ports.UI.shieldV = d.left; ports.UI.pstatus(ports.UI.lastSt || G.player.st); Sfx.play('shield'); break;
-      case 'weakReveal': if (ev) { this.dio.labels.pop(W3(ev.cur.x, ev.cur.z, ev.h + 0.7), `약점 발견 ${FORMS[d.form].icon}`, { color: '#ffe14a', cls: 'word', vx: 0, rise: 50, dur: 1.4 }); ports.UI.toast(`약점 발견: ${FORMS[d.form].name} ${FORMS[d.form].icon}`); } break;
+      case 'weakReveal': if (ev) { this.dio.labels.pop(W3(ev.cur.x, ev.cur.z, ev.h + 0.7), `약점 발견 ${FORMS[d.form].icon}`, { color: '#ffe14a', cls: 'word', vx: 0, rise: 50, dur: 1.4 }); ports.UI.toast(`${FORMS[d.form].icon} 약점을 알아냈다.`); } break;
       default: this.fx(type, d, ev);
     }
   },

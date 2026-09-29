@@ -20,7 +20,7 @@ export function addItem(k) { const s = G.inv.find((q) => q.k === k); if (s) s.n+
 
 export function takeItem(k) { const s = G.inv.find((q) => q.k === k); if (!s) return false; s.n--; if (!s.n) G.inv.splice(G.inv.indexOf(s), 1); return true; }
 
-export function identify(k) { if (G.known[k]) return; const old = G.look[k].name; G.known[k] = true; log(`${old}의 정체: ${ITEMS[k].name}!`, 'syn'); emit('identify', { text: ITEMS[k].name }); }
+export function identify(k) { if (G.known[k]) return; const old = G.look[k].name; G.known[k] = true; log(`${old}, 알고 보니 ${ITEMS[k].name}.`, 'syn'); emit('identify', { text: ITEMS[k].name }); }
 
 export function teleSpot() {
   const p = G.player; let best = null, bs = -1;
@@ -36,35 +36,35 @@ export function teleSpot() {
 
 export function useItem(k, tx, ty) {
   const p = G.player, cat = ITEMS[k].cat;
-  if (k === 'recall' && G.bossFloor) { log('보스의 어둠이 짙어 두루마리 빛이 모이지 않는다', 'bad'); return false; }
+  if (k === 'recall' && G.bossFloor) { log('보스의 어둠이 짙어 빛이 모이지 않는다.', 'bad'); return false; }
   if (cat === 'throw') return throwItem(k, tx, ty);
   // 장비를 골라 쓰는 두루마리: tx = 장비 uid
   let target = null;
   if (ITEMS[k].target) {
     target = [...SLOTS.map((s) => G.eq[s]), ...G.bag].find((it) => it && it.uid === tx);
     if (!target) return false;
-    if (k === 'ident' && fullyKnown(target)) { log('이미 다 아는 장비다', 'info'); return false; }
-    if (k !== 'ident' && !canEnchant(target, k === 'enchW' ? 'w' : 'a')) { log('이 장비는 더 강화할 수 없다', 'bad'); return false; }
+    if (k === 'ident' && fullyKnown(target)) { log('이미 다 아는 장비다.', 'info'); return false; }
+    if (k !== 'ident' && !canEnchant(target, k === 'enchW' ? 'w' : 'a')) { log('이 장비는 더 강화할 수 없다.', 'bad'); return false; }
   }
   if (!takeItem(k)) return false;
   emit(cat === 'potion' ? 'drink' : 'read', { color: G.look[k].color });
   TL.wait(140);
   identify(k);
   if (k === 'heal') { heal(p, Math.round(15 * (1 + (G.ps ? G.ps.potion : 0) / 100))); if (p.st.burn) { p.st.burn = 0; emitStatus(p); } }
-  else if (k === 'ember_jar') { const n = refillTorch(JAR_REFILL); log(`모닥불 불씨를 옮겼다 — 횃불 +${n}`, 'good'); computeFOV(); snapVis(); }
+  else if (k === 'ember_jar') { refillTorch(JAR_REFILL); log('모닥불 불씨를 옮겨 담았다.', 'good'); computeFOV(); snapVis(); }
   else if (k === 'ident') identifyItem(target);
   else if (k === 'enchW' || k === 'enchA') enchantItem(target, k === 'enchW' ? 'w' : 'a');
-  else if (k === 'cure') { Object.assign(p.st, { poison: 0, burn: 0, wet: 0, immune: 12 }); emitStatus(p); log('몸이 깨끗해졌다 (12턴 중독 면역)', 'good'); }
-  else if (k === 'haste') { p.st.haste = 8; emitStatus(p); log('몸이 가벼워졌다! 8턴 동안 두 배로 움직인다', 'good'); }
+  else if (k === 'cure') { Object.assign(p.st, { poison: 0, burn: 0, wet: 0, immune: 12 }); emitStatus(p); log('몸이 깨끗해졌다. 한동안 독이 듣지 않는다.', 'good'); }
+  else if (k === 'haste') { p.st.haste = 8; emitStatus(p); log('몸이 가벼워졌다.', 'good'); }
   else if (k === 'tele') {
     const [x, y] = teleSpot(); emit('poof', { x: p.x, y: p.y }); TL.wait(80);
-    moveEnt(p, x, y, { dur: 1, hop: 0, kind: 'tele' }); emit('poof', { x, y }); computeFOV(); snapVis(); onEnter(p); log('공간이 뒤틀렸다!', 'info');
+    moveEnt(p, x, y, { dur: 1, hop: 0, kind: 'tele' }); emit('poof', { x, y }); computeFOV(); snapVis(); onEnter(p); log('공간이 뒤틀렸다.', 'info');
   } else if (k === 'fear') {
     let n = 0;
     for (const e of G.ents) if (isFoe(e) && e.alive && G.vis[I(e.x, e.y)]) { e.st.fear = 6; e.awake = true; cancelIntent(e); emitStatus(e); emit('scare', { id: e.id }); n++; }
-    log(n ? `적 ${n}명이 겁에 질려 달아난다!` : '공포가 텅 빈 방에 퍼졌다', n ? 'good' : '');
+    log(n ? `적 ${n}명이 겁에 질려 달아난다.` : '공포가 텅 빈 방에 퍼졌다.', n ? 'good' : '');
   } else if (k === 'recall') {
-    emit('recallGlow', { x: p.x, y: p.y }); log('두루마리에 빛이 모인다 — 다음 턴에 정착지로!', 'syn'); G.recallArm = true;
+    emit('recallGlow', { x: p.x, y: p.y }); log('두루마리에 빛이 모인다.', 'syn'); G.recallArm = true;
   } else if (k === 'blaze') {
     emit('ring', { x: p.x, y: p.y, elem: 'fire' }); TL.wait(90);
     for (const [dx, dy] of D8) { const x = p.x + dx, y = p.y + dy; if (inb(x, y) && G.tile[I(x, y)] !== T_WALL) fireAt(x, y, 4); }
@@ -79,7 +79,7 @@ export function throwItem(k, tx, ty) {
   // 연금술사의 장갑: 하나가 더 옆으로 갈라져 날아간다
   if (G.ps && G.ps.legend.has('alchGlove')) {
     const p = G.player, dx = sgn(tx - p.x), dy = sgn(ty - p.y), side = [[-dy, dx], [dy, -dx]].map(([a, b]) => [tx + a * 2, ty + b * 2]).find(([x, y]) => inb(x, y) && G.tile[I(x, y)] !== T_WALL);
-    if (side) { log('연금술사의 장갑 — 병이 둘로 갈라진다!', 'syn'); landThrow(k, side[0], side[1]); }
+    if (side) { log('병이 둘로 갈라졌다.', 'syn'); landThrow(k, side[0], side[1]); }
   }
   TL.wait(100);
   return true;

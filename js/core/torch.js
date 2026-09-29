@@ -15,9 +15,9 @@ export function burnTorch(mult = 1) {
   const ps = G.ps, rate = TORCH_BURN * mult * (1 - (ps ? ps.torchSlow : 0) / 100) * (1 + (ps ? ps.torchCost : 0) / 100); // 불씨 품기·기억 목걸이 / 유물의 대가
   G.torch = Math.max(0, Math.round((before - rate) * 100) / 100);
   if (META?.hero) META.hero.torch = G.torch;
-  if (before >= 50 && G.torch < 50) log('횃불이 약해져 시야가 좁아진다', 'bad');
+  if (before >= 50 && G.torch < 50) log('횃불이 약해져 시야가 좁아진다.', 'bad');
   if (before >= 25 && G.torch < 25) log('불씨가 희미하다. 어둠 속에서 적들이 사나워진다.', 'bad');
-  if (before > 0 && G.torch === 0) { G.darkAmbushUsed = false; log('횃불이 꺼졌다! 적이 먼저 알아챈다', 'bad'); }
+  if (before > 0 && G.torch === 0) { G.darkAmbushUsed = false; log('횃불이 꺼졌다. 적이 먼저 알아챈다.', 'bad'); }
 }
 export function refillTorch(amount) {
   const before = G.torch || 0;
@@ -43,11 +43,11 @@ export function useLamp() {
   const i = I(G.player.x, G.player.y), name = G.lamps?.get(i);
   if (!name) return false;
   G.lamps.delete(i);
-  const gained = refillTorch(LAMP_REFILL + (G.ps ? G.ps.lampBonus : 0));
+  refillTorch(LAMP_REFILL + (G.ps ? G.ps.lampBonus : 0));
   META.rememberedKeepers ||= [];
   const first = !META.rememberedKeepers.includes(name);
   if (first) META.rememberedKeepers.push(name);
   saveMeta();
-  log(`${name}의 등잔 — 아직 따뜻하다. 횃불 +${gained}${first ? ' · 기억할 이름이 늘었다' : ''}`, 'good');
+  log(`${name}의 등잔. 아직 따뜻하다.${first ? ' 기억할 이름이 늘었다.' : ''}`, 'good');
   return true;
 }

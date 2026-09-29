@@ -6,6 +6,7 @@ import { pick, rand } from '../util/rng.js';
 import { computeFOV } from './fov.js';
 import { snapTerrain, snapVis } from './snap.js';
 import { G, I, emit, inb, log, newSt } from './state.js';
+import { jo } from '../util/text.js';
 
 /* ================= 스킬로 여는 숨은 방 =================
    층마다 0~1개. 방 벽 너머에 3×3 골방을 파고, 입구 한 칸을 막는다(core에서는 벽).
@@ -53,7 +54,7 @@ export function openHidden(x, y, skill) {
   G.block.delete(i); G.tile[i] = T_FLOOR;
   if (kind === 'water') G.surf[i] = S_ICE; else if (kind === 'thorn') { G.surf[i] = S_ASH; G.fire[i] = 2; }
   emit('hiddenOpen', { x, y, kind });
-  log(`${HIDDEN[kind].name}이(가) 열렸다 — 숨은 방이다!`, 'syn');
+  log(`${jo(HIDDEN[kind].name, '이가')} 열리고 숨은 방이 드러났다.`, 'syn');
   computeFOV(); snapVis(); snapTerrain();
   return true;
 }

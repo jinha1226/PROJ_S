@@ -108,8 +108,8 @@ Object.assign(View, {
       case 'block': if (pe) { pe.bubbleHit = 1; D.labels.pop(W3(pe.cur.x, pe.cur.z, 1.3), '막기!', { color: '#ffd08a', cls: 'word', vx: 0 }); D.sparks.emit({ pos: W3(pe.cur.x, pe.cur.z, 0.5), n: 14, color: 0xffe0a0, speed: 3.5, life: 0.3, size: 0.1 }); Sfx.play('blunt'); } return true;
       case 'miss': D.labels.pop(W3(d.x, d.y, 1.0), '빗나감', { color: '#c8ccd8', cls: 'word', vx: 0 }); return true;
       case 'immune': if (pe) D.labels.pop(W3(pe.cur.x, pe.cur.z, 1.3), '화상 면역', { color: '#ffb070', cls: 'word', vx: 0 }); return true;
-      case 'levelUp': ports.UI.banner(`레벨 ${d.level} — 영혼석 칸이 열렸다`, 'info'); if (pe) { D.sparks.emit({ pos: W3(pe.cur.x, pe.cur.z, 0.4), n: 40, color: 0xffe38a, color2: 0xffffff, speed: 1.6, up: 2.4, grav: 0, life: 1, size: 0.12, spread: 0.5 }); D.fx.ring(W3(pe.cur.x, pe.cur.z), 0xffe38a, 0.3, 2, 0.6); } Sfx.chime(4); return true;
-      case 'relic': ports.UI.legendFlash(); ports.UI.banner(`★ ${d.name}`, 'fire'); ports.UI.toast(`${d.owner ? d.owner + '의 유품 — ' : ''}${d.story}`); Sfx.play('crit'); return true;
+      case 'levelUp': ports.UI.banner(`레벨 ${d.level}! 영혼석 칸이 열렸다.`, 'info'); if (pe) { D.sparks.emit({ pos: W3(pe.cur.x, pe.cur.z, 0.4), n: 40, color: 0xffe38a, color2: 0xffffff, speed: 1.6, up: 2.4, grav: 0, life: 1, size: 0.12, spread: 0.5 }); D.fx.ring(W3(pe.cur.x, pe.cur.z), 0xffe38a, 0.3, 2, 0.6); } Sfx.chime(4); return true;
+      case 'relic': ports.UI.legendFlash(); ports.UI.banner(`★ ${d.name}`, 'fire'); ports.UI.toast(`${d.owner ? d.owner + '의 유품. ' : ''}${d.story}`); Sfx.play('crit'); return true;
       case 'enchant': if (pe) { D.sparks.emit({ pos: W3(pe.cur.x, pe.cur.z, 0.6), n: 30, color: 0xffe38a, color2: 0xffffff, speed: 2, up: 2, grav: 0, life: 0.7, size: 0.12, spread: 0.4 }); D.fx.ring(W3(pe.cur.x, pe.cur.z), 0xffe38a, 0.2, 1.2, 0.4); } Sfx.chime(3); return true;
       case 'bloodBurst': D.sparks.emit({ pos: W3(d.x, d.y, 0.5), n: 34, color: 0xff1a2a, color2: 0x8a0010, speed: 4, up: 1, grav: -6, life: 0.6, size: 0.14 }); D.fx.ring(W3(d.x, d.y), 0xff2a3a, 0.2, 1.6, 0.4); return true;
       default: return false;

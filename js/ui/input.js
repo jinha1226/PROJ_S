@@ -38,16 +38,16 @@ Object.assign(UI, {
     if (G.over || G.player.st.frozen || G.player.st.stun) return;
     if (this.mode === 'target') { this.tapTarget(x, y); return; }
     const p = G.player, d = cheb(p.x, p.y, x, y), i = I(x, y), e = entAt(x, y), seenFoe = e && isFoe(e) && G.vis[i];
-    if (d === 0) { if (G.tile[i] === T_STAIRS) descend(); else if (G.gear.has(i)) { this.instant(() => pickGear()); this.renderWeapon(); } else this.toast('⏳ 대기는 아래 버튼 — 길게 누르면 휴식'); return; }
+    if (d === 0) { if (G.tile[i] === T_STAIRS) descend(); else if (G.gear.has(i)) { this.instant(() => pickGear()); this.renderWeapon(); } else this.toast('⏳ 대기는 아래 버튼으로. 길게 누르면 쉰다.'); return; }
     if (seenFoe && d >= 2 && canHit(e)) { act(() => { playerMelee(e); return true; }); return; } // 창 2칸 · 원거리
     if (seenFoe && d > 1) { this.showEnemy(e); return; }
     if (d === 1) { if (G.tile[i] === T_WALL) return; act(() => playerMove(x - p.x, y - p.y)); return; }
-    if (!G.seen[i] || G.tile[i] === T_WALL) { this.toast('아직 모르는 곳이다'); return; }
+    if (!G.seen[i] || G.tile[i] === T_WALL) { this.toast('아직 모르는 곳이다.'); return; }
     this.startTravel(x, y);
   },
   startTravel(x, y) {
     const path = findPath(G.player.x, G.player.y, x, y);
-    if (!path) { this.toast('갈 수 있는 길이 없다'); return; }
+    if (!path) { this.toast('갈 수 있는 길이 없다.'); return; }
     this.travel = { path, first: true }; this.travelStep();
   },
   travelStep() {
@@ -64,7 +64,7 @@ Object.assign(UI, {
     if (Anim.active || G.over || this.overlayOpen()) return;
     const foes = visibleFoes().filter((e) => e.alive).sort((a, b) => cheb(a.x, a.y, G.player.x, G.player.y) - cheb(b.x, b.y, G.player.x, G.player.y));
     const target = foes.find((e) => e.id === this.selectedEnemy) || foes[0];
-    if (!target) { this.toast('보이는 적이 없다'); return; }
+    if (!target) { this.toast('보이는 적이 없다.'); return; }
     this.explore = false; this.travel = null; this.rest = null;
     const p = G.player, d = cheb(p.x, p.y, target.x, target.y);
     // DCSS의 Tab: 칠 수 있으면 치고(창 2칸 · 원거리 사거리), 아니면 한 걸음 다가간다
@@ -74,7 +74,7 @@ Object.assign(UI, {
       if (!inb(xx, yy) || entAt(xx, yy) || G.tile[I(xx, yy)] === T_WALL) continue;
       const path = findPath(p.x, p.y, xx, yy); if (path && (!best || path.length < best.length)) best = path;
     }
-    if (!best?.length) { this.toast('적에게 다가갈 길이 없다'); return; }
+    if (!best?.length) { this.toast('적에게 다가갈 길이 없다.'); return; }
     const [x, y] = best[0]; act(() => playerMove(x - p.x, y - p.y));
   },
   /** 방금(지난 두 턴 안에) 적에게 공격받았다 */
@@ -91,9 +91,9 @@ Object.assign(UI, {
   },
   startExplore() {
     if (Anim.active || G.over || this.overlayOpen()) return;
-    if (visibleFoes().length) { this.toast('적이 보여서 탐험할 수 없다'); return; }
-    if (this.underAttack()) { this.toast('공격받고 있어서 탐험할 수 없다'); return; }
-    if (G.player.hp <= G.player.max * 0.3) { this.toast('너무 다쳐서 탐험할 수 없다'); return; } // 빈사
+    if (visibleFoes().length) { this.toast('적이 보여서 탐험할 수 없다.'); return; }
+    if (this.underAttack()) { this.toast('공격받고 있어서 탐험할 수 없다.'); return; }
+    if (G.player.hp <= G.player.max * 0.3) { this.toast('너무 다쳐서 탐험할 수 없다.'); return; } // 빈사
     this.explore = true; this.rest = null; this.exploreSkip = new Set();
     this.exploreStep();
   },
@@ -117,16 +117,16 @@ Object.assign(UI, {
       if (path?.length) targets.push(path);
     }
     targets.sort((a, b) => a.length - b.length);
-    if (!targets.length) { this.explore = false; this.toast('더 탐험할 곳이 없다'); return; }
+    if (!targets.length) { this.explore = false; this.toast('더 탐험할 곳이 없다.'); return; }
     this.travel = { path: targets[0], first: true }; this.travelStep();
   },
   waitBtn() { if (G.player.st.frozen || G.player.st.stun) return; this.travel = null; this.explore = false; this.rest = null; if (this.mode === 'target') this.exitTarget(); act(() => playerWait()); },
   startRest() {
     if (Anim.active || G.over) return;
-    if (visibleFoes().length) { this.toast('적이 보여서 쉴 수 없다'); return; }
-    if (this.underAttack()) { this.toast('공격받고 있어서 쉴 수 없다'); return; }
-    if (G.player.hp >= G.player.max && !G.player.st.poison) { this.toast('쉴 필요가 없다'); return; }
-    this.rest = { n: 0 }; G.restN = 0; this.toast('휴식 중… (탭하면 멈춤)'); this.restStep();
+    if (visibleFoes().length) { this.toast('적이 보여서 쉴 수 없다.'); return; }
+    if (this.underAttack()) { this.toast('공격받고 있어서 쉴 수 없다.'); return; }
+    if (G.player.hp >= G.player.max && !G.player.st.poison) { this.toast('쉴 필요가 없다.'); return; }
+    this.rest = { n: 0 }; G.restN = 0; this.toast('쉬는 중… 탭하면 멈춘다.'); this.restStep();
   },
   restStep() {
     const r = this.rest; if (!r) return; const p = G.player;
@@ -154,7 +154,7 @@ Object.assign(UI, {
   stoneBtn(k) {
     if (G.over || this.overlayOpen() || Anim.active) return;
     const sl = G.slots[k], id = sl && sl.stone;
-    if (!id && k >= (G.level || 6)) { this.toast(`레벨 ${k + 1}에 열리는 칸 — 적을 쓰러뜨려 경험을 쌓자`); return; }
+    if (!id && k >= (G.level || 6)) { this.toast(`레벨 ${k + 1}에 열리는 칸이다.`); return; }
     if (!id) { this.slotInfo(k); return; }
     const S = STONE[id], C = COLORS[S.color];
     if (this.mode === 'target' && this.pend?.slot === k) {
@@ -162,10 +162,10 @@ Object.assign(UI, {
       this.exitTarget(); return;
     }
     Sfx.play('ui');
-    if (sl.cd > 0) { this.toast(`${S.name}: ${sl.cd}턴 뒤 — ${C.name}은(는) ${C.trig} 1 더 준다`); return; }
+    if (sl.cd > 0) { this.toast(`${S.name}: ${sl.cd}턴 남았다. ${C.trig} 한 턴 더 줄어든다.`); return; }
     if (G.player.st.frozen || G.player.st.stun) return;
     const T = S.tgt.t, self = T === 'self' || T === 'around' || T === 'sight';
-    if (id === 'p_summon' && G.ents.filter((e) => e.alive && e.ally && !e.npc).length >= 2) this.toast('영혼 고블린은 둘까지 — 가장 오래된 하나가 사라진다');
+    if (id === 'p_summon' && G.ents.filter((e) => e.alive && e.ally && !e.npc).length >= 2) this.toast('가장 오래된 영혼 고블린이 사라진다.');
     this.enterTarget({ kind: 'stone', slot: k, id, self, name: S.icon + ' ' + S.name, color: C.hex, run: self ? () => useStone(k) : (x, y) => useStone(k, x, y) });
   },
   enterTarget(pend) {
@@ -175,7 +175,7 @@ Object.assign(UI, {
     [...$('#souls').children].forEach((b, k) => b.classList.toggle('sel', pend.kind === 'stone' && k === pend.slot));
     $('#targetbar').classList.add('on');
     if (pend.self) { this.prev = selfPreview(pend.id); $('#targettext').innerHTML = `<b>${pend.name}</b> ${this.prev.note}<br><small style="color:#9aa2bd">칸을 한 번 더 누르면 발동</small>`; }
-    else $('#targettext').innerHTML = this.valid.size ? `<b>${pend.name}</b> — 대상 칸을 탭하면 결과를 미리 보여준다` : `<b>${pend.name}</b> — 닿는 대상이 없다`;
+    else $('#targettext').innerHTML = this.valid.size ? `<b>${pend.name}</b> 대상 칸을 탭하면 결과가 보인다` : `<b>${pend.name}</b> 닿는 대상이 없다`;
     View.refreshDecals();
   },
   exitTarget() {
@@ -193,7 +193,7 @@ Object.assign(UI, {
   tapTarget(x, y) {
     const i = I(x, y);
     if (this.pend.self) { if (x === G.player.x && y === G.player.y) { const pend = this.pend; this.exitTarget(); act(() => pend.run()); return; } this.exitTarget(); return; }
-    if (!this.valid.has(i)) { if (x === G.player.x && y === G.player.y) { this.exitTarget(); return; } this.toast('사거리·시야 밖이다'); return; }
+    if (!this.valid.has(i)) { if (x === G.player.x && y === G.player.y) { this.exitTarget(); return; } this.toast('사거리·시야 밖이다.'); return; }
     if (this.prevIdx === i) { const pend = this.pend; this.exitTarget(); act(() => pend.run(x, y)); return; }
     this.prevIdx = i; this.prev = previewFor(this.pend, x, y); Sfx.play('ui');
     $('#targettext').innerHTML = `<b>${this.pend.name}</b> ${this.prev.note}<br><small style="color:#9aa2bd">같은 칸을 한 번 더 탭하면 발동</small>`;

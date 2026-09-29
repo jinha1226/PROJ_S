@@ -8,6 +8,7 @@ import { addLoot } from './combat.js';
 import { addItem } from './items.js';
 import { META, saveMeta } from './meta.js';
 import { G, Game, I, emit, inb, log, standable } from './state.js';
+import { jo } from '../util/text.js';
 
 /* ================= 장비 (DCSS식 — docs/설계_아이템_장비.md) =================
    장비 = { uid, base, plus, q(품질 1~4), brand, ego, jt(장신구 종류), jv(반지 수치), je(저항 원소), art(랜다트), un(픽다트),
@@ -262,40 +263,40 @@ const PAIR = { weapon: 'off', off: 'weapon' };
 export function equip(bagIdx, slot) {
   const H = holder(), it = H.bag[bagIdx]; if (!it || !fitsSlot(it, slot)) return false;
   const mate = PAIR[slot], two = slot === 'weapon' && twoHanded(it);
-  if (slot === 'off' && twoHanded(H.eq[mate])) { log('양손 무기를 든 세트에는 보조손을 들 수 없다', 'bad'); return false; }
+  if (slot === 'off' && twoHanded(H.eq[mate])) { log('양손 무기를 들면 보조손을 쓸 수 없다.', 'bad'); return false; }
   const old = H.eq[slot], off = two ? H.eq[mate] : null;
-  if (H.bag.length - 1 + (old ? 1 : 0) + (off ? 1 : 0) > BAG_MAX) { log('가방이 가득 찼다', 'bad'); return false; }
+  if (H.bag.length - 1 + (old ? 1 : 0) + (off ? 1 : 0) > BAG_MAX) { log('가방이 가득 찼다.', 'bad'); return false; }
   H.bag.splice(bagIdx, 1); if (old) H.bag.push(old);
-  if (off) { H.eq[mate] = null; H.bag.push(off); log(`양손 무기 — ${gearName(off)}은 가방으로`, 'info'); }
+  if (off) { H.eq[mate] = null; H.bag.push(off); log(`${jo(gearName(off), '은는')} 가방에 넣었다.`, 'info'); }
   H.eq[slot] = it;
   let note = '';
-  if (isJewel(it) && !it.art && !jewelKnown(it) && GEAR_BASES[it.base].slot === 'ring' && RINGS[it.jt] && RINGS[it.jt].obvious) { knowJewel(it); note = ` — ${gearName(it)}였다!`; }
+  if (isJewel(it) && !it.art && !jewelKnown(it) && GEAR_BASES[it.base].slot === 'ring' && RINGS[it.jt] && RINGS[it.jt].obvious) { knowJewel(it); note = ' 정체가 드러났다.'; }
   refreshStats();
   emit('equip', { slot, eq: eqSnap(H) });
-  log(`${gearName(it)} 장착${note}`, it.un || it.art ? 'syn' : 'good');
+  log(`${jo(gearName(it), '을를')} 장착했다.${note}`, it.un || it.art ? 'syn' : 'good');
   return true;
 }
 export function unequip(slot) {
   const H = holder(), it = H.eq[slot]; if (!it) return false;
-  if (H.bag.length >= BAG_MAX) { log('가방이 가득 찼다', 'bad'); return false; }
+  if (H.bag.length >= BAG_MAX) { log('가방이 가득 찼다.', 'bad'); return false; }
   H.eq[slot] = null; H.bag.push(it); refreshStats();
-  emit('equip', { slot, eq: eqSnap(H) }); log(`${gearName(it)} 해제`, 'info');
+  emit('equip', { slot, eq: eqSnap(H) }); log(`${jo(gearName(it), '을를')} 해제했다.`, 'info');
   return true;
 }
 export function dropGear(bagIdx) {
   const H = holder(), it = H.bag[bagIdx]; if (!it) return false;
   if (H.town) { H.bag.splice(bagIdx, 1); META.gear.push(it); return true; }
-  const spot = gearSpot(G.player.x, G.player.y); if (!spot) { log('놓을 자리가 없다', 'bad'); return false; }
+  const spot = gearSpot(G.player.x, G.player.y); if (!spot) { log('놓을 자리가 없다.', 'bad'); return false; }
   H.bag.splice(bagIdx, 1); G.gear.set(I(spot[0], spot[1]), it);
-  emit('gears', [...G.gear.entries()]); log(`${gearName(it)}을 내려놓았다`, 'info');
+  emit('gears', [...G.gear.entries()]); log(`${jo(gearName(it), '을를')} 내려놓았다.`, 'info');
   return true;
 }
 export function pickGear() {
   const p = G.player, i = I(p.x, p.y), it = G.gear.get(i); if (!it) return false;
-  if (G.bag.length >= BAG_MAX) { log('가방이 가득 찼다', 'bad'); return false; }
+  if (G.bag.length >= BAG_MAX) { log('가방이 가득 찼다.', 'bad'); return false; }
   G.gear.delete(i); G.bag.push(it);
   emit('gears', [...G.gear.entries()]); emit('pickup', { x: p.x, y: p.y });
-  log(`${gearName(it)} 획득`, it.un || it.art ? 'syn' : 'good');
+  log(`${jo(gearName(it), '을를')} 주웠다.`, it.un || it.art ? 'syn' : 'good');
   if (it.un) meetRelic(it);
   return true;
 }
@@ -303,7 +304,7 @@ export function pickGear() {
 function meetRelic(it) {
   const U = UNRANDS[it.un], who = it.owner || U.owner;
   emit('relic', { name: U.name, story: U.story, owner: who });
-  if (META && who) { META.rememberedKeepers ||= []; if (!META.rememberedKeepers.includes(who)) { META.rememberedKeepers.push(who); log(`${U.name} — ${who}의 유품. 기억할 이름이 늘었다`, 'syn'); } }
+  if (META && who) { META.rememberedKeepers ||= []; if (!META.rememberedKeepers.includes(who)) { META.rememberedKeepers.push(who); log(`${U.name}. ${who}의 유품이다. 기억할 이름이 늘었다.`, 'syn'); } }
   if (META && META.relics) META.relics = META.relics.filter((r) => r.it.uid !== it.uid);
   saveMeta();
 }
@@ -314,24 +315,24 @@ export function tickWorn() {
   for (const slot of SLOTS) {
     const it = G.eq[slot]; if (!it || fullyKnown(it) || (isJewel(it) && !it.art)) continue;
     it.worn = (it.worn || 0) + 1;
-    if (it.art) { if (it.worn % 30 === 0) { const p = it.art.props.find((q) => !q.known); if (p) { p.known = true; it.idP = true; changed = true; log(`${gearName(it)} — 속성 하나가 드러났다`, 'syn'); } } continue; }
-    if (!isWeapon(it) && it.worn >= 30) { it.idP = it.idX = true; changed = true; log(`입고 지내다 보니 알겠다: ${gearName(it)}`, 'syn'); }
+    if (it.art) { if (it.worn % 30 === 0) { const p = it.art.props.find((q) => !q.known); if (p) { p.known = true; it.idP = true; changed = true; log(`${gearName(it)}의 속성 하나를 알아냈다.`, 'syn'); } } continue; }
+    if (!isWeapon(it) && it.worn >= 30) { it.idP = it.idX = true; changed = true; log(`입고 지내며 ${gearName(it)}의 정체를 알았다.`, 'syn'); }
   }
   if (changed) { refreshStats(); emit('equip', { slot: 'body', eq: eqSnap(holder()) }); }
 }
 export function weaponUsed() {
   const it = G.eq && G.eq.weapon; if (!it || fullyKnown(it) || it.art) return;
   it.hits = (it.hits || 0) + 1;
-  if (it.hits >= 10) { it.idP = it.idX = true; refreshStats(); log(`손에 익었다: ${gearName(it)}`, 'syn'); emit('equip', { slot: 'weapon', eq: eqSnap(holder()) }); }
+  if (it.hits >= 10) { it.idP = it.idX = true; refreshStats(); log(`${jo(gearName(it), '이가')} 손에 익었다.`, 'syn'); emit('equip', { slot: 'weapon', eq: eqSnap(holder()) }); }
 }
 /** 두루마리로 하나를 확인 */
-export function identifyItem(it) { const r = revealAll(it); if (r) { refreshStats(); log(`확인: ${gearName(it)}`, 'syn'); } return r; }
+export function identifyItem(it) { const r = revealAll(it); if (r) { refreshStats(); log(`${gearName(it)}의 정체를 알아냈다.`, 'syn'); } return r; }
 /** 강화 두루마리: kind 'w'(무기) | 'a'(방어구). 랜다트·픽다트·장신구는 안 된다 */
 export const canEnchant = (it, kind) => !!it && !it.art && !it.un && !isJewel(it) && (kind === 'w' ? isWeapon(it) : !isWeapon(it)) && it.plus < plusMax(it);
 export function enchantItem(it, kind) {
   if (!canEnchant(it, kind)) return false;
   it.plus++; it.idP = true; refreshStats();
-  emit('enchant', { uid: it.uid }); log(`${gearName(it)} — 강화!`, 'syn');
+  emit('enchant', { uid: it.uid }); log(`${jo(gearName(it), '을를')} 강화했다.`, 'syn');
   return true;
 }
 /** 모두 드러낸다(한 층 내려갈 때 쓰지 않는다 — 옛 경로 호환) */
@@ -351,7 +352,7 @@ export function placeGear(it, x, y, from) {
   const s = gearSpot(x, y); if (!s) return;
   G.gear.set(I(s[0], s[1]), it);
   emit('gearDrop', { x: s[0], y: s[1], from: from || [x, y], it: { ...it } });
-  if (it.un) log('금빛이 번진다 — 옛 등불지기의 유품!', 'legend'); else if (it.art) log('무지갯빛 — 유물이다!', 'syn');
+  if (it.un) log('금빛이 번진다. 옛 등불지기의 유품이다!', 'legend'); else if (it.art) log('무지갯빛이 번진다.', 'syn');
 }
 /** 몬스터 5%(갑옷 고블린·돌진형 15%), 보스 1개 확정(유물 이상 30%) */
 export function dropGearFrom(e) {
@@ -378,10 +379,10 @@ export function openChest(x, y) {
   G.chests.delete(i);
   let it = rollGear(G.floor + (c.rare ? ZONE_FLOORS : 0)); if (c.rare && gearTier(it) === 'plain') it = rollGear(G.floor + ZONE_FLOORS * 2, rand() < 0.3 ? 'art' : null); // 희귀 상자: 한 구역 더 깊은 것
   placeGear(it, x, y); G.chests.set(i, c);
-  log('상자를 열었다!', 'good');
+  log('상자를 열었다.', 'good');
   // 귀환 두루마리: 구역마다 최대 1개, 상자에서만 10%
-  if (G.zoneFlags && !G.zoneFlags.recall && rand() < 0.1) { G.zoneFlags.recall = true; addItem('recall'); log('상자 바닥에 귀환 두루마리가 있었다!', 'syn'); }
-  if (rand() < 0.08) { addLoot('마석', 1); emit('loot', { x, y, m: '마석' }); log('🔮 마석 한 조각', 'good'); }
+  if (G.zoneFlags && !G.zoneFlags.recall && rand() < 0.1) { G.zoneFlags.recall = true; addItem('recall'); log('상자 바닥에 귀환 두루마리가 있었다.', 'syn'); }
+  if (rand() < 0.08) { addLoot('마석', 1); emit('loot', { x, y, m: '마석' }); log('마석 한 조각을 찾았다.', 'good'); }
   return true;
 }
 /** 층마다 상자 0~1개(+extra), 장비 확정 */

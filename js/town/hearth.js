@@ -12,6 +12,7 @@ import { Sfx } from '../render/sfx.js';
 import { View } from '../render/view.js';
 import { UI } from '../ui/ui.js';
 import { pick } from '../util/rng.js';
+import { jo } from '../util/text.js';
 import { Town } from './town.js';
 
 /* ================= 모닥불 · 원경 · 비석 · 방문자 인형 =================
@@ -104,14 +105,14 @@ Object.assign(Town, {
       if (Math.random() < 0.6) D.sparks.emit({ pos: orb.position, n: 1, color: 0xffb060, speed: 0.2, up: 0.3, grav: 0, life: 0.6, size: 0.08 });
       if (k2 < 1) return false;
       D.scene.remove(orb); D.puffs.emit({ pos: W3(x, z, 0.4), n: 16, color: 0xb8b0a0, speed: 1.2, grav: 0, life: 0.8, size: 0.3, grow: 0.8 });
-      this.spawnVisitor(v); Sfx.play('pick'); UI.toast(`${v.npc.name}이(가) 불빛을 보고 찾아왔다`); done && done(); return true;
+      this.spawnVisitor(v); Sfx.play('pick'); UI.toast(`${jo(v.npc.name, '이가')} 불빛을 보고 찾아왔다.`); done && done(); return true;
     } });
   },
   /** 등불 조각 넣기: 목소리가 불로 빨려 들고, 불빛 파도가 원경의 어둠을 걷는다 */
   shardScene(zone, done) {
     const D = View.dio, c = W3(SCX, SCY), L = LANDS[zone - 1], land = this.lands[zone - 1];
     const shard = K.doll([{ s: 'oct', p: [0, 0, 0], k: [0.16, 0.3, 0.16], c: 0xffe0a0 }], { gloss: 0 }); shard.mat.emissive.setRGB(1.2, 0.7, 0.25); shard.root.position.set(c.x, 3.2, c.z); D.scene.add(shard.root);
-    UI.banner(`🔥 등불 조각 — ${L.name}`, 'fire'); Sfx.play('gem');
+    UI.banner(`🔥 ${L.name}의 등불 조각`, 'fire'); Sfx.play('gem');
     const voices = VOICES.slice(); let popped = 0;
     this.orbs = this.orbs || [];
     this.orbs.push({ t: 0, step: (o) => {
@@ -128,7 +129,7 @@ Object.assign(Town, {
   /** 모닥불 카드: 밝기와 그 까닭 */
   hearthInfo() {
     const g = hearthGlow(), parts = glowParts();
-    const eff = [g <= GLOW.low ? '⚠ 불이 흔들린다 — 방문자가 오지 않는다' : `방문 확률 ${Math.round(Math.min(100, GLOW.visitBase + g * GLOW.visitPer))}%`, g >= GLOW.vision ? '✓ 출발 시 횃불 시야 +1' : `밝기 ${GLOW.vision}: 횃불 시야 +1`, g >= GLOW.shield ? '✓ 첫 층 보호막 +4' : `밝기 ${GLOW.shield}: 첫 층 보호막 +4`];
+    const eff = [g <= GLOW.low ? '⚠ 불이 약해 방문자가 오지 않는다' : `방문 확률 ${Math.round(Math.min(100, GLOW.visitBase + g * GLOW.visitPer))}%`, g >= GLOW.vision ? '✓ 출발 시 횃불 시야 +1' : `밝기 ${GLOW.vision}: 횃불 시야 +1`, g >= GLOW.shield ? '✓ 첫 층 보호막 +4' : `밝기 ${GLOW.shield}: 첫 층 보호막 +4`];
     return `<div class="sec">모닥불 밝기 <b>${g}</b>/100</div><div class="glowbar"><i style="width:${g}%"></i></div>
       <div class="gtxt">${parts.map(([t, v]) => `<div>${v >= 0 ? '▲' : '▼'} ${t} <b style="color:${v >= 0 ? '#e8b060' : '#8a9ab8'}">${v > 0 ? '+' : ''}${v}</b></div>`).join('') || '<div>아무도 없다.</div>'}</div>
       <div class="gtxt" style="margin-top:6px">${eff.join('<br>')}</div>`;

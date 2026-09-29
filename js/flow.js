@@ -43,7 +43,7 @@ export const Anim = {
 export function rescueFollowers() {
   for (const e of G.ents) if (e.npc && e.alive && e.freed && cheb(e.x, e.y, G.player.x, G.player.y) <= 2) {
     e.alive = false; META.newNpcs.push(e.npcData); G.loot.npcs.push(e.npcData.name);
-    UI.log(`${jo(e.name, '이가')} 정착지로 향한다!`, 'syn');
+    UI.log(`${jo(e.name, '이가')} 정착지로 향한다.`, 'syn');
   }
   saveMeta();
 }

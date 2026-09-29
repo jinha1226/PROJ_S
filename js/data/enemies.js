@@ -1,12 +1,12 @@
 export const ENEMY = {
-  goblin: { name: '고블린', hp: 6, atk: 2, danger: '무리로 에워싼다.', desc: '약한 무리. 몰려와서 에워싼다.', tip: '좁은 복도·문간에 서면 한 번에 한 마리만 붙는다. 뭉쳐서 물을 건널 때 번개 한 방.' },
-  mage: { name: '마법사', hp: 9, atk: 2, danger: '표식이 뜬 칸에 주문이 떨어진다.', desc: '바닥에 붉은 표식을 남기고, 다음 턴에 그 자리로 주문을 떨어뜨린다. 가까이 오면 물러선다.', tip: '표식 밖으로 비켜서라. 적을 표식 안으로 밀면 대신 맞는다. 얼리거나 기절시키면 주문이 끊긴다.' },
-  charger: { name: '철갑 멧돼지', hp: 16, atk: 4, danger: '돌진은 8 피해.', desc: '일직선(가로·세로·대각)에 서면 화살표로 돌진 경로를 예고하고, 다음 턴 끝까지 돌진한다(8 피해).', tip: '경로에서 비켜서면 벽에 머리를 박고 5 피해 + 기절. 경로 위의 다른 적도 들이받는다.' },
-  archer: { name: '해골 궁수', hp: 7, atk: 4, danger: '멀리서 쏜다.', desc: '거리를 두고 조준(붉은 점선)한 뒤 다음 턴에 쏜다. 붙으면 도망간다.', tip: '벽·문·연기로 시야를 끊으면 쏘지 못한다. 모퉁이에서 기다렸다가 붙어라.' },
+  goblin: { name: '고블린', hp: 6, atk: 2, danger: '무리로 에워싼다.', desc: '몰려와서 에워싸는 약한 무리.', tip: '좁은 복도나 문간에 서면 한 번에 한 마리씩만 붙는다.' },
+  mage: { name: '마법사', hp: 9, atk: 2, danger: '표식이 뜬 칸에 주문이 떨어진다.', desc: '바닥에 표식을 남기고, 다음 턴에 그 자리에 주문을 떨어뜨린다.', tip: '표식 밖으로 비켜서면 주문은 빗나가고, 얼리거나 기절시키면 아예 끊긴다.' },
+  charger: { name: '철갑 멧돼지', hp: 16, atk: 4, danger: '돌진 피해 8.', desc: '일직선에 서면 돌진 경로를 예고하고, 다음 턴에 끝까지 달려온다.', tip: '경로에서 비켜서면 벽에 머리를 박고 피해 5를 입은 채 기절한다.' },
+  archer: { name: '해골 궁수', hp: 7, atk: 4, danger: '멀리서 쏜다.', desc: '거리를 두고 조준한 뒤 다음 턴에 쏘고, 붙으면 도망간다.', tip: '벽이나 문, 연기로 시야를 끊으면 쏘지 못한다.' },
   // 1구역에 새로 (docs/설계_던전_확장.md §4.2) — speed: fast(한 턴 두 번 움직임, 공격은 한 번) · slow(두 턴에 한 번)
-  rat: { name: '굶주린 쥐', hp: 2, atk: 1, speed: 'fast', desc: '떼로 몰려와 에워싼다. 한 턴에 두 칸을 달린다.', tip: '도망칠 수 없다. 복도로 물러나 한 줄로 받는다.', danger: '빠르다. 도망칠 수 없다.' },
-  leech: { name: '거머리', hp: 5, atk: 2, speed: 'slow', desc: '물속에 숨어 있다가 붙으면 피를 빤다(출혈 2).', tip: '물을 피하거나 번개로 물째 친다.', danger: '물속에서는 보이지 않는다.' },
-  shaman: { name: '고블린 주술사', hp: 7, atk: 1, desc: '두 턴마다 다친 동료의 HP를 4 채운다. 붙으면 물러난다.', tip: '먼저 쓰러뜨린다.', danger: '동료를 치유한다.' },
+  rat: { name: '굶주린 쥐', hp: 2, atk: 1, speed: 'fast', desc: '떼로 몰려와 한 턴에 두 칸씩 달린다.', tip: '복도로 물러나면 한 줄로 받아낼 수 있다.', danger: '떼로 에워싼다.' },
+  leech: { name: '거머리', hp: 5, atk: 2, speed: 'slow', desc: '물속에 숨어 있다가 붙으면 피를 빨아 출혈 2를 남긴다.', tip: '물에 번개를 치면 숨은 거머리까지 감전된다.', danger: '물속에서는 보이지 않는다.' },
+  shaman: { name: '고블린 주술사', hp: 7, atk: 1, desc: '두 턴마다 다친 동료의 HP를 4 채우고, 붙으면 물러난다.', tip: '주술사부터 쓰러뜨리면 싸움이 짧아진다.', danger: '동료를 치유한다.' },
 
 };
 
@@ -29,10 +29,10 @@ export const DROPS = {
 };
 
 export const BOSSES = {
-  chief: { type: 'goblin', name: '고블린 족장', hp: 38, atk: 5, scale: 1.6, desc: '뿔나팔(📯)을 들면 다음 턴에 고블린 둘을 부른다.', tip: '나팔을 들 때 몰아치거나, 부하들을 물가로 끌어들여 번개로.' },
-  lich: { type: 'mage', name: '해골 대마법사', hp: 34, atk: 3, scale: 1.4, elem: 'bolt', desc: '3×3 주문을 원소를 바꿔 가며 쓴다. 붙으면 순간이동으로 달아난다.', tip: '넓은 표식 밖으로. 해골은 타격에 약하다.' },
-  boarking: { type: 'charger', name: '강철 멧돼지 왕', hp: 48, atk: 6, scale: 1.4, desc: '돌진 피해 11, 쉴 틈 없이 돌진을 노린다. 벽에 박으면 3턴 기절.', tip: '벽을 등지고 섰다가 비켜서라. 갑옷엔 찌르기.' },
-  abyss: { type: 'mage', name: '심연의 파수꾼', hp: 58, atk: 4, scale: 1.65, elem: 'fire', desc: '원소를 바꿔 가며 3×3 주문, 때때로 해골 궁수를 부른다.', tip: '아껴 둔 모든 것을 쏟아부을 때.' },
+  chief: { type: 'goblin', name: '고블린 족장', hp: 38, atk: 5, scale: 1.6, desc: '뿔나팔을 들면 다음 턴에 고블린 둘을 부른다.', tip: '부하들을 물가로 끌어들이면 번개 한 번에 쓸어 낼 수 있다.' },
+  lich: { type: 'mage', name: '해골 대마법사', hp: 34, atk: 3, scale: 1.4, elem: 'bolt', desc: '원소를 바꿔 가며 넓은 주문을 쓰고, 붙으면 순간이동으로 달아난다.', tip: '해골이라 타격에 약하다.' },
+  boarking: { type: 'charger', name: '강철 멧돼지 왕', hp: 48, atk: 6, scale: 1.4, desc: '쉴 틈 없이 돌진을 노리고, 돌진 피해는 11이다.', tip: '벽을 등지고 섰다가 비켜서면 3턴 동안 기절하고, 갑옷에는 찌르기가 잘 든다.' },
+  abyss: { type: 'mage', name: '심연의 파수꾼', hp: 58, atk: 4, scale: 1.65, elem: 'fire', desc: '원소를 바꿔 가며 넓은 주문을 쓰고, 때때로 해골 궁수를 부른다.', tip: '불은 잘 듣지 않고, 냉기가 잘 든다.' },
 };
 
 export const kindOf = (e) => (e.type === 'goblin' ? (e.armor ? 'goblin_armor' : e.poison ? 'goblin_poison' : 'goblin') : e.type === 'mage' ? 'mage_' + e.elem : e.type);

@@ -103,5 +103,5 @@ export function worldTick() {
   if (p.alive && G.stats.turns % 6 === 0 && p.hp < p.max && !p.st.poison && !p.st.burn) { p.hp++; emit('hp', { id: 0, hp: p.hp, max: p.max }); }
   computeFOV(); snapVis(); noticeFoes(); endRound(); emitIntents(); snapHud(); emitSlots();
   // 귀환 두루마리: 빛이 모인 한 턴이 지나면 사라진다
-  if (G.recallArm && p.alive && !G.over) { G.recallArm = false; emit('poof', { x: p.x, y: p.y }); log('빛에 싸여 사라졌다 — 정착지로', 'syn'); G.pendingReturn = 'recall'; }
+  if (G.recallArm && p.alive && !G.over) { G.recallArm = false; emit('poof', { x: p.x, y: p.y }); log('빛에 싸여 정착지로 돌아간다.', 'syn'); G.pendingReturn = 'recall'; }
 }

@@ -17,6 +17,7 @@ import { Sfx } from '../render/sfx.js';
 import { View } from '../render/view.js';
 import { $, UI } from '../ui/ui.js';
 import { pick } from '../util/rng.js';
+import { jo } from '../util/text.js';
 import { TownNPC, talkLine } from './town-npc.js';
 
 /* ================= 정착지: 40×40 땅 · 방 · 주민 (docs/설계_정착지_건설.md 1단계) ================= */
@@ -206,10 +207,10 @@ export const Town = {
   },
   bubble(t) {
     const n = t.n; let text;
-    if (t.state === 'chat') text = pick(['💬', '😄', '💬 그러니까…', '하하!']);
+    if (t.state === 'chat') text = pick(['💬', '😄', '💬 그러니까…', '하하']);
     else if (t.state === 'nap') text = '💤';
     else if (t.state === 'work') text = n.mood <= -1 ? '😤 …' : pick(WORKTALK[JOBS[n.job].work]);
-    else if (t.state === 'gather') text = n.t.X >= 1 ? '우와! 이게 다 뭐야!' : n.t.H <= -1 ? '하나쯤 없어져도…' : '수고했어요!';
+    else if (t.state === 'gather') text = n.t.X >= 1 ? '우와, 이게 다 뭐야?' : n.t.H <= -1 ? '하나쯤 없어져도…' : '수고했어요.';
     else text = talkLine(n);
     View.dio.labels.pop(W3(t.pos.x, t.pos.z, 1.75), '', { html: `<span class="bub">${text}</span>`, cls: 'gem', vx: 0, rise: 14, dur: 2.6 });
   },
@@ -261,11 +262,11 @@ export const Town = {
     const r = roomAt(f.x, f.y);
     if (r && CRAFT_ROOMS.includes(r.kind)) { this.open(r.kind); return; }
     const need = Object.entries(ROOMS).find(([, R]) => R.need[f.k]);
-    UI.toast(need && need[0] !== 'bedroom' ? `${FURN[f.k].name}. 벽과 문으로 둘러싸면 ${ROOMS[need[0]].name}이 된다.` : FURN[f.k].name);
+    UI.toast(need && need[0] !== 'bedroom' ? `${FURN[f.k].name}. 벽과 문으로 둘러싸면 ${jo(ROOMS[need[0]].name, '이가')} 된다.` : FURN[f.k].name);
   },
   roomCard(r) {
     const furn = Object.entries(r.furn).map(([k, n]) => `${FURN[k].icon} ${FURN[k].name}${n > 1 ? ` ${n}` : ''}`).join(' · ') || '가구 없음';
-    const hint = !r.kind ? '안에 놓인 가구로 방의 쓰임이 정해진다.' : CRAFT_ROOMS.includes(r.kind) ? '작업대를 누르면 제작.' : '';
+    const hint = !r.kind ? '안에 놓인 가구로 방의 쓰임이 정해진다.' : CRAFT_ROOMS.includes(r.kind) ? '작업대를 누르면 만들 수 있다.' : '';
     UI.info(`<h3>${r.kind ? ROOMS[r.kind].icon : '▫'} ${roomName(r)} <small style="color:#9aa2bd">${r.cells.size}칸</small></h3><div class="gtxt">${furn}</div>${hint ? `<div class="gtxt" style="color:#9aa2bd">${hint}</div>` : ''}`);
   },
   open(id) {

@@ -19,7 +19,7 @@ Object.assign(UI, {
   /** 공격 길게 누르기: 지금 무기 정보 (무기 교체는 없다 — 바꾸려면 가방에서 장착) */
   weaponInfo() {
     const w = G.eq.weapon, W = weaponOf(w), F = FORMS[W.form], o = G.eq.off;
-    this.info(`<h3>${F.icon} ${w ? gearName(w) : '맨손'} <small style="color:${COLORS[W.color].css}">● ${COLORS[W.color].name} ×${colorMul(W).toFixed(2)}</small></h3><div>${W.hands === 2 ? '양손' : '한손'} · ${F.name} · 피해 ${W.dmg[0]}–${W.dmg[1]}${W.range ? ` · 원거리 ${W.range}칸` : ''}</div><div>모양: ${SHAPES[W.shape]}</div><div style="color:#ffd27a">치명 ×2: ${CRITS[W.crit]}</div>${o ? `<div>보조손: <b style="color:${gearCss(o)}">${gearName(o)}</b></div>` : ''}<div class="hint" style="margin-top:6px">💡 같은 색 영혼석 1개당 무기 피해 +15% · 베기 = 출혈, 타격 = 골절, 찌르기 = 급소 표식</div>`);
+    this.info(`<h3>${F.icon} ${w ? gearName(w) : '맨손'} <small style="color:${COLORS[W.color].css}">● ${COLORS[W.color].name} ×${colorMul(W).toFixed(2)}</small></h3><div>${W.hands === 2 ? '양손' : '한손'} · ${F.name} · 피해 ${W.dmg[0]}–${W.dmg[1]}${W.range ? ` · 원거리 ${W.range}칸` : ''}</div><div>모양: ${SHAPES[W.shape]}</div><div style="color:#ffd27a">치명 ×2: ${CRITS[W.crit]}</div>${o ? `<div>보조손: <b style="color:${gearCss(o)}">${gearName(o)}</b></div>` : ''}<div class="hint" style="margin-top:6px">💡 같은 색 영혼석 하나마다 무기 피해 15% 증가 · 베기는 출혈, 타격은 골절, 찌르기는 급소 표식</div>`);
   },
   renderWeapon() {
     if (!G.eq) return;
@@ -45,13 +45,13 @@ Object.assign(UI, {
     if (this.mode === 'target') this.exitTarget();
     this.useFromBag(q.k);
   },
-  quickInfo(k) { const q = G.inv[k]; if (!q) return; const def = ITEMS[q.k]; this.info(`<h3>${CAT_ICON[def.cat]} ${itemName(q.k)} ×${q.n}</h3><div>${G.known[q.k] ? def.desc : '정체를 모른다 — 써 보면 알게 된다'}</div>`); },
+  quickInfo(k) { const q = G.inv[k]; if (!q) return; const def = ITEMS[q.k]; this.info(`<h3>${CAT_ICON[def.cat]} ${itemName(q.k)} ×${q.n}</h3><div>${G.known[q.k] ? def.desc : '정체를 모른다. 써 보면 알게 된다.'}</div>`); },
   /* ---- 발밑 영혼석: 흡수 / 가방 / 두고 가기(흩어짐) ---- */
   stoneOffer(d) {
     const id = d.id, S = STONE[id], C = COLORS[S.color], empty = G.slots.some((q, k) => !q.stone && k < (G.level || 6)), same = G.slots.map((q, k) => [q, k]).filter(([q, k]) => q.stone && q.color === S.color && k < (G.level || 6)), full = G.sbag.length >= (G.sbagMax || 3);
-    const swap = !empty && same.length ? `<div class="sec">바꿔 끼울 칸 <small>빠진 영혼석은 가방으로${full ? ' — 가방이 차서 흩어진다' : ''}</small></div><div class="gems" style="grid-template-columns:repeat(${Math.min(6, same.length)},1fr)">${same.map(([q, k]) => `<button class="gch" style="--c:${C.css}" data-sw="${k}">${STONE[q.stone].icon}<small>${STONE[q.stone].name}</small></button>`).join('')}</div>` : '';
+    const swap = !empty && same.length ? `<div class="sec">바꿔 끼울 칸 <small>${full ? '가방이 차서 빠진 영혼석은 흩어진다' : '빠진 영혼석은 가방으로 간다'}</small></div><div class="gems" style="grid-template-columns:repeat(${Math.min(6, same.length)},1fr)">${same.map(([q, k]) => `<button class="gch" style="--c:${C.css}" data-sw="${k}">${STONE[q.stone].icon}<small>${STONE[q.stone].name}</small></button>`).join('')}</div>` : '';
     const sh = $('#sheet'); sh.innerHTML = `<h3><span><span style="color:${C.css}">●</span> ${S.icon} ${S.name} <small style="color:#9aa2bd">영혼석 · 쿨타임 ${S.cd}</small></span></h3>
-      <div class="gtxt">${S.line}</div><div class="gtxt" style="color:#9aa2bd">${C.name}: ${C.trig} 쿨타임 1 더 감소</div>
+      <div class="gtxt">${S.line}</div><div class="gtxt" style="color:#9aa2bd">${C.name}: ${C.trig} 쿨타임이 한 턴 더 줄어든다</div>
       <div class="wrow" style="grid-template-columns:1fr 1fr 1fr;margin-top:10px">
         <button class="wbtn" data-a="absorb" ${empty ? '' : 'disabled style="opacity:.4"'}>흡수<small>${empty ? '빈 칸에 끼워 스킬로' : '열린 빈 칸 없음'}</small></button>
         <button class="wbtn" data-a="bag" ${full ? 'disabled style="opacity:.4"' : ''}>가방에<small>${G.sbag.length}/${G.sbagMax || 3}</small></button>
@@ -96,9 +96,9 @@ Object.assign(UI, {
   },
   slotInfo(k) {
     const q = (this.slotsSnap || { slots: G.slots }).slots[k];
-    if (!q.stone) { this.info('<div>빈 칸 — 영혼석을 얻으면 스킬 버튼이 된다. 처음 끼우는 영혼석의 색으로 이 칸의 색이 정해진다.<br>몬스터를 <b>무기로</b> 쓰러뜨리면 그 몬스터의 영혼석 셋(🔴🟣🟢) 중 하나가 무작위로 떨어진다 — 몬스터를 길게 누르면 무엇이 나오는지 보인다</div>'); return; }
+    if (!q.stone) { this.info('<div>빈 칸. 영혼석을 끼우면 스킬 버튼이 된다. 처음 끼우는 영혼석의 색으로 이 칸의 색이 정해진다.<br>몬스터를 <b>무기로</b> 쓰러뜨리면 그 몬스터의 영혼석 셋 중 하나가 무작위로 떨어진다. 몬스터를 길게 누르면 무엇이 나오는지 보인다.</div>'); return; }
     const d = STONE[q.stone], C = COLORS[d.color];
-    this.info(`<h3><span style="color:${C.css}">●</span> ${d.icon} ${d.name} <small style="color:#9aa2bd">쿨타임 ${stoneCd(q.stone)}턴${q.cd > 0 ? ` · 남은 ${q.cd}` : ' · 준비됨'}</small></h3><div>${d.line}</div><div class="hint" style="margin-top:4px">${C.name}: ${C.trig} 쿨타임 1 더 감소 (한 라운드 한 번)</div>`);
+    this.info(`<h3><span style="color:${C.css}">●</span> ${d.icon} ${d.name} <small style="color:#9aa2bd">쿨타임 ${stoneCd(q.stone)}턴${q.cd > 0 ? ` · 남은 ${q.cd}` : ' · 준비됨'}</small></h3><div>${d.line}</div><div class="hint" style="margin-top:4px">${C.name}: ${C.trig} 쿨타임이 한 턴 더 줄어든다. 한 라운드에 한 번.</div>`);
   },
   /* ---- HUD ---- */
   hp(hp, max) {
@@ -161,7 +161,7 @@ Object.assign(UI, {
   hurt(big) { const el = $('#hurt'); el.classList.toggle('big', !!big); el.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('on'))); },
   floorCard() {
     const F = G.theme, el = $('#floorcard'), B = G.bossFloor ? BOSSES[ZONES[G.zone - 1].boss] : null;
-    el.querySelector('.k').textContent = `구역 ${G.zone} · ${G.zf} / ${ZONE_FLOORS}층${B ? ' · 보스' : ''}`; el.querySelector('.n').textContent = B ? `${F.name} — ${B.name}` : F.name; el.querySelector('.t').textContent = '💡 ' + (B ? `${B.desc} ${B.tip}` : F.tip);
+    el.querySelector('.k').textContent = `구역 ${G.zone} · ${G.zf} / ${ZONE_FLOORS}층${B ? ' · 보스' : ''}`; el.querySelector('.n').textContent = B ? `${F.name} · ${B.name}` : F.name; el.querySelector('.t').textContent = '💡 ' + (B ? `${B.desc} ${B.tip}` : F.tip);
     el.classList.add('on'); clearTimeout(this._fc); this._fc = setTimeout(() => el.classList.remove('on'), 4200);
     $('#log').innerHTML = '';
   },
@@ -194,7 +194,7 @@ Object.assign(UI, {
       const r = cv.getBoundingClientRect(), tx = Math.floor(((ev.clientX - r.left) / r.width) * G.W), ty = Math.floor(((ev.clientY - r.top) / r.height) * G.H);
       let best = null, bd = 99;
       for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const x = tx + dx, y = ty + dy; if (x < 0 || y < 0 || x >= G.W || y >= G.H) continue; const i = I(x, y); if (!G.seen[i] || G.tile[i] === T_WALL) continue; const d = Math.abs(dx) + Math.abs(dy); if (d < bd) { bd = d; best = [x, y]; } }
-      if (!best) { this.toast('아직 가 보지 않은 곳이다'); return; }
+      if (!best) { this.toast('아직 가 보지 않은 곳이다.'); return; }
       this.closeHudOverlay(); if (Anim.active || G.over || (best[0] === G.player.x && best[1] === G.player.y)) return;
       this.explore = false; this.rest = null; this.startTravel(best[0], best[1]);
     };

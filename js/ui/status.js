@@ -28,14 +28,14 @@ Object.assign(UI, {
       return `<div class="st-stone" style="--c:${C.css}">${S.icon}<small style="color:${C.css}">${S.name}</small><small>${q.cd > 0 ? `${q.cd}턴 남음` : '준비됨'} · 쿨 ${stoneCd(q.stone)}</small></div>`;
     }).join('');
     const bag = G.sbag.map((id) => `${STONE[id].icon} ${STONE[id].name}`).join(' · ') || '없음';
-    const weak = Object.keys(CATS).map((c) => `${CATS[c].name} ${G.weakKnown && G.weakKnown[c] ? `→ ${FORMS[CATS[c].weak].icon} ${FORMS[CATS[c].weak].name}` : '→ ?'}`).join(' · ');
+    const weak = Object.keys(CATS).map((c) => `${CATS[c].name}${G.weakKnown && G.weakKnown[c] ? `: ${FORMS[CATS[c].weak].icon} ${FORMS[CATS[c].weak].name}` : ': ?'}`).join(' · ');
     const s = G.stats || {};
     sh.innerHTML = `<h3>📜 상태 <button class="close">닫기</button></h3>
-      <div class="st-head"><b>${p.name || (h && h.name) || '등불지기'}</b><span style="color:#9aa2bd">레벨 ${G.level || 1}${(G.level || 1) < 6 ? ` (경험 ${G.xp || 0}/${LEVEL_XP[G.level || 1]})` : ''} · ${h ? `${h.gen}대 등불지기` : ''}${h && h.job ? ` · 전 ${JOBS[h.job].name}` : ''} · 구역 ${G.zone}-${G.zf}</span></div>
-      ${perk ? `<div class="gtxt" style="color:#ffe38a">✦ ${perk.name} — ${perk.desc}</div>` : ''}
+      <div class="st-head"><b>${p.name || (h && h.name) || '등불지기'}</b><span style="color:#9aa2bd">레벨 ${G.level || 1}${(G.level || 1) < 6 ? ` · 경험 ${G.xp || 0}/${LEVEL_XP[G.level || 1]}` : ''} · ${h ? `${h.gen}대 등불지기` : ''}${h && h.job ? ` · 전 ${JOBS[h.job].name}` : ''} · 구역 ${G.zone}-${G.zf}</span></div>
+      ${perk ? `<div class="gtxt" style="color:#ffe38a">✦ ${perk.name}: ${perk.desc}</div>` : ''}
       <div class="st-bars">${bar('HP', p.hp, p.max, '#ff5a6a')}${bar('보호막', p.shield || 0, 10, '#9fd8ff', String(p.shield || 0))}${bar('횃불', torch, tmax, '#ffb040', `${Number.isInteger(torch) ? torch : torch.toFixed(1)} · 시야 ${torchSight(torch)}칸`)}</div>
       <div class="sec">상태 이상 · 지속 효과</div><div class="st-list">${st + auras || '<div style="color:#9aa2bd">없음</div>'}</div>
-      <div class="sec">영혼석 스킬 <small>🔴 적중 · 🟣 대기 · 🟢 피격 때 쿨타임 −1</small></div><div class="st-grid">${stones}</div>
+      <div class="sec">영혼석 스킬 <small>🔴 적중 · 🟣 대기 · 🟢 피격 때 한 턴 더 줄어든다</small></div><div class="st-grid">${stones}</div>
       <div class="gtxt" style="margin-top:4px">영혼석 가방 ${G.sbag.length}/${G.sbagMax || 3}: ${bag}</div>
       <div class="sec">전투 수치 <small>누르면 출처</small></div>${this.statsRows()}
       <div class="sec">알아낸 약점</div><div class="gtxt">${weak}</div>

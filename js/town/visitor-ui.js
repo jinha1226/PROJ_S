@@ -43,18 +43,18 @@ Object.assign(Town, {
     const q = this.removeVisitor(v), pos = q ? [q.d.root.position.x, q.d.root.position.z] : [SCX, SCY + 1.5];
     const t = new TownNPC(v.npc, [pos[0], 0, pos[1]]); this.npcs.push(t); this.bubble(t);
     View.dio.sparks.emit({ pos: W3(pos[0], pos[1], 0.8), n: 26, color: 0xffc070, color2: 0xffffff, speed: 2, up: 1.5, grav: 0, life: 0.8, size: 0.12 }); Sfx.chime(4);
-    UI.banner(`${v.npc.name} — 정착지의 주민이 되었다`, 'info');
-    if (r.want) setTimeout(() => UI.toast(`${jo(v.npc.name, '이가')} 일할 ${ROOMS[r.want].name}이 아직 없다.`), 900);
+    UI.banner(`${jo(v.npc.name, '이가')} 주민이 되었다`, 'info');
+    if (r.want) setTimeout(() => UI.toast(`${jo(v.npc.name, '이가')} 일할 ${jo(ROOMS[r.want].name, '이가')} 아직 없다.`), 900);
     this.applyGlow(); this.renderHud();
   },
   /* ---- 등불지기 잇기 ---- */
   successionSheet() {
     if (!META.needSuccessor || META.hero) return;
-    if (META.npcs.length === 1) { const n = META.npcs[0]; this.torchScene(n, `${jo(n.name, '이가')} 말없이 횃불을 들었다. 남은 사람은 ${jo(n.name, '뿐이었다')}.`); return; }
+    if (META.npcs.length === 1) { const n = META.npcs[0]; this.torchScene(n, `${jo(n.name, '이가')} 말없이 횃불을 들었다. 남은 사람은 ${n.name}뿐이었다.`); return; }
     const vs = volunteers();
     const cards = vs.map((n, k) => { const pk = perkOf(n), line = n.t.E <= -1 ? VOLUNTEER.lowE : n.t.H >= 1 ? VOLUNTEER.highH : n.t.A >= 1 ? VOLUNTEER.highA : VOLUNTEER.other;
-      return `<button class="vol" data-v="${k}"><b>${n.name}</b><small>${summary(n)} · ${jo(BLD[JOBS[n.job].b].name, '이가')} 빈다</small><span class="vline">“${line}”</span><span class="perk">${pk ? `✦ ${PERKS[pk].name} — ${PERKS[pk].desc}` : '✦ 특별한 시작 특성 없음'}</span></button>`; }).join('');
-    const sh = this.sheet(`<h3>누가 횃불을 들까</h3><div class="gtxt">모닥불을 지킬 사람이 남아 있는 한, 누군가 다시 어둠으로 내려간다.<br><small>고른 사람은 정착지를 떠나 등불지기가 된다. 그 사람의 일터는 비고, 가까웠던 이웃들은 슬퍼한다.</small></div><div class="vols">${cards}</div>`);
+      return `<button class="vol" data-v="${k}"><b>${n.name}</b><small>${summary(n)} · ${jo(BLD[JOBS[n.job].b].name, '이가')} 빈다</small><span class="vline">“${line}”</span><span class="perk">${pk ? `✦ ${PERKS[pk].name}: ${PERKS[pk].desc}` : '✦ 특별한 시작 특성 없음'}</span></button>`; }).join('');
+    const sh = this.sheet(`<h3>누가 횃불을 들까</h3><div class="gtxt">등불지기가 쓰러졌다. 누군가 다시 내려가야 한다.<br><small>고른 사람은 정착지를 떠나 등불지기가 된다. 그 사람의 일터는 비고, 가까웠던 이웃들은 슬퍼한다.</small></div><div class="vols">${cards}</div>`);
     sh.querySelectorAll('[data-v]').forEach((b) => { b.onclick = () => this.torchScene(vs[+b.dataset.v]); });
   },
   torchScene(n, note) {
@@ -63,7 +63,7 @@ Object.assign(Town, {
     if (t) t.goto(c.x - 0.8, c.y + 0.4, 'idle', 5, [c.x, c.y]);
     setTimeout(() => {
       const D = View.dio; D.pool.flash(W3(c.x, c.y), 0xffa040, 90, 1, 8); D.sparks.emit({ pos: W3(c.x - 0.6, c.y + 0.4, 1.0), n: 40, color: 0xff9a3a, color2: 0xffe36a, speed: 2.5, up: 2, grav: 0.3, life: 1, size: 0.14 }); Sfx.play('fire');
-      takeTorch(n); UI.banner(`${n.name} — ${META.hero.gen}대 등불지기`, 'fire');
+      takeTorch(n); UI.banner(`${META.hero.gen}대 등불지기 ${n.name}`, 'fire');
       setTimeout(() => { this.build(); this.renderHud(); this.busy = false; if (note) UI.toast(note); }, 900);
     }, t ? 1600 : 200);
   },
@@ -88,6 +88,6 @@ Object.assign(Town, {
     View.dio.lights.setGlow?.(0);
     $('#btn-dark').onclick = () => { resetMeta(); UI.title(); };
   },
-  graveInfo(f) { UI.info(`<h3>🕯 ${f.name}</h3><div class="gtxt">${f.gen}대 등불지기 · 구역 ${f.zone}-${f.zf}에서 ${f.by ? f.by + '에게 ' : ''}쓰러졌다 · ${f.kills}마리를 쓰러뜨렸다</div><div class="gtxt" style="color:#9aa2bd">기억하는 것도 불을 지키는 일이다.</div>`); },
+  graveInfo(f) { UI.info(`<h3>🕯 ${f.name}</h3><div class="gtxt">${f.gen}대 등불지기 · 구역 ${f.zone}-${f.zf}에서 ${f.by ? f.by + '에게 ' : ''}쓰러졌다 · ${f.kills}마리를 쓰러뜨렸다</div><div class="gtxt" style="color:#9aa2bd">누군가 비석 앞에 마른 꽃을 두고 갔다.</div>`); },
   loreInfo(zone) { UI.info(`<h3>옛 등불지기의 기록</h3><div class="gtxt">${LORE[zone - 1]}</div><div class="gtxt" style="color:#9aa2bd">기록 ${META.lore.length}/4</div>`); },
 });

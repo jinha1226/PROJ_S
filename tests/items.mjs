@@ -132,7 +132,7 @@ check('§10-3 무기 세트·교체 없음 (칸 10개, 길게 누르기 = 무기
 
 // §10-4 양손 무기를 끼면 보조손은 가방으로(미리 알림)
 const d4 = await page.evaluate(() => { const g = window.__game, G = arena(); G.eq.weapon = g.makeGear('sword', { known: true }); G.eq.off = g.makeGear('buckler', { known: true }); g.refreshStats(); const gs = g.makeGear('greatsword', { known: true }); G.bag.push(gs);
-  g.UI.openInv(); g.UI.invTab = 'gear'; g.UI.invSel = { from: 'bag', i: G.bag.length - 1, slot: 'weapon' }; g.UI.renderInv(); const warn = /양손 무기 — .*버클러.*가방으로/.test(document.querySelector('.gline').textContent);
+  g.UI.openInv(); g.UI.invTab = 'gear'; g.UI.invSel = { from: 'bag', i: G.bag.length - 1, slot: 'weapon' }; g.UI.renderInv(); const warn = /양손 무기\. .*버클러.*가방으로/.test(document.querySelector('.gline').textContent);
   document.querySelector('[data-act="equip"]').click(); drain(); document.querySelector('#sheet').classList.add('hidden');
   const ok = G.eq.weapon === gs && !G.eq.off && G.bag.some((it) => it.base === 'buckler'); const orb = g.makeGear('orb_red'); G.bag.push(orb); const refused = !g.equip(G.bag.length - 1, 'off'); return { warn, ok, refused }; });
 check('§10-4 양손 무기 → 보조손은 가방으로(미리 알림), 양손 세트엔 보조손 불가', d4.warn && d4.ok && d4.refused, JSON.stringify(d4));

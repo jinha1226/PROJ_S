@@ -22,12 +22,12 @@ export const residentCap = (shards) => Math.min(12, 4 + shards * 2);
 
 /** 등불지기가 된 주민의 시작 특성(가장 두드러진 성격 하나) */
 export const PERKS = {
-  'H+': { name: '책임감', desc: '영혼석 가방 +1' },
-  'H-': { name: '눈치', desc: '원정 첫 층에서 상자 하나 더' },
-  'E+': { name: '조심성', desc: '회복 물약 +1, 최대 HP −2' },
-  'E-': { name: '두려움 없음', desc: '첫 보스를 잡을 때까지 최대 HP +4' },
-  'X+': { name: '넉살', desc: '길 잃은 사람을 만날 확률 ↑' },
-  'A+': { name: '다정함', desc: '영혼 소환수 지속 +1턴' },
+  'H+': { name: '책임감', desc: '영혼석 가방이 한 칸 늘어난다' },
+  'H-': { name: '눈치', desc: '원정 첫 층에서 상자를 하나 더 찾는다' },
+  'E+': { name: '조심성', desc: '회복 물약을 하나 더 챙기지만 최대 HP가 2 줄어든다' },
+  'E-': { name: '두려움 없음', desc: '첫 보스를 잡을 때까지 최대 HP가 4 늘어난다' },
+  'X+': { name: '넉살', desc: '길 잃은 사람을 더 자주 만난다' },
+  'A+': { name: '다정함', desc: '영혼 고블린이 한 턴 더 머문다' },
   'C+': { name: '꼼꼼함', desc: '소모품을 하나 더 챙긴다' },
   'O+': { name: '호기심', desc: '미확인 소모품 하나를 처음부터 안다' },
 };
@@ -38,8 +38,8 @@ export const WORK_GIFT = { forge: { 광석: 2 }, herb: { 약초: 2 }, hunter: { 
 /** 숨은 방: 막힌 것 → 여는 스킬 → 안에 든 것 */
 export const HIDDEN = {
   thorn: { name: '가시덤불 벽', skill: 'fire', hint: '불씨로 태울 수 있을 것 같다', inside: '상자 · 재료' },
-  water: { name: '물로 막힌 통로', skill: 'frost', hint: '깊은 물 — 얼리면 건널 수 있다', inside: '영혼석' },
-  gate: { name: '멈춘 승강문', skill: 'bolt', hint: '녹슨 톱니 — 번개가 닿으면 움직일지도', inside: '장비 상자' },
+  water: { name: '물로 막힌 통로', skill: 'frost', hint: '물이 깊다. 얼리면 건널 수 있을 것 같다', inside: '영혼석' },
+  gate: { name: '멈춘 승강문', skill: 'bolt', hint: '톱니가 녹슬었다. 번개가 닿으면 움직일지도 모른다', inside: '장비 상자' },
   rubble: { name: '무너진 돌무더기', skill: 'push', hint: '밀치면 무너질 것 같다', inside: '마석' },
 };
 /** skill = 여는 원소(영혼석 스킬의 elem) */

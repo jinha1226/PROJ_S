@@ -37,7 +37,7 @@ export const UI = {
     $('#btn-ctx').onclick = () => this.ctxBtn();
     $('#btn-status').onclick = () => this.openStatus();
     $('#btn-tilt').onclick = () => { const q = View.dio.rig.toggleTilt(); this.toast(q ? '45도 쿼터뷰' : '탑뷰'); };
-    $('#btn-home').onclick = () => { View.dio.rig.reset(); this.toast('기본 탑뷰로 복귀'); };
+    $('#btn-home').onclick = () => { View.dio.rig.reset(); this.toast('기본 시점으로 돌아왔다.'); };
     $('#btn-cancel').onclick = () => this.exitTarget();
     $('#btn-help').onclick = () => this.help(true);
     $('#btn-sound').onclick = () => { Sfx.on = !Sfx.on; $('#btn-sound').textContent = Sfx.on ? '🔊' : '🔇'; };
