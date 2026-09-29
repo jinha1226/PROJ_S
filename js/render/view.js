@@ -57,7 +57,7 @@ export const View = {
     this.clear();
     const F = G.theme;
     this.dio.setPreset('dungeon');
-    this.grid = new K.GridView(this.dio.scene, { w: G.W, h: G.H, kind: (i) => (G.tile[i] === T_WALL ? 'wall' : G.tile[i] === T_STAIRS ? 'void' : 'floor'), palette: F.pal, wallH: 1.2 });
+    this.grid = new K.GridView(this.dio.scene, { w: G.W, h: G.H, kind: (i) => (G.tile[i] === T_WALL ? 'wall' : G.tile[i] === T_STAIRS ? 'void' : 'floor'), palette: F.pal, wallH: 1.2, seamless: !!G.free });
     this.dio.grid = this.grid;
     for (let i = 0; i < G.W * G.H; i++) if (G.tile[i] === T_DOOR || G.tile[i] === T_OPEN) this.makeDoor(i);
     if (!G.bossFloor) this.makeStairs(G.stairs); else if (G.exitOpen) this.makePortal(G.stairs);
@@ -149,7 +149,8 @@ export const View = {
     if (!this.grid) return;
     const list = [...this.intents.decals], p = G.player;
     if (ports.UI.mode === 'target') list.push(...ports.UI.targetDecals());
-    else if (!G.over) {
+    if (G.free) list.push(...this.freeDecals);
+    else if (ports.UI.mode !== 'target' && !G.over) {
       for (const [dx, dy] of D8) {
         const x = p.x + dx, y = p.y + dy; if (!inb(x, y)) continue; const i = I(x, y);
         if (!G.seen[i] || G.tile[i] === T_WALL) continue;
@@ -157,12 +158,13 @@ export const View = {
         list.push({ x, y, kind: 1, color: foe ? HEX.danger : G.tile[i] === T_DOOR ? 0xffd27a : 0xffffff, alpha: foe ? 0.95 : 0.5 });
       }
     }
-    list.push({ x: p.x, y: p.y, kind: 4, color: 0xffc070, alpha: 0.65 });
+    list.push({ x: G.free ? p.px ?? p.x : p.x, y: G.free ? p.py ?? p.y : p.y, kind: 4, color: 0xffc070, alpha: 0.65 });
     if (G.seen[G.stairs] && G.tile[G.stairs] === T_STAIRS) list.push({ x: G.stairs % G.W, y: (G.stairs / G.W) | 0, kind: 4, color: 0x7fb8ff, alpha: 0.9, blink: 0.6, scale: 1.15 });
     this.grid.setDecals(list);
   },
   frame(sdt) {
     ports.Anim.step(sdt * 1000);
+    if (G.free) ports.UI.freeFrame?.(sdt);
     const time = K.SHARED.uTime.value, D = this.dio;
     const casting = new Set(this.intents.casting), winding = new Set(this.intents.winding);
     for (const [id, ev] of this.evs) {
@@ -171,7 +173,8 @@ export const View = {
       if (ev.gone) { ev.dispose(); this.evs.delete(id); }
     }
     const pev = this.evs.get(0);
-    if (pev) { D.rig.focusT.set(pev.cur.x, 0, pev.cur.z); this.lightPos.copy(pev.d.root.position); }
+    if (pev) { if (this.camFocus) D.rig.focusT.copy(this.camFocus); else D.rig.focusT.set(pev.cur.x, 0, pev.cur.z); this.lightPos.copy(pev.d.root.position); }
+    this.freeFrame(sdt, time);
     for (const [, d] of this.itemMeshes) { if (!d.root.visible) continue; d.root.position.y = 0.05 + Math.abs(Math.sin(time * 2.4 + d.root.userData.ph)) * 0.09; d.root.rotation.y = time * 0.9 + d.root.userData.ph; }
     for (const [, d] of this.doors) { const tgt = d.open ? -1.5 : 0; d.a += (tgt - d.a) * Math.min(1, sdt * 12); d.hinge.rotation.y = d.a; }
     if (this.stairs) this.stairs.userData.glow.material.opacity = 0.55 + Math.sin(time * 2.5) * 0.25;
@@ -209,7 +212,7 @@ export const View = {
   },
   /* ---------- 사건 → 연출 ---------- */
   on(type, d) {
-    if (this.gearOn(type, d)) return;
+    if (this.gearOn(type, d) || this.freeOn(type, d)) return;
     const D = this.dio, ev = d && d.id != null ? this.evs.get(d.id) : null;
     switch (type) {
       case 'move': if (ev) { ev.moveTo(d.x, d.y, d.dur, d.hop, d.kind); ev.visible = d.id === 0 || !!d.seen; if (d.kind === 'step' && ev.visible) D.puffs.emit({ pos: W3(ev.cur.x, ev.cur.z, 0.06), n: 2, color: 0x8a8098, speed: 0.4, grav: 0, life: 0.4, size: 0.18, flat: true }); if (d.id === 0 && d.kind === 'step') Sfx.play('step'); if (d.kind === 'dash') D.puffs.emit({ pos: W3(ev.cur.x, ev.cur.z, 0.1), n: 3, color: 0x9a8e80, speed: 0.8, grav: 0, life: 0.5, size: 0.3, flat: true }); } break;

@@ -2,6 +2,9 @@ import { T_DOOR, T_WALL } from '../data/terrain.js';
 
 /* ================= 상태 ================= */
 export const G = { W: 30, H: 30 };
+/** 전투 방식: 격자(칸) / 원형 턴제(자유 위치). 브라우저에 기억한다 */
+export const SETTINGS = { free: (() => { try { return localStorage.getItem('torch-mode') === 'free'; } catch (_) { return false; } })() };
+export function setFreeSetting(v) { SETTINGS.free = !!v; try { localStorage.setItem('torch-mode', v ? 'free' : 'grid'); } catch (_) { /* 저장 못 함 */ } }
 
 export const I = (x, y) => y * G.W + x;
 
