@@ -93,6 +93,7 @@ try {
       if (G.ps) { G.ps.eva = 0; G.ps.block = 0; }
       fired = [];
       const T = g.STONE[id].tgt.t, at = T === 'empty' ? [cx, cy + 1] : T === 'self' || T === 'around' || T === 'sight' ? [] : [cx + 1, cy];
+      drain(); // 앞 단계(무작위 200턴)의 연출이 남아 있으면 act가 무시된다
       let ok = false; g.act(() => (ok = g.useStone(0, ...at))); drain();
       out[id] = ok && fired.includes(id) && G.slots[0].cd >= 0;
     }
