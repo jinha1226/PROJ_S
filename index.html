@@ -44,10 +44,10 @@ button{font-family:inherit;color:inherit;cursor:pointer}
   text-shadow:0 3px 0 rgba(0,0,0,.55),0 0 18px currentColor}
 #banner.show{animation:ban 1.15s cubic-bezier(.2,1.6,.4,1) forwards}
 @keyframes ban{0%{opacity:0;transform:scale(.4)}12%{opacity:1;transform:scale(1.18)}25%{transform:scale(1)}75%{opacity:1}100%{opacity:0;transform:translateY(-18px)}}
-#toast{position:fixed;left:50%;bottom:calc(252px + var(--sb));transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:8px 14px;border-radius:12px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+#toast{position:fixed;left:50%;bottom:calc(196px + var(--sb));transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:8px 14px;border-radius:12px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
 #toast.on{opacity:1}
 
-#camctl{position:fixed;right:10px;bottom:calc(244px + var(--sb));display:flex;flex-direction:column;gap:8px;pointer-events:none}
+#camctl{position:fixed;right:10px;bottom:calc(188px + var(--sb));display:flex;flex-direction:column;gap:8px;pointer-events:none}
 #camctl button{pointer-events:auto;width:50px;height:50px;border-radius:15px;background:var(--panel);border:1px solid var(--line);font-size:19px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
 #camctl small{font-size:9.5px;color:var(--dim);margin-top:3px}
 
@@ -86,7 +86,7 @@ button{font-family:inherit;color:inherit;cursor:pointer}
 
 /* ---------- panels ---------- */
 .hidden{display:none!important}
-#info{position:fixed;left:12px;right:12px;bottom:calc(252px + var(--sb));max-height:52vh;overflow:auto;background:var(--panel2);border:1px solid var(--line);border-radius:16px;padding:12px 14px;font-size:13px;line-height:1.5;pointer-events:auto;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+#info{position:fixed;left:12px;right:12px;bottom:calc(196px + var(--sb));max-height:52vh;overflow:auto;background:var(--panel2);border:1px solid var(--line);border-radius:16px;padding:12px 14px;font-size:13px;line-height:1.5;pointer-events:auto;box-shadow:0 10px 30px rgba(0,0,0,.5)}
 #info h3{margin:0 0 4px;font-size:15px}
 #info .hint{color:#ffe38a}
 #info .row{display:flex;gap:8px;margin-top:10px}
@@ -244,11 +244,11 @@ details{margin-top:4px;font-size:13px}details summary{cursor:pointer}details sum
 .names.out span{animation:fadein 1.2s ease forwards,fadeout 3s 6s ease forwards}
 @keyframes fadeout{to{opacity:.15;filter:blur(1px)}}
 .ending.dark h1{background:linear-gradient(180deg,#b8b8c8,#5a5a68)!important;-webkit-background-clip:text!important;background-clip:text!important}
-/* ---------- 영혼석 = 스킬 버튼 (3×2) ---------- */
-#souls{grid-template-columns:repeat(3,1fr)!important;gap:6px!important}
-.slot{height:54px!important;border-radius:14px!important;display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:1px;overflow:visible}
+/* ---------- 영혼석 = 스킬 버튼 (6칸 한 줄) ---------- */
+#souls{grid-template-columns:repeat(6,1fr)!important;gap:5px!important}
+.slot{height:60px!important;padding:0 1px!important;border-radius:14px!important;display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:1px;overflow:visible}
 .slot .si{font-size:22px;line-height:1}
-.slot .sn{font-size:10.5px;color:var(--dim);white-space:nowrap;max-width:95%;overflow:hidden;text-overflow:ellipsis}
+.slot .sn{font-size:9.5px;letter-spacing:-.3px;color:var(--dim);white-space:nowrap;max-width:95%;overflow:hidden;text-overflow:ellipsis}
 .slot.ready{background:linear-gradient(180deg,color-mix(in srgb,var(--c) 26%,rgba(20,22,36,.92)),rgba(14,15,26,.92));box-shadow:0 0 14px color-mix(in srgb,var(--c) 55%,transparent),inset 0 0 12px color-mix(in srgb,var(--c) 40%,transparent)}
 .slot.ready .sn{color:#fff}
 .slot.ready .si{filter:drop-shadow(0 0 6px var(--c))}
