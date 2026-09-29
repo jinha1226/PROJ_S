@@ -87,15 +87,15 @@ export class EntView {
     if (this.auraG) { this.auraG.children.forEach((m, j) => { m.rotation.z = time * (1.4 + j * 0.5) * (j % 2 ? -1 : 1); m.material.opacity = 0.55 + 0.3 * Math.sin(time * 5 + j); }); if (Math.random() < dt * 6) { const m = this.auraG.children[Math.floor(Math.random() * this.auraG.children.length)], c = { storm: 0xffe14a, frost: 0x8fdcff, thorn: 0x79e05a, counter: 0xff5a4a, guard: 0x9fd8ff }[m.userData.k]; View.dio.sparks.emit({ pos: _w.set(this.cur.x + (Math.random() - 0.5) * 0.9, 0.2 + Math.random() * this.h, this.cur.z + (Math.random() - 0.5) * 0.9), n: 1, color: c, color2: 0xffffff, speed: 0.3, up: 0.6, grav: 0, life: 0.5, size: 0.08 }); } }
   }
   animWeapon(dt) {
-    const wh = this.extra.wh; let rx = 0.5, ry = 0, pz = 0.06;
+    const wh = this.extra.wh; let rx = 0.2, ry = 0, rz = 0.45, pz = 0.06; // 쉬는 자세는 바깥으로 기울인다(얼굴을 가리지 않게)
     if (this.swing) {
       const sw = this.swing; sw.t = Math.min(1, sw.t + dt / (sw.dur || 0.22)); const k = sw.t, e = Math.sin(Math.PI * k);
       if (sw.form === 'slash') { ry = 1.4 - 2.8 * easeOut(k); rx = 0.5 + 0.9 * e; }
       else if (sw.form === 'blunt') rx = k < 0.35 ? 0.5 - 1.7 * (k / 0.35) : -1.2 + 3.1 * easeOut((k - 0.35) / 0.65);
       else { rx = 0.5 + 1.1 * Math.min(1, k * 3); pz = 0.06 + 0.4 * e; }
-      if (k >= 1) this.swing = null;
+      rz = 0.45 * (1 - e); if (k >= 1) this.swing = null;
     }
-    wh.rotation.set(rx, ry, 0); wh.position.z = pz;
+    wh.rotation.set(rx, ry, rz); wh.position.z = pz;
   }
   shieldFx(dt, time) {
     const v = View.shield || 0;

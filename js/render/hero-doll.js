@@ -81,7 +81,7 @@ export function heroSpec(eq = {}) {
     h: 1.15, col: bodyCol, scale: 1, glow: GLOW[top] || elemGlow, gloss: 0.22 + (bright ? 0.35 : 0) + (top ? 0.15 : 0), // 광택은 낮게(플라스틱처럼 번들거리지 않게)
     parts,
     extra: (d) => {
-      const wh = new THREE.Group(); wh.position.set(-0.28, 0.37, 0.06); wh.rotation.x = 0.5; d.body.add(wh);
+      const wh = new THREE.Group(); wh.position.set(-0.3, 0.33, 0.06); wh.rotation.set(0.2, 0, 0.45); d.body.add(wh); // 쉬는 자세: 바깥으로 기울여 얼굴을 가리지 않게
       // 양손 무기: 둘째 손이 자루를 함께 쥔다(무기와 같이 휘두른다, setWeapon이 지우지 않게 keep)
       if (two && GRIP2[wid]) { const h2 = K.doll([{ s: 'sphere', k: 0.075 * hs, c: handCol }], { gloss: 0.22 }).root; h2.position.set(...GRIP2[wid]); h2.userData.keep = true; wh.add(h2); }
       // 오브: 그 색으로 빛나는 구슬이 왼손 옆에 떠서 천천히 돈다

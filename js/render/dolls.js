@@ -213,9 +213,10 @@ export function matProp(m) {
 }
 
 /** 무기 인형: 종류마다 모양 + 손잡이에 무기 색 리본. id 끝의 '+'(또는 it 강화 +2 이상)면 날에 광택 */
-export function weaponDoll(id, it) {
+export function weaponDoll(id, it) { // 날은 바깥(-x)을 향한다: 왼손에 들었을 때 얼굴 쪽으로 오지 않게
   const k0 = id.replace('+', ''), k = OLD_WEAPON[k0] || k0, w = WEAPONS[k];
-  return K.doll([...(WEAPON_PARTS[k] || WEAPON_PARTS.sword), ...(w ? ribbon(COLORS[w.color].hex, RIB[k] ?? -0.09) : [])], { gloss: id.endsWith('+') || it?.plus >= 2 ? 1.8 : 1.1 });
+  const d = K.doll([...(WEAPON_PARTS[k] || WEAPON_PARTS.sword), ...(w ? ribbon(COLORS[w.color].hex, RIB[k] ?? -0.09) : [])], { gloss: id.endsWith('+') || it?.plus >= 2 ? 1.8 : 1.1 });
+  d.pivot.rotation.y = Math.PI; return d;
 }
 
 /* ---------- 정착지 인형 · 건물 ---------- */
