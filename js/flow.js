@@ -76,7 +76,7 @@ export function enterDungeon(zone) {
   G.stats = { kills: 0, combos: 0, turns: 0, items: 0, stones: 0, chains: 0, best: 0 };
   G.mageOf = ['bolt', pick(['fire', 'frost', 'bolt']), pick(['fire', 'frost']), 'mix'];
   G.loot = { mats: {}, npcs: [] };
-  G.heroLook = h.npcLook || null; G.zoneFlags = { npc: false, recall: false }; G.perk = h.perk || null; G.sbagMax = h.sbagMax || 3; G.recallArm = false;
+  G.zoneFlags = { npc: false, recall: false }; G.perk = h.perk || null; G.sbagMax = h.sbagMax || 3; G.recallArm = false;
   const glow = hearthGlow(); G.glowVision = glow >= GLOW.vision ? 1 : 0;
   if (glow >= GLOW.shield) G.player.shield += 4;
   genFloor();

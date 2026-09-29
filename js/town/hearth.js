@@ -23,19 +23,19 @@ function landScene(L) {
   const g = new THREE.Group(), parts = [], lights = [], R = (a, b) => a + Math.random() * (b - a);
   const add = (p) => parts.push(p);
   if (L.id === 'lake') {
-    add({ s: 'cyl', p: [5, -0.2, -6.5], k: [7.5, 0.05, 3.2], c: 0x1c2c40 });
-    for (let k = 0; k < 14; k++) add({ s: 'cone', p: [R(-2, 12), 0.2, R(-4, -2.4)], k: [0.05, R(0.4, 0.8), 0.05], c: 0x3a4a3a });
-    add({ s: 'box', p: [7, -0.05, -6], r: [0, 0.4, 0], k: [0.9, 0.12, 0.35], c: 0x4a3a2a });
+    add({ s: 'cyl', p: [5, -0.2, -6.5], k: [7.5, 0.05, 3.2], seg: 40, c: 0x3a78c0 });
+    for (let k = 0; k < 14; k++) add({ s: 'cone', p: [R(-2, 12), 0.2, R(-4, -2.4)], k: [0.05, R(0.4, 0.8), 0.05], c: 0x5a9a3a });
+    add({ s: 'box', p: [7, -0.05, -6], r: [0, 0.4, 0], k: [0.9, 0.12, 0.35], c: 0x8a5a32 });
     for (let k = 0; k < 5; k++) lights.push([R(0, 11), 0.3, R(-10, -8)]);
   } else if (L.id === 'forest') {
-    for (let k = 0; k < 16; k++) { const x = R(-9, -2.4), z = R(-1, 15), h = R(1.6, 3); add({ s: 'cyl', p: [x, h * 0.25, z], k: [0.1, h * 0.5, 0.1], c: 0x2a2420 }); add({ s: 'cone', p: [x, h * 0.7, z], k: [R(0.5, 0.8), h * 0.8, R(0.5, 0.8)], c: 0x24342a }); }
+    for (let k = 0; k < 16; k++) { const x = R(-9, -2.4), z = R(-1, 15), h = R(1.6, 3); add({ s: 'cyl', p: [x, h * 0.25, z], k: [0.1, h * 0.5, 0.1], c: 0x6a4526 }); add({ s: 'cone', p: [x, h * 0.7, z], k: [R(0.5, 0.8), h * 0.8, R(0.5, 0.8)], c: 0x3f7a35 }); }
     for (let k = 0; k < 5; k++) lights.push([R(-10, -6), 0.5, R(0, 14)]);
   } else if (L.id === 'mine') {
-    for (let k = 0; k < 6; k++) add({ s: 'sphere', p: [R(13, 19), -0.3, R(-1, 15)], k: [R(1.6, 2.6), R(0.9, 1.8), R(1.6, 2.6)], c: 0x3a3228 });
-    add({ s: 'box', p: [13.5, 1.1, 5], k: [0.12, 2.2, 0.12], c: 0x4a3a2a }, { s: 'box', p: [14.5, 1.1, 5], k: [0.12, 2.2, 0.12], c: 0x4a3a2a }, { s: 'box', p: [14, 2.2, 5], k: [1.2, 0.12, 0.2], c: 0x4a3a2a }, { s: 'torus', p: [14, 2.35, 5], k: 0.3, tube: 0.06, c: 0x5a5048 });
+    for (let k = 0; k < 6; k++) add({ s: 'sphere', p: [R(13, 19), -0.3, R(-1, 15)], k: [R(1.6, 2.6), R(0.9, 1.8), R(1.6, 2.6)], c: 0x9a8a62 });
+    add({ s: 'box', p: [13.5, 1.1, 5], k: [0.12, 2.2, 0.12], c: 0x6a4526 }, { s: 'box', p: [14.5, 1.1, 5], k: [0.12, 2.2, 0.12], c: 0x6a4526 }, { s: 'box', p: [14, 2.2, 5], k: [1.2, 0.12, 0.2], c: 0x6a4526 }, { s: 'torus', p: [14, 2.35, 5], k: 0.3, tube: 0.06, c: 0x5a5048 });
     for (let k = 0; k < 5; k++) lights.push([R(14, 20), 0.6, R(0, 14)]);
   } else {
-    for (let k = 0; k < 6; k++) { const x = R(-4, 15), z = R(17.5, 22), h = R(3, 5.5), w = R(2, 3.2); add({ s: 'cone', p: [x, h / 2 - 0.3, z], k: [w, h, w], c: 0x3a4250 }); add({ s: 'cone', p: [x, h - 0.3 - h * 0.14, z], k: [w * 0.3, h * 0.3, w * 0.3], c: 0xc8d0dc }); }
+    for (let k = 0; k < 6; k++) { const x = R(-4, 15), z = R(17.5, 22), h = R(3, 5.5), w = R(2, 3.2); add({ s: 'cone', p: [x, h / 2 - 0.3, z], k: [w, h, w], c: 0x8a94a8 }); add({ s: 'cone', p: [x, h - 0.3 - h * 0.14, z], k: [w * 0.3, h * 0.3, w * 0.3], c: 0xf2f6fa }); }
     for (let k = 0; k < 5; k++) lights.push([R(-2, 13), 0.4, R(16, 18)]);
   }
   const d = K.doll(parts, { gloss: 0, shadow: false }); d.ol.visible = false; g.add(d.root);
@@ -55,17 +55,14 @@ Object.assign(Town, {
       d.root.position.set(x, 0, z); d.root.rotation.y = (Math.random() - 0.5) * 0.3; d.mesh.userData.pick = { grave: f };
       D.scene.add(d.root); this.objs.push(d.root); this.graves.push({ d, flame, f });
     });
-    // 모닥불 불꽃: 밝기에 따라 크기가 바뀐다
-    const fl = new THREE.Group(), fm = (r, h, c) => new THREE.Mesh(new THREE.ConeGeometry(r, h, 7).translate(0, h / 2, 0), new THREE.MeshBasicMaterial({ color: new THREE.Color(...c), toneMapped: false }));
-    this.flames = [0, 1, 2, 3, 4].map((k) => { const o = fm(0.16, 0.7, [2.4, 0.7, 0.12]), i = fm(0.08, 0.45, [2.8, 1.9, 0.6]), g = new THREE.Group(); g.add(o, i); g.position.set(Math.cos(k * 1.26) * (k ? 0.15 : 0), 0.05, Math.sin(k * 1.26) * (k ? 0.15 : 0)); g.userData.ph = k * 1.7; fl.add(g); return g; });
-    fl.position.set(BLD.plaza.x, 0, BLD.plaza.y); D.scene.add(fl); this.objs.push(fl); this.hearthFl = fl;
     this.visitorDolls = [];
     for (const v of META.visitors) if (!skipVisitors.includes(v)) this.spawnVisitor(v);
     this.applyGlow(true);
   },
-  tintLand(s) { const k = 0.12 + 0.88 * s.k; s.d.mat.color.setRGB(k, k, k); for (const m of s.pts) m.material.opacity = s.k; },
+  /** 아직 되찾지 못한 땅은 보이지 않고, 조각을 넣으면 서서히 드러난다 */
+  tintLand(s) { s.g.visible = s.k > 0.01; s.d.mat.transparent = s.k < 0.99; s.d.mat.opacity = s.k; s.d.ol.visible = s.k > 0.99; for (const m of s.pts) m.material.opacity = s.k; },
   spawnVisitor(v) {
-    const D = View.dio, k = this.visitorDolls.length, [x, z] = VISIT_SPOT[k % VISIT_SPOT.length], d = K.doll(npcParts(v.npc), { scale: 1.2, rim: 0.7 });
+    const D = View.dio, k = this.visitorDolls.length, [x, z] = VISIT_SPOT[k % VISIT_SPOT.length], d = K.doll(npcParts(v.npc), { scale: 1.2, gloss: 0 });
     d.root.position.set(x, 0, z); d.root.rotation.y = Math.atan2(BLD.plaza.x - x, BLD.plaza.y - z); d.mesh.userData.pick = { visitor: v }; D.scene.add(d.root);
     const tag = document.createElement('div'); tag.className = 'btag visit'; tag.textContent = `❔ ${v.npc.name}`; View.labelRoot.appendChild(tag); this.tags.push(tag);
     const q = { v, d, tag, ph: Math.random() * 6 }; this.visitorDolls.push(q); this.objs.push(d.root); return q;
@@ -75,6 +72,8 @@ Object.assign(Town, {
   applyGlow(snap) {
     const g = hearthGlow(); this.glow = g;
     View.dio.lights.setGlow?.(g, snap);
+    // 불꽃 크기: 격자 불 단계(1~3)로
+    if (this.grid) { const f = this.grid.fire.slice(), i = Math.round(BLD.plaza.y) * this.grid.w + Math.round(BLD.plaza.x); f[i] = g <= GLOW.low ? 1 : g < GLOW.vision ? 2 : 3; this.grid.setTerrain({ fire: f }); }
   },
   hearthFrame(sdt, time) {
     const D = View.dio, s = {};
@@ -84,11 +83,6 @@ Object.assign(Town, {
       q.d.root.rotation.y += Math.sin(time * 0.9 + q.ph) * sdt * 0.9; // 두리번
       D.labels.toScreen(_w.set(q.d.root.position.x, 1.85, q.d.root.position.z), s);
       q.tag.style.transform = `translate(${s.x.toFixed(1)}px,${s.y.toFixed(1)}px) translate(-50%,-100%)`;
-    }
-    if (this.hearthFl) {
-      const g = View.dio.lights.glow ?? this.glow ?? 30, k = 0.45 + g / 100 * 1.1, low = g <= GLOW.low;
-      this.flames.forEach((f, j) => { const w = Math.sin(time * (9 + j) + f.userData.ph) * 0.12 + Math.sin(time * 17 + j * 2) * 0.08 + (low ? Math.sin(time * 4.3 + j) * 0.3 : 0); f.scale.set(k * (j ? 0.75 : 1), Math.max(0.2, k * (j ? 0.8 : 1.15) * (1 + w)), k * (j ? 0.75 : 1)); f.rotation.z = Math.sin(time * 3 + j) * 0.12; });
-      if (Math.random() < sdt * (6 + g * 0.15)) D.sparks.emit({ pos: _w.set(BLD.plaza.x, 0.6 * k, BLD.plaza.y), n: 1, color: 0xff8a2a, color2: 0xffd060, speed: 0.4, up: 1.2 + k, grav: 0.3, life: 1.1, size: 0.08, spread: 0.25 });
     }
     if (this.glow <= GLOW.low && Math.random() < sdt * 2) D.pool.flash(W3(BLD.plaza.x, BLD.plaza.y), 0x6070a0, 6, 0.4, 3);
     const orbs = this.orbs || [];

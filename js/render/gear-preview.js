@@ -1,7 +1,6 @@
 import * as THREE from 'three';
-import { G } from '../core/state.js';
-import { weaponId } from '../data/gear.js';
 import * as K from './diorama.js';
+import { weaponId } from '../data/gear.js';
 import { weaponDoll } from './dolls.js';
 import { heroSpec } from './hero-doll.js';
 
@@ -32,7 +31,7 @@ export const Preview = {
   set(eq) {
     if (!this.scene) return;
     if (this.doll) { this.scene.remove(this.doll.root); this.doll.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
-    const sp = heroSpec(eq, G.heroLook), d = K.doll(sp.parts, { scale: 1.3, gloss: sp.gloss, rim: 1 });
+    const sp = heroSpec(eq), d = K.doll(sp.parts, { scale: 1.3, gloss: sp.gloss });
     const ex = sp.extra(d); if (eq.weapon) ex.wh.add(weaponDoll(weaponId(eq.weapon)).root);
     if (sp.glow) d.mat.emissive.setRGB(...sp.glow);
     this.doll = d; this.scene.add(d.root);

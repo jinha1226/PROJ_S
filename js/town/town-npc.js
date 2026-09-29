@@ -21,7 +21,7 @@ export function talkLine(n) {
 export class TownNPC {
   constructor(n, spawnAt) {
     this.n = n; const D = View.dio;
-    this.d = K.doll(npcParts(n), { scale: 1.2, rim: 0.7 }); D.scene.add(this.d.root);
+    this.d = K.doll(npcParts(n), { scale: 1.2, gloss: 0.7 }); D.scene.add(this.d.root);
     this.d.mesh.userData.pick = { npc: n.id };
     const w = Town.workSpot(n); this.pos = new THREE.Vector3(...(spawnAt || [w[0] + (Math.random() - 0.5), 0, w[1] + (Math.random() - 0.5)]));
     this.target = null; this.state = 'work'; this.t = 0; this.dur = 2 + Math.random() * 5; this.yaw = Math.random() * 6; this.yawT = this.yaw;

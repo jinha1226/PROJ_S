@@ -9,7 +9,7 @@ import { T_OPEN, ZONES } from '../data/terrain.js';
 import { FORMS } from '../data/weapons.js';
 import { Anim, act, descend } from '../flow.js';
 import { Sfx } from '../render/sfx.js';
-import { $, UI, noEmoji } from './ui.js';
+import { $, UI } from './ui.js';
 
 Object.assign(UI, {
   swapWeapon() {
@@ -81,14 +81,14 @@ Object.assign(UI, {
     else if (c.dataset.act === 'door') { const x = +c.dataset.x, y = +c.dataset.y; if (G.tile[I(x, y)] === T_OPEN && !entAt(x, y)) act(() => closeDoor(x, y)); }
   },
   log(t, cls) {
-    const el = $('#log'); const div = document.createElement('div'); div.textContent = noEmoji(t); // 이모지 대신 작은 선화 마름모(CSS) if (cls) div.className = cls;
+    const el = $('#log'); const div = document.createElement('div'); div.textContent = t; if (cls) div.className = cls;
     el.appendChild(div); while (el.children.length > 3) el.firstChild.remove();
     [...el.children].forEach((c, k, a) => c.classList.toggle('old', k < a.length - 1));
     setTimeout(() => { div.style.opacity = '0'; setTimeout(() => div.remove(), 700); }, 6000);
   },
   banner(text, elem) {
-    const el = $('#banner'); const C = { bolt: '#ffe14a', fire: '#ff9a3a', poison: '#9dff6a', ice: '#9fe2ff', steam: '#f2f6ff', push: '#ffd08a', info: '#e8dcc0', chain: '#f0a050' };
-    el.textContent = noEmoji(text); el.style.color = C[elem] || '#e8dcc0'; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+    const el = $('#banner'); const C = { bolt: '#ffe14a', fire: '#ff9a3a', poison: '#9dff6a', ice: '#9fe2ff', steam: '#f2f6ff', push: '#ffd08a', info: '#c8d4ff' };
+    el.textContent = text; el.style.color = C[elem] || '#fff'; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
   },
   hurt() { const el = $('#hurt'); el.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('on'))); },
   floorCard() {

@@ -27,7 +27,7 @@ export const SKINS = [0xffd7b0, 0xf1c29a, 0xd9a47a, 0xb87a52];
 
 export const HAIRS = [0x3a2618, 0x6a4020, 0xc89a4a, 0x2a2a30, 0xe0e0e0, 0xb04a2a];
 
-export const JOB_CLOTH = { keeper: 0x5e5470, blacksmith: 0x4e443a, herbalist: 0x4e6040, hunter: 0x5e4c34, scholar: 0x44405e, cook: 0x8a8274, fisher: 0x40566a, boatman: 0x4a4e58, gravekeeper: 0x3a3a40, miner: 0x5a4a3a, pilgrim: 0x6a6456 };
+export const JOB_CLOTH = { keeper: 0x8a7ab0, blacksmith: 0x6a5a4a, herbalist: 0x6aa04a, hunter: 0x8a6a3a, scholar: 0x5a4aa0, cook: 0xe0d8c8, fisher: 0x4a7ab0, boatman: 0x3a6a8a, gravekeeper: 0x5a5a6a, miner: 0x9a7a4a, pilgrim: 0xc8b890 };
 
 export const MOODS = ['😠', '😟', '🙂', '😊', '😄'];
 
@@ -70,4 +70,4 @@ export const CRAFT_B = ['forge', 'herb', 'hunter', 'library', 'inn'];
 
 export const TW = 11, TH = 15;
 
-export const TOWN_PAL = { floor: 0x4c4238, floor2: 0x433a31, wall: 0x3a3229, wall2: 0x463c31, void: 0x07090e, grassFloor: 0x2c3526, waterFloor: 0x142034, dim: 1 };
+export const TOWN_PAL = { floor: 0xdcc28e, floor2: 0xd2b682, wall: 0x4f9a45, wall2: 0x62ae52, void: 0x3f6a36, grassFloor: 0x7cc45a, waterFloor: 0x2a6ab0, dim: 1 };

@@ -51,10 +51,10 @@ Object.assign(View, {
   hitFx(ev, d) {
     if (!ev) return;
     const D = this.dio, player = ev.id === 0, B = this.boost;
-    ev.flash = 1; ev.sqv -= d.big ? 6 : 4;
-    if (d.dx || d.dy) ev.jolt.set(d.dx * 0.42, 0.04, d.dy * 0.42); // 뒤로 휘청
+    ev.flash = 1; ev.sqv -= d.big ? 9 : 6.5;
+    if (d.dx || d.dy) ev.jolt.set(d.dx * 0.3, 0.06, d.dy * 0.3);
     const p = W3(ev.cur.x, ev.cur.z, ev.h * 0.75);
-    D.labels.pop(p, String(d.amt), { color: player ? '#e0505a' : d.crit ? '#ff7a1a' : KCOL[d.kind] || '#e8dcc0', cls: (d.big ? 'big' : '') + (d.crit ? ' crit' : '') });
+    D.labels.pop(p, String(d.amt), { color: player ? '#ff5a6a' : KCOL[d.kind] || '#fff', cls: d.big ? 'big' : '' });
     if (d.label) D.labels.pop(W3(ev.cur.x, ev.cur.z, ev.h * 0.75 + 0.5), d.label, { color: KCOL[d.kind] || '#ffe38a', cls: 'word', vx: 0, rise: 42, dur: 1.15 });
     const c = W3(ev.cur.x, ev.cur.z, ev.h * 0.5);
     switch (d.kind) {
@@ -65,11 +65,11 @@ Object.assign(View, {
       case 'steam': D.puffs.emit({ pos: c, n: 8, color: 0xffffff, color2: 0xcfe0ff, speed: 1.2, up: 1.5, grav: 0, life: 0.8, size: 0.45, grow: 1 }); break;
       case 'blast': D.sparks.emit({ pos: c, n: 20, color: 0x79e05a, color2: 0xffe36a, speed: 5, life: 0.5, size: 0.2 }); break;
       case 'bleed': D.sparks.emit({ pos: c, n: 6, color: 0xff1a2a, color2: 0x9a0010, speed: 1.5, grav: -8, life: 0.4, size: 0.1 }); break;
-      default: D.sparks.emit({ pos: c, n: Math.round((10 + d.amt * 2) * B), color: d.crit ? 0xff8a2a : 0xe8dcc0, color2: 0xffb060, speed: 4.5 * B, life: 0.3, size: 0.13, grav: -6, vx: d.dx * 2.5, vz: d.dy * 2.5 });
+      default: D.sparks.emit({ pos: c, n: Math.round((10 + d.amt * 2) * B), color: d.crit ? 0xffe14a : 0xffffff, color2: 0xffd27a, speed: 4.5 * B, life: 0.3, size: 0.13, grav: -6, vx: d.dx * 2.5, vz: d.dy * 2.5 });
     }
-    if (d.crit) { D.fx.ring(c, 0xff8a2a, 0.1, 1.2, 0.3, c.y); D.pool.flash(c, 0xffb060, 40, 0.25, 4); }
+    if (d.crit) { D.fx.ring(c, 0xffe14a, 0.1, 1.2, 0.3, c.y); D.pool.flash(c, 0xfff0a0, 40, 0.25, 4); }
     const phys = PHYS[d.kind] || d.kind === 'blast';
-    if (phys) D.hitstop(d.big ? 90 : 60); // 적중 순간 짧게 멈춘다
+    if (phys) D.hitstop(d.big ? 100 : 55);
     D.rig.shake((player ? 0.2 + d.amt * 0.03 : 0.05 + d.amt * 0.02) * B);
     if (player) ports.UI.hurt();
     Sfx.play(player ? 'hurt' : { fire: 'fire', burn: 'tick', shock: 'zap', frost: 'freeze', poison: 'tick', steam: 'hiss', blast: 'boom', bleed: 'tick' }[d.kind] || (d.crit ? 'crit' : 'hit'));
@@ -78,10 +78,16 @@ Object.assign(View, {
     if (!ev) return;
     const D = this.dio, p = W3(ev.cur.x, ev.cur.z, ev.h * 0.5);
     ev.dead = true; ev.deadT = 0;
-    // 재와 불씨: 몸은 EntView에서 무너지며 흩어지고, 여기선 첫 불티만
-    D.sparks.emit({ pos: p, n: 22, color: 0xff6a1a, color2: 0xffc070, speed: 2.2, up: 1.4, life: 0.9, size: 0.08, grav: -1 });
-    D.puffs.emit({ pos: p, n: 8, color: 0x3a3634, color2: 0x201c1c, speed: 1, up: 0.6, life: 1.2, size: 0.35, grav: 0, grow: 1 });
+    D.sparks.emit({ pos: p, n: 26, color: ev.col, color2: 0xffffff, speed: 4.5, up: 2, life: 0.6, size: 0.16, grav: -9 });
+    D.puffs.emit({ pos: p, n: 10, color: 0xdad4e8, color2: 0x9a94a8, speed: 1.8, life: 0.7, size: 0.4, grav: 0.5, grow: 1 });
     if (d.shatter) D.sparks.emit({ pos: p, n: 30, color: 0x8fdcff, color2: 0xffffff, speed: 5.5, life: 0.8, size: 0.17, grav: -10 });
+    // 장난감 조각이 튄다
+    const geo = new THREE.BoxGeometry(0.11, 0.11, 0.11); geo.userData.keep = false;
+    const mat = K.toon({ color: d.shatter ? 0xbfeaff : ev.col, gloss: 0.9 });
+    const bits = new THREE.Group();
+    for (let k = 0; k < 7; k++) { const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.userData.v = new THREE.Vector3((Math.random() - 0.5) * 4, 2.5 + Math.random() * 3, (Math.random() - 0.5) * 4); m.position.copy(p); m.scale.setScalar(0.6 + Math.random() * 0.8); bits.add(m); }
+    D.fx.add(bits, 0.9, (k, dt) => { for (const m of bits.children) { const v = m.userData.v; v.y -= 14 * dt; m.position.addScaledVector(v, dt); if (m.position.y < 0.06) { m.position.y = 0.06; v.y *= -0.35; v.x *= 0.6; v.z *= 0.6; } m.rotation.x += dt * 9; m.rotation.z += dt * 7; if (k > 0.7) m.scale.multiplyScalar(0.9); } });
+    D.fx.ring(p, 0xffffff, 0.2, 1.1, 0.3);
     D.hitstop(75); D.rig.shake(0.18); Sfx.play(d.shatter ? 'shatter' : 'die');
     if (ev.id === 0) { ev.dead = false; ev.d.pivot.rotation.z = Math.PI / 2; ev.d.pivot.position.y = 0.2; }
   },
