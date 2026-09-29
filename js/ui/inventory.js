@@ -98,7 +98,7 @@ Object.assign(UI, {
     const H = holder(), eq = H.eq, bag = H.bag, s = calcStats(knownEq(eq)), w = weaponOf(eq.weapon), sh = $('#sheet');
     sh.classList.add('tall');
     const wdot = (it) => (it && GEAR_BASES[it.base].weapon ? `<i class="wdot" style="background:${COLORS[weaponOf(it).color].css}"></i>` : it && GEAR_BASES[it.base].orb ? `<i class="wdot" style="background:${COLORS[GEAR_BASES[it.base].orb].css}"></i>` : '');
-    const cell = (slot) => { const it = eq[slot]; return `<button class="eqs ${it ? 'on' : ''}" style="grid-area:${slot};--c:${it ? gearCss(it) : 'rgba(255,255,255,.2)'}" data-eq="${slot}">${SLOT_ICON[slot]}${wdot(it)}<small>${it ? gearName(it) : slot === 'off' && twoHanded(eq.weapon) ? '(양손)' : SLOT_NAME[slot]}</small></button>`; };
+    const cell = (slot) => { const it = eq[slot]; const name = slot === 'off' && twoHanded(eq.weapon) ? '보조손 (양손)' : SLOT_NAME[slot]; return `<button class="eqs ${it ? 'on' : 'empty'}" style="grid-area:${slot};--c:${it ? gearCss(it) : 'rgba(255,255,255,.2)'}" data-eq="${slot}">${it ? `${SLOT_ICON[slot]}${wdot(it)}<small>${gearName(it)}</small>` : name}</button>`; };
     const better = (it) => { const k = slotKind(it), tgt = k === 'ring' ? [eq.ring1, eq.ring2] : [eq[k]]; return tgt.some((o) => !o || gearScore(it) > gearScore(o) + 0.5); };
     const bagCells = Array.from({ length: BAG_MAX }, (_, k) => { const it = bag[k]; return it ? `<button class="bgc" style="--c:${gearCss(it)}" data-bag="${k}">${SLOT_ICON[slotKind(it)]}${wdot(it)}${better(it) ? '<i>▲</i>' : ''}<small>${gearName(it)}</small></button>` : '<div class="bgc empty"></div>'; }).join('');
     const town = H.town, stash = town ? META.gear : [];
@@ -126,15 +126,16 @@ Object.assign(UI, {
           <div class="row"><button class="pri" data-act="equip" data-slot="${tgt}" ${blocked ? 'disabled' : ''}>${SLOT_NAME[tgt]}에 장착${inCombat() ? ' (한 턴)' : ''}</button>${scrollButtons(it)}<button data-act="drop">${town ? '창고로' : '버리기'}</button><button data-act="back">닫기</button></div>`;
       }
     }
-    sh.innerHTML = `<h3>🎒 가방 · 장비 <small style="color:#9aa2bd;font-weight:400">${inCombat() ? '⚠ 전투 중 — 바꿀 때마다 한 턴' : '안전 — 자유롭게 바꾼다'}</small><button class="close">닫기</button></h3>
-      <div class="eqgrid">${SLOTS.map((k) => cell(k)).join('')}</div>
-      <button class="stline" data-act="stats">HP ${H.unit.max} · 방어 ${s.def} · 회피 ${s.eva}%${s.block ? ` · 막기 ${s.block}%` : ''} · 피해 ${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} <b style="color:${COLORS[w.color].css}">×${cmul(w).toFixed(2)}</b> <small>▸ 자세히</small></button>
+    sh.classList.toggle('stones-view', tab === 'stones');
+    sh.innerHTML = `<h3>🎒 가방 · 장비 <small style="color:#9aa2bd;font-weight:400">${inCombat() ? '⚠ 전투 중 · 장비 교체에 한 턴' : '장비 교체 가능'}</small><button class="close">닫기</button></h3>
+      ${tab === 'stones' ? '' : `<div class="eqgrid">${SLOTS.map((k) => cell(k)).join('')}</div>
+      <button class="stline" data-act="stats">HP ${H.unit.max} · 방어 ${s.def} · 회피 ${s.eva}%${s.block ? ` · 막기 ${s.block}%` : ''} · 피해 ${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} <b style="color:${COLORS[w.color].css}">×${cmul(w).toFixed(2)}</b> <small>▸ 자세히</small></button>`}
       ${detail ? `<div class="gdetail">${detail}</div>` : ''}
       <div class="invtabs">${tabs.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-itab="${k}">${l}</button>`).join('')}</div>
       ${tab === 'items' ? this.itemsHtml(inv) : tab === 'stones' ? this.stonesHtml() : `<div class="sec">가방 ${bag.length}/${BAG_MAX} <small>▲ = 아는 것만 봐도 지금 것보다 나아 보인다 · ? = 모르는 것이 있다</small></div><div class="bggrid">${bagCells}</div>
       ${town ? `<div class="sec">창고 ${stash.length} <small>정착지에 남는다 — 죽어도 잃지 않는다</small></div><div class="bggrid">${stashCells}</div>` : ''}`}`;
     sh.classList.remove('hidden');
-    sh.querySelector('.close').onclick = () => { sh.classList.add('hidden'); sh.classList.remove('tall'); };
+    sh.querySelector('.close').onclick = () => { sh.classList.add('hidden'); sh.classList.remove('tall', 'stones-view'); };
     sh.querySelectorAll('[data-eq]').forEach((b) => { b.onclick = () => { this.invSel = eq[b.dataset.eq] ? { from: 'eq', slot: b.dataset.eq } : null; this.renderInv(); }; });
     sh.querySelectorAll('[data-bag]').forEach((b) => { b.onclick = () => { this.invSel = { from: 'bag', i: +b.dataset.bag }; this.renderInv(); }; });
     sh.querySelectorAll('[data-st]').forEach((b) => { b.onclick = () => { this.invSel = { from: 'stash', i: +b.dataset.st }; this.renderInv(); }; });
@@ -183,8 +184,7 @@ Object.assign(UI, {
     return `${row('최대 HP', `${H.unit.max} (기본 ${H.base})`, 'maxHp')}${row('방어', `${s.def} <small style="color:#9aa2bd">(맞을 때 0~${s.def} 줄임)</small>`, 'def', s.capped.def)}${row('회피', `${s.eva}% / ${CAPS.eva}%`, 'eva', s.capped.eva)}
       ${row('막기', `${s.block}%`, 'block', s.capped.block)}${row('피해', `${Math.round((w.dmg[0] + s.dmg) * m)}–${Math.round((w.dmg[1] + s.dmg) * m)} <small>(${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} ×${m.toFixed(2)} · ${FORMS[w.form].name} · 치명: ${CRITS[w.crit]})</small>`, 'dmg')}${row('급소 확률', `${s.crit}%${s.critMul > 2 ? ` · ×${s.critMul}` : ''}`, 'crit')}${s.acc ? row('명중', `${100 + s.acc}%`, 'acc') : ''}
       ${['fire', 'frost', 'bolt', 'poison'].map((k) => row(`${ELEM[k].name} 저항`, `${RES_DOT(s.res[k])} <small style="color:#9aa2bd">받는 피해 ×${RES_MUL[s.res[k]]}</small>`, 'res' + k)).join('')}
-      <div class="gtxt" style="margin-top:6px">${flags.join('') || '<span style="color:#9aa2bd">특수 효과 없음</span>'}</div>
-      <div class="gtxt" style="color:#9aa2bd;margin-top:4px">빌드의 중심은 영혼석 — 장비는 그것을 받쳐준다.</div>`;
+      <div class="gtxt" style="margin-top:6px">${flags.join('') || '<span style="color:#9aa2bd">특수 효과 없음</span>'}</div>`;
   },
   statsCard() { this.info(`<h3>🧭 캐릭터 정보 <small style="color:#9aa2bd">수치를 누르면 출처</small></h3>${this.statsRows()}`); },
 });

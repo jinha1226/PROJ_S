@@ -43,17 +43,16 @@ Object.assign(UI, {
   /** 영혼석 탭: 저장 중인 영혼석(가방)만 칸으로. 누르면 설명 · 같은 색 칸과 바꾸기 · 버리기 */
   stonesHtml() {
     const safe = !visibleFoes().some((e) => e.awake), max = G.sbagMax || 3, sel = this.selBag ?? -1, selId = sel >= 0 ? G.sbag[sel] : null;
-    // 장비 가방과 같은 칸 수(20). 못 쓰는 칸은 잠김
-    const grid = Array.from({ length: BAG_MAX }, (_, k) => { if (k >= max) return '<div class="bgc empty locked">🔒</div>'; const id = G.sbag[k]; if (!id) return '<div class="bgc empty"></div>'; const d = STONE[id], C = COLORS[d.color]; return `<button class="bgc ${k === sel ? 'sel' : ''}" style="--c:${C.css}" data-b="${k}">${d.icon}<small>${d.name}</small></button>`; }).join('');
+    const grid = Array.from({ length: max }, (_, k) => { const id = G.sbag[k], number = `보관함 ${String(k + 1).padStart(2, '0')}`; if (!id) return `<div class="stone-cell empty"><span class="stone-number">${number}</span><small>비어 있음</small></div>`; const d = STONE[id], C = COLORS[d.color]; return `<button class="stone-cell ${k === sel ? 'sel' : ''}" style="--c:${C.css}" data-b="${k}" aria-label="${number}: ${d.name}"><span class="stone-number">${number}</span><span class="stone-icon">${d.icon}</span><small>${d.name}</small></button>`; }).join('');
     let detail = '';
     if (selId) {
       const d = STONE[selId], C = COLORS[d.color], same = G.slots.map((q, k) => [q, k]).filter(([q, k]) => q.stone && q.color === d.color && k < (G.level || 6));
       const swaps = same.map(([q, k]) => `<button data-sw="${k}" ${safe ? '' : 'disabled'}>${STONE[q.stone].icon} ${jo(STONE[q.stone].name, '과와')} 바꾸기</button>`).join('');
       detail = `<div class="gdetail"><div class="gcard" style="--c:${C.css}"><div class="gct"><small>${C.name} 영혼석 · 쿨타임 ${d.cd}</small><b style="color:${C.css}">${d.icon} ${d.name}</b></div><div>${d.line}</div>
-        ${same.length ? (safe ? '' : '<div style="color:#ff9aa4">적이 보이는 곳에서는 바꿀 수 없다.</div>') : `<div style="color:#9aa2bd">끼울 수 있는 ${C.name} 칸이 없다. 다른 색으로 바꾸는 건 정착지 제단에서.</div>`}</div>
+        ${same.length ? (safe ? '' : '<div style="color:#ff9aa4">적이 보이면 교체할 수 없다.</div>') : `<div style="color:#9aa2bd">같은 색 칸 없음 · 다른 색은 정착지 제단에서 교체</div>`}</div>
         <div class="row">${swaps}<button data-drop="1">버리기</button><button data-sback="1">닫기</button></div></div>`;
     }
-    return `${detail}<div class="sec">영혼석 가방 ${G.sbag.length}/${max} <small>장착한 영혼석은 화면 아래 영혼석 칸에 있다. 같은 색 칸하고만 바꾼다.</small></div><div class="bggrid">${grid}</div>`;
+    return `<div class="stone-vault"><div class="stone-vault-head"><b>영혼석 보관함 ${G.sbag.length}/${max}</b>저장한 영혼석</div><div class="stone-storage">${grid}</div><div class="stone-vault-note">같은 색 칸과 교체 · 적이 없을 때</div></div>${detail}`;
   },
   bindStones(sh) {
     const sel = this.selBag ?? -1;

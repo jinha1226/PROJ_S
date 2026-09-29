@@ -40,7 +40,7 @@ Object.assign(UI, {
       <div class="sec">전투 수치 <small>누르면 출처</small></div>${this.statsRows()}
       <div class="sec">알아낸 약점</div><div class="gtxt">${weak}</div>
       <div class="sec">이번 원정</div><div class="gtxt">처치 ${s.kills || 0} · 턴 ${s.turns || 0} · 원소 반응 ${s.combos || 0} · 최고 연쇄 ${s.best || 0}단계 · 영혼석 ${s.stones || 0}</div>`;
-    sh.classList.add('tall'); sh.classList.remove('hidden');
+    sh.classList.add('tall'); sh.classList.remove('hidden', 'stones-view');
     sh.querySelector('.close').onclick = () => { sh.classList.add('hidden'); sh.classList.remove('tall'); };
   },
 });

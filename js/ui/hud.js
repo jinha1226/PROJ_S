@@ -50,7 +50,7 @@ Object.assign(UI, {
   stoneOffer(d) {
     const id = d.id, S = STONE[id], C = COLORS[S.color], empty = G.slots.some((q, k) => !q.stone && k < (G.level || 6)), same = G.slots.map((q, k) => [q, k]).filter(([q, k]) => q.stone && q.color === S.color && k < (G.level || 6)), full = G.sbag.length >= (G.sbagMax || 3);
     const swap = !empty && same.length ? `<div class="sec">바꿔 끼울 칸 <small>빠진 영혼석은 가방으로${full ? ' — 가방이 차서 흩어진다' : ''}</small></div><div class="gems" style="grid-template-columns:repeat(${Math.min(6, same.length)},1fr)">${same.map(([q, k]) => `<button class="gch" style="--c:${C.css}" data-sw="${k}">${STONE[q.stone].icon}<small>${STONE[q.stone].name}</small></button>`).join('')}</div>` : '';
-    const sh = $('#sheet'); sh.innerHTML = `<h3><span><span style="color:${C.css}">●</span> ${S.icon} ${S.name} <small style="color:#9aa2bd">영혼석 · 쿨타임 ${S.cd}</small></span></h3>
+    const sh = $('#sheet'); sh.classList.remove('stones-view'); sh.innerHTML = `<h3><span><span style="color:${C.css}">●</span> ${S.icon} ${S.name} <small style="color:#9aa2bd">영혼석 · 쿨타임 ${S.cd}</small></span></h3>
       <div class="gtxt">${S.line}</div><div class="gtxt" style="color:#9aa2bd">${C.name}: ${C.trig} 쿨타임 1 더 감소</div>
       <div class="wrow" style="grid-template-columns:1fr 1fr 1fr;margin-top:10px">
         <button class="wbtn" data-a="absorb" ${empty ? '' : 'disabled style="opacity:.4"'}>흡수<small>${empty ? '빈 칸에 끼워 스킬로' : '열린 빈 칸 없음'}</small></button>

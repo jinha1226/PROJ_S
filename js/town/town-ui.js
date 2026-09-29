@@ -27,7 +27,7 @@ Object.assign(Town, {
     const S = META.settle, res = S ? `<br>🪵 ${S.stock.나무 || 0} · 🪨 ${S.stock.돌 || 0} · 🔮 ${META.mats.마석 || 0} · 빛 ${radius()}칸${S.bp.length ? ` · 청사진 ${S.bp.length}` : ''}` : '';
     $('#tinfo').innerHTML = `<b class="glow">🔥 ${hearthGlow()}</b> · 주민 ${META.npcs.length}/${cap()}${META.visitors.length ? ` · 방문자 ${META.visitors.length}` : ''} · ${h ? `등불지기 ${h.name}(${h.gen}대) HP ${h.hp}/${h.max}` : META.needSuccessor ? '횃불을 들 사람을 골라야 한다' : `다음 등불지기 ${META.gen + 1}대째`}${cl ? ` · 구역 ${cl}` : ''}${res}`;
   },
-  sheet(html) { const sh = $('#sheet'); sh.innerHTML = html; sh.classList.remove('hidden'); sh.querySelector('.close')?.addEventListener('click', () => sh.classList.add('hidden')); return sh; },
+  sheet(html) { const sh = $('#sheet'); sh.classList.remove('stones-view'); sh.innerHTML = html; sh.classList.remove('hidden'); sh.querySelector('.close')?.addEventListener('click', () => sh.classList.add('hidden')); return sh; },
   /* ---- 출발문: 구역 선택 · 준비 ---- */
   gate() {
     if (!META.hero && META.needSuccessor) { this.successionSheet(); return; }
