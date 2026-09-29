@@ -3,12 +3,10 @@ import { OLD_WEAPON, WEAPONS, WPN } from './weapons.js';
 /* ================= 장비 (DCSS식 — docs/설계_아이템_장비.md) =================
    기본템 + 강화치(+N) + 속성 하나(무기 브랜드 / 방어구 에고) · 장신구(모양만 보이는 반지·목걸이)
    · 랜다트(무작위 유물) · 픽다트(옛 등불지기의 유품). 등급 색은 없다. */
-/** 쓰는 칸(세트의 주손·보조손 + 방어구·장신구). 쓰지 않는 세트는 weapon2·off2 — 효과가 없다 (데드셀안 §2·§4) */
+/** 장비 칸 10개: 무기·보조손(버클러·방패·오브, 한손 무기일 때만) + 방어구·장신구. 무기 세트·교체는 없다 */
 export const SLOTS = ['weapon', 'off', 'head', 'body', 'cloak', 'hands', 'feet', 'neck', 'ring1', 'ring2'];
-export const RESERVE = { weapon2: 'weapon', off2: 'off' };
-export const ALL_SLOTS = [...SLOTS, 'weapon2', 'off2'];
-export const SLOT_NAME = { weapon: '주손', off: '보조손', weapon2: '주손', off2: '보조손', head: '머리', body: '몸통', cloak: '망토', hands: '장갑', feet: '신발', neck: '목걸이', ring1: '반지', ring2: '반지', ring: '반지' };
-export const SLOT_ICON = { weapon: '⚔', off: '🛡', weapon2: '⚔', off2: '🛡', head: '⛑', body: '👕', cloak: '🧥', hands: '🧤', feet: '🥾', neck: '📿', ring1: '💍', ring2: '💍', ring: '💍' };
+export const SLOT_NAME = { weapon: '무기', off: '보조손', head: '머리', body: '몸통', cloak: '망토', hands: '장갑', feet: '신발', neck: '목걸이', ring1: '반지', ring2: '반지', ring: '반지' };
+export const SLOT_ICON = { weapon: '⚔', off: '🛡', head: '⛑', body: '👕', cloak: '🧥', hands: '🧤', feet: '🥾', neck: '📿', ring1: '💍', ring2: '💍', ring: '💍' };
 export const BAG_MAX = 20;
 
 const MAT = { cloth: '천', leather: '가죽', chain: '사슬', plate: '판금' };
@@ -131,7 +129,7 @@ export const OLD_SKILL = { push: 'r_push', fire: 'r_fire', bolt: 'r_shock', fros
 export const stoneOfSkill = (k) => OLD_SKILL[k] || k;
 
 export const slotKind = (it) => GEAR_BASES[it.base].slot;
-export const fitsSlot = (it, slot) => { const k = slotKind(it); slot = RESERVE[slot] || slot; return k === slot || (k === 'ring' && (slot === 'ring1' || slot === 'ring2')); };
+export const fitsSlot = (it, slot) => { const k = slotKind(it); return k === slot || (k === 'ring' && (slot === 'ring1' || slot === 'ring2')); };
 /** 옛 기본템 id → 새 id (단검 → 쌍단검) */
 export const newBase = (b) => OLD_WEAPON[b] || b;
 /** 무기 장비 → 형태·피해(강화치·품질은 따로) — 없으면 맨손 장검 취급 */

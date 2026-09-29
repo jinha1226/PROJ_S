@@ -91,7 +91,6 @@ export class EntView {
     if (this.swing) {
       const sw = this.swing; sw.t = Math.min(1, sw.t + dt / (sw.dur || 0.22)); const k = sw.t, e = Math.sin(Math.PI * k);
       if (sw.form === 'slash') { ry = 1.4 - 2.8 * easeOut(k); rx = 0.5 + 0.9 * e; }
-      else if (sw.form === 'draw') { rx = 0.5 - 2.9 * (1 - easeOut(k)); ry = 0.6 * (1 - k); } // 세트 교체: 등 뒤에서 앞으로 뽑아 든다
       else if (sw.form === 'blunt') rx = k < 0.35 ? 0.5 - 1.7 * (k / 0.35) : -1.2 + 3.1 * easeOut((k - 0.35) / 0.65);
       else { rx = 0.5 + 1.1 * Math.min(1, k * 3); pz = 0.06 + 0.4 * e; }
       if (k >= 1) this.swing = null;

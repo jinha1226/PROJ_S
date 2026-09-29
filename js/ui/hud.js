@@ -1,5 +1,5 @@
 import { closeDoor, colorMul, playerMove } from '../core/combat.js';
-import { gearCss, gearName, pickGear, swapSet } from '../core/gear.js';
+import { gearCss, gearName, pickGear } from '../core/gear.js';
 import { itemName } from '../core/items.js';
 import { G, I, entAt } from '../core/state.js';
 import { leaveStone, stoneCd, takeStone } from '../core/stones.js';
@@ -16,23 +16,15 @@ import { Sfx } from '../render/sfx.js';
 import { $, UI } from './ui.js';
 
 Object.assign(UI, {
-  /** 공격 길게 누르기: 무기 세트 A ↔ B — 턴을 쓰지 않는다 (데드셀안 §4) */
-  swapWeapon() {
-    if (Anim.active || G.over) return;
-    if (!G.eq.weapon2 && !G.eq.off2) { this.toast('다른 세트가 비어 있다 — 가방에서 세트 B에 무기를 끼우자'); return; }
-    this.instant(() => swapSet());
-    const W = weaponOf(G.eq.weapon); this.toast(`세트 ${'AB'[G.wset || 0]} — ${FORMS[W.form].icon} ${G.eq.weapon ? gearName(G.eq.weapon) : '맨손'} (${COLORS[W.color].name} ×${colorMul(W).toFixed(2)})`); Sfx.play('ui');
-    this.renderWeapon();
-  },
+  /** 공격 길게 누르기: 지금 무기 정보 (무기 교체는 없다 — 바꾸려면 가방에서 장착) */
   weaponInfo() {
-    const set = (w, o, on, k) => { const W = weaponOf(w); return `<div>${on ? '▶' : '　'} 세트 ${'AB'[k]} ${w ? `${FORMS[W.form].icon} <b style="color:${gearCss(w)}">${gearName(w)}</b> <span style="color:${COLORS[W.color].css}">●</span> ${SHAPES[W.shape]} · 치명: ${CRITS[W.crit]}` : '맨손'}${o ? ` + ${gearName(o)}` : ''}</div>`; };
-    const a = [G.eq.weapon, G.eq.off], b = [G.eq.weapon2, G.eq.off2], S = G.wset || 0, rows = S ? [set(...b, false, 0), set(...a, true, 1)] : [set(...a, true, 0), set(...b, false, 1)];
-    this.info(`<h3>무기 세트 <small style="color:#9aa2bd">공격 길게 누르기 = 세트 교체(턴 없음)</small></h3>${rows.join('')}<div class="hint" style="margin-top:6px">💡 같은 색 영혼석 1개당 무기 피해 +15% · 베기 = 출혈, 타격 = 골절, 찌르기 = 급소 표식</div>`);
+    const w = G.eq.weapon, W = weaponOf(w), F = FORMS[W.form], o = G.eq.off;
+    this.info(`<h3>${F.icon} ${w ? gearName(w) : '맨손'} <small style="color:${COLORS[W.color].css}">● ${COLORS[W.color].name} ×${colorMul(W).toFixed(2)}</small></h3><div>${W.hands === 2 ? '양손' : '한손'} · ${F.name} · 피해 ${W.dmg[0]}–${W.dmg[1]}${W.range ? ` · 원거리 ${W.range}칸` : ''}</div><div>모양: ${SHAPES[W.shape]}</div><div style="color:#ffd27a">치명 ×2: ${CRITS[W.crit]}</div>${o ? `<div>보조손: <b style="color:${gearCss(o)}">${gearName(o)}</b></div>` : ''}<div class="hint" style="margin-top:6px">💡 같은 색 영혼석 1개당 무기 피해 +15% · 베기 = 출혈, 타격 = 골절, 찌르기 = 급소 표식</div>`);
   },
   renderWeapon() {
     if (!G.eq) return;
-    const W = weaponOf(G.eq.weapon), F = FORMS[W.form], o = G.eq.weapon2;
-    $('#btn-wpn').innerHTML = `${F.icon}<small>${G.eq.weapon ? gearName(G.eq.weapon) : '맨손'}</small><small style="font-size:9px;opacity:.7">${o ? '⇄ ' + gearName(o) : '세트 B 비어 있음'}</small>`;
+    const W = weaponOf(G.eq.weapon), F = FORMS[W.form];
+    $('#btn-wpn').innerHTML = `${F.icon}<small>${G.eq.weapon ? gearName(G.eq.weapon) : '맨손'}</small>`;
     $('#btn-wpn').style.boxShadow = `inset 0 -3px 0 ${COLORS[W.color].css}`;
     $('#gearcount').textContent = G.bag && G.bag.length ? G.bag.length : '';
   },

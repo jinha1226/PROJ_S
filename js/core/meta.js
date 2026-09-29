@@ -11,7 +11,7 @@ import { ageVisitors, rollVisitors } from './visitors.js';
 export let META = null;
 
 export function defaultMeta() {
-  META = { v: 7, gen: 0, visits: 0, cleared: [false, false, false, false], npcs: [], newNpcs: [], buildings: { plaza: { shown: true }, gate: { shown: true }, altar: { shown: true }, storage: { shown: true }, forge: { shown: true } },
+  META = { v: 8, gen: 0, visits: 0, cleared: [false, false, false, false], npcs: [], newNpcs: [], buildings: { plaza: { shown: true }, gate: { shown: true }, altar: { shown: true }, storage: { shown: true }, forge: { shown: true } },
     mats: { 약초: 2, 가죽: 1, 광석: 2 }, items: { heal: 1 }, gear: [], recipes: {}, hero: null, fallen: [], closed: {}, buff: null, ending: null,
     lit: [false, false, false, false], visitors: [], lore: [], glowMods: [], rememberedKeepers: [], needSuccessor: false, watcher: null, unrandsSeen: [], relics: [] };
   const k = makeNpc('keeper'), b = makeNpc('blacksmith'); META.npcs.push(k); initRel(k); META.npcs.push(b); initRel(b);
@@ -27,7 +27,7 @@ function migrateMeta(M) {
     M.v = 5;
   }
   if (M.v < 6) { migrateGear(M); if (M.hero) { const n = Math.max(1, M.hero.slots.filter((q) => q.stone).length); M.hero.level = n; M.hero.xp = LEVEL_XP[n - 1]; } M.v = 6; }
-  if (M.v < 7) { migrateSets(M); M.v = 7; }
+  if (M.v < 8) { migrateSets(M); M.v = 8; }
   M.rememberedKeepers ||= [];
   if (M.hero) { M.hero.torch ??= 100; M.hero.look ||= {}; if (!M.hero.look.ember_jar) M.hero.look.ember_jar = { name: '불씨 단지', color: 0xffc45c }; M.hero.known ||= {}; M.hero.known.ember_jar = true; }
 }
@@ -80,7 +80,7 @@ export function newHero(from) {
   const look = {};
   for (const cat of ['potion', 'scroll', 'throw']) { const looks = shuffle(APPEAR[cat].slice()); Object.keys(ITEMS).filter((k) => ITEMS[k].cat === cat).forEach((k, j) => { look[k] = { name: looks[j][0], color: looks[j][1] }; }); }
   let base = 30 + Math.min(15, Math.max(0, META.npcs.length - 2) * 2); const { eq, bag } = starterKit();
-  const h = { level: 1, xp: 0, name: from ? from.name : pick(HERO_NAMES), gen: META.gen, base, max: base, hp: base, torch: 100, inv: [], eq, bag, jlook: newJewelLook(), jknown: {}, wset: 0, slots: Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 })), sbag: [], sbagMax: 3, weakKnown: {}, known: { recall: true, ember_jar: true }, look, job: from ? from.job : null, npcLook: from ? from.look : null, perk: null };
+  const h = { level: 1, xp: 0, name: from ? from.name : pick(HERO_NAMES), gen: META.gen, base, max: base, hp: base, torch: 100, inv: [], eq, bag, jlook: newJewelLook(), jknown: {}, slots: Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 })), sbag: [], sbagMax: 3, weakKnown: {}, known: { recall: true, ember_jar: true }, look, job: from ? from.job : null, npcLook: from ? from.look : null, perk: null };
   const perk = from ? dominant(from) : null;
   if (perk && ['H+', 'H-', 'E+', 'E-', 'X+', 'A+', 'C+', 'O+'].includes(perk)) h.perk = perk;
   if (h.perk === 'H+') h.sbagMax = 4;

@@ -1,5 +1,5 @@
 import { visibleFoes } from '../core/fov.js';
-import { calcStats, canEnchant, dropGear, equip, fullyKnown, gearCss, gearName, gearScore, holder, jewelKnown, knownView, swapSet, unequip, wset } from '../core/gear.js';
+import { calcStats, canEnchant, dropGear, equip, fullyKnown, gearCss, gearName, gearScore, holder, jewelKnown, knownView, unequip } from '../core/gear.js';
 import { useItem } from '../core/items.js';
 import { META, saveMeta } from '../core/meta.js';
 import { G, Game } from '../core/state.js';
@@ -13,17 +13,12 @@ import { Town } from '../town/town.js';
 import { $, UI } from './ui.js';
 
 /* ================= 가방 · 장비 창 (docs/설계_아이템_장비.md §12) ================= */
-const ARMOR_SLOTS = ['head', 'neck', 'body', 'cloak', 'hands', 'feet', 'ring1', 'ring2'];
-/** 세트 이름표 → 칸: 쓰는 세트는 늘 weapon·off, 쉬는 세트는 weapon2·off2 */
-const setKey = (label, kind) => (label === wset() ? kind : kind + '2');
-const setOf = (slot) => (slot.endsWith('2') ? wset() ^ 1 : wset());
 /** 같은 색 영혼석 개수 · 배율 (정착지에서는 등불지기의 영혼석) */
 const stonesOf = () => (holder().town ? META.hero.slots : G.slots) || [];
 const colorN = (color) => stonesOf().filter((q) => q.stone && STONE[q.stone].color === color).length;
 const cmul = (w) => 1 + 0.15 * colorN(w.color);
 const dot = (color) => `<span style="color:${COLORS[color].css}">●</span>`;
-/** 쉬는 세트 칸이면 그 세트를 쓴다고 보고 계산한다 */
-function asActive(eq, slot) { if (!slot.endsWith('2')) return [eq, slot]; return [{ ...eq, weapon: eq.weapon2, off: eq.off2, weapon2: eq.weapon, off2: eq.off }, slot.slice(0, -1)]; }
+
 const inCombat = () => Game.mode === 'dungeon' && visibleFoes().some((e) => e.awake);
 const sign = (v) => (v >= 0 ? `+${v}` : `${v}`);
 const RES_DOT = (r) => (r > 0 ? '●'.repeat(r) : r < 0 ? '▼'.repeat(-r) : '—');
@@ -64,9 +59,9 @@ function cardHtml(it, title) {
 const knownEq = (eq) => Object.fromEntries(Object.entries(eq).map(([k, v]) => [k, knownView(v)]));
 /** 무기 피해 최대(색 배율 포함) */
 const topDmg = (w, s) => Math.round((w.dmg[1] + s.dmg) * cmul(w)) * (w.shape === 'twin' ? 2 : 1);
-/** 갈아입으면 바뀌는 최종 수치 — 아는 것만. 모르는 것이 있으면 "?". 쉬는 세트 칸은 그 세트를 쓸 때로 비교 */
-function statDiff(eq0, slot0, it) {
-  const [eq, slot] = asActive(eq0, slot0), known = knownEq(eq), next = { ...known, [slot]: knownView(it) };
+/** 갈아입으면 바뀌는 최종 수치 — 아는 것만. 모르는 것이 있으면 "?" */
+function statDiff(eq, slot, it) {
+  const known = knownEq(eq), next = { ...known, [slot]: knownView(it) };
   if (slot === 'weapon' && twoHanded(it)) next.off = null;
   const a = calcStats(known), b = calcStats(next), wA = weaponOf(known.weapon), wB = weaponOf(next.weapon);
   const rows = [['최대 HP', a.maxHp, b.maxHp, ''], ['방어', a.def, b.def, ''], ['회피', a.eva, b.eva, '%'], ['막기', a.block, b.block, '%'], ['피해', topDmg(wA, a), topDmg(wB, b), ''], ['급소', a.crit, b.crit, '%'], ['시야', a.vision, b.vision, '']];
@@ -104,9 +99,8 @@ Object.assign(UI, {
     const H = holder(), eq = H.eq, bag = H.bag, s = calcStats(knownEq(eq)), w = weaponOf(eq.weapon), sh = $('#sheet');
     sh.classList.add('tall');
     const wdot = (it) => (it && GEAR_BASES[it.base].weapon ? `<i class="wdot" style="background:${COLORS[weaponOf(it).color].css}"></i>` : it && GEAR_BASES[it.base].orb ? `<i class="wdot" style="background:${COLORS[GEAR_BASES[it.base].orb].css}"></i>` : '');
-    const cell = (slot, area = slot) => { const it = eq[slot]; return `<button class="eqs ${it ? 'on' : ''}" style="grid-area:${area};--c:${it ? gearCss(it) : 'rgba(255,255,255,.2)'}" data-eq="${slot}">${SLOT_ICON[slot]}${wdot(it)}<small>${it ? gearName(it) : slot.startsWith('off') && twoHanded(eq[slot === 'off' ? 'weapon' : 'weapon2']) ? '(양손)' : SLOT_NAME[slot]}</small></button>`; };
-    const setRow = (label) => { const on = label === wset(), m = setKey(label, 'weapon'), o = setKey(label, 'off'); return `<div class="setrow ${on ? 'on' : ''}"><button class="setlbl" data-set="${label}">세트 ${'AB'[label]}${on ? ' ▶' : ''}</button>${cell(m, 'auto')}${cell(o, 'auto')}</div>`; };
-    const better = (it) => { const k = slotKind(it), tgt = k === 'ring' ? [eq.ring1, eq.ring2] : k === 'weapon' || k === 'off' ? [eq[k], eq[k + '2']] : [eq[k]]; return tgt.some((o) => !o || gearScore(it) > gearScore(o) + 0.5); };
+    const cell = (slot) => { const it = eq[slot]; return `<button class="eqs ${it ? 'on' : ''}" style="grid-area:${slot};--c:${it ? gearCss(it) : 'rgba(255,255,255,.2)'}" data-eq="${slot}">${SLOT_ICON[slot]}${wdot(it)}<small>${it ? gearName(it) : slot === 'off' && twoHanded(eq.weapon) ? '(양손)' : SLOT_NAME[slot]}</small></button>`; };
+    const better = (it) => { const k = slotKind(it), tgt = k === 'ring' ? [eq.ring1, eq.ring2] : [eq[k]]; return tgt.some((o) => !o || gearScore(it) > gearScore(o) + 0.5); };
     const bagCells = Array.from({ length: BAG_MAX }, (_, k) => { const it = bag[k]; return it ? `<button class="bgc" style="--c:${gearCss(it)}" data-bag="${k}">${SLOT_ICON[slotKind(it)]}${wdot(it)}${better(it) ? '<i>▲</i>' : ''}<small>${gearName(it)}</small></button>` : '<div class="bgc empty"></div>'; }).join('');
     const town = H.town, stash = town ? META.gear : [];
     const stashCells = town ? (stash.length ? stash.map((it, k) => `<button class="bgc" style="--c:${gearCss(it)}" data-st="${k}">${SLOT_ICON[slotKind(it)]}<small>${gearName(it)}</small></button>`).join('') : '<p style="color:#9aa2bd;font-size:12.5px">창고가 비어 있다 — 대장간에서 만들거나, 가방에서 옮겨 둔다.</p>') : '';
@@ -124,19 +118,17 @@ Object.assign(UI, {
       } else if (sel.from === 'stash') {
         detail = `${cardHtml(it, '창고')}<div class="row"><button class="pri" data-act="take" ${bag.length >= BAG_MAX ? 'disabled' : ''}>가방으로</button><button data-act="back">닫기</button></div>`;
       } else {
-        const k = slotKind(it), hand = k === 'weapon' || k === 'off', slots = k === 'ring' ? ['ring1', 'ring2'] : hand ? [setKey(0, k), setKey(1, k)] : [k];
-        const tgt = sel.slot && slots.includes(sel.slot) ? sel.slot : hand ? (eq[k] || !eq[k + '2'] ? k : k + '2') : slots.find((x) => !eq[x]) || slots[0];
-        const tabName = (x) => (hand ? `세트 ${'AB'[setOf(x)]} ${SLOT_NAME[x]}` : `${SLOT_NAME[x]}${x === 'ring1' ? ' 1' : ' 2'}`);
-        const tabs2 = slots.length > 1 ? `<div class="wrow" style="margin-bottom:6px">${slots.map((x) => `<button class="wbtn ${x === tgt ? 'on' : ''}" data-tab="${x}">${tabName(x)}${eq[x] ? `<small style="color:${gearCss(eq[x])}">${gearName(eq[x])}</small>` : '<small>비어 있음</small>'}</button>`).join('')}</div>` : '';
-        const cur = eq[tgt], blocked = k === 'off' && twoHanded(eq[tgt === 'off' ? 'weapon' : 'weapon2']);
+        const k = slotKind(it), slots = k === 'ring' ? ['ring1', 'ring2'] : [k];
+        const tgt = sel.slot && slots.includes(sel.slot) ? sel.slot : slots.find((x) => !eq[x]) || slots[0];
+        const tabs2 = slots.length > 1 ? `<div class="wrow" style="margin-bottom:6px">${slots.map((x) => `<button class="wbtn ${x === tgt ? 'on' : ''}" data-tab="${x}">${SLOT_NAME[x]}${x === 'ring1' ? ' 1' : ' 2'}${eq[x] ? `<small style="color:${gearCss(eq[x])}">${gearName(eq[x])}</small>` : '<small>비어 있음</small>'}</button>`).join('')}</div>` : '';
+        const cur = eq[tgt], blocked = k === 'off' && twoHanded(eq.weapon);
         detail = `${tabs2}${cur ? cardHtml(cur, '입은 것') : ''}${cardHtml(it, cur ? '새것' : '가방')}
           <div class="gline">${statDiff(eq, tgt, it)}</div>
-          <div class="row"><button class="pri" data-act="equip" data-slot="${tgt}" ${blocked ? 'disabled' : ''}>${hand ? `세트 ${'AB'[setOf(tgt)]}` : SLOT_NAME[tgt]}에 장착${inCombat() ? ' (한 턴)' : ''}</button>${scrollButtons(it)}<button data-act="drop">${town ? '창고로' : '버리기'}</button><button data-act="back">닫기</button></div>`;
+          <div class="row"><button class="pri" data-act="equip" data-slot="${tgt}" ${blocked ? 'disabled' : ''}>${SLOT_NAME[tgt]}에 장착${inCombat() ? ' (한 턴)' : ''}</button>${scrollButtons(it)}<button data-act="drop">${town ? '창고로' : '버리기'}</button><button data-act="back">닫기</button></div>`;
       }
     }
     sh.innerHTML = `<h3>🎒 가방 · 장비 <small style="color:#9aa2bd;font-weight:400">${inCombat() ? '⚠ 전투 중 — 바꿀 때마다 한 턴' : '안전 — 자유롭게 바꾼다'}</small><button class="close">닫기</button></h3>
-      ${setRow(0)}${setRow(1)}
-      <div class="eqgrid">${ARMOR_SLOTS.map((k) => cell(k)).join('')}<div class="doll" style="grid-area:doll" id="invdoll"></div></div>
+      <div class="eqgrid">${SLOTS.map((k) => cell(k)).join('')}<div class="doll" style="grid-area:doll" id="invdoll"></div></div>
       <button class="stline" data-act="stats">HP ${H.unit.max} · 방어 ${s.def} · 회피 ${s.eva}%${s.block ? ` · 막기 ${s.block}%` : ''} · 피해 ${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} <b style="color:${COLORS[w.color].css}">×${cmul(w).toFixed(2)}</b> <small>▸ 자세히</small></button>
       ${detail ? `<div class="gdetail">${detail}</div>` : ''}
       <div class="invtabs">${tabs.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-itab="${k}">${l}</button>`).join('')}</div>
@@ -145,7 +137,6 @@ Object.assign(UI, {
     sh.classList.remove('hidden');
     Preview.mount($('#invdoll'), eq);
     sh.querySelector('.close').onclick = () => { sh.classList.add('hidden'); sh.classList.remove('tall'); };
-    sh.querySelectorAll('[data-set]').forEach((b) => { b.onclick = () => { if (+b.dataset.set === wset()) return; if (Anim.active) { this.toast('잠깐 — 움직임이 끝난 뒤에'); return; } this.instant(() => swapSet()); if (Game.mode === 'town') { saveMeta(); Town.redressHero?.(); } else this.renderWeapon(); Sfx.play('ui'); this.invSel = null; this.renderInv(); }; }); // 세트 교체: 턴 없음
     sh.querySelectorAll('[data-eq]').forEach((b) => { b.onclick = () => { this.invSel = eq[b.dataset.eq] ? { from: 'eq', slot: b.dataset.eq } : null; this.renderInv(); }; });
     sh.querySelectorAll('[data-bag]').forEach((b) => { b.onclick = () => { this.invSel = { from: 'bag', i: +b.dataset.bag }; this.renderInv(); }; });
     sh.querySelectorAll('[data-st]').forEach((b) => { b.onclick = () => { this.invSel = { from: 'stash', i: +b.dataset.st }; this.renderInv(); }; });

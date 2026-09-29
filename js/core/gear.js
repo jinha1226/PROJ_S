@@ -1,5 +1,5 @@
 import { kindOf } from '../data/enemies.js';
-import { ALL_SLOTS, AMULETS, ART_A, ART_B, BAG_MAX, BASE_EVA, BRANDS, CAPS, EGOS, ELEM, GEAR_BASES, GEAR_DROP, JEWEL_LOOK, QUALITY, RANDART_COSTS, RANDART_PROPS, RINGS, SLOTS, SLOT_NAME, UNRANDS, clampRes, dropTable, fitsSlot, hasQuality, isJewel, isWeapon, newBase, plusMax, twoHanded, weaponOf } from '../data/gear.js';
+import { AMULETS, ART_A, ART_B, BAG_MAX, BASE_EVA, BRANDS, CAPS, EGOS, ELEM, GEAR_BASES, GEAR_DROP, JEWEL_LOOK, QUALITY, RANDART_COSTS, RANDART_PROPS, RINGS, SLOTS, SLOT_NAME, UNRANDS, clampRes, dropTable, fitsSlot, hasQuality, isJewel, isWeapon, newBase, plusMax, twoHanded, weaponOf } from '../data/gear.js';
 import { T_FLOOR, T_STAIRS } from '../data/terrain.js';
 import { WEAPONS, WEAPON_IDS, WPN } from '../data/weapons.js';
 import { pick, rand, ri, shuffle, wpick } from '../util/rng.js';
@@ -11,7 +11,7 @@ import { G, Game, I, emit, inb, log, standable } from './state.js';
 /* ================= 장비 (DCSS식 — docs/설계_아이템_장비.md) =================
    장비 = { uid, base, plus, q(품질 1~4), brand, ego, jt(장신구 종류), jv(반지 수치), je(저항 원소), art(랜다트), un(픽다트),
            idP(강화치 앎), idX(속성 앎), worn(입은 턴), hits(무기 적중) }
-   데드셀안(docs/설계_아이템_장비_데드셀안.md): 무기 12종의 색 · 무기 세트 두 벌(weapon·off / weapon2·off2) · 오브 · 품질 */
+   데드셀안(docs/설계_아이템_장비_데드셀안.md): 무기 12종의 색 · 보조손(오브) · 품질. 무기 세트·교체는 없다 */
 const uid = () => 'g' + Math.floor(rand() * 2e9).toString(36);
 const ELEMS = ['fire', 'frost', 'bolt', 'poison'];
 const sign = (v) => (v >= 0 ? `+${v}` : `${v}`);
@@ -249,21 +249,19 @@ export function refreshStats() {
   if (u && u.max !== mx) { u.hp = Math.max(1, Math.min(mx, u.hp + Math.max(0, mx - u.max))); u.max = mx; if (!H.town) emit('hp', { id: 0, hp: u.hp, max: u.max }); }
   return s;
 }
-const eqSnap = (H) => Object.fromEntries(ALL_SLOTS.map((k) => [k, H.eq[k] ? { ...H.eq[k] } : null]));
-/** 쓰는 세트: 0 = A, 1 = B (칸 이름표만 — 쓰는 세트는 늘 weapon·off 칸에 있다) */
-export const wset = () => ((holder().town ? META.hero.wset : G.wset) || 0);
+const eqSnap = (H) => Object.fromEntries(SLOTS.map((k) => [k, H.eq[k] ? { ...H.eq[k] } : null]));
 /** 다 드러낸다(확인 두루마리) */
 export function revealAll(it) {
   if (!it || fullyKnown(it)) return false;
   it.idP = it.idX = true; if (it.art) for (const p of it.art.props) p.known = true; knowJewel(it);
   return true;
 }
-/** 세트의 짝 칸: weapon ↔ off, weapon2 ↔ off2 */
-const PAIR = { weapon: 'off', off: 'weapon', weapon2: 'off2', off2: 'weapon2' };
+/** 짝 칸: 양손 무기를 들면 보조손을 비운다 */
+const PAIR = { weapon: 'off', off: 'weapon' };
 export function equip(bagIdx, slot) {
   const H = holder(), it = H.bag[bagIdx]; if (!it || !fitsSlot(it, slot)) return false;
-  const mate = PAIR[slot], two = mate && slot.startsWith('weapon') && twoHanded(it);
-  if (mate && !slot.startsWith('weapon') && twoHanded(H.eq[mate])) { log('양손 무기를 든 세트에는 보조손을 들 수 없다', 'bad'); return false; }
+  const mate = PAIR[slot], two = slot === 'weapon' && twoHanded(it);
+  if (slot === 'off' && twoHanded(H.eq[mate])) { log('양손 무기를 든 세트에는 보조손을 들 수 없다', 'bad'); return false; }
   const old = H.eq[slot], off = two ? H.eq[mate] : null;
   if (H.bag.length - 1 + (old ? 1 : 0) + (off ? 1 : 0) > BAG_MAX) { log('가방이 가득 찼다', 'bad'); return false; }
   H.bag.splice(bagIdx, 1); if (old) H.bag.push(old);
@@ -281,16 +279,6 @@ export function unequip(slot) {
   if (H.bag.length >= BAG_MAX) { log('가방이 가득 찼다', 'bad'); return false; }
   H.eq[slot] = null; H.bag.push(it); refreshStats();
   emit('equip', { slot, eq: eqSnap(H) }); log(`${gearName(it)} 해제`, 'info');
-  return true;
-}
-/** 세트 교체 A ↔ B: 턴을 쓰지 않는다 (§4) */
-export function swapSet() {
-  const H = holder(), eq = H.eq;
-  if (!eq.weapon2 && !eq.off2 && !eq.weapon && !eq.off) return false;
-  [eq.weapon, eq.weapon2] = [eq.weapon2 || null, eq.weapon || null]; [eq.off, eq.off2] = [eq.off2 || null, eq.off || null];
-  const n = wset() ^ 1; if (H.town) META.hero.wset = n; else G.wset = n;
-  refreshStats();
-  emit('wset', { eq: eqSnap(H), set: n });
   return true;
 }
 export function dropGear(bagIdx) {
@@ -347,7 +335,7 @@ export function enchantItem(it, kind) {
 }
 /** 모두 드러낸다(한 층 내려갈 때 쓰지 않는다 — 옛 경로 호환) */
 export function identifyGear() {
-  let n = 0; for (const it of [...ALL_SLOTS.map((k) => G.eq[k]), ...G.bag]) if (revealAll(it)) n++;
+  let n = 0; for (const it of [...SLOTS.map((k) => G.eq[k]), ...G.bag]) if (revealAll(it)) n++;
   refreshStats(); return n;
 }
 
@@ -409,14 +397,14 @@ export function placeChests(rooms, tile, extra = 0) {
 export function leaveRelics() {
   if (!META || !G.eq) return;
   META.relics ||= [];
-  for (const slot of ALL_SLOTS) { const it = G.eq[slot]; if (it && it.un) META.relics.push({ zone: G.zone, zf: G.zf, it }); }
+  for (const slot of SLOTS) { const it = G.eq[slot]; if (it && it.un) META.relics.push({ zone: G.zone, zf: G.zf, it }); }
 }
 
 /* ================= 시작 장비 · 저장 옮기기 ================= */
-export const emptyEq = () => Object.fromEntries(ALL_SLOTS.map((k) => [k, null]));
-/** 새 등불지기: 세트 A = 근접 무기, 세트 B = 원거리 무기(공격 길게 누르기로 교체) + 천옷, 모두 아는 +0 */
-export function starterKit(starts = [pick(['sword', 'axe', 'mace', 'spear']), pick(['sling', 'boomerang'])]) {
-  const eq = emptyEq(); eq.weapon = makeGear(starts[0], { known: true }); eq.weapon2 = makeGear(starts[1], { known: true }); eq.body = makeGear('body_cloth', { known: true });
+export const emptyEq = () => Object.fromEntries(SLOTS.map((k) => [k, null]));
+/** 새 등불지기: 한손 근접 무기 하나 + 천옷, 모두 아는 +0 */
+export function starterKit(start = pick(['sword', 'axe', 'mace', 'spear'])) {
+  const eq = emptyEq(); eq.weapon = makeGear(start, { known: true }); eq.body = makeGear('body_cloth', { known: true });
   return { eq, bag: [] };
 }
 /** 저장 v5 → v6: 디아블로식 장비 → DCSS식. 보조 칸의 무기는 가방으로, 방패는 방패 칸으로, 횃불 장비는 사라진다 */
@@ -437,15 +425,15 @@ export function migrateGear(M) {
   h.jlook ||= newJewelLook(); h.jknown ||= {};
   for (const it of [...Object.values(eq), ...bag, ...M.gear]) if (it && isJewel(it) && it.jt && !it.art && !it.un) h.jknown[jkey(it)] = true;
 }
-/** 저장 v6 → v7 (데드셀안 §9): 단검 → 쌍단검, 방패 칸 → 세트 A 보조손, 가방의 마지막 무기 → 세트 B, 품질 없는 장비는 1 */
+/** 저장 → v8: 단검 → 쌍단검, 방패 칸 → 보조손, 품질 없는 장비는 1. v7의 세트 B(weapon2·off2)는 가방으로(차면 창고로) */
 export function migrateSets(M) {
   const fix = (it) => { if (!it) return it; it.base = newBase(it.base); if (it.q === undefined) it.q = hasQuality(it.base) ? 1 : null; return it; };
   (M.gear || []).forEach(fix); for (const r of M.relics || []) fix(r.it);
   const h = M.hero; if (!h || !h.eq) return;
   const eq = h.eq; h.bag = (h.bag || []).map(fix);
   if (eq.shield !== undefined) { eq.off = eq.shield || null; delete eq.shield; }
-  for (const k of ALL_SLOTS) eq[k] = fix(eq[k] || null);
-  if (!eq.weapon2) { const k = h.bag.map(isWeapon).lastIndexOf(true); if (k >= 0) eq.weapon2 = h.bag.splice(k, 1)[0]; }
-  if (twoHanded(eq.weapon) && eq.off) { h.bag.push(eq.off); eq.off = null; }
-  h.wset = 0;
+  for (const k of SLOTS) eq[k] = fix(eq[k] || null);
+  const out = [eq.weapon2, eq.off2].map(fix).filter(Boolean); delete eq.weapon2; delete eq.off2; delete h.wset;
+  if (twoHanded(eq.weapon) && eq.off) { out.push(eq.off); eq.off = null; }
+  for (const it of out) (h.bag.length < BAG_MAX ? h.bag : (M.gear ||= [])).push(it);
 }

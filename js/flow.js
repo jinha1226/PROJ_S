@@ -66,7 +66,7 @@ export function enterDungeon(zone) {
   const h = META.hero;
   Town.clear(); Game.mode = 'dungeon'; Anim.active = false; Anim.q = []; // 남은 연출은 버린다
   setR(mulberry32(seedOr(((Date.now() & 0xffffffff) ^ Math.floor(Math.random() * 1e9)) >>> 0)));
-  Object.assign(G, { zone, zf: 1, over: false, won: false, nextId: 1, hasteFlip: false, pendingReturn: null, known: h.known, look: h.look, inv: h.inv, eq: h.eq, bag: h.bag, heroBase: h.base, jlook: h.jlook || (h.jlook = newJewelLook()), jknown: h.jknown || (h.jknown = {}), wset: h.wset || 0, reload: null, aimed: false, lastHit: null, riposte: -1, slots: h.slots, level: h.level || 6, xp: h.xp || 0, sbag: h.sbag, weakKnown: h.weakKnown, ctx: null, curSrc: null, dropHint: 0 });
+  Object.assign(G, { zone, zf: 1, over: false, won: false, nextId: 1, hasteFlip: false, pendingReturn: null, known: h.known, look: h.look, inv: h.inv, eq: h.eq, bag: h.bag, heroBase: h.base, jlook: h.jlook || (h.jlook = newJewelLook()), jknown: h.jknown || (h.jknown = {}), reload: null, aimed: false, lastHit: null, riposte: -1, slots: h.slots, level: h.level || 6, xp: h.xp || 0, sbag: h.sbag, weakKnown: h.weakKnown, ctx: null, curSrc: null, dropHint: 0 });
   for (const k of ALWAYS_KNOWN) G.known[k] = true;
   for (const sl of G.slots) sl.cd = 0;
   G.player = { id: 0, type: 'hero', name: h.name, x: 0, y: 0, hp: h.hp, max: h.max, st: newSt(), alive: true, face: [0, 1], shield: 0 };
@@ -96,7 +96,7 @@ export function returnToTown(reason) {
     rescueFollowers(); rep.npcs = G.loot.npcs.slice();
     for (const [m, n] of Object.entries(G.loot.mats)) META.mats[m] = (META.mats[m] || 0) + n;
     rep.loot = { ...G.loot.mats };
-    h.hp = Math.max(1, G.player.hp); h.max = G.player.max; h.level = G.level; h.xp = G.xp; h.base = G.heroBase; h.wset = G.wset || 0;
+    h.hp = Math.max(1, G.player.hp); h.max = G.player.max; h.level = G.level; h.xp = G.xp; h.base = G.heroBase;
     if (reason === 'boss') { rep.first = !META.cleared[G.zone - 1]; META.cleared[G.zone - 1] = true; }
   }
   G.over = true; UI.exitTarget(); UI.travel = null; UI.rest = null; UI.buffered = null; Anim.active = false; Anim.q = [];

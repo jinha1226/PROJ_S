@@ -1,4 +1,4 @@
-import { ALL_SLOTS } from '../data/gear.js';
+import { SLOTS } from '../data/gear.js';
 import { ITEMS } from '../data/items.js';
 import { C_SMOKE, S_ICE, S_OIL, S_WATER, T_DOOR, T_WALL } from '../data/terrain.js';
 import { JAR_REFILL } from '../data/torch.js';
@@ -41,7 +41,7 @@ export function useItem(k, tx, ty) {
   // 장비를 골라 쓰는 두루마리: tx = 장비 uid
   let target = null;
   if (ITEMS[k].target) {
-    target = [...ALL_SLOTS.map((s) => G.eq[s]), ...G.bag].find((it) => it && it.uid === tx);
+    target = [...SLOTS.map((s) => G.eq[s]), ...G.bag].find((it) => it && it.uid === tx);
     if (!target) return false;
     if (k === 'ident' && fullyKnown(target)) { log('이미 다 아는 장비다', 'info'); return false; }
     if (k !== 'ident' && !canEnchant(target, k === 'enchW' ? 'w' : 'a')) { log('이 장비는 더 강화할 수 없다', 'bad'); return false; }

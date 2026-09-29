@@ -4,7 +4,7 @@ import { COLORS } from '../data/stones.js';
 import { WEAPONS } from '../data/weapons.js';
 import { SKIN, _w } from './common.js';
 import * as K from './diorama.js';
-import { GLOW_TEX, GRIP2, weaponDoll } from './dolls.js';
+import { GLOW_TEX, GRIP2 } from './dolls.js';
 import { View } from './view.js';
 
 /* ---------- 주인공 인형: 입은 장비가 모양을 바꾼다 (docs/설계_아이템_장비.md §11) ---------- */
@@ -73,8 +73,6 @@ export function heroSpec(eq = {}) {
       const wh = new THREE.Group(); wh.position.set(-0.28, 0.37, 0.06); wh.rotation.x = 0.5; d.body.add(wh);
       // 양손 무기: 둘째 손이 자루를 함께 쥔다(무기와 같이 휘두른다, setWeapon이 지우지 않게 keep)
       if (two && GRIP2[wid]) { const h2 = K.doll([{ s: 'sphere', k: 0.075 * hs, c: handCol }], { gloss: 0.75 }).root; h2.position.set(...GRIP2[wid]); h2.userData.keep = true; wh.add(h2); }
-      // 쓰지 않는 세트의 무기: 등에 멘다(양손 무기는 비스듬히)
-      if (eq.weapon2) { const w2 = weaponId(eq.weapon2), t2 = WEAPONS[w2]?.hands === 2, b = weaponDoll(w2, eq.weapon2).root; b.position.set(t2 ? 0.2 : 0.12, t2 ? 0.18 : 0.28, -0.27 * th); b.rotation.z = t2 ? 0.8 : 0.35; d.body.add(b); }
       // 오브: 그 색으로 빛나는 구슬이 왼손 옆에 떠서 천천히 돈다
       let orb = null;
       if (ob) {

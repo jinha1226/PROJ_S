@@ -82,8 +82,8 @@ const s10 = await page.evaluate(() => { const old = { v: 5, gen: 1, visits: 1, c
     hero: { name: '옛', gen: 1, base: 30, max: 30, hp: 30, inv: [], look: {}, known: {}, slots: Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 })), sbag: [], weakKnown: {}, bag: [], legends: ['stormRing'],
       eq: { weapon: { uid: 'c', base: 'axe', rarity: 'magic', affixes: [{ id: 'dmg', v: 1 }], known: true }, off: { uid: 'd', base: 'mace', rarity: 'common', affixes: [], known: true }, head: null, body: { uid: 'e', base: 'body_cloth', rarity: 'legend', legend: 'mistCloak', affixes: [], known: true }, hands: null, feet: null, neck: null, ring1: null, ring2: null } } };
   localStorage.setItem('torch-meta-v3', JSON.stringify(old)); const g = window.__game; g.resetMetaForTest(); const M = g.loadMeta(); const h = M.hero;
-  return { v: M.v, weapon: h.eq.weapon.base + h.eq.weapon.plus, set2: h.eq.weapon2 && h.eq.weapon2.base, bag: h.bag.map((i) => i.base).join(), cloak: h.eq.cloak ? h.eq.cloak.un : null, body: h.eq.body, stash: M.gear.map((i) => i.base + i.plus).join(), seen: M.unrandsSeen.join() }; });
-check('옛 저장의 등급 장비가 새 형식으로 (가방의 무기는 세트 B로)', s10.v === 7 && s10.weapon === 'axe1' && s10.set2 === 'mace' && s10.bag === '' && s10.stash === 'boots2' && s10.seen.includes('stormRing'), JSON.stringify(s10));
+  return { v: M.v, weapon: h.eq.weapon.base + h.eq.weapon.plus, bag: h.bag.map((i) => i.base).join(), cloak: h.eq.cloak ? h.eq.cloak.un : null, body: h.eq.body, stash: M.gear.map((i) => i.base + i.plus).join(), seen: M.unrandsSeen.join() }; });
+check('옛 저장의 등급 장비가 새 형식으로', s10.v === 8 && s10.weapon === 'axe1' && s10.bag === 'mace' && s10.stash === 'boots2' && s10.seen.includes('stormRing'), JSON.stringify(s10));
 
 /* ================= 데드셀안 확인 목록 (docs/설계_아이템_장비_데드셀안.md §10) ================= */
 await page.evaluate(() => { const g = window.__game, M = g.META; document.querySelector('#sheet').classList.add('hidden'); M.hero = g.newHero(); g.enterDungeon(1); document.querySelector('#sheet').classList.add('hidden');
@@ -124,14 +124,14 @@ const d2 = await page.evaluate(() => { const g = window.__game, G = arena(); G.e
   return { m0, m3, m6: +m6.toFixed(2), shown: /빨강 영혼석 3개 → 피해 ×1\.45/.test(t), colorChange: /색: .*초록 → .*빨강/.test(t) }; });
 check('§10-2 같은 색 영혼석 → 무기 피해 배율(×1.45·×1.9), 비교 창에 표시', d2.m0 === 1 && d2.m3 === 1.45 && d2.m6 === 1.9 && d2.shown && d2.colorChange, JSON.stringify(d2));
 
-// §10-3 세트 교체는 턴을 쓰지 않고, 쉬는 세트의 방패·브랜드는 적용되지 않는다
-const d3 = await page.evaluate(() => { const g = window.__game, G = arena([[3, 3]]); G.eq.weapon = g.makeGear('sword', { known: true }); G.eq.off = null; G.eq.weapon2 = g.makeGear('mace', { brand: 'fire', known: true }); G.eq.off2 = g.makeGear('shield', { known: true }); g.refreshStats();
-  const before = { block: G.ps.block, brand: G.ps.brand }, t0 = G.stats.turns; g.UI.swapWeapon(); drain();
-  const after = { block: G.ps.block, brand: G.ps.brand, weapon: G.eq.weapon.base, set: G.wset }; return { before, after, turns: G.stats.turns - t0 }; });
-check('§10-3 세트 A↔B 교체는 턴 없음, 쉬는 세트 효과 없음', d3.turns === 0 && d3.before.block === 0 && !d3.before.brand && d3.after.block === 20 && d3.after.brand === 'fire' && d3.after.weapon === 'mace' && d3.after.set === 1, JSON.stringify(d3));
+// §10-3 (바뀜) 무기 세트·교체는 없다: 칸은 10개, 공격 길게 누르기는 무기 정보
+const d3 = await page.evaluate(() => { const g = window.__game, G = arena(); G.eq.weapon = g.makeGear('sword', { known: true }); g.refreshStats(); const t0 = G.stats.turns, before = G.eq.weapon;
+  g.UI.weaponInfo(); const info = /장검/.test(document.querySelector('#info').textContent); g.UI.hideInfo();
+  return { slots: Object.keys(G.eq).length, noSet: !('weapon2' in G.eq) && !('off2' in G.eq) && !g.UI.swapWeapon, same: G.eq.weapon === before, turns: G.stats.turns - t0, info }; });
+check('§10-3 무기 세트·교체 없음 (칸 10개, 길게 누르기 = 무기 정보)', d3.slots === 10 && d3.noSet && d3.same && d3.turns === 0 && d3.info, JSON.stringify(d3));
 
 // §10-4 양손 무기를 끼면 보조손은 가방으로(미리 알림)
-const d4 = await page.evaluate(() => { const g = window.__game, G = arena(); G.wset = 0; G.eq.weapon = g.makeGear('sword', { known: true }); G.eq.off = g.makeGear('buckler', { known: true }); g.refreshStats(); const gs = g.makeGear('greatsword', { known: true }); G.bag.push(gs);
+const d4 = await page.evaluate(() => { const g = window.__game, G = arena(); G.eq.weapon = g.makeGear('sword', { known: true }); G.eq.off = g.makeGear('buckler', { known: true }); g.refreshStats(); const gs = g.makeGear('greatsword', { known: true }); G.bag.push(gs);
   g.UI.openInv(); g.UI.invTab = 'gear'; g.UI.invSel = { from: 'bag', i: G.bag.length - 1, slot: 'weapon' }; g.UI.renderInv(); const warn = /양손 무기 — .*버클러.*가방으로/.test(document.querySelector('.gline').textContent);
   document.querySelector('[data-act="equip"]').click(); drain(); document.querySelector('#sheet').classList.add('hidden');
   const ok = G.eq.weapon === gs && !G.eq.off && G.bag.some((it) => it.base === 'buckler'); const orb = g.makeGear('orb_red'); G.bag.push(orb); const refused = !g.equip(G.bag.length - 1, 'off'); return { warn, ok, refused }; });
@@ -163,8 +163,17 @@ const d9 = await page.evaluate(() => { const g = window.__game, mk = (base, o = 
     gear: [mk('dagger', { plus: 1 })], hero: { name: '옛', gen: 1, base: 30, max: 30, hp: 30, level: 2, xp: 20, inv: [], look: {}, known: {}, slots: Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 })), sbag: [], weakKnown: {}, jlook: {}, jknown: {},
       bag: [mk('dagger', { plus: 2 }), mk('boots'), mk('spear')], eq: { weapon: mk('mace', { plus: 1 }), shield: mk('buckler'), head: null, body: mk('body_cloth'), cloak: null, hands: null, feet: null, neck: null, ring1: null, ring2: null } } };
   localStorage.setItem('torch-meta-v3', JSON.stringify(old)); g.resetMetaForTest(); const M = g.loadMeta(), h = M.hero;
-  return { v: M.v, weapon: h.eq.weapon.base + h.eq.weapon.plus, off: h.eq.off && h.eq.off.base, set2: h.eq.weapon2 && h.eq.weapon2.base, bag: h.bag.map((i) => i.base).join(), stash: M.gear[0].base, q: h.eq.body.q, noShield: !('shield' in h.eq) }; });
-check('§10-9 옛 저장 → 단검은 쌍단검, 방패 칸은 세트 A 보조손, 가방의 마지막 무기는 세트 B', d9.v === 7 && d9.weapon === 'mace1' && d9.off === 'buckler' && d9.set2 === 'spear' && d9.bag === 'twin,boots' && d9.stash === 'twin' && d9.q === 1 && d9.noShield, JSON.stringify(d9));
+  return { v: M.v, weapon: h.eq.weapon.base + h.eq.weapon.plus, off: h.eq.off && h.eq.off.base, bag: h.bag.map((i) => i.base).join(), stash: M.gear[0].base, q: h.eq.body.q, noShield: !('shield' in h.eq) }; });
+check('§10-9 옛 저장(v6) → 단검은 쌍단검, 방패 칸은 보조손', d9.v === 8 && d9.weapon === 'mace1' && d9.off === 'buckler' && d9.bag === 'twin,boots,spear' && d9.stash === 'twin' && d9.q === 1 && d9.noShield, JSON.stringify(d9));
+
+// 저장 v7(무기 세트 두 벌) → v8: 세트 B는 가방으로
+const d9b = await page.evaluate(() => { const g = window.__game, mk = (base, o = {}) => ({ uid: 'v' + base, base, q: 1, plus: 0, brand: null, ego: null, jt: null, jv: 0, je: null, art: null, un: null, idP: true, idX: true, worn: 0, hits: 0, ...o });
+  const old = { v: 7, gen: 1, visits: 1, cleared: [false, false, false, false], npcs: [], newNpcs: [], buildings: {}, mats: {}, items: {}, recipes: {}, fallen: [], closed: {}, lit: [false, false, false, false], visitors: [], lore: [], glowMods: [], relics: [], unrandsSeen: [], gear: [],
+    hero: { name: '옛', gen: 1, base: 30, max: 30, hp: 30, level: 1, xp: 0, wset: 1, inv: [], look: {}, known: {}, slots: Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 })), sbag: [], weakKnown: {}, jlook: {}, jknown: {}, bag: [mk('boots')],
+      eq: { weapon: mk('crossbow'), off: null, weapon2: mk('sword'), off2: mk('orb_red', { q: null }), head: null, body: mk('body_cloth'), cloak: null, hands: null, feet: null, neck: null, ring1: null, ring2: null } } };
+  localStorage.setItem('torch-meta-v3', JSON.stringify(old)); g.resetMetaForTest(); const M = g.loadMeta(), h = M.hero;
+  return { v: M.v, weapon: h.eq.weapon.base, bag: h.bag.map((i) => i.base).join(), keys: Object.keys(h.eq).length, wset: 'wset' in h }; });
+check('저장 v7 → v8: 세트 B의 무기·보조손은 가방으로', d9b.v === 8 && d9b.weapon === 'crossbow' && d9b.bag === 'boots,sword,orb_red' && d9b.keys === 10 && !d9b.wset, JSON.stringify(d9b));
 
 check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 await browser.close(); server.close();

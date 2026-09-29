@@ -31,7 +31,6 @@ const SCENARIO = () => {
       if (r < 0.18) { const sk = ['push', 'fire', 'bolt', 'frost', 'venom'].filter((k) => s.cd[k] === 0); if (sk.length) { UI.skillBtn(sk[Math.floor(rng() * sk.length)]); const v = [...UI.valid].sort((a, b) => a - b); if (v.length && UI.mode === 'target') { const i = v[Math.floor(rng() * v.length)]; UI.tapTarget(i % s.W, (i / s.W) | 0); UI.tapTarget(i % s.W, (i / s.W) | 0); } else UI.exitTarget(); drain(); continue; } }
       if (r < 0.24 && s.inv.length) { const q = s.inv[Math.floor(rng() * s.inv.length)]; if (q.k !== 'recall') { UI.useFromBag(q.k); if (UI.mode === 'target') { const v = [...UI.valid].sort((a, b) => a - b); if (v.length) { const i = v[Math.floor(rng() * v.length)]; UI.tapTarget(i % s.W, (i / s.W) | 0); UI.tapTarget(i % s.W, (i / s.W) | 0); } else UI.exitTarget(); } drain(); continue; } }
       if (r < 0.32) { UI.waitBtn(); drain(); continue; }
-      if (r < 0.34) UI.swapWeapon();
       const foes = s.ents.filter((e) => e.alive && e !== p && !e.ally).sort((a, b) => Math.max(Math.abs(a.x - p.x), Math.abs(a.y - p.y)) - Math.max(Math.abs(b.x - p.x), Math.abs(b.y - p.y)) || a.id - b.id);
       let d = null;
       if (foes.length && rng() < 0.7) { d = [Math.sign(foes[0].x - p.x), Math.sign(foes[0].y - p.y)]; if (s.tile[(p.y + d[1]) * s.W + p.x + d[0]] === 0) d = null; }

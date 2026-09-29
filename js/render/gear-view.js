@@ -3,7 +3,6 @@ import { gearCss, gearHex, gearName, gearTier } from '../core/gear.js';
 import { G, I, XY } from '../core/state.js';
 import { GEAR_BASES, MAT_COLOR, weaponId } from '../data/gear.js';
 import { COLORS } from '../data/stones.js';
-import { WEAPONS } from '../data/weapons.js';
 import { W3, _tv } from './common.js';
 import * as K from './diorama.js';
 import { GLOW_TEX, weaponDoll } from './dolls.js';
@@ -104,13 +103,6 @@ Object.assign(View, {
       case 'equip': {
         if (pe) { pe.redress({ type: 'hero', eq: d.eq }); this.setWeapon(weaponId(d.eq.weapon), d.eq.weapon); D.sparks.emit({ pos: W3(pe.cur.x, pe.cur.z, 0.6), n: 22, color: 0xffffff, color2: 0xffd84a, speed: 1.6, up: 1.4, grav: 0, life: 0.6, size: 0.12, spread: 0.4 }); }
         ports.UI.renderWeapon(); Sfx.play('pick'); return true;
-      }
-      case 'wset': { // 세트 교체(턴 없음): 등에서 꺼내 드는 짧은 동작 + 무기 색 반짝이
-        if (pe) {
-          pe.redress({ type: 'hero', eq: d.eq }); this.setWeapon(weaponId(d.eq.weapon), d.eq.weapon); pe.swing = { t: 0, form: 'draw', dur: 0.3 };
-          const w = d.eq.weapon && WEAPONS[weaponId(d.eq.weapon)]; D.sparks.emit({ pos: W3(pe.cur.x, pe.cur.z, 0.75), n: 18, color: w ? COLORS[w.color].hex : 0xffffff, color2: 0xffffff, speed: 1.4, up: 1.2, grav: 0, life: 0.5, size: 0.11, spread: 0.3 });
-        }
-        ports.UI.renderWeapon?.(); Sfx.play('draw'); return true;
       }
       case 'dodge': if (pe) { pe.lunge(Math.random() < 0.5 ? 1 : -1, 0, 0.3); D.labels.pop(W3(pe.cur.x, pe.cur.z, 1.3), '회피!', { color: '#9fe2ff', cls: 'word', vx: 0 }); Sfx.play('swing'); } return true;
       case 'block': if (pe) { pe.bubbleHit = 1; D.labels.pop(W3(pe.cur.x, pe.cur.z, 1.3), '막기!', { color: '#ffd08a', cls: 'word', vx: 0 }); D.sparks.emit({ pos: W3(pe.cur.x, pe.cur.z, 0.5), n: 14, color: 0xffe0a0, speed: 3.5, life: 0.3, size: 0.1 }); Sfx.play('blunt'); } return true;

@@ -2,7 +2,7 @@ import { canEnchant, craftArmor, craftWeapon, gearCss, gearName, makeGear } from
 import { META, craftNote, invAdd, invCount, moodAdd, newHero, packLimit, recipeName, saveMeta } from '../core/meta.js';
 import { cap, hearthGlow } from '../core/visitors.js';
 import { BOSSES } from '../data/enemies.js';
-import { ALL_SLOTS, QUALITY, SLOT_ICON, hasQuality, isWeapon, slotKind } from '../data/gear.js';
+import { QUALITY, SLOTS, SLOT_ICON, hasQuality, isWeapon, slotKind } from '../data/gear.js';
 import { ITEMS, MATS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { ZONES } from '../data/terrain.js';
@@ -37,7 +37,7 @@ Object.assign(Town, {
       <div class="gtxt">모험가 <b>${h.name}</b> (${h.gen}대째) · HP ${h.hp}/${h.max} · 영혼석 ${h.slots.filter((q) => q.stone).map((q) => `<span style="color:${COLORS[q.color].css}">${STONE[q.stone].icon}</span>`).join('') || '없음'}</div>
       <div class="sec">구역 <small>보스를 잡아야 다음 구역이 열린다 · 안에서는 돌아올 수 없다</small></div><div class="wrow">${zones}</div>
       <div class="sec">준비물 ${carried}/${lim} <small>이미 든 것 ${invCount(h.inv)} · 마을 사람이 늘면 더 챙겨 준다</small></div>${items}
-      <div class="sec">장비 <small>창고의 장비는 죽어도 남는다</small></div><div class="gtxt">${ALL_SLOTS.filter((k) => h.eq[k]).map((k) => `<span style="color:${gearCss(h.eq[k])}">${SLOT_ICON[k]} ${gearName(h.eq[k])}</span>`).join(' · ')}</div>
+      <div class="sec">장비 <small>창고의 장비는 죽어도 남는다</small></div><div class="gtxt">${SLOTS.filter((k) => h.eq[k]).map((k) => `<span style="color:${gearCss(h.eq[k])}">${SLOT_ICON[k]} ${gearName(h.eq[k])}</span>`).join(' · ')}</div>
       <button class="wbtn" data-inv="1" style="width:100%;margin-top:6px">🛡 장비 창 — 창고 ${META.gear.length} · 가방 ${h.bag.length}/20</button>
       ${META.buff === 'feast' ? '<div class="gtxt" style="margin-top:6px">🍲 든든한 한 끼 — 출발 시 보호막 +6</div>' : ''}
       <button class="bigbtn" id="btn-depart">구역 ${P.zone + 1}로 출발</button>`);
@@ -175,7 +175,7 @@ Object.assign(Town, {
   },
   heroCard() {
     const h = META.hero; if (!h) return;
-    UI.info(`<h3>🧭 ${h.name} <small style="color:#9aa2bd">${h.gen}대째 모험가 · HP ${h.hp}/${h.max}</small></h3><div class="gtxt">장비: ${ALL_SLOTS.filter((k) => h.eq[k]).map((k) => `<span style="color:${gearCss(h.eq[k])}">${SLOT_ICON[k]}${gearName(h.eq[k])}</span>`).join(' ')}<br>영혼석: ${h.slots.filter((q) => q.stone).map((q) => `<span style="color:${COLORS[q.color].css}">${STONE[q.stone].icon}${STONE[q.stone].name}</span>`).join(' ') || '없음'}<br>가방: ${h.inv.map((q) => `${ITEMS[q.k].name}×${q.n}`).join(', ') || '비어 있음'}</div>`);
+    UI.info(`<h3>🧭 ${h.name} <small style="color:#9aa2bd">${h.gen}대째 모험가 · HP ${h.hp}/${h.max}</small></h3><div class="gtxt">장비: ${SLOTS.filter((k) => h.eq[k]).map((k) => `<span style="color:${gearCss(h.eq[k])}">${SLOT_ICON[k]}${gearName(h.eq[k])}</span>`).join(' ')}<br>영혼석: ${h.slots.filter((q) => q.stone).map((q) => `<span style="color:${COLORS[q.color].css}">${STONE[q.stone].icon}${STONE[q.stone].name}</span>`).join(' ') || '없음'}<br>가방: ${h.inv.map((q) => `${ITEMS[q.k].name}×${q.n}`).join(', ') || '비어 있음'}</div>`);
   },
   report(r, res) {
     const W = { boss: `🏆 구역 ${r.zone} 보스 격파!${r.first ? ' 다음 구역이 열렸다.' : ''}`, recall: `📜 귀환 두루마리로 구역 ${r.zone}-${r.zf}에서 돌아왔다. 이 구역은 처음부터 다시.`, death: `🕯 ${jo(r.hero, '이가')} 구역 ${r.zone}-${r.zf}에서 쓰러졌다. 영혼석과 전리품을 잃었다. 이름을 비석에 새긴다.`, first: '🔥 세상에 남은 마지막 모닥불. 불은 장작이 아니라 사람으로 탄다 — 곁에 모인 사람들이 서로를 기억하는 동안.', resume: '🏕 정착지로 돌아왔다.' }[r.reason] || '';
