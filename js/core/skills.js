@@ -1,4 +1,4 @@
-import { damage, push } from './combat.js';
+import { colorMul, damage, push } from './combat.js';
 import { conductSet, fireAt, frostCast, oilSet, shock, venomAt } from './elements.js';
 import { los, lineTiles } from './fov.js';
 import { G, I, TL, XY, emit, entAt, inb, isFoe, isP, standable } from './state.js';
@@ -68,8 +68,8 @@ export function targetsFor(pend) {
 
 /** 무기 한 방 예상 피해 */
 function weaponRange(t, bonus = 0) {
-  const w = weaponOf(G.eq.weapon), weak = t && CATS[catOf(t)].weak === w.form, k = (weak ? 1.5 : 1) * (t && t.st.frozen ? 1.5 : 1);
-  return [Math.ceil((w.dmg[0] + G.ps.dmg + bonus) * k), Math.ceil((w.dmg[1] + G.ps.dmg + bonus) * k)];
+  const w = weaponOf(G.eq.weapon), weak = t && CATS[catOf(t)].weak === w.form, k = (weak ? 1.5 : 1) * (t && t.st.frozen ? 1.5 : 1), m = colorMul(w);
+  return [Math.ceil(Math.round((w.dmg[0] + G.ps.dmg + bonus) * m) * k), Math.ceil(Math.round((w.dmg[1] + G.ps.dmg + bonus) * m) * k)];
 }
 function pushPreview(x, y, dx, dy, n, add) {
   let cx = x, cy = y, left = n, k = 0, note = ''; const rot = Math.atan2(dx, -dy);
@@ -123,10 +123,10 @@ export function previewFor(pend, x, y) {
   } else if (id === 'r_poison') {
     add(x, y, HEX.poison, 5, 0.9); note = c ? '→ 중독 6턴 — 이후 불이 닿으면 독 폭발' : '→ 빈 칸';
   } else if (id === 'p_fire') {
-    let n = 0, grass = 0; for (const [tx, ty] of areaTiles(x, y, 1)) { add(tx, ty, HEX.fire, 5, 0.85); const o = entAt(tx, ty); if (o && isFoe(o)) n++; if (G.surf[I(tx, ty)] === S_GRASS) grass++; if (o && isP(o)) warn = ' ⚠ 나도 불길 안!'; }
+    let n = 0, grass = 0; for (const [tx, ty] of areaTiles(x, y, 1 + (G.ps ? G.ps.orb.purple : 0))) { add(tx, ty, HEX.fire, 5, 0.85); const o = entAt(tx, ty); if (o && isFoe(o)) n++; if (G.surf[I(tx, ty)] === S_GRASS) grass++; if (o && isP(o)) warn = ' ⚠ 나도 불길 안!'; }
     note = `→ 3×3 불길: 적 ${n}명 ${3 + sd} 화염 + 화상${grass ? ` · 풀 ${grass}칸 번짐` : ''}`;
   } else if (id === 'p_wet') {
-    let n = 0; for (const [tx, ty] of areaTiles(x, y, 2)) { add(tx, ty, HEX.water, 0, 0.7); const o = entAt(tx, ty); if (o && isFoe(o)) { n++; add(tx, ty, HEX.water, 5, 0.9); } }
+    let n = 0; for (const [tx, ty] of areaTiles(x, y, 2 + (G.ps ? G.ps.orb.purple : 0))) { add(tx, ty, HEX.water, 0, 0.7); const o = entAt(tx, ty); if (o && isFoe(o)) { n++; add(tx, ty, HEX.water, 5, 0.9); } }
     note = `→ 적 ${n}명 젖음 · 바닥 물웅덩이 — 번개가 이어진 물 전체로 번진다`;
   } else if (id === 'p_summon') {
     add(x, y, 0xc8a0ff, 5, 0.9); note = '→ 영혼 고블린이 여기 선다 (4턴)';

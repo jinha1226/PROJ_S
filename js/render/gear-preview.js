@@ -32,7 +32,7 @@ export const Preview = {
     if (!this.scene) return;
     if (this.doll) { this.scene.remove(this.doll.root); this.doll.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
     const sp = heroSpec(eq), d = K.doll(sp.parts, { scale: 1.3, gloss: sp.gloss });
-    const ex = sp.extra(d); if (eq.weapon) ex.wh.add(weaponDoll(weaponId(eq.weapon)).root);
+    const ex = sp.extra(d); if (eq.weapon) ex.wh.add(weaponDoll(weaponId(eq.weapon), eq.weapon).root);
     if (sp.glow) d.mat.emissive.setRGB(...sp.glow);
     this.doll = d; this.scene.add(d.root);
   },

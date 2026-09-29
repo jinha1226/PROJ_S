@@ -148,7 +148,7 @@ Object.assign(View, {
     }
   },
   projectile(d) {
-    const D = this.dio, a = W3(d.from[0], d.from[1], 0.75), b = W3(d.to[0], d.to[1], 0.45), dur = d.dur / 1000;
+    const D = this.dio, a = W3(d.from[0], d.from[1], 0.75), b = W3(d.to[0], d.to[1], 0.45), dur = (d.dur ?? 250) / 1000;
     let obj, arc = 0.35, trail = null;
     if (d.kind === 'arrow') {
       obj = new THREE.Group();
@@ -156,6 +156,24 @@ Object.assign(View, {
       const tip = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.1, 5).rotateX(Math.PI / 2).translate(0, 0, 0.28), new THREE.MeshBasicMaterial({ color: 0xffffff }));
       obj.add(shaft, tip); obj.userData.align = true; arc = 0.15;
       trail = (p) => D.sparks.emit({ pos: p, n: 1, color: 0xff8a8a, speed: 0, grav: 0, life: 0.18, size: 0.06 });
+    } else if (d.kind === 'quarrel') { // 석궁 쇠살: 굵고 짧게, 거의 곧게 날아간다
+      obj = new THREE.Group();
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.36, 6).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x7a5a3a }));
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.12, 4).rotateX(Math.PI / 2).translate(0, 0, 0.23), new THREE.MeshBasicMaterial({ color: 0xdfe6f0 }));
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.012, 0.08).translate(0, 0, -0.15), new THREE.MeshBasicMaterial({ color: COLORS.purple.hex }));
+      obj.add(shaft, tip, fin); obj.userData.align = true; arc = 0.04;
+      trail = (p) => D.sparks.emit({ pos: p, n: 1, color: 0xd6a0ff, speed: 0, grav: 0, life: 0.15, size: 0.06 });
+    } else if (d.kind === 'pebble') { // 투석구 돌: 작은 돌이 돌며 포물선으로
+      obj = new THREE.Mesh(new THREE.IcosahedronGeometry(0.075, 0), K.toon({ color: 0x9a9aa8, gloss: 0.6 })); obj.userData.spin = true; arc = 0.5;
+      trail = (p) => { if (Math.random() < 0.35) D.puffs.emit({ pos: p, n: 1, color: 0xb8b0a0, speed: 0, grav: 0, life: 0.25, size: 0.08 }); };
+    } else if (d.kind === 'boomerang') { // 부메랑: 눕힌 V자 날이 빙글빙글 (갈 때·올 때 사건이 따로 온다)
+      obj = new THREE.Group(); const m = K.toon({ color: 0xc89a5a, gloss: 1 }), mt = K.toon({ color: COLORS.red.hex, gloss: 1 });
+      for (const sx of [-1, 1]) {
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.03, 0.3), m); arm.position.set(sx * 0.085, 0, 0.044); arm.rotation.y = sx * 0.6;
+        const t = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), mt); t.position.set(sx * 0.17, 0, 0.16); obj.add(arm, t);
+      }
+      arc = 0.12;
+      trail = (p, dt) => { obj.rotation.y += dt * 22; D.sparks.emit({ pos: p, n: 1, color: COLORS.red.hex, color2: 0xffffff, speed: 0, grav: 0, life: 0.2, size: 0.07 }); };
     } else if (d.kind === 'flask') {
       obj = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), K.toon({ color: d.color, gloss: 1 })); obj.userData.spin = true; arc = 1.3;
     } else {
@@ -166,6 +184,6 @@ Object.assign(View, {
       arc = d.kind === 'dart' ? 0.15 : 0.4;
     }
     D.fx.projectile(a, b, obj, dur, arc, trail);
-    Sfx.play(d.kind === 'arrow' ? 'arrow' : d.kind === 'flask' ? 'throw' : 'whoosh');
+    Sfx.play(d.kind === 'arrow' || d.kind === 'quarrel' ? 'arrow' : d.kind === 'flask' || d.kind === 'pebble' ? 'throw' : 'whoosh');
   },
 });

@@ -195,7 +195,12 @@ body.slowmo #banner{font-size:34px}
 #log .legend{color:#ff9a3a;font-weight:800}
 #sheet.tall{max-height:94%;background:rgba(22,24,40,.985)}
 #info{z-index:8}
-.eqgrid{display:grid;grid-template-columns:1fr 1.25fr 1fr;grid-template-areas:"head doll neck" "weapon doll shield" "hands body feet" "ring1 cloak ring2";gap:6px;margin:4px 0 8px}
+.eqgrid{display:grid;grid-template-columns:1fr 1.25fr 1fr;grid-template-areas:"head doll neck" "body doll cloak" "hands doll feet" "ring1 . ring2";gap:6px;margin:4px 0 8px}
+.setrow{display:grid;grid-template-columns:64px 1.4fr 1fr;gap:6px;margin:4px 0;opacity:.55;align-items:center}
+.setrow.on{opacity:1}
+.setrow .setlbl{height:52px;border-radius:12px;font-size:12px;font-weight:700;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.15)}
+.setrow.on .setlbl{border-color:#ffd84a;color:#ffd84a}
+.wdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:3px;vertical-align:middle;box-shadow:0 0 4px currentColor}
 .eqgrid .doll{min-height:150px;border-radius:14px;background:radial-gradient(ellipse at 50% 70%,rgba(120,140,220,.25),transparent 70%)}
 .eqgrid .doll canvas{width:100%!important;height:100%!important;display:block}
 .eqs{height:52px;border-radius:12px;border:2px dashed rgba(255,255,255,.18);background:rgba(0,0,0,.35);font-size:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;padding:2px 3px;overflow:hidden}
@@ -207,7 +212,9 @@ body.slowmo #banner{font-size:34px}
 .bggrid{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
 .bgc{position:relative;height:50px;border-radius:10px;border:2px solid var(--c);background:rgba(0,0,0,.35);font-size:15px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1px 2px;overflow:hidden}
 .bgc small{font-size:8.5px;color:var(--c);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.bgc i{position:absolute;top:2px;right:4px;font-style:normal;font-size:10px;color:#7dffa0}
+.bgc i:not(.wdot){position:absolute;top:2px;right:4px;font-style:normal;font-size:10px;color:#7dffa0}
+.bgc .wdot,.eqs .wdot{position:absolute;top:4px;left:4px;margin:0}
+.eqs{position:relative}
 .bgc.empty{border:1px dashed rgba(255,255,255,.1);background:transparent}
 .gdetail{margin:8px 0;padding:8px;border-radius:12px;background:rgba(0,0,0,.35);border:1px solid var(--line)}
 .gdetail .row{display:flex;gap:6px;margin-top:8px}

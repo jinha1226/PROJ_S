@@ -3,6 +3,7 @@ import { G } from '../core/state.js';
 import { BOSSES, MAGE } from '../data/enemies.js';
 import { ITEMS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
+import { OLD_WEAPON, WEAPONS } from '../data/weapons.js';
 import { _w } from './common.js';
 import * as K from './diorama.js';
 import { heroSpec } from './hero-doll.js';
@@ -150,14 +151,50 @@ export function makeGem(id) {
   return g;
 }
 
+/* 무기 12종 인형: 손잡이(손)가 원점, 날은 +y. 폭은 x, 두께는 z */
+const STEEL = 0xe4ecf6, WOOD = 0x7a4a28, GRIP = 0x3a2618, GOLD = 0xd4a840, IRON = 0x8a92a4;
+const dagger = (x, rz) => { const s = Math.sin(rz), c = Math.cos(rz); return [{ s: 'box', p: [x - s * 0.17, c * 0.17, 0], r: [0, 0, rz], k: [0.05, 0.25, 0.015], c: 0xeef2f8 }, { s: 'cone', p: [x - s * 0.32, c * 0.32, 0], r: [0, 0, rz], k: [0.025, 0.05, 0.0075], c: 0xeef2f8 }, { s: 'box', p: [x - s * 0.04, c * 0.04, 0], r: [0, 0, rz], k: [0.13, 0.03, 0.04], c: 0x8a6a3a }, { s: 'cyl', p: [x + s * 0.03, -c * 0.03, 0], r: [0, 0, rz], k: [0.022, 0.09, 0.022], c: GRIP }]; };
+const spikes = (x, y, z, r, c = 0xdfe4ee) => [[0, 0, -Math.PI / 2, r, 0, 0], [0, 0, Math.PI / 2, -r, 0, 0], [0, 0, 0, 0, r, 0], [Math.PI / 2, 0, 0, 0, 0, r], [-Math.PI / 2, 0, 0, 0, 0, -r]].map(([a, b, g, dx, dy, dz]) => ({ s: 'cone', p: [x + dx, y + dy, z + dz], r: [a, b, g], k: [0.025, 0.06, 0.025], c }));
 export const WEAPON_PARTS = {
-  sword: [{ s: 'box', p: [0, 0.3, 0], k: [0.065, 0.48, 0.02], c: 0xe4ecf6 }, { s: 'box', p: [0, 0.06, 0], k: [0.22, 0.045, 0.05], c: 0xd4a840 }, { s: 'cyl', p: [0, -0.03, 0], k: [0.025, 0.12, 0.025], c: 0x5a3a22 }],
-  axe: [{ s: 'cyl', p: [0, 0.2, 0], k: [0.026, 0.54, 0.026], c: 0x7a4a28 }, { s: 'box', p: [0.08, 0.4, 0], k: [0.18, 0.15, 0.03], c: 0xcfd6e2 }],
-  mace: [{ s: 'cyl', p: [0, 0.16, 0], k: [0.026, 0.42, 0.026], c: 0x5a3a22 }, { s: 'sphere', p: [0, 0.4, 0], k: 0.095, c: 0x9aa2b4 }, { s: 'cone', p: [0.1, 0.4, 0], r: [0, 0, -Math.PI / 2], k: [0.03, 0.07, 0.03], c: 0xdfe4ee }, { s: 'cone', p: [-0.1, 0.4, 0], r: [0, 0, Math.PI / 2], k: [0.03, 0.07, 0.03], c: 0xdfe4ee }, { s: 'cone', p: [0, 0.5, 0], k: [0.03, 0.07, 0.03], c: 0xdfe4ee }],
-  hammer: [{ s: 'cyl', p: [0, 0.2, 0], k: [0.028, 0.54, 0.028], c: 0x6a4526 }, { s: 'box', p: [0, 0.46, 0], k: [0.26, 0.13, 0.13], c: 0x8a92a4 }],
-  dagger: [{ s: 'box', p: [0, 0.17, 0], k: [0.05, 0.25, 0.015], c: 0xeef2f8 }, { s: 'box', p: [0, 0.04, 0], k: [0.14, 0.035, 0.04], c: 0x8a6a3a }, { s: 'cyl', p: [0, -0.03, 0], k: [0.022, 0.09, 0.022], c: 0x3a2618 }],
-  spear: [{ s: 'cyl', p: [0, 0.3, 0], k: [0.02, 0.86, 0.02], c: 0x8a5a32 }, { s: 'cone', p: [0, 0.8, 0], k: [0.045, 0.16, 0.045], c: 0xe4ecf6 }],
+  // 손도끼: 짧은 자루 + 둥근 날 + 뒤 가시
+  axe: [{ s: 'cyl', p: [0, 0.16, 0], k: [0.026, 0.52, 0.026], c: WOOD }, { s: 'box', p: [0.07, 0.34, 0], k: [0.12, 0.13, 0.03], c: 0xcfd6e2 }, { s: 'cyl', p: [0.13, 0.34, 0], r: [Math.PI / 2, 0, 0], k: [0.1, 0.028, 0.1], c: STEEL }, { s: 'cone', p: [-0.06, 0.36, 0], r: [0, 0, Math.PI / 2], k: [0.025, 0.07, 0.025], c: 0xcfd6e2 }],
+  // 쇠사슬 도리깨: 손잡이 + 사슬 고리 셋 + 가시 쇠공
+  flail: [{ s: 'cyl', p: [0, 0.06, 0], k: [0.026, 0.3, 0.026], c: WOOD }, { s: 'sphere', p: [0, 0.22, 0], k: 0.035, c: IRON },
+    ...[0, 1, 2].map((j) => ({ s: 'torus', p: [0.03 + j * 0.035, 0.27 + j * 0.055, 0], r: [j % 2 ? Math.PI / 2 : 0, 0, -0.55], k: [0.025, 0.035, 0.025], tube: 0.3, c: 0xaab2c4 })),
+    { s: 'sphere', p: [0.14, 0.45, 0], k: 0.075, c: 0x6a7080 }, ...spikes(0.14, 0.45, 0, 0.075)],
+  // 쌍단검: 두 자루가 살짝 벌어진 채
+  twin: [...dagger(-0.045, 0.14), ...dagger(0.045, -0.14)],
+  // 부메랑: 굽은 V, 팔꿈치를 쥔다
+  boomerang: [{ s: 'box', p: [-0.073, 0.007, 0], r: [0, 0, 0.6], k: [0.06, 0.26, 0.022], c: 0xc89a5a }, { s: 'box', p: [0.073, 0.007, 0], r: [0, 0, -0.6], k: [0.06, 0.26, 0.022], c: 0xc89a5a }, { s: 'cyl', p: [0, -0.1, 0], r: [Math.PI / 2, 0, 0], k: [0.042, 0.022, 0.042], c: 0xc89a5a },
+    { s: 'sphere', p: [-0.147, 0.114, 0], k: [0.038, 0.038, 0.014], c: STEEL }, { s: 'sphere', p: [0.147, 0.114, 0], k: [0.038, 0.038, 0.014], c: STEEL }],
+  // 대검: 길고 넓은 날 + 홈 + 긴 손잡이(두 손)
+  greatsword: [{ s: 'box', p: [0, 0.46, 0], k: [0.11, 0.76, 0.025], c: 0xdfe6f0 }, { s: 'box', p: [0, 0.44, 0.013], k: [0.025, 0.6, 0.004], c: 0x9aa4b8 }, { s: 'cone', p: [0, 0.88, 0], k: [0.055, 0.08, 0.0125], c: 0xdfe6f0 },
+    { s: 'box', p: [0, 0.07, 0], k: [0.32, 0.05, 0.06], c: GOLD }, { s: 'cyl', p: [0, -0.08, 0], k: [0.027, 0.26, 0.027], c: 0x3a2a4a }, { s: 'sphere', p: [0, -0.23, 0], k: 0.042, c: GOLD }],
+  // 전투 망치: 긴 자루 + 네모 머리 + 양쪽 면 + 윗 가시
+  hammer: [{ s: 'cyl', p: [0, 0.22, 0], k: [0.028, 0.7, 0.028], c: 0x6a4526 }, { s: 'cyl', p: [0, 0.02, 0], k: [0.034, 0.16, 0.034], c: 0x3a2a4a }, { s: 'box', p: [0, 0.47, 0], k: [0.07, 0.03, 0.07], c: GRIP },
+    { s: 'box', p: [0, 0.56, 0], k: [0.28, 0.14, 0.14], c: IRON }, { s: 'cyl', p: [-0.15, 0.56, 0], r: [0, 0, Math.PI / 2], k: [0.085, 0.03, 0.085], c: 0xaab2c4 }, { s: 'cyl', p: [0.15, 0.56, 0], r: [0, 0, Math.PI / 2], k: [0.085, 0.03, 0.085], c: 0xaab2c4 }, { s: 'cone', p: [0, 0.67, 0], k: [0.03, 0.08, 0.03], c: 0xdfe4ee }],
+  // 창: 긴 자루 + 쇠고리 + 날
+  spear: [{ s: 'cyl', p: [0, 0.3, 0], k: [0.02, 0.86, 0.02], c: 0x8a5a32 }, { s: 'cyl', p: [0, 0.71, 0], k: [0.03, 0.04, 0.03], c: IRON }, { s: 'cone', p: [0, 0.81, 0], k: [0.045, 0.17, 0.02], c: STEEL }],
+  // 석궁: 개머리 + 활 날개 + 시위 + 걸린 화살
+  crossbow: [{ s: 'box', p: [0, 0.18, 0], k: [0.06, 0.46, 0.07], c: WOOD }, { s: 'box', p: [0, -0.06, 0], k: [0.08, 0.1, 0.09], c: 0x5a3a22 },
+    { s: 'box', p: [-0.12, 0.34, 0], r: [0, 0, Math.PI / 2 + 0.25], k: [0.03, 0.26, 0.03], c: 0x4a3a5a }, { s: 'box', p: [0.12, 0.34, 0], r: [0, 0, -Math.PI / 2 - 0.25], k: [0.03, 0.26, 0.03], c: 0x4a3a5a },
+    { s: 'box', p: [-0.123, 0.264, 0], r: [0, 0, 1.227], k: [0.008, 0.261, 0.008], c: 0xf2ead8 }, { s: 'box', p: [0.123, 0.264, 0], r: [0, 0, -1.227], k: [0.008, 0.261, 0.008], c: 0xf2ead8 },
+    { s: 'cyl', p: [0, 0.32, 0.045], k: [0.012, 0.26, 0.012], c: 0xc89a5a }, { s: 'cone', p: [0, 0.47, 0.045], k: [0.022, 0.05, 0.022], c: STEEL }],
+  sword: [{ s: 'box', p: [0, 0.3, 0], k: [0.065, 0.48, 0.02], c: STEEL }, { s: 'box', p: [0, 0.06, 0], k: [0.22, 0.045, 0.05], c: GOLD }, { s: 'cyl', p: [0, -0.03, 0], k: [0.025, 0.12, 0.025], c: 0x5a3a22 }],
+  mace: [{ s: 'cyl', p: [0, 0.13, 0], k: [0.026, 0.48, 0.026], c: 0x5a3a22 }, { s: 'sphere', p: [0, 0.4, 0], k: 0.095, c: 0x9aa2b4 }, { s: 'cone', p: [0.1, 0.4, 0], r: [0, 0, -Math.PI / 2], k: [0.03, 0.07, 0.03], c: 0xdfe4ee }, { s: 'cone', p: [-0.1, 0.4, 0], r: [0, 0, Math.PI / 2], k: [0.03, 0.07, 0.03], c: 0xdfe4ee }, { s: 'cone', p: [0, 0.5, 0], k: [0.03, 0.07, 0.03], c: 0xdfe4ee }],
+  // 레이피어: 가늘고 긴 날 + 가로 날밑 + 컵 고리 + 손등 활
+  rapier: [{ s: 'box', p: [0, 0.39, 0], k: [0.022, 0.66, 0.012], c: 0xeef2f8 }, { s: 'cone', p: [0, 0.74, 0], k: [0.011, 0.05, 0.006], c: 0xeef2f8 }, { s: 'box', p: [0, 0.05, 0], k: [0.18, 0.02, 0.02], c: GOLD },
+    { s: 'torus', p: [0, 0.06, 0], r: [Math.PI / 2, 0, 0], k: 0.06, tube: 0.2, c: GOLD }, { s: 'torus', p: [0, -0.03, 0], r: [0, 0, -Math.PI / 2], k: 0.08, tube: 0.15, arc: Math.PI, c: GOLD },
+    { s: 'cyl', p: [0, -0.03, 0], k: [0.02, 0.14, 0.02], c: GRIP }, { s: 'sphere', p: [0, -0.11, 0], k: 0.03, c: GOLD }],
+  // 투석구: 손가락 고리 + 늘어진 끈 두 가닥 + 주머니 + 돌
+  sling: [{ s: 'torus', p: [0, 0.02, 0], r: [Math.PI / 2, 0, 0], k: 0.035, tube: 0.3, c: 0xa07a4a }, { s: 'box', p: [-0.03, -0.15, 0], r: [0, 0, 0.1], k: [0.012, 0.28, 0.012], c: 0xa07a4a }, { s: 'box', p: [0.03, -0.15, 0], r: [0, 0, -0.1], k: [0.012, 0.28, 0.012], c: 0xa07a4a },
+    { s: 'sphere', p: [0, -0.31, 0], k: [0.065, 0.035, 0.055], c: 0x7a4a28 }, { s: 'sphere', p: [0, -0.275, 0], k: 0.04, c: 0x9a9aa8 }],
 };
+for (const [o, n] of Object.entries(OLD_WEAPON)) WEAPON_PARTS[o] = WEAPON_PARTS[n]; // 옛 id(단검) → 쌍단검
+/** 색 리본을 매는 높이(기본 손 바로 아래) · 두 손 무기의 둘째 손 자리 */
+const RIB = { greatsword: -0.26, crossbow: -0.12, sling: -0.08 };
+export const GRIP2 = { twin: [0.1, -0.01, 0.02], greatsword: [0, -0.15, 0], hammer: [0, 0.17, 0], crossbow: [0, 0.2, 0.04] };
+const ribbon = (c, y) => [{ s: 'torus', p: [0, y, 0], r: [Math.PI / 2, 0, 0], k: 0.034, tube: 0.4, c }, { s: 'box', p: [-0.022, y - 0.06, 0.012], r: [0, 0, -0.35], k: [0.024, 0.1, 0.008], c }, { s: 'box', p: [0.024, y - 0.055, 0.012], r: [0, 0, 0.3], k: [0.024, 0.09, 0.008], c }];
 
 export function matProp(m) {
   const P = {
@@ -174,7 +211,11 @@ export function matProp(m) {
   return K.doll(P[m] || P.광석, { gloss: 1.3 }).root;
 }
 
-export const weaponDoll = (id) => K.doll(WEAPON_PARTS[id.replace('+', '')], { gloss: id.endsWith('+') ? 1.8 : 1.1 });
+/** 무기 인형: 종류마다 모양 + 손잡이에 무기 색 리본. id 끝의 '+'(또는 it 강화 +2 이상)면 날에 광택 */
+export function weaponDoll(id, it) {
+  const k0 = id.replace('+', ''), k = OLD_WEAPON[k0] || k0, w = WEAPONS[k];
+  return K.doll([...(WEAPON_PARTS[k] || WEAPON_PARTS.sword), ...(w ? ribbon(COLORS[w.color].hex, RIB[k] ?? -0.09) : [])], { gloss: id.endsWith('+') || it?.plus >= 2 ? 1.8 : 1.1 });
+}
 
 /* ---------- 정착지 인형 · 건물 ---------- */
 export function npcParts(n) {

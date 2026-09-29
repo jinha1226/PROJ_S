@@ -82,10 +82,10 @@ export function endRound() {
 }
 
 /** 영혼석 스킬 사용(행동 한 번). 대상이 필요 없는 스킬은 tx,ty 생략 */
-export function useStone(slot, tx, ty) { let r = false; withCtx('skill', (ctx) => { r = useStoneRaw(slot, tx, ty, ctx); }); return r; }
+export function useStone(slot, tx, ty) { let r = false; withCtx('skill', (ctx) => { const q = G.slots[slot]; ctx.color = q && q.stone ? STONE[q.stone].color : null; r = useStoneRaw(slot, tx, ty, ctx); }); return r; }
 export function useStoneRaw(slot, tx, ty, ctx) {
   const sl = G.slots[slot], id = sl && sl.stone; if (!id || sl.cd > 0) return false;
-  const S = STONE[id], p = G.player, sd = sdmg(), t = tx != null ? entAt(tx, ty) : null;
+  const S = STONE[id], p = G.player, sd = sdmg(), t = tx != null ? entAt(tx, ty) : null, op = S.color === 'purple' && G.ps ? G.ps.orb.purple : 0; // 보랏빛 오브
   if (tx != null) { const dx = sgn(tx - p.x), dy = sgn(ty - p.y); if (dx || dy) { p.face = [dx, dy]; emit('face', { id: 0, dx, dy }); } }
   sl.cd = stoneCd(id); sl.usedRound = G.round;
   emit('stone', { slot, id, stage: 1 }); emit('pcast', { color: COLORS[S.color].hex }); TL.wait(110);
@@ -111,16 +111,16 @@ export function useStoneRaw(slot, tx, ty, ctx) {
     case 'r_shock': castBolt(tx, ty, 5 + sd); break;
     case 'r_fire': castFire(tx, ty, 4 + sd); break;
     case 'r_freeze': castFrost(tx, ty, 2 + sd); break;
-    case 'p_summon': summon([tx, ty]); break;
-    case 'p_shield': addShield(6, 10); break;
-    case 'p_poison': emit('venomCloud', { x: p.x, y: p.y }); for (const e of adjFoes()) poisonOn(e, 4); break;
-    case 'p_push': emit('ring', { x: p.x, y: p.y, elem: 'push' }); TL.wait(80); for (const e of adjFoes()) if (e.alive) { emit('shove', { x: e.x, y: e.y, dx: sgn(e.x - p.x), dy: sgn(e.y - p.y) }); push(e, ...dirFrom(p, e), 2); } break;
-    case 'p_heal': heal(p, 6); if (p.st.poison || p.st.burn) { p.st.poison = 0; p.st.burn = 0; emitStatus(p); } break;
-    case 'p_shock': { const hs = new Set(); for (const e of G.ents.filter((q) => q.alive && isFoe(q) && G.vis[I(q.x, q.y)] && wetTarget(q))) if (e.alive && !hs.has(e.id)) zapOn(e, 4 + sd, hs); break; }
-    case 'p_fire': { const dur = 90 + cheb(p.x, p.y, tx, ty) * 45; emit('proj', { kind: 'fire', from: [p.x, p.y], to: [tx, ty], dur }); TL.wait(dur); for (const [x, y] of areaTiles(tx, ty, 1)) fireAt(x, y, 3 + sd); break; }
+    case 'p_summon': summon([tx, ty], op); break;
+    case 'p_shield': addShield(6 + op * 2, 10 + op * 2); break;
+    case 'p_poison': emit('venomCloud', { x: p.x, y: p.y }); for (const e of adjFoes()) poisonOn(e, 4 + op); break;
+    case 'p_push': emit('ring', { x: p.x, y: p.y, elem: 'push' }); TL.wait(80); for (const e of adjFoes()) if (e.alive) { emit('shove', { x: e.x, y: e.y, dx: sgn(e.x - p.x), dy: sgn(e.y - p.y) }); push(e, ...dirFrom(p, e), 2 + op); } break;
+    case 'p_heal': heal(p, 6 + op * 2); if (p.st.poison || p.st.burn) { p.st.poison = 0; p.st.burn = 0; emitStatus(p); } break;
+    case 'p_shock': { const hs = new Set(); for (const e of G.ents.filter((q) => q.alive && isFoe(q) && G.vis[I(q.x, q.y)] && wetTarget(q))) if (e.alive && !hs.has(e.id)) zapOn(e, 4 + sd + op, hs); break; }
+    case 'p_fire': { const dur = 90 + cheb(p.x, p.y, tx, ty) * 45; emit('proj', { kind: 'fire', from: [p.x, p.y], to: [tx, ty], dur }); TL.wait(dur); for (const [x, y] of areaTiles(tx, ty, 1 + op)) fireAt(x, y, 3 + sd); break; }
     case 'p_wet': {
       emit('splash', { x: tx, y: ty, big: true }); TL.wait(80);
-      for (const [x, y] of areaTiles(tx, ty, 2)) {
+      for (const [x, y] of areaTiles(tx, ty, 2 + op)) {
         const i = I(x, y); if (G.surf[i] === S_NONE || G.surf[i] === S_ASH || G.surf[i] === S_GRASS) G.surf[i] = S_WATER; G.fire[i] = 0;
         const e = entAt(x, y); if (e && e.alive && !e.st.frozen) { e.st.wet = Math.max(e.st.wet, 3); e.st.burn = 0; emitStatus(e); if (isFoe(e)) emit('splash', { x, y }); }
       }
@@ -226,12 +226,12 @@ export function gainXp(e) {
   }
 }
 
-export function summon(at) {
+export function summon(at, extra = 0) {
   const p = G.player; let spot = at && at[0] != null && standable(at[0], at[1]) && !entAt(at[0], at[1]) ? at : null;
   if (!spot) for (const [dx, dy] of shuffle(D8.slice())) { const x = p.x + dx, y = p.y + dy; if (standable(x, y) && !entAt(x, y)) { spot = [x, y]; break; } }
   if (!spot) return;
   const mine = G.ents.filter((e) => e.alive && e.ally && !e.npc); if (mine.length >= 2) { mine[0].life = 0; mine[0].alive = false; emit('vanish', { id: mine[0].id }); } // 동시에 최대 2
-  const a = { id: G.nextId++, type: 'goblin', ally: true, name: '영혼 고블린', x: spot[0], y: spot[1], hp: 5, max: 5, atk: 2, st: newSt(), alive: true, awake: true, face: [...p.face], life: 4 + (G.perk === 'A+' ? 1 : 0) };
+  const a = { id: G.nextId++, type: 'goblin', ally: true, name: '영혼 고블린', x: spot[0], y: spot[1], hp: 5, max: 5, atk: 2, st: newSt(), alive: true, awake: true, face: [...p.face], life: 4 + extra + (G.perk === 'A+' ? 1 : 0) };
   G.ents.push(a);
   emit('spawn', { e: { ...a, st: { ...a.st } } });
   log('영혼 고블린이 곁에 섰다', 'good');

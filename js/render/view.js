@@ -1,8 +1,9 @@
 import * as THREE from 'three';
+import { critReady, hitRange } from '../core/combat.js';
 import { G, Game, I, XY, entAt, inb, itemSnap, tileAt } from '../core/state.js';
 import { HEX } from '../data/colors.js';
 import { CATS } from '../data/enemies.js';
-import { weaponId, weaponOf } from '../data/gear.js';
+import { weaponId } from '../data/gear.js';
 import { MATS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrain.js';
@@ -139,8 +140,8 @@ export const View = {
   /** 손에 든 무기 모양. it이 아는 원소 브랜드면 칼날에 그 빛 */
   setWeapon(id, it) {
     const pe = this.evs.get(0); if (!pe || !pe.extra.wh) return;
-    const wh = pe.extra.wh; while (wh.children.length) wh.remove(wh.children[0]);
-    const d = weaponDoll(id); wh.add(d.root);
+    const wh = pe.extra.wh; for (const c of [...wh.children]) if (!c.userData.keep) wh.remove(c); // 양손 무기의 둘째 손(keep)은 남긴다
+    const d = weaponDoll(id, it); wh.add(d.root);
     const b = it && it.idX && it.brand, el = b && { fire: 0xff5a1a, frost: 0x6ac8ff, bolt: 0xffe14a, poison: 0x5ad84a }[b];
     if (el) d.mat.emissive.setHex(el).multiplyScalar(0.55);
   },
@@ -239,9 +240,9 @@ export const View = {
       let extra = '';
       if (ev.cat) {
         if (G.weakKnown[ev.cat]) extra += `<span class="wk">${FORMS[CATS[ev.cat].weak].icon}</span>`;
-        const w = weaponOf(G.eq.weapon), weak = CATS[ev.cat].weak === w.form;
-        const mx = Math.ceil((w.dmg[1] + G.ps.dmg) * (weak ? 1.5 : 1) * (ev.st.frozen ? 1.5 : 1)) * (w.form === 'pierce' && ev.st.vital ? 2 : 1);
-        if (ev.hp <= mx) extra += '<b class="fin" style="color:#ffe38a">◆</b>';
+        const e = G.ents.find((q) => q.id === ev.id); // ◆ 한 방에 쓰러뜨릴 수 있음 · ×2 치명 조건 충족
+        if (e && ev.hp <= hitRange(e)[1]) extra += '<b class="fin" style="color:#ffe38a">◆</b>';
+        if (e && critReady(e)) extra += '<b class="x2" style="color:#ff6a4a">×2</b>';
       }
       const txt = txtIntent + extra + txtSt;
       if (txt !== ev.tagTxt) { ev.tagTxt = txt; ev.tagIco.innerHTML = txt; ev.tagIco.className = 'ico' + (txtIntent && txtIntent !== '💤' ? ' intent' : ''); }

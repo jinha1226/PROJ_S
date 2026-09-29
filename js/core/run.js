@@ -27,8 +27,7 @@ export function newRun() {
   addItem(pick(['heal', 'heal', 'cure', 'haste'])); addItem(pick(['oil', 'water', 'smoke'])); addItem(pick(['oil', 'water'])); addItem(pick(['tele', 'fear', 'blaze']));
   G.stats = { kills: 0, combos: 0, turns: 0, items: 0, stones: 0, chains: 0, best: 0 };
   G.mageOf = ['bolt', pick(['fire', 'frost', 'bolt']), pick(['fire', 'frost']), pick(['frost', 'bolt', 'fire']), 'mix'];
-  const starts = shuffle(['sword', 'mace', 'dagger']);
-  const kit = starterKit(starts); G.eq = kit.eq; G.bag = kit.bag; G.heroBase = 30; G.jlook = newJewelLook(); G.jknown = {}; G.ps = calcStats(G.eq);
+  const kit = starterKit(); G.wset = 0; G.eq = kit.eq; G.bag = kit.bag; G.heroBase = 30; G.jlook = newJewelLook(); G.jknown = {}; G.ps = calcStats(G.eq);
   G.slots = Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 }));
   G.sbag = []; G.weakKnown = {}; G.ctx = null; G.curSrc = null; G.dropHint = 0; G.zoneFlags = { npc: false, recall: false }; G.perk = null; G.round = 0; G.auras = {}; G.combatDmg = 0; G.glowVision = 0; G.recallArm = false;
   G.torchMax = 100; G.torch = 100;

@@ -85,7 +85,7 @@ export const Town = {
     D.scene.add(trees); this.objs.push(trees);
     for (const n of META.npcs) this.npcs.push(new TownNPC(n));
     if (META.hero) {
-      const sp = dollSpec({ type: 'hero', face: [0, 1], eq: META.hero.eq }), d = K.doll(sp.parts, { scale: 1.3, gloss: sp.gloss }); const ex = sp.extra(d); if (META.hero.eq.weapon) ex.wh.add(weaponDoll(weaponId(META.hero.eq.weapon)).root);
+      const sp = dollSpec({ type: 'hero', face: [0, 1], eq: META.hero.eq }), d = K.doll(sp.parts, { scale: 1.3, gloss: sp.gloss }); const ex = sp.extra(d); if (META.hero.eq.weapon) ex.wh.add(weaponDoll(weaponId(META.hero.eq.weapon), META.hero.eq.weapon).root);
       d.root.position.set(4.1, 0, 8.1); d.root.rotation.y = 0.6; d.mesh.userData.pick = { hero: true }; D.scene.add(d.root); this.objs.push(d.root); this.hero = d;
     }
     this.buildHearth(skipVisitors);
@@ -95,7 +95,7 @@ export const Town = {
   redressHero() {
     if (!this.hero || !META.hero) return;
     const D = View.dio, old = this.hero, sp = dollSpec({ type: 'hero', face: [0, 1], eq: META.hero.eq }), d = K.doll(sp.parts, { scale: 1.3, gloss: sp.gloss }), ex = sp.extra(d);
-    if (META.hero.eq.weapon) ex.wh.add(weaponDoll(weaponId(META.hero.eq.weapon)).root);
+    if (META.hero.eq.weapon) ex.wh.add(weaponDoll(weaponId(META.hero.eq.weapon), META.hero.eq.weapon).root);
     d.root.position.copy(old.root.position); d.root.rotation.y = old.root.rotation.y; d.mesh.userData.pick = { hero: true };
     D.scene.remove(old.root); this.objs.splice(this.objs.indexOf(old.root), 1, d.root); D.scene.add(d.root); this.hero = d;
     D.sparks.emit({ pos: _w.set(d.root.position.x, 0.6, d.root.position.z), n: 20, color: 0xffffff, color2: 0xffd84a, speed: 1.6, up: 1.4, grav: 0, life: 0.6, size: 0.12, spread: 0.4 });

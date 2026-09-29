@@ -1,4 +1,4 @@
-// DCSS식 장비 확인 목록(docs/설계_아이템_장비.md §17)을 헤드리스 크롬에서 검사한다.
+// DCSS식 장비 확인 목록(docs/설계_아이템_장비.md §17)과 데드셀안 확인 목록(§10)을 헤드리스 크롬에서 검사한다.
 // 사용: node tests/items.mjs
 import { chromium } from 'playwright';
 import http from 'node:http';
@@ -82,8 +82,89 @@ const s10 = await page.evaluate(() => { const old = { v: 5, gen: 1, visits: 1, c
     hero: { name: '옛', gen: 1, base: 30, max: 30, hp: 30, inv: [], look: {}, known: {}, slots: Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 })), sbag: [], weakKnown: {}, bag: [], legends: ['stormRing'],
       eq: { weapon: { uid: 'c', base: 'axe', rarity: 'magic', affixes: [{ id: 'dmg', v: 1 }], known: true }, off: { uid: 'd', base: 'mace', rarity: 'common', affixes: [], known: true }, head: null, body: { uid: 'e', base: 'body_cloth', rarity: 'legend', legend: 'mistCloak', affixes: [], known: true }, hands: null, feet: null, neck: null, ring1: null, ring2: null } } };
   localStorage.setItem('torch-meta-v3', JSON.stringify(old)); const g = window.__game; g.resetMetaForTest(); const M = g.loadMeta(); const h = M.hero;
-  return { v: M.v, weapon: h.eq.weapon.base + h.eq.weapon.plus, bag: h.bag.map((i) => i.base).join(), cloak: h.eq.cloak ? h.eq.cloak.un : null, body: h.eq.body, stash: M.gear.map((i) => i.base + i.plus).join(), seen: M.unrandsSeen.join() }; });
-check('옛 저장의 등급 장비가 새 형식으로', s10.v >= 6 && s10.weapon === 'axe1' && s10.bag === 'mace' && s10.stash === 'boots2' && s10.seen.includes('stormRing'), JSON.stringify(s10));
+  return { v: M.v, weapon: h.eq.weapon.base + h.eq.weapon.plus, set2: h.eq.weapon2 && h.eq.weapon2.base, bag: h.bag.map((i) => i.base).join(), cloak: h.eq.cloak ? h.eq.cloak.un : null, body: h.eq.body, stash: M.gear.map((i) => i.base + i.plus).join(), seen: M.unrandsSeen.join() }; });
+check('옛 저장의 등급 장비가 새 형식으로 (가방의 무기는 세트 B로)', s10.v === 7 && s10.weapon === 'axe1' && s10.set2 === 'mace' && s10.bag === '' && s10.stash === 'boots2' && s10.seen.includes('stormRing'), JSON.stringify(s10));
+
+/* ================= 데드셀안 확인 목록 (docs/설계_아이템_장비_데드셀안.md §10) ================= */
+await page.evaluate(() => { const g = window.__game, M = g.META; document.querySelector('#sheet').classList.add('hidden'); M.hero = g.newHero(); g.enterDungeon(1); document.querySelector('#sheet').classList.add('hidden');
+  window.hits = []; const on = g.View.on; g.View.on = function (t, d) { if (t === 'hit' && d.id !== 0 && d.kind === 'hit') window.hits.push({ id: d.id, amt: d.amt, crit: !!d.crit, label: d.label }); return on.apply(this, arguments); };
+  // 무기 base로 foes 중 k번째를 친다. setup(G, foes)로 조건을 만든다. hits = 무기 적중만(출혈 틱·내가 맞은 것 제외)
+  window.swing = (base, foes, k = 0, setup) => { const G = arena(foes); G.eq.weapon = g.makeGear(base, { known: true }); G.eq.off = null; g.refreshStats(); G.ps.acc = 0;
+    for (const q of G.slots) { q.stone = null; q.color = null; } const es = G.ents.slice(1); if (setup) setup(G, es); drain(); window.hits = []; g.act(() => { g.playerMelee(es[k]); return true; }); drain(); return { G, es, hits: window.hits.filter((h) => h.id !== 0) }; };
+});
+// §10-1 무기 12종: 모양 + 치명 조건
+const d1 = await page.evaluate(() => { const g = window.__game, out = {}, big = { hp: 999, max: 999 };
+  let r = swing('flail', [[1, -1, big], [1, 0, big], [1, 1, big]], 1); out.flail = r.hits.length === 3 && r.hits.every((h) => h.crit);
+  r = swing('flail', [[1, 0, big], [1, 1, big]], 0); out.flail2 = r.hits.length === 2 && !r.hits.some((h) => h.crit);
+  r = swing('greatsword', [[1, 0, big], [-1, 0, big], [0, 1, big], [1, 1, big]], 0, (G) => { g.act(() => g.playerWait()); }); out.greatsword = r.hits.length === 4 && r.hits.every((h) => h.crit);
+  r = swing('greatsword', [[1, 0, big], [-1, 0, big]], 0); out.greatswordNoWait = r.hits.length === 2 && !r.hits.some((h) => h.crit);
+  r = swing('spear', [[1, 0, big], [2, 0, big]], 1); out.spear = r.hits.length === 2;
+  r = swing('spear', [[2, 0, big]], 0, (G, es) => { es[0].appr = G.stats.turns; }); out.spearApproach = r.hits.length === 1 && r.hits[0].crit;
+  r = swing('twin', [[1, 0, big]], 0); const G1 = r.G; out.twin = r.hits.length === 2 && !r.hits.some((h) => h.crit); window.hits = []; g.act(() => { g.playerMelee(r.es[0]); return true; }); drain(); out.twinChain = window.hits.filter((h) => h.id !== 0).length === 2 && window.hits.every((h) => h.crit);
+  r = swing('boomerang', [[3, 0, big]], 0); out.boomerang = r.hits.length === 2 && !r.hits[0].crit && r.hits[1].crit;
+  r = swing('crossbow', [[2, 0, big], [4, 0, big]], 0); out.crossbow = r.hits.length === 2 && !!r.G.reload;
+  window.hits = []; g.act(() => { g.playerMelee(r.es[0]); return true; }); drain(); out.reload = window.hits.filter((h) => h.id !== 0).length === 0 && !r.G.reload;
+  g.act(() => { g.playerMelee(r.es[0]); return true; }); drain(); g.act(() => g.playerWait()); drain(); out.aimedReady = !!r.G.aimed && g.critReady(r.es[0]);
+  window.hits = []; g.act(() => { g.playerMelee(r.es[0]); return true; }); drain(); out.aimed = window.hits.some((h) => h.id === r.es[0].id && h.crit) && !r.G.aimed;
+  r = swing('hammer', [[1, 0, big], [2, 0, big]], 0); out.hammer = r.hits.some((h) => h.id === r.es[0].id && h.crit && h.label === '치명!');
+  r = swing('axe', [[1, 0, big]], 0, (G, es) => { es[0].st.bleed = 3; }); out.axe = r.hits[0].crit;
+  r = swing('axe', [[1, 0, big]], 0); out.axeNo = !r.hits[0].crit;
+  r = swing('sword', [[1, 0, big]], 0, (G) => { G.riposte = G.stats.turns; }); out.sword = r.hits[0].crit;
+  r = swing('mace', [[1, 0, big]], 0, (G, es) => { es[0].hitMe = G.stats.turns; }); out.mace = r.hits[0].crit;
+  r = swing('rapier', [[1, 0, big]], 0, (G) => { G.player.hp = 10; }); out.rapier = r.hits[0].crit && r.G.player.x === 14;
+  r = swing('sling', [[3, 0, big]], 0); out.sling = r.hits.length >= 1 && r.es[0].x === 19;
+  return out; });
+check('§10-1 무기 12종이 모양·치명 조건대로', Object.values(d1).every(Boolean), JSON.stringify(d1));
+
+// §10-2 색 배율: 같은 색 영혼석이 늘면 오르고, 비교 창에 보인다
+const d2 = await page.evaluate(() => { const g = window.__game, G = arena(); G.eq.weapon = g.makeGear('sword', { known: true }); g.refreshStats();
+  const put = (n) => G.slots.forEach((q, k) => { q.stone = k < n ? 'r_fire' : null; q.color = k < n ? 'red' : null; });
+  put(0); const w = g.makeGear('axe', { known: true }), m0 = g.colorMul({ color: 'red' }); put(3); const m3 = g.colorMul({ color: 'red' }); put(6); const m6 = g.colorMul({ color: 'red' }); put(3);
+  G.bag.push(w); g.UI.openInv(); g.UI.invTab = 'gear'; g.UI.invSel = { from: 'bag', i: G.bag.length - 1 }; g.UI.renderInv(); const t = document.querySelector('.gdetail').textContent; document.querySelector('#sheet').classList.add('hidden');
+  return { m0, m3, m6: +m6.toFixed(2), shown: /빨강 영혼석 3개 → 피해 ×1\.45/.test(t), colorChange: /색: .*초록 → .*빨강/.test(t) }; });
+check('§10-2 같은 색 영혼석 → 무기 피해 배율(×1.45·×1.9), 비교 창에 표시', d2.m0 === 1 && d2.m3 === 1.45 && d2.m6 === 1.9 && d2.shown && d2.colorChange, JSON.stringify(d2));
+
+// §10-3 세트 교체는 턴을 쓰지 않고, 쉬는 세트의 방패·브랜드는 적용되지 않는다
+const d3 = await page.evaluate(() => { const g = window.__game, G = arena([[3, 3]]); G.eq.weapon = g.makeGear('sword', { known: true }); G.eq.off = null; G.eq.weapon2 = g.makeGear('mace', { brand: 'fire', known: true }); G.eq.off2 = g.makeGear('shield', { known: true }); g.refreshStats();
+  const before = { block: G.ps.block, brand: G.ps.brand }, t0 = G.stats.turns; g.UI.swapWeapon(); drain();
+  const after = { block: G.ps.block, brand: G.ps.brand, weapon: G.eq.weapon.base, set: G.wset }; return { before, after, turns: G.stats.turns - t0 }; });
+check('§10-3 세트 A↔B 교체는 턴 없음, 쉬는 세트 효과 없음', d3.turns === 0 && d3.before.block === 0 && !d3.before.brand && d3.after.block === 20 && d3.after.brand === 'fire' && d3.after.weapon === 'mace' && d3.after.set === 1, JSON.stringify(d3));
+
+// §10-4 양손 무기를 끼면 보조손은 가방으로(미리 알림)
+const d4 = await page.evaluate(() => { const g = window.__game, G = arena(); G.wset = 0; G.eq.weapon = g.makeGear('sword', { known: true }); G.eq.off = g.makeGear('buckler', { known: true }); g.refreshStats(); const gs = g.makeGear('greatsword', { known: true }); G.bag.push(gs);
+  g.UI.openInv(); g.UI.invTab = 'gear'; g.UI.invSel = { from: 'bag', i: G.bag.length - 1, slot: 'weapon' }; g.UI.renderInv(); const warn = /양손 무기 — .*버클러.*가방으로/.test(document.querySelector('.gline').textContent);
+  document.querySelector('[data-act="equip"]').click(); drain(); document.querySelector('#sheet').classList.add('hidden');
+  const ok = G.eq.weapon === gs && !G.eq.off && G.bag.some((it) => it.base === 'buckler'); const orb = g.makeGear('orb_red'); G.bag.push(orb); const refused = !g.equip(G.bag.length - 1, 'off'); return { warn, ok, refused }; });
+check('§10-4 양손 무기 → 보조손은 가방으로(미리 알림), 양손 세트엔 보조손 불가', d4.warn && d4.ok && d4.refused, JSON.stringify(d4));
+
+// §10-5 원거리: 붙은 적 절반, 석궁 장전, 원거리 적중도 빨강 쿨타임 감소
+const d5 = await page.evaluate(() => { const g = window.__game, big = { hp: 999, max: 999 };
+  let r = swing('crossbow', [[1, 0, big]], 0); const half = r.hits.length === 1 && r.hits[0].label === '너무 가깝다' && r.hits[0].amt <= 4;
+  r = swing('sling', [[3, 0, big]], 0, (G) => { Object.assign(G.slots[0], { stone: 'r_fire', color: 'red', cd: 5, usedRound: -1, redRound: -1 }); });
+  return { half, cd: r.G.slots[0].cd }; });
+check('§10-5 원거리: 붙은 적 절반 · 빨강 쿨타임 감소 (석궁 장전은 §10-1)', d5.half && d5.cd === 3, JSON.stringify(d5));
+
+// §10-6 치명 조건이 충족된 적 위에 "×2"
+const d6 = await page.evaluate(async () => { const g = window.__game, G = arena([[1, 0, { hp: 999, max: 999 }], [-1, 0, { hp: 999, max: 999 }]]); G.eq.weapon = g.makeGear('axe', { known: true }); g.refreshStats(); G.ents[1].st.bleed = 3; g.View.buildFloor(); g.UI.syncAll();
+  await new Promise((r) => setTimeout(r, 600)); return { ready: g.critReady(G.ents[1]), notReady: !g.critReady(G.ents[2]), marks: document.querySelectorAll('.x2').length }; });
+check('§10-6 치명 조건이 충족된 적 위에 ×2', d6.ready && d6.notReady && d6.marks === 1, JSON.stringify(d6));
+
+// §10-7 품질: 구역마다 오르고, 강화 +N과 따로 더해진다. 대장장이가 품질을 올린다
+const d7 = await page.evaluate(() => { const g = window.__game, G = arena(), M = g.META; const qs = {}; for (const d of [2, 5, 8, 11]) { let q = 0; for (let k = 0; k < 40 && !q; k++) { const it = g.rollGear(d); if (it.q) q = it.q; } qs[d] = q; }
+  G.eq.weapon = g.makeGear('sword', { q: 3, plus: 2, known: true }); g.refreshStats(); const dmg = G.ps.dmg, name = g.gearName(G.eq.weapon);
+  const it = g.makeGear('body_leather', { known: true }); M.gear.push(it); M.mats.마석 = 5; M.mats.광석 = 5; const q = g.RECIPES.find((r) => r.id === 'e_qual');
+  g.Town.enhancePick(q, { name: '대장', t: { C: 0, O: 0, H: 0, A: 0, X: 0, E: 0 }, mood: 0 }, 'forge'); const k = [...document.querySelectorAll('[data-e]')].find((b) => b.closest('.prow').textContent.includes(g.gearName(it, true))); if (k) k.click();
+  document.querySelector('#sheet').classList.add('hidden'); return { qs, dmg, name, smith: it.q }; });
+check('§10-7 품질: 구역 = 품질, 강화와 따로 더함, 대장장이가 올림', d7.qs[2] === 1 && d7.qs[5] === 2 && d7.qs[8] === 3 && d7.qs[11] === 4 && d7.dmg === 4 && /^\+2 좋은 장검$/.test(d7.name) && d7.smith === 2, JSON.stringify(d7));
+
+// §10-9 옛 저장(v6 DCSS식) → 새 칸 구조
+const d9 = await page.evaluate(() => { const g = window.__game, mk = (base, o = {}) => ({ uid: 'u' + base, base, plus: 0, brand: null, ego: null, jt: null, jv: 0, je: null, art: null, un: null, idP: true, idX: true, worn: 0, hits: 0, ...o });
+  const old = { v: 6, gen: 1, visits: 1, cleared: [false, false, false, false], npcs: [], newNpcs: [], buildings: {}, mats: {}, items: {}, recipes: {}, fallen: [], closed: {}, lit: [false, false, false, false], visitors: [], lore: [], glowMods: [], relics: [], unrandsSeen: [],
+    gear: [mk('dagger', { plus: 1 })], hero: { name: '옛', gen: 1, base: 30, max: 30, hp: 30, level: 2, xp: 20, inv: [], look: {}, known: {}, slots: Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 })), sbag: [], weakKnown: {}, jlook: {}, jknown: {},
+      bag: [mk('dagger', { plus: 2 }), mk('boots'), mk('spear')], eq: { weapon: mk('mace', { plus: 1 }), shield: mk('buckler'), head: null, body: mk('body_cloth'), cloak: null, hands: null, feet: null, neck: null, ring1: null, ring2: null } } };
+  localStorage.setItem('torch-meta-v3', JSON.stringify(old)); g.resetMetaForTest(); const M = g.loadMeta(), h = M.hero;
+  return { v: M.v, weapon: h.eq.weapon.base + h.eq.weapon.plus, off: h.eq.off && h.eq.off.base, set2: h.eq.weapon2 && h.eq.weapon2.base, bag: h.bag.map((i) => i.base).join(), stash: M.gear[0].base, q: h.eq.body.q, noShield: !('shield' in h.eq) }; });
+check('§10-9 옛 저장 → 단검은 쌍단검, 방패 칸은 세트 A 보조손, 가방의 마지막 무기는 세트 B', d9.v === 7 && d9.weapon === 'mace1' && d9.off === 'buckler' && d9.set2 === 'spear' && d9.bag === 'twin,boots' && d9.stash === 'twin' && d9.q === 1 && d9.noShield, JSON.stringify(d9));
 
 check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 await browser.close(); server.close();

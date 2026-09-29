@@ -1,4 +1,4 @@
-import { canReach, playerMelee, playerMove, playerWait } from '../core/combat.js';
+import { canHit, playerMelee, playerMove, playerWait } from '../core/combat.js';
 import { findPath, visibleFoes } from '../core/fov.js';
 import { pickGear } from '../core/gear.js';
 import { previewFor, selfPreview, targetsFor } from '../core/skills.js';
@@ -39,7 +39,7 @@ Object.assign(UI, {
     if (this.mode === 'target') { this.tapTarget(x, y); return; }
     const p = G.player, d = cheb(p.x, p.y, x, y), i = I(x, y), e = entAt(x, y), seenFoe = e && isFoe(e) && G.vis[i];
     if (d === 0) { if (G.tile[i] === T_STAIRS) descend(); else if (G.gear.has(i)) { this.instant(() => pickGear()); this.renderWeapon(); } else this.toast('⏳ 대기는 아래 버튼 — 길게 누르면 휴식'); return; }
-    if (seenFoe && d === 2 && canReach(x, y)) { act(() => { playerMelee(e); return true; }); return; }
+    if (seenFoe && d >= 2 && canHit(e)) { act(() => { playerMelee(e); return true; }); return; } // 창 2칸 · 원거리
     if (seenFoe && d > 1) { this.showEnemy(e); return; }
     if (d === 1) { if (G.tile[i] === T_WALL) return; act(() => playerMove(x - p.x, y - p.y)); return; }
     if (!G.seen[i] || G.tile[i] === T_WALL) { this.toast('아직 모르는 곳이다'); return; }
@@ -67,8 +67,8 @@ Object.assign(UI, {
     if (!target) { this.toast('보이는 적이 없다'); return; }
     this.explore = false; this.travel = null; this.rest = null;
     const p = G.player, d = cheb(p.x, p.y, target.x, target.y);
-    // DCSS의 Tab: 붙어 있으면 치고(창은 2칸), 아니면 한 걸음 다가간다
-    if (d === 1 || (d === 2 && canReach(target.x, target.y))) { act(() => { playerMelee(target); return true; }); return; }
+    // DCSS의 Tab: 칠 수 있으면 치고(창 2칸 · 원거리 사거리), 아니면 한 걸음 다가간다
+    if (d === 1 || canHit(target)) { act(() => { playerMelee(target); return true; }); return; }
     let best = null;
     for (let yy = target.y - 1; yy <= target.y + 1; yy++) for (let xx = target.x - 1; xx <= target.x + 1; xx++) {
       if (!inb(xx, yy) || entAt(xx, yy) || G.tile[I(xx, yy)] === T_WALL) continue;

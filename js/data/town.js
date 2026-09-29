@@ -42,6 +42,7 @@ export const RECIPES = [
   { id: 'o_boots', b: 'hunter', gear: 'boots', in: { 가죽: 1, 뼈: 1 } },
   { id: 'o_gloves', b: 'forge', gear: 'gloves', in: { 가죽: 1, 광석: 1 } },
   { id: 'e_enh', b: 'forge', enhance: true, in: { 마석: 1, 광석: 2 } },
+  { id: 'e_qual', b: 'forge', quality: true, in: { 마석: 1, 광석: 2 } },
   { id: 'i_ident', b: 'library', out: 'ident', n: 1, in: { 심장: 1, 약초: 1 } },
   { id: 'i_heal', b: 'herb', out: 'heal', n: 1, in: { 약초: 2 } },
   { id: 'i_ember', b: 'inn', out: 'ember_jar', n: 1, in: { 기름: 1, 약초: 1 } },

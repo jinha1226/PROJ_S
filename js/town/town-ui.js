@@ -2,7 +2,7 @@ import { canEnchant, craftArmor, craftWeapon, gearCss, gearName, makeGear } from
 import { META, craftNote, invAdd, invCount, moodAdd, newHero, packLimit, recipeName, saveMeta } from '../core/meta.js';
 import { cap, hearthGlow } from '../core/visitors.js';
 import { BOSSES } from '../data/enemies.js';
-import { SLOTS, SLOT_ICON, isWeapon, slotKind } from '../data/gear.js';
+import { ALL_SLOTS, QUALITY, SLOT_ICON, hasQuality, isWeapon, slotKind } from '../data/gear.js';
 import { ITEMS, MATS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { ZONES } from '../data/terrain.js';
@@ -37,7 +37,7 @@ Object.assign(Town, {
       <div class="gtxt">모험가 <b>${h.name}</b> (${h.gen}대째) · HP ${h.hp}/${h.max} · 영혼석 ${h.slots.filter((q) => q.stone).map((q) => `<span style="color:${COLORS[q.color].css}">${STONE[q.stone].icon}</span>`).join('') || '없음'}</div>
       <div class="sec">구역 <small>보스를 잡아야 다음 구역이 열린다 · 안에서는 돌아올 수 없다</small></div><div class="wrow">${zones}</div>
       <div class="sec">준비물 ${carried}/${lim} <small>이미 든 것 ${invCount(h.inv)} · 마을 사람이 늘면 더 챙겨 준다</small></div>${items}
-      <div class="sec">장비 <small>창고의 장비는 죽어도 남는다</small></div><div class="gtxt">${SLOTS.filter((k) => h.eq[k]).map((k) => `<span style="color:${gearCss(h.eq[k])}">${SLOT_ICON[k]} ${gearName(h.eq[k])}</span>`).join(' · ')}</div>
+      <div class="sec">장비 <small>창고의 장비는 죽어도 남는다</small></div><div class="gtxt">${ALL_SLOTS.filter((k) => h.eq[k]).map((k) => `<span style="color:${gearCss(h.eq[k])}">${SLOT_ICON[k]} ${gearName(h.eq[k])}</span>`).join(' · ')}</div>
       <button class="wbtn" data-inv="1" style="width:100%;margin-top:6px">🛡 장비 창 — 창고 ${META.gear.length} · 가방 ${h.bag.length}/20</button>
       ${META.buff === 'feast' ? '<div class="gtxt" style="margin-top:6px">🍲 든든한 한 끼 — 출발 시 보호막 +6</div>' : ''}
       <button class="bigbtn" id="btn-depart">구역 ${P.zone + 1}로 출발</button>`);
@@ -111,16 +111,17 @@ Object.assign(Town, {
     this.craftMsg = null;
     sh.querySelectorAll('[data-t]').forEach((b) => { b.onclick = () => this.craft(b.dataset.t); });
     sh.querySelectorAll('[data-c]').forEach((b) => { b.onclick = () => { this.crafter = b.dataset.c; this.craft(bid); }; });
-    sh.querySelectorAll('[data-r]').forEach((b) => { b.onclick = () => { const q = RECIPES.find((r) => r.id === b.dataset.r); if (q.enhance) { this.enhancePick(q, cr, bid); return; } this.doCraft(q, cr, bid); this.craft(bid); }; });
+    sh.querySelectorAll('[data-r]').forEach((b) => { b.onclick = () => { const q = RECIPES.find((r) => r.id === b.dataset.r); if (q.enhance || q.quality) { this.enhancePick(q, cr, bid); return; } this.doCraft(q, cr, bid); this.craft(bid); }; });
   },
-  /** 대장장이 강화: 마석 1 + 광석 2로 창고(또는 등불지기)의 장비 하나를 +1. 성실한 대장장이는 가끔 광석을 덜 쓴다 */
+  /** 대장장이: 마석 1 + 광석 2로 창고(또는 등불지기)의 장비 하나를 강화 +1, 또는 품질 한 단계(데드셀안 §5). 성실한 대장장이는 가끔 광석을 덜 쓴다 */
   enhancePick(q, n, bid) {
-    const pool = [...META.gear.map((it) => ['창고', it]), ...(META.hero ? [...Object.values(META.hero.eq), ...META.hero.bag].filter(Boolean).map((it) => ['등불지기', it]) : [])].filter(([, it]) => canEnchant(it, isWeapon(it) ? 'w' : 'a'));
-    const sh = this.sheet(`<h3>강화할 장비 <button class="close">닫기</button></h3><div class="gtxt">${n.name}: “${n.t.C >= 1 ? '제대로 두드려 주지.' : '뭐, 해 보지.'}” <small style="color:#9aa2bd">유물·장신구는 강화할 수 없다</small></div>
-      ${pool.map(([w, it], k) => `<div class="prow"><span style="color:${gearCss(it)}">${gearName(it, true)} <small>${w}</small></span><button class="mk" data-e="${k}">+1</button></div>`).join('') || '<p style="color:#9aa2bd">강화할 수 있는 장비가 없다.</p>'}`);
+    const ok = q.quality ? (it) => hasQuality(it.base) && (it.q || 1) < 4 : (it) => canEnchant(it, isWeapon(it) ? 'w' : 'a');
+    const pool = [...META.gear.map((it) => ['창고', it]), ...(META.hero ? [...Object.values(META.hero.eq), ...META.hero.bag].filter(Boolean).map((it) => ['등불지기', it]) : [])].filter(([, it]) => ok(it));
+    const sh = this.sheet(`<h3>${q.quality ? '품질을 올릴' : '강화할'} 장비 <button class="close">닫기</button></h3><div class="gtxt">${n.name}: “${n.t.C >= 1 ? '제대로 두드려 주지.' : '뭐, 해 보지.'}” <small style="color:#9aa2bd">${q.quality ? '무기·방어구·방패만 (최대 명장의)' : '유물·장신구는 강화할 수 없다'}</small></div>
+      ${pool.map(([w, it], k) => `<div class="prow"><span style="color:${gearCss(it)}">${gearName(it, true)} <small>${w}</small></span><button class="mk" data-e="${k}">${q.quality ? `→ ${QUALITY[(it.q || 1) + 1].name}` : '+1'}</button></div>`).join('') || `<p style="color:#9aa2bd">${q.quality ? '품질을 올릴' : '강화할'} 수 있는 장비가 없다.</p>`}`);
     sh.querySelectorAll('[data-e]').forEach((b) => { b.onclick = () => {
       const it = pool[+b.dataset.e][1]; META.mats.마석 -= 1; const save = n.t.C >= 1 && rand() < 0.35; META.mats.광석 -= save ? 1 : 2;
-      it.plus++; it.idP = true; moodAdd(n, n.t.C >= 1 ? 1 : 0); saveMeta();
+      if (q.quality) it.q = (it.q || 1) + 1; else { it.plus++; it.idP = true; } moodAdd(n, n.t.C >= 1 ? 1 : 0); saveMeta();
       this.craftMsg = `✅ <b>${gearName(it, true)}</b>${save ? ` — ${adj(n, 'C')} ${jo(n.name, '이가')} 광석을 하나 아꼈다` : ''}`;
       const B = BLD[bid], D = View.dio; D.sparks.emit({ pos: W3(B.x, B.y, 1.2), n: 30, color: 0xffe14a, color2: 0xffffff, speed: 3, up: 2, grav: -3, life: 0.7, size: 0.13 }); Sfx.play('crit');
       Town.redressHero?.(); this.craft(bid);
@@ -134,7 +135,7 @@ Object.assign(Town, {
     let made;
     if (q.out) { const cnt = (q.n || 1) + (extra ? 1 : 0) + (plus ? 1 : 0); META.items[q.out] = (META.items[q.out] || 0) + cnt; made = `${ITEMS[q.out].name} ×${cnt}`; if (extra) notes.push(`${adj(n, 'C')} ${jo(n.name, '이가')} 하나 더 만들었다`); if (plus) notes.push('손끝이 좋아 하나 더!'); }
     else if (q.weapon) { const it = craftWeapon(q.weapon + (plus ? '+' : '')); META.gear.push(it); made = gearName(it); if (plus) notes.push(`명품! ${adj(n, 'O')} ${n.name}의 손길`); }
-    else if (q.gear) { const it = makeGear(q.gear, { plus: plus ? 1 : 0, known: true }); META.gear.push(it); made = gearName(it); if (plus) notes.push(`명품! ${adj(n, 'O')} ${n.name}의 손길`); }
+    else if (q.gear) { const it = makeGear(q.gear, { plus: plus ? 1 : 0, q: 2, known: true }); META.gear.push(it); made = gearName(it); if (plus) notes.push(`명품! ${adj(n, 'O')} ${n.name}의 손길`); }
     else if (q.armor) { const it = craftArmor(q.armor + (plus ? '+' : '')); META.gear.push(it); made = gearName(it); if (plus) notes.push(`명품! ${adj(n, 'O')} ${n.name}의 손길`); }
     else { META.buff = 'feast'; made = '든든한 한 끼 (다음 출발 보호막 +6)'; }
     moodAdd(n, t.C >= 1 ? 1 : 0);
@@ -174,7 +175,7 @@ Object.assign(Town, {
   },
   heroCard() {
     const h = META.hero; if (!h) return;
-    UI.info(`<h3>🧭 ${h.name} <small style="color:#9aa2bd">${h.gen}대째 모험가 · HP ${h.hp}/${h.max}</small></h3><div class="gtxt">장비: ${SLOTS.filter((k) => h.eq[k]).map((k) => `<span style="color:${gearCss(h.eq[k])}">${SLOT_ICON[k]}${gearName(h.eq[k])}</span>`).join(' ')}<br>영혼석: ${h.slots.filter((q) => q.stone).map((q) => `<span style="color:${COLORS[q.color].css}">${STONE[q.stone].icon}${STONE[q.stone].name}</span>`).join(' ') || '없음'}<br>가방: ${h.inv.map((q) => `${ITEMS[q.k].name}×${q.n}`).join(', ') || '비어 있음'}</div>`);
+    UI.info(`<h3>🧭 ${h.name} <small style="color:#9aa2bd">${h.gen}대째 모험가 · HP ${h.hp}/${h.max}</small></h3><div class="gtxt">장비: ${ALL_SLOTS.filter((k) => h.eq[k]).map((k) => `<span style="color:${gearCss(h.eq[k])}">${SLOT_ICON[k]}${gearName(h.eq[k])}</span>`).join(' ')}<br>영혼석: ${h.slots.filter((q) => q.stone).map((q) => `<span style="color:${COLORS[q.color].css}">${STONE[q.stone].icon}${STONE[q.stone].name}</span>`).join(' ') || '없음'}<br>가방: ${h.inv.map((q) => `${ITEMS[q.k].name}×${q.n}`).join(', ') || '비어 있음'}</div>`);
   },
   report(r, res) {
     const W = { boss: `🏆 구역 ${r.zone} 보스 격파!${r.first ? ' 다음 구역이 열렸다.' : ''}`, recall: `📜 귀환 두루마리로 구역 ${r.zone}-${r.zf}에서 돌아왔다. 이 구역은 처음부터 다시.`, death: `🕯 ${jo(r.hero, '이가')} 구역 ${r.zone}-${r.zf}에서 쓰러졌다. 영혼석과 전리품을 잃었다. 이름을 비석에 새긴다.`, first: '🔥 세상에 남은 마지막 모닥불. 불은 장작이 아니라 사람으로 탄다 — 곁에 모인 사람들이 서로를 기억하는 동안.', resume: '🏕 정착지로 돌아왔다.' }[r.reason] || '';

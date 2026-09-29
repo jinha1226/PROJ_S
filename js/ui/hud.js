@@ -1,38 +1,39 @@
-import { closeDoor, playerMove } from '../core/combat.js';
-import { visibleFoes } from '../core/fov.js';
-import { gearCss, gearName, pickGear, swapWeapon } from '../core/gear.js';
+import { closeDoor, colorMul, playerMove } from '../core/combat.js';
+import { gearCss, gearName, pickGear, swapSet } from '../core/gear.js';
 import { itemName } from '../core/items.js';
 import { G, I, entAt } from '../core/state.js';
 import { stoneCd, takeStone } from '../core/stones.js';
 import { useLamp } from '../core/torch.js';
 import { BOSSES } from '../data/enemies.js';
-import { isWeapon, weaponOf } from '../data/gear.js';
+import { weaponOf } from '../data/gear.js';
 import { CAT_ICON, ITEMS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { T_OPEN, T_STAIRS, ZONES } from '../data/terrain.js';
 import { torchTier } from '../data/torch.js';
-import { FORMS } from '../data/weapons.js';
+import { CRITS, FORMS, SHAPES } from '../data/weapons.js';
 import { Anim, act, descend } from '../flow.js';
 import { Sfx } from '../render/sfx.js';
 import { $, UI } from './ui.js';
 
 Object.assign(UI, {
-  /** 공격 길게 누르기: 가방의 마지막으로 쓴 다른 무기와 교체(전투 중이면 한 턴) */
+  /** 공격 길게 누르기: 무기 세트 A ↔ B — 턴을 쓰지 않는다 (데드셀안 §4) */
   swapWeapon() {
     if (Anim.active || G.over) return;
-    if (!G.bag.some(isWeapon)) { this.toast('가방에 다른 무기가 없다'); return; }
-    if (visibleFoes().some((e) => e.awake)) act(() => swapWeapon()); else this.instant(() => swapWeapon());
-    const W = weaponOf(G.eq.weapon); this.toast(`${FORMS[W.form].icon} ${gearName(G.eq.weapon)} — ${FORMS[W.form].name} (${FORMS[W.form].injury})`); Sfx.play('ui');
+    if (!G.eq.weapon2 && !G.eq.off2) { this.toast('다른 세트가 비어 있다 — 가방에서 세트 B에 무기를 끼우자'); return; }
+    this.instant(() => swapSet());
+    const W = weaponOf(G.eq.weapon); this.toast(`세트 ${'AB'[G.wset || 0]} — ${FORMS[W.form].icon} ${G.eq.weapon ? gearName(G.eq.weapon) : '맨손'} (${COLORS[W.color].name} ×${colorMul(W).toFixed(2)})`); Sfx.play('ui');
+    this.renderWeapon();
   },
   weaponInfo() {
-    const r = [G.eq.weapon, ...G.bag.filter(isWeapon)].filter(Boolean).map((it, k) => { const W = weaponOf(it), F = FORMS[W.form]; return `<div>${k === 0 ? '▶' : '　'} ${F.icon} <b style="color:${gearCss(it)}">${gearName(it)}</b> ${F.name} ${W.dmg[0]}–${W.dmg[1]} · 부상 ${F.injury}</div>`; }).join('');
-    this.info(`<h3>무기 <small style="color:#9aa2bd">공격 길게 누르기 = 가방의 다른 무기로 교체</small></h3>${r}<div class="hint" style="margin-top:6px">💡 베기 = 출혈, 타격 = 골절(한 턴씩 쉰다·돌진 끊음), 찌르기 = 급소 표식 → 다음 찌르기 치명타</div>`);
+    const set = (w, o, on, k) => { const W = weaponOf(w); return `<div>${on ? '▶' : '　'} 세트 ${'AB'[k]} ${w ? `${FORMS[W.form].icon} <b style="color:${gearCss(w)}">${gearName(w)}</b> <span style="color:${COLORS[W.color].css}">●</span> ${SHAPES[W.shape]} · 치명: ${CRITS[W.crit]}` : '맨손'}${o ? ` + ${gearName(o)}` : ''}</div>`; };
+    const a = [G.eq.weapon, G.eq.off], b = [G.eq.weapon2, G.eq.off2], S = G.wset || 0, rows = S ? [set(...b, false, 0), set(...a, true, 1)] : [set(...a, true, 0), set(...b, false, 1)];
+    this.info(`<h3>무기 세트 <small style="color:#9aa2bd">공격 길게 누르기 = 세트 교체(턴 없음)</small></h3>${rows.join('')}<div class="hint" style="margin-top:6px">💡 같은 색 영혼석 1개당 무기 피해 +15% · 베기 = 출혈, 타격 = 골절, 찌르기 = 급소 표식</div>`);
   },
   renderWeapon() {
     if (!G.eq) return;
-    const W = weaponOf(G.eq.weapon), F = FORMS[W.form], o = G.bag && G.bag.find(isWeapon);
-    $('#btn-wpn').innerHTML = `${F.icon}<small>${G.eq.weapon ? gearName(G.eq.weapon) : '맨손'}</small><small style="font-size:9px;opacity:.7">${o ? '⇄ ' + gearName(o) : '다른 무기 없음'}</small>`;
-    $('#btn-wpn').style.boxShadow = `inset 0 -3px 0 ${COLORS[F.color].css}`;
+    const W = weaponOf(G.eq.weapon), F = FORMS[W.form], o = G.eq.weapon2;
+    $('#btn-wpn').innerHTML = `${F.icon}<small>${G.eq.weapon ? gearName(G.eq.weapon) : '맨손'}</small><small style="font-size:9px;opacity:.7">${o ? '⇄ ' + gearName(o) : '세트 B 비어 있음'}</small>`;
+    $('#btn-wpn').style.boxShadow = `inset 0 -3px 0 ${COLORS[W.color].css}`;
     $('#gearcount').textContent = G.bag && G.bag.length ? G.bag.length : '';
   },
   /* ---- 퀵슬롯: 소모품 6칸 ---- */

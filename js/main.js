@@ -1,7 +1,7 @@
 // 시작 · 모듈 연결. 규칙(core)과 화면(render/ui/town)은 여기서만 이어진다.
-import { playerMove, playerWait } from './core/combat.js';
+import { canHit, colorMul, critReady, playerMelee, playerMove, playerWait } from './core/combat.js';
 import { computeFOV } from './core/fov.js';
-import { calcStats, equip, gearName, makeGear, makeUnrand, pickGear, refreshStats, rollGear, unequip } from './core/gear.js';
+import { calcStats, equip, gearName, makeGear, makeUnrand, pickGear, refreshStats, rollGear, swapSet, unequip } from './core/gear.js';
 import { openHidden } from './core/hidden.js';
 import { useItem } from './core/items.js';
 import { genFloor } from './core/mapgen.js';
@@ -47,4 +47,4 @@ newRun();
 View.buildFloor();
 UI.syncAll();
 UI.title();
-window.__game = { get META() { return META; }, Town, Game, enterDungeon, returnToTown, newHero, RECIPES, G, UI, View, act, playerMove, useStone, useItem, reduceColor, inCombat, descend, TL, Anim, computeFOV, playerWait, addStone, pickGear, equip, unequip, makeGear, rollGear, calcStats, refreshStats, STONE, DROPS, hearthGlow, glowParts, requestState, acceptVisitor, rollVisitors, volunteers, takeTorch, openHidden, processReturn, regen: () => { genFloor(); View.buildFloor(); }, makeUnrand, stoneCd, gearName, loadMeta, resetMetaForTest: resetMeta };
+window.__game = { get META() { return META; }, Town, Game, enterDungeon, returnToTown, newHero, RECIPES, G, UI, View, act, playerMove, playerMelee, canHit, critReady, colorMul, swapSet, useStone, useItem, reduceColor, inCombat, descend, TL, Anim, computeFOV, playerWait, addStone, pickGear, equip, unequip, makeGear, rollGear, calcStats, refreshStats, STONE, DROPS, hearthGlow, glowParts, requestState, acceptVisitor, rollVisitors, volunteers, takeTorch, openHidden, processReturn, regen: () => { genFloor(); View.buildFloor(); }, makeUnrand, stoneCd, gearName, loadMeta, resetMetaForTest: resetMeta };

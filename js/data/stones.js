@@ -34,6 +34,9 @@ export const STONE = {
   g_freeze: { color: 'green', icon: '❄', name: '서리 갑주', cd: 6, tgt: { t: 'self' }, aura: 'frost', rounds: 3, line: '3라운드 동안 나를 때린 적 빙결 1턴 (젖었으면 3턴)' },
 };
 
+/** 보랏빛 오브(데드셀안 §4.1): 보라 스킬마다 정해진 +1 (오브 강화 +N이면 +1+N) */
+export const ORB_PURPLE = { p_summon: '소환 지속 +1턴', p_shield: '보호막 +2', p_poison: '중독 +1턴', p_push: '밀치기 +1칸', p_heal: '회복 +2', p_shock: '번개 +1', p_fire: '불길 범위 +1칸', p_wet: '물벼락 범위 +1칸' };
+
 /** 지속 효과(오라) 이름 · 색 */
 export const AURA = { counter: { name: '반격 자세', hex: 0xff5a4a }, guard: { name: '막기', hex: 0x9fd8ff }, thorn: { name: '독 가시', hex: 0x79e05a }, storm: { name: '번개 갑주', hex: 0xffe14a }, frost: { name: '서리 갑주', hex: 0x8fdcff } };
 
