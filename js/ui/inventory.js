@@ -109,7 +109,8 @@ Object.assign(UI, {
     else if (a === 'unequip') run(() => unequip(sel.slot));
     else if (a === 'drop') { this.instant(() => dropGear(sel.i)); if (Game.mode === 'town') saveMeta(); this.invSel = null; this.renderInv(); }
   },
-  statsCard() {
+  /** 전투 수치(누르면 출처) — 캐릭터 정보 카드와 상태창이 함께 쓴다 */
+  statsRows() {
     const H = holder(), s = calcStats(H.eq), w = weaponOf(H.eq.weapon);
     const src = (k) => (s.src[k] || []).map(([l, v]) => `<div class="srcl">${l} <b>${v > 0 ? '+' : ''}${v}</b></div>`).join('') || '<div class="srcl">—</div>';
     const row = (name, val, k, cap) => `<details><summary>${name} <b>${val}</b>${cap ? ` <small style="color:#ffd84a">(최대)</small>` : ''}</summary>${src(k)}</details>`;
@@ -118,11 +119,11 @@ Object.assign(UI, {
       if (it.legend && it.known) flags.push(`<div style="color:#ff9a3a">★ ${LEGENDS[it.legend].name}: ${LEGENDS[it.legend].line}</div>`);
       for (const a of it.affixes) if (a.known && !['hp', 'def', 'eva', 'dmg', 'crit'].includes(a.id) && !a.id.startsWith('res')) flags.push(`<div>· ${affixLine(a)}</div>`);
     }
-    this.info(`<h3>🧭 캐릭터 정보 <small style="color:#9aa2bd">수치를 누르면 출처</small></h3>
-      ${row('최대 HP', `${H.unit.max} (기본 ${H.base})`, 'maxHp', s.capped.maxHp)}${row('방어', `${s.def} / ${CAPS.def}`, 'def', s.capped.def)}${row('회피', `${s.eva}% / ${CAPS.eva}%`, 'eva', s.capped.eva)}
+    return `${row('최대 HP', `${H.unit.max} (기본 ${H.base})`, 'maxHp', s.capped.maxHp)}${row('방어', `${s.def} / ${CAPS.def}`, 'def', s.capped.def)}${row('회피', `${s.eva}% / ${CAPS.eva}%`, 'eva', s.capped.eva)}
       ${row('막기', `${s.block}%`, 'block', s.capped.block)}${row('피해', `${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} (${FORMS[w.form].name})`, 'dmg')}${row('급소 확률', `${s.crit}%`, 'crit')}${s.acc ? row('명중', `${100 + s.acc}%`, 'acc') : ''}
       ${['fire', 'bolt', 'frost', 'poison'].map((k) => row({ fire: '불', bolt: '번개', frost: '냉기', poison: '독' }[k] + ' 저항', `${s.res[k]}%`, 'res' + k, s.capped['res' + k])).join('')}
       <div class="gtxt" style="margin-top:6px">${flags.join('') || '<span style="color:#9aa2bd">특수 옵션 없음</span>'}</div>
-      <div class="gtxt" style="color:#9aa2bd;margin-top:4px">빌드의 중심은 영혼석 — 장비는 그것을 받쳐준다.</div>`);
+      <div class="gtxt" style="color:#9aa2bd;margin-top:4px">빌드의 중심은 영혼석 — 장비는 그것을 받쳐준다.</div>`;
   },
+  statsCard() { this.info(`<h3>🧭 캐릭터 정보 <small style="color:#9aa2bd">수치를 누르면 출처</small></h3>${this.statsRows()}`); },
 });

@@ -26,6 +26,7 @@ import './render/hidden-view.js';
 import './ui/inventory.js';
 import './ui/input.js';
 import './ui/hud.js';
+import './ui/status.js';
 import './ui/panels.js';
 import './ui/screens.js';
 import './town/town-ui.js';

@@ -136,6 +136,7 @@ Object.assign(UI, {
     else if (d.closedDoor) { c.disabled = false; c.classList.add('live'); c.innerHTML = '🚪<small>문 열기</small>'; c.dataset.act = 'open'; c.dataset.x = d.closedDoor[0]; c.dataset.y = d.closedDoor[1]; }
     else if (d.door) { c.disabled = false; c.classList.remove('live'); c.innerHTML = '🚪<small>문 닫기</small>'; c.dataset.act = 'door'; c.dataset.x = d.door[0]; c.dataset.y = d.door[1]; }
     else { c.disabled = true; c.classList.remove('live'); c.innerHTML = '·<small>—</small>'; c.dataset.act = ''; }
+    c.classList.toggle('hidden', c.disabled); // 할 일이 있을 때만 떠오른다
   },
   ctxBtn() {
     if (Anim.active || G.over) return;
@@ -194,10 +195,5 @@ Object.assign(UI, {
     this.openHudOverlay('<h2>기록</h2>' + this.logLines.map((q) => `<div class="entry ${q.cls || ''}"></div>`).join(''));
     [...$('#hud-overlay-body').querySelectorAll('.entry')].forEach((el, i) => { el.textContent = this.logLines[i].t; });
     $('#hud-overlay').scrollTop = $('#hud-overlay').scrollHeight;
-  },
-  openStatus() {
-    const s = this.lastSt || {}, names = { wet: '젖음', frozen: '빙결', burn: '화상', poison: '중독', stun: '기절', haste: '가속', immune: '해독', bleed: '출혈', frac: '골절', vital: '급소 노출' };
-    const rows = Object.entries(names).filter(([k]) => s[k] > 0).map(([k, name]) => `<div class="entry">${name} · ${s[k]}턴</div>`).join('');
-    this.openHudOverlay(`<h2>상태</h2><div class="entry">HP ${G.player.hp}/${G.player.max} · 보호막 ${G.player.shield || 0}</div>${rows || '<p>상태 이상 없음</p>'}`);
   },
 });

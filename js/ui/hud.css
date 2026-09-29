@@ -38,7 +38,19 @@
 #actions{grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}
 #actions button{height:54px;font-size:19px;min-width:0}
 #actions small{font-size:10px;margin-top:2px;white-space:nowrap}
-#btn-ctx small{overflow:hidden;text-overflow:ellipsis;max-width:100%}
+/* 상호작용은 필요할 때만 떠오르는 버튼(계단·등잔·줍기·구하기·문) */
+#bottom{position:relative}
+#btn-ctx{position:absolute;right:8px;bottom:calc(100% + 6px);height:40px;max-width:60%;padding:0 12px;border-radius:12px;display:flex;align-items:center;gap:6px;font-size:17px;background:rgba(40,34,20,.94);border:1px solid #ffd27a;box-shadow:0 0 14px rgba(255,200,90,.45);pointer-events:auto;animation:ctxIn .25s ease-out}
+#btn-ctx small{font-size:12px;color:#ffe9b8;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@keyframes ctxIn{from{transform:translateY(6px);opacity:0}}
+/* 상태창 */
+.st-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.st-head b{font-size:18px}
+.st-bars{display:grid;grid-template-columns:auto 1fr auto;gap:4px 8px;align-items:center;font-size:12.5px;margin:6px 0}
+.st-bar{height:8px;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden}.st-bar i{display:block;height:100%}
+.st-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.st-stone{display:flex;flex-direction:column;align-items:center;padding:5px 2px;border-radius:10px;border:1px solid var(--c,var(--line));background:rgba(0,0,0,.3);font-size:18px;line-height:1.1}
+.st-stone small{font-size:10px;color:var(--dim)}.st-stone.empty{opacity:.35;border-style:dashed}
+.st-list div{padding:3px 0;border-bottom:1px solid var(--line);font-size:12.5px}
 #hud-overlay{position:fixed;inset:0;z-index:7;background:rgba(5,7,14,.96);padding:calc(12px + var(--st)) 12px calc(12px + var(--sb));overflow:auto;touch-action:pan-y}
 #hud-overlay-close{position:sticky;top:0;float:right;border:1px solid var(--line);border-radius:9px;background:#252a42;padding:8px 12px;z-index:2}
 #hud-overlay-body{clear:both;padding-top:12px;font-size:13px;line-height:1.5}

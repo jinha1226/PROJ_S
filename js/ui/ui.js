@@ -35,6 +35,7 @@ export const UI = {
     this.hold($('#btn-wpn'), () => this.swapWeapon(), () => this.weaponInfo());
     $('#btn-bag').onclick = () => { Sfx.play('ui'); this.openBag(); };
     $('#btn-ctx').onclick = () => this.ctxBtn();
+    $('#btn-status').onclick = () => this.openStatus();
     $('#btn-tilt').onclick = () => { const q = View.dio.rig.toggleTilt(); this.toast(q ? '45도 쿼터뷰' : '탑뷰'); };
     $('#btn-home').onclick = () => { View.dio.rig.reset(); this.toast('기본 탑뷰로 복귀'); };
     $('#btn-cancel').onclick = () => this.exitTarget();
