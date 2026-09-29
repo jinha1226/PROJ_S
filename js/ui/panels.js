@@ -4,7 +4,7 @@ import { itemName, useItem } from '../core/items.js';
 import { G, Game, I } from '../core/state.js';
 import { swapStone } from '../core/stones.js';
 import { CATS, DROPS, ENEMY, MAGE, catOf, kindOf, monRes } from '../data/enemies.js';
-import { ELEM } from '../data/gear.js';
+import { BAG_MAX, ELEM } from '../data/gear.js';
 import { CAT_ICON, ITEMS, ITEM_COL } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { C_STEAM, S_ASH, S_GRASS, S_ICE, S_OIL, S_WATER, T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrain.js';
@@ -20,7 +20,7 @@ Object.assign(UI, {
   openBag(tab) { if (G.over || Anim.active) return; if (tab) this.invTab = tab; this.openInv(); },
   /** 소모품 탭: 장비와 같은 칸 모양. 누르면 위에 설명 카드와 [사용] */
   itemsHtml(inv) {
-    const sel = inv.find((q) => q.k === this.itemSel), cells = Math.max(10, Math.ceil(inv.length / 5) * 5);
+    const sel = inv.find((q) => q.k === this.itemSel), cells = Math.max(BAG_MAX, Math.ceil(inv.length / 5) * 5); // 장비 가방과 같은 칸 수
     const col = (k) => '#' + new THREE.Color(G.look[k] ? G.look[k].color : 0xffffff).getHexString();
     const grid = Array.from({ length: cells }, (_, n) => {
       const q = inv[n]; if (!q) return '<div class="bgc empty"></div>';
@@ -43,7 +43,8 @@ Object.assign(UI, {
   /** 영혼석 탭: 저장 중인 영혼석(가방)만 칸으로. 누르면 설명 · 같은 색 칸과 바꾸기 · 버리기 */
   stonesHtml() {
     const safe = !visibleFoes().some((e) => e.awake), max = G.sbagMax || 3, sel = this.selBag ?? -1, selId = sel >= 0 ? G.sbag[sel] : null;
-    const grid = Array.from({ length: max }, (_, k) => { const id = G.sbag[k]; if (!id) return '<div class="bgc empty"></div>'; const d = STONE[id], C = COLORS[d.color]; return `<button class="bgc ${k === sel ? 'sel' : ''}" style="--c:${C.css}" data-b="${k}">${d.icon}<small>${d.name}</small></button>`; }).join('');
+    // 장비 가방과 같은 칸 수(20). 못 쓰는 칸은 잠김
+    const grid = Array.from({ length: BAG_MAX }, (_, k) => { if (k >= max) return '<div class="bgc empty locked">🔒</div>'; const id = G.sbag[k]; if (!id) return '<div class="bgc empty"></div>'; const d = STONE[id], C = COLORS[d.color]; return `<button class="bgc ${k === sel ? 'sel' : ''}" style="--c:${C.css}" data-b="${k}">${d.icon}<small>${d.name}</small></button>`; }).join('');
     let detail = '';
     if (selId) {
       const d = STONE[selId], C = COLORS[d.color], same = G.slots.map((q, k) => [q, k]).filter(([q, k]) => q.stone && q.color === d.color && k < (G.level || 6));
