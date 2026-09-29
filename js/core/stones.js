@@ -192,6 +192,28 @@ export function addStone(id) {
   return false;
 }
 
+/** 발밑 영혼석을 거둔다. mode: 'absorb'(칸에 흡수 — slot을 주면 그 칸의 같은 색 영혼석과 바꾸고, 빠진 것은 가방으로) | 'bag' */
+export function takeStone(mode, slot) {
+  const p = G.player, i = I(p.x, p.y), id = G.stones.get(i); if (!id) return false;
+  const S = STONE[id], max = G.sbagMax || 3;
+  if (mode === 'bag') {
+    if (G.sbag.length >= max) { log('영혼석 가방이 가득 찼다', 'bad'); return false; }
+    G.sbag.push(id); log(`영혼석 「${S.icon} ${S.name}」 → 가방`, 'good');
+  } else {
+    let sl = slot != null ? G.slots[slot] : G.slots.find((q) => !q.stone);
+    if (!sl) { log('빈 칸이 없다 — 같은 색 칸을 골라 바꿔 끼워야 한다', 'bad'); return false; }
+    if (sl.stone) {
+      if (sl.color !== S.color) { log('다른 색 칸에는 흡수할 수 없다', 'bad'); return false; }
+      const old = sl.stone; if (G.sbag.length < max) { G.sbag.push(old); log(`「${STONE[old].name}」은 가방으로`, 'info'); } else log(`「${STONE[old].name}」은 흩어졌다`, 'info');
+    }
+    sl.stone = id; sl.color = S.color; sl.cd = 0;
+    log(`영혼석 스킬 「${S.icon} ${S.name}」 — ${S.line}`, 'syn');
+  }
+  G.stones.delete(i); G.stoneOffer = null; G.stats.stones++;
+  emit('stonePick', { x: p.x, y: p.y, id }); emitSlots();
+  return true;
+}
+
 export function summon(at) {
   const p = G.player; let spot = at && at[0] != null && standable(at[0], at[1]) && !entAt(at[0], at[1]) ? at : null;
   if (!spot) for (const [dx, dy] of shuffle(D8.slice())) { const x = p.x + dx, y = p.y + dy; if (standable(x, y) && !entAt(x, y)) { spot = [x, y]; break; } }

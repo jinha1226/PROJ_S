@@ -131,6 +131,7 @@ Object.assign(View, {
       case 'dash': Sfx.play('dash'); break;
       case 'shove': D.fx.ring(P(d.x, d.y), 0xf2e6c8, 0.2, 1.1, 0.25); D.sparks.emit({ pos: P(d.x, d.y, 0.5), n: 12, color: 0xffffff, color2: 0xf2e6c8, speed: 4, vx: d.dx * 4, vz: d.dy * 4, life: 0.3, size: 0.12 }); Sfx.play('push'); break;
       case 'pcast': { const pe = this.evs.get(0); if (pe) { const c = d.color ?? 0xffffff; D.sparks.emit({ pos: W3(pe.cur.x, pe.cur.z, 0.7), n: 10, color: c, color2: 0xffffff, speed: 1.5, grav: 0, life: 0.35, size: 0.12 }); pe.sqv += 3; } break; }
+      case 'stoneOffer': ports.UI.stoneOffer(d); break;
       case 'cdReduce': ports.UI.cdFlash(d.slots, d.color); { const pe = this.evs.get(0); if (pe) D.sparks.emit({ pos: W3(pe.cur.x, pe.cur.z, 0.8), n: 6 * d.slots.length, color: COLORS[d.color].hex, color2: 0xffffff, speed: 1.2, up: 1.2, grav: 0, life: 0.5, size: 0.09 }); } Sfx.chime(1); break;
       case 'aura': this.setAuras(d); ports.UI.renderAuras(); break;
       case 'stonesReady': ports.UI.toast('전투가 끝났다 — 영혼석 스킬이 모두 준비됐다'); break;

@@ -2,10 +2,11 @@ import { canReach, playerMelee, playerMove, playerWait } from '../core/combat.js
 import { findPath, visibleFoes } from '../core/fov.js';
 import { pickGear } from '../core/gear.js';
 import { previewFor, selfPreview, targetsFor } from '../core/skills.js';
-import { useStone } from '../core/stones.js';
-import { COLORS, STONE } from '../data/stones.js';
 import { emitStatus } from '../core/snap.js';
 import { G, Game, I, XY, entAt, inb, isFoe, isP, log } from '../core/state.js';
+import { useStone } from '../core/stones.js';
+import { useLamp } from '../core/torch.js';
+import { COLORS, STONE } from '../data/stones.js';
 import { T_DOOR, T_STAIRS, T_WALL } from '../data/terrain.js';
 import { Anim, act, descend, returnToTown } from '../flow.js';
 import { Sfx } from '../render/sfx.js';
@@ -66,7 +67,8 @@ Object.assign(UI, {
     if (!target) { this.toast('보이는 적이 없다'); return; }
     this.explore = false; this.travel = null; this.rest = null;
     const p = G.player, d = cheb(p.x, p.y, target.x, target.y);
-    if (d <= 2 && canReach(target.x, target.y)) { act(() => { playerMelee(target); return true; }); return; }
+    // DCSS의 Tab: 붙어 있으면 치고(창은 2칸), 아니면 한 걸음 다가간다
+    if (d === 1 || (d === 2 && canReach(target.x, target.y))) { act(() => { playerMelee(target); return true; }); return; }
     let best = null;
     for (let yy = target.y - 1; yy <= target.y + 1; yy++) for (let xx = target.x - 1; xx <= target.x + 1; xx++) {
       if (!inb(xx, yy) || entAt(xx, yy) || G.tile[I(xx, yy)] === T_WALL) continue;
@@ -75,22 +77,31 @@ Object.assign(UI, {
     if (!best?.length) { this.toast('적에게 다가갈 길이 없다'); return; }
     const [x, y] = best[0]; act(() => playerMove(x - p.x, y - p.y));
   },
-  exploreDiscovery() {
-    if (visibleFoes().length) return true;
-    if (G.vis[G.stairs] || [...(G.lamps || new Map()).keys()].some((i) => G.vis[i])) return true;
-    if ([...G.items.keys(), ...G.gear.keys(), ...G.stones.keys()].some((i) => G.vis[i])) return true;
-    return G.ents.some((e) => e.npc && e.alive && !e.freed && G.vis[I(e.x, e.y)]);
+  /** 탐험은 적을 만났을 때만 멈춘다 */
+  exploreDiscovery() { return visibleFoes().length > 0; },
+  /** 탐험 중 들를 곳: 보이는 물건·장비·영혼석·재료(필요하면 등잔) */
+  explorePickups() {
+    const skip = this.exploreSkip || new Set(), out = [...G.items.keys(), ...G.gear.keys(), ...G.stones.keys(), ...(G.mats ? G.mats.keys() : [])];
+    if (G.lamps && (G.torch ?? 100) <= (G.torchMax ?? 100) - 40) out.push(...G.lamps.keys());
+    return out.filter((i) => G.seen[i] && !skip.has(i));
   },
   startExplore() {
     if (Anim.active || G.over || this.overlayOpen()) return;
     if (visibleFoes().length) { this.toast('적이 보여서 탐험할 수 없다'); return; }
-    this.explore = true; this.rest = null;
+    this.explore = true; this.rest = null; this.exploreSkip = new Set();
     this.exploreStep();
   },
   exploreStep() {
     if (!this.explore) return;
-    if (this.exploreDiscovery() || G.hurt) { this.explore = false; this.travel = null; this.toast('무언가 발견했다 — 탐험 멈춤'); return; }
-    const p = G.player, targets = [];
+    if (this.exploreDiscovery() || G.hurt) { this.explore = false; this.travel = null; this.toast(G.hurt ? '공격받았다 — 탐험 멈춤' : '적이 보인다 — 탐험 멈춤'); return; }
+    if (G.stoneOffer != null || this.overlayOpen()) return; // 영혼석 선택을 기다린다(고르면 이어서)
+    const p = G.player, here = I(p.x, p.y), skip = (this.exploreSkip ||= new Set());
+    // 발밑: 장비는 줍고, 등잔은 쓴다
+    if (G.gear.has(here)) { let ok = false; this.instant(() => { ok = pickGear(); }); this.renderWeapon(); if (!ok) skip.add(here); }
+    if (G.lamps && G.lamps.has(here)) { this.instant(() => useLamp()); }
+    const picks = this.explorePickups().filter((i) => i !== here).map((i) => findPath(p.x, p.y, i % G.W, (i / G.W) | 0)).filter((q) => q && q.length).sort((a, b) => a.length - b.length);
+    if (picks.length) { this.travel = { path: picks[0], first: true }; this.travelStep(); return; }
+    const targets = [];
     for (let i = 0; i < G.seen.length; i++) {
       if (!G.seen[i] || G.tile[i] === T_WALL) continue;
       const x = i % G.W, y = (i / G.W) | 0;

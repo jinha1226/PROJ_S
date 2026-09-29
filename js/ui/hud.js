@@ -1,15 +1,17 @@
 import { closeDoor, playerMove } from '../core/combat.js';
 import { gearName, pickGear, swapHands } from '../core/gear.js';
+import { itemName } from '../core/items.js';
 import { G, I, entAt } from '../core/state.js';
-import { stoneCd } from '../core/stones.js';
+import { stoneCd, takeStone } from '../core/stones.js';
+import { useLamp } from '../core/torch.js';
 import { BOSSES } from '../data/enemies.js';
 import { RARITY, isWeapon, weaponOf } from '../data/gear.js';
+import { CAT_ICON, ITEMS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { T_OPEN, T_STAIRS, ZONES } from '../data/terrain.js';
+import { torchTier } from '../data/torch.js';
 import { FORMS } from '../data/weapons.js';
 import { Anim, act, descend } from '../flow.js';
-import { useLamp } from '../core/torch.js';
-import { torchTier } from '../data/torch.js';
 import { Sfx } from '../render/sfx.js';
 import { $, UI } from './ui.js';
 
@@ -30,6 +32,41 @@ Object.assign(UI, {
     $('#btn-wpn').innerHTML = `${F.icon}<small>${G.eq.weapon ? gearName(G.eq.weapon) : '맨손'}</small><small style="font-size:9px;opacity:.7">${isWeapon(o) ? '⇄ ' + gearName(o) : o ? gearName(o) : '보조 없음'}</small>`;
     $('#btn-wpn').style.boxShadow = `inset 0 -3px 0 ${COLORS[F.color].css}`;
     $('#gearcount').textContent = G.bag && G.bag.length ? G.bag.length : '';
+  },
+  /* ---- 퀵슬롯: 소모품 6칸 ---- */
+  renderQuick() {
+    const box = $('#quick'); if (!box || !G.inv) return;
+    [...box.children].forEach((b, k) => {
+      const q = G.inv[k];
+      b.classList.toggle('empty', !q);
+      if (!q) { b.innerHTML = '·'; return; }
+      const def = ITEMS[q.k], col = '#' + (G.look[q.k]?.color ?? 0xffffff).toString(16).padStart(6, '0');
+      b.innerHTML = `<i class="sw" style="background:${col}"></i>${CAT_ICON[def.cat]}<small>${G.known[q.k] ? def.name : '?'}</small>${q.n > 1 ? `<b>${q.n}</b>` : ''}`;
+    });
+  },
+  quickUse(k) {
+    const q = G.inv[k]; if (!q || G.over || Anim.active || this.overlayOpen()) return;
+    Sfx.play('ui'); this.travel = null; this.explore = false; this.rest = null;
+    if (this.mode === 'target') this.exitTarget();
+    this.useFromBag(q.k);
+  },
+  quickInfo(k) { const q = G.inv[k]; if (!q) return; const def = ITEMS[q.k]; this.info(`<h3>${CAT_ICON[def.cat]} ${itemName(q.k)} ×${q.n}</h3><div>${G.known[q.k] ? def.desc : '정체를 모른다 — 써 보면 알게 된다'}</div>`); },
+  /* ---- 발밑 영혼석: 흡수 / 가방 / 두고 가기 ---- */
+  stoneOffer(d) {
+    const id = d.id, S = STONE[id], C = COLORS[S.color], empty = G.slots.some((q) => !q.stone), same = G.slots.map((q, k) => [q, k]).filter(([q]) => q.stone && q.color === S.color), full = G.sbag.length >= (G.sbagMax || 3);
+    const swap = !empty && same.length ? `<div class="sec">바꿔 끼울 칸 <small>빠진 영혼석은 가방으로${full ? ' — 가방이 차서 흩어진다' : ''}</small></div><div class="gems" style="grid-template-columns:repeat(${Math.min(6, same.length)},1fr)">${same.map(([q, k]) => `<button class="gch" style="--c:${C.css}" data-sw="${k}">${STONE[q.stone].icon}<small>${STONE[q.stone].name}</small></button>`).join('')}</div>` : '';
+    const sh = $('#sheet'); sh.innerHTML = `<h3><span><span style="color:${C.css}">●</span> ${S.icon} ${S.name} <small style="color:#9aa2bd">영혼석 · 쿨타임 ${S.cd}</small></span></h3>
+      <div class="gtxt">${S.line}</div><div class="gtxt" style="color:#9aa2bd">${C.name}: ${C.trig} 쿨타임 1 더 감소</div>
+      <div class="wrow" style="grid-template-columns:1fr 1fr 1fr;margin-top:10px">
+        <button class="wbtn" data-a="absorb" ${empty ? '' : 'disabled style="opacity:.4"'}>흡수<small>${empty ? '빈 칸에 끼워 스킬로' : '빈 칸 없음'}</small></button>
+        <button class="wbtn" data-a="bag" ${full ? 'disabled style="opacity:.4"' : ''}>가방에<small>${G.sbag.length}/${G.sbagMax || 3}</small></button>
+        <button class="wbtn" data-a="leave">두고 가기<small>바닥에 남긴다</small></button></div>${swap}`;
+    sh.classList.remove('hidden');
+    const done = (ok) => { sh.classList.add('hidden'); if (ok) this.renderWeapon?.(); if (this.explore) setTimeout(() => this.exploreStep(), 60); };
+    sh.querySelector('[data-a="absorb"]').onclick = () => { let ok = false; this.instant(() => { ok = takeStone('absorb'); }); done(ok); };
+    sh.querySelector('[data-a="bag"]').onclick = () => { let ok = false; this.instant(() => { ok = takeStone('bag'); }); done(ok); };
+    sh.querySelector('[data-a="leave"]').onclick = () => { G.stoneOffer = null; (this.exploreSkip ||= new Set()).add(d.i); done(false); };
+    sh.querySelectorAll('[data-sw]').forEach((b) => { b.onclick = () => { let ok = false; this.instant(() => { ok = takeStone('absorb', +b.dataset.sw); }); done(ok); }; });
   },
   legendFlash() { const el = $('#legendflash'); el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); },
   renderSlots(d) {
@@ -90,6 +127,7 @@ Object.assign(UI, {
     this.drawMap($('#minimap'));
     this.bossBar(d.boss);
     $('#bagcount').textContent = d.inv ? d.inv : '';
+    this.renderQuick();
     const c = $('#btn-ctx');
     if (d.stairs) { c.disabled = false; c.classList.add('live'); c.innerHTML = '⬇<small>내려가기</small>'; c.dataset.act = 'stairs'; }
     else if (d.lamp) { c.disabled = false; c.classList.add('live'); c.innerHTML = '🕯<small>불씨 옮기기</small>'; c.dataset.act = 'lamp'; }
