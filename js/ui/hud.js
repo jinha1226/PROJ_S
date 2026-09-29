@@ -8,7 +8,7 @@ import { BOSSES } from '../data/enemies.js';
 import { weaponOf } from '../data/gear.js';
 import { CAT_ICON, ITEMS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
-import { T_OPEN, T_STAIRS, T_WALL, ZONES } from '../data/terrain.js';
+import { T_OPEN, T_STAIRS, T_WALL, ZONES, ZONE_FLOORS } from '../data/terrain.js';
 import { torchTier } from '../data/torch.js';
 import { CRITS, FORMS, SHAPES } from '../data/weapons.js';
 import { Anim, act, descend } from '../flow.js';
@@ -158,7 +158,7 @@ Object.assign(UI, {
   hurt() { const el = $('#hurt'); el.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('on'))); },
   floorCard() {
     const F = G.theme, el = $('#floorcard'), B = G.bossFloor ? BOSSES[ZONES[G.zone - 1].boss] : null;
-    el.querySelector('.k').textContent = `구역 ${G.zone} · ${G.zf} / 3층${B ? ' · 보스' : ''}`; el.querySelector('.n').textContent = B ? `${F.name} — ${B.name}` : F.name; el.querySelector('.t').textContent = '💡 ' + (B ? `${B.desc} ${B.tip}` : F.tip);
+    el.querySelector('.k').textContent = `구역 ${G.zone} · ${G.zf} / ${ZONE_FLOORS}층${B ? ' · 보스' : ''}`; el.querySelector('.n').textContent = B ? `${F.name} — ${B.name}` : F.name; el.querySelector('.t').textContent = '💡 ' + (B ? `${B.desc} ${B.tip}` : F.tip);
     el.classList.add('on'); clearTimeout(this._fc); this._fc = setTimeout(() => el.classList.remove('on'), 4200);
     $('#log').innerHTML = '';
   },

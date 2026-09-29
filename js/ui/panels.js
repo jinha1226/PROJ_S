@@ -101,7 +101,7 @@ Object.assign(UI, {
     if (!open) { el.classList.add('hidden'); return; }
     el.innerHTML = `<button class="close">닫기</button><h2>원소 도감</h2><p style="color:#9aa2bd;font-size:13px;margin:4px 0 0">적도 나도 같은 규칙을 받는다.</p>
       <h4>원정 · 정착지</h4><table>
-      <tr><td>구역</td><td>구역 4곳 × 3층. 3층의 보스를 잡으면 귀환의 문이 열리고 다음 구역이 열린다</td></tr>
+      <tr><td>구역</td><td>구역 4곳 × 5층. 5층의 보스를 잡으면 귀환의 문이 열리고 다음 구역이 열린다</td></tr>
       <tr><td>📜 귀환</td><td>귀환 두루마리로 전리품을 들고 돌아올 수 있지만, 그 구역은 처음부터 다시</td></tr>
       <tr><td>🕯 죽음</td><td>모험가·영혼석·이번 전리품을 잃는다. 정착지와 마을 사람은 남고 새 모험가가 나선다</td></tr>
       <tr><td>🆘 구조</td><td>갇히거나 길 잃은 사람을 부딪혀 풀어 주고, 곁에 둔 채 계단을 내려가면 마을로 온다</td></tr>

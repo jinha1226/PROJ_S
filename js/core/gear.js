@@ -1,6 +1,6 @@
 import { kindOf } from '../data/enemies.js';
 import { AMULETS, ART_A, ART_B, BAG_MAX, BASE_EVA, BRANDS, CAPS, EGOS, ELEM, GEAR_BASES, GEAR_DROP, JEWEL_LOOK, QUALITY, RANDART_COSTS, RANDART_PROPS, RINGS, SLOTS, SLOT_NAME, UNRANDS, clampRes, dropTable, fitsSlot, hasQuality, isJewel, isWeapon, newBase, plusMax, twoHanded, weaponOf } from '../data/gear.js';
-import { T_FLOOR, T_STAIRS } from '../data/terrain.js';
+import { T_FLOOR, T_STAIRS, ZONE_FLOORS } from '../data/terrain.js';
 import { DARK, torchTier } from '../data/torch.js';
 import { WEAPONS, WEAPON_IDS, WPN } from '../data/weapons.js';
 import { pick, rand, ri, shuffle, wpick } from '../util/rng.js';
@@ -72,7 +72,7 @@ export const gearTier = (it) => (!it ? 'plain' : it.un ? 'unrand' : it.art ? 'ra
 
 /* ================= 만들기 ================= */
 /** 품질 = 구역(층 1~3 → 1, 4~6 → 2 …, 최대 4) */
-export const qualityOf = (depth) => Math.max(1, Math.min(4, Math.ceil(depth / 3)));
+export const qualityOf = (depth) => Math.max(1, Math.min(4, Math.ceil(depth / ZONE_FLOORS))); // 품질 = 구역
 /** 기본템. o: { plus, q, brand, ego, known, jt } — 정착지 제작품·시작 장비는 known */
 export function makeGear(base, o = {}) {
   const it = { uid: uid(), base, plus: o.plus || 0, q: hasQuality(base) ? o.q || 1 : null, brand: o.brand || null, ego: o.ego || null, jt: null, jv: 0, je: null, art: null, un: null, idP: !!o.known, idX: !!o.known, worn: 0, hits: 0 };
@@ -96,9 +96,9 @@ function rollEgo(base) { const B = GEAR_BASES[base], ok = Object.keys(EGOS).filt
 /** 무작위 기본템 종류(장신구는 전체의 20%). 무기는 12종 균등 — 1구역에서는 원거리·양손이 절반 가중치 (§6) */
 function rollBase(depth) {
   if (rand() < 0.2) return rand() < 0.65 ? 'ring' : 'neck';
-  if (rand() < 0.3) return wpick(WEAPON_IDS.map((k) => [k, depth <= 3 && (WEAPONS[k].range || WEAPONS[k].hands === 2) ? 1 : 2]));
+  if (rand() < 0.3) return wpick(WEAPON_IDS.map((k) => [k, depth <= ZONE_FLOORS && (WEAPONS[k].range || WEAPONS[k].hands === 2) ? 1 : 2]));
   const slot = wpick([['body', 35], ['head', 15], ['cloak', 10], ['hands', 12], ['feet', 12], ['off', 16]]);
-  if (slot === 'body') return 'body_' + wpick(depth <= 3 ? [['cloth', 35], ['leather', 40], ['chain', 20], ['plate', 5]] : depth <= 8 ? [['cloth', 20], ['leather', 35], ['chain', 30], ['plate', 15]] : [['cloth', 15], ['leather', 25], ['chain', 30], ['plate', 30]]);
+  if (slot === 'body') return 'body_' + wpick(depth <= ZONE_FLOORS ? [['cloth', 35], ['leather', 40], ['chain', 20], ['plate', 5]] : depth <= ZONE_FLOORS * 2.5 ? [['cloth', 20], ['leather', 35], ['chain', 30], ['plate', 15]] : [['cloth', 15], ['leather', 25], ['chain', 30], ['plate', 30]]);
   if (slot === 'head') return pick(['head_cloth', 'head_leather', 'head_chain']);
   if (slot === 'off') return rand() < 0.4 ? pick(['orb_red', 'orb_purple', 'orb_green']) : rand() < 0.55 ? 'buckler' : 'shield'; // 오브 40%
   return { cloak: 'cloak', hands: 'gloves', feet: 'boots' }[slot];
@@ -376,7 +376,7 @@ export function openChest(x, y) {
   const i = I(x, y), c = G.chests.get(i); if (!c || c.open) return false;
   c.open = true; emit('chest', { x, y });
   G.chests.delete(i);
-  let it = rollGear(G.floor + (c.rare ? 3 : 0)); if (c.rare && gearTier(it) === 'plain') it = rollGear(G.floor + 6, rand() < 0.3 ? 'art' : null);
+  let it = rollGear(G.floor + (c.rare ? ZONE_FLOORS : 0)); if (c.rare && gearTier(it) === 'plain') it = rollGear(G.floor + ZONE_FLOORS * 2, rand() < 0.3 ? 'art' : null); // 희귀 상자: 한 구역 더 깊은 것
   placeGear(it, x, y); G.chests.set(i, c);
   log('상자를 열었다!', 'good');
   // 귀환 두루마리: 구역마다 최대 1개, 상자에서만 10%

@@ -1,6 +1,6 @@
 import { BOSSES, ENEMY, MAGE } from '../data/enemies.js';
 import { ITEM_W } from '../data/items.js';
-import { FLOORS, SURF_OF, S_GRASS, S_ICE, S_NONE, S_OIL, S_WATER, T_DOOR, T_FLOOR, T_STAIRS, T_WALL, ZONES } from '../data/terrain.js';
+import { FLOORS, SURF_OF, S_GRASS, S_ICE, S_NONE, S_OIL, S_WATER, T_DOOR, T_FLOOR, T_STAIRS, T_WALL, ZONES, ZONE_FLOORS } from '../data/terrain.js';
 import { D4, D8, cheb, sgn } from '../util/grid.js';
 import { pick, rand, ri, shuffle, wpick } from '../util/rng.js';
 import { bfsDist, computeFOV } from './fov.js';
@@ -11,8 +11,8 @@ import { G, I, entAt, inb, newSt } from './state.js';
 import { placeLamps } from './torch.js';
 
 export function genFloor() {
-  const Z = ZONES[G.zone - 1], boss = G.zf === 3, F = FLOORS[boss && Z.lastTheme != null ? Z.lastTheme : Z.theme], W = G.W, H = G.H, N = W * H;
-  const n = (G.zone - 1) * 3 + G.zf; G.floor = n; G.theme = F; G.bossFloor = boss; G.exitOpen = false; G.bossId = -1;
+  const Z = ZONES[G.zone - 1], boss = G.zf === ZONE_FLOORS, F = FLOORS[boss && Z.lastTheme != null ? Z.lastTheme : Z.theme], W = G.W, H = G.H, N = W * H;
+  const n = (G.zone - 1) * ZONE_FLOORS + G.zf; G.floor = n; G.theme = F; G.bossFloor = boss; G.exitOpen = false; G.bossId = -1;
   let tile, room, rooms, corr;
   for (let attempt = 0; attempt < 30; attempt++) {
     tile = new Uint8Array(N); room = new Int16Array(N).fill(-1); rooms = []; corr = new Uint8Array(N);
@@ -141,12 +141,12 @@ export function genFloor() {
 }
 
 export function mkBoss(kind, x, y) {
-  const B = BOSSES[kind], hp = Math.round(B.hp * (1 + 0.04 * (G.floor - 3)));
+  const B = BOSSES[kind], hp = Math.round(B.hp * (1 + 0.025 * (G.floor - ZONE_FLOORS))); // 구역이 5층이라 층당 오름을 줄였다
   return { id: G.nextId++, type: B.type, boss: kind, x, y, hp, max: hp, atk: B.atk, st: newSt(), alive: true, awake: false, face: [0, 1], cd: 1, cast: null, charge: null, aim: false, name: B.name, elem: B.elem, horn: 3, blink: 0, sum: 4 };
 }
 
 export function mkEnemy(type, x, y, F) {
-  const B = ENEMY[type], hp = Math.round(B.hp * (1 + 0.08 * (G.floor - 1)));
+  const B = ENEMY[type], hp = Math.round(B.hp * (1 + 0.05 * (G.floor - 1))); // 층마다 +5%(20층 ≈ ×2)
   const e = { id: G.nextId++, type, x, y, hp, max: hp, atk: B.atk + (G.zone - 1), // 구역마다 공격 +1(기준안)
     st: newSt(), alive: true, awake: false, face: [0, 1], cd: ri(0, 1), cast: null, charge: null, aim: false, name: B.name };
   if (type === 'mage') { const m = G.mageOf[G.zone - 1]; e.elem = m === 'mix' ? pick(['bolt', 'fire', 'frost']) : m; e.name = '해골 ' + MAGE[e.elem].name; }

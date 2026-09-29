@@ -118,7 +118,7 @@ try {
     document.querySelector('#sheet').classList.add('hidden');
     if (!M.hero) M.hero = g.newHero();
         g.enterDungeon(1);
-    G.zf = 2; const p = G.player; p.x = G.stairs % G.W; p.y = (G.stairs / G.W) | 0; G.tile[G.stairs] = 4; g.descend();
+    G.zf = 4; const p = G.player; p.x = G.stairs % G.W; p.y = (G.stairs / G.W) | 0; G.tile[G.stairs] = 4; g.descend(); // 구역 = 5층: 4층에서 내려가면 보스층
     const b = G.ents.find((e) => e.boss);
     if (!b) return { ok: false, why: 'no boss' };
     b.hp = 1; b.awake = true;

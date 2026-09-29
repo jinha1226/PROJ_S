@@ -33,6 +33,9 @@ export const FLOORS = [
 export const SURF_OF = { water: S_WATER, grass: S_GRASS, oil: S_OIL, ice: S_ICE };
 
 /* ---------- 3차: 구역 · 보스 · 재료 ---------- */
+/** 구역 하나 = 층 5개(1~4층 + 5층 보스) — docs/설계_던전_확장.md §6.3 */
+export const ZONE_FLOORS = 5;
+
 export const ZONES = [
   { name: '물이 스민 지하실', theme: 0, boss: 'chief' },
   { name: '이끼 덮인 납골당', theme: 1, boss: 'lich' },

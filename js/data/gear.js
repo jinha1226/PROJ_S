@@ -1,3 +1,4 @@
+import { ZONE_FLOORS } from './terrain.js';
 import { OLD_WEAPON, WEAPONS, WPN } from './weapons.js';
 
 /* ================= 장비 (DCSS식 — docs/설계_아이템_장비.md) =================
@@ -114,7 +115,8 @@ export const UNRANDS = {
 
 /** 떨어진 장비의 종류 (§11) [평범, 강화치, 속성, 랜다트, 픽다트] */
 export function dropTable(depth) {
-  return depth <= 3 ? [70, 20, 8, 2, 0] : depth <= 6 ? [55, 25, 14, 5, 1] : depth <= 9 ? [45, 25, 20, 8, 2] : [35, 25, 25, 12, 3];
+  const z = Math.ceil(depth / ZONE_FLOORS); // 구역
+  return z <= 1 ? [70, 20, 8, 2, 0] : z === 2 ? [55, 25, 14, 5, 1] : z === 3 ? [45, 25, 20, 8, 2] : [35, 25, 25, 12, 3];
 }
 export const GEAR_DROP = { default: 5, goblin_armor: 15, charger: 15 };
 

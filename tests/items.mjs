@@ -150,12 +150,12 @@ const d6 = await page.evaluate(async () => { const g = window.__game, G = arena(
 check('§10-6 치명 조건이 충족된 적 위에 ×2', d6.ready && d6.notReady && d6.marks === 1, JSON.stringify(d6));
 
 // §10-7 품질: 구역마다 오르고, 강화 +N과 따로 더해진다. 대장장이가 품질을 올린다
-const d7 = await page.evaluate(() => { const g = window.__game, G = arena(), M = g.META; const qs = {}; for (const d of [2, 5, 8, 11]) { let q = 0; for (let k = 0; k < 40 && !q; k++) { const it = g.rollGear(d); if (it.q) q = it.q; } qs[d] = q; }
+const d7 = await page.evaluate(() => { const g = window.__game, G = arena(), M = g.META; const qs = {}; for (const d of [3, 8, 13, 18]) { let q = 0; for (let k = 0; k < 40 && !q; k++) { const it = g.rollGear(d); if (it.q) q = it.q; } qs[d] = q; }
   G.eq.weapon = g.makeGear('sword', { q: 3, plus: 2, known: true }); g.refreshStats(); const dmg = G.ps.dmg, name = g.gearName(G.eq.weapon);
   const it = g.makeGear('body_leather', { known: true }); M.gear.push(it); M.mats.마석 = 5; M.mats.광석 = 5; const q = g.RECIPES.find((r) => r.id === 'e_qual');
   g.Town.enhancePick(q, { name: '대장', t: { C: 0, O: 0, H: 0, A: 0, X: 0, E: 0 }, mood: 0 }, 'forge'); const k = [...document.querySelectorAll('[data-e]')].find((b) => b.closest('.prow').textContent.includes(g.gearName(it, true))); if (k) k.click();
   document.querySelector('#sheet').classList.add('hidden'); return { qs, dmg, name, smith: it.q }; });
-check('§10-7 품질: 구역 = 품질, 강화와 따로 더함, 대장장이가 올림', d7.qs[2] === 1 && d7.qs[5] === 2 && d7.qs[8] === 3 && d7.qs[11] === 4 && d7.dmg === 4 && /^\+2 좋은 장검$/.test(d7.name) && d7.smith === 2, JSON.stringify(d7));
+check('§10-7 품질: 구역 = 품질, 강화와 따로 더함, 대장장이가 올림', d7.qs[3] === 1 && d7.qs[8] === 2 && d7.qs[13] === 3 && d7.qs[18] === 4 && d7.dmg === 4 && /^\+2 좋은 장검$/.test(d7.name) && d7.smith === 2, JSON.stringify(d7));
 
 // §10-9 옛 저장(v6 DCSS식) → 새 칸 구조
 const d9 = await page.evaluate(() => { const g = window.__game, mk = (base, o = {}) => ({ uid: 'u' + base, base, plus: 0, brand: null, ego: null, jt: null, jv: 0, je: null, art: null, un: null, idP: true, idX: true, worn: 0, hits: 0, ...o });
