@@ -32,21 +32,28 @@ export function heroSpec(eq = {}) {
     { s: 'sphere', p: [0.094, 0.758, 0.29], k: [0.027, 0.047, 0.014], c: 0x3b4b40, outline: false },
     { s: 'sphere', p: [-0.068, 0.782, 0.302], k: 0.011, c: 0xffffff, outline: false },
     { s: 'sphere', p: [0.106, 0.782, 0.302], k: 0.011, c: 0xffffff, outline: false }];
+  // 몸: 단면을 돌린 한 덩어리 겉옷(아래 주름) + 굽은 팔·다리 관 — 도형을 붙인 티가 덜 나게 (몸통 재질은 칠하기로)
+  const mat = body ? body.mat : 'cloth', T = th, sleeve = mat === 'plate' ? 0xc8d2de : coatCol;
+  const coatPaint = [{ c: shirtCol, a: 0.62, vee: true, y0: 0.3, y1: 0.54 }]; // 앞섶(V)
+  if (mat === 'chain') coatPaint.unshift({ c: 0x4c535e, band: 0.04, y0: 0.14, y1: 0.46 }); // 사슬 줄(앞섶이 위에)
+  if (mat === 'plate') coatPaint.push({ c: 0xf2f6fa, a: 0.9, y0: 0.3, y1: 0.47 }); // 가슴판
+  if (mat === 'leather') coatPaint.push({ c: 0x7a4e2c, y0: 0.12, y1: 0.19 }); // 가죽 밑단
+  const legs = [-1, 1].flatMap((sx) => [
+    { s: 'tube', path: [[0.1 * sx, 0.3, 0], [0.108 * sx, 0.2, 0.012], [0.115 * sx, 0.12, 0.01]], r0: 0.07, r1: 0.06, c: 0x49453e, shade: 0.2 },
+    { s: 'lathe', p: [0.115 * sx, 0, 0.01], pts: [[0, 0.005], [0.082 * fs, 0.006], [0.09 * fs, 0.05], [0.08 * fs, 0.15], [0.09 * fs, 0.175], [0, 0.18]], seg: 16, c: footCol, shade: 0.25 },
+    { s: 'sphere', p: [0.115 * sx, 0.048, 0.07], k: [0.08 * fs, 0.05 * fs, 0.1 * fs], c: footCol },
+  ]);
+  const arm = (sx, path) => [{ s: 'tube', path, r0: 0.078, r1: 0.056, c: sleeve, shade: 0.12 }, { s: 'torus', p: path[path.length - 1], r: [Math.PI / 2, 0, 0.4 * sx], k: [0.058, 0.058, 0.09], tube: 0.4, c: shirtCol }];
   const parts = [
-    { s: 'cyl', p: [-0.115, 0.19, 0], k: [0.072, 0.18, 0.075], c: 0x49453e },
-    { s: 'cyl', p: [0.115, 0.19, 0], k: [0.072, 0.18, 0.075], c: 0x49453e },
-    { s: 'sphere', p: [-0.115, 0.075, 0.045], k: [0.102 * fs, 0.078 * fs, 0.145 * fs], c: footCol },
-    { s: 'sphere', p: [0.115, 0.075, 0.045], k: [0.102 * fs, 0.078 * fs, 0.145 * fs], c: footCol },
-    { s: 'cyl', p: [-0.115, 0.145, 0], k: [0.083 * fs, 0.07, 0.085 * fs], c: footCol },
-    { s: 'cyl', p: [0.115, 0.145, 0], k: [0.083 * fs, 0.07, 0.085 * fs], c: footCol },
-    { s: 'cyl', p: [0, 0.235, 0], top: 0.82, bot: 1.13, k: [0.23 * th, 0.19, 0.2 * th], c: coatCol },
-    { s: 'sphere', p: [0, 0.37, 0], k: [0.23 * th, 0.22, 0.19 * th], c: coatCol },
-    { s: 'sphere', p: [0, 0.36, 0.175 * th], k: [0.13, 0.175, 0.052], c: shirtCol, outline: false },
-    { s: 'cyl', p: [0, 0.245, 0], k: [0.23 * th, 0.045, 0.2 * th], c: 0x775239 },
-    { s: 'sphere', p: [0, 0.245, 0.205 * th], k: [0.05, 0.04, 0.022], c: 0xc6a267, outline: false },
-    { s: 'sphere', p: [-0.23 * th, 0.445, 0], k: [0.095, 0.12, 0.1], c: coatCol },
-    { s: 'sphere', p: [0.23 * th, 0.445, 0], k: [0.095, 0.12, 0.1], c: coatCol },
-    { s: 'cyl', p: [0, 0.535, 0], k: [0.135, 0.055, 0.13], c: shirtCol },
+    ...legs,
+    { s: 'lathe', pts: [[0, 0.13], [0.22 * T, 0.118], [0.245 * T, 0.13], [0.222 * T, 0.2], [0.185 * T, 0.272], [0.2 * T, 0.34], [0.215 * T, 0.405], [0.205 * T, 0.458], [0.155 * T, 0.505], [0.085, 0.532], [0, 0.545]], k: [1, 1, 0.86], seg: 28, wave: 0.07, waveN: 7, waveTop: 0.26, c: coatCol, paint: coatPaint, shade: 0.22 },
+    { s: 'torus', p: [0, 0.272, 0], r: [Math.PI / 2, 0, 0], k: [0.192 * T, 0.167 * T, 0.13], tube: 0.22, c: 0x775239 }, // 허리띠
+    { s: 'box', p: [0, 0.272, 0.166 * T], k: [0.06, 0.05, 0.02], c: 0xc6a267, outline: false }, // 버클
+    { s: 'torus', p: [0, 0.525, 0], r: [Math.PI / 2, 0, 0], k: [0.1, 0.09, 0.1], tube: 0.45, c: shirtCol }, // 옷깃
+    ...arm(-1, [[-0.18 * T, 0.465, 0], [-0.25 * T, 0.41, 0.02], [-0.275, 0.355, 0.05]]),
+    { s: 'sphere', p: [-0.28, 0.335, 0.055], k: 0.068 * hs, c: handCol },
+    ...(two ? [...arm(1, [[0.18 * T, 0.465, 0], [0.245 * T, 0.38, 0.07], [0.215, 0.31, 0.12]]), { s: 'cyl', p: [0.24, 0.28, 0.1], r: [0.3, 0, -0.5], k: [0.024, 0.22, 0.024], c: 0x5a3a22 }, { s: 'cyl', p: [0.29, 0.37, 0.125], k: [0.042, 0.04, 0.042], c: 0x3a2a1a }]
+      : [...arm(1, [[0.18 * T, 0.465, 0], [0.265 * T, 0.43, 0.04], [0.28, 0.415, 0.07]]), { s: 'sphere', p: [0.28, 0.4, 0.07], k: 0.07 * hs, c: handCol }, { s: 'cyl', p: [0.31, 0.5, 0.09], r: [0.15, 0, -0.15], k: [0.026, 0.32, 0.026], c: 0x5a3a22 }, { s: 'cyl', p: [0.33, 0.64, 0.1], top: 1.15, bot: 0.8, k: [0.048, 0.06, 0.048], c: 0x3a2a1a }]),
     { s: 'sphere', p: [0, 0.76, 0.025], k: [0.27, 0.275, 0.255], c: SKIN },
     { s: 'sphere', p: [-0.266, 0.725, 0.04], k: [0.054, 0.075, 0.035], c: SKIN },
     { s: 'sphere', p: [0.266, 0.725, 0.04], k: [0.054, 0.075, 0.035], c: SKIN },
@@ -54,19 +61,14 @@ export function heroSpec(eq = {}) {
     { s: 'sphere', p: [0, 0.694, 0.284], k: [0.026, 0.025, 0.018], c: 0xe7b48e, outline: false },
     { s: 'sphere', p: [-0.165, 0.695, 0.218], k: [0.036, 0.018, 0.014], c: 0xd9a698, outline: false },
     { s: 'sphere', p: [0.165, 0.695, 0.218], k: [0.036, 0.018, 0.014], c: 0xd9a698, outline: false },
-    { s: 'sphere', p: [-0.28, 0.34, 0.055], k: 0.073 * hs, c: handCol },
-    ...(two ? [{ s: 'cyl', p: [0.24, 0.28, 0.1], r: [0.3, 0, -0.5], k: [0.024, 0.22, 0.024], c: 0x5a3a22 }, { s: 'cyl', p: [0.29, 0.37, 0.125], k: [0.042, 0.04, 0.042], c: 0x3a2a1a }]
-      : [{ s: 'sphere', p: [0.28, 0.4, 0.07], k: 0.075 * hs, c: handCol }, { s: 'cyl', p: [0.31, 0.5, 0.09], r: [0.15, 0, -0.15], k: [0.028, 0.32, 0.028], c: 0x5a3a22 }, { s: 'cyl', p: [0.33, 0.64, 0.1], k: [0.05, 0.05, 0.05], c: 0x3a2a1a }]),
   ];
-  if (!body || body.mat === 'cloth' || body.mat === 'leather') parts.push(
-    { s: 'box', p: [0, 0.38, 0.224 * th], r: [0, 0, -0.52], k: [0.035, 0.36, 0.018], c: 0x8b6846, outline: false },
-    { s: 'sphere', p: [-0.255 * th, 0.265, 0.08], k: [0.09, 0.105, 0.065], c: 0x76563b },
-    { s: 'sphere', p: [-0.255 * th, 0.31, 0.14], k: [0.07, 0.035, 0.02], c: 0xb48955, outline: false },
+  // 여행 장비: 어깨끈 + 허리 주머니(천·가죽)
+  if (mat === 'cloth' || mat === 'leather') parts.push(
+    { s: 'tube', path: [[-0.16 * T, 0.49, 0.1], [0, 0.4, 0.2 * T], [0.17 * T, 0.29, 0.13]], r0: 0.016, r1: 0.016, rs: 6, c: 0x6b4a30, outline: false },
+    { s: 'lathe', p: [-0.2 * T, 0.2, 0.1], r: [0, 0.6, 0], pts: [[0, 0.0], [0.06, 0.005], [0.068, 0.05], [0.058, 0.1], [0, 0.104]], k: [1, 1, 0.7], seg: 12, c: 0x76563b, shade: 0.2 },
   );
-  // 몸통 재질: 가죽 끈 / 사슬 줄무늬 / 판금 어깨받이
-  if (body?.mat === 'leather') parts.push({ s: 'box', p: [0, 0.36, 0.19 * th], r: [0, 0, 0.7], k: [0.06, 0.42, 0.03], c: 0x5a3a22 });
-  if (body?.mat === 'chain') for (const y of [0.22, 0.32, 0.42]) parts.push({ s: 'torus', p: [0, y, 0], r: [Math.PI / 2, 0, 0], k: [0.23 * th, 0.2 * th, 0.2 * th], tube: 0.06, c: 0x6a7280 });
-  if (body?.mat === 'plate') parts.push({ s: 'sphere', p: [-0.24, 0.47, 0], k: [0.1, 0.07, 0.1], c: 0xe8eef6 }, { s: 'sphere', p: [0.24, 0.47, 0], k: [0.1, 0.07, 0.1], c: 0xe8eef6 }, { s: 'box', p: [0, 0.36, 0.2 * th], k: [0.2, 0.18, 0.03], c: 0xf2f6fa });
+  // 판금 어깨받이: 둥근 덮개
+  if (mat === 'plate') for (const sx of [-1, 1]) parts.push({ s: 'lathe', p: [0.19 * sx * T, 0.44, 0], r: [0, 0, -0.35 * sx], pts: [[0, 0.075], [0.07, 0.07], [0.11, 0.035], [0.12, 0], [0.105, -0.01]], seg: 16, c: 0xe8eef6, shade: 0.15 });
   // 머리
   const legendHead = eq.head && eq.head.un === 'namelessHelm';
   if (!head || legendHead) parts.push(
@@ -86,7 +88,10 @@ export function heroSpec(eq = {}) {
   if (eq.neck && eq.neck.un === 'firstLamp') parts.push({ s: 'cyl', p: [0, 0.44, 0.21 * th], k: [0.06, 0.09, 0.06], c: 0x6a4a2a }, { s: 'sphere', p: [0, 0.45, 0.22 * th], k: 0.045, c: 0xffd070 });
   else if (eq.neck) parts.push({ s: 'oct', p: [0, 0.47, 0.19 * th], k: 0.045, c: NECK_GEM[eq.neck.jt] || 0xc07aff });
   // 망토: 등 뒤 천(물안개 망토는 물빛)
-  if (eq.cloak) parts.push({ s: 'box', p: [0, 0.38, -0.21 * th], r: [0.15, 0, 0], k: [0.42 * th, 0.5, 0.04], c: eq.cloak.un === 'mistCloak' ? 0x6aa8d8 : eq.cloak.ego ? 0x5a3a6a : 0x7a2a2a }, { s: 'sphere', p: [0, 0.6, -0.12 * th], k: [0.2, 0.05, 0.1], c: 0xd8b04a });
+  if (eq.cloak) { const cc = eq.cloak.un === 'mistCloak' ? 0x6aa8d8 : eq.cloak.ego ? 0x5a3a6a : 0x7a2a2a; parts.push(
+    { s: 'lathe', pts: [[0.28 * th, 0.1], [0.265 * th, 0.2], [0.24 * th, 0.34], [0.232 * th, 0.44], [0.19 * th, 0.5], [0.12, 0.54]], phi0: Math.PI / 2 + 0.25, phiLen: Math.PI - 0.5, k: [1, 1, 0.95], seg: 18, wave: 0.09, waveN: 9, waveTop: 0.42, c: cc, shade: 0.3 },
+    { s: 'torus', p: [0, 0.535, 0], r: [Math.PI / 2, 0, 0], k: [0.12, 0.105, 0.1], tube: 0.35, c: cc },
+    { s: 'sphere', p: [0, 0.52, 0.115], k: [0.035, 0.035, 0.02], c: 0xd8b04a }); }
   // 보조손: 방패(속성이면 테두리에 그 색). 오브는 extra에서 왼손 옆에 띄운다
   if (sh && !ob) { const r = sh.base === 'shield' ? 0.2 : 0.14, rim = sh.ego && sh.idX ? (EGOS[sh.ego].res ? ELEM[EGOS[sh.ego].res].hex : 0xd8c8a8) : sh.un ? 0xffcf4a : sh.art ? 0xd0a0ff : 0x9aa6b8; parts.push({ s: 'cyl', p: [-0.38, 0.4, 0.06], r: [0, 0, Math.PI / 2], k: [r, 0.05, r], c: 0x9a6a3e }, { s: 'torus', p: [-0.41, 0.4, 0.06], r: [0, Math.PI / 2, 0], k: r, tube: 0.12, c: rim }, { s: 'sphere', p: [-0.43, 0.4, 0.06], k: [0.03, 0.05, 0.05], c: 0xffd35a }); }
   const all = SLOTS.map((k) => eq[k]).filter(Boolean), legend = all.some((it) => it.un), art = all.some((it) => it.art);

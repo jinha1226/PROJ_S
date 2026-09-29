@@ -97,6 +97,31 @@ export function outlineGeo(geo) {
 }
 
 /* ---------------- 인형: 기본 도형을 합쳐 한 메시 + 외곽선 ---------------- */
+/** 회전체: 단면 [반지름, 높이] 목록을 세로축으로 돌린다. wave = 아래쪽 옷 주름(n 갈래), phi = 일부만(망토) */
+function latheGeo(p) {
+  const g = new THREE.LatheGeometry(p.pts.map(([r, y]) => new THREE.Vector2(Math.max(0, r), y)), p.seg || 24, p.phi0 ?? 0, p.phiLen ?? Math.PI * 2);
+  if (p.wave) {
+    const pos = g.getAttribute('position'), top = p.waveTop ?? 9, bot = Math.min(...p.pts.map((q) => q[1]));
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i); if (y >= top) continue;
+      const k = 1 + p.wave * ((top - y) / Math.max(1e-4, top - bot)) * Math.sin((p.waveN || 7) * Math.atan2(x, z));
+      pos.setXYZ(i, x * k, y, z * k);
+    }
+  }
+  return g;
+}
+/** 굽은 관: path(점 목록)를 따라 반지름 r0 → r1로 가늘어진다. 끝은 둥글게 닫는다(팔·다리·소매) */
+function tubeGeo(p) {
+  const curve = new THREE.CatmullRomCurve3(p.path.map((v) => new THREE.Vector3(...v))), TS = p.ts || 10, RS = p.rs || 10;
+  const g = new THREE.TubeGeometry(curve, TS, 1, RS, false), pos = g.getAttribute('position'), c = new THREE.Vector3(), v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    const t = Math.floor(i / (RS + 1)) / TS, r = p.r0 + (p.r1 - p.r0) * t; curve.getPointAt(Math.min(1, t), c);
+    v.fromBufferAttribute(pos, i).sub(c).multiplyScalar(r).add(c); pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  const caps = [[curve.getPointAt(0), p.r0], [curve.getPointAt(1), p.r1]].map(([q, r]) => new THREE.SphereGeometry(r, RS, 8).translate(q.x, q.y, q.z));
+  const out = mergeGeometries([g.toNonIndexed(), ...caps.map((q) => q.toNonIndexed())].map((q) => { q.deleteAttribute('uv'); return q; }));
+  return out;
+}
 export function partGeo(p) {
   let g;
   switch (p.s) {
@@ -107,6 +132,8 @@ export function partGeo(p) {
     case 'capsule': g = new THREE.CapsuleGeometry(0.5, p.len ?? 1, 4, 10); break;
     case 'torus': g = new THREE.TorusGeometry(1, p.tube ?? 0.2, 8, 18, p.arc ?? Math.PI * 2); break;
     case 'oct': g = new THREE.OctahedronGeometry(1, 0); break;
+    case 'lathe': g = latheGeo(p); break;
+    case 'tube': g = tubeGeo(p); break;
     default: g = new THREE.IcosahedronGeometry(1, p.detail ?? 0);
   }
   if (g.index) g = g.toNonIndexed();
@@ -115,8 +142,17 @@ export function partGeo(p) {
   _m4.compose(_v.set(...(p.p || [0, 0, 0])), _q, _s.set(...sc));
   g.applyMatrix4(_m4);
   g.deleteAttribute('uv');
-  const c = new THREE.Color(p.c ?? 0xffffff), n = g.getAttribute('position').count, arr = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
+  const c = new THREE.Color(p.c ?? 0xffffff), pos = g.getAttribute('position'), n = pos.count, arr = new Float32Array(n * 3);
+  let y0 = Infinity, y1 = -Infinity; if (p.shade) for (let i = 0; i < n; i++) { const y = pos.getY(i); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  const pc = p.paint ? p.paint.map((q) => [q, new THREE.Color(q.c)]) : null, cx = p.p ? p.p[0] : 0, cz = p.p ? p.p[2] : 0;
+  for (let i = 0; i < n; i++) {
+    let col = c;
+    // 칠하기: 몸통 둘레 각도(앞 = 0)와 높이로 옷깃·앞섶·줄무늬를 입힌다
+    if (pc) { const x = pos.getX(i) - cx, y = pos.getY(i), z = pos.getZ(i) - cz, a = Math.atan2(x, z); for (const [q, qc] of pc) if (y >= (q.y0 ?? -9) && y <= (q.y1 ?? 9) && Math.abs(a) <= (q.vee ? q.a * (y - q.y0) / (q.y1 - q.y0) : q.a ?? 9) && (!q.band || Math.floor(y / q.band) % 2 === 0)) col = qc; }
+    // 음영: 아래로 갈수록 조금 어둡게(바닥 쪽 그늘)
+    const k2 = p.shade ? 1 - p.shade * (1 - (pos.getY(i) - y0) / Math.max(1e-4, y1 - y0)) : 1;
+    arr[i * 3] = col.r * k2; arr[i * 3 + 1] = col.g * k2; arr[i * 3 + 2] = col.b * k2;
+  }
   g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
   return g;
 }
