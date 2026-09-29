@@ -36,7 +36,7 @@ export function damage(e, amt, kind = 'hit', o = {}) {
     const ps = G.ps, el = ELEM_OF[kind];
     if ((kind === 'hit' || kind === 'charge') && src && isFoe(src)) {
       const eva = Math.min(CAPS.eva, ps.eva);
-      if (rand() * 100 < eva) { emit('dodge', { id: 0 }); G.riposte = G.stats.turns; return 0; } // 장검: 막거나 피한 뒤 첫 공격 치명
+      if (rand() * 100 < eva) { emit('dodge', { id: 0 }); G.riposte = G.stats.turns; G.hurt = true; G.hurtTurn = G.stats.turns; return 0; } // 피해도 공격받은 것(자동 탐험·휴식이 멈춘다) // 장검: 막거나 피한 뒤 첫 공격 치명
       if (ps.block && rand() * 100 < ps.block) { emit('block', { id: 0 }); G.riposte = G.stats.turns; amt = 0; }
       src.hitMe = G.stats.turns; // 철퇴·투석구: 나를 방금 때린 적
     }
@@ -64,7 +64,7 @@ export function damage(e, amt, kind = 'hit', o = {}) {
     emit('hp', { id: e.id, hp: Math.max(0, e.hp), max: e.max });
   }
   if (o.form) e.lastForm = o.form; else if (kind !== 'bleed') e.lastForm = null;
-  if (isP(e)) G.hurt = true;
+  if (isP(e)) { G.hurt = true; G.hurtTurn = G.stats.turns; }
   if (e.hp <= 0) { kill(e); return amt; }
   if (struck && e.alive) auraOnHurt(src); // 반격·독 가시·번개 갑주·서리 갑주
   return amt;

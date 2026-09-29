@@ -53,7 +53,7 @@ Object.assign(UI, {
   travelStep() {
     const tr = this.travel; if (!tr) return;
     const p = G.player;
-    if (!tr.first && (visibleFoes().length || G.hurt || (this.explore && this.exploreDiscovery()))) { this.travel = null; this.explore = false; if (visibleFoes().length) this.toast('적이 보인다 — 멈춤'); return; }
+    if (!tr.first && (visibleFoes().length || G.hurt || (this.explore && this.exploreDiscovery()))) { this.travel = null; this.explore = false; this.toast(G.hurt ? '공격받았다. 멈춘다.' : '적이 보인다. 멈춘다.'); return; }
     const [nx, ny] = tr.path[0];
     if (cheb(nx, ny, p.x, p.y) !== 1 || entAt(nx, ny)) { this.travel = null; return; }
     if (G.tile[I(nx, ny)] !== T_DOOR) tr.path.shift();
@@ -77,6 +77,11 @@ Object.assign(UI, {
     if (!best?.length) { this.toast('적에게 다가갈 길이 없다'); return; }
     const [x, y] = best[0]; act(() => playerMove(x - p.x, y - p.y));
   },
+  /** 방금(지난 두 턴 안에) 공격받았거나, 안 보여도 가까이(7칸) 깨어 있는 적이 있다 — 어둠 속에서 맞으며 걷지 않게 */
+  underAttack() {
+    const p = G.player;
+    return (G.hurtTurn ?? -9) >= G.stats.turns - 1 || G.ents.some((e) => e.alive && isFoe(e) && e.awake && cheb(e.x, e.y, p.x, p.y) <= 7);
+  },
   /** 탐험은 적을 만났을 때만 멈춘다 */
   exploreDiscovery() { return visibleFoes().length > 0; },
   /** 탐험 중 들를 곳: 보이는 물건·장비·영혼석·재료(필요하면 등잔) */
@@ -88,12 +93,13 @@ Object.assign(UI, {
   startExplore() {
     if (Anim.active || G.over || this.overlayOpen()) return;
     if (visibleFoes().length) { this.toast('적이 보여서 탐험할 수 없다'); return; }
+    if (this.underAttack()) { this.toast('공격받고 있어서 탐험할 수 없다'); return; }
     this.explore = true; this.rest = null; this.exploreSkip = new Set();
     this.exploreStep();
   },
   exploreStep() {
     if (!this.explore) return;
-    if (this.exploreDiscovery() || G.hurt) { this.explore = false; this.travel = null; this.toast(G.hurt ? '공격받았다 — 탐험 멈춤' : '적이 보인다 — 탐험 멈춤'); return; }
+    if (this.exploreDiscovery() || G.hurt) { this.explore = false; this.travel = null; this.toast(G.hurt ? '공격받았다. 탐험을 멈춘다.' : '적이 보인다. 탐험을 멈춘다.'); return; }
     if (G.stoneOffer != null || this.overlayOpen()) return; // 영혼석 선택을 기다린다(고르면 이어서)
     const p = G.player, here = I(p.x, p.y), skip = (this.exploreSkip ||= new Set());
     // 발밑: 장비는 줍고, 등잔은 쓴다
@@ -118,12 +124,13 @@ Object.assign(UI, {
   startRest() {
     if (Anim.active || G.over) return;
     if (visibleFoes().length) { this.toast('적이 보여서 쉴 수 없다'); return; }
+    if (this.underAttack()) { this.toast('공격받고 있어서 쉴 수 없다'); return; }
     if (G.player.hp >= G.player.max && !G.player.st.poison) { this.toast('쉴 필요가 없다'); return; }
     this.rest = { n: 0 }; this.toast('휴식 중… (탭하면 멈춤)'); this.restStep();
   },
   restStep() {
     const r = this.rest; if (!r) return; const p = G.player;
-    if (visibleFoes().length || G.hurt || r.n >= 40 || (p.hp >= p.max && !p.st.poison && !p.st.burn)) { this.rest = null; return; }
+    if (visibleFoes().length || G.hurt || r.n >= 40 || (p.hp >= p.max && !p.st.poison && !p.st.burn)) { this.rest = null; if (G.hurt && !p.st.poison && !p.st.burn) this.toast('공격받았다. 휴식을 멈춘다.'); return; }
     r.n++; act(() => playerWait());
   },
   afterTurn() {
