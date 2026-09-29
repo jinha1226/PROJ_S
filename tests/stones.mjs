@@ -113,8 +113,10 @@ const s13 = await page.evaluate(async () => { const g = window.__game, C = await
   G.ps.eva = 100; G.ps.block = 0; p.shield = 0; let dodged = false; for (let k = 0; k < 60 && !dodged; k++) { G.hurt = false; const hp = p.hp; if (C.damage(p, 3, 'hit', { src: foe }) === 0 && p.hp === hp) dodged = G.hurt; else p.hp = hp; }
   U.travel = { path: [[p.x + 1, p.y], [p.x + 2, p.y]], first: false }; U.explore = true; U.travelStep(); const stopped = !U.travel && !U.explore && /공격받았다/.test(document.querySelector('#toast').textContent);
   foe.alive = false; U.startExplore(); const refused = !U.explore && /공격받고 있어서/.test(document.querySelector('#toast').textContent);
-  G.ps.eva = 0; G.hurt = false; G.hurtTurn = -9; return { dodged, stopped, refused }; });
-check('자동 탐험: 맞거나 피하면 멈추고, 공격받는 중에는 다시 시작하지 않는다', s13.dodged && s13.stopped && s13.refused, JSON.stringify(s13));
+  // 감전으로 기절: 기절 턴이 지나가도 탐험을 이어 가지 않는다
+  G.hurt = true; p.st.stun = 1; U.explore = true; U.travel = { path: [[p.x + 1, p.y]], first: false }; U.afterTurn(); const stun = !U.explore && !U.travel; await new Promise((r) => setTimeout(r, 500)); drain(); p.st.stun = 0;
+  G.ps.eva = 0; G.hurt = false; G.hurtTurn = -9; return { dodged, stopped, refused, stun }; });
+check('자동 탐험: 맞거나 피하면(감전 기절 포함) 멈추고, 공격받는 중에는 다시 시작하지 않는다', s13.dodged && s13.stopped && s13.refused && s13.stun, JSON.stringify(s13));
 
 // 발밑 영혼석: 두고 가기 / 고르지 않고 움직이면 바로 흩어진다
 const s10 = await page.evaluate(() => { const g = window.__game, G = arena(), i = (x, y) => y * G.W + x;

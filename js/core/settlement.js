@@ -1,9 +1,9 @@
-import { FLOOR_TYPES, FLOOR_BY_ID, FURN, PRESETS, ROOMS, SCX, SCY, SH, START_STOCK, SW, TERRAIN, TR, UNDO_MAX, WALLS, WALL_BY_ID, ZONE_TYPES, lightRadius } from '../data/build.js';
+import { FLOOR_BY_ID, FLOOR_TYPES, FURN, PRESETS, ROOMS, SCX, SCY, SH, START_STOCK, SW, TERRAIN, TR, UNDO_MAX, WALLS, WALL_BY_ID, ZONE_TYPES, lightRadius } from '../data/build.js';
 import { JOBS } from '../data/town.js';
 import { mulberry32 } from '../util/rng.js';
 import { META, saveMeta } from './meta.js';
 import { detectRooms, furnCells, furnSize } from './rooms.js';
-import { hearthGlow } from './visitors.js';
+import { hearthGlow, shardCount } from './visitors.js';
 
 /* ================= 정착지 땅과 건설 (docs/설계_정착지_건설.md 1단계) =================
    META.settle = { W, H, cx, cy, terr[], floor[], wall[], zone[], furn[{id,k,x,y,rot}], bp[{id,L,k,x,y,rot}], stock{나무,돌}, nid }
@@ -14,7 +14,7 @@ const st = () => META.settle;
 const LAYER = { floor: 0, wall: 1, furn: 2 };
 
 /** 지을 수 있는 반경: 6 + 모닥불 밝기 ÷ 10 */
-export const radius = () => lightRadius(META && META.npcs ? hearthGlow() : 0);
+export const radius = () => (META && META.npcs ? lightRadius(hearthGlow(), shardCount()) : lightRadius(0)); // + 등불 조각마다 3칸
 export const inLight = (x, y, R = radius()) => (x - SCX) ** 2 + (y - SCY) ** 2 <= R * R + R;
 /** 모닥불 곁 한 칸은 비워 둔다 */
 const nearFire = (x, y) => Math.abs(x - SCX) <= 1 && Math.abs(y - SCY) <= 1;

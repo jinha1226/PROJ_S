@@ -45,6 +45,8 @@ await page.evaluate(() => {
 const s1 = await page.evaluate(() => { const g = window.__game, S = g.META.settle, Z = g.Settle; flat(); const R = Z.radius(), glow = g.hearthGlow();
   const out = Z.checkBps([{ L: 'wall', k: 'wood', x: 20, y: 20 + R + 2 }]); let inn = { ok: [] }; for (let d = 2; d < R && !inn.ok.length; d++) for (const [x, y] of [[20 + d, 20], [20 - d, 20], [20, 20 + d], [20, 20 - d]]) if (!inn.ok.length) inn = Z.checkBps([{ L: 'wall', k: 'wood', x, y }]);
   return { W: S.W, H: S.H, n: S.terr.length, R, want: Math.min(20, 6 + Math.floor(glow / 10)), outWhy: out.bad[0] && out.bad[0].why, inOk: inn.ok.length }; });
+const s1b = await page.evaluate(() => { const g = window.__game, M = g.META, Z = g.Settle, lit = M.lit.slice(), r0 = Z.radius(); M.lit = [true, false, false, false]; const r1 = Z.radius(); M.lit = lit; const D = g.View.dio; return { r0, r1, pitch: +D.rig.pitchT.toFixed(2), top: +D.rig.TOP.toFixed(2), yaw: D.rig.yawT % (Math.PI * 2) }; });
+check('등불 조각 하나 = 빛 반경 +4칸 이상(밝기 +10 → +1, 조각 +3), 정착지는 탑뷰로 시작', s1b.r1 - s1b.r0 >= 4 && s1b.pitch === s1b.top && s1b.yaw === 0, JSON.stringify(s1b));
 check('§11-1 40×40 맵, 반경 6 + 밝기÷10, 빛 밖은 못 짓는다', s1.W === 40 && s1.H === 40 && s1.n === 1600 && s1.R === s1.want && /빛/.test(s1.outWhy) && s1.inOk === 1, JSON.stringify(s1));
 
 // 2. 방 그리기 4×4 → 벽·바닥·문 청사진 + 비용

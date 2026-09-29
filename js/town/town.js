@@ -108,6 +108,7 @@ export const Town = {
     D.setPreset('settlement', { tilesAcross: 12 });
     D.camera.far = 320; D.camera.updateProjectionMatrix();
     Object.assign(D.rig, { onePan: true, panMode: true, bounds: [2, 2, SW - 3, SH - 3], maxZoom: 2.2 });
+    D.rig.reset(); // 정착지는 늘 탑뷰(정면·기본 확대)로 시작한다
     this.sv = new SettleView(D.scene);
     this.refreshWorld();
     for (const n of META.npcs) this.npcs.push(new TownNPC(n));

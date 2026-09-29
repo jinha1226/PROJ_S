@@ -138,6 +138,8 @@ Object.assign(UI, {
     if (G.over) return;
     if (G.pendingReturn) { const r = G.pendingReturn; G.pendingReturn = null; G.over = true; setTimeout(() => returnToTown(r), 700); return; }
     const p = G.player;
+    // 맞았으면(감전·기절 포함) 자동 탐험·이동·휴식을 먼저 멈춘다 — 기절 턴이 지나가며 '맞았다'가 지워지기 전에
+    if (G.hurt && (this.travel || this.explore || this.rest)) { this.travel = null; this.explore = false; this.rest = null; this.toast('공격받았다. 멈춘다.'); }
     if (p.st.frozen > 0 || p.st.stun > 0) {
       setTimeout(() => act(() => { const fz = p.st.frozen > 0; if (p.st.frozen > 0) p.st.frozen--; if (p.st.stun > 0) p.st.stun--; emitStatus(p); log(fz ? '얼어붙어 움직일 수 없다…' : '기절해서 움직일 수 없다…', 'bad'); return true; }), 260);
       return;

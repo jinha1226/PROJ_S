@@ -2,7 +2,9 @@
    40×40 격자 · 지형 · 바닥 · 벽 · 가구 · 구역 · 방 종류 · 방 프리셋. 비용 단위: 나무·돌은 정착지 재고, 나머지는 던전 재료(META.mats) */
 export const SW = 40, SH = 40, SCX = 20, SCY = 20;
 /** 지을 수 있는 반경 = 6 + 모닥불 밝기 ÷ 10 (최대 20) */
-export const lightRadius = (glow) => Math.min(20, 6 + Math.floor(Math.max(0, glow) / 10));
+export const lightRadius = (glow, shards = 0) => Math.min(20, 6 + Math.floor(Math.max(0, glow) / 10) + SHARD_RADIUS * shards);
+/** 등불 조각 하나(구역 보스)마다 어둠이 이만큼 더 물러난다 */
+export const SHARD_RADIUS = 3;
 export const START_STOCK = { 나무: 40, 돌: 20 };
 export const UNDO_MAX = 20;
 
