@@ -32,12 +32,15 @@ export const FOV_R = 7;
 
 export function computeFOV() {
   const p = G.player; G.vis.fill(0);
-  const R = torchSight(G.torch ?? 100, FOV_R + (G.ps ? G.ps.vision : 0) + (G.glowVision || 0));
+  let R = torchSight(G.torch ?? 100, FOV_R + (G.ps ? G.ps.vision : 0) + (G.glowVision || 0));
+  if (G.ps && G.ps.legend.has('firstLamp')) R = Math.max(R, 3); // 첫 불씨 등잔
   for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
     if (dx * dx + dy * dy > R * R + R) continue;
     const x = p.x + dx, y = p.y + dy; if (!inb(x, y)) continue;
     if (los(p.x, p.y, x, y)) { const i = I(x, y); G.vis[i] = 1; G.seen[i] = 1; }
   }
+  // 투시 반지: 벽 너머 2칸의 적이 보인다
+  if (G.ps && G.ps.seeing) for (const e of G.ents) if (e.alive && e !== p && Math.max(Math.abs(e.x - p.x), Math.abs(e.y - p.y)) <= 2) G.vis[I(e.x, e.y)] = 1;
 }
 
 export function canSee(e, t) {

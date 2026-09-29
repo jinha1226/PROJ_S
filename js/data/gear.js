@@ -1,104 +1,128 @@
-import { STONE } from './stones.js';
 import { WEAPONS, WPN } from './weapons.js';
 
-/* ---------- 장비: 칸 · 기본 아이템 · 등급 · 옵션 · 전설 (docs/설계_아이템_장비.md) ---------- */
-export const SLOTS = ['weapon', 'off', 'head', 'body', 'hands', 'feet', 'neck', 'ring1', 'ring2'];
-export const SLOT_NAME = { weapon: '무기', off: '보조', head: '머리', body: '몸통', hands: '장갑', feet: '신발', neck: '목걸이', ring1: '반지', ring2: '반지', ring: '반지' };
-export const SLOT_ICON = { weapon: '⚔', off: '🛡', head: '⛑', body: '👕', hands: '🧤', feet: '🥾', neck: '📿', ring1: '💍', ring2: '💍', ring: '💍' };
+/* ================= 장비 (DCSS식 — docs/설계_아이템_장비.md) =================
+   기본템 + 강화치(+N) + 속성 하나(무기 브랜드 / 방어구 에고) · 장신구(모양만 보이는 반지·목걸이)
+   · 랜다트(무작위 유물) · 픽다트(옛 등불지기의 유품). 등급 색은 없다. */
+export const SLOTS = ['weapon', 'shield', 'head', 'body', 'cloak', 'hands', 'feet', 'neck', 'ring1', 'ring2'];
+export const SLOT_NAME = { weapon: '무기', shield: '방패', head: '머리', body: '몸통', cloak: '망토', hands: '장갑', feet: '신발', neck: '목걸이', ring1: '반지', ring2: '반지', ring: '반지' };
+export const SLOT_ICON = { weapon: '⚔', shield: '🛡', head: '⛑', body: '👕', cloak: '🧥', hands: '🧤', feet: '🥾', neck: '📿', ring1: '💍', ring2: '💍', ring: '💍' };
 export const BAG_MAX = 20;
-
-export const RARITY = {
-  common: { name: '일반', css: '#e8e8ee', hex: 0xe8e8ee, n: [0, 0] },
-  magic: { name: '마법', css: '#6aa8ff', hex: 0x5a9aff, n: [1, 2] },
-  rare: { name: '희귀', css: '#ffd84a', hex: 0xffd84a, n: [3, 4] },
-  legend: { name: '전설', css: '#ff8a2a', hex: 0xff8a2a, n: [1, 2] },
-};
-export const RARITY_ORDER = ['common', 'magic', 'rare', 'legend'];
 
 const MAT = { cloth: '천', leather: '가죽', chain: '사슬', plate: '판금' };
 export const MAT_COLOR = { cloth: 0xe8d8b0, leather: 0x9a6a3a, chain: 0x7e8796, plate: 0xaeb9c8 };
-const armorBase = (slot, mat, name, def, eva) => ({ slot, mat, name, def, eva });
+const arm = (slot, mat, name, def, eva = 0, o = {}) => ({ slot, mat, name, def, eva, ...o });
+/** 기본템 (§5) */
 export const GEAR_BASES = {
   ...Object.fromEntries(Object.keys(WEAPONS).map((k) => [k, { slot: 'weapon', weapon: k, name: WEAPONS[k].name }])),
-  shield: { slot: 'off', name: '방패', def: 1, block: 15 },
-  torch: { slot: 'off', name: '횃불', vision: 1, torchFire: 1 },
-  body_cloth: armorBase('body', 'cloth', '천옷', 0, 5), body_leather: armorBase('body', 'leather', '가죽 갑옷', 1, 0),
-  body_chain: armorBase('body', 'chain', '사슬 갑옷', 2, -3), body_plate: armorBase('body', 'plate', '판금 갑옷', 3, -6),
-  head_cloth: armorBase('head', 'cloth', '두건', 0, 2), head_leather: armorBase('head', 'leather', '가죽 모자', 0, 1),
-  head_chain: armorBase('head', 'chain', '투구', 1, -1), head_plate: armorBase('head', 'plate', '뿔 투구', 1, -2),
-  hands_cloth: armorBase('hands', 'cloth', '천 장갑', 0, 2), hands_leather: armorBase('hands', 'leather', '가죽 장갑', 0, 1),
-  hands_chain: armorBase('hands', 'chain', '사슬 장갑', 1, -1), hands_plate: armorBase('hands', 'plate', '판금 장갑', 1, -2),
-  feet_cloth: armorBase('feet', 'cloth', '천 신발', 0, 2), feet_leather: armorBase('feet', 'leather', '가죽 장화', 0, 1),
-  feet_chain: armorBase('feet', 'chain', '사슬 장화', 1, -1), feet_plate: armorBase('feet', 'plate', '판금 장화', 1, -2),
-  neck: { slot: 'neck', name: '목걸이' },
-  ring: { slot: 'ring', name: '반지' },
+  buckler: { slot: 'shield', name: '버클러', def: 1, block: 10 },
+  shield: { slot: 'shield', name: '방패', def: 2, block: 20, eva: -2 },
+  body_cloth: arm('body', 'cloth', '천옷', 0, 5), body_leather: arm('body', 'leather', '가죽 갑옷', 2), body_chain: arm('body', 'chain', '사슬 갑옷', 4, -4), body_plate: arm('body', 'plate', '판금 갑옷', 6, -8),
+  head_cloth: arm('head', 'cloth', '두건', 0), head_leather: arm('head', 'leather', '가죽 모자', 1), head_chain: arm('head', 'chain', '투구', 1, -1),
+  cloak: arm('cloak', 'cloth', '망토', 1),
+  gloves: arm('hands', 'leather', '장갑', 1),
+  boots: arm('feet', 'leather', '신발', 1),
+  neck: { slot: 'neck', name: '목걸이', jewel: true },
+  ring: { slot: 'ring', name: '반지', jewel: true },
 };
-export const WEAPON_TRAIT = { axe: { acc: -5, line: '명중 −5%' }, hammer: { acc: -5, line: '명중 −5%' }, dagger: { crit: 10, line: '급소 확률 +10%' }, spear: { reach: 2, line: '2칸 거리 공격(사이가 비어야 함)' } };
+export const WEAPON_TRAIT = { axe: { acc: -5, line: '명중 −5%' }, hammer: { acc: -5, line: '명중 −5%' }, dagger: { crit: 10, line: '급소 +10%' }, spear: { reach: 2, line: '2칸 거리 공격(사이가 비어야 함)' } };
+/** 강화 상한: 무기 +6, 몸통 +4, 그 밖 +2 (장신구는 강화 없음) */
+export const plusMax = (it) => { const B = GEAR_BASES[it.base]; return B.jewel ? 0 : B.weapon ? 6 : B.slot === 'body' ? 4 : 2; };
 
-const ARMOR = ['body', 'head', 'hands', 'feet'];
-const ELEM = { fire: '불', bolt: '번개', frost: '냉기', poison: '독' };
-/** 옵션 풀. t1 = 1~6층, t2 = 7~12층. form: 그 형태 무기에만. flag: 수치 없음. */
-export const AFFIXES = {
-  hp: { cat: 'basic', t1: [3, 5], t2: [6, 8], slots: ['body', 'head', 'neck', 'ring'], line: '최대 HP +{v}', pre: '튼튼한', suf: '곰의' },
-  def: { cat: 'basic', t1: [1, 1], t2: [2, 2], slots: ARMOR, line: '방어 +{v}', pre: '단단한', suf: '거북의' },
-  eva: { cat: 'basic', t1: [3, 5], t2: [6, 8], slots: ['feet', 'hands', 'ring'], line: '회피 +{v}%', pre: '날렵한', suf: '여우의' },
-  dmg: { cat: 'basic', t1: [1, 1], t2: [2, 2], slots: ['weapon', 'hands', 'ring'], line: '피해 +{v}', pre: '날카로운', suf: '늑대의' },
-  ...Object.fromEntries(Object.entries(ELEM).map(([k, nm]) => [k + 'Dmg', { cat: 'elem', t1: [1, 1], t2: [2, 2], slots: ['weapon', 'neck'], line: `${nm} 피해 +{v}`, pre: { fire: '불타는', bolt: '번개 치는', frost: '서리 낀', poison: '독 묻은' }[k], suf: `${nm}의` }])),
-  ...Object.fromEntries(Object.entries(ELEM).map(([k, nm]) => ['res' + k, { cat: 'elem', t1: [10, 15], t2: [20, 25], slots: [...ARMOR, 'ring'], line: `${nm} 저항 +{v}%`, pre: `${nm}을 막는`, suf: `${nm} 수호의` }])),
-  wetDmg: { cat: 'elem', t1: [1, 1], t2: [2, 2], slots: ['weapon', 'hands'], line: '젖은 적에게 피해 +{v}', pre: '물먹은', suf: '빗줄기의' },
-  dot: { cat: 'elem', t1: [1, 1], t2: [2, 2], slots: ['neck', 'ring'], line: '화상·중독 지속 +{v}턴', pre: '끈질긴', suf: '역병의' },
-  bleed: { cat: 'form', form: 'slash', t1: [1, 1], t2: [2, 2], slots: ['weapon', 'hands'], line: '베기 출혈 +{v}', pre: '톱날', suf: '피의' },
-  fracPush: { cat: 'form', form: 'blunt', flag: true, slots: ['weapon'], line: '타격 골절 시 1칸 밀치기', pre: '육중한', suf: '망치질의' },
-  crit: { cat: 'form', form: 'pierce', t1: [5, 5], t2: [10, 10], slots: ['weapon', 'hands'], line: '찌르기 급소 확률 +{v}%', pre: '예리한', suf: '송곳의' },
-  weakDmg: { cat: 'form', t1: [1, 1], t2: [2, 2], slots: ['weapon'], line: '약점 형태로 칠 때 피해 +{v}', pre: '약점 노리는', suf: '사냥꾼의' },
-  waterEva: { cat: 'terrain', t1: [10, 10], t2: [15, 15], slots: ['feet'], line: '물 위에서 회피 +{v}%', pre: '물갈퀴', suf: '수달의' },
-  burnImm: { cat: 'terrain', flag: true, slots: ['feet'], line: '풀·불 위에서 화상 면역', pre: '그을린', suf: '화덕의' },
-  noSlide: { cat: 'terrain', flag: true, slots: ['feet'], line: '얼음에서 미끄러지지 않음', pre: '징 박힌', suf: '빙판의' },
-  wallDmg: { cat: 'terrain', t1: [1, 1], t2: [2, 2], slots: ['hands', 'weapon'], line: '벽 충돌 피해 +{v}', pre: '부수는', suf: '성벽의' },
-  throwArea: { cat: 'item', flag: true, slots: ['hands'], line: '던지는 물건 범위 +1', pre: '멀리 뿌리는', suf: '투척의' },
-  potion: { cat: 'item', t1: [20, 20], t2: [40, 40], slots: ['neck', 'body'], line: '물약 회복 +{v}%', pre: '약초 향 나는', suf: '연금의' },
-  autoId: { cat: 'item', flag: true, slots: ['head'], line: '미확인 소모품을 주우면 즉시 확인', pre: '눈 밝은', suf: '감정사의' },
-  redTwice: { cat: 'stone', t1: [5, 5], t2: [10, 10], slots: ['weapon', 'ring'], line: '빨강 색 감소 때 {v}% 확률로 1 더', pre: '붉게 달군', suf: '분노의' },
-  purpleHeal: { cat: 'stone', t1: [1, 1], t2: [2, 2], slots: ['neck', 'body'], line: '보라 영혼석 스킬을 쓰면 HP +{v}', pre: '고요한', suf: '명상의' },
-  greenShield: { cat: 'stone', t1: [1, 1], t2: [2, 2], slots: ['body', 'off'], line: '초록 영혼석 스킬을 쓰면 보호막 +{v}', pre: '푸른', suf: '버팀의' },
-  skillCd: { cat: 'skill', flag: true, skill: true, slots: ['head', 'neck'], line: '{skill} 쿨타임 −1', pre: '재빠른', suf: '숙련의' },
-  skillDmg: { cat: 'skill', t1: [1, 1], t2: [2, 2], slots: ['head', 'neck'], line: '영혼석 스킬 피해 +{v}', pre: '주문 새긴', suf: '마법사의' },
-  floorShield: { cat: 'craft', t1: [4, 4], t2: [6, 6], slots: [], line: '층마다 보호막 {v}로 시작', pre: '뼈로 엮은', suf: '뼈의' },
+/** 원소 색 · 이름 */
+export const ELEM = { fire: { name: '불', css: '#ff8a3a', hex: 0xff7a1a }, frost: { name: '냉기', css: '#8fdcff', hex: 0x8fdcff }, bolt: { name: '번개', css: '#ffe14a', hex: 0xffe14a }, poison: { name: '독', css: '#79e05a', hex: 0x79e05a } };
+
+/** 무기 브랜드 (§7.1, 하나만) */
+export const BRANDS = {
+  fire: { name: '화염', line: '적중 시 불 2 — 풀·기름·빙결·중독과 반응', elem: 'fire' },
+  frost: { name: '냉기', line: '적중 시 냉기 2, 젖은 적은 1턴 빙결', elem: 'frost' },
+  bolt: { name: '번개', line: '25% 확률로 번개 3, 젖었으면 번진다', elem: 'bolt' },
+  poison: { name: '독', line: '적중 시 중독 2', elem: 'poison' },
+  blood: { name: '피', line: '출혈 +2', form: 'slash', css: '#ff5a6a' },
+  shatter: { name: '파쇄', line: '골절이 길어지고, 골절 시 1칸 밀친다', form: 'blunt', css: '#d8c8a8' },
+  pierce: { name: '꿰뚫기', line: '급소 피해 +50%', form: 'pierce', css: '#ffd27a' },
+  vamp: { name: '흡혈', line: '적중 피해의 30% 회복 (해골 제외)', css: '#c83a5a' },
+  reso: { name: '공명', line: '빨강 쿨타임 감소가 라운드 제한을 한 번 무시', css: '#ff6a7a' },
 };
-/** 옛 저장의 스킬 id(밀치기·불씨…) → 이어받은 영혼석 */
+/** 방어구 에고 (§7.2, 하나만) */
+export const EGOS = {
+  rFire: { name: '불 저항', slots: ['body', 'cloak', 'shield'], line: '불 저항 +1', res: 'fire' },
+  rFrost: { name: '냉기 저항', slots: ['body', 'cloak', 'shield'], line: '냉기 저항 +1', res: 'frost' },
+  rBolt: { name: '번개 저항', slots: ['body', 'cloak', 'shield'], line: '번개 저항 +1', res: 'bolt' },
+  rPoison: { name: '독 저항', slots: ['body', 'cloak', 'shield'], line: '독 저항 +1', res: 'poison' },
+  thorns: { name: '가시', slots: ['body'], line: '근접으로 나를 때린 적에게 2 피해', css: '#c8a060' },
+  protect: { name: '보호', slots: ['body', 'shield'], line: '층마다 보호막 4로 시작', css: '#9fd8ff' },
+  patience: { name: '기다림', slots: ['cloak'], line: '대기 시 보호막 +2', css: '#c27dff' },
+  vengeance: { name: '되갚음', slots: ['body', 'shield'], line: '맞으면 다음 무기 공격 피해 +2', css: '#62e27a' },
+  insight: { name: '통찰', slots: ['head'], line: '시야 +1, 적의 약점 형태를 처음부터 안다', css: '#ffe38a' },
+  waterwalk: { name: '물걸음', slots: ['feet'], line: '물에 젖지 않고, 얼음에서 미끄러지지 않는다', css: '#4d97ff' },
+  ember: { name: '불씨 품기', slots: ['cloak'], line: '횃불이 25% 느리게 탄다', css: '#ffb040' },
+  smash: { name: '강타', slots: ['hands'], line: '벽 충돌 피해 +2', css: '#d8c8a8' },
+  throw: { name: '투척', slots: ['hands'], line: '던지는 물건 사거리 +1', css: '#b8d0e0' },
+};
+/** 반지 (§7.3) — obvious: 끼는 즉시 정체가 드러난다 · ench: 수치(강화치)가 있다 */
+export const RINGS = {
+  prot: { name: '보호', line: '방어 {v}', ench: [-2, 4], obvious: true },
+  eva: { name: '회피', line: '회피 {v}%', ench: [-3, 8], obvious: true },
+  str: { name: '힘', line: '피해 {v}', ench: [-1, 3], obvious: true },
+  vit: { name: '체력', line: '최대 HP +5', obvious: true },
+  res: { name: '저항', line: '{e} 저항 +1' },
+  red: { name: '분노', line: '빨강 영혼석 기본 쿨타임 −1 (최소 2)', color: 'red' },
+  purple: { name: '명상', line: '보라 영혼석 기본 쿨타임 −1 (최소 2)', color: 'purple' },
+  green: { name: '인내', line: '초록 영혼석 기본 쿨타임 −1 (최소 2)', color: 'green' },
+  see: { name: '투시', line: '벽 너머 2칸의 적이 보인다' },
+};
+export const AMULETS = {
+  memory: { name: '기억', line: '횃불이 30% 느리게 탄다. 등잔에서 +20 더' },
+  regen: { name: '재생', line: '전투 밖에서 2턴마다 HP 1' },
+  chain: { name: '연쇄', line: '연쇄가 한 단계 높게 시작, 3단계 이상이면 보호막 +2' },
+  reflect: { name: '반사', line: '화살을 20% 확률로 되돌린다' },
+  silence: { name: '고요', line: '들키기 전에 대기하면 적이 나를 지나칠 수 있다' },
+};
+/** 장신구 모양(원정마다 정체와 짝이 섞인다) */
+export const JEWEL_LOOK = {
+  ring: ['루비', '사파이어', '뼈', '흑요석', '호박', '은', '녹슨 쇠', '비취', '산호', '진주', '유리', '청동'],
+  neck: ['뼈', '호박', '은 사슬', '깃털', '이빨', '유리 구슬', '조개'],
+};
+
+/** 랜다트 (§8): 속성 2~4개 + 대가(40%) */
+export const RANDART_PROPS = ['dmg', 'def', 'eva', 'maxHp', 'res', 'vision', 'cd', 'brand', 'ego'];
+export const RANDART_COSTS = ['maxHp', 'torch', 'vision', 'eva', 'cdUp'];
+export const ART_A = ['잿빛', '굶주린', '고요한', '떨리는', '잊힌', '서늘한', '검은', '금빛', '깨진', '숨은', '타버린', '젖은'];
+export const ART_B = ['속삭임', '맹세', '송곳니', '그림자', '약속', '비명', '파편', '등불', '발자국', '가시', '물결', '뿌리'];
+
+/** 픽다트 = 옛 등불지기의 유품 (§9) */
+export const UNRANDS = {
+  mistCloak: { base: 'cloak', name: '물안개 망토', owner: '이랑', line: '대기할 때마다 주변 1칸이 젖는다', story: '호숫가 뱃사공 출신 등불지기가 두르던 것' },
+  bloodFang: { base: 'dagger', plus: 2, name: '피의 송곳니', owner: '다솜', line: '출혈 중인 적이 죽으면 주변 1칸 적에게 출혈 2', story: '굶주린 해에 사냥으로 마을을 먹여 살린 이의 칼' },
+  thornPlate: { base: 'body_plate', plus: 1, name: '가시 판금', owner: '무진', line: '맞을 때마다 초록 쿨타임이 1 더 준다. 받는 피해 +20%', story: '물러서지 않았던 문지기의 갑옷' },
+  stormRing: { base: 'ring', name: '번개 감긴 반지', owner: '하율', line: '번개가 번질 때 1칸 더 멀리', story: '폭풍을 셌던 학자의 반지' },
+  giantMace: { base: 'mace', plus: 1, name: '거인의 철퇴', owner: '석주', line: '밀치기가 1칸 더 멀리, 벽 충돌 시 주변 1 피해', story: '광산 붕괴에서 동료를 파낸 광부의 망치' },
+  alchGlove: { base: 'gloves', name: '연금술사의 장갑', owner: '보늬', line: '던지는 물건이 두 개로 나뉘어 날아간다', story: '불씨 단지를 처음 만든 이의 장갑' },
+  firstLamp: { base: 'neck', name: '첫 불씨 등잔', owner: '첫 등불지기', line: '횃불이 0이 되어도 시야 3칸 유지', story: '모닥불을 처음 옮겨 붙인 등불지기의 등잔' },
+  namelessHelm: { base: 'head_chain', name: '이름 없는 투구', owner: null, line: '다음 턴에 예고를 걸 적이 미리 보인다(⚠)', story: '누구의 것인지 아무도 기억하지 못한다' },
+};
+
+/** 떨어진 장비의 종류 (§11) [평범, 강화치, 속성, 랜다트, 픽다트] */
+export function dropTable(depth) {
+  return depth <= 3 ? [70, 20, 8, 2, 0] : depth <= 6 ? [55, 25, 14, 5, 1] : depth <= 9 ? [45, 25, 20, 8, 2] : [35, 25, 25, 12, 3];
+}
+export const GEAR_DROP = { default: 5, goblin_armor: 15, charger: 15 };
+
+/** 저항 7단계 → 받는 피해 배율 (docs/밸런스_기준.md §3) */
+export const RES_MUL = { '-3': 2.5, '-2': 2, '-1': 1.5, 0: 1, 1: 0.5, 2: 0.33, 3: 0.2 };
+export const clampRes = (v) => Math.max(-3, Math.min(3, v));
+export const CAPS = { def: 15, eva: 40, block: 30 };
+export const BASE_EVA = 10;
+
+/** 옛 저장의 스킬 id → 이어받은 영혼석 */
 export const OLD_SKILL = { push: 'r_push', fire: 'r_fire', bolt: 'r_shock', frost: 'r_freeze', venom: 'r_poison' };
 export const stoneOfSkill = (k) => OLD_SKILL[k] || k;
 
-export const CAPS = { def: 6, eva: 40, block: 30, maxHp: 20, res: 50 };
-export const BASE_EVA = 10;
-
-export const LEGENDS = {
-  mistCloak: { base: 'body_cloth', name: '물안개 망토', line: '대기할 때마다 내 주변 1칸이 젖는다' },
-  bloodFang: { base: 'dagger', name: '피의 송곳니', line: '출혈 중인 적이 죽으면 피가 터져 주변 1칸 적에게 출혈 2' },
-  thornPlate: { base: 'body_plate', name: '가시 판금', line: '맞으면 초록 쿨타임이 2씩 준다. 받는 피해 +20%' },
-  stormRing: { base: 'ring', name: '번개 감긴 반지', line: '번개가 번질 때 1칸 더 멀리 번진다' },
-  giantMace: { base: 'mace', name: '거인의 철퇴', line: '밀치기가 1칸 더 멀리. 벽 충돌 시 주변도 흔들려 1 피해' },
-  alchGlove: { base: 'hands_leather', name: '연금술사의 장갑', line: '던지는 물건이 두 개로 나뉘어 날아간다' },
-};
-
-export const RARE_A = ['잿빛', '붉은', '고요한', '떨리는', '잊힌', '서늘한', '검은', '금빛', '깨진', '숨은'];
-export const RARE_B = ['속삭임', '맹세', '이빨', '그림자', '약속', '비명', '파편', '등불', '발자국', '가시'];
-/** 층(1~12, 보스는 'boss')별 등급 확률 [일반, 마법, 희귀, 전설] */
-export function rarityTable(depth) {
-  if (depth === 'boss') return [0, 0, 70, 30];
-  return depth <= 3 ? [60, 35, 5, 0] : depth <= 6 ? [40, 45, 13, 2] : depth <= 9 ? [25, 45, 25, 5] : [15, 40, 35, 10];
-}
-export const GEAR_DROP = { default: 12, goblin_armor: 25, charger: 25 };
-
-/** 장비의 슬롯 종류(반지는 ring1/ring2 어느 쪽이든) */
 export const slotKind = (it) => GEAR_BASES[it.base].slot;
-export const fitsSlot = (it, slot) => { const k = slotKind(it); return k === slot || (k === 'ring' && (slot === 'ring1' || slot === 'ring2')) || (slot === 'off' && k === 'weapon'); };
-/** 무기 장비 → WPN 형태 수치(없으면 맨손 장검 취급) */
+export const fitsSlot = (it, slot) => { const k = slotKind(it); return k === slot || (k === 'ring' && (slot === 'ring1' || slot === 'ring2')); };
+/** 무기 장비 → 형태·피해(강화치는 따로) — 없으면 맨손 장검 취급 */
 export function weaponOf(it) { const b = it && GEAR_BASES[it.base]; return b && b.weapon ? WPN(b.weapon) : WPN('sword'); }
 export const weaponId = (it) => (it && GEAR_BASES[it.base].weapon) || 'sword';
 export const isWeapon = (it) => !!(it && GEAR_BASES[it.base].weapon);
-export function affixLine(a, known = true) {
-  if (!known) return '???';
-  const A = AFFIXES[a.id], sk = a.skill && STONE[stoneOfSkill(a.skill)]; return A.line.replace('{v}', a.v).replace('{skill}', sk ? sk.name : '');
-}
+export const isJewel = (it) => !!(it && GEAR_BASES[it.base].jewel);
 export const matName = (b) => MAT[GEAR_BASES[b].mat];

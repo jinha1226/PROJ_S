@@ -2,7 +2,7 @@ import { META } from '../core/meta.js';
 import { G } from '../core/state.js';
 import { stoneCd } from '../core/stones.js';
 import { CATS } from '../data/enemies.js';
-import { AURA, COLORS, STONE } from '../data/stones.js';
+import { AURA, COLORS, LEVEL_XP, STONE } from '../data/stones.js';
 import { torchSight } from '../data/torch.js';
 import { JOBS } from '../data/town.js';
 import { PERKS } from '../data/visitors.js';
@@ -31,7 +31,7 @@ Object.assign(UI, {
     const weak = Object.keys(CATS).map((c) => `${CATS[c].name} ${G.weakKnown && G.weakKnown[c] ? `→ ${FORMS[CATS[c].weak].icon} ${FORMS[CATS[c].weak].name}` : '→ ?'}`).join(' · ');
     const s = G.stats || {};
     sh.innerHTML = `<h3>📜 상태 <button class="close">닫기</button></h3>
-      <div class="st-head"><b>${p.name || (h && h.name) || '등불지기'}</b><span style="color:#9aa2bd">${h ? `${h.gen}대 등불지기` : ''}${h && h.job ? ` · 전 ${JOBS[h.job].name}` : ''} · 구역 ${G.zone}-${G.zf}</span></div>
+      <div class="st-head"><b>${p.name || (h && h.name) || '등불지기'}</b><span style="color:#9aa2bd">레벨 ${G.level || 1}${(G.level || 1) < 6 ? ` (경험 ${G.xp || 0}/${LEVEL_XP[G.level || 1]})` : ''} · ${h ? `${h.gen}대 등불지기` : ''}${h && h.job ? ` · 전 ${JOBS[h.job].name}` : ''} · 구역 ${G.zone}-${G.zf}</span></div>
       ${perk ? `<div class="gtxt" style="color:#ffe38a">✦ ${perk.name} — ${perk.desc}</div>` : ''}
       <div class="st-bars">${bar('HP', p.hp, p.max, '#ff5a6a')}${bar('보호막', p.shield || 0, 10, '#9fd8ff', String(p.shield || 0))}${bar('횃불', torch, tmax, '#ffb040', `${Number.isInteger(torch) ? torch : torch.toFixed(1)} · 시야 ${torchSight(torch)}칸`)}</div>
       <div class="sec">상태 이상 · 지속 효과</div><div class="st-list">${st + auras || '<div style="color:#9aa2bd">없음</div>'}</div>

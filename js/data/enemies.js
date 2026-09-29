@@ -30,3 +30,11 @@ export const BOSSES = {
 export const kindOf = (e) => (e.type === 'goblin' ? (e.armor ? 'goblin_armor' : e.poison ? 'goblin_poison' : 'goblin') : e.type === 'mage' ? 'mage_' + e.elem : e.type);
 
 export const catOf = (e) => (e.type === 'goblin' ? (e.armor ? 'armor' : 'beast') : e.type === 'charger' ? 'armor' : 'bone');
+
+/** 몬스터 원소 저항 −3~+3 (docs/밸런스_기준.md §3.1). 보스는 약점 하나를 반드시 둔다 */
+export const MON_RES = {
+  goblin: {}, goblin_poison: { poison: 2 }, goblin_armor: { bolt: -1 }, charger: { bolt: -1 }, archer: { frost: 1, poison: 3 },
+  mage_bolt: { bolt: 3, poison: 3 }, mage_fire: { fire: 3, frost: -1, poison: 3 }, mage_frost: { fire: -2, frost: 3, poison: 3 },
+  chief: { fire: -1 }, lich: { bolt: 2, fire: -1, poison: 3 }, boarking: { bolt: -1, fire: 1 }, abyss: { fire: 2, frost: -1, poison: 3 },
+};
+export const monRes = (e, el) => ((e.boss ? MON_RES[e.boss] : MON_RES[e.type === 'mage' && !e.elem ? 'mage_bolt' : kindOf(e)]) || {})[el] || 0;

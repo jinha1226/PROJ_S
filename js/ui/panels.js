@@ -3,7 +3,8 @@ import { visibleFoes } from '../core/fov.js';
 import { itemName, useItem } from '../core/items.js';
 import { G, Game, I } from '../core/state.js';
 import { swapStone } from '../core/stones.js';
-import { CATS, DROPS, ENEMY, MAGE, catOf, kindOf } from '../data/enemies.js';
+import { CATS, DROPS, ENEMY, MAGE, catOf, kindOf, monRes } from '../data/enemies.js';
+import { ELEM } from '../data/gear.js';
 import { CAT_ICON, ITEMS, ITEM_COL } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { C_STEAM, S_ASH, S_GRASS, S_ICE, S_OIL, S_WATER, T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrain.js';
@@ -52,7 +53,8 @@ Object.assign(UI, {
   },
   useFromBag(k) {
     const def = ITEMS[k];
-    if (def.cat === 'throw') { this.enterTarget({ kind: 'item', id: k, name: '🫙 ' + itemName(k), range: 5, color: G.known[k] ? ITEM_COL[k] : 0xd0d0e0, run: (x, y) => useItem(k, x, y) }); return; }
+    if (def.target) { this.invTab = 'gear'; this.openInv(); this.toast(`${def.name}: 장비를 골라 ${k === 'ident' ? '[확인]' : '[강화]'}`); return; }
+    if (def.cat === 'throw') { this.enterTarget({ kind: 'item', id: k, name: '🫙 ' + itemName(k), range: 5 + (G.ps ? G.ps.throwRange : 0), color: G.known[k] ? ITEM_COL[k] : 0xd0d0e0, run: (x, y) => useItem(k, x, y) }); return; }
     if (G.player.st.frozen || G.player.st.stun) return;
     act(() => useItem(k));
   },
@@ -70,6 +72,7 @@ Object.assign(UI, {
     this.info(`<h3>${e.name} <small style="color:#9aa2bd">${C.name} · HP ${e.hp}/${e.max} ${st}</small></h3><div>${B.desc}${extra}</div><div class="hint">💡 ${B.tip}</div>
       ${inj ? `<div style="margin-top:4px">${inj}</div>` : ''}
       <div style="margin-top:6px">약점: ${G.weakKnown[cat] ? `<b style="color:#ffe14a">${FORMS[C.weak].icon} ${FORMS[C.weak].name}</b> (피해 1.5배·부상 강화)` : '? — 맞혀 보면 드러난다'}</div>
+      <div style="margin-top:4px;font-size:12.5px">저항: ${['fire', 'frost', 'bolt', 'poison'].map((el) => { const r = monRes(e, el); return `${ELEM[el].name} <b style="color:${r > 0 ? '#9fd8ff' : r < 0 ? '#ff9a9a' : '#9aa2bd'}">${r > 0 ? '●'.repeat(r) : r < 0 ? '▼'.repeat(-r) : '—'}</b>`; }).join(' · ')}</div>
       <div class="gtxt" style="margin-top:6px">떨어지는 영혼석 <small style="color:#9aa2bd">셋 중 하나 무작위(각 1/3)</small>${drops}</div>`);
   },
   showTile(x, y) {

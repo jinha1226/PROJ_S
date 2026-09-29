@@ -1,14 +1,12 @@
 import { BOSSES, ENEMY, MAGE } from '../data/enemies.js';
-import { isWeapon, weaponOf } from '../data/gear.js';
 import { ITEM_W } from '../data/items.js';
 import { FLOORS, SURF_OF, S_GRASS, S_ICE, S_NONE, S_OIL, S_WATER, T_DOOR, T_FLOOR, T_STAIRS, T_WALL, ZONES } from '../data/terrain.js';
-import { WEAPONS } from '../data/weapons.js';
 import { D4, D8, cheb, sgn } from '../util/grid.js';
 import { pick, rand, ri, shuffle, wpick } from '../util/rng.js';
 import { bfsDist, computeFOV } from './fov.js';
-import { makeGear, placeChests } from './gear.js';
-import { META, makeNpc } from './meta.js';
+import { placeChests, placeFloorGear } from './gear.js';
 import { placeHidden, stockHidden } from './hidden.js';
+import { META, makeNpc } from './meta.js';
 import { G, I, entAt, inb, newSt } from './state.js';
 import { placeLamps } from './torch.js';
 
@@ -122,18 +120,12 @@ export function genFloor() {
     if (tile[i] !== T_FLOOR || G.items.has(i) || G.mats.has(i) || (x === start.x && y === start.y)) continue;
     G.items.set(i, wpick(ITEM_W)); placed++;
   }
-  // 무기 한 자루: 가진 적 없는 형태를 조금 더 자주
-  {
-    const have = new Set([G.eq.weapon, G.eq.off].filter(isWeapon).map((w) => weaponOf(w).form));
-    const pool = Object.keys(WEAPONS).filter((k) => n >= 2 || ['sword', 'mace', 'dagger'].includes(k));
-    const lacking = pool.filter((k) => !have.has(WEAPONS[k].form));
-    const wid = lacking.length && rand() < 0.65 ? pick(lacking) : pick(pool);
-    for (let k = 0; k < 200; k++) {
-      const r = rooms[ri(0, rooms.length - 1)], x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1), i = I(x, y);
-      if (tile[i] !== T_FLOOR || G.items.has(i) || G.mats.has(i) || cheb(x, y, start.x, start.y) < 3) continue;
-      G.gear.set(i, makeGear(wid, rand() < 0.3 ? 'magic' : 'common', n >= 7 ? 2 : 1)); break;
-    }
-  }
+  // 두루마리: 강화(무기용·방어구용 반반)와 확인, 층마다 평균 0.5장씩
+  const scroll = (k) => { for (let t = 0; t < 200; t++) { const r = rooms[ri(0, rooms.length - 1)], x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1), i = I(x, y); if (tile[i] !== T_FLOOR || G.items.has(i) || G.mats.has(i)) continue; G.items.set(i, k); return; } };
+  if (rand() < 0.5) scroll(rand() < 0.5 ? 'enchW' : 'enchA');
+  if (rand() < 0.5) scroll('ident');
+  // 장비: 바닥 1~2개(+죽은 등불지기가 남긴 유품)
+  placeFloorGear(rooms, tile, start);
   placeChests(rooms, tile, G.perk === 'H-' && G.zf === 1 ? 1 : 0);
   // 옛 등불지기의 기록: 보스 층 첫 방에
   if (boss && !(META?.lore || []).includes(G.zone)) for (let k = 0; k < 60; k++) {
@@ -154,7 +146,8 @@ export function mkBoss(kind, x, y) {
 
 export function mkEnemy(type, x, y, F) {
   const B = ENEMY[type], hp = Math.round(B.hp * (1 + 0.08 * (G.floor - 1)));
-  const e = { id: G.nextId++, type, x, y, hp, max: hp, atk: B.atk, st: newSt(), alive: true, awake: false, face: [0, 1], cd: ri(0, 1), cast: null, charge: null, aim: false, name: B.name };
+  const e = { id: G.nextId++, type, x, y, hp, max: hp, atk: B.atk + (G.zone - 1), // 구역마다 공격 +1(기준안)
+    st: newSt(), alive: true, awake: false, face: [0, 1], cd: ri(0, 1), cast: null, charge: null, aim: false, name: B.name };
   if (type === 'mage') { const m = G.mageOf[G.zone - 1]; e.elem = m === 'mix' ? pick(['bolt', 'fire', 'frost']) : m; e.name = '해골 ' + MAGE[e.elem].name; }
   if (type === 'goblin' && F.poison && rand() < 0.5) { e.poison = true; e.name = '독칼 고블린'; }
   else if (type === 'goblin' && G.floor >= 2 && rand() < 0.4) { e.armor = true; e.name = '갑옷 고블린'; e.hp += 2; e.max += 2; }

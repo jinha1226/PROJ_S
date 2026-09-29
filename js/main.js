@@ -1,14 +1,14 @@
 // 시작 · 모듈 연결. 규칙(core)과 화면(render/ui/town)은 여기서만 이어진다.
 import { playerMove, playerWait } from './core/combat.js';
 import { computeFOV } from './core/fov.js';
-import { calcStats, equip, makeGear, pickGear, refreshStats, rollGear, unequip } from './core/gear.js';
+import { calcStats, equip, gearName, makeGear, makeUnrand, pickGear, refreshStats, rollGear, unequip } from './core/gear.js';
 import { openHidden } from './core/hidden.js';
 import { useItem } from './core/items.js';
 import { genFloor } from './core/mapgen.js';
-import { META, newHero, processReturn } from './core/meta.js';
+import { META, loadMeta, newHero, processReturn, resetMeta } from './core/meta.js';
 import { newRun } from './core/run.js';
 import { G, Game, TL, setListener } from './core/state.js';
-import { addStone, inCombat, reduceColor, useStone } from './core/stones.js';
+import { addStone, inCombat, reduceColor, stoneCd, useStone } from './core/stones.js';
 import { takeTorch, volunteers } from './core/succession.js';
 import { acceptVisitor, glowParts, hearthGlow, requestState, rollVisitors } from './core/visitors.js';
 import { DROPS } from './data/enemies.js';
@@ -47,4 +47,4 @@ newRun();
 View.buildFloor();
 UI.syncAll();
 UI.title();
-window.__game = { get META() { return META; }, Town, Game, enterDungeon, returnToTown, newHero, RECIPES, G, UI, View, act, playerMove, useStone, useItem, reduceColor, inCombat, descend, TL, Anim, computeFOV, playerWait, addStone, pickGear, equip, unequip, makeGear, rollGear, calcStats, refreshStats, STONE, DROPS, hearthGlow, glowParts, requestState, acceptVisitor, rollVisitors, volunteers, takeTorch, openHidden, processReturn, regen: () => { genFloor(); View.buildFloor(); } };
+window.__game = { get META() { return META; }, Town, Game, enterDungeon, returnToTown, newHero, RECIPES, G, UI, View, act, playerMove, useStone, useItem, reduceColor, inCombat, descend, TL, Anim, computeFOV, playerWait, addStone, pickGear, equip, unequip, makeGear, rollGear, calcStats, refreshStats, STONE, DROPS, hearthGlow, glowParts, requestState, acceptVisitor, rollVisitors, volunteers, takeTorch, openHidden, processReturn, regen: () => { genFloor(); View.buildFloor(); }, makeUnrand, stoneCd, gearName, loadMeta, resetMetaForTest: resetMeta };

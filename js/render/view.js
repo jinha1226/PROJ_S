@@ -77,7 +77,7 @@ export const View = {
     this.syncLamps();
     this.heroFlame = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.28, 7), new THREE.MeshBasicMaterial({ color: 0xffd06b, transparent: true }));
     this.dio.scene.add(this.heroFlame);
-    this.setWeapon(weaponId(G.eq.weapon)); this.shield = G.player.shield || 0;
+    this.setWeapon(weaponId(G.eq.weapon), G.eq.weapon); this.shield = G.player.shield || 0;
     this.intents = { decals: [], tags: {}, casting: [], winding: [] };
     const p = G.player; this.lightPos.set(p.x, 0, p.y); this.dio.lightTarget = this.lightPos;
     this.dio.rig.focusT.set(p.x, 0, p.y); this.dio.rig.snap();
@@ -136,10 +136,13 @@ export const View = {
     ring.position.y = disc.position.y = 0.62; g.add(ring, disc); g.userData = { ring, disc };
     this.dio.scene.add(g); this.portal = g;
   },
-  setWeapon(id) {
+  /** 손에 든 무기 모양. it이 아는 원소 브랜드면 칼날에 그 빛 */
+  setWeapon(id, it) {
     const pe = this.evs.get(0); if (!pe || !pe.extra.wh) return;
     const wh = pe.extra.wh; while (wh.children.length) wh.remove(wh.children[0]);
-    wh.add(weaponDoll(id).root);
+    const d = weaponDoll(id); wh.add(d.root);
+    const b = it && it.idX && it.brand, el = b && { fire: 0xff5a1a, frost: 0x6ac8ff, bolt: 0xffe14a, poison: 0x5ad84a }[b];
+    if (el) d.mat.emissive.setHex(el).multiplyScalar(0.55);
   },
   applyVis(vis, seen) {
     this.vis = vis; this.seen = seen;

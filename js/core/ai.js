@@ -21,7 +21,8 @@ export function enemyAct(e, dm) {
   if (e.st.frozen > 0 || e.st.stun > 0) { if (e.st.frozen > 0) e.st.frozen--; if (e.st.stun > 0) e.st.stun--; emitStatus(e); return; }
   if (e.st.frac > 0) { e.fracSkip = !e.fracSkip; if (e.fracSkip) return; }
   const d = cheb(e.x, e.y, P.x, P.y), sees = canSee(e, P);
-  if (!e.awake) { if (sees) { e.awake = true; emit('alert', { id: e.id }); wakeAround(e); } return; }
+  if (!e.awake) { if (sees && G.ps && G.ps.silence && G.waited && rand() < 0.5) return; // 고요 목걸이: 대기하면 지나칠 수 있다
+    if (sees) { e.awake = true; emit('alert', { id: e.id }); wakeAround(e); } return; }
   if (e.st.fear > 0) { e.st.fear--; emitStatus(e); flee(e, dm); return; }
   if (e.boss === 'chief') { actChief(e, dm, d, sees); return; }
   if (e.type === 'goblin') { if (d === 1) return enemyMelee(e, P); stepToward(e, dm); }
@@ -98,7 +99,9 @@ export function actArcher(e, dm, d, sees) {
   const P = G.player;
   if (e.aim) {
     e.aim = false;
-    if (sees) { atkGate(); faceTo(e, P); const dur = 70 + d * 40; emit('proj', { kind: 'arrow', from: [e.x, e.y], to: [P.x, P.y], dur }); TL.wait(dur); damage(P, e.atk, 'hit', { dx: sgn(P.x - e.x), dy: sgn(P.y - e.y) }); TL.wait(90); return; }
+    if (sees) { atkGate(); faceTo(e, P); const dur = 70 + d * 40; emit('proj', { kind: 'arrow', from: [e.x, e.y], to: [P.x, P.y], dur }); TL.wait(dur);
+      if (G.ps && G.ps.reflect && rand() * 100 < G.ps.reflect) { emit('proj', { kind: 'arrow', from: [P.x, P.y], to: [e.x, e.y], dur }); TL.wait(dur); log('화살을 되돌렸다!', 'syn'); damage(e, e.atk, 'hit', { label: '반사', src: P }); TL.wait(90); return; } // 반사 목걸이
+      damage(P, e.atk, 'hit', { dx: sgn(P.x - e.x), dy: sgn(P.y - e.y) }); TL.wait(90); return; }
     log('궁수가 과녁을 놓쳤다', 'info');
   }
   if (d <= 2 && reposition(e)) return;

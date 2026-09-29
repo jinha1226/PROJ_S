@@ -1,6 +1,6 @@
 import { C_STEAM, S_ASH, S_GRASS, S_ICE, S_OIL, S_WATER, T_WALL } from '../data/terrain.js';
 import { D4, D8 } from '../util/grid.js';
-import { cancelIntent, damage } from './combat.js';
+import { cancelIntent, damage, resistOk } from './combat.js';
 import { emitStatus, snapTerrain } from './snap.js';
 import { G, I, TL, XY, emit, entAt, inb, isFoe, isP, log } from './state.js';
 import { synergy } from './stones.js';
@@ -26,7 +26,7 @@ export function applyFire(e, dmg, o = {}) {
   if (e.st.wet > 0) { e.st.wet = 0; emitStatus(e); emit('steam', { x: e.x, y: e.y, small: true }); damage(e, Math.ceil(dmg / 2), 'fire', { label: '치익' }); return; }
   damage(e, dmg, 'fire');
   const bt = 3 + dotBonus(e);
-  if (e.alive && e.st.burn < bt) { e.st.burn = bt; emitStatus(e); }
+  if (e.alive && e.st.burn < bt && resistOk(e, 'fire')) { e.st.burn = bt; emitStatus(e); }
 }
 
 export function poisonBurst(e, chain) {
@@ -126,7 +126,7 @@ export function shock(x0, y0, dmg, o = {}) {
       if (!c || hitSet.has(c.id)) continue; hitSet.add(c.id);
       const wet = c.st.wet > 0 || G.surf[i] === S_WATER;
       damage(c, wet ? dmg + 2 : dmg, 'shock', { label: wet && seen.size > 1 ? '감전' : '' });
-      if (c.alive && wet) { c.st.stun = Math.max(c.st.stun, 1); emitStatus(c); if (!isP(c)) cancelIntent(c); }
+      if (c.alive && wet && resistOk(c, 'bolt')) { c.st.stun = Math.max(c.st.stun, 1); emitStatus(c); if (!isP(c)) cancelIntent(c); }
     }
     TL.wait(L === 0 ? 90 : 80);
   }
@@ -142,7 +142,7 @@ export function freezeAt(x, y, dmg, o) {
   if (!c || !c.alive || !(dmg > 0 || wasWater)) return;
   const wet = c.st.wet > 0 || wasWater;
   if (dmg) damage(c, dmg, 'frost');
-  if (!c.alive) return;
+  if (!c.alive || !resistOk(c, 'frost')) return;
   let dur = wet ? 5 : 2; if (isP(c)) dur = Math.min(dur, 2);
   if (wet && !o.said) { o.said = true; synergy(isP(c) ? '젖은 채로 얼었다!' : '젖은 채 빙결 — 5턴!', 'ice'); }
   c.st.frozen = Math.max(c.st.frozen, dur); c.st.wet = 0; c.st.burn = 0; emitStatus(c); if (!isP(c)) cancelIntent(c);
@@ -154,7 +154,7 @@ export function venomAt(x, y) {
   const c = entAt(x, y); emit('splat', { x, y });
   if (!c) return;
   damage(c, 1, 'poison');
-  if (c.alive && !c.st.immune) { c.st.poison = Math.max(c.st.poison, 6 + dotBonus(c)); emitStatus(c); }
+  if (c.alive && !c.st.immune && resistOk(c, 'poison')) { c.st.poison = Math.max(c.st.poison, 6 + dotBonus(c)); emitStatus(c); }
 }
 
 export function fireAt(x, y, dmg) {

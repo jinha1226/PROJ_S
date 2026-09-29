@@ -30,7 +30,7 @@ await page.evaluate(`window.mk = ${npc.toString()}`);
 
 // 1. 새 게임: 원경은 어둡고 밝기 12~20, 방문 확률은 밝기를 따른다
 const s1 = await page.evaluate(() => { const g = window.__game, T = g.Town; return { glow: g.hearthGlow(), dark: T.lands.every((L) => L.k === 0), recall: g.META.items.recall || 0, v: g.META.v }; });
-check('새 게임: 원경 어둠 · 밝기 12~20 · 귀환 두루마리 0', s1.dark && s1.glow >= 12 && s1.glow <= 20 && s1.recall === 0 && s1.v === 5, JSON.stringify(s1));
+check('새 게임: 원경 어둠 · 밝기 12~20 · 귀환 두루마리 0', s1.dark && s1.glow >= 12 && s1.glow <= 20 && s1.recall === 0 && s1.v >= 5, JSON.stringify(s1));
 const vc = await page.evaluate(() => { const g = window.__game, M = g.META; const keep = M.npcs.slice(), lit = M.lit.slice(); M.lit = [true, true, false, false]; M.glowMods = []; const rate = (n) => { M.npcs = keep.slice(); for (let k = 0; k < n; k++) M.npcs.push(mk('cook')); let c = 0; for (let r = 0; r < 400; r++) { M.visitors = []; c += g.rollVisitors().length; } return c / 400; }; const lo = rate(0), hi = rate(3); M.npcs = keep; M.visitors = []; M.lit = lit; return { lo: +lo.toFixed(2), hi: +hi.toFixed(2), none: (() => { M.npcs = []; M.visitors = []; let n = 0; for (let r = 0; r < 50; r++) n += g.rollVisitors().length; M.npcs = keep; return n; })() }; });
 check('방문 확률은 밝기를 따르고, 밝기 20 이하면 아무도 안 온다', vc.hi > vc.lo && vc.none === 0, JSON.stringify(vc));
 

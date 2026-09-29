@@ -1,6 +1,6 @@
 import { PHYS } from '../data/colors.js';
-import { CATS, catOf } from '../data/enemies.js';
-import { CAPS, weaponOf } from '../data/gear.js';
+import { CATS, catOf, monRes } from '../data/enemies.js';
+import { CAPS, RES_MUL, clampRes, weaponOf } from '../data/gear.js';
 import { MATS } from '../data/items.js';
 import { S_ASH, S_ICE, S_NONE, S_WATER, T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrain.js';
 import { JOBS } from '../data/town.js';
@@ -8,13 +8,13 @@ import { FORMS } from '../data/weapons.js';
 import { D8, cheb, sgn } from '../util/grid.js';
 import { pick, rand, ri } from '../util/rng.js';
 import { jo } from '../util/text.js';
-import { applyFire, fireAt } from './elements.js';
-import { dropGearFrom, gearName, openChest } from './gear.js';
+import { applyFire, fireAt, shock } from './elements.js';
+import { dropGearFrom, gearName, openChest, weaponUsed } from './gear.js';
 import { addItem, identify, itemName } from './items.js';
 import { META, saveMeta } from './meta.js';
 import { emitStatus, snapTerrain } from './snap.js';
 import { G, I, TL, emit, entAt, inb, isFoe, isP, itemSnap, log, standable } from './state.js';
-import { auraOnHurt, dropStone, reduceColor, withCtx } from './stones.js';
+import { addShield, auraOnHurt, dropStone, gainXp, reduceColor, withCtx } from './stones.js';
 
 const ELEM_OF = { fire: 'fire', burn: 'fire', blast: 'fire', shock: 'bolt', frost: 'frost', poison: 'poison' };
 const DOT = { burn: 1, poison: 1, bleed: 1 }; // 지속 피해는 '적중'이 아니다
@@ -30,7 +30,7 @@ export function damage(e, amt, kind = 'hit', o = {}) {
   if (isP(e) && G.ps) {
     const ps = G.ps, el = ELEM_OF[kind];
     if ((kind === 'hit' || kind === 'charge') && src && isFoe(src)) {
-      const eva = Math.min(CAPS.eva, ps.eva + (G.surf[I(e.x, e.y)] === S_WATER ? ps.waterEva : 0));
+      const eva = Math.min(CAPS.eva, ps.eva);
       if (rand() * 100 < eva) { emit('dodge', { id: 0 }); return 0; }
       if (ps.block && rand() * 100 < ps.block) { emit('block', { id: 0 }); amt = 0; }
     }
@@ -38,10 +38,13 @@ export function damage(e, amt, kind = 'hit', o = {}) {
       G.darkAmbushUsed = true; amt = Math.ceil(amt * 1.5); label = '어둠 속 기습';
       log('어둠 속에서 기습당했다!', 'bad');
     }
-    if (amt > 0 && PHYS[kind] && ps.def) amt = Math.max(1, amt - ps.def);
-    if (amt > 0 && el && ps.res[el]) amt = Math.max(1, Math.round(amt * (1 - ps.res[el] / 100)));
     if (amt > 0 && ps.legend.has('thornPlate')) amt = Math.ceil(amt * 1.2);
-  } else if (isFoe(e) && G.ps && G.ctx && G.ctx.origin !== 'enemy' && ELEM_OF[kind] && kind !== 'burn') amt += G.ps.elem[ELEM_OF[kind]];
+    // 줄이기: 물리 = 0~방어 무작위(최소 1) · 원소 = 저항 단계 배율 (docs/밸런스_기준.md §2~§3)
+    if (amt > 0 && PHYS[kind] && ps.def) amt = Math.max(1, amt - ri(0, ps.def));
+    if (amt > 0 && el && ps.res[el]) amt = Math.max(ps.res[el] >= 3 ? 0 : 1, Math.round(amt * RES_MUL[ps.res[el]]));
+  } else if (isFoe(e) && ELEM_OF[kind]) { const r = monRes(e, ELEM_OF[kind]); if (r) { amt = Math.max(r >= 3 ? 0 : 1, Math.round(amt * RES_MUL[clampRes(r)])); if (r >= 2 && !label) label = '저항'; if (r <= -1 && !label) label = '약함!'; } if (amt <= 0) { emit('immune', { id: e.id }); return 0; } }
+  if (struck && G.ps && G.ps.vengeance) G.vengeance = G.ps.vengeance; // 되갚음: 다음 무기 공격 +2
+  if (struck && G.ps && G.ps.thorns && src.alive && PHYS[kind] && cheb(src.x, src.y, e.x, e.y) === 1) { const s0 = src; TL.wait(40); damage(s0, G.ps.thorns, 'impact', { label: '가시', src: G.player }); } // 가시
   if (struck) reduceColor('green'); // 초록: 적에게 맞았을 때(0 피해·보호막이 막아도)
   if (isP(e) && G.auras && G.auras.guard && amt > 0) amt = Math.ceil(amt / 2); // 막기
   if (isP(e) && e.shield > 0) { const a = Math.min(e.shield, amt); e.shield -= a; amt -= a; emit('shieldHit', { absorbed: a, left: e.shield }); }
@@ -67,7 +70,7 @@ export function kill(e) {
   if (isP(e)) { G.over = true; log('쓰러졌다…', 'bad'); emit('gameover'); return; }
   if (e.ally) return;
   if (e.npc) { log(`${jo(e.name, '을를')} 잃었다…`, 'bad'); return; }
-  G.stats.kills++;
+  G.stats.kills++; gainXp(e);
   // 무기로 쓰러뜨리면 재료 하나(무작위 — 막타 형태와 상관없다)
   const f = e.lastForm, part = f ? pick(['가죽', '뼈', '심장']) : null;
   if (part) { addLoot(part, 1); emit('loot', { x: e.x, y: e.y, m: part }); }
@@ -125,7 +128,7 @@ export function onEnter(e) {
   if (G.surf[i] === S_WATER) {
     let ch = false;
     if (e.st.burn) { e.st.burn = 0; ch = true; emit('steam', { x: e.x, y: e.y, small: true }); }
-    if (e.st.wet < 3) { e.st.wet = 3; ch = true; }
+    if (e.st.wet < 3 && !(isP(e) && G.ps && G.ps.wetImm)) { e.st.wet = 3; ch = true; } // 물걸음은 젖지 않는다
     if (ch) emitStatus(e);
     emit('splash', { x: e.x, y: e.y, small: true });
   }
@@ -204,7 +207,10 @@ export function playerWait() {
     }
     snapTerrain(); emit('splash', { x: p.x, y: p.y });
   }
-  reduceColor('purple'); return true;
+  reduceColor('purple');
+  if (G.ps && G.ps.patience) addShield(G.ps.patience); // 기다림 망토
+  G.waited = true; // 고요 목걸이
+  return true;
 }
 /** 창: 2칸 떨어진 적을 직선으로 친다(사이가 비어야 함) */
 export function canReach(x, y) {
@@ -222,24 +228,43 @@ export function weaponHit(t, ctx, o = {}) {
   TL.wait(o.extra ? 60 : 80);
   if (ps.acc < 0 && rand() * 100 < -ps.acc) { emit('miss', { x: t.x, y: t.y }); log('빗나갔다', 'info'); TL.wait(90); return; }
   const cat = catOf(t), C = CATS[cat], weak = C.weak === f;
-  let dmg = ri(w.dmg[0], w.dmg[1]) + ps.dmg + (o.bonus || 0) + (t.st.wet > 0 ? ps.wetDmg : 0), label = o.counter ? '반격' : o.extra ? '추가 타격' : '', crit = false;
+  // 더하기: 강화치·반지 힘(ps.dmg), 되갚음 → 곱하기: 약점·급소 (docs/밸런스_기준.md §2)
+  const venge = G.vengeance || 0; G.vengeance = 0;
+  let dmg = ri(w.dmg[0], w.dmg[1]) + ps.dmg + (o.bonus || 0) + venge, label = o.counter ? '반격' : o.extra ? '추가 타격' : venge ? '되갚음' : '', crit = false;
   if (weak) {
     dmg = Math.ceil(dmg * 1.5) + ps.weakDmg;
     if (!G.weakKnown[cat]) { G.weakKnown[cat] = true; emit('weakReveal', { id: t.id, form: f }); log(`약점 발견 — ${C.name}은(는) ${FORMS[f].name}에 약하다!`, 'syn'); }
     label = label || '약점!';
   }
-  if (f === 'pierce' && t.st.vital > 0) { crit = true; dmg = Math.ceil(dmg * (weak ? 2.5 : 2)); t.st.vital = 0; label = '급소!'; }
-  else if (f === 'pierce' && ps.crit && rand() * 100 < ps.crit) { crit = true; dmg = Math.ceil(dmg * (weak ? 2.5 : 2)); label = '급소!'; }
-  damage(t, dmg, 'hit', { dx, dy, label, big: crit || weak, form: f, crit });
+  const cm = ps.critMul + (weak ? 0.5 : 0); // 꿰뚫기: ×3
+  if (f === 'pierce' && t.st.vital > 0) { crit = true; dmg = Math.ceil(dmg * cm); t.st.vital = 0; label = '급소!'; }
+  else if (f === 'pierce' && ps.crit && rand() * 100 < ps.crit) { crit = true; dmg = Math.ceil(dmg * cm); label = '급소!'; }
+  const dealt = damage(t, dmg, 'hit', { dx, dy, label, big: crit || weak, form: f, crit });
+  weaponUsed();
+  if (ps.vamp && dealt > 0 && !C.noBleed) heal(p, Math.max(1, Math.floor(dealt * 0.3))); // 흡혈(해골 제외)
   if (t.alive) {
     if (f === 'slash' && !C.noBleed) t.st.bleed += (weak ? 5 : 3) + ps.bleed;
-    if (f === 'blunt') { t.st.frac = Math.max(t.st.frac, weak ? 5 : 3); if (t.charge) { t.charge = null; log(`${t.name}의 다리가 부러져 돌진이 끊겼다`, 'good'); } }
+    if (f === 'blunt') { t.st.frac = Math.max(t.st.frac, (weak ? 5 : 3) + ps.fracBonus); if (t.charge) { t.charge = null; log(`${t.name}의 다리가 부러져 돌진이 끊겼다`, 'good'); } }
     if (f === 'pierce' && !crit) t.st.vital = 1;
     emitStatus(t);
     if (f === 'blunt' && ps.fracPush) push(t, dx, dy, 1);
-    if (ps.torchFire && t.alive && cheb(p.x, p.y, t.x, t.y) === 1) fireAt(t.x, t.y, ps.torchFire);
+    weaponBrand(t, ps.brand);
   }
   TL.wait(90);
+}
+/** 무기 브랜드: 원소는 원소 규칙 그대로 반응한다 */
+function weaponBrand(t, b) {
+  if (!b || !t.alive) return;
+  if (b === 'fire') fireAt(t.x, t.y, 2);
+  else if (b === 'frost') { const wet = t.st.wet > 0; damage(t, 2, 'frost', { label: '냉기' }); if (t.alive && wet) { t.st.frozen = Math.max(t.st.frozen, 1); t.st.wet = 0; emitStatus(t); emit('freeze', { x: t.x, y: t.y }); } }
+  else if (b === 'bolt' && rand() < 0.25) { if (t.st.wet > 0 || G.surf[I(t.x, t.y)] === S_WATER) shock(t.x, t.y, 3); else damage(t, 3, 'shock', { label: '번개' }); }
+  else if (b === 'poison' && !t.st.immune && resistOk(t, 'poison')) { t.st.poison = Math.max(t.st.poison, 2); emitStatus(t); }
+}
+
+/** 상태 이상에 걸리는가: 저항 +1 = 절반, +2 = 1/4, +3 = 안 걸림 */
+export function resistOk(e, el) {
+  const r = isP(e) ? (G.ps ? G.ps.res[el] || 0 : 0) : monRes(e, el);
+  return r <= 0 || (r < 3 && rand() < Math.pow(0.5, r));
 }
 
 export function closeDoor(x, y) { G.tile[I(x, y)] = T_DOOR; emit('door', { x, y, open: false }); snapTerrain(); log('문을 닫았다 — 시야가 끊긴다', 'info'); return true; }

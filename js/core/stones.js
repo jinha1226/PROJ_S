@@ -1,11 +1,12 @@
 import { CATS, DROPS, catOf, kindOf } from '../data/enemies.js';
-import { COLORS, STONE } from '../data/stones.js';
+import { COLORS, STONE, levelOf } from '../data/stones.js';
 import { S_ASH, S_GRASS, S_NONE, S_WATER } from '../data/terrain.js';
 import { HIDDEN_BY_ELEM } from '../data/visitors.js';
 import { D8, cheb, sgn } from '../util/grid.js';
 import { pick, rand, shuffle } from '../util/rng.js';
-import { cancelIntent, damage, freeDropSpot, heal, push, weaponHit } from './combat.js';
+import { cancelIntent, damage, freeDropSpot, heal, push, resistOk, weaponHit } from './combat.js';
 import { dotBonus, fireAt, shock } from './elements.js';
+import { refreshStats } from './gear.js';
 import { blockAt, openHidden } from './hidden.js';
 import { adjFoes, areaTiles, arrowPath, castBolt, castFire, castFrost, castPush, castVenom, sdmg, wetTarget } from './skills.js';
 import { emitSlots, emitStatus, snapTerrain } from './snap.js';
@@ -34,6 +35,8 @@ export function withCtx(origin, fn) {
 
 export function bumpStage(ctx) {
   ctx.stage++;
+  if (ctx.stage === 1 && ctx.origin !== 'enemy' && G.ps && G.ps.chainStart) ctx.stage++; // 연쇄 목걸이: 한 단계 높게 시작
+  if (ctx.stage >= 3 && !ctx.chainShield && G.ps && G.ps.chainStart) { ctx.chainShield = true; addShield(2); }
   emit('chainStage', { stage: ctx.stage });
   if (ctx.stage >= 3 && !ctx.slow) { ctx.slow = true; G.stats.chains++; emit('slowmo', { stage: ctx.stage }); }
 }
@@ -41,16 +44,17 @@ export function bumpStage(ctx) {
 /* ---------- 영혼석 스킬: 쿨타임 + 색 감소 (docs/설계_영혼석_스킬.md §2) ---------- */
 /** 전투 중인가: 보이는 깨어 있는 적이 있다 */
 export const inCombat = () => G.ents.some((e) => e.alive && isFoe(e) && e.awake && G.vis[I(e.x, e.y)]);
-export const stoneCd = (id) => Math.max(1, STONE[id].cd - ((G.ps && G.ps.skillCd[id]) || 0));
+/** 기본 쿨타임 + 색의 반지·유물 보정(줄였으면 최소 2) — docs/밸런스_기준.md §5 */
+export const stoneCd = (id) => { const S = STONE[id], m = G.ps ? G.ps.colorCd[S.color] || 0 : 0; return m < 0 ? Math.max(2, S.cd + m) : S.cd + m; };
 
 /** 색 감소: 그 색의 모든 영혼석이 1 준다. 영혼석마다 한 라운드 한 번, 방금 쓴 것은 제외 */
 export function reduceColor(color) {
   if (!G.slots || !inCombat()) return;
   const hit = [], ps = G.ps;
   for (let k = 0; k < G.slots.length; k++) {
-    const sl = G.slots[k]; if (!sl.stone || sl.color !== color || sl.cd <= 0 || sl.redRound === G.round || sl.usedRound === G.round) continue;
+    const sl = G.slots[k]; if (!sl.stone || sl.color !== color || sl.cd <= 0 || sl.usedRound === G.round) continue;
+    if (sl.redRound === G.round) { if (!(ps && ps.reso && color === 'red' && sl.resoRound !== G.round)) continue; sl.resoRound = G.round; } // 공명: 라운드 제한을 한 번 무시
     let n = 1;
-    if (ps && color === 'red' && ps.redTwice && rand() * 100 < ps.redTwice) n++;
     if (ps && color === 'green' && ps.legend.has('thornPlate')) n++;
     sl.cd = Math.max(0, sl.cd - n); sl.redRound = G.round; hit.push([k, n]);
   }
@@ -159,7 +163,7 @@ export function nearestFoe(except) {
 
 export const dirFrom = (a, b) => [sgn(b.x - a.x), sgn(b.y - a.y)];
 
-export function poisonOn(e, n) { if (!e || !e.alive || e.st.immune) return; e.st.poison = Math.max(e.st.poison, n + dotBonus(e)); emitStatus(e); emit('splat', { x: e.x, y: e.y }); }
+export function poisonOn(e, n) { if (!e || !e.alive || e.st.immune || !resistOk(e, 'poison')) return; e.st.poison = Math.max(e.st.poison, n + dotBonus(e)); emitStatus(e); emit('splat', { x: e.x, y: e.y }); }
 
 export function zapOn(e, dmg, hitSet) {
   if (!e || !e.alive) return;
@@ -168,7 +172,7 @@ export function zapOn(e, dmg, hitSet) {
 }
 
 export function freezeUnit(e, dur) {
-  if (!e || !e.alive) return;
+  if (!e || !e.alive || !resistOk(e, 'frost')) return;
   emit('freeze', { x: e.x, y: e.y, center: true });
   if (e.st.wet > 0) synergy('젖은 채 빙결!', 'ice');
   e.st.frozen = Math.max(e.st.frozen, dur); e.st.wet = 0; e.st.burn = 0; emitStatus(e); cancelIntent(e);
@@ -183,7 +187,7 @@ export function boneArrow(e, dmg) {
 }
 
 export function addStone(id) {
-  const sl = G.slots.find((q) => !q.stone);
+  const sl = G.slots.find((q, k) => !q.stone && k < (G.level || 6));
   if (sl) { sl.stone = id; sl.color = STONE[id].color; G.stats.stones++; log(`영혼석 스킬 「${STONE[id].icon} ${STONE[id].name}」 — ${STONE[id].line}`, 'syn'); return true; }
   if (G.sbag.length < (G.sbagMax || 3)) { G.sbag.push(id); G.stats.stones++; log(`영혼석 「${STONE[id].icon} ${STONE[id].name}」 → 가방 (같은 색 칸과 교체 가능)`, 'good'); return true; }
   return false;
@@ -197,8 +201,8 @@ export function takeStone(mode, slot) {
     if (G.sbag.length >= max) { log('영혼석 가방이 가득 찼다', 'bad'); return false; }
     G.sbag.push(id); log(`영혼석 「${S.icon} ${S.name}」 → 가방`, 'good');
   } else {
-    let sl = slot != null ? G.slots[slot] : G.slots.find((q) => !q.stone);
-    if (!sl) { log('빈 칸이 없다 — 같은 색 칸을 골라 바꿔 끼워야 한다', 'bad'); return false; }
+    let sl = slot != null ? G.slots[slot] : G.slots.find((q, k) => !q.stone && k < (G.level || 6));
+    if (!sl || G.slots.indexOf(sl) >= (G.level || 6)) { log('열린 빈 칸이 없다 — 같은 색 칸과 바꾸거나 가방에', 'bad'); return false; }
     if (sl.stone) {
       if (sl.color !== S.color) { log('다른 색 칸에는 흡수할 수 없다', 'bad'); return false; }
       const old = sl.stone; if (G.sbag.length < max) { G.sbag.push(old); log(`「${STONE[old].name}」은 가방으로`, 'info'); } else log(`「${STONE[old].name}」은 흩어졌다`, 'info');
@@ -209,6 +213,17 @@ export function takeStone(mode, slot) {
   G.stones.delete(i); G.stoneOffer = null; G.stats.stones++;
   emit('stonePick', { x: p.x, y: p.y, id }); emitSlots();
   return true;
+}
+
+/** 경험치: 적의 최대 HP(보스 두 배). 레벨이 오르면 영혼석 칸 하나가 열리고 최대 HP +2 */
+export function gainXp(e) {
+  G.xp = (G.xp || 0) + e.max * (e.boss ? 2 : 1);
+  const lv = levelOf(G.xp);
+  while ((G.level || 1) < lv) {
+    G.level = (G.level || 1) + 1; G.heroBase += 2; G.player.hp += 2; refreshStats();
+    emit('levelUp', { level: G.level }); log(`레벨 ${G.level} — 영혼석 칸이 하나 열렸다 (최대 HP +2)`, 'syn');
+    emitSlots();
+  }
 }
 
 export function summon(at) {

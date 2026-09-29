@@ -145,6 +145,7 @@ Object.assign(UI, {
   stoneBtn(k) {
     if (G.over || this.overlayOpen() || Anim.active) return;
     const sl = G.slots[k], id = sl && sl.stone;
+    if (!id && k >= (G.level || 6)) { this.toast(`레벨 ${k + 1}에 열리는 칸 — 적을 쓰러뜨려 경험을 쌓자`); return; }
     if (!id) { this.slotInfo(k); return; }
     const S = STONE[id], C = COLORS[S.color];
     if (this.mode === 'target' && this.pend?.slot === k) {

@@ -1,11 +1,12 @@
 import { closeDoor, playerMove } from '../core/combat.js';
-import { gearName, pickGear, swapHands } from '../core/gear.js';
+import { visibleFoes } from '../core/fov.js';
+import { gearCss, gearName, pickGear, swapWeapon } from '../core/gear.js';
 import { itemName } from '../core/items.js';
 import { G, I, entAt } from '../core/state.js';
 import { stoneCd, takeStone } from '../core/stones.js';
 import { useLamp } from '../core/torch.js';
 import { BOSSES } from '../data/enemies.js';
-import { RARITY, isWeapon, weaponOf } from '../data/gear.js';
+import { isWeapon, weaponOf } from '../data/gear.js';
 import { CAT_ICON, ITEMS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { T_OPEN, T_STAIRS, ZONES } from '../data/terrain.js';
@@ -16,20 +17,21 @@ import { Sfx } from '../render/sfx.js';
 import { $, UI } from './ui.js';
 
 Object.assign(UI, {
+  /** 공격 길게 누르기: 가방의 마지막으로 쓴 다른 무기와 교체(전투 중이면 한 턴) */
   swapWeapon() {
     if (Anim.active || G.over) return;
-    if (!isWeapon(G.eq.off)) { this.toast('보조 칸에 무기가 없다 — 🛡 장비 창에서 두 번째 무기를 보조에'); return; }
-    this.instant(() => swapHands());
+    if (!G.bag.some(isWeapon)) { this.toast('가방에 다른 무기가 없다'); return; }
+    if (visibleFoes().some((e) => e.awake)) act(() => swapWeapon()); else this.instant(() => swapWeapon());
     const W = weaponOf(G.eq.weapon); this.toast(`${FORMS[W.form].icon} ${gearName(G.eq.weapon)} — ${FORMS[W.form].name} (${FORMS[W.form].injury})`); Sfx.play('ui');
   },
   weaponInfo() {
-    const r = ['weapon', 'off'].map((k) => { const it = G.eq[k]; if (!it) return `<div>　${k === 'off' ? '보조' : '무기'}: 없음</div>`; if (!isWeapon(it)) return `<div>　보조: <b style="color:${RARITY[it.rarity].css}">${gearName(it)}</b></div>`; const W = weaponOf(it), F = FORMS[W.form], C = COLORS[F.color]; return `<div>${k === 'weapon' ? '▶' : '　'} ${F.icon} <b style="color:${RARITY[it.rarity].css}">${gearName(it)}</b> ${F.name} ${W.dmg[0]}–${W.dmg[1]} · 부상 ${F.injury}</div>`; }).join('');
-    this.info(`<h3>무기 · 보조 <small style="color:#9aa2bd">탭 = 맞바꾸기(보조가 무기일 때, 턴 소모 없음)</small></h3>${r}<div class="hint" style="margin-top:6px">💡 베기 = 출혈, 타격 = 골절(한 턴씩 쉰다·돌진 끊음), 찌르기 = 급소 표식 → 다음 찌르기 치명타</div>`);
+    const r = [G.eq.weapon, ...G.bag.filter(isWeapon)].filter(Boolean).map((it, k) => { const W = weaponOf(it), F = FORMS[W.form]; return `<div>${k === 0 ? '▶' : '　'} ${F.icon} <b style="color:${gearCss(it)}">${gearName(it)}</b> ${F.name} ${W.dmg[0]}–${W.dmg[1]} · 부상 ${F.injury}</div>`; }).join('');
+    this.info(`<h3>무기 <small style="color:#9aa2bd">공격 길게 누르기 = 가방의 다른 무기로 교체</small></h3>${r}<div class="hint" style="margin-top:6px">💡 베기 = 출혈, 타격 = 골절(한 턴씩 쉰다·돌진 끊음), 찌르기 = 급소 표식 → 다음 찌르기 치명타</div>`);
   },
   renderWeapon() {
     if (!G.eq) return;
-    const W = weaponOf(G.eq.weapon), F = FORMS[W.form], o = G.eq.off;
-    $('#btn-wpn').innerHTML = `${F.icon}<small>${G.eq.weapon ? gearName(G.eq.weapon) : '맨손'}</small><small style="font-size:9px;opacity:.7">${isWeapon(o) ? '⇄ ' + gearName(o) : o ? gearName(o) : '보조 없음'}</small>`;
+    const W = weaponOf(G.eq.weapon), F = FORMS[W.form], o = G.bag && G.bag.find(isWeapon);
+    $('#btn-wpn').innerHTML = `${F.icon}<small>${G.eq.weapon ? gearName(G.eq.weapon) : '맨손'}</small><small style="font-size:9px;opacity:.7">${o ? '⇄ ' + gearName(o) : '다른 무기 없음'}</small>`;
     $('#btn-wpn').style.boxShadow = `inset 0 -3px 0 ${COLORS[F.color].css}`;
     $('#gearcount').textContent = G.bag && G.bag.length ? G.bag.length : '';
   },
@@ -53,12 +55,12 @@ Object.assign(UI, {
   quickInfo(k) { const q = G.inv[k]; if (!q) return; const def = ITEMS[q.k]; this.info(`<h3>${CAT_ICON[def.cat]} ${itemName(q.k)} ×${q.n}</h3><div>${G.known[q.k] ? def.desc : '정체를 모른다 — 써 보면 알게 된다'}</div>`); },
   /* ---- 발밑 영혼석: 흡수 / 가방 / 두고 가기 ---- */
   stoneOffer(d) {
-    const id = d.id, S = STONE[id], C = COLORS[S.color], empty = G.slots.some((q) => !q.stone), same = G.slots.map((q, k) => [q, k]).filter(([q]) => q.stone && q.color === S.color), full = G.sbag.length >= (G.sbagMax || 3);
+    const id = d.id, S = STONE[id], C = COLORS[S.color], empty = G.slots.some((q, k) => !q.stone && k < (G.level || 6)), same = G.slots.map((q, k) => [q, k]).filter(([q, k]) => q.stone && q.color === S.color && k < (G.level || 6)), full = G.sbag.length >= (G.sbagMax || 3);
     const swap = !empty && same.length ? `<div class="sec">바꿔 끼울 칸 <small>빠진 영혼석은 가방으로${full ? ' — 가방이 차서 흩어진다' : ''}</small></div><div class="gems" style="grid-template-columns:repeat(${Math.min(6, same.length)},1fr)">${same.map(([q, k]) => `<button class="gch" style="--c:${C.css}" data-sw="${k}">${STONE[q.stone].icon}<small>${STONE[q.stone].name}</small></button>`).join('')}</div>` : '';
     const sh = $('#sheet'); sh.innerHTML = `<h3><span><span style="color:${C.css}">●</span> ${S.icon} ${S.name} <small style="color:#9aa2bd">영혼석 · 쿨타임 ${S.cd}</small></span></h3>
       <div class="gtxt">${S.line}</div><div class="gtxt" style="color:#9aa2bd">${C.name}: ${C.trig} 쿨타임 1 더 감소</div>
       <div class="wrow" style="grid-template-columns:1fr 1fr 1fr;margin-top:10px">
-        <button class="wbtn" data-a="absorb" ${empty ? '' : 'disabled style="opacity:.4"'}>흡수<small>${empty ? '빈 칸에 끼워 스킬로' : '빈 칸 없음'}</small></button>
+        <button class="wbtn" data-a="absorb" ${empty ? '' : 'disabled style="opacity:.4"'}>흡수<small>${empty ? '빈 칸에 끼워 스킬로' : '열린 빈 칸 없음'}</small></button>
         <button class="wbtn" data-a="bag" ${full ? 'disabled style="opacity:.4"' : ''}>가방에<small>${G.sbag.length}/${G.sbagMax || 3}</small></button>
         <button class="wbtn" data-a="leave">두고 가기<small>바닥에 남긴다</small></button></div>${swap}`;
     sh.classList.remove('hidden');
@@ -72,7 +74,9 @@ Object.assign(UI, {
   renderSlots(d) {
     this.slotsSnap = d;
     [...$('#souls').children].forEach((b, k) => {
-      const q = d.slots[k], def = q.stone ? STONE[q.stone] : null;
+      const q = d.slots[k], def = q.stone ? STONE[q.stone] : null, locked = k >= (G.level || 6);
+      b.classList.toggle('locked', locked);
+      if (locked && !def) { b.classList.remove('on', 'ready', 'cool'); b.style.setProperty('--c', 'transparent'); b.querySelector('.si').textContent = '🔒'; b.querySelector('.sn').textContent = `레벨 ${k + 1}`; b.querySelector('.scd').textContent = ''; return; }
       b.classList.toggle('on', !!def); b.style.setProperty('--c', q.color ? COLORS[q.color].css : 'transparent');
       b.querySelector('.si').textContent = def ? def.icon : '';
       b.querySelector('.sn').textContent = def ? def.name : '';
@@ -131,7 +135,7 @@ Object.assign(UI, {
     const c = $('#btn-ctx');
     if (d.stairs) { c.disabled = false; c.classList.add('live'); c.innerHTML = '⬇<small>내려가기</small>'; c.dataset.act = 'stairs'; }
     else if (d.lamp) { c.disabled = false; c.classList.add('live'); c.innerHTML = '🕯<small>불씨 옮기기</small>'; c.dataset.act = 'lamp'; }
-    else if (d.gear) { c.disabled = false; c.classList.add('live'); c.innerHTML = `✋<small style="color:${RARITY[d.gear.rarity].css}">${d.gear.name} 줍기</small>`; c.dataset.act = 'gear'; }
+    else if (d.gear) { c.disabled = false; c.classList.add('live'); c.innerHTML = `✋<small style="color:${d.gear.css}">${d.gear.name} 줍기</small>`; c.dataset.act = 'gear'; }
     else if (d.rescue) { c.disabled = false; c.classList.add('live'); c.innerHTML = '🤝<small>구하기</small>'; c.dataset.act = 'rescue'; c.dataset.x = d.rescue[0]; c.dataset.y = d.rescue[1]; }
     else if (d.closedDoor) { c.disabled = false; c.classList.add('live'); c.innerHTML = '🚪<small>문 열기</small>'; c.dataset.act = 'open'; c.dataset.x = d.closedDoor[0]; c.dataset.y = d.closedDoor[1]; }
     else if (d.door) { c.disabled = false; c.classList.remove('live'); c.innerHTML = '🚪<small>문 닫기</small>'; c.dataset.act = 'door'; c.dataset.x = d.door[0]; c.dataset.y = d.door[1]; }

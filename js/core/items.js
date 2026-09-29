@@ -1,16 +1,17 @@
+import { SLOTS } from '../data/gear.js';
 import { ITEMS } from '../data/items.js';
-import { JAR_REFILL } from '../data/torch.js';
-import { refillTorch } from './torch.js';
 import { C_SMOKE, S_ICE, S_OIL, S_WATER, T_DOOR, T_WALL } from '../data/terrain.js';
+import { JAR_REFILL } from '../data/torch.js';
 import { D8, cheb, sgn } from '../util/grid.js';
 import { pick, ri } from '../util/rng.js';
 import { plus, square3 } from './ai.js';
 import { cancelIntent, heal, moveEnt, onEnter } from './combat.js';
 import { addCloud, fireAt, oilBlast } from './elements.js';
 import { canSee, computeFOV } from './fov.js';
-import { identifyGear } from './gear.js';
+import { canEnchant, enchantItem, fullyKnown, identifyItem } from './gear.js';
 import { emitStatus, snapTerrain, snapVis } from './snap.js';
 import { G, I, TL, emit, entAt, inb, isFoe, log, standable } from './state.js';
+import { refillTorch } from './torch.js';
 
 
 export function itemName(k) { return G.known[k] ? ITEMS[k].name : G.look[k].name; }
@@ -37,13 +38,22 @@ export function useItem(k, tx, ty) {
   const p = G.player, cat = ITEMS[k].cat;
   if (k === 'recall' && G.bossFloor) { log('보스의 어둠이 짙어 두루마리 빛이 모이지 않는다', 'bad'); return false; }
   if (cat === 'throw') return throwItem(k, tx, ty);
+  // 장비를 골라 쓰는 두루마리: tx = 장비 uid
+  let target = null;
+  if (ITEMS[k].target) {
+    target = [...SLOTS.map((s) => G.eq[s]), ...G.bag].find((it) => it && it.uid === tx);
+    if (!target) return false;
+    if (k === 'ident' && fullyKnown(target)) { log('이미 다 아는 장비다', 'info'); return false; }
+    if (k !== 'ident' && !canEnchant(target, k === 'enchW' ? 'w' : 'a')) { log('이 장비는 더 강화할 수 없다', 'bad'); return false; }
+  }
   if (!takeItem(k)) return false;
   emit(cat === 'potion' ? 'drink' : 'read', { color: G.look[k].color });
   TL.wait(140);
   identify(k);
   if (k === 'heal') { heal(p, Math.round(15 * (1 + (G.ps ? G.ps.potion : 0) / 100))); if (p.st.burn) { p.st.burn = 0; emitStatus(p); } }
   else if (k === 'ember_jar') { const n = refillTorch(JAR_REFILL); log(`모닥불 불씨를 옮겼다 — 횃불 +${n}`, 'good'); computeFOV(); snapVis(); }
-  else if (k === 'ident') { const n = identifyGear(); log(n ? `장비 ${n}개의 정체가 드러났다!` : '정체를 모르는 장비가 없다', n ? 'syn' : ''); }
+  else if (k === 'ident') identifyItem(target);
+  else if (k === 'enchW' || k === 'enchA') enchantItem(target, k === 'enchW' ? 'w' : 'a');
   else if (k === 'cure') { Object.assign(p.st, { poison: 0, burn: 0, wet: 0, immune: 12 }); emitStatus(p); log('몸이 깨끗해졌다 (12턴 중독 면역)', 'good'); }
   else if (k === 'haste') { p.st.haste = 8; emitStatus(p); log('몸이 가벼워졌다! 8턴 동안 두 배로 움직인다', 'good'); }
   else if (k === 'tele') {

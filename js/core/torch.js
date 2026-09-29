@@ -12,7 +12,8 @@ export function startTorch() {
 }
 export function burnTorch() {
   const before = G.torch || 0;
-  G.torch = Math.max(0, before - TORCH_BURN);
+  const ps = G.ps, rate = TORCH_BURN * (1 - (ps ? ps.torchSlow : 0) / 100) * (1 + (ps ? ps.torchCost : 0) / 100); // 불씨 품기·기억 목걸이 / 유물의 대가
+  G.torch = Math.max(0, Math.round((before - rate) * 100) / 100);
   if (META?.hero) META.hero.torch = G.torch;
   if (before >= 50 && G.torch < 50) log('횃불이 약해져 시야가 좁아진다', 'bad');
   if (before >= 25 && G.torch < 25) log('불씨가 희미하다 — 어둠이 다가온다', 'bad');
@@ -42,7 +43,7 @@ export function useLamp() {
   const i = I(G.player.x, G.player.y), name = G.lamps?.get(i);
   if (!name) return false;
   G.lamps.delete(i);
-  const gained = refillTorch(LAMP_REFILL);
+  const gained = refillTorch(LAMP_REFILL + (G.ps ? G.ps.lampBonus : 0));
   META.rememberedKeepers ||= [];
   const first = !META.rememberedKeepers.includes(name);
   if (first) META.rememberedKeepers.push(name);

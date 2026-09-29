@@ -36,3 +36,7 @@ export const STONE = {
 
 /** 지속 효과(오라) 이름 · 색 */
 export const AURA = { counter: { name: '반격 자세', hex: 0xff5a4a }, guard: { name: '막기', hex: 0x9fd8ff }, thorn: { name: '독 가시', hex: 0x79e05a }, storm: { name: '번개 갑주', hex: 0xffe14a }, frost: { name: '서리 갑주', hex: 0x8fdcff } };
+
+/** 레벨 = 열린 영혼석 칸 수(1~6). 경험치 = 쓰러뜨린 적의 최대 HP 합(보스 두 배) — docs/밸런스_기준.md §1.1 */
+export const LEVEL_XP = [0, 15, 45, 100, 180, 300];
+export const levelOf = (xp) => { let l = 1; while (l < LEVEL_XP.length && xp >= LEVEL_XP[l]) l++; return l; };

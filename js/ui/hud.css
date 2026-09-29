@@ -66,3 +66,5 @@
 .invtabs{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin:10px 0 2px}
 .invtabs button{height:38px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.05);font-size:13px;font-weight:700}
 .invtabs button.on{border-color:#ffd27a;background:rgba(255,210,122,.14);box-shadow:0 0 10px rgba(255,200,90,.3)}
+.slot.locked{opacity:.45;border-style:dotted!important}
+.slot.locked .si{font-size:15px}

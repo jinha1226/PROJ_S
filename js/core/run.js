@@ -2,14 +2,15 @@ import { APPEAR, ITEMS } from '../data/items.js';
 import { cheb } from '../util/grid.js';
 import { mulberry32, pick, seedOr, setR, shuffle } from '../util/rng.js';
 import { allyAct, enemyAct } from './ai.js';
+import { heal } from './combat.js';
 import { envTick } from './elements.js';
 import { computeFOV, distMap } from './fov.js';
-import { calcStats, makeGear } from './gear.js';
+import { calcStats, newJewelLook, starterKit, tickWorn } from './gear.js';
 import { addItem } from './items.js';
 import { genFloor } from './mapgen.js';
 import { emitIntents, emitSlots, snapHud, snapVis } from './snap.js';
 import { G, TL, emit, isFoe, log, newSt } from './state.js';
-import { endRound, tickStones, withCtx } from './stones.js';
+import { endRound, inCombat, tickStones, withCtx } from './stones.js';
 import { burnTorch } from './torch.js';
 
 /* ================= 새 게임 · 층 생성 ================= */
@@ -27,8 +28,7 @@ export function newRun() {
   G.stats = { kills: 0, combos: 0, turns: 0, items: 0, stones: 0, chains: 0, best: 0 };
   G.mageOf = ['bolt', pick(['fire', 'frost', 'bolt']), pick(['fire', 'frost']), pick(['frost', 'bolt', 'fire']), 'mix'];
   const starts = shuffle(['sword', 'mace', 'dagger']);
-  G.eq = { weapon: makeGear(starts[0]), off: makeGear(starts[1]), head: null, body: makeGear('body_cloth'), hands: null, feet: null, neck: null, ring1: null, ring2: null };
-  G.bag = []; G.heroBase = 30; G.legendsDropped = new Set(); G.ps = calcStats(G.eq);
+  const kit = starterKit(starts); G.eq = kit.eq; G.bag = kit.bag; G.heroBase = 30; G.jlook = newJewelLook(); G.jknown = {}; G.ps = calcStats(G.eq);
   G.slots = Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 }));
   G.sbag = []; G.weakKnown = {}; G.ctx = null; G.curSrc = null; G.dropHint = 0; G.zoneFlags = { npc: false, recall: false }; G.perk = null; G.round = 0; G.auras = {}; G.combatDmg = 0; G.glowVision = 0; G.recallArm = false;
   G.torchMax = 100; G.torch = 100;
@@ -47,6 +47,8 @@ export function endTurn() {
 export function worldTick() {
   G.stats.turns++;
   tickStones(); // 내 턴이 끝났다: 영혼석 쿨타임 1 감소
+  tickWorn(); // 입고 지낸 장비의 정체
+  if (G.ps && G.ps.regen && G.stats.turns % 2 === 0 && G.player.hp < G.player.max && !inCombat()) heal(G.player, 1); // 재생 목걸이
   computeFOV(); snapVis();
   const p = G.player;
   G.tickMoveEnd = TL.cur + 110;

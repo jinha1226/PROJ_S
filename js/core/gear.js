@@ -1,126 +1,236 @@
 import { kindOf } from '../data/enemies.js';
-import { AFFIXES, BAG_MAX, BASE_EVA, CAPS, GEAR_BASES, GEAR_DROP, LEGENDS, RARE_A, RARE_B, RARITY, RARITY_ORDER, SLOTS, SLOT_NAME, WEAPON_TRAIT, affixLine, fitsSlot, isWeapon, rarityTable, stoneOfSkill, weaponOf } from '../data/gear.js';
-import { STONE } from '../data/stones.js';
+import { AMULETS, ART_A, ART_B, BAG_MAX, BASE_EVA, BRANDS, CAPS, EGOS, ELEM, GEAR_BASES, GEAR_DROP, JEWEL_LOOK, RANDART_COSTS, RANDART_PROPS, RINGS, SLOTS, SLOT_NAME, UNRANDS, WEAPON_TRAIT, clampRes, dropTable, fitsSlot, isJewel, isWeapon, plusMax, weaponOf } from '../data/gear.js';
 import { T_FLOOR, T_STAIRS } from '../data/terrain.js';
 import { WPN } from '../data/weapons.js';
-import { pick, rand, ri, wpick } from '../util/rng.js';
+import { pick, rand, ri, shuffle, wpick } from '../util/rng.js';
 import { addLoot } from './combat.js';
 import { addItem } from './items.js';
-import { META } from './meta.js';
+import { META, saveMeta } from './meta.js';
 import { G, Game, I, emit, inb, log, standable } from './state.js';
 
-/* ================= 장비: 만들기 ================= */
+/* ================= 장비 (DCSS식 — docs/설계_아이템_장비.md) =================
+   장비 = { uid, base, plus, brand, ego, jt(장신구 종류), jv(반지 수치), je(저항 원소), art(랜다트), un(픽다트),
+           idP(강화치 앎), idX(속성 앎), worn(입은 턴), hits(무기 적중) } */
+const uid = () => 'g' + Math.floor(rand() * 2e9).toString(36);
+const ELEMS = ['fire', 'frost', 'bolt', 'poison'];
+const sign = (v) => (v >= 0 ? `+${v}` : `${v}`);
+
+/** 장신구 모양·정체를 아는지: 던전에서는 G, 정착지에서는 등불지기 */
+function jewelBook() {
+  const h = META && META.hero;
+  const src = Game.mode === 'town' && h ? h : G;
+  if (!src.jlook) src.jlook = newJewelLook();
+  if (!src.jknown) src.jknown = {};
+  return src;
+}
+export function newJewelLook() {
+  const out = {};
+  for (const [kind, T] of [['ring', RINGS], ['neck', AMULETS]]) { const looks = shuffle(JEWEL_LOOK[kind].slice()); Object.keys(T).forEach((k, j) => { out[kind + ':' + k] = looks[j % looks.length]; }); }
+  return out;
+}
+const jkey = (it) => `${GEAR_BASES[it.base].slot === 'neck' ? 'neck' : 'ring'}:${it.jt}`;
+export const jewelKnown = (it) => !!(it.un || jewelBook().jknown[jkey(it)]);
+function knowJewel(it) { if (isJewel(it) && it.jt) jewelBook().jknown[jkey(it)] = true; }
+/** 다 아는 장비인가 */
+export function fullyKnown(it) {
+  if (!it) return true;
+  if (it.un) return true;
+  if (isJewel(it)) return it.art ? it.art.props.every((p) => p.known) : jewelKnown(it);
+  if (it.art) return it.idP && it.art.props.every((p) => p.known);
+  return it.idP && it.idX;
+}
+
+/* ================= 이름 ================= */
 export function gearName(it, reveal = false) {
   const B = GEAR_BASES[it.base];
-  if (!it.known && !reveal) return '미확인 ' + B.name;
-  if (it.legend) return LEGENDS[it.legend].name;
-  if (it.craftName) return it.craftName;
-  if (it.rarity === 'rare') return it.rareName;
-  if (it.rarity === 'magic' && it.affixes.length) {
-    const a = AFFIXES[it.affixes[0].id], b = it.affixes[1] && AFFIXES[it.affixes[1].id];
-    return b ? `${b.suf} ${a.pre} ${B.name}` : it.sufFirst ? `${a.suf} ${B.name}` : `${a.pre} ${B.name}`;
+  if (it.un) return UNRANDS[it.un].name;
+  if (it.art) return it.art.name;
+  if (B.jewel) {
+    const T = (B.slot === 'neck' ? AMULETS : RINGS)[it.jt];
+    if (!(reveal || jewelKnown(it)) || !T) return `${jewelBook().jlook[jkey(it)] || '낡은'} ${B.name}`;
+    return `${T.name}의 ${B.name}${RINGS[it.jt] && B.slot === 'ring' && RINGS[it.jt].ench ? ' ' + sign(it.jv) : ''}${it.je ? ` (${ELEM[it.je].name})` : ''}`;
   }
-  return B.name;
+  const kp = reveal || it.idP, kx = reveal || it.idX, prop = it.brand ? BRANDS[it.brand].name : it.ego ? EGOS[it.ego].name : '';
+  return `${kp ? sign(it.plus) + ' ' : ''}${prop ? (kx ? prop + ' ' : '빛나는 ') : ''}${B.name}${kp ? '' : ' ?'}`;
 }
-function affixPool(base, slot) {
-  const B = GEAR_BASES[base], kind = B.slot, form = B.weapon ? WPN(B.weapon).form : null;
-  return Object.entries(AFFIXES).filter(([, A]) => A.cat !== 'craft' && A.slots.includes(kind) && (!A.form || A.form === form)).map(([id]) => id);
+/** 목록에 쓰는 색: 평범은 흰색, 속성은 그 원소 색, 랜다트는 보랏빛, 픽다트는 금빛, 모르는 속성은 연하게 */
+export function gearCss(it) {
+  if (!it) return 'rgba(255,255,255,.2)';
+  if (it.un) return '#ffcf4a';
+  if (it.art) return '#d0a0ff';
+  const B = GEAR_BASES[it.base];
+  if (B.jewel) return jewelKnown(it) ? '#9fd8ff' : '#c8ccd8';
+  const p = it.brand ? BRANDS[it.brand] : it.ego ? EGOS[it.ego] : null;
+  if (!p) return it.idP && it.plus < 0 ? '#ff9a9a' : '#e8e8ee';
+  if (!it.idX) return '#bcd4ff';
+  return p.css || (p.elem ? ELEM[p.elem].css : p.res ? ELEM[p.res].css : '#e8e8ee');
 }
-function rollAffix(id, tier) {
-  const A = AFFIXES[id], a = { id, v: A.flag ? 1 : ri(...(tier === 2 ? A.t2 : A.t1)), known: true };
-  if (A.skill) a.skill = pick(Object.keys(STONE));
-  return a;
-}
-export function makeGear(base, rarity = 'common', tier = 1, legend = null) {
-  const it = { uid: 'g' + Math.floor(rand() * 2e9).toString(36), base, rarity, affixes: [], legend, known: rarity === 'common' || rarity === 'magic' };
-  const [lo, hi] = RARITY[rarity].n, n = ri(lo, hi), pool = affixPool(base);
-  const isW = !!GEAR_BASES[base].weapon;
-  let basic = 0;
-  for (let k = 0; k < 40 && it.affixes.length < n && pool.length; k++) {
-    const id = pick(pool);
-    if (it.affixes.some((a) => a.id === id)) continue;
-    if (isW && AFFIXES[id].cat === 'basic') { if (basic) continue; basic++; }
-    it.affixes.push(rollAffix(id, tier));
-  }
-  if (!it.known) for (const a of it.affixes) a.known = false;
-  if (rarity === 'rare') it.rareName = `${pick(RARE_A)} ${pick(RARE_B)}`;
-  if (rarity === 'magic') it.sufFirst = rand() < 0.4;
+export const gearHex = (it) => parseInt(gearCss(it).slice(1, 7), 16) || 0xe8e8ee;
+export const gearTier = (it) => (!it ? 'plain' : it.un ? 'unrand' : it.art ? 'randart' : it.brand || it.ego ? 'prop' : 'plain');
+
+/* ================= 만들기 ================= */
+/** 기본템. o: { plus, brand, ego, known, jt } — 정착지 제작품·시작 장비는 known */
+export function makeGear(base, o = {}) {
+  const it = { uid: uid(), base, plus: o.plus || 0, brand: o.brand || null, ego: o.ego || null, jt: null, jv: 0, je: null, art: null, un: null, idP: !!o.known, idX: !!o.known, worn: 0, hits: 0 };
+  if (GEAR_BASES[base].jewel) rollJewel(it, o.jt);
   return it;
 }
-/** 층(depth 1~12 또는 'boss')에 맞는 무작위 장비 */
-export function rollGear(depth) {
-  const d = depth === 'boss' ? G.floor : depth, tier = d >= 7 ? 2 : 1;
-  const [c, m, r, l] = rarityTable(depth);
-  let rarity = wpick([['common', c], ['magic', m], ['rare', r], ['legend', l]]);
-  if (rarity === 'legend') {
-    const left = Object.keys(LEGENDS).filter((k) => !G.legendsDropped.has(k));
-    if (!left.length) rarity = 'rare';
-    else { const lg = pick(left); G.legendsDropped.add(lg); const it = makeGear(LEGENDS[lg].base, 'legend', tier, lg); return it; }
+function rollJewel(it, jt) {
+  const neck = GEAR_BASES[it.base].slot === 'neck', T = neck ? AMULETS : RINGS;
+  it.jt = jt || pick(Object.keys(T));
+  const R = !neck && RINGS[it.jt];
+  if (R && R.ench) { it.jv = ri(...R.ench); if (it.jv === 0) it.jv = R.ench[1] > 4 ? 5 : 2; }
+  if (it.jt === 'res') it.je = pick(ELEMS);
+  it.idP = it.idX = true; // 장신구는 '정체(종류)'만 모른다
+}
+function rollBrand(base) {
+  const form = GEAR_BASES[base].weapon && WPN(GEAR_BASES[base].weapon).form;
+  return pick(Object.keys(BRANDS).filter((k) => !BRANDS[k].form || BRANDS[k].form === form));
+}
+function rollEgo(base) { const s = GEAR_BASES[base].slot, ok = Object.keys(EGOS).filter((k) => EGOS[k].slots.includes(s)); return ok.length ? pick(ok) : null; }
+/** 무작위 기본템 종류(장신구는 전체의 20%) */
+function rollBase(depth) {
+  if (rand() < 0.2) return rand() < 0.65 ? 'ring' : 'neck';
+  if (rand() < 0.3) return pick(depth >= 2 ? ['sword', 'axe', 'mace', 'hammer', 'dagger', 'spear'] : ['sword', 'mace', 'dagger']);
+  const slot = wpick([['body', 35], ['head', 15], ['cloak', 10], ['hands', 12], ['feet', 12], ['shield', 16]]);
+  if (slot === 'body') return 'body_' + wpick(depth <= 3 ? [['cloth', 35], ['leather', 40], ['chain', 20], ['plate', 5]] : depth <= 8 ? [['cloth', 20], ['leather', 35], ['chain', 30], ['plate', 15]] : [['cloth', 15], ['leather', 25], ['chain', 30], ['plate', 30]]);
+  if (slot === 'head') return pick(['head_cloth', 'head_leather', 'head_chain']);
+  if (slot === 'shield') return rand() < 0.55 ? 'buckler' : 'shield';
+  return { cloak: 'cloak', hands: 'gloves', feet: 'boots' }[slot];
+}
+export function makeRandart(base) {
+  const it = makeGear(base), B = GEAR_BASES[base], n = ri(2, 4), props = [];
+  it.plus = B.jewel ? 0 : ri(-1, 3);
+  for (const id of shuffle(RANDART_PROPS.slice())) {
+    if (props.length >= n) break;
+    if (id === 'brand' && !B.weapon) continue;
+    if (id === 'ego' && (B.weapon || B.jewel || !rollEgo(base))) continue;
+    const p = { id, known: false };
+    if (id === 'dmg') p.v = ri(1, 2); else if (id === 'def') p.v = ri(1, 2); else if (id === 'eva') p.v = ri(3, 6); else if (id === 'maxHp') p.v = ri(3, 6);
+    else if (id === 'res') p.e = pick(ELEMS); else if (id === 'vision') p.v = 1; else if (id === 'cd') p.c = pick(['red', 'purple', 'green']);
+    else if (id === 'brand') p.b = rollBrand(base); else if (id === 'ego') p.g = rollEgo(base);
+    props.push(p);
   }
-  const kind = wpick([['weapon', 22], ['armor', 46], ['off', 8], ['neck', 10], ['ring', 14]]);
-  let base;
-  if (kind === 'weapon') base = pick(d >= 2 ? ['sword', 'axe', 'mace', 'hammer', 'dagger', 'spear'] : ['sword', 'mace', 'dagger']);
-  else if (kind === 'armor') {
-    const mat = wpick(d <= 3 ? [['cloth', 40], ['leather', 40], ['chain', 18], ['plate', 2]] : d <= 8 ? [['cloth', 20], ['leather', 35], ['chain', 30], ['plate', 15]] : [['cloth', 15], ['leather', 25], ['chain', 30], ['plate', 30]]);
-    base = `${pick(['body', 'head', 'hands', 'feet'])}_${mat}`;
-  } else if (kind === 'off') base = pick(['shield', 'shield', 'torch']);
-  else base = kind;
-  return makeGear(base, rarity, tier);
+  let cost = null;
+  if (rand() < 0.4) { const c = pick(RANDART_COSTS); cost = { id: c }; if (c === 'cdUp') cost.c = pick(['red', 'purple', 'green']); }
+  it.art = { name: `${pick(ART_A)} ${pick(ART_B)}`, props, cost };
+  if (B.jewel) { it.jt = null; it.jv = 0; it.je = null; }
+  it.idP = !!B.jewel; it.idX = false;
+  return it;
+}
+export function makeUnrand(id) {
+  const U = UNRANDS[id], it = makeGear(U.base, { plus: U.plus || 0, known: true }); it.un = id; it.jt = null; it.jv = 0; it.je = null;
+  return it;
+}
+/** 층(depth 1~12)에 맞는 무작위 장비. force 'art': 유물 이상(보스·희귀 상자) */
+export function rollGear(depth, force) {
+  const d = depth === 'boss' ? G.floor : depth;
+  let cat = force === 'art' ? (rand() < 0.2 ? 4 : 3) : wpick(dropTable(d).map((w, k) => [k, w]));
+  if (cat === 4) {
+    const seen = new Set(META ? META.unrandsSeen || [] : []), left = Object.keys(UNRANDS).filter((k) => !seen.has(k));
+    if (left.length) { const u = pick(left); if (META) { META.unrandsSeen = [...seen, u]; saveMeta(); } return makeUnrand(u); }
+    cat = 3;
+  }
+  const base = rollBase(d);
+  if (cat === 3) return makeRandart(base);
+  const it = makeGear(base);
+  if (GEAR_BASES[base].jewel) return it;
+  if (cat === 1) it.plus = rand() < 0.8 ? ri(1, 3) : -ri(1, 3);
+  if (cat === 2) { if (GEAR_BASES[base].weapon) it.brand = rollBrand(base); else it.ego = rollEgo(base); if (!it.brand && !it.ego) it.plus = ri(1, 2); else if (rand() < 0.4) it.plus = ri(1, 2); }
+  return it;
 }
 
-/** 정착지 제작품 · 옛 저장본: 'axe+' → 피해 +1 마법 손도끼 */
-export function craftWeapon(id) {
-  const plus = id.endsWith('+'), it = makeGear(plus ? id.slice(0, -1) : id, 'common');
-  if (plus) { it.rarity = 'magic'; it.affixes = [{ id: 'dmg', v: 1, known: true }]; }
-  return it;
-}
-/** 'leather'(+) → 최대 HP 가죽 갑옷, 'bone'(+) → 층마다 보호막 사슬 갑옷 */
+/** 정착지 제작품 · 옛 저장본: 'axe+' → +1 손도끼 */
+export function craftWeapon(id) { const plus = id.endsWith('+'); return makeGear(plus ? id.slice(0, -1) : id, { plus: plus ? 1 : 0, known: true }); }
+/** 'leather'(+) → 가죽 갑옷, 'bone'(+) → 보호 사슬 갑옷(층마다 보호막) */
 export function craftArmor(id) {
   const plus = id.endsWith('+'), k = plus ? id.slice(0, -1) : id;
-  const it = makeGear(k === 'bone' ? 'body_chain' : 'body_leather', 'common');
-  it.rarity = 'magic'; it.affixes = [k === 'bone' ? { id: 'floorShield', v: plus ? 6 : 4, known: true } : { id: 'hp', v: plus ? 9 : 6, known: true }];
-  it.craftName = (k === 'bone' ? '뼈 흉갑' : '가죽 갑옷') + (plus ? '+' : '');
+  return k === 'bone' ? makeGear('body_chain', { ego: 'protect', plus: plus ? 1 : 0, known: true }) : makeGear('body_leather', { plus: plus ? 1 : 0, known: true });
+}
+/** 옛 등급 장비(디아블로식) → 새 형식: 마법 +1, 희귀 +2, 전설 → 같은 이름의 픽다트. 횃불은 사라진다 */
+export function convertOld(old) {
+  if (!old || !old.affixes) return old;
+  const map = { head_plate: 'head_chain', hands_cloth: 'gloves', hands_leather: 'gloves', hands_chain: 'gloves', hands_plate: 'gloves', feet_cloth: 'boots', feet_leather: 'boots', feet_chain: 'boots', feet_plate: 'boots' };
+  if (old.base === 'torch') return null;
+  if (old.legend && UNRANDS[old.legend]) return makeUnrand(old.legend);
+  const base = map[old.base] || old.base; if (!GEAR_BASES[base]) return null;
+  const it = makeGear(base, { plus: GEAR_BASES[base].jewel ? 0 : { magic: 1, rare: 2, legend: 3 }[old.rarity] || 0, known: true });
   return it;
 }
 
-/* ================= 최종 수치 (상한 · 출처) ================= */
+/* ================= 최종 수치 ================= */
+/** 아는 것만 남긴 장비(비교·미리보기용) */
+export function knownView(it) {
+  if (!it || fullyKnown(it)) return it;
+  const v = { ...it };
+  if (!it.idP) v.plus = 0;
+  if (!it.idX) { v.brand = null; v.ego = null; }
+  if (it.art) v.art = { ...it.art, props: it.art.props.filter((p) => p.known), cost: null };
+  if (isJewel(it) && !it.art && !jewelKnown(it)) v.jt = '?';
+  return v;
+}
 export function calcStats(eq) {
-  const s = { maxHp: 0, def: 0, eva: BASE_EVA, block: 0, dmg: 0, crit: 0, acc: 0, reach: 1, wetDmg: 0, weakDmg: 0, bleed: 0, fracPush: false, wallDmg: 0, throwArea: false, potion: 0, autoId: false,
-    redTwice: 0, purpleHeal: 0, greenShield: 0, skillCd: {}, skillDmg: 0, dot: 0, waterEva: 0, burnImm: false, noSlide: false, vision: 0, torchFire: 0, floorShield: 0,
-    res: { fire: 0, bolt: 0, frost: 0, poison: 0 }, elem: { fire: 0, bolt: 0, frost: 0, poison: 0 }, legend: new Set(), src: { eva: [['기본', BASE_EVA]] }, capped: {} };
+  const s = { maxHp: 0, def: 0, eva: BASE_EVA, block: 0, dmg: 0, crit: 0, critMul: 2, acc: 0, reach: 1, vision: 0,
+    res: { fire: 0, frost: 0, bolt: 0, poison: 0 }, brand: null, egos: new Set(), legend: new Set(), colorCd: { red: 0, purple: 0, green: 0 },
+    torchSlow: 0, torchCost: 0, lampBonus: 0, floorShield: 0, thorns: 0, patience: 0, vengeance: 0, insight: false, noSlide: false, wetImm: false, wallDmg: 0, throwRange: 0,
+    seeing: false, regen: false, chainStart: false, reflect: 0, silence: false, bleed: 0, fracPush: false, fracBonus: 0, vamp: false, reso: false,
+    // 예전 옵션 자리(쓰는 곳이 남아 있어 0으로 둔다)
+    skillCd: {}, skillDmg: 0, redTwice: 0, purpleHeal: 0, greenShield: 0, wetDmg: 0, weakDmg: 0, dot: 0, waterEva: 0, burnImm: false, potion: 0, autoId: false, throwArea: false, torchFire: 0, elem: { fire: 0, frost: 0, bolt: 0, poison: 0 },
+    src: { eva: [['기본', BASE_EVA]] }, capped: {} };
   const add = (k, v, lab) => { (s.src[k] ||= []).push([lab, v]); };
+  const brand = (b) => { s.brand = b; if (b === 'blood') s.bleed += 2; if (b === 'shatter') { s.fracPush = true; s.fracBonus = 2; } if (b === 'pierce') s.critMul = 3; if (b === 'vamp') s.vamp = true; if (b === 'reso') s.reso = true; };
+  const ego = (g, lab) => {
+    s.egos.add(g); const E = EGOS[g];
+    if (E.res) { s.res[E.res]++; add('res' + E.res, 1, lab); }
+    if (g === 'thorns') s.thorns = 2; if (g === 'protect') s.floorShield += 4; if (g === 'patience') s.patience = 2; if (g === 'vengeance') s.vengeance = 2;
+    if (g === 'insight') { s.insight = true; s.vision++; add('vision', 1, lab); } if (g === 'waterwalk') { s.noSlide = true; s.wetImm = true; } if (g === 'ember') s.torchSlow += 25; if (g === 'smash') s.wallDmg += 2; if (g === 'throw') s.throwRange += 1;
+  };
   for (const slot of SLOTS) {
     const it = eq && eq[slot]; if (!it) continue;
-    const B = GEAR_BASES[it.base], lab = `${SLOT_NAME[slot]}: ${gearName(it)}`;
-    if (slot === 'off' && B.weapon) continue; // 등에 멘 두 번째 무기는 효과가 없다
-    for (const k of ['def', 'eva', 'block', 'vision', 'torchFire']) if (B[k]) { s[k] += B[k]; add(k, B[k], lab); }
-    if (slot === 'weapon' && B.weapon && WEAPON_TRAIT[B.weapon]) { const T = WEAPON_TRAIT[B.weapon]; if (T.acc) { s.acc += T.acc; add('acc', T.acc, lab); } if (T.crit) { s.crit += T.crit; add('crit', T.crit, lab); } if (T.reach) s.reach = T.reach; }
-    for (const a of it.affixes) {
-      const v = a.v, id = a.id;
-      if (id === 'hp') { s.maxHp += v; add('maxHp', v, lab); }
-      else if (id.endsWith('Dmg') && s.elem[id.slice(0, -3)] != null) { s.elem[id.slice(0, -3)] += v; add(id, v, lab); }
-      else if (id.startsWith('res')) { const k = id.slice(3); s.res[k] += v; add('res' + k, v, lab); }
-      else if (id === 'skillCd') { const k = stoneOfSkill(a.skill); s.skillCd[k] = (s.skillCd[k] || 0) + 1; add('skillCd', k, lab); }
-      else if (typeof s[id] === 'boolean') { s[id] = true; add(id, 1, lab); }
-      else if (typeof s[id] === 'number') { s[id] += v; add(id, v, lab); }
+    const B = GEAR_BASES[it.base]; if (!B) continue;
+    const lab = `${SLOT_NAME[slot]}: ${gearName(it)}`;
+    for (const k of ['def', 'eva', 'block']) if (B[k]) { s[k] += B[k]; add(k, B[k], lab); }
+    if (B.weapon && slot === 'weapon') {
+      const T = WEAPON_TRAIT[B.weapon]; if (T) { if (T.acc) { s.acc += T.acc; add('acc', T.acc, lab); } if (T.crit) { s.crit += T.crit; add('crit', T.crit, lab); } if (T.reach) s.reach = T.reach; }
+      if (it.plus) { s.dmg += it.plus; add('dmg', it.plus, lab); s.acc += it.plus * 2; add('acc', it.plus * 2, lab); }
+    } else if (!B.jewel && it.plus) { s.def += it.plus; add('def', it.plus, lab); }
+    if (it.brand) brand(it.brand);
+    if (it.ego) ego(it.ego, lab);
+    if (B.jewel && it.jt && it.jt !== '?') {
+      if (B.slot === 'neck') { const k = it.jt; if (k === 'memory') { s.torchSlow += 30; s.lampBonus += 20; } if (k === 'regen') s.regen = true; if (k === 'chain') s.chainStart = true; if (k === 'reflect') s.reflect += 20; if (k === 'silence') s.silence = true; }
+      else if (RINGS[it.jt]) {
+        const k = it.jt, v = it.jv;
+        if (k === 'prot') { s.def += v; add('def', v, lab); } if (k === 'eva') { s.eva += v; add('eva', v, lab); } if (k === 'str') { s.dmg += v; add('dmg', v, lab); }
+        if (k === 'vit') { s.maxHp += 5; add('maxHp', 5, lab); } if (k === 'res' && it.je) { s.res[it.je]++; add('res' + it.je, 1, lab); } if (k === 'see') s.seeing = true;
+        if (RINGS[k].color) s.colorCd[RINGS[k].color]--;
+      }
     }
-    if (it.legend) s.legend.add(it.legend);
+    if (it.art) {
+      for (const p of it.art.props) {
+        if (p.id === 'dmg') { s.dmg += p.v; add('dmg', p.v, lab); } else if (p.id === 'def') { s.def += p.v; add('def', p.v, lab); } else if (p.id === 'eva') { s.eva += p.v; add('eva', p.v, lab); }
+        else if (p.id === 'maxHp') { s.maxHp += p.v; add('maxHp', p.v, lab); } else if (p.id === 'res') { s.res[p.e]++; add('res' + p.e, 1, lab); } else if (p.id === 'vision') { s.vision += p.v; add('vision', p.v, lab); }
+        else if (p.id === 'cd') s.colorCd[p.c]--; else if (p.id === 'brand' && !s.brand) brand(p.b); else if (p.id === 'ego') ego(p.g, lab);
+      }
+      const c = it.art.cost;
+      if (c) { if (c.id === 'maxHp') { s.maxHp -= 3; add('maxHp', -3, lab + ' (대가)'); } else if (c.id === 'torch') s.torchCost += 25; else if (c.id === 'vision') { s.vision -= 1; add('vision', -1, lab + ' (대가)'); } else if (c.id === 'eva') { s.eva -= 5; add('eva', -5, lab + ' (대가)'); } else if (c.id === 'cdUp') s.colorCd[c.c]++; }
+    }
+    if (it.un) s.legend.add(it.un);
   }
-  const cap = (k, max, min = -Infinity) => { if (s[k] > max) { s[k] = max; s.capped[k] = true; } if (s[k] < min) s[k] = min; };
-  cap('def', CAPS.def, 0); cap('eva', CAPS.eva, 0); cap('block', CAPS.block, 0); cap('maxHp', CAPS.maxHp, 0);
-  for (const k in s.res) if (s.res[k] > CAPS.res) { s.res[k] = CAPS.res; s.capped['res' + k] = true; }
+  const cap = (k, max) => { if (s[k] > max) { s[k] = max; s.capped[k] = true; } if (s[k] < 0) s[k] = 0; };
+  cap('def', CAPS.def); cap('eva', CAPS.eva); cap('block', CAPS.block);
+  for (const k in s.res) s.res[k] = clampRes(s.res[k]);
   return s;
 }
-/** 비교용 점수(대략): 칸별로 수치를 한 줄로 모은다 */
+/** 비교용 점수(대략) — 아는 것만 */
 export function gearScore(it) {
-  if (!it) return 0; const B = GEAR_BASES[it.base]; let v = (B.def || 0) * 3 + (B.eva || 0) * 0.3 + (B.block || 0) * 0.15 + (B.vision || 0) * 2;
-  if (B.weapon) { const w = weaponOf(it); v += (w.dmg[0] + w.dmg[1]) * 0.8; }
-  for (const a of it.affixes) if (a.known) v += a.id === 'hp' ? a.v * 0.6 : a.id === 'def' ? a.v * 3 : AFFIXES[a.id].flag ? 2.5 : a.v >= 5 ? a.v * 0.25 : a.v * 1.5;
-  return v + (it.legend ? 6 : 0) + RARITY_ORDER.indexOf(it.rarity) * 0.5;
+  if (!it) return 0; const v0 = knownView(it), B = GEAR_BASES[it.base];
+  let v = (B.def || 0) * 3 + (B.eva || 0) * 0.3 + (B.block || 0) * 0.15;
+  if (B.weapon) { const w = weaponOf(it); v += (w.dmg[0] + w.dmg[1]) * 0.8 + v0.plus * 2; } else if (!B.jewel) v += v0.plus * 3;
+  if (v0.brand || v0.ego) v += 3; if (v0.art) v += v0.art.props.length * 2; if (it.un) v += 8;
+  return v;
 }
 
-/* ================= 장착 · 해제 (던전: G, 정착지: 모험가) ================= */
-/** 지금 장비를 가진 쪽: 던전에서는 G, 정착지에서는 META.hero */
+/* ================= 장착 · 해제 (던전: G, 정착지: 등불지기) ================= */
 export function holder() {
   if (Game.mode === 'town' && META && META.hero) { const h = META.hero; return { eq: h.eq, bag: h.bag, base: h.base, unit: h, town: true }; }
   return { eq: G.eq, bag: G.bag, base: G.heroBase, unit: G.player, town: false };
@@ -128,26 +238,26 @@ export function holder() {
 export function refreshStats() {
   const H = holder(); if (!H.eq) return;
   const s = calcStats(H.eq), mx = H.base + s.maxHp, u = H.unit;
-  if (!H.town) G.ps = s;
+  if (!H.town) { G.ps = s; if (s.insight && G.weakKnown) for (const c of ['beast', 'armor', 'bone']) G.weakKnown[c] = true; }
   if (u && u.max !== mx) { u.hp = Math.max(1, Math.min(mx, u.hp + Math.max(0, mx - u.max))); u.max = mx; if (!H.town) emit('hp', { id: 0, hp: u.hp, max: u.max }); }
   return s;
 }
 const eqSnap = (H) => Object.fromEntries(SLOTS.map((k) => [k, H.eq[k] ? { ...H.eq[k] } : null]));
-function revealOne(it) {
-  if (it.known) return null;
-  const a = it.affixes.find((q) => !q.known); if (a) a.known = true;
-  if (it.affixes.every((q) => q.known)) it.known = true;
-  return a;
+/** 다 드러낸다(확인 두루마리) */
+export function revealAll(it) {
+  if (!it || fullyKnown(it)) return false;
+  it.idP = it.idX = true; if (it.art) for (const p of it.art.props) p.known = true; knowJewel(it);
+  return true;
 }
-export function revealAll(it) { if (!it || it.known) return false; for (const a of it.affixes) a.known = true; it.known = true; return true; }
 export function equip(bagIdx, slot) {
   const H = holder(), it = H.bag[bagIdx]; if (!it || !fitsSlot(it, slot)) return false;
   const old = H.eq[slot]; H.bag.splice(bagIdx, 1); if (old) H.bag.push(old);
   H.eq[slot] = it;
-  const r = revealOne(it);
+  let note = '';
+  if (isJewel(it) && !it.art && !jewelKnown(it) && GEAR_BASES[it.base].slot === 'ring' && RINGS[it.jt] && RINGS[it.jt].obvious) { knowJewel(it); note = ` — ${gearName(it)}였다!`; }
   refreshStats();
   emit('equip', { slot, eq: eqSnap(H) });
-  log(`${gearName(it)} 장착${r ? ` — 옵션 하나가 드러났다: ${affixLine(r)}` : ''}`, it.legend ? 'syn' : 'good');
+  log(`${gearName(it)} 장착${note}`, it.un || it.art ? 'syn' : 'good');
   return true;
 }
 export function unequip(slot) {
@@ -157,12 +267,13 @@ export function unequip(slot) {
   emit('equip', { slot, eq: eqSnap(H) }); log(`${gearName(it)} 해제`, 'info');
   return true;
 }
-/** 무기와 보조(두 번째 무기)를 맞바꾼다 — 턴을 쓰지 않는다 */
-export function swapHands() {
-  const H = holder(); if (!isWeapon(H.eq.off)) return false;
-  [H.eq.weapon, H.eq.off] = [H.eq.off, H.eq.weapon]; refreshStats();
-  emit('equip', { slot: 'weapon', eq: eqSnap(H) });
-  return true;
+/** 무기 교체: 가방의 마지막으로 쓴 다른 무기(없으면 첫 무기)와 바꾼다 */
+export function swapWeapon() {
+  const H = holder(), cur = H.eq.weapon;
+  let k = H.bag.findIndex((it) => isWeapon(it) && it.uid === G.lastWeapon); if (k < 0) k = H.bag.findIndex(isWeapon);
+  if (k < 0) return false;
+  if (cur) G.lastWeapon = cur.uid;
+  return equip(k, 'weapon');
 }
 export function dropGear(bagIdx) {
   const H = holder(), it = H.bag[bagIdx]; if (!it) return false;
@@ -177,9 +288,46 @@ export function pickGear() {
   if (G.bag.length >= BAG_MAX) { log('가방이 가득 찼다', 'bad'); return false; }
   G.gear.delete(i); G.bag.push(it);
   emit('gears', [...G.gear.entries()]); emit('pickup', { x: p.x, y: p.y });
-  log(`${gearName(it)} 획득 — 🛡 장비 창에서 비교`, it.legend ? 'syn' : 'good');
+  log(`${gearName(it)} 획득`, it.un || it.art ? 'syn' : 'good');
+  if (it.un) meetRelic(it);
   return true;
 }
+/** 픽다트: 주인의 이름을 기억한다(기억할 이름들 · 모닥불 밝기 +1). 남겨진 유품이면 목록에서 지운다 */
+function meetRelic(it) {
+  const U = UNRANDS[it.un], who = it.owner || U.owner;
+  emit('relic', { name: U.name, story: U.story, owner: who });
+  if (META && who) { META.rememberedKeepers ||= []; if (!META.rememberedKeepers.includes(who)) { META.rememberedKeepers.push(who); log(`${U.name} — ${who}의 유품. 기억할 이름이 늘었다`, 'syn'); } }
+  if (META && META.relics) META.relics = META.relics.filter((r) => r.it.uid !== it.uid);
+  saveMeta();
+}
+/** 입고 지낸 시간·적중으로 정체가 드러난다: 무기 10번 적중, 방어구 30턴, 랜다트는 30턴마다 하나 */
+export function tickWorn() {
+  if (!G.eq) return;
+  let changed = false;
+  for (const slot of SLOTS) {
+    const it = G.eq[slot]; if (!it || fullyKnown(it) || (isJewel(it) && !it.art)) continue;
+    it.worn = (it.worn || 0) + 1;
+    if (it.art) { if (it.worn % 30 === 0) { const p = it.art.props.find((q) => !q.known); if (p) { p.known = true; it.idP = true; changed = true; log(`${gearName(it)} — 속성 하나가 드러났다`, 'syn'); } } continue; }
+    if (!isWeapon(it) && it.worn >= 30) { it.idP = it.idX = true; changed = true; log(`입고 지내다 보니 알겠다: ${gearName(it)}`, 'syn'); }
+  }
+  if (changed) { refreshStats(); emit('equip', { slot: 'body', eq: eqSnap(holder()) }); }
+}
+export function weaponUsed() {
+  const it = G.eq && G.eq.weapon; if (!it || fullyKnown(it) || it.art) return;
+  it.hits = (it.hits || 0) + 1;
+  if (it.hits >= 10) { it.idP = it.idX = true; refreshStats(); log(`손에 익었다: ${gearName(it)}`, 'syn'); emit('equip', { slot: 'weapon', eq: eqSnap(holder()) }); }
+}
+/** 두루마리로 하나를 확인 */
+export function identifyItem(it) { const r = revealAll(it); if (r) { refreshStats(); log(`확인: ${gearName(it)}`, 'syn'); } return r; }
+/** 강화 두루마리: kind 'w'(무기) | 'a'(방어구). 랜다트·픽다트·장신구는 안 된다 */
+export const canEnchant = (it, kind) => !!it && !it.art && !it.un && !isJewel(it) && (kind === 'w' ? isWeapon(it) : !isWeapon(it)) && it.plus < plusMax(it);
+export function enchantItem(it, kind) {
+  if (!canEnchant(it, kind)) return false;
+  it.plus++; it.idP = true; refreshStats();
+  emit('enchant', { uid: it.uid }); log(`${gearName(it)} — 강화!`, 'syn');
+  return true;
+}
+/** 모두 드러낸다(한 층 내려갈 때 쓰지 않는다 — 옛 경로 호환) */
 export function identifyGear() {
   let n = 0; for (const it of [...SLOTS.map((k) => G.eq[k]), ...G.bag]) if (revealAll(it)) n++;
   refreshStats(); return n;
@@ -196,18 +344,32 @@ export function placeGear(it, x, y, from) {
   const s = gearSpot(x, y); if (!s) return;
   G.gear.set(I(s[0], s[1]), it);
   emit('gearDrop', { x: s[0], y: s[1], from: from || [x, y], it: { ...it } });
-  if (it.legend) log(`전설 장비가 떨어졌다!`, 'legend');
+  if (it.un) log('금빛이 번진다 — 옛 등불지기의 유품!', 'legend'); else if (it.art) log('무지갯빛 — 유물이다!', 'syn');
 }
+/** 몬스터 5%(갑옷 고블린·돌진형 15%), 보스 1개 확정(유물 이상 30%) */
 export function dropGearFrom(e) {
-  if (e.boss) { for (let k = 0; k < 2; k++) placeGear(rollGear('boss'), e.x, e.y); return; }
+  if (e.boss) { placeGear(rollGear(G.floor, rand() < 0.3 ? 'art' : null), e.x, e.y); return; }
   const chance = GEAR_DROP[kindOf(e)] ?? GEAR_DROP.default;
   if (rand() * 100 < chance) placeGear(rollGear(G.floor), e.x, e.y);
+}
+/** 바닥의 장비 1~2개 + 죽은 등불지기가 남긴 유품 */
+export function placeFloorGear(rooms, tile, start) {
+  const n = ri(1, 2);
+  for (let k = 0, placed = 0; k < 200 && placed < n; k++) {
+    const r = rooms[ri(0, rooms.length - 1)], x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1), i = I(x, y);
+    if (tile[i] !== T_FLOOR || G.items.has(i) || G.mats.has(i) || G.gear.has(i) || Math.max(Math.abs(x - start.x), Math.abs(y - start.y)) < 3) continue;
+    G.gear.set(i, rollGear(G.floor)); placed++;
+  }
+  for (const rel of (META && META.relics) || []) {
+    if (rel.zone !== G.zone || rel.zf !== G.zf) continue;
+    for (let k = 0; k < 200; k++) { const r = rooms[ri(1, rooms.length - 1)], x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1), i = I(x, y); if (tile[i] !== T_FLOOR || G.gear.has(i)) continue; G.gear.set(i, rel.it); break; }
+  }
 }
 export function openChest(x, y) {
   const i = I(x, y), c = G.chests.get(i); if (!c || c.open) return false;
   c.open = true; emit('chest', { x, y });
   G.chests.delete(i);
-  let it = rollGear(G.floor + (c.rare ? 3 : 0)); if (c.rare && it.rarity === 'common') it = rollGear(G.floor + 6);
+  let it = rollGear(G.floor + (c.rare ? 3 : 0)); if (c.rare && gearTier(it) === 'plain') it = rollGear(G.floor + 6, rand() < 0.3 ? 'art' : null);
   placeGear(it, x, y); G.chests.set(i, c);
   log('상자를 열었다!', 'good');
   // 귀환 두루마리: 구역마다 최대 1개, 상자에서만 10%
@@ -215,13 +377,45 @@ export function openChest(x, y) {
   if (rand() < 0.08) { addLoot('마석', 1); emit('loot', { x, y, m: '마석' }); log('🔮 마석 한 조각', 'good'); }
   return true;
 }
-/** 층마다 상자 1~2개(+extra) */
+/** 층마다 상자 0~1개(+extra), 장비 확정 */
 export function placeChests(rooms, tile, extra = 0) {
   G.chests = new Map();
-  const n = ri(1, 2) + extra;
+  const n = ri(0, 1) + extra;
   for (let k = 0, placed = 0; k < 200 && placed < n; k++) {
     const r = rooms[ri(1, rooms.length - 1)], x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1), i = I(x, y);
     if (tile[i] !== T_FLOOR || G.items.has(i) || G.mats.has(i) || G.gear.has(i) || G.chests.has(i)) continue;
     G.chests.set(i, { open: false }); placed++;
   }
+}
+/** 죽을 때: 입고 있던 픽다트는 그 층에 남는다 */
+export function leaveRelics() {
+  if (!META || !G.eq) return;
+  META.relics ||= [];
+  for (const slot of SLOTS) { const it = G.eq[slot]; if (it && it.un) META.relics.push({ zone: G.zone, zf: G.zf, it }); }
+}
+
+/* ================= 시작 장비 · 저장 옮기기 ================= */
+export const emptyEq = () => Object.fromEntries(SLOTS.map((k) => [k, null]));
+/** 새 등불지기: 무기 하나 + 천옷(아는 +0), 두 번째 무기는 가방에(공격 길게 누르기로 교체) */
+export function starterKit(starts) {
+  const eq = emptyEq(); eq.weapon = makeGear(starts[0], { known: true }); eq.body = makeGear('body_cloth', { known: true });
+  return { eq, bag: [makeGear(starts[1], { known: true })] };
+}
+/** 저장 v5 → v6: 디아블로식 장비 → DCSS식. 보조 칸의 무기는 가방으로, 방패는 방패 칸으로, 횃불 장비는 사라진다 */
+export function migrateGear(M) {
+  const conv = (list) => (list || []).map(convertOld).filter(Boolean);
+  M.gear = conv(M.gear);
+  M.unrandsSeen = [...new Set([...(M.unrandsSeen || []), ...((M.hero && M.hero.legends) || [])])];
+  M.relics ||= [];
+  const h = M.hero; if (!h) return;
+  const old = h.eq || {}, eq = emptyEq(), bag = conv(h.bag);
+  for (const [k, it0] of Object.entries(old)) {
+    const it = convertOld(it0); if (!it) continue;
+    if (k === 'off') { if (isWeapon(it)) bag.push(it); else if (fitsSlot(it, 'shield')) eq.shield = it; else bag.push(it); continue; }
+    const k2 = SLOTS.includes(k) && fitsSlot(it, k) ? k : SLOTS.find((q) => fitsSlot(it, q) && !eq[q]); // 칸이 바뀐 것(망토 등)은 제 칸으로
+    if (k2 && !eq[k2]) eq[k2] = it; else bag.push(it);
+  }
+  h.eq = eq; h.bag = bag.slice(0, BAG_MAX); delete h.legends;
+  h.jlook ||= newJewelLook(); h.jknown ||= {};
+  for (const it of [...Object.values(eq), ...bag, ...M.gear]) if (it && isJewel(it) && it.jt && !it.art && !it.un) h.jknown[jkey(it)] = true;
 }

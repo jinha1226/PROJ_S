@@ -1,18 +1,19 @@
 import { GEAR_BASES } from '../data/gear.js';
 import { APPEAR, ITEMS } from '../data/items.js';
+import { LEVEL_XP } from '../data/stones.js';
 import { BLD, CRAFT_B, HAIRS, HERO_NAMES, JOBS, JOB_CLOTH, NAMES, RECIPES, SKINS, TRAITS, adj } from '../data/town.js';
-import { ARMORS, FORMS, WPN } from '../data/weapons.js';
+import { FORMS, WPN } from '../data/weapons.js';
 import { pick, rand, ri, shuffle } from '../util/rng.js';
 import { jo } from '../util/text.js';
-import { calcStats, craftArmor, craftWeapon, makeGear } from './gear.js';
+import { calcStats, craftArmor, craftWeapon, fullyKnown, gearName, makeGear, migrateGear, newJewelLook, revealAll, starterKit } from './gear.js';
 import { ageVisitors, rollVisitors } from './visitors.js';
 
 export let META = null;
 
 export function defaultMeta() {
-  META = { v: 5, gen: 0, visits: 0, cleared: [false, false, false, false], npcs: [], newNpcs: [], buildings: { plaza: { shown: true }, gate: { shown: true }, altar: { shown: true }, storage: { shown: true }, forge: { shown: true } },
+  META = { v: 6, gen: 0, visits: 0, cleared: [false, false, false, false], npcs: [], newNpcs: [], buildings: { plaza: { shown: true }, gate: { shown: true }, altar: { shown: true }, storage: { shown: true }, forge: { shown: true } },
     mats: { 약초: 2, 가죽: 1, 광석: 2 }, items: { heal: 1 }, gear: [], recipes: {}, hero: null, fallen: [], closed: {}, buff: null, ending: null,
-    lit: [false, false, false, false], visitors: [], lore: [], glowMods: [], rememberedKeepers: [], needSuccessor: false, watcher: null };
+    lit: [false, false, false, false], visitors: [], lore: [], glowMods: [], rememberedKeepers: [], needSuccessor: false, watcher: null, unrandsSeen: [], relics: [] };
   const k = makeNpc('keeper'), b = makeNpc('blacksmith'); META.npcs.push(k); initRel(k); META.npcs.push(b); initRel(b);
   return META;
 }
@@ -25,6 +26,7 @@ function migrateMeta(M) {
     Object.assign(M, { lit: M.cleared.slice(), visitors: [], lore: [], glowMods: [], needSuccessor: !M.hero && M.fallen.length > 0 && M.npcs.length > 0, watcher: null, ending: M.ending ? 'dawn' : null });
     M.v = 5;
   }
+  if (M.v < 6) { migrateGear(M); if (M.hero) { const n = Math.max(1, M.hero.slots.filter((q) => q.stone).length); M.hero.level = n; M.hero.xp = LEVEL_XP[n - 1]; } M.v = 6; }
   M.rememberedKeepers ||= [];
   if (M.hero) { M.hero.torch ??= 100; M.hero.look ||= {}; if (!M.hero.look.ember_jar) M.hero.look.ember_jar = { name: '불씨 단지', color: 0xffc45c }; M.hero.known ||= {}; M.hero.known.ember_jar = true; }
 }
@@ -77,8 +79,8 @@ export function newHero(from) {
   const look = {};
   for (const cat of ['potion', 'scroll', 'throw']) { const looks = shuffle(APPEAR[cat].slice()); Object.keys(ITEMS).filter((k) => ITEMS[k].cat === cat).forEach((k, j) => { look[k] = { name: looks[j][0], color: looks[j][1] }; }); }
   let base = 30 + Math.min(15, Math.max(0, META.npcs.length - 2) * 2); const starts = shuffle(['sword', 'mace', 'dagger']);
-  const eq = { weapon: makeGear(starts[0]), off: makeGear(starts[1]), head: null, body: makeGear('body_cloth'), hands: null, feet: null, neck: null, ring1: null, ring2: null };
-  const h = { name: from ? from.name : pick(HERO_NAMES), gen: META.gen, base, max: base, hp: base, torch: 100, inv: [], eq, bag: [], slots: Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 })), sbag: [], sbagMax: 3, weakKnown: {}, known: { recall: true, ember_jar: true }, look, job: from ? from.job : null, npcLook: from ? from.look : null, perk: null };
+  const { eq, bag } = starterKit(starts);
+  const h = { level: 1, xp: 0, name: from ? from.name : pick(HERO_NAMES), gen: META.gen, base, max: base, hp: base, torch: 100, inv: [], eq, bag, jlook: newJewelLook(), jknown: {}, slots: Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 })), sbag: [], sbagMax: 3, weakKnown: {}, known: { recall: true, ember_jar: true }, look, job: from ? from.job : null, npcLook: from ? from.look : null, perk: null };
   const perk = from ? dominant(from) : null;
   if (perk && ['H+', 'H-', 'E+', 'E-', 'X+', 'A+', 'C+', 'O+'].includes(perk)) h.perk = perk;
   if (h.perk === 'H+') h.sbagMax = 4;
@@ -146,7 +148,7 @@ export function genEvents(out, r) {
 /** 다음 귀환까지 유지되는 밝기 증감 */
 export function glowMod(v, why) { META.glowMods.push({ v, why }); }
 
-export function recipeName(q) { return q.out ? `${ITEMS[q.out].name}${q.n > 1 ? ' ×' + q.n : ''}` : q.weapon ? `${WPN(q.weapon).name} (${FORMS[WPN(q.weapon).form].name} ${WPN(q.weapon).dmg.join('–')})` : q.armor ? `${ARMORS[q.armor].name} (${ARMORS[q.armor].desc})` : q.gear ? `${GEAR_BASES[q.gear].name} (${q.gear === 'shield' ? '방어 +1, 막기 15%' : '시야 +1, 붙은 적을 칠 때 불 1'})` : '든든한 한 끼 (다음 출발 보호막 +6)'; }
+export function recipeName(q) { return q.out ? `${ITEMS[q.out].name}${q.n > 1 ? ' ×' + q.n : ''}` : q.weapon ? `${WPN(q.weapon).name} (${FORMS[WPN(q.weapon).form].name} ${WPN(q.weapon).dmg.join('–')})` : q.armor ? (q.armor === 'bone' ? '보호 사슬 갑옷 (방어 4, 층마다 보호막 4)' : '가죽 갑옷 (방어 2)') : q.gear ? `${GEAR_BASES[q.gear].name} (방어 ${GEAR_BASES[q.gear].def}${GEAR_BASES[q.gear].block ? `, 막기 ${GEAR_BASES[q.gear].block}%` : ''})` : q.enhance ? '장비 강화 +1 (창고의 장비 하나)' : '든든한 한 끼 (다음 출발 보호막 +6)'; }
 
 export function processReturn(r) {
   META.visits++; META.closed = {}; META.glowMods = [];
@@ -165,6 +167,9 @@ export function processReturn(r) {
   if (r.reason === 'boss' && META.hero && META.hero.perkHp) { const h = META.hero; h.base -= h.perkHp; h.max -= h.perkHp; h.hp = Math.min(h.hp, h.max); h.perkHp = 0; }
   if (out.shard === 4 && META.ending !== 'dawn') { META.ending = 'dawn'; out.ending = true; }
   if (real) { out.left = ageVisitors(); out.visitors = rollVisitors(); }
+  // 학자는 귀환할 때마다 창고의 미확인 장비 하나를 확인해 준다
+  const sch = META.npcs.find((n) => n.job === 'scholar'), unk = real && sch && META.gear.find((g) => !fullyKnown(g));
+  if (unk) { revealAll(unk); out.events.push({ icon: '📜', text: `${jo(sch.name, '이가')} 창고의 장비를 살펴 정체를 알아냈다: ${gearName(unk)}` }); }
   if (r.reason === 'death') { if (!META.npcs.length) out.dark = true; else META.needSuccessor = true; }
   return out;
 }
