@@ -1,12 +1,13 @@
 import * as THREE from 'three';
+import { G } from '../core/state.js';
 import { BRANDS, EGOS, ELEM, GEAR_BASES, MAT_COLOR, SLOTS, weaponId } from '../data/gear.js';
 import { COLORS } from '../data/stones.js';
 import { torchTier } from '../data/torch.js';
 import { WEAPONS } from '../data/weapons.js';
-import { G } from '../core/state.js';
 import { SKIN, _w } from './common.js';
 import * as K from './diorama.js';
 import { GLOW_TEX, GRIP2 } from './dolls.js';
+import { hatParts, headParts } from './heads.js';
 import { View } from './view.js';
 
 /* ---------- 주인공 인형: 입은 장비가 모양을 바꾼다 (docs/설계_아이템_장비.md §11) ---------- */
@@ -14,6 +15,7 @@ const THICK = { cloth: 1, leather: 1.04, chain: 1.08, plate: 1.15 };
 const LIMB = { cloth: 1.05, leather: 1.12, chain: 1.18, plate: 1.28 };
 /** 테두리광: 속성 = 원소 색 기운, 랜다트 = 보랏빛, 픽다트 = 금빛 (등급 색 광택은 없다) */
 const GLOW = { randart: [0.1, 0.03, 0.14], unrand: [0.16, 0.1, 0] };
+const HAIR = 0x6e4a30;
 const NECK_GEM = { memory: 0xffd070, regen: 0x6ae08a, chain: 0xb45aff, reflect: 0xdfe8f0, silence: 0x6a9aff };
 
 export function heroSpec(eq = {}) {
@@ -25,13 +27,6 @@ export function heroSpec(eq = {}) {
   const handCol = hands ? MAT_COLOR[hands.mat] : SKIN, hs = hands ? LIMB[hands.mat] : 1;
   const footCol = feet ? MAT_COLOR[feet.mat] : 0x6b3f25, fs = feet ? LIMB[feet.mat] : 1;
   const wid = eq.weapon && weaponId(eq.weapon), two = !!(wid && WEAPONS[wid]?.hands === 2); // 양손 무기: 왼손도 자루를 쥐고 횃불은 허리에
-  const eyes = [
-    { s: 'sphere', p: [-0.087, 0.765, 0.27], k: [0.052, 0.068, 0.023], c: 0xfff8e9, outline: false },
-    { s: 'sphere', p: [0.087, 0.765, 0.27], k: [0.052, 0.068, 0.023], c: 0xfff8e9, outline: false },
-    { s: 'sphere', p: [-0.08, 0.758, 0.29], k: [0.027, 0.047, 0.014], c: 0x3b4b40, outline: false },
-    { s: 'sphere', p: [0.094, 0.758, 0.29], k: [0.027, 0.047, 0.014], c: 0x3b4b40, outline: false },
-    { s: 'sphere', p: [-0.068, 0.782, 0.302], k: 0.011, c: 0xffffff, outline: false },
-    { s: 'sphere', p: [0.106, 0.782, 0.302], k: 0.011, c: 0xffffff, outline: false }];
   // 몸: 단면을 돌린 한 덩어리 겉옷(아래 주름) + 굽은 팔·다리 관 — 도형을 붙인 티가 덜 나게 (몸통 재질은 칠하기로)
   const mat = body ? body.mat : 'cloth', T = th, sleeve = mat === 'plate' ? 0xc8d2de : coatCol;
   const coatPaint = [{ c: shirtCol, a: 0.62, vee: true, y0: 0.3, y1: 0.54 }]; // 앞섶(V)
@@ -54,13 +49,6 @@ export function heroSpec(eq = {}) {
     { s: 'sphere', p: [-0.28, 0.335, 0.055], k: 0.068 * hs, c: handCol },
     ...(two ? [...arm(1, [[0.18 * T, 0.465, 0], [0.245 * T, 0.38, 0.07], [0.215, 0.31, 0.12]]), { s: 'cyl', p: [0.24, 0.28, 0.1], r: [0.3, 0, -0.5], k: [0.024, 0.22, 0.024], c: 0x5a3a22 }, { s: 'cyl', p: [0.29, 0.37, 0.125], k: [0.042, 0.04, 0.042], c: 0x3a2a1a }]
       : [...arm(1, [[0.18 * T, 0.465, 0], [0.265 * T, 0.43, 0.04], [0.28, 0.415, 0.07]]), { s: 'sphere', p: [0.28, 0.4, 0.07], k: 0.07 * hs, c: handCol }, { s: 'cyl', p: [0.31, 0.5, 0.09], r: [0.15, 0, -0.15], k: [0.026, 0.32, 0.026], c: 0x5a3a22 }, { s: 'cyl', p: [0.33, 0.64, 0.1], top: 1.15, bot: 0.8, k: [0.048, 0.06, 0.048], c: 0x3a2a1a }]),
-    { s: 'sphere', p: [0, 0.76, 0.025], k: [0.27, 0.275, 0.255], c: SKIN },
-    { s: 'sphere', p: [-0.266, 0.725, 0.04], k: [0.054, 0.075, 0.035], c: SKIN },
-    { s: 'sphere', p: [0.266, 0.725, 0.04], k: [0.054, 0.075, 0.035], c: SKIN },
-    ...eyes,
-    { s: 'sphere', p: [0, 0.694, 0.284], k: [0.026, 0.025, 0.018], c: 0xe7b48e, outline: false },
-    { s: 'sphere', p: [-0.165, 0.695, 0.218], k: [0.036, 0.018, 0.014], c: 0xd9a698, outline: false },
-    { s: 'sphere', p: [0.165, 0.695, 0.218], k: [0.036, 0.018, 0.014], c: 0xd9a698, outline: false },
   ];
   // 여행 장비: 어깨끈 + 허리 주머니(천·가죽)
   if (mat === 'cloth' || mat === 'leather') parts.push(
@@ -71,18 +59,12 @@ export function heroSpec(eq = {}) {
   if (mat === 'plate') for (const sx of [-1, 1]) parts.push({ s: 'lathe', p: [0.19 * sx * T, 0.44, 0], r: [0, 0, -0.35 * sx], pts: [[0, 0.075], [0.07, 0.07], [0.11, 0.035], [0.12, 0], [0.105, -0.01]], seg: 16, c: 0xe8eef6, shade: 0.15 });
   // 머리
   const legendHead = eq.head && eq.head.un === 'namelessHelm';
-  if (!head || legendHead) parts.push(
-    { s: 'sphere', p: [0, 0.875, -0.045], k: [0.292, 0.208, 0.278], c: 0x664630 },
-    { s: 'sphere', p: [-0.225, 0.77, 0.045], k: [0.077, 0.18, 0.12], c: 0x664630 },
-    { s: 'sphere', p: [0.225, 0.77, 0.045], k: [0.077, 0.18, 0.12], c: 0x664630 },
-    { s: 'cone', p: [-0.128, 0.882, 0.222], r: [0, 0, 2.85], k: [0.078, 0.16, 0.065], c: 0x795237 },
-    { s: 'cone', p: [0.015, 0.893, 0.244], r: [0, 0, 3.3], k: [0.083, 0.19, 0.068], c: 0x795237 },
-    { s: 'cone', p: [0.14, 0.895, 0.215], r: [0, 0, 3.55], k: [0.075, 0.15, 0.064], c: 0x664630 },
-  );
+  // 얼굴 · 머리 모양(모자를 쓰면 옆·뒷머리만, 투구·두건이면 옆머리만)
+  parts.push(...headParts({ skin: SKIN, hair: HAIR, eye: 0x3b4b40, style: 'short', cover: !head || legendHead ? 0 : head.mat === 'leather' ? 1 : 2 }));
   if (legendHead) parts.push({ s: 'cyl', p: [0, 0.95, 0], k: [0.2, 0.08, 0.2], c: 0xffc83a }, ...[0, 1, 2, 3, 4].map((k) => ({ s: 'cone', p: [Math.cos(k * 1.2566) * 0.17, 1.05, Math.sin(k * 1.2566) * 0.17], k: [0.04, 0.12, 0.04], c: 0xffd84a })));
-  else if (head?.mat === 'cloth') parts.push({ s: 'sphere', p: [0, 0.82, -0.04], k: [0.3, 0.27, 0.3], c: MAT_COLOR.cloth }, { s: 'cone', p: [0, 1.02, -0.16], r: [-0.6, 0, 0], k: [0.08, 0.22, 0.08], c: MAT_COLOR.cloth });
-  else if (head?.mat === 'leather') parts.push({ s: 'cyl', p: [0, 0.88, 0], k: [0.38, 0.03, 0.38], c: 0x7a4a28 }, { s: 'sphere', p: [0, 0.93, -0.02], k: [0.24, 0.14, 0.24], c: 0x9a6a3a });
-  else if (head) parts.push({ s: 'sphere', p: [0, 0.86, -0.01], k: [0.29, 0.21, 0.29], c: MAT_COLOR[head.mat] }, { s: 'box', p: [0, 0.76, 0.27], k: [0.035, 0.14, 0.03], c: 0x8a92a0 },
+  else if (head?.mat === 'cloth') parts.push(...hatParts('hood', { c: MAT_COLOR.cloth, trim: 0xb8a070 }));
+  else if (head?.mat === 'leather') parts.push(...hatParts('hat', { c: 0x9a6a3a, trim: 0x6a4020 }));
+  else if (head) parts.push(...hatParts('helm', { c: MAT_COLOR[head.mat], trim: 0x8a92a0 }),
     ...(head.mat === 'plate' ? [{ s: 'cone', p: [-0.24, 1.0, 0], r: [0, 0, 0.7], k: [0.05, 0.22, 0.05], c: 0xf2ead8 }, { s: 'cone', p: [0.24, 1.0, 0], r: [0, 0, -0.7], k: [0.05, 0.22, 0.05], c: 0xf2ead8 }] : []));
   // 목걸이: 보석 색은 종류, 첫 불씨 등잔은 가슴의 작은 등잔
   if (eq.neck && eq.neck.un === 'firstLamp') parts.push({ s: 'cyl', p: [0, 0.44, 0.21 * th], k: [0.06, 0.09, 0.06], c: 0x6a4a2a }, { s: 'sphere', p: [0, 0.45, 0.22 * th], k: 0.045, c: 0xffd070 });
