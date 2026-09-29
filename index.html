@@ -221,15 +221,6 @@ body.slowmo #banner{font-size:34px}
 details{margin-top:4px;font-size:13px}details summary{cursor:pointer}details summary b{color:#fff}
 .srcl{padding-left:14px;color:#aeb4cc;font-size:12px}
 .gtag{position:absolute;left:0;top:0;font-size:11px;font-weight:800;white-space:nowrap;background:rgba(10,10,20,.72);padding:1px 6px;border-radius:7px;pointer-events:none;text-shadow:0 1px 1px #000}
-/* 원형 턴제 */
-#freebar{margin-bottom:6px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:6px 10px;font-size:12.5px;line-height:1.35;pointer-events:none;color:#dfe4f5}
-#joy{position:fixed;left:0;top:0;width:0;height:0;display:none;pointer-events:none;z-index:5}
-#joy::before{content:"";position:absolute;left:-46px;top:-46px;width:92px;height:92px;border-radius:50%;border:2px solid rgba(200,212,255,.45);background:rgba(20,24,40,.25)}
-#joy i{position:absolute;left:-20px;top:-20px;width:40px;height:40px;border-radius:50%;background:rgba(200,212,255,.55);box-shadow:0 0 12px rgba(160,190,255,.6)}
-.gleft{position:absolute;left:0;top:0;font-size:11.5px;font-weight:800;color:#bfe0ff;text-shadow:0 1px 2px #000,0 0 6px #000;white-space:nowrap;pointer-events:none}
-.oppwarn{color:#ffb070;font-weight:900;margin-right:2px;animation:oppb .6s infinite alternate}
-@keyframes oppb{from{opacity:.55}to{opacity:1}}
-#btn-mode.on{box-shadow:inset 0 -3px 0 #9fd0ff}
 </style>
 <script type="importmap">
 { "imports": {
@@ -255,7 +246,6 @@ details{margin-top:4px;font-size:13px}details summary{cursor:pointer}details sum
     <div id="log"></div>
   </div>
   <div id="bottom">
-    <div id="freebar" style="display:none"></div>
     <div id="targetbar"><span id="targettext"></span><button id="btn-cancel">✕ 취소</button></div>
     <div id="souls"></div>
     <div id="skills"></div>
@@ -277,9 +267,7 @@ details{margin-top:4px;font-size:13px}details summary{cursor:pointer}details sum
 <div id="camctl">
   <button id="btn-tilt">◢<small>기울기</small></button>
   <button id="btn-home">⌂<small>탑뷰</small></button>
-  <button id="btn-mode">▦<small>격자</small></button>
 </div>
-<div id="joy"><i></i></div>
 <div id="banner"></div>
 <div id="toast"></div>
 <div id="floorcard"><div class="k"></div><div class="n"></div><div class="t"></div></div>

@@ -72,12 +72,10 @@ Object.assign(UI, {
     else if (d.gear) { c.disabled = false; c.classList.add('live'); c.innerHTML = `✋<small style="color:${RARITY[d.gear.rarity].css}">${d.gear.name} 줍기</small>`; c.dataset.act = 'gear'; }
     else if (d.door) { c.disabled = false; c.classList.remove('live'); c.innerHTML = '🚪<small>문 닫기</small>'; c.dataset.act = 'door'; c.dataset.x = d.door[0]; c.dataset.y = d.door[1]; }
     else { c.disabled = true; c.classList.remove('live'); c.innerHTML = '·<small>—</small>'; c.dataset.act = ''; }
-    if (G.free) this.freeHud();
   },
   ctxBtn() {
     if (Anim.active || G.over) return;
     const c = $('#btn-ctx');
-    if (G.free && this.freeCtx(c.dataset.act)) return;
     if (c.dataset.act === 'stairs') descend();
     else if (c.dataset.act === 'gear') { this.instant(() => pickGear()); this.renderWeapon(); }
     else if (c.dataset.act === 'door') { const x = +c.dataset.x, y = +c.dataset.y; if (G.tile[I(x, y)] === T_OPEN && !entAt(x, y)) act(() => closeDoor(x, y)); }

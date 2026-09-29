@@ -30,8 +30,6 @@ jobs:
         run: node tests/smoke.mjs
       - name: Gear checklist
         run: node tests/gear.mjs
-      - name: Free-position mode
-        run: node tests/free.mjs
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4

@@ -9,11 +9,9 @@ import { D8, cheb, sgn } from '../util/grid.js';
 import { pick, rand, ri } from '../util/rng.js';
 import { jo } from '../util/text.js';
 import { applyFire, fireAt } from './elements.js';
-import { freePush } from './free.js';
 import { dropGearFrom, gearName, openChest } from './gear.js';
 import { addItem, identify, itemName } from './items.js';
 import { emitSlots, emitStatus, snapTerrain } from './snap.js';
-import { dist } from './space.js';
 import { G, I, TL, emit, entAt, inb, isFoe, isP, itemSnap, log, standable } from './state.js';
 import { addStone, dropStone, trigger, withCtx } from './stones.js';
 
@@ -37,7 +35,6 @@ export function damage(e, amt, kind = 'hit', o = {}) {
     if (amt > 0 && el && ps.res[el]) amt = Math.max(1, Math.round(amt * (1 - ps.res[el] / 100)));
     if (amt > 0 && ps.legend.has('thornPlate')) amt = Math.ceil(amt * 1.2);
   } else if (isFoe(e) && G.ps && G.ctx && G.ctx.origin !== 'enemy' && ELEM_OF[kind] && kind !== 'burn') amt += G.ps.elem[ELEM_OF[kind]];
-  if (G.fc && G.fc.ambush && isFoe(e) && G.ctx && G.ctx.origin !== 'enemy') { amt = Math.ceil(amt * 1.5); G.fc.ambush = false; label = label || '기습!'; }
   if (isP(e) && e.shield > 0) { const a = Math.min(e.shield, amt); e.shield -= a; amt -= a; emit('shieldHit', { absorbed: a, left: e.shield }); }
   if (amt > 0) {
     e.hp -= amt;
@@ -92,7 +89,7 @@ export function cancelIntent(e) { e.cast = null; e.charge = null; e.aim = false;
 export function faceTo(e, t) { const dx = sgn(t.x - e.x), dy = sgn(t.y - e.y); if (dx || dy) { e.face = [dx, dy]; emit('face', { id: e.id, dx, dy }); } }
 
 export function moveEnt(e, x, y, o = {}) {
-  const fx = e.x, fy = e.y; e.px = x; e.py = y; e.x = Math.round(x); e.y = Math.round(y);
+  const fx = e.x, fy = e.y; e.x = x; e.y = y;
   if (o.face !== false && (x !== fx || y !== fy)) e.face = [sgn(x - fx), sgn(y - fy)];
   emit('move', { id: e.id, x, y, dur: o.dur ?? 115, hop: o.hop ?? 0.16, kind: o.kind || 'step', seen: isP(e) || G.vis[I(x, y)] ? 1 : 0 });
 }
@@ -140,21 +137,6 @@ export function onEnter(e) {
 export function push(e, dx, dy, n) {
   const giant = isFoe(e) && G.ps && G.ps.legend.has('giantMace');
   let k = 0, left = n + (giant ? 1 : 0);
-  if (G.free) { // 원형 턴제: 실제 거리만큼 밀려나고, 벽이나 몸에 닿으면 충돌
-    const r = freePush(e, dx, dy, left);
-    if (r.wall) {
-      emit('bump', { id: e.id, dx, dy }); TL.wait(30);
-      damage(e, 4 + (isFoe(e) && G.ps ? G.ps.wallDmg : 0), 'wall', { dx, dy, label: '벽 쾅!', big: true });
-      if (e.alive && !isP(e)) { e.st.stun = Math.max(e.st.stun, 1); emitStatus(e); cancelIntent(e); }
-      if (giant) { emit('shake', { a: 0.3 }); for (const o of G.ents) if (o !== e && o.alive && isFoe(o) && dist(o, e) <= 1.5) damage(o, 1, 'impact', { label: '흔들림' }); }
-      emit('shake', { a: 0.35 }); if (!isP(e)) G.stats.combos++;
-    } else if (r.body) {
-      emit('bump', { id: e.id, dx, dy }); TL.wait(30);
-      damage(e, 3, 'impact', { dx, dy, label: '충돌!' }); damage(r.body, 3, 'impact', { dx, dy }); emit('shake', { a: 0.3 });
-    }
-    if (e.alive) onEnter(e);
-    return 1;
-  }
   while (left > 0 && k < 12 && e.alive) {
     const nx = e.x + dx, ny = e.y + dy;
     if (!standable(nx, ny)) {

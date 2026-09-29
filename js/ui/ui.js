@@ -1,7 +1,7 @@
 import { emitSlots, snapHud } from '../core/snap.js';
-import { G, Game, SETTINGS, TL } from '../core/state.js';
+import { G, Game, TL } from '../core/state.js';
 import { SKILLS } from '../data/skills.js';
-import { Anim, toggleMode } from '../flow.js';
+import { Anim } from '../flow.js';
 import { Sfx } from '../render/sfx.js';
 import { View } from '../render/view.js';
 
@@ -37,8 +37,6 @@ export const UI = {
     $('#btn-tilt').onclick = () => { const q = View.dio.rig.toggleTilt(); this.toast(q ? '45도 쿼터뷰' : '탑뷰'); };
     $('#btn-home').onclick = () => { View.dio.rig.reset(); this.toast('기본 탑뷰로 복귀'); };
     $('#btn-cancel').onclick = () => this.exitTarget();
-    $('#btn-mode').onclick = () => { if (Anim.active) return; const v = toggleMode(); this.modeBtn(); this.toast(v ? '◯ 원형 턴제 — 자유롭게 걷고, 적을 만나면 턴제 전투' : '▦ 격자 턴제'); };
-    this.modeBtn(); this.freeInit();
     $('#btn-help').onclick = () => this.help(true);
     $('#btn-sound').onclick = () => { Sfx.on = !Sfx.on; $('#btn-sound').textContent = Sfx.on ? '🔊' : '🔇'; };
     addEventListener('keydown', (e) => this.key(e));
@@ -57,7 +55,6 @@ export const UI = {
     el.addEventListener('click', () => { if (!fired) click(); fired = false; });
     el.addEventListener('contextmenu', (e) => e.preventDefault());
   },
-  modeBtn() { const b = $('#btn-mode'), f = SETTINGS.free; b.innerHTML = f ? '◯<small>원형</small>' : '▦<small>격자</small>'; b.classList.toggle('on', f); },
   overlayOpen() { return !$('#screen').classList.contains('hidden') || !$('#help').classList.contains('hidden') || !$('#sheet').classList.contains('hidden'); },
   instant(fn) { if (Anim.active) return; TL.reset(); fn(); snapHud(); emitSlots(); const q = TL.q.slice().sort((a, b) => a.t - b.t); TL.reset(); for (const e of q) e.fn(); },
   info(html) { const el = $('#info'); el.innerHTML = html + '<div style="color:#9aa2bd;font-size:11.5px;margin-top:6px">화면을 탭하면 닫힌다</div>'; el.classList.remove('hidden'); el.onclick = () => this.hideInfo(); },

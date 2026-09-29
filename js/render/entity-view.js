@@ -70,7 +70,6 @@ export class EntView {
     if (this.id !== 0) { const k = Math.min(1, dt * 8), fr = this.st.frac > 0 && !this.dead; this.d.pivot.rotation.z += ((fr ? 0.32 : 0) - this.d.pivot.rotation.z) * k; this.d.pivot.rotation.x += ((fr ? 0.14 : 0) - this.d.pivot.rotation.x) * k; }
     this.flash = Math.max(0, this.flash - dt * 7);
     const em = this.d.mat.emissive; em.setRGB(...(this.baseEm || [0, 0, 0]));
-    if (this.threat) em.r += 0.28 + 0.2 * Math.sin(time * 9); // 분신 자리에서 닿는 적
     if (frozen) em.setRGB(0.1, 0.24, 0.36);
     else if (this.st.burn > 0) em.setRGB(0.28 + 0.14 * Math.sin(time * 14), 0.08, 0);
     else if (this.st.poison > 0) em.setRGB(0.03, 0.13 + 0.06 * Math.sin(time * 6), 0.02);

@@ -12,14 +12,7 @@ export function tileGeo(w, h, d, topC = 1, sideC = 0.72) {
   return g;
 }
 
-export /** 둥근 얼음판(칸 경계 없는 모드) */
-function roundSlab(r, h) {
-  const g = new THREE.CylinderGeometry(r, r * 1.04, h, 16);
-  const n = g.getAttribute('normal'), col = new Float32Array(n.count * 3);
-  for (let i = 0; i < n.count; i++) { const v = n.getY(i) > 0.5 ? 1 : 0.78; col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = v; }
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.deleteAttribute('uv'); return g;
-}
-function roundedRectGeo(size, r) {
+export function roundedRectGeo(size, r) {
   const s = size / 2, sh = new THREE.Shape();
   sh.moveTo(-s + r, -s); sh.lineTo(s - r, -s); sh.quadraticCurveTo(s, -s, s, -s + r); sh.lineTo(s, s - r); sh.quadraticCurveTo(s, s, s - r, s);
   sh.lineTo(-s + r, s); sh.quadraticCurveTo(-s, s, -s, s - r); sh.lineTo(-s, -s + r); sh.quadraticCurveTo(-s, -s, -s + r, -s);
@@ -81,9 +74,6 @@ void main(){
   else if (k == 5) { float d = sdBox(p, vec2(0.45), 0.08); float inside = smoothstep(0.01, -0.01, d); float stripe = step(0.5, fract((p.x + p.y) * 3.5 - uTime * 1.2));
     a = inside * (0.3 + 0.32 * stripe) + smoothstep(0.045, 0.0, abs(d + 0.02)) * 0.95; }
   else if (k == 6) { float d = min(sdSeg(p, vec2(-0.24), vec2(0.24)), sdSeg(p, vec2(-0.24, 0.24), vec2(0.24, -0.24))); a = smoothstep(0.08, 0.05, d); }
-  else if (k == 7) { float r = length(p); a = smoothstep(0.5, 0.3, r) * 0.55; }
-  else if (k == 8) { float r = length(p); float inside = smoothstep(0.455, 0.44, r); float stripe = step(0.5, fract((p.x + p.y) * 7.0 - uTime * 1.2)); a = inside * (0.26 + 0.3 * stripe) + smoothstep(0.02, 0.0, abs(r - 0.44)) * 0.95; }
-  else if (k == 9) { vec2 q = abs(p); float inside = step(q.x, 0.48) * step(q.y, 0.5); float stripe = step(0.5, fract(p.y * 9.0 - uTime * 2.0)); a = inside * (0.22 + 0.3 * stripe) + smoothstep(0.03, 0.0, abs(q.x - 0.46)) * step(q.y, 0.5) * 0.9; }
   float blink = mix(1.0, 0.3 + 0.7 * (0.5 + 0.5 * sin(uTime * 9.0)), vBlink);
   a *= vCol.a * blink;
   if (a < 0.01) discard;
@@ -99,8 +89,7 @@ export class GridView {
    * @param o.palette { floor, floor2, wall, wall2, void, grassFloor, waterFloor, dim }
    */
   constructor(scene, o) {
-    const { w, h, kind, palette, wallH = 1.2, seamless = false } = o;
-    this.seamless = seamless;
+    const { w, h, kind, palette, wallH = 1.2 } = o;
     Object.assign(this, { scene, w, h, wallH, pal: palette });
     this.group = new THREE.Group(); scene.add(this.group);
     this.lvl = null; this.surf = new Uint8Array(w * h); this.fire = new Uint8Array(w * h); this.cloud = new Uint8Array(w * h); this.cloudT = new Uint8Array(w * h);
@@ -124,10 +113,9 @@ export class GridView {
     base.position.set(w / 2 - 0.5, -0.34, h / 2 - 0.5); this.group.add(base);
 
     const nF = this.floorIdx.length, nW = this.wallIdx.length;
-    const fs = seamless ? 1.0 : 0.955;
-    this.floorMesh = new THREE.InstancedMesh(tileGeo(fs, 0.3, fs, 1.0, 0.6), toon({ vertexColors: true, gloss: 0.16 }), nF);
+    this.floorMesh = new THREE.InstancedMesh(tileGeo(0.955, 0.3, 0.955, 1.0, 0.6), toon({ vertexColors: true, gloss: 0.16 }), nF);
     this.floorMesh.receiveShadow = true;
-    this.floorBase = this.floorIdx.map((i) => { const x = i % w, y = (i / w) | 0; return this.cFloor.clone().lerp(this.cFloor2, seamless ? 0.35 + (Math.sin(x * 0.7 + y * 0.4) + Math.sin(y * 0.9 - x * 0.3)) * 0.15 + hash(i) * 0.12 : ((x + y) & 1) ? 0.85 : 0.1 + hash(i) * 0.3).multiplyScalar(0.93 + hash(i + 7) * 0.12); });
+    this.floorBase = this.floorIdx.map((i) => { const x = i % w, y = (i / w) | 0; return this.cFloor.clone().lerp(this.cFloor2, ((x + y) & 1) ? 0.85 : 0.1 + hash(i) * 0.3).multiplyScalar(0.93 + hash(i + 7) * 0.12); });
 
     const wg = tileGeo(1.0, wallH, 1.0, 1.0, 0.72);
     this.wallFade = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, nW)), 1);
@@ -138,9 +126,9 @@ export class GridView {
     this.wallOL = new THREE.InstancedMesh(wog, outlineMaterial({ width: 0.035, fade: true }), nW);
     this.wallBase = this.wallIdx.map((i) => this.cWall.clone().lerp(this.cWall2, hash(i * 3.1)).multiplyScalar(0.9 + hash(i + 3) * 0.15));
 
-    this.water = new THREE.InstancedMesh(seamless ? new THREE.CircleGeometry(0.74, 18).rotateX(-Math.PI / 2) : new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), liquidMaterial('water'), nF);
-    this.oil = new THREE.InstancedMesh(seamless ? new THREE.CircleGeometry(0.7, 18).rotateX(-Math.PI / 2) : roundedRectGeo(0.97, 0.24), liquidMaterial('oil'), nF);
-    this.ice = new THREE.InstancedMesh(seamless ? roundSlab(0.66, 0.12) : tileGeo(0.99, 0.12, 0.99, 1, 0.78), toon({ color: 0xd4f3ff, vertexColors: true, gloss: 1.3, emissive: 0x0d2a3d }), nF);
+    this.water = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), liquidMaterial('water'), nF);
+    this.oil = new THREE.InstancedMesh(roundedRectGeo(0.97, 0.24), liquidMaterial('oil'), nF);
+    this.ice = new THREE.InstancedMesh(tileGeo(0.99, 0.12, 0.99, 1, 0.78), toon({ color: 0xd4f3ff, vertexColors: true, gloss: 1.3, emissive: 0x0d2a3d }), nF);
     this.ice.receiveShadow = true;
     const blade = new THREE.ConeGeometry(0.055, 0.44, 3).translate(0, 0.22, 0);
     { const pa = blade.getAttribute('position'), col = new Float32Array(pa.count * 3); for (let i = 0; i < pa.count; i++) { const t = pa.getY(i) / 0.44; const v = 0.45 + t * 0.75; col[i * 3] = v * 0.75; col[i * 3 + 1] = v; col[i * 3 + 2] = v * 0.55; } blade.setAttribute('color', new THREE.BufferAttribute(col, 3)); }
@@ -176,7 +164,7 @@ export class GridView {
       const i = this.floorIdx[k], l = L(i), x = i % w, y = (i / w) | 0;
       if (!l) { _m4.makeScale(0, 0, 0); this.floorMesh.setMatrixAt(k, _m4); continue; }
       const s = surf[i];
-      _m4.makeTranslation(x, s === SURF.WATER && !this.seamless ? -0.26 : -0.15, y); this.floorMesh.setMatrixAt(k, _m4);
+      _m4.makeTranslation(x, s === SURF.WATER ? -0.26 : -0.15, y); this.floorMesh.setMatrixAt(k, _m4);
       _c.copy(this.floorBase[k]);
       if (s === SURF.GRASS) _c.lerp(this.cGrassF, 0.65); else if (s === SURF.ASH) _c.lerp(this.cAsh, 0.7); else if (s === SURF.WATER) _c.lerp(this.cWaterF, 0.75);
       if (l === 1) _c.multiplyScalar(this.dim).lerp(this.cMem, 0.18);
@@ -196,8 +184,8 @@ export class GridView {
       const i = this.floorIdx[k], l = L(i); if (!l) continue;
       const s = surf[i]; if (!s || s === SURF.ASH) continue;
       const x = i % w, y = (i / w) | 0, f = l === 2 ? 1 : this.dim + 0.1;
-      if (s === SURF.WATER) { _m4.makeTranslation(x, this.seamless ? 0.012 + hash(i) * 0.006 : -0.08, y); this.water.setMatrixAt(nw, _m4); this.water.setColorAt(nw, _c.setScalar(f)); nw++; }
-      else if (s === SURF.OIL) { _m4.makeTranslation(x, 0.012 + (this.seamless ? hash(i + 5) * 0.006 : 0), y); this.oil.setMatrixAt(no, _m4); this.oil.setColorAt(no, _c.setScalar(f)); no++; }
+      if (s === SURF.WATER) { _m4.makeTranslation(x, -0.08, y); this.water.setMatrixAt(nw, _m4); this.water.setColorAt(nw, _c.setScalar(f)); nw++; }
+      else if (s === SURF.OIL) { _m4.makeTranslation(x, 0.012, y); this.oil.setMatrixAt(no, _m4); this.oil.setColorAt(no, _c.setScalar(f)); no++; }
       else if (s === SURF.ICE) { _m4.makeTranslation(x, 0.02, y); this.ice.setMatrixAt(ni, _m4); this.ice.setColorAt(ni, _c.setScalar(f)); ni++; }
       else if (s === SURF.GRASS) {
         for (let b = 0; b < this.BLADES; b++) {
@@ -221,8 +209,7 @@ export class GridView {
     const n = Math.min(list.length, this.DCAP);
     for (let k = 0; k < n; k++) {
       const d = list[k], sc = d.scale ?? 1;
-      _e.set(0, d.yaw ?? 0, 0); _q.setFromEuler(_e);
-      _m4.compose(_v.set(d.x, 0.085 + (d.h ?? 0) + this.surfaceY(Math.round(d.x), Math.round(d.y)) * 0.5 + k * 0.00002, d.y), _q, _s.set(d.sx ?? sc, 1, d.sz ?? sc));
+      _m4.compose(_v.set(d.x, 0.085 + (d.h ?? 0) + this.surfaceY(d.x, d.y) * 0.5 + k * 0.00002, d.y), _q.identity(), _s.set(sc, 1, sc));
       this.decals.setMatrixAt(k, _m4);
       _c.set(d.color ?? 0xffffff);
       this.dCol.setXYZW(k, _c.r, _c.g, _c.b, d.alpha ?? 1); this.dKind.setX(k, d.kind ?? 0); this.dRot.setX(k, d.rot ?? 0); this.dBlink.setX(k, d.blink ?? 0);

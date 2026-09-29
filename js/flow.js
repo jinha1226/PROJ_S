@@ -1,10 +1,9 @@
 import { armorShield } from './core/combat.js';
-import { detect, initFree, spendAction, startCombat } from './core/free.js';
 import { refreshStats, revealAll } from './core/gear.js';
 import { genFloor } from './core/mapgen.js';
 import { META, saveMeta } from './core/meta.js';
 import { endTurn } from './core/run.js';
-import { G, Game, I, SETTINGS, TL, newSt, setFreeSetting, standable } from './core/state.js';
+import { G, Game, I, TL, newSt } from './core/state.js';
 import { SLOTS } from './data/gear.js';
 import { T_STAIRS } from './data/terrain.js';
 import { Sfx } from './render/sfx.js';
@@ -16,26 +15,7 @@ import { mulberry32, pick, seedOr, setR } from './util/rng.js';
 import { jo } from './util/text.js';
 
 /* 한 번의 행동 = 로직 해결 → 연출 재생 */
-/** 원형 턴제: 행동 하나(공격·스킬·소모품)를 해결하고, 탐험이면 발견을 확인한다 */
-function freeAct(fn) {
-  TL.reset(); G.hurt = false;
-  const wasCombat = !!G.fc, took = fn();
-  if (took && wasCombat && G.fc && G.fc.side === 'player') spendAction();
-  if (!G.fc && !G.over) { const k = detect(); if (k) startCombat(k); }
-  Anim.start();
-  return took;
-}
-/** 원형 턴제: 걷기·턴 넘기기처럼 행동을 쓰지 않는 일 */
-export function freeRun(fn) {
-  if (Anim.active || G.over) return false;
-  TL.reset(); G.hurt = false;
-  const r = fn();
-  if (!G.fc && !G.over) { const k = detect(); if (k) startCombat(k); }
-  Anim.start();
-  return r;
-}
 export function act(fn) {
-  if (G.free && Game.mode === 'dungeon') { if (Anim.active || G.over) return false; return freeAct(fn); }
   if (Anim.active || G.over) return false;
   TL.reset(); G.hurt = false;
   const took = fn();
@@ -71,7 +51,6 @@ export function descend() {
   rescueFollowers();
   G.zf++; p.st = newSt();
   genFloor();
-  if (G.free) initFree();
   // 한 층을 내려가면 입은 장비·가방 장비의 정체가 모두 드러난다
   let rv = 0; for (const it of [...SLOTS.map((k) => G.eq[k]), ...G.bag]) if (revealAll(it)) rv++;
   refreshStats(); p.shield = armorShield();
@@ -95,9 +74,7 @@ export function enterDungeon(zone) {
   G.stats = { kills: 0, combos: 0, turns: 0, items: 0, stones: 0, chains: 0, best: 0 };
   G.mageOf = ['bolt', pick(['fire', 'frost', 'bolt']), pick(['fire', 'frost']), 'mix'];
   G.loot = { mats: {}, npcs: [] };
-  G.free = SETTINGS.free; G.fc = null;
   genFloor();
-  if (G.free) initFree();
   UI.toDungeon(); View.buildFloor(); UI.exitTarget(); UI.floorCard(); UI.syncAll();
   saveMeta();
 }
@@ -117,26 +94,4 @@ export function returnToTown(reason) {
   G.over = true; UI.exitTarget(); UI.travel = null; UI.rest = null; UI.buffered = null;
   saveMeta();
   Town.enter(rep);
-}
-
-/** 격자 ↔ 원형 턴제 전환. 던전이면 그 자리에서 바꾼다 */
-export function toggleMode() {
-  if (Anim.active) return false;
-  const v = !SETTINGS.free; setFreeSetting(v);
-  if (Game.mode === 'dungeon' && !G.over) {
-    G.free = v; G.fc = null;
-    if (v) initFree();
-    else { // 칸 중심으로 되돌린다(한 칸에 둘이면 가까운 빈 칸으로)
-      const taken = new Set();
-      for (const e of G.ents) {
-        if (!e.alive) continue;
-        let x = Math.round(e.px ?? e.x), y = Math.round(e.py ?? e.y);
-        if (taken.has(I(x, y)) || !standable(x, y)) { outer: for (let r = 1; r <= 3; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const nx = x + dx, ny = y + dy; if (standable(nx, ny) && !taken.has(I(nx, ny))) { x = nx; y = ny; break outer; } } }
-        e.px = x; e.py = y; e.x = x; e.y = y; taken.add(I(x, y));
-      }
-    }
-    UI.exitTarget(); View.buildFloor(); UI.syncAll(); UI.freeReset?.();
-    if (v) freeRun(() => { const k = detect(); if (k) startCombat(k); });
-  }
-  return v;
 }

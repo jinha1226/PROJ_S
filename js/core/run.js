@@ -4,12 +4,11 @@ import { mulberry32, pick, seedOr, setR, shuffle } from '../util/rng.js';
 import { allyAct, enemyAct } from './ai.js';
 import { envTick } from './elements.js';
 import { computeFOV, distMap } from './fov.js';
-import { initFree } from './free.js';
 import { calcStats, makeGear } from './gear.js';
 import { addItem } from './items.js';
 import { genFloor } from './mapgen.js';
 import { emitIntents, emitSlots, snapHud, snapVis } from './snap.js';
-import { G, SETTINGS, TL, emit, isFoe, newSt } from './state.js';
+import { G, TL, emit, isFoe, newSt } from './state.js';
 import { withCtx } from './stones.js';
 
 /* ================= 새 게임 · 층 생성 ================= */
@@ -32,9 +31,7 @@ export function newRun() {
   G.bag = []; G.heroBase = 30; G.legendsDropped = new Set(); G.ps = calcStats(G.eq);
   G.slots = Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 }));
   G.sbag = []; G.weakKnown = {}; G.ctx = null; G.curSrc = null; G.dropHint = 0;
-  G.free = SETTINGS.free; G.fc = null;
   genFloor();
-  if (G.free) initFree();
 }
 
 /* ================= 턴 ================= */

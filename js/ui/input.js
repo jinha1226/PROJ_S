@@ -19,7 +19,6 @@ Object.assign(UI, {
     if (this.overlayOpen()) return;
     if (!$('#info').classList.contains('hidden')) { this.hideInfo(); return; }
     if (Game.mode === 'town') { Town.tap(sx, sy); return; }
-    if (G.free) { this.freeTap(sx, sy); return; }
     const t = View.pickTile(sx, sy); if (!t || !inb(t.x, t.y)) return;
     this.travel = null; this.rest = null;
     if (Anim.active) { if (this.mode === 'normal') this.buffered = t; return; }
@@ -58,10 +57,9 @@ Object.assign(UI, {
     tr.first = false; if (!tr.path.length) this.travel = null;
     act(() => playerMove(nx - p.x, ny - p.y));
   },
-  waitBtn() { if (G.free) { if (G.player.st.frozen || G.player.st.stun) return; this.rest = null; if (this.mode === 'target') this.exitTarget(); this.freeWaitBtn(); return; } if (G.player.st.frozen || G.player.st.stun) return; this.travel = null; this.rest = null; if (this.mode === 'target') this.exitTarget(); act(() => playerWait()); },
+  waitBtn() { if (G.player.st.frozen || G.player.st.stun) return; this.travel = null; this.rest = null; if (this.mode === 'target') this.exitTarget(); act(() => playerWait()); },
   startRest() {
     if (Anim.active || G.over) return;
-    if (G.fc) { this.toast('전투 중에는 쉴 수 없다'); return; }
     if (visibleFoes().length) { this.toast('적이 보여서 쉴 수 없다'); return; }
     if (G.player.hp >= G.player.max && !G.player.st.poison) { this.toast('쉴 필요가 없다'); return; }
     this.rest = { n: 0 }; this.toast('휴식 중… (탭하면 멈춤)'); this.restStep();
@@ -69,14 +67,13 @@ Object.assign(UI, {
   restStep() {
     const r = this.rest; if (!r) return; const p = G.player;
     if (visibleFoes().length || G.hurt || r.n >= 40 || (p.hp >= p.max && !p.st.poison && !p.st.burn)) { this.rest = null; return; }
-    r.n++; if (G.free) this.freeWaitBtn(); else act(() => playerWait());
+    r.n++; act(() => playerWait());
   },
   afterTurn() {
     View.refreshDecals(); this.syncButtons();
     if (G.over) return;
     if (G.pendingReturn) { const r = G.pendingReturn; G.pendingReturn = null; G.over = true; setTimeout(() => returnToTown(r), 700); return; }
     const p = G.player;
-    if (G.free) { this.freeAfter(); if (this.rest) setTimeout(() => this.restStep(), 20); return; }
     if (p.st.frozen > 0 || p.st.stun > 0) {
       setTimeout(() => act(() => { const fz = p.st.frozen > 0; if (p.st.frozen > 0) p.st.frozen--; if (p.st.stun > 0) p.st.stun--; emitStatus(p); log(fz ? '얼어붙어 움직일 수 없다…' : '기절해서 움직일 수 없다…', 'bad'); return true; }), 260);
       return;
@@ -93,26 +90,23 @@ Object.assign(UI, {
     const sk = SK[id];
     if (G.cd[id] > 0) { this.toast(`${sk.name}: ${G.cd[id]}턴 뒤에 다시 쓸 수 있다`); return; }
     if (G.player.st.frozen || G.player.st.stun) return;
-    if (G.fc && (G.fc.side !== 'player' || G.fc.actions <= 0)) { this.toast(G.fc.side === 'player' ? '이번 턴 행동을 이미 썼다 — 걷거나 턴 끝' : '적의 턴이다'); return; }
     this.enterTarget({ kind: 'skill', id, name: sk.icon + ' ' + sk.name, range: sk.range, color: sk.color, needsEnemy: !!sk.needsEnemy, run: (x, y) => useSkill(id, x, y) });
   },
   enterTarget(pend) {
     this.travel = null; this.rest = null; this.hideInfo();
     this.mode = 'target'; this.pend = pend; this.prevIdx = -1; this.prev = null;
-    if (G.free && !pend.wrapped) { this.freeWrapRun(pend); pend.wrapped = true; }
-    this.valid = G.free ? this.freeTargets(pend) : targetsFor(pend);
+    this.valid = targetsFor(pend);
     for (const [k, b] of Object.entries(this.skEls)) b.classList.toggle('sel', pend.kind === 'skill' && k === pend.id);
     $('#targetbar').classList.add('on');
     $('#targettext').innerHTML = this.valid.size ? `<b>${pend.name}</b> — 대상 칸을 탭하면 결과를 미리 보여준다` : `<b>${pend.name}</b> — 닿는 대상이 없다`;
     View.refreshDecals();
   },
   exitTarget() {
-    this.mode = 'normal'; this.pend = null; this.prev = null; this.prevIdx = -1; this.freeSugg?.(null);
+    this.mode = 'normal'; this.pend = null; this.prev = null; this.prevIdx = -1;
     for (const b of Object.values(this.skEls)) b.classList.remove('sel');
     $('#targetbar').classList.remove('on'); View.refreshDecals();
   },
   targetDecals() {
-    if (G.free) return this.freeTargetDecals();
     const list = [];
     for (const i of this.valid) { const [x, y] = XY(i); list.push({ x, y, kind: 0, color: this.pend.color, alpha: this.prevIdx === i ? 0 : 0.17 }); }
     if (this.prev) list.push(...this.prev.extra);
@@ -134,7 +128,6 @@ Object.assign(UI, {
     if (k === 'escape') { this.exitTarget(); this.hideInfo(); $('#sheet').classList.add('hidden'); $('#help').classList.add('hidden'); return; }
     if (this.overlayOpen()) return;
     const map = { arrowup: [0, -1], w: [0, -1], arrowdown: [0, 1], s: [0, 1], arrowleft: [-1, 0], a: [-1, 0], arrowright: [1, 0], d: [1, 0], q: [-1, -1], e: [1, -1], z: [-1, 1], c: [1, 1] };
-    if (map[k] && G.free) { e.preventDefault(); this.freeKey(k, true); return; }
     if (map[k]) {
       e.preventDefault();
       const [sx, sy] = map[k], yaw = View.dio.rig.yaw, wx = Math.cos(yaw) * sx + Math.sin(yaw) * sy, wy = -Math.sin(yaw) * sx + Math.cos(yaw) * sy;
