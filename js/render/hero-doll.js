@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { BRANDS, EGOS, ELEM, GEAR_BASES, MAT_COLOR, SLOTS, weaponId } from '../data/gear.js';
 import { COLORS } from '../data/stones.js';
+import { torchTier } from '../data/torch.js';
 import { WEAPONS } from '../data/weapons.js';
+import { G } from '../core/state.js';
 import { SKIN, _w } from './common.js';
 import * as K from './diorama.js';
 import { GLOW_TEX, GRIP2 } from './dolls.js';
@@ -87,8 +89,12 @@ export function heroSpec(eq = {}) {
         wh,
         update(dt, t) {
           if (orb) { orb.position.y = 0.42 + Math.sin(t * 2) * 0.03; orb.userData.ring.rotation.set(1.1, t * 1.2, 0); }
-          const s = 1 + Math.sin(t * 20) * 0.12 + Math.sin(t * 33) * 0.08; o.scale.set(1, s, 1); i.scale.set(1, s * 1.05, 1); f.rotation.z = Math.sin(t * 6) * 0.1;
-          if (Math.random() < dt * 8 * fs2) { f.getWorldPosition(_w); _w.y += 0.2; View.dio.sparks.emit({ pos: _w, n: 1, color: 0xff9a3a, color2: 0xffe36a, speed: 0.3, up: 1.2, grav: 0.6, life: 0.6, size: 0.07 }); }
+          const tier = torchTier(G.torch ?? 100), size = { high: 1, mid: 0.72, low: 0.4, out: 0.16 }[tier];
+          const s = 1 + Math.sin(t * 20) * 0.12 + Math.sin(t * 33) * 0.08;
+          o.scale.set(size, size * s, size); i.scale.set(size, size * s * 1.05, size);
+          o.material.color.setHex(tier === 'out' ? 0x713327 : tier === 'low' ? 0xff7137 : 0xff9c35);
+          i.visible = tier !== 'out'; f.rotation.z = Math.sin(t * 6) * 0.1;
+          if (tier !== 'out' && Math.random() < dt * 8 * fs2 * size) { f.getWorldPosition(_w); _w.y += 0.2; View.dio.sparks.emit({ pos: _w, n: 1, color: 0xff9a3a, color2: 0xffe36a, speed: 0.3, up: 1.2, grav: 0.6, life: 0.6, size: 0.07 }); }
           if (legend && d.root.visible && Math.random() < dt * 14) { // 전설: 몸 주위를 도는 작은 불꽃
             const a = t * 2.4 + Math.floor(Math.random() * 5) * 1.2566; d.root.getWorldPosition(_w);
             View.dio.sparks.emit({ pos: _w.set(_w.x + Math.cos(a) * 0.5, _w.y + 0.5 + Math.sin(t * 3 + a) * 0.15, _w.z + Math.sin(a) * 0.5), n: 1, color: 0xff8a2a, color2: 0xffd84a, speed: 0.1, up: 0.4, grav: 0, life: 0.5, size: 0.1 });

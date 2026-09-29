@@ -36,7 +36,7 @@ export function createPost(renderer, scene, camera) {
     composer, th, tv,
     setSize(w, h, pr) {
       composer.setPixelRatio(pr); composer.setSize(w, h);
-      for (const p of [th, tv]) { p.uniforms.uRes.value.set(w * pr, h * pr); p.uniforms.uMax.value = 2.1 * pr; }
+      for (const p of [th, tv]) { p.uniforms.uRes.value.set(w * pr, h * pr); p.uniforms.uMax.value = 1.45 * pr; }
     },
     setFocus(y) { th.uniforms.uFocus.value = tv.uniforms.uFocus.value = y; },
     setStrength(k) { th.uniforms.uMax.value = tv.uniforms.uMax.value = k; },

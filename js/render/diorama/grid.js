@@ -90,7 +90,7 @@ export class GridView {
    */
   constructor(scene, o) {
     const { w, h, kind, palette, wallH = 1.2 } = o;
-    Object.assign(this, { scene, w, h, wallH, pal: palette });
+    Object.assign(this, { scene, w, h, wallH, pal: palette, detail: wallH >= 1 });
     this.group = new THREE.Group(); scene.add(this.group);
     this.lvl = null; this.surf = new Uint8Array(w * h); this.fire = new Uint8Array(w * h); this.cloud = new Uint8Array(w * h); this.cloudT = new Uint8Array(w * h);
     const K = new Uint8Array(w * h);
@@ -116,6 +116,19 @@ export class GridView {
     this.floorMesh = new THREE.InstancedMesh(tileGeo(0.955, 0.3, 0.955, 1.0, 0.6), toon({ vertexColors: true, gloss: 0.16 }), nF);
     this.floorMesh.receiveShadow = true;
     this.floorBase = this.floorIdx.map((i) => { const x = i % w, y = (i / w) | 0; return this.cFloor.clone().lerp(this.cFloor2, ((x + y) & 1) ? 0.85 : 0.1 + hash(i) * 0.3).multiplyScalar(0.93 + hash(i + 7) * 0.12); });
+    // 낮은 폴리곤 수를 유지하면서 돌판의 단차와 벽가의 부스러기를 만든다.
+    if (this.detail) {
+      this.slab = new THREE.InstancedMesh(tileGeo(0.79, 0.055, 0.79, 1.08, 0.55), toon({ vertexColors: true, gloss: 0.2 }), nF);
+      this.slab.receiveShadow = true;
+      this.slab.castShadow = false;
+      this.slabCrack = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.39, 0.026).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x23212b, transparent: true, opacity: 0.43, depthWrite: false }), nF);
+      this.rubbleIdx = this.floorIdx.filter((i) => {
+        const x = i % w, y = (i / w) | 0;
+        return hash(i * 19 + 4) > 0.4 && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => x + dx >= 0 && x + dx < w && y + dy >= 0 && y + dy < h && K[(y + dy) * w + x + dx] === 2);
+      });
+      this.rubble = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.1, 0), toon({ gloss: 0.12 }), this.rubbleIdx.length);
+      this.rubble.receiveShadow = true;
+    }
 
     const wg = tileGeo(1.0, wallH, 1.0, 1.0, 0.72);
     this.wallFade = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, nW)), 1);
@@ -125,6 +138,12 @@ export class GridView {
     const wog = outlineGeo(wg); wog.setAttribute('aFade', this.wallFade);
     this.wallOL = new THREE.InstancedMesh(wog, outlineMaterial({ width: 0.035, fade: true }), nW);
     this.wallBase = this.wallIdx.map((i) => this.cWall.clone().lerp(this.cWall2, hash(i * 3.1)).multiplyScalar(0.9 + hash(i + 3) * 0.15));
+    if (this.detail) {
+      const capGeo = tileGeo(0.91, 0.12, 0.91, 1.08, 0.64);
+      capGeo.setAttribute('aFade', this.wallFade);
+      this.wallCap = new THREE.InstancedMesh(capGeo, toon({ vertexColors: true, gloss: 0.28, fade: true }), nW);
+      this.wallCap.receiveShadow = true;
+    }
 
     this.water = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), liquidMaterial('water'), nF);
     this.oil = new THREE.InstancedMesh(roundedRectGeo(0.97, 0.24), liquidMaterial('oil'), nF);
@@ -149,9 +168,10 @@ export class GridView {
     this.decals = new THREE.InstancedMesh(dg, decalMaterial(), this.DCAP); this.decals.count = 0; this.decals.renderOrder = 10;
 
     for (const m of [this.floorMesh, this.wallMesh, this.wallOL, this.water, this.oil, this.ice, this.grass, this.flameO, this.flameI, this.puffs, this.decals]) { m.frustumCulled = false; this.group.add(m); }
+    if (this.detail) for (const m of [this.slab, this.slabCrack, this.rubble, this.wallCap]) { m.frustumCulled = false; this.group.add(m); }
     for (const m of [this.water, this.oil, this.ice, this.grass, this.flameO, this.flameI, this.puffs]) m.count = 0;
     // instanceColor를 미리 만들어 둔다(없으면 첫 setColorAt에서 셰이더가 바뀐다)
-    for (const m of [this.floorMesh, this.wallMesh, this.water, this.oil, this.ice, this.grass, this.puffs]) { if (m.instanceMatrix.count) m.setColorAt(0, _c.setRGB(1, 1, 1)); }
+    for (const m of [this.floorMesh, this.wallMesh, this.water, this.oil, this.ice, this.grass, this.puffs, ...(this.detail ? [this.slab, this.rubble, this.wallCap] : [])]) { if (m.instanceMatrix.count) m.setColorAt(0, _c.setRGB(1, 1, 1)); }
     this.fireList = []; this.cloudList = [];
     this.refresh();
   }
@@ -171,14 +191,52 @@ export class GridView {
       this.floorMesh.setColorAt(k, _c);
     }
     this.floorMesh.instanceMatrix.needsUpdate = true; if (this.floorMesh.instanceColor) this.floorMesh.instanceColor.needsUpdate = true;
+    if (this.detail) {
+      for (let k = 0; k < this.floorIdx.length; k++) {
+        const i = this.floorIdx[k], l = L(i), x = i % w, y = (i / w) | 0, s = surf[i];
+        if (!l || s === SURF.WATER || s === SURF.OIL || s === SURF.ICE) {
+          _m4.makeScale(0, 0, 0); this.slab.setMatrixAt(k, _m4); this.slabCrack.setMatrixAt(k, _m4); continue;
+        }
+        const step = (hash(i * 23 + 2) - 0.5) * 0.025;
+        _m4.makeTranslation(x, 0.008 + step, y); this.slab.setMatrixAt(k, _m4);
+        _c.copy(this.floorBase[k]).multiplyScalar(l === 1 ? 0.54 : 1.05);
+        if (s === SURF.GRASS) _c.lerp(this.cGrassF, 0.5);
+        if (s === SURF.ASH) _c.lerp(this.cAsh, 0.5);
+        this.slab.setColorAt(k, _c);
+        if (hash(i * 11 + 5) > 0.47) {
+          _e.set(0, hash(i * 7 + 8) * 6.28, 0); _q.setFromEuler(_e);
+          _m4.compose(_v.set(x + (hash(i + 13) - 0.5) * 0.23, 0.041 + step, y + (hash(i + 29) - 0.5) * 0.23), _q, _s.setScalar(1));
+          this.slabCrack.setMatrixAt(k, _m4);
+        } else { _m4.makeScale(0, 0, 0); this.slabCrack.setMatrixAt(k, _m4); }
+      }
+      this.slab.instanceMatrix.needsUpdate = this.slabCrack.instanceMatrix.needsUpdate = true;
+      if (this.slab.instanceColor) this.slab.instanceColor.needsUpdate = true;
+      for (let k = 0; k < this.rubbleIdx.length; k++) {
+        const i = this.rubbleIdx[k], l = L(i), x = i % w, y = (i / w) | 0;
+        if (!l || surf[i] === SURF.WATER || surf[i] === SURF.OIL) { _m4.makeScale(0, 0, 0); this.rubble.setMatrixAt(k, _m4); continue; }
+        const a = hash(i * 3 + 9) * 6.28, r = 0.37;
+        _e.set(hash(i + 11) * 0.3, a, hash(i + 7) * 0.3); _q.setFromEuler(_e);
+        _m4.compose(_v.set(x + Math.cos(a) * r, 0.08, y + Math.sin(a) * r), _q, _s.set(0.7 + hash(i + 2), 0.4 + hash(i + 19) * 0.4, 0.6 + hash(i + 5)));
+        this.rubble.setMatrixAt(k, _m4);
+        this.rubble.setColorAt(k, _c.copy(this.cFloor2).multiplyScalar(l === 1 ? 0.55 : 0.95 + hash(i + 17) * 0.2));
+      }
+      this.rubble.instanceMatrix.needsUpdate = true; if (this.rubble.instanceColor) this.rubble.instanceColor.needsUpdate = true;
+    }
     for (let k = 0; k < this.wallIdx.length; k++) {
       const i = this.wallIdx[k], l = L(i), x = i % w, y = (i / w) | 0;
       if (!l) _m4.makeScale(0, 0, 0); else _m4.makeTranslation(x, this.wallH / 2, y);
       this.wallMesh.setMatrixAt(k, _m4); this.wallOL.setMatrixAt(k, _m4);
       _c.copy(this.wallBase[k]); if (l === 1) _c.multiplyScalar(this.dim + 0.08).lerp(this.cMem, 0.15);
       this.wallMesh.setColorAt(k, _c);
+      if (this.detail) {
+        if (!l) _m4.makeScale(0, 0, 0);
+        else _m4.makeTranslation(x, this.wallH + 0.012 + hash(i * 5 + 1) * 0.025, y);
+        this.wallCap.setMatrixAt(k, _m4);
+        this.wallCap.setColorAt(k, _c.multiplyScalar(1.18));
+      }
     }
     this.wallMesh.instanceMatrix.needsUpdate = this.wallOL.instanceMatrix.needsUpdate = true; if (this.wallMesh.instanceColor) this.wallMesh.instanceColor.needsUpdate = true;
+    if (this.detail) { this.wallCap.instanceMatrix.needsUpdate = true; if (this.wallCap.instanceColor) this.wallCap.instanceColor.needsUpdate = true; }
     let nw = 0, no = 0, ni = 0, ng = 0;
     for (let k = 0; k < this.floorIdx.length; k++) {
       const i = this.floorIdx[k], l = L(i); if (!l) continue;
