@@ -17,7 +17,7 @@ export function emitStatus(e) { emit('status', { id: e.id, st: { ...e.st } }); }
 export function snapHud() {
   const p = G.player, i = I(p.x, p.y); let door = null;
   for (const [dx, dy] of D8) { const x = p.x + dx, y = p.y + dy; if (inb(x, y) && G.tile[I(x, y)] === T_OPEN && !entAt(x, y) && !G.items.has(I(x, y))) { door = [x, y]; break; } }
-  emit('hud', { hp: p.hp, max: p.max, st: { ...p.st }, cd: { ...G.cd }, turn: G.stats.turns, floor: G.floor, stairs: G.tile[i] === T_STAIRS, door, inv: G.inv.reduce((a, b) => a + b.n, 0), gear: G.gear.has(i) ? { name: gearName(G.gear.get(i)), rarity: G.gear.get(i).rarity } : null, shield: p.shield || 0, boss: (() => { const b = G.ents.find((e) => e.boss); return b && b.alive && b.awake ? { name: b.name, hp: b.hp, max: b.max } : null; })() });
+  emit('hud', { hp: p.hp, max: p.max, st: { ...p.st }, turn: G.stats.turns, floor: G.floor, stairs: G.tile[i] === T_STAIRS, door, inv: G.inv.reduce((a, b) => a + b.n, 0), gear: G.gear.has(i) ? { name: gearName(G.gear.get(i)), rarity: G.gear.get(i).rarity } : null, shield: p.shield || 0, boss: (() => { const b = G.ents.find((e) => e.boss); return b && b.alive && b.awake ? { name: b.name, hp: b.hp, max: b.max } : null; })() });
 }
 
 export function emitIntents() {

@@ -68,7 +68,7 @@ try {
       const p = G.player;
       if (p.st.frozen || p.st.stun) { g.act(() => { if (p.st.frozen) p.st.frozen--; if (p.st.stun) p.st.stun--; return true; }); drain(); continue; }
       const r = Math.random();
-      if (r < 0.2) { const sk = ['push', 'fire', 'bolt', 'frost', 'venom'].filter((k) => G.cd[k] === 0); if (sk.length) { UI.skillBtn(sk[t % sk.length]); const v = [...UI.valid]; if (v.length && UI.mode === 'target') { const i = v[t % v.length]; UI.tapTarget(i % G.W, (i / G.W) | 0); UI.tapTarget(i % G.W, (i / G.W) | 0); } else UI.exitTarget(); drain(); turns++; continue; } }
+      if (r < 0.25) { const ks = [0, 1, 2, 3, 4, 5].filter((k) => G.slots[k].stone && !G.slots[k].cd); if (ks.length) { const k = ks[t % ks.length]; UI.stoneBtn(k); if (UI.pend && UI.pend.self) UI.stoneBtn(k); else { const v = [...UI.valid]; if (v.length && UI.mode === 'target') { const i = v[t % v.length]; UI.tapTarget(i % G.W, (i / G.W) | 0); UI.tapTarget(i % G.W, (i / G.W) | 0); } else UI.exitTarget(); } drain(); turns++; continue; } }
       if (r < 0.3) { UI.waitBtn(); drain(); turns++; continue; }
       const o = D8.filter(([dx, dy]) => G.tile[(p.y + dy) * G.W + p.x + dx] !== 0), [dx, dy] = o[Math.floor(Math.random() * o.length)];
       UI.tapTile(p.x + dx, p.y + dy); drain(); turns++;
@@ -85,22 +85,21 @@ try {
     for (const id of Object.keys(g.STONE)) {
       const cx = 15, cy = 15, p = G.player;
       for (let y = 0; y < G.H; y++) for (let x = 0; x < G.W; x++) { const i = y * G.W + x; G.tile[i] = Math.abs(x - cx) <= 4 && Math.abs(y - cy) <= 4 ? 1 : 0; G.surf[i] = 0; G.fire[i] = 0; G.cloud[i] = 0; }
-      p.x = cx; p.y = cy; p.hp = 20; p.shield = 0; p.alive = true; G.over = false;
+      p.x = cx; p.y = cy; p.hp = 20; p.shield = 0; p.alive = true; G.over = false; for (const k in p.st) p.st[k] = 0; G.auras = {};
       const mk = (x, y) => ({ id: G.nextId++, type: 'goblin', x, y, hp: 30, max: 30, atk: 2, st: { wet: 3, frozen: 0, burn: 0, poison: 0, stun: 0, fear: 0, haste: 0, immune: 0, bleed: 3, frac: 0, vital: 0 }, alive: true, awake: true, face: [0, 1], cd: 0, name: 'T' });
       G.ents = [p, mk(cx + 1, cy), mk(cx - 2, cy - 2)];
-      G.slots.forEach((q) => { q.stone = null; q.color = null; q.cd = 0; q.gTurn = -1; });
+      G.slots.forEach((q) => { q.stone = null; q.color = null; q.cd = 0; });
       g.addStone(id); g.computeFOV();
-      if (G.ps) { G.ps.eva = 0; G.ps.block = 0; } // 장비의 기본 회피 10%가 초록(피격) 검사를 흔들지 않게
+      if (G.ps) { G.ps.eva = 0; G.ps.block = 0; }
       fired = [];
-      const c = g.STONE[id].color;
-      if (c === 'red') g.act(() => { g.playerMove(1, 0); return true; }); else if (c === 'purple') g.act(() => g.playerWait()); else g.act(() => true);
-      drain();
-      out[id] = fired.includes(id);
+      const T = g.STONE[id].tgt.t, at = T === 'empty' ? [cx, cy + 1] : T === 'self' || T === 'around' || T === 'sight' ? [] : [cx + 1, cy];
+      let ok = false; g.act(() => (ok = g.useStone(0, ...at))); drain();
+      out[id] = ok && fired.includes(id) && G.slots[0].cd >= 0;
     }
     g.View.on = on;
     return Object.entries(out).filter(([, v]) => !v).map(([k]) => k);
   });
-  check('영혼석 24종 발동', stones.length === 0, stones.length ? '안 터짐: ' + stones.join(',') : '');
+  check('영혼석 스킬 24종 사용', stones.length === 0, stones.length ? '안 터짐: ' + stones.join(',') : '');
 
   // 보스 층 → 처치 → 귀환
   await page.evaluate(() => { const g = window.__game; g.returnToTown('recall'); });
@@ -109,7 +108,7 @@ try {
     const g = window.__game, G = g.G, M = g.META;
     document.querySelector('#sheet').classList.add('hidden');
     if (!M.hero) M.hero = g.newHero();
-    g.enterDungeon(1);
+        g.enterDungeon(1);
     G.zf = 2; const p = G.player; p.x = G.stairs % G.W; p.y = (G.stairs / G.W) | 0; G.tile[G.stairs] = 4; g.descend();
     const b = G.ents.find((e) => e.boss);
     if (!b) return { ok: false, why: 'no boss' };

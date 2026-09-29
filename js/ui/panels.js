@@ -5,7 +5,6 @@ import { G, I } from '../core/state.js';
 import { swapStone } from '../core/stones.js';
 import { CATS, DROPS, ENEMY, MAGE, catOf, kindOf } from '../data/enemies.js';
 import { CAT_ICON, ITEMS, ITEM_COL } from '../data/items.js';
-import { SK } from '../data/skills.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { C_STEAM, S_ASH, S_GRASS, S_ICE, S_OIL, S_WATER, T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrain.js';
 import { HIDDEN } from '../data/visitors.js';
@@ -29,7 +28,7 @@ Object.assign(UI, {
     }).join('') : '<p style="color:#9aa2bd;font-size:13px">비어 있다. 바닥의 반짝이는 물건을 밟으면 줍는다.</p>';
     sh.innerHTML = `<h3>가방 <button class="close">닫기</button></h3>
       <button class="wbtn" data-inv="1" style="width:100%;margin-top:4px">🛡 장비 창 열기 <small>무기·방어구·장신구 · 가방 ${G.bag.length}/20</small></button>
-      <div class="sec">영혼석 6칸 <small>🔴 공격 적중 · 🟣 대기 · 🟢 피격 때 발동</small></div><div class="gems">${slots}</div>
+      <div class="sec">영혼석 6칸 <small>칸 = 스킬 · 🔴 적중 · 🟣 대기 · 🟢 피격 때 쿨타임 −1</small></div><div class="gems">${slots}</div>
       <div class="sec">영혼석 가방 ${G.sbag.length}/3 <small>같은 색 칸하고만 교체 · 적이 안 보일 때</small></div><div class="gems" style="grid-template-columns:repeat(3,1fr)">${bag}</div>
       <div class="gline">${line}</div>
       <div class="sec">물건</div>${rows}`;
@@ -73,7 +72,7 @@ Object.assign(UI, {
   showTile(x, y) {
     const i = I(x, y); if (!G.seen[i]) return;
     const s = G.surf[i], t = G.tile[i], bk = G.block && G.block.get(i);
-    if (bk) { const H = HIDDEN[bk]; this.info(`<div><b>${H.name}</b> — ${H.hint}.<br><small>${SK[H.skill].icon} ${SK[H.skill].name}을(를) 이 칸에 쓰면 열린다</small></div>`); return; }
+    if (bk) { const H = HIDDEN[bk], who = Object.values(STONE).filter((q) => q.elem === H.skill && q.tgt.t !== 'around' && q.tgt.t !== 'sight').map((q) => `${q.icon} ${q.name}`).join(' · '); this.info(`<div><b>${H.name}</b> — ${H.hint}.<br><small>영혼석 스킬 ${who}을(를) 이 칸에 쓰면 열린다</small></div>`); return; }
     const T = { [S_WATER]: '💧 물웅덩이 — 들어가면 젖는다. 번개가 이어진 물 전체로 흐른다. 냉기를 맞으면 얼음이 된다.', [S_GRASS]: '🌿 풀 — 불이 붙으면 매 턴 옆 풀로 번진다.', [S_OIL]: '🛢 기름 — 불이 닿으면 이어진 기름이 차례로 폭발한다.', [S_ICE]: '🧊 얼음 — 올라서면 같은 방향으로 끝까지 미끄러진다. 불에 녹는다.', [S_ASH]: '재 — 불탄 자리.' };
     let txt = T[s] || (t === T_DOOR ? '🚪 닫힌 문 — 시야를 막는다. 부딪히면 열린다.' : t === T_OPEN ? '🚪 열린 문 — 옆에 서서 ⬇ 옆 버튼으로 닫을 수 있다.' : t === T_STAIRS ? '⬇ 계단 — 올라서서 내려간다.' : t === T_WALL ? '벽 — 밀쳐서 부딪히게 하면 충돌 피해.' : '돌바닥');
     if (G.fire[i]) txt += '<br>🔥 불타는 중';
@@ -108,10 +107,13 @@ Object.assign(UI, {
       <tr><td>약점</td><td>피해 1.5배·부상 강화. 처음 맞혀 본 뒤 머리 위에 표시된다</td></tr>
       <tr><td>◆ 표시</td><td>지금 무기로 한 방에 쓰러뜨릴 수 있다 — 색은 떨어질 영혼석의 색</td></tr></table>
       <h4>영혼석</h4><table>
-      <tr><td>🔴 빨강</td><td>내 무기 공격이 맞았을 때 발동</td></tr>
-      <tr><td>🟣 보라</td><td>대기할 때 발동 (발동 후 2턴 쉰다)</td></tr>
-      <tr><td>🟢 초록</td><td>내가 맞았을 때 발동 (한 턴에 한 번)</td></tr>
-      <tr><td>연쇄</td><td>발동이 다른 발동·원소 반응을 부르면 단계가 오른다. 3단계부터 슬로모션</td></tr>
+      <tr><td>스킬</td><td>영혼석 하나 = 액티브 스킬 하나. 아래 6칸이 스킬 버튼. 쓰면 행동 한 번, 쿨타임이 찬다</td></tr>
+      <tr><td>쿨타임</td><td>내 턴이 끝날 때마다 1 준다. 전투 중에만 흐르고, 보이는 깨어 있는 적이 없으면 모두 준비된다</td></tr>
+      <tr><td>🔴 빨강</td><td>내 공격(무기·스킬)이 적중하면 1 더 — 몰아친다</td></tr>
+      <tr><td>🟣 보라</td><td>대기하면 1 더 — 기다렸다 터뜨린다</td></tr>
+      <tr><td>🟢 초록</td><td>적에게 맞으면 1 더 — 버티다 되갚는다</td></tr>
+      <tr><td>한 라운드</td><td>영혼석마다 색 감소는 한 라운드(내 턴 + 적 턴)에 한 번, 방금 쓴 스킬은 제외</td></tr>
+      <tr><td>연쇄</td><td>스킬이 원소 반응을 부르면 단계가 오른다(물벼락 → 번개). 3단계부터 슬로모션</td></tr>
       <tr><td>칸</td><td>6칸은 처음 끼운 색으로 고정. 차면 가방(3개)으로. 같은 색끼리만, 적이 안 보일 때 교체</td></tr>
       <tr><td>원소 막타</td><td>무기가 아닌 불·번개 등으로 쓰러뜨리면 영혼석이 40%만 남고 부위가 무작위</td></tr></table>
       <h4>원소 시너지</h4><table>
@@ -136,11 +138,11 @@ Object.assign(UI, {
       <tr><td>💤 / !</td><td>자는 중 / 방금 나를 발견</td></tr></table>
       <h4>조작</h4><table>
       <tr><td>탭</td><td>옆 칸: 이동·공격·문 열기 / 먼 칸: 자동 이동 / 먼 적: 정보</td></tr>
-      <tr><td>길게 누르기</td><td>칸·적 정보. 스킬 버튼을 길게 누르면 설명</td></tr>
-      <tr><td>스킬·던지기</td><td>버튼 → 칸 탭(미리보기) → 같은 칸 한 번 더 탭</td></tr>
+      <tr><td>길게 누르기</td><td>칸·적 정보. 영혼석 칸을 길게 누르면 설명·쿨타임·색 감소 조건</td></tr>
+      <tr><td>스킬·던지기</td><td>영혼석 칸 → 칸 탭(미리보기) → 같은 칸 한 번 더 탭. 자기 대상 스킬은 칸을 한 번 더</td></tr>
       <tr><td>⏳ 대기</td><td>한 턴 쉰다. 길게 누르면 적이 안 보일 때 회복될 때까지 휴식</td></tr>
       <tr><td>카메라</td><td>두 손가락 회전·핀치 확대, ◢ 탑뷰↔45도, ⌂ 기본 시점</td></tr>
-      <tr><td>키보드</td><td>WASD/화살표 + QEZC 대각, Space 대기, 1–5 스킬, I 가방</td></tr></table>`;
+      <tr><td>키보드</td><td>WASD/화살표 + QEZC 대각, Space 대기, 1–6 영혼석 스킬, I 가방</td></tr></table>`;
     el.classList.remove('hidden');
     el.querySelector('.close').onclick = () => el.classList.add('hidden');
   },

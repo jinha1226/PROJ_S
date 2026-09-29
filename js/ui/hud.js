@@ -1,9 +1,9 @@
 import { closeDoor } from '../core/combat.js';
 import { gearName, pickGear, swapHands } from '../core/gear.js';
 import { G, I, entAt } from '../core/state.js';
+import { stoneCd } from '../core/stones.js';
 import { BOSSES } from '../data/enemies.js';
 import { RARITY, isWeapon, weaponOf } from '../data/gear.js';
-import { SK, SKILLS } from '../data/skills.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { T_OPEN, ZONES } from '../data/terrain.js';
 import { FORMS } from '../data/weapons.js';
@@ -36,18 +36,34 @@ Object.assign(UI, {
       const q = d.slots[k], def = q.stone ? STONE[q.stone] : null;
       b.classList.toggle('on', !!def); b.style.setProperty('--c', q.color ? COLORS[q.color].css : 'transparent');
       b.querySelector('.si').textContent = def ? def.icon : '';
+      b.querySelector('.sn').textContent = def ? def.name : '';
+      b.classList.toggle('ready', !!def && !(q.cd > 0)); // 사용 가능: 밝게 빛남
       b.classList.toggle('cool', q.cd > 0); b.querySelector('.scd').textContent = q.cd > 0 ? q.cd : '';
     });
+    this.renderAuras();
     $('#bagcount').textContent = (G.inv.reduce((a, b) => a + b.n, 0) + (d.bag.length ? ` · ◆${d.bag.length}` : '')) || '';
   },
   flashSlot(k) { const b = $('#souls').children[k]; if (!b) return; b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); },
+  /** 색 감소: 해당 칸들이 그 색으로 번쩍이며 "−1" */
+  cdFlash(slots, color) {
+    const css = COLORS[color].css;
+    for (const [k, n] of slots) {
+      const b = $('#souls').children[k]; if (!b) continue;
+      b.classList.remove('dec'); void b.offsetWidth; b.classList.add('dec');
+      const m = document.createElement('span'); m.className = 'minus'; m.style.color = css; m.textContent = `−${n}`; b.appendChild(m); setTimeout(() => m.remove(), 900);
+    }
+  },
+  /** 지속 효과: 남은 라운드를 칸에 작게 */
+  renderAuras() {
+    const A = G.auras || {};
+    [...$('#souls').children].forEach((b, k) => { const q = G.slots[k], a = q && q.stone && STONE[q.stone].aura, r = a && A[a] ? A[a] - 1 : 0; b.querySelector('.aur').textContent = r > 0 ? `${r}R` : ''; });
+  },
   slotInfo(k) {
     const q = (this.slotsSnap || { slots: G.slots }).slots[k];
-    if (!q.stone) { this.info('<div>빈 칸 — 처음 끼우는 영혼석의 색으로 이 칸의 색이 정해진다.<br>몬스터를 <b>무기로</b> 쓰러뜨리면 막타 형태에 따라 영혼석이 떨어진다: ⚔베기→가죽🟢 · 🔨타격→뼈🟣 · 🗡찌르기→심장🔴</div>'); return; }
+    if (!q.stone) { this.info('<div>빈 칸 — 영혼석을 얻으면 스킬 버튼이 된다. 처음 끼우는 영혼석의 색으로 이 칸의 색이 정해진다.<br>몬스터를 <b>무기로</b> 쓰러뜨리면 막타 형태에 따라 영혼석이 떨어진다: ⚔베기→가죽🟢 · 🔨타격→뼈🟣 · 🗡찌르기→심장🔴</div>'); return; }
     const d = STONE[q.stone], C = COLORS[d.color];
-    this.info(`<h3><span style="color:${C.css}">●</span> ${d.icon} ${d.name} <small style="color:#9aa2bd">${C.name} · ${C.trig}${d.color === 'purple' ? ' · 발동 후 2턴 쉰다' : d.color === 'green' ? ' · 한 턴에 한 번' : ''}</small></h3><div>${d.line}</div>`);
+    this.info(`<h3><span style="color:${C.css}">●</span> ${d.icon} ${d.name} <small style="color:#9aa2bd">쿨타임 ${stoneCd(q.stone)}턴${q.cd > 0 ? ` · 남은 ${q.cd}` : ' · 준비됨'}</small></h3><div>${d.line}</div><div class="hint" style="margin-top:4px">${C.name}: ${C.trig} 쿨타임 1 더 감소 (한 라운드 한 번)</div>`);
   },
-  skillInfo(id) { const sk = SK[id]; this.info(`<h3>${sk.icon} ${sk.name} <small style="color:#9aa2bd">재사용 ${sk.cd}턴 · 사거리 ${sk.range}</small></h3><div>${sk.desc}</div>`); },
   /* ---- HUD ---- */
   hp(hp, max) {
     const w = Math.max(0, hp / max) * 100;
@@ -66,7 +82,6 @@ Object.assign(UI, {
     $('#lootcount').textContent = G.loot ? `🎒 ${Object.values(G.loot.mats).reduce((a, b) => a + b, 0)}` : '';
     this.bossBar(d.boss);
     $('#bagcount').textContent = d.inv ? d.inv : '';
-    for (const sk of SKILLS) { const b = this.skEls[sk.id], cd = d.cd[sk.id]; b.classList.toggle('cooling', cd > 0); b.querySelector('.cd').textContent = cd > 0 ? cd : ''; }
     const c = $('#btn-ctx');
     if (d.stairs) { c.disabled = false; c.classList.add('live'); c.innerHTML = '⬇<small>내려가기</small>'; c.dataset.act = 'stairs'; }
     else if (d.gear) { c.disabled = false; c.classList.add('live'); c.innerHTML = `✋<small style="color:${RARITY[d.gear.rarity].css}">${d.gear.name} 줍기</small>`; c.dataset.act = 'gear'; }

@@ -244,6 +244,22 @@ details{margin-top:4px;font-size:13px}details summary{cursor:pointer}details sum
 .names.out span{animation:fadein 1.2s ease forwards,fadeout 3s 6s ease forwards}
 @keyframes fadeout{to{opacity:.15;filter:blur(1px)}}
 .ending.dark h1{background:linear-gradient(180deg,#b8b8c8,#5a5a68)!important;-webkit-background-clip:text!important;background-clip:text!important}
+/* ---------- 영혼석 = 스킬 버튼 (3×2) ---------- */
+#souls{grid-template-columns:repeat(3,1fr)!important;gap:6px!important}
+.slot{height:54px!important;border-radius:14px!important;display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:1px;overflow:visible}
+.slot .si{font-size:22px;line-height:1}
+.slot .sn{font-size:10.5px;color:var(--dim);white-space:nowrap;max-width:95%;overflow:hidden;text-overflow:ellipsis}
+.slot.ready{background:linear-gradient(180deg,color-mix(in srgb,var(--c) 26%,rgba(20,22,36,.92)),rgba(14,15,26,.92));box-shadow:0 0 14px color-mix(in srgb,var(--c) 55%,transparent),inset 0 0 12px color-mix(in srgb,var(--c) 40%,transparent)}
+.slot.ready .sn{color:#fff}
+.slot.ready .si{filter:drop-shadow(0 0 6px var(--c))}
+.slot.cool .si,.slot.cool .sn{opacity:.35}
+.slot .scd{border-radius:12px!important;font-size:22px!important;background:rgba(0,0,0,.55)!important}
+.slot.sel{outline:2px solid var(--c);transform:translateY(-2px)}
+.slot .aur{position:absolute;top:3px;right:6px;font-size:10px;font-weight:900;color:#ffe38a}
+.slot.dec{animation:sdec .6s ease-out}
+@keyframes sdec{0%{box-shadow:0 0 26px var(--c),inset 0 0 22px var(--c);background:color-mix(in srgb,var(--c) 55%,#000)}100%{}}
+.slot .minus{position:absolute;left:50%;top:-4px;transform:translateX(-50%);font-size:17px;font-weight:900;text-shadow:0 2px 0 #000,0 0 8px currentColor;animation:mup .9s ease-out forwards;pointer-events:none}
+@keyframes mup{from{opacity:1;transform:translate(-50%,0)}to{opacity:0;transform:translate(-50%,-26px)}}
 </style>
 <script type="importmap">
 { "imports": {
@@ -271,7 +287,6 @@ details{margin-top:4px;font-size:13px}details summary{cursor:pointer}details sum
   <div id="bottom">
     <div id="targetbar"><span id="targettext"></span><button id="btn-cancel">✕ 취소</button></div>
     <div id="souls"></div>
-    <div id="skills"></div>
     <div id="actions">
       <button id="btn-bag">🎒<small>가방</small><b id="bagcount"></b></button>
       <button id="btn-gear">🛡<small>장비</small><b id="gearcount"></b></button>

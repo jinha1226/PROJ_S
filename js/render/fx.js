@@ -1,11 +1,10 @@
 import * as THREE from 'three';
-import * as K from './diorama.js';
 import { G } from '../core/state.js';
 import { KCOL, PHYS } from '../data/colors.js';
 import { MAGE } from '../data/enemies.js';
-import { SK } from '../data/skills.js';
-import { COLORS, STONE } from '../data/stones.js';
+import { AURA, COLORS, STONE } from '../data/stones.js';
 import { W3 } from './common.js';
+import * as K from './diorama.js';
 import { ports } from './ports.js';
 import { Sfx } from './sfx.js';
 import { View } from './view.js';
@@ -41,6 +40,18 @@ Object.assign(View, {
     if (st >= 2) D.hitstop(25 + 12 * st);
     ports.UI.flashSlot(d.slot);
     Sfx.chime(st);
+  },
+  /** 지속 효과 오라: 캐릭터 발밑 고리 + 색 */
+  setAuras(A) {
+    const pe = this.evs.get(0); if (!pe) return;
+    if (pe.auraG) { pe.d.root.remove(pe.auraG); pe.auraG = null; }
+    const keys = Object.keys(A || {}); if (!keys.length) return;
+    const g = new THREE.Group();
+    keys.forEach((k, j) => {
+      const c = new THREE.Color(AURA[k].hex).multiplyScalar(1.6), m = new THREE.Mesh(new THREE.TorusGeometry(0.46 + j * 0.09, 0.025, 6, 40), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
+      m.rotation.x = Math.PI / 2; m.position.y = 0.08 + j * 0.12; m.userData.k = k; g.add(m);
+    });
+    pe.d.root.add(g); pe.auraG = g; this.dio.pool.flash(W3(pe.cur.x, pe.cur.z), AURA[keys[0]].hex, 30, 0.4, 4);
   },
   slowmo(stage) {
     this._slow = true; this.dio.timeScale = 0.3; document.body.classList.add('slowmo');
@@ -119,7 +130,11 @@ Object.assign(View, {
       case 'aim': Sfx.play('draw'); break;
       case 'dash': Sfx.play('dash'); break;
       case 'shove': D.fx.ring(P(d.x, d.y), 0xf2e6c8, 0.2, 1.1, 0.25); D.sparks.emit({ pos: P(d.x, d.y, 0.5), n: 12, color: 0xffffff, color2: 0xf2e6c8, speed: 4, vx: d.dx * 4, vz: d.dy * 4, life: 0.3, size: 0.12 }); Sfx.play('push'); break;
-      case 'pcast': { const pe = this.evs.get(0); if (pe) { const c = SK[d.elem].color; D.sparks.emit({ pos: W3(pe.cur.x, pe.cur.z, 0.7), n: 10, color: c, color2: 0xffffff, speed: 1.5, grav: 0, life: 0.35, size: 0.12 }); pe.sqv += 3; } break; }
+      case 'pcast': { const pe = this.evs.get(0); if (pe) { const c = d.color ?? 0xffffff; D.sparks.emit({ pos: W3(pe.cur.x, pe.cur.z, 0.7), n: 10, color: c, color2: 0xffffff, speed: 1.5, grav: 0, life: 0.35, size: 0.12 }); pe.sqv += 3; } break; }
+      case 'cdReduce': ports.UI.cdFlash(d.slots, d.color); { const pe = this.evs.get(0); if (pe) D.sparks.emit({ pos: W3(pe.cur.x, pe.cur.z, 0.8), n: 6 * d.slots.length, color: COLORS[d.color].hex, color2: 0xffffff, speed: 1.2, up: 1.2, grav: 0, life: 0.5, size: 0.09 }); } Sfx.chime(1); break;
+      case 'aura': this.setAuras(d); ports.UI.renderAuras(); break;
+      case 'stonesReady': ports.UI.toast('전투가 끝났다 — 영혼석 스킬이 모두 준비됐다'); break;
+      case 'venomCloud': for (let k = 0; k < 8; k++) { const a = k * 0.785; D.puffs.emit({ pos: P(d.x + Math.cos(a), d.y + Math.sin(a), 0.4), n: 3, color: 0x79e05a, color2: 0x3a8a2a, speed: 0.4, up: 0.4, grav: 0, life: 1.4, size: 0.45, grow: 1 }); } Sfx.play('hiss'); break;
       case 'pickup': D.sparks.emit({ pos: P(d.x, d.y, 0.4), n: 16, color: 0xffe38a, color2: 0xffffff, speed: 1.5, up: 1.5, grav: 0, life: 0.6, size: 0.12 }); Sfx.play('pick'); break;
       case 'identify': ports.UI.banner('✦ ' + d.text, 'info'); break;
       case 'drink': case 'read': { const pe = this.evs.get(0); if (pe) { D.sparks.emit({ pos: W3(pe.cur.x, pe.cur.z, 0.6), n: 20, color: d.color, color2: 0xffffff, speed: 1.2, up: 1.6, grav: 0, life: 0.8, size: 0.13, spread: 0.4 }); pe.sqv += 4; } Sfx.play(type === 'drink' ? 'drink' : 'read'); break; }

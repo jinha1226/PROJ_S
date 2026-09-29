@@ -42,4 +42,5 @@ export const HIDDEN = {
   gate: { name: '멈춘 승강문', skill: 'bolt', hint: '녹슨 톱니 — 번개가 닿으면 움직일지도', inside: '장비 상자' },
   rubble: { name: '무너진 돌무더기', skill: 'push', hint: '밀치면 무너질 것 같다', inside: '마석' },
 };
-export const HIDDEN_BY_SKILL = Object.fromEntries(Object.entries(HIDDEN).map(([k, v]) => [v.skill, k]));
+/** skill = 여는 원소(영혼석 스킬의 elem) */
+export const HIDDEN_BY_ELEM = Object.fromEntries(Object.entries(HIDDEN).map(([k, v]) => [v.skill, k]));

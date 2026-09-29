@@ -1,6 +1,5 @@
 import { emitSlots, snapHud } from '../core/snap.js';
 import { G, Game, TL } from '../core/state.js';
-import { SKILLS } from '../data/skills.js';
 import { Anim } from '../flow.js';
 import { Sfx } from '../render/sfx.js';
 import { View } from '../render/view.js';
@@ -21,16 +20,10 @@ export const UI = {
   logLines: [],
   lastHud: null,
   init() {
-    const box = $('#skills');
-    for (const sk of SKILLS) {
-      const b = document.createElement('button'); b.className = 'sk'; b.style.setProperty('--c', sk.css);
-      b.innerHTML = `${sk.icon}<small>${sk.name}</small><span class="cd"></span>`;
-      this.hold(b, () => this.skillBtn(sk.id), () => this.skillInfo(sk.id));
-      box.appendChild(b); this.skEls[sk.id] = b;
-    }
     this.hold($('#btn-wait'), () => this.waitBtn(), () => this.startRest());
     const souls = $('#souls');
-    for (let k = 0; k < 6; k++) { const b = document.createElement('button'); b.className = 'slot'; b.innerHTML = '<span class="si"></span><span class="scd"></span>'; b.onclick = () => this.slotInfo(k); souls.appendChild(b); }
+    // 영혼석 6칸(3×2) = 스킬 버튼. 탭 = 조준/발동, 길게 = 설명
+    for (let k = 0; k < 6; k++) { const b = document.createElement('button'); b.className = 'slot'; b.innerHTML = '<span class="si"></span><small class="sn"></small><span class="scd"></span><b class="aur"></b>'; this.hold(b, () => this.stoneBtn(k), () => this.slotInfo(k)); souls.appendChild(b); }
     this.hold($('#btn-wpn'), () => this.swapWeapon(), () => this.weaponInfo());
     $('#btn-bag').onclick = () => { Sfx.play('ui'); this.openBag(); };
     $('#btn-ctx').onclick = () => this.ctxBtn();

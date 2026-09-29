@@ -18,7 +18,7 @@ import { jo } from './util/text.js';
 
 /* 한 번의 행동 = 로직 해결 → 연출 재생 */
 export function act(fn) {
-  if (Anim.active || G.over) return false;
+  if (Anim.active || G.over || Game.mode !== 'dungeon') return false; // 늦게 온 자동 턴(기절·빙결)이 정착지에서 돌지 않게
   TL.reset(); G.hurt = false;
   const took = fn();
   if (took) endTurn();
@@ -64,7 +64,7 @@ export function descend() {
 
 export function enterDungeon(zone) {
   const h = META.hero;
-  Town.clear(); Game.mode = 'dungeon';
+  Town.clear(); Game.mode = 'dungeon'; Anim.active = false; Anim.q = []; // 남은 연출은 버린다
   setR(mulberry32(seedOr(((Date.now() & 0xffffffff) ^ Math.floor(Math.random() * 1e9)) >>> 0)));
   Object.assign(G, { zone, zf: 1, over: false, won: false, nextId: 1, hasteFlip: false, pendingReturn: null, known: h.known, look: h.look, inv: h.inv, eq: h.eq, bag: h.bag, heroBase: h.base, legendsDropped: new Set(h.legends || []), slots: h.slots, sbag: h.sbag, weakKnown: h.weakKnown, ctx: null, curSrc: null, dropHint: 0 });
   G.known.recall = true;
@@ -72,7 +72,8 @@ export function enterDungeon(zone) {
   G.player = { id: 0, type: 'hero', name: h.name, x: 0, y: 0, hp: h.hp, max: h.max, st: newSt(), alive: true, face: [0, 1], shield: 0 };
   refreshStats();
   G.player.shield = armorShield() + (META.buff === 'feast' ? 6 : 0); META.buff = null;
-  G.cd = { push: 0, fire: 0, bolt: 0, frost: 0, venom: 0 };
+  G.round = 0; G.auras = {}; G.combatDmg = 0;
+  for (const sl of G.slots) { sl.cd = 0; sl.usedRound = sl.redRound = -1; }
   G.stats = { kills: 0, combos: 0, turns: 0, items: 0, stones: 0, chains: 0, best: 0 };
   G.mageOf = ['bolt', pick(['fire', 'frost', 'bolt']), pick(['fire', 'frost']), 'mix'];
   G.loot = { mats: {}, npcs: [] };
@@ -96,7 +97,7 @@ export function returnToTown(reason) {
     h.hp = Math.max(1, G.player.hp); h.max = G.player.max; h.legends = [...G.legendsDropped];
     if (reason === 'boss') { rep.first = !META.cleared[G.zone - 1]; META.cleared[G.zone - 1] = true; }
   }
-  G.over = true; UI.exitTarget(); UI.travel = null; UI.rest = null; UI.buffered = null;
+  G.over = true; UI.exitTarget(); UI.travel = null; UI.rest = null; UI.buffered = null; Anim.active = false; Anim.q = [];
   saveMeta();
   Town.enter(rep);
 }

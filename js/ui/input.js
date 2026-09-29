@@ -1,10 +1,11 @@
 import { canReach, playerMelee, playerMove, playerWait } from '../core/combat.js';
 import { findPath, visibleFoes } from '../core/fov.js';
 import { pickGear } from '../core/gear.js';
-import { previewFor, targetsFor, useSkill } from '../core/skills.js';
+import { previewFor, selfPreview, targetsFor } from '../core/skills.js';
+import { useStone } from '../core/stones.js';
+import { COLORS, STONE } from '../data/stones.js';
 import { emitStatus } from '../core/snap.js';
 import { G, Game, I, XY, entAt, inb, isFoe, isP, log } from '../core/state.js';
-import { SK, SKILLS } from '../data/skills.js';
 import { T_DOOR, T_STAIRS, T_WALL } from '../data/terrain.js';
 import { Anim, act, descend, returnToTown } from '../flow.js';
 import { Sfx } from '../render/sfx.js';
@@ -83,27 +84,36 @@ Object.assign(UI, {
     if (this.rest) { setTimeout(() => this.restStep(), 20); }
   },
   /* ---- 대상 지정 ---- */
-  skillBtn(id) {
-    if (G.over || this.overlayOpen()) return;
+  /** 영혼석 칸 = 스킬 버튼. 대상 스킬은 조준 → 칸 두 번 탭, 자기 대상 스킬은 한 번 더 누르면 발동 */
+  stoneBtn(k) {
+    if (G.over || this.overlayOpen() || Anim.active) return;
+    const sl = G.slots[k], id = sl && sl.stone;
+    if (!id) { this.slotInfo(k); return; }
+    const S = STONE[id], C = COLORS[S.color];
+    if (this.mode === 'target' && this.pend?.slot === k) {
+      if (this.pend.self) { const pend = this.pend; this.exitTarget(); act(() => pend.run()); return; }
+      this.exitTarget(); return;
+    }
     Sfx.play('ui');
-    if (this.mode === 'target' && this.pend?.id === id) { this.exitTarget(); return; }
-    const sk = SK[id];
-    if (G.cd[id] > 0) { this.toast(`${sk.name}: ${G.cd[id]}턴 뒤에 다시 쓸 수 있다`); return; }
+    if (sl.cd > 0) { this.toast(`${S.name}: ${sl.cd}턴 뒤 — ${C.name}은(는) ${C.trig} 1 더 준다`); return; }
     if (G.player.st.frozen || G.player.st.stun) return;
-    this.enterTarget({ kind: 'skill', id, name: sk.icon + ' ' + sk.name, range: sk.range, color: sk.color, needsEnemy: !!sk.needsEnemy, run: (x, y) => useSkill(id, x, y) });
+    const T = S.tgt.t, self = T === 'self' || T === 'around' || T === 'sight';
+    if (id === 'p_summon' && G.ents.filter((e) => e.alive && e.ally && !e.npc).length >= 2) this.toast('영혼 고블린은 둘까지 — 가장 오래된 하나가 사라진다');
+    this.enterTarget({ kind: 'stone', slot: k, id, self, name: S.icon + ' ' + S.name, color: C.hex, run: self ? () => useStone(k) : (x, y) => useStone(k, x, y) });
   },
   enterTarget(pend) {
     this.travel = null; this.rest = null; this.hideInfo();
     this.mode = 'target'; this.pend = pend; this.prevIdx = -1; this.prev = null;
     this.valid = targetsFor(pend);
-    for (const [k, b] of Object.entries(this.skEls)) b.classList.toggle('sel', pend.kind === 'skill' && k === pend.id);
+    [...$('#souls').children].forEach((b, k) => b.classList.toggle('sel', pend.kind === 'stone' && k === pend.slot));
     $('#targetbar').classList.add('on');
-    $('#targettext').innerHTML = this.valid.size ? `<b>${pend.name}</b> — 대상 칸을 탭하면 결과를 미리 보여준다` : `<b>${pend.name}</b> — 닿는 대상이 없다`;
+    if (pend.self) { this.prev = selfPreview(pend.id); $('#targettext').innerHTML = `<b>${pend.name}</b> ${this.prev.note}<br><small style="color:#9aa2bd">칸을 한 번 더 누르면 발동</small>`; }
+    else $('#targettext').innerHTML = this.valid.size ? `<b>${pend.name}</b> — 대상 칸을 탭하면 결과를 미리 보여준다` : `<b>${pend.name}</b> — 닿는 대상이 없다`;
     View.refreshDecals();
   },
   exitTarget() {
     this.mode = 'normal'; this.pend = null; this.prev = null; this.prevIdx = -1;
-    for (const b of Object.values(this.skEls)) b.classList.remove('sel');
+    for (const b of $('#souls').children) b.classList.remove('sel');
     $('#targetbar').classList.remove('on'); View.refreshDecals();
   },
   targetDecals() {
@@ -115,6 +125,7 @@ Object.assign(UI, {
   },
   tapTarget(x, y) {
     const i = I(x, y);
+    if (this.pend.self) { if (x === G.player.x && y === G.player.y) { const pend = this.pend; this.exitTarget(); act(() => pend.run()); return; } this.exitTarget(); return; }
     if (!this.valid.has(i)) { if (x === G.player.x && y === G.player.y) { this.exitTarget(); return; } this.toast('사거리·시야 밖이다'); return; }
     if (this.prevIdx === i) { const pend = this.pend; this.exitTarget(); act(() => pend.run(x, y)); return; }
     this.prevIdx = i; this.prev = previewFor(this.pend, x, y); Sfx.play('ui');
@@ -138,6 +149,6 @@ Object.assign(UI, {
     if (k === ' ' || k === '.') { e.preventDefault(); this.waitBtn(); return; }
     if (k === '>') { if (G.tile[I(G.player.x, G.player.y)] === T_STAIRS) descend(); return; }
     if (k === 'i') { this.openBag(); return; }
-    const n = parseInt(k, 10); if (n >= 1 && n <= 5) this.skillBtn(SKILLS[n - 1].id);
+    const n = parseInt(k, 10); if (n >= 1 && n <= 6) this.stoneBtn(n - 1);
   },
 });

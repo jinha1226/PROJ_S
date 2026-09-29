@@ -1,3 +1,4 @@
+import { STONE } from './stones.js';
 import { WEAPONS, WPN } from './weapons.js';
 
 /* ---------- 장비: 칸 · 기본 아이템 · 등급 · 옵션 · 전설 (docs/설계_아이템_장비.md) ---------- */
@@ -57,20 +58,24 @@ export const AFFIXES = {
   throwArea: { cat: 'item', flag: true, slots: ['hands'], line: '던지는 물건 범위 +1', pre: '멀리 뿌리는', suf: '투척의' },
   potion: { cat: 'item', t1: [20, 20], t2: [40, 40], slots: ['neck', 'body'], line: '물약 회복 +{v}%', pre: '약초 향 나는', suf: '연금의' },
   autoId: { cat: 'item', flag: true, slots: ['head'], line: '미확인 소모품을 주우면 즉시 확인', pre: '눈 밝은', suf: '감정사의' },
-  redTwice: { cat: 'stone', t1: [5, 5], t2: [10, 10], slots: ['weapon', 'ring'], line: '빨강 발동 시 {v}% 확률로 한 번 더', pre: '붉게 달군', suf: '분노의' },
-  purpleHeal: { cat: 'stone', t1: [1, 1], t2: [2, 2], slots: ['neck', 'body'], line: '보라 발동 시 HP +{v}', pre: '고요한', suf: '명상의' },
-  greenShield: { cat: 'stone', t1: [1, 1], t2: [2, 2], slots: ['body', 'off'], line: '초록 발동 시 보호막 +{v}', pre: '푸른', suf: '버팀의' },
-  skillCd: { cat: 'skill', flag: true, skill: true, slots: ['head', 'neck'], line: '{skill} 재사용 대기 −1', pre: '재빠른', suf: '숙련의' },
-  skillDmg: { cat: 'skill', t1: [1, 1], t2: [2, 2], slots: ['head', 'neck'], line: '스킬 피해 +{v}', pre: '주문 새긴', suf: '마법사의' },
+  redTwice: { cat: 'stone', t1: [5, 5], t2: [10, 10], slots: ['weapon', 'ring'], line: '빨강 색 감소 때 {v}% 확률로 1 더', pre: '붉게 달군', suf: '분노의' },
+  purpleHeal: { cat: 'stone', t1: [1, 1], t2: [2, 2], slots: ['neck', 'body'], line: '보라 영혼석 스킬을 쓰면 HP +{v}', pre: '고요한', suf: '명상의' },
+  greenShield: { cat: 'stone', t1: [1, 1], t2: [2, 2], slots: ['body', 'off'], line: '초록 영혼석 스킬을 쓰면 보호막 +{v}', pre: '푸른', suf: '버팀의' },
+  skillCd: { cat: 'skill', flag: true, skill: true, slots: ['head', 'neck'], line: '{skill} 쿨타임 −1', pre: '재빠른', suf: '숙련의' },
+  skillDmg: { cat: 'skill', t1: [1, 1], t2: [2, 2], slots: ['head', 'neck'], line: '영혼석 스킬 피해 +{v}', pre: '주문 새긴', suf: '마법사의' },
   floorShield: { cat: 'craft', t1: [4, 4], t2: [6, 6], slots: [], line: '층마다 보호막 {v}로 시작', pre: '뼈로 엮은', suf: '뼈의' },
 };
+/** 옛 저장의 스킬 id(밀치기·불씨…) → 이어받은 영혼석 */
+export const OLD_SKILL = { push: 'r_push', fire: 'r_fire', bolt: 'r_shock', frost: 'r_freeze', venom: 'r_poison' };
+export const stoneOfSkill = (k) => OLD_SKILL[k] || k;
+
 export const CAPS = { def: 6, eva: 40, block: 30, maxHp: 20, res: 50 };
 export const BASE_EVA = 10;
 
 export const LEGENDS = {
   mistCloak: { base: 'body_cloth', name: '물안개 망토', line: '대기할 때마다 내 주변 1칸이 젖는다' },
   bloodFang: { base: 'dagger', name: '피의 송곳니', line: '출혈 중인 적이 죽으면 피가 터져 주변 1칸 적에게 출혈 2' },
-  thornPlate: { base: 'body_plate', name: '가시 판금', line: '맞으면 초록 영혼석이 두 번 발동. 받는 피해 +20%' },
+  thornPlate: { base: 'body_plate', name: '가시 판금', line: '맞으면 초록 쿨타임이 2씩 준다. 받는 피해 +20%' },
   stormRing: { base: 'ring', name: '번개 감긴 반지', line: '번개가 번질 때 1칸 더 멀리 번진다' },
   giantMace: { base: 'mace', name: '거인의 철퇴', line: '밀치기가 1칸 더 멀리. 벽 충돌 시 주변도 흔들려 1 피해' },
   alchGlove: { base: 'hands_leather', name: '연금술사의 장갑', line: '던지는 물건이 두 개로 나뉘어 날아간다' },
@@ -94,6 +99,6 @@ export const weaponId = (it) => (it && GEAR_BASES[it.base].weapon) || 'sword';
 export const isWeapon = (it) => !!(it && GEAR_BASES[it.base].weapon);
 export function affixLine(a, known = true) {
   if (!known) return '???';
-  const A = AFFIXES[a.id]; return A.line.replace('{v}', a.v).replace('{skill}', a.skill ? ({ push: '밀치기', fire: '불씨', bolt: '번개', frost: '냉기', venom: '독침' }[a.skill]) : '');
+  const A = AFFIXES[a.id], sk = a.skill && STONE[stoneOfSkill(a.skill)]; return A.line.replace('{v}', a.v).replace('{skill}', sk ? sk.name : '');
 }
 export const matName = (b) => MAT[GEAR_BASES[b].mat];

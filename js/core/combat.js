@@ -14,9 +14,10 @@ import { addItem, identify, itemName } from './items.js';
 import { META, saveMeta } from './meta.js';
 import { emitSlots, emitStatus, snapTerrain } from './snap.js';
 import { G, I, TL, emit, entAt, inb, isFoe, isP, itemSnap, log, standable } from './state.js';
-import { addStone, dropStone, trigger, withCtx } from './stones.js';
+import { addStone, auraOnHurt, dropStone, reduceColor, withCtx } from './stones.js';
 
 const ELEM_OF = { fire: 'fire', burn: 'fire', blast: 'fire', shock: 'bolt', frost: 'frost', poison: 'poison' };
+const DOT = { burn: 1, poison: 1, bleed: 1 }; // 지속 피해는 '적중'이 아니다
 
 export function damage(e, amt, kind = 'hit', o = {}) {
   if (!e.alive || amt <= 0) return 0;
@@ -25,6 +26,7 @@ export function damage(e, amt, kind = 'hit', o = {}) {
   if (isFoe(e) && !e.awake) e.awake = true;
   const src = o.src || G.curSrc;
   // 장비: 내가 맞을 때 회피·막기·방어·저항, 내가 칠 때 원소 피해
+  const struck = isP(e) && src && src !== e && isFoe(src);
   if (isP(e) && G.ps) {
     const ps = G.ps, el = ELEM_OF[kind];
     if ((kind === 'hit' || kind === 'charge') && src && isFoe(src)) {
@@ -36,7 +38,12 @@ export function damage(e, amt, kind = 'hit', o = {}) {
     if (amt > 0 && el && ps.res[el]) amt = Math.max(1, Math.round(amt * (1 - ps.res[el] / 100)));
     if (amt > 0 && ps.legend.has('thornPlate')) amt = Math.ceil(amt * 1.2);
   } else if (isFoe(e) && G.ps && G.ctx && G.ctx.origin !== 'enemy' && ELEM_OF[kind] && kind !== 'burn') amt += G.ps.elem[ELEM_OF[kind]];
+  if (struck) reduceColor('green'); // 초록: 적에게 맞았을 때(0 피해·보호막이 막아도)
+  if (isP(e) && G.auras && G.auras.guard && amt > 0) amt = Math.ceil(amt / 2); // 막기
   if (isP(e) && e.shield > 0) { const a = Math.min(e.shield, amt); e.shield -= a; amt -= a; emit('shieldHit', { absorbed: a, left: e.shield }); }
+  if (isP(e) && amt > 0) G.combatDmg = (G.combatDmg || 0) + Math.min(amt, e.hp);
+  // 빨강: 내 공격(무기·스킬)이 적에게 적중
+  if (isFoe(e) && amt > 0 && (!src || src === G.player) && G.ctx && G.ctx.origin !== 'enemy' && !DOT[kind]) reduceColor('red');
   if (amt > 0) {
     e.hp -= amt;
     emit('hit', { id: e.id, amt, kind, dx: o.dx || 0, dy: o.dy || 0, label, big: !!o.big || amt >= 7, crit: !!o.crit });
@@ -45,7 +52,7 @@ export function damage(e, amt, kind = 'hit', o = {}) {
   if (o.form) e.lastForm = o.form; else if (kind !== 'bleed') e.lastForm = null;
   if (isP(e)) G.hurt = true;
   if (e.hp <= 0) { kill(e); return amt; }
-  if (isP(e) && src && src !== e && isFoe(src)) { if (G.ctx) trigger('green', { src }, G.ctx); else withCtx('hurt', (ctx) => trigger('green', { src }, ctx)); }
+  if (struck && e.alive) auraOnHurt(src); // 반격·독 가시·번개 갑주·서리 갑주
   return amt;
 }
 
@@ -196,7 +203,7 @@ export function playerWait() {
     }
     snapTerrain(); emit('splash', { x: p.x, y: p.y });
   }
-  withCtx('wait', (ctx) => trigger('purple', {}, ctx)); return true;
+  reduceColor('purple'); return true;
 }
 /** 창: 2칸 떨어진 적을 직선으로 친다(사이가 비어야 함) */
 export function canReach(x, y) {
@@ -214,7 +221,7 @@ export function weaponHit(t, ctx, o = {}) {
   TL.wait(o.extra ? 60 : 80);
   if (ps.acc < 0 && rand() * 100 < -ps.acc) { emit('miss', { x: t.x, y: t.y }); log('빗나갔다', 'info'); TL.wait(90); return; }
   const cat = catOf(t), C = CATS[cat], weak = C.weak === f;
-  let dmg = ri(w.dmg[0], w.dmg[1]) + ps.dmg + (t.st.wet > 0 ? ps.wetDmg : 0), label = o.counter ? '반격' : o.extra ? '추가 타격' : '', crit = false;
+  let dmg = ri(w.dmg[0], w.dmg[1]) + ps.dmg + (o.bonus || 0) + (t.st.wet > 0 ? ps.wetDmg : 0), label = o.counter ? '반격' : o.extra ? '추가 타격' : '', crit = false;
   if (weak) {
     dmg = Math.ceil(dmg * 1.5) + ps.weakDmg;
     if (!G.weakKnown[cat]) { G.weakKnown[cat] = true; emit('weakReveal', { id: t.id, form: f }); log(`약점 발견 — ${C.name}은(는) ${FORMS[f].name}에 약하다!`, 'syn'); }
@@ -231,7 +238,6 @@ export function weaponHit(t, ctx, o = {}) {
     if (f === 'blunt' && ps.fracPush) push(t, dx, dy, 1);
     if (ps.torchFire && t.alive && cheb(p.x, p.y, t.x, t.y) === 1) fireAt(t.x, t.y, ps.torchFire);
   }
-  trigger('red', { target: t }, ctx);
   TL.wait(90);
 }
 

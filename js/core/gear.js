@@ -1,5 +1,6 @@
 import { kindOf } from '../data/enemies.js';
-import { AFFIXES, BAG_MAX, BASE_EVA, CAPS, GEAR_BASES, GEAR_DROP, LEGENDS, RARE_A, RARE_B, RARITY, RARITY_ORDER, SLOTS, SLOT_NAME, WEAPON_TRAIT, affixLine, fitsSlot, isWeapon, rarityTable, weaponOf } from '../data/gear.js';
+import { AFFIXES, BAG_MAX, BASE_EVA, CAPS, GEAR_BASES, GEAR_DROP, LEGENDS, RARE_A, RARE_B, RARITY, RARITY_ORDER, SLOTS, SLOT_NAME, WEAPON_TRAIT, affixLine, fitsSlot, isWeapon, rarityTable, stoneOfSkill, weaponOf } from '../data/gear.js';
+import { STONE } from '../data/stones.js';
 import { T_FLOOR, T_STAIRS } from '../data/terrain.js';
 import { WPN } from '../data/weapons.js';
 import { pick, rand, ri, wpick } from '../util/rng.js';
@@ -27,7 +28,7 @@ function affixPool(base, slot) {
 }
 function rollAffix(id, tier) {
   const A = AFFIXES[id], a = { id, v: A.flag ? 1 : ri(...(tier === 2 ? A.t2 : A.t1)), known: true };
-  if (A.skill) a.skill = pick(['push', 'fire', 'bolt', 'frost', 'venom']);
+  if (A.skill) a.skill = pick(Object.keys(STONE));
   return a;
 }
 export function makeGear(base, rarity = 'common', tier = 1, legend = null) {
@@ -99,7 +100,7 @@ export function calcStats(eq) {
       if (id === 'hp') { s.maxHp += v; add('maxHp', v, lab); }
       else if (id.endsWith('Dmg') && s.elem[id.slice(0, -3)] != null) { s.elem[id.slice(0, -3)] += v; add(id, v, lab); }
       else if (id.startsWith('res')) { const k = id.slice(3); s.res[k] += v; add('res' + k, v, lab); }
-      else if (id === 'skillCd') { s.skillCd[a.skill] = (s.skillCd[a.skill] || 0) + 1; add('skillCd', a.skill, lab); }
+      else if (id === 'skillCd') { const k = stoneOfSkill(a.skill); s.skillCd[k] = (s.skillCd[k] || 0) + 1; add('skillCd', k, lab); }
       else if (typeof s[id] === 'boolean') { s[id] = true; add(id, 1, lab); }
       else if (typeof s[id] === 'number') { s[id] += v; add(id, v, lab); }
     }

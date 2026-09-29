@@ -33,7 +33,7 @@ const setup = `(() => { const g = window.__game, G = g.G; window.drain = () => {
     for (let y = 0; y < G.H; y++) for (let x = 0; x < G.W; x++) { const i = y * G.W + x; G.tile[i] = Math.abs(x - cx) <= 4 && Math.abs(y - cy) <= 4 ? 1 : 0; G.surf[i] = surf[i] || 0; G.fire[i] = 0; G.cloud[i] = 0; }
     p.x = cx; p.y = cy; p.hp = p.max; p.shield = 0; p.alive = true; G.over = false; G.gear.clear(); G.chests.clear(); G.items.clear();
     G.ents = [p, ...foes.map(([x, y, o = {}]) => ({ id: G.nextId++, type: 'goblin', x: cx + x, y: cy + y, hp: 30, max: 30, atk: 2, st: { wet: 0, frozen: 0, burn: 0, poison: 0, stun: 0, fear: 0, haste: 0, immune: 0, bleed: 0, frac: 0, vital: 0, ...(o.st || {}) }, alive: true, awake: true, face: [0, 1], cd: 0, cast: null, charge: null, aim: false, name: '허수아비', ...o }))];
-    G.slots.forEach((q) => { q.stone = null; q.color = null; q.cd = 0; q.gTurn = -1; }); G.cd = { push: 0, fire: 0, bolt: 0, frost: 0, venom: 0 };
+    G.slots.forEach((q) => { q.stone = null; q.color = null; q.cd = 0; }); window.cast = (id, x, y) => { const q = G.slots[5]; q.stone = id; q.color = g.STONE[id].color; q.cd = 0; return g.useStone(5, x, y); };
     for (const k of Object.keys(G.eq)) G.eq[k] = null; G.eq.weapon = g.makeGear('sword'); G.bag.length = 0; g.refreshStats(); g.computeFOV(); return G; };
   window.wear = (base, slot, legend) => { const it = g.makeGear(base, legend ? 'legend' : 'common', 1, legend || null); it.known = true; it.affixes.forEach((a) => { a.known = true; }); G.bag.push(it); g.equip(G.bag.length - 1, slot); drain(); return it; };
 })()`;
@@ -85,13 +85,13 @@ const L = await page.evaluate(() => {
   { const G = arena([[1, 0]]); wear('body_cloth', 'body', 'mistCloak'); g.act(() => g.playerWait()); drain(); out.mist = G.surf[I(16, 15)] === 1 && G.ents[1].st.wet > 0; }
   // 피의 송곳니: 출혈 중인 적이 죽으면 옆 적에게 출혈 2
   { const G = arena([[1, 0, { hp: 1, st: { bleed: 3 } }], [2, 0, { type: 'goblin' }]]); wear('dagger', 'weapon', 'bloodFang'); G.ents[2].st.bleed = 0; g.act(() => { g.playerMove(1, 0); return true; }); drain(); out.fang = !G.ents[1].alive && G.ents[2].st.bleed >= 1 && G.ents[2].hp < 30; } // 출혈 2가 들어가고 같은 턴에 1 흐른다
-  // 가시 판금: 초록이 두 번, 받는 피해 +20%
-  { const G = arena([[1, 0, { atk: 5 }]]); g.addStone('g_shield'); let n = 0; const on = g.View.on.bind(g.View); g.View.on = (t, d) => { if (t === 'stone') n++; return on(t, d); }; wear('body_plate', 'body', 'thornPlate'); G.ps.eva = 0; G.ps.block = 0; G.ps.def = 0; g.act(() => true); drain(); g.View.on = on; out.thorn = n === 2; }
+  // 가시 판금: 맞으면 초록 쿨타임이 2씩(턴 끝 1 + 초록 2 = 3)
+  { const G = arena([[1, 0, { atk: 5 }]]); g.addStone('g_shield'); G.slots[0].cd = 5; wear('body_plate', 'body', 'thornPlate'); G.ps.eva = 0; G.ps.block = 0; G.ps.def = 0; G.slots[0].cd = 5; g.act(() => true); drain(); out.thorn = G.slots[0].cd === 2; }
   // 번개 감긴 반지: 번질 때 1칸 더
-  { const surf = {}; for (let x = 16; x <= 17; x++) surf[I(x, 15)] = 1; const G = arena([[1, 0], [3, 0]], surf); const a = g.G.ents[2]; const before = (() => { let r; g.useSkill('bolt', 16, 15); drain(); r = a.hp; return r; })();
-    const G2 = arena([[1, 0], [3, 0]], surf); wear('ring', 'ring1', 'stormRing'); g.useSkill('bolt', 16, 15); drain(); out.storm = before === 30 && G2.ents[2].hp < 30; }
+  { const surf = {}; for (let x = 16; x <= 17; x++) surf[I(x, 15)] = 1; const G = arena([[1, 0], [3, 0]], surf); const a = g.G.ents[2]; const before = (() => { let r; cast('r_shock', 16, 15); drain(); r = a.hp; return r; })();
+    const G2 = arena([[1, 0], [3, 0]], surf); wear('ring', 'ring1', 'stormRing'); cast('r_shock', 16, 15); drain(); out.storm = before === 30 && G2.ents[2].hp < 30; }
   // 거인의 철퇴: 밀치기 1칸 더 + 벽 충돌 시 주변 흔들림
-  { const G = arena([[1, 0]]); wear('mace', 'weapon', 'giantMace'); g.useSkill('push', 16, 15); drain(); out.giant = G.ents[1].x === 19; }
+  { const G = arena([[1, 0]]); wear('mace', 'weapon', 'giantMace'); cast('r_push', 16, 15); drain(); out.giant = G.ents[1].x === 19; }
   // 연금술사의 장갑: 던지면 둘로
   { const G = arena([]); wear('hands_leather', 'hands', 'alchGlove'); g.G.inv.push({ k: 'water', n: 1 }); g.G.known.water = true; g.useItem('water', 15, 12); drain(); let n = 0; for (let i = 0; i < G.W * G.H; i++) if (G.surf[i] === 1) n++; out.alch = n >= 9; }
   return out;

@@ -32,6 +32,8 @@ jobs:
         run: node tests/gear.mjs
       - name: Story and settlement checklist
         run: node tests/story.mjs
+      - name: Soulstone active skills
+        run: node tests/stones.mjs
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
