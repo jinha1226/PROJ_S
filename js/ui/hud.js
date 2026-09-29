@@ -11,7 +11,7 @@ import { COLORS, STONE } from '../data/stones.js';
 import { T_OPEN, T_STAIRS, T_WALL, ZONES, ZONE_FLOORS } from '../data/terrain.js';
 import { torchTier } from '../data/torch.js';
 import { CRITS, FORMS, SHAPES } from '../data/weapons.js';
-import { Anim, act, descend } from '../flow.js';
+import { act, descend } from '../flow.js';
 import { Sfx } from '../render/sfx.js';
 import { $, UI } from './ui.js';
 
@@ -40,8 +40,8 @@ Object.assign(UI, {
     });
   },
   quickUse(k) {
-    const q = G.inv[k]; if (!q || G.over || Anim.active || this.overlayOpen()) return;
-    Sfx.play('ui'); this.travel = null; this.explore = false; this.rest = null;
+    const q = G.inv[k]; if (!q || G.over || this.overlayOpen()) return;
+    Sfx.play('ui'); this.stopAuto();
     if (this.mode === 'target') this.exitTarget();
     this.useFromBag(q.k);
   },
@@ -139,7 +139,7 @@ Object.assign(UI, {
     c.classList.toggle('hidden', c.disabled); // 할 일이 있을 때만 떠오른다
   },
   ctxBtn() {
-    if (Anim.active || G.over) return;
+    if (G.over) return;
     const c = $('#btn-ctx');
     if (c.dataset.act === 'stairs') descend();
     else if (c.dataset.act === 'lamp') this.instant(() => { useLamp(); this.drawMap($('#minimap')); });
@@ -195,8 +195,8 @@ Object.assign(UI, {
       let best = null, bd = 99;
       for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const x = tx + dx, y = ty + dy; if (x < 0 || y < 0 || x >= G.W || y >= G.H) continue; const i = I(x, y); if (!G.seen[i] || G.tile[i] === T_WALL) continue; const d = Math.abs(dx) + Math.abs(dy); if (d < bd) { bd = d; best = [x, y]; } }
       if (!best) { this.toast('아직 가 보지 않은 곳이다.'); return; }
-      this.closeHudOverlay(); if (Anim.active || G.over || (best[0] === G.player.x && best[1] === G.player.y)) return;
-      this.explore = false; this.rest = null; this.startTravel(best[0], best[1]);
+      this.closeHudOverlay(); if (G.over || (best[0] === G.player.x && best[1] === G.player.y)) return;
+      this.stopAuto(); this.startTravel(best[0], best[1]);
     };
   },
   openLog() {

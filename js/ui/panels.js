@@ -11,14 +11,14 @@ import { COLORS, STONE } from '../data/stones.js';
 import { C_STEAM, S_ASH, S_GRASS, S_ICE, S_OIL, S_WATER, T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrain.js';
 import { HIDDEN } from '../data/visitors.js';
 import { FORMS } from '../data/weapons.js';
-import { Anim, act } from '../flow.js';
+import { act } from '../flow.js';
 import { stIcons } from '../render/entity-view.js';
 import { jo } from '../util/text.js';
 import { $, UI } from './ui.js';
 
 Object.assign(UI, {
   /* ---- 가방 = 장비 창(서브탭: 장비 · 소모품 · 영혼석) ---- */
-  openBag(tab) { if (G.over || Anim.active) return; if (tab) this.invTab = tab; this.openInv(); },
+  openBag(tab) { if (G.over) return; if (tab) this.invTab = tab; this.openInv(); },
   /** 소모품 탭: 장비와 같은 칸 모양. 누르면 위에 설명 카드와 [사용] */
   itemsHtml(inv) {
     const sel = inv.find((q) => q.k === this.itemSel), cells = Math.max(BAG_MAX, Math.ceil(inv.length / 5) * 5); // 장비 가방과 같은 칸 수

@@ -1,6 +1,6 @@
 import { emitSlots, snapHud } from '../core/snap.js';
 import { G, Game, TL } from '../core/state.js';
-import { Anim } from '../flow.js';
+import { RT } from '../data/realtime.js';
 import { Sfx } from '../render/sfx.js';
 import { View } from '../render/view.js';
 
@@ -20,8 +20,12 @@ export const UI = {
   logLines: [],
   lastHud: null,
   init() {
-    this.hold($('#btn-wait'), () => this.waitBtn(), () => this.startRest());
-    this.hold($('#btn-attack'), () => this.attackBtn(), () => this.weaponInfo());
+    // 대기 버튼: 누르고 있으면 제자리에서 시간이 흐르고, 짧게 누르면 쉬기(다시 누르면 멈춘다)
+    const w = $('#btn-wait'); let t0 = 0;
+    w.addEventListener('pointerdown', () => { t0 = performance.now(); this.joyHold = true; });
+    const up = () => { if (!this.joyHold) return; this.joyHold = false; if (performance.now() - t0 < RT.restTap) { if (G.resting) this.stopAuto(); else this.startRest(); } };
+    w.addEventListener('pointerup', up); w.addEventListener('pointercancel', up); w.addEventListener('pointerleave', up);
+    $('#btn-attack').onclick = () => this.weaponInfo(); // 공격은 저절로 나간다: 이 칸은 무기 정보
     $('#btn-explore').onclick = () => this.startExplore();
     $('#btn-map').onclick = () => this.openMap();
     $('#log').onclick = () => this.openLog();
@@ -58,7 +62,7 @@ export const UI = {
     el.addEventListener('contextmenu', (e) => e.preventDefault());
   },
   overlayOpen() { return !$('#screen').classList.contains('hidden') || !$('#help').classList.contains('hidden') || !$('#sheet').classList.contains('hidden') || !$('#hud-overlay').classList.contains('hidden'); },
-  instant(fn) { if (Anim.active) return; TL.reset(); fn(); snapHud(); emitSlots(); const q = TL.q.slice().sort((a, b) => a.t - b.t); TL.reset(); for (const e of q) e.fn(); },
+  instant(fn) { TL.reset(); fn(); snapHud(); emitSlots(); const q = TL.q.slice().sort((a, b) => a.t - b.t); TL.reset(); for (const e of q) e.fn(); },
   info(html) { const el = $('#info'); el.innerHTML = html + '<div style="color:#9aa2bd;font-size:11.5px;margin-top:6px">화면을 탭하면 닫힌다</div>'; el.classList.remove('hidden'); el.onclick = () => this.hideInfo(); },
   hideInfo() { $('#info').classList.add('hidden'); this.highlightEnemy = null; View.refreshDecals(); },
   syncButtons() { $('#bagcount').textContent = G.inv.reduce((a, b) => a + b.n, 0) || ''; this.renderQuick?.(); },

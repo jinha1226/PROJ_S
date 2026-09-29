@@ -27,6 +27,7 @@ import './render/gear-view.js';
 import './render/hidden-view.js';
 import './ui/inventory.js';
 import './ui/input.js';
+import './ui/joystick.js';
 import './ui/hud.js';
 import './ui/status.js';
 import './ui/panels.js';
@@ -42,6 +43,7 @@ Object.assign(ports, { UI, Town, Anim, Loop });
 /* ================= 시작 ================= */
 View.init();
 UI.init();
+UI.joyInit();
 for (const b of document.querySelectorAll('#tbtns button')) b.onclick = () => { if (Town.busy) return; const o = b.dataset.o; if (o === 'craft') Town.craft(); else if (o === 'build') Town.enterBuild(); else if (o === 'people') Town.peopleSheet(); else Town.open(o); };
 $('#btn-help2').onclick = () => UI.help(true);
 $('#btn-gear').onclick = () => UI.openInv();

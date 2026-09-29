@@ -1,80 +1,55 @@
-import { canHit, playerMelee, playerMove, playerWait } from '../core/combat.js';
-import { findPath, visibleFoes } from '../core/fov.js';
+import { flowing, setRest, setTarget, setWalk } from '../core/clock.js';
+import { visibleFoes } from '../core/fov.js';
 import { pickGear } from '../core/gear.js';
 import { previewFor, selfPreview, targetsFor } from '../core/skills.js';
-import { G, Game, I, XY, entAt, inb, isFoe, isP } from '../core/state.js';
+import { costMap, pathPoints } from '../core/space.js';
+import { G, Game, I, XY, entAt, inb, isFoe, isP, seesEnt } from '../core/state.js';
 import { useStone } from '../core/stones.js';
 import { useLamp } from '../core/torch.js';
+import { RT } from '../data/realtime.js';
 import { COLORS, STONE } from '../data/stones.js';
-import { T_DOOR, T_STAIRS, T_WALL } from '../data/terrain.js';
-import { Anim, act, descend } from '../flow.js';
+import { T_STAIRS, T_WALL } from '../data/terrain.js';
+import { act, descend, returnToTown } from '../flow.js';
 import { Sfx } from '../render/sfx.js';
 import { View } from '../render/view.js';
 import { Town } from '../town/town.js';
-import { cheb } from '../util/grid.js';
+import { jo } from '../util/text.js';
 import { $, UI } from './ui.js';
 
 Object.assign(UI, {
-  /* ---- 지도 입력 ---- */
+  /* ---- 지도 입력: 탭 = 노릴 적 고르기 · 그 칸까지 걷기 (docs/설계_실시간_전환.md §2) ---- */
   onTap(sx, sy) {
     if (this.overlayOpen()) return;
     if (!$('#info').classList.contains('hidden')) { this.hideInfo(); return; }
     if (Game.mode === 'town') { Town.tap(sx, sy); return; }
-    const t = View.pickTile(sx, sy); if (!t || !inb(t.x, t.y)) return;
-    this.travel = null; this.explore = false; this.rest = null;
-    if (Anim.active) { if (this.mode === 'normal') this.buffered = t; return; }
-    this.tapTile(t.x, t.y);
+    if (this.joyTapBlock) { this.joyTapBlock = false; return; } // 조이스틱으로 누르고 있던 손
+    const t = View.pickTile(sx, sy); if (!t || !inb(t.x, t.y) || G.over) return;
+    const p = G.player, i = I(t.x, t.y), e = entAt(t.x, t.y);
+    if (e && isFoe(e) && seesEnt(e)) { setTarget(e.id); this.highlightEnemy = e.id; View.refreshDecals(); this.toast(`${jo(e.name, '을를')} 먼저 노린다.`); return; }
+    this.stopAuto();
+    if (t.x === p.x && t.y === p.y) { if (G.tile[i] === T_STAIRS) descend(); else if (G.gear.has(i)) { this.instant(() => pickGear()); this.renderWeapon(); } return; }
+    if (!G.seen[i] || G.tile[i] === T_WALL) { this.toast('아직 모르는 곳이다.'); return; }
+    this.startTravel(t.x, t.y);
   },
   onLongPress(sx, sy) {
-    if (this.overlayOpen() || Anim.active) return;
+    if (this.overlayOpen() || (this.joy && this.joy.on)) return;
     if (Game.mode === 'town') { Town.tap(sx, sy); return; }
     const t = View.pickTile(sx, sy); if (!t || !inb(t.x, t.y)) return;
     const e = entAt(t.x, t.y);
     if (e && !isP(e) && G.vis[I(t.x, t.y)]) { this.highlightEnemy = e.id; this.showEnemy(e); View.refreshDecals(); }
     else this.showTile(t.x, t.y);
   },
-  tapTile(x, y) {
-    if (G.over || G.player.st.frozen || G.player.st.stun) return;
-    if (this.mode === 'target') { this.tapTarget(x, y); return; }
-    const p = G.player, d = cheb(p.x, p.y, x, y), i = I(x, y), e = entAt(x, y), seenFoe = e && isFoe(e) && G.vis[i];
-    if (d === 0) { if (G.tile[i] === T_STAIRS) descend(); else if (G.gear.has(i)) { this.instant(() => pickGear()); this.renderWeapon(); } else this.toast('⏳ 대기는 아래 버튼으로. 길게 누르면 쉰다.'); return; }
-    if (seenFoe && d >= 2 && canHit(e)) { act(() => { playerMelee(e); return true; }); return; } // 창 2칸 · 원거리
-    if (seenFoe && d > 1) { this.showEnemy(e); return; }
-    if (d === 1) { if (G.tile[i] === T_WALL) return; act(() => playerMove(x - p.x, y - p.y)); return; }
-    if (!G.seen[i] || G.tile[i] === T_WALL) { this.toast('아직 모르는 곳이다.'); return; }
-    this.startTravel(x, y);
-  },
+  /** 그 칸까지 길을 찾아 걸어간다(걷는 동안 시간이 흐른다) */
   startTravel(x, y) {
-    const path = findPath(G.player.x, G.player.y, x, y);
-    if (!path) { this.toast('갈 수 있는 길이 없다.'); return; }
-    this.travel = { path, first: true }; this.travelStep();
+    const p = G.player, path = pathPoints(p, costMap(p, 400, { seenOnly: true, passAllies: true, allow: I(x, y) }), x, y);
+    if (!path) { this.toast('갈 수 있는 길이 없다.'); return false; }
+    setWalk(path.pts.slice(1)); this.travel = { foes: visibleFoes().length }; return true;
   },
-  travelStep() {
-    const tr = this.travel; if (!tr) return;
-    const p = G.player;
-    if (!tr.first && (visibleFoes().length || G.hurt || (this.explore && this.exploreDiscovery()))) { this.travel = null; this.explore = false; this.toast(G.hurt ? '공격받았다. 멈춘다.' : '적이 보인다. 멈춘다.'); return; }
-    const [nx, ny] = tr.path[0];
-    if (cheb(nx, ny, p.x, p.y) !== 1 || entAt(nx, ny)) { this.travel = null; return; }
-    if (G.tile[I(nx, ny)] !== T_DOOR) tr.path.shift();
-    tr.first = false; if (!tr.path.length) this.travel = null;
-    act(() => playerMove(nx - p.x, ny - p.y));
-  },
-  attackBtn() {
-    if (Anim.active || G.over || this.overlayOpen()) return;
-    const foes = visibleFoes().filter((e) => e.alive).sort((a, b) => cheb(a.x, a.y, G.player.x, G.player.y) - cheb(b.x, b.y, G.player.x, G.player.y));
-    const target = foes.find((e) => e.id === this.selectedEnemy) || foes[0];
-    if (!target) { this.toast('보이는 적이 없다.'); return; }
-    this.explore = false; this.travel = null; this.rest = null;
-    const p = G.player, d = cheb(p.x, p.y, target.x, target.y);
-    // DCSS의 Tab: 칠 수 있으면 치고(창 2칸 · 원거리 사거리), 아니면 한 걸음 다가간다
-    if (d === 1 || canHit(target)) { act(() => { playerMelee(target); return true; }); return; }
-    let best = null;
-    for (let yy = target.y - 1; yy <= target.y + 1; yy++) for (let xx = target.x - 1; xx <= target.x + 1; xx++) {
-      if (!inb(xx, yy) || entAt(xx, yy) || G.tile[I(xx, yy)] === T_WALL) continue;
-      const path = findPath(p.x, p.y, xx, yy); if (path && (!best || path.length < best.length)) best = path;
-    }
-    if (!best?.length) { this.toast('적에게 다가갈 길이 없다.'); return; }
-    const [x, y] = best[0]; act(() => playerMove(x - p.x, y - p.y));
+  /** 자동 걷기·탐험·쉬기를 멈춘다 */
+  stopAuto(msg) {
+    const was = this.travel || this.explore || G.resting;
+    this.travel = null; this.explore = false; setWalk(null); setRest(false);
+    if (was && msg) this.toast(msg);
   },
   /** 방금(지난 두 턴 안에) 적에게 공격받았다 */
   underAttack() {
@@ -89,55 +64,61 @@ Object.assign(UI, {
     return out.filter((i) => G.seen[i] && !skip.has(i));
   },
   startExplore() {
-    if (Anim.active || G.over || this.overlayOpen()) return;
+    if (G.over || this.overlayOpen()) return;
     if (visibleFoes().length) { this.toast('적이 보인다.'); return; }
     if (this.underAttack()) { this.toast('공격받고 있다.'); return; }
     if (G.player.hp <= G.player.max * 0.3) { this.toast('너무 다쳤다.'); return; } // 빈사
-    this.explore = true; this.rest = null; this.exploreSkip = new Set();
+    setRest(false); this.explore = true; this.exploreSkip = new Set();
     this.exploreStep();
   },
+  /** 다음 들를 곳(보이는 물건 → 모르는 곳의 가장자리)을 정해 걷는다 */
   exploreStep() {
-    if (!this.explore) return;
-    if (this.exploreDiscovery() || G.hurt) { this.explore = false; this.travel = null; this.toast(G.hurt ? '공격받았다. 탐험을 멈춘다.' : '적이 보인다. 탐험을 멈춘다.'); return; }
-    if (G.stoneOffer != null || this.overlayOpen()) return; // 영혼석 선택을 기다린다(고르면 이어서)
     const p = G.player, here = I(p.x, p.y), skip = (this.exploreSkip ||= new Set());
-    // 발밑: 장비는 줍고, 등잔은 쓴다
     if (G.gear.has(here)) { let ok = false; this.instant(() => { ok = pickGear(); }); this.renderWeapon(); if (!ok) skip.add(here); }
-    if (G.lamps && G.lamps.has(here)) { this.instant(() => useLamp()); }
-    const picks = this.explorePickups().filter((i) => i !== here).map((i) => findPath(p.x, p.y, i % G.W, (i / G.W) | 0)).filter((q) => q && q.length).sort((a, b) => a.length - b.length);
-    if (picks.length) { this.travel = { path: picks[0], first: true }; this.travelStep(); return; }
-    const targets = [];
-    for (let i = 0; i < G.seen.length; i++) {
-      if (!G.seen[i] || G.tile[i] === T_WALL) continue;
-      const x = i % G.W, y = (i / G.W) | 0;
-      if (![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => inb(x + dx, y + dy) && !G.seen[I(x + dx, y + dy)])) continue;
-      if (x === p.x && y === p.y) continue;
-      const path = findPath(p.x, p.y, x, y);
-      if (path?.length) targets.push(path);
+    if (G.lamps && G.lamps.has(here)) this.instant(() => useLamp());
+    const cm = costMap(p, 400, { seenOnly: true, passAllies: true });
+    const nearest = (cells) => cells.filter((i) => i !== here && !skip.has(i) && isFinite(cm.cost[i])).sort((a, b) => cm.cost[a] - cm.cost[b])[0];
+    let goal = nearest(this.explorePickups());
+    if (goal == null) {
+      const front = [];
+      for (let i = 0; i < G.seen.length; i++) {
+        if (!G.seen[i] || G.tile[i] === T_WALL) continue;
+        const x = i % G.W, y = (i / G.W) | 0;
+        if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => inb(x + dx, y + dy) && !G.seen[I(x + dx, y + dy)])) front.push(i);
+      }
+      goal = nearest(front);
     }
-    targets.sort((a, b) => a.length - b.length);
-    if (!targets.length) { this.explore = false; this.toast('더 탐험할 곳이 없다.'); return; }
-    this.travel = { path: targets[0], first: true }; this.travelStep();
+    if (goal == null) { this.explore = false; this.toast('더 탐험할 곳이 없다.'); return; }
+    const path = pathPoints(p, cm, goal % G.W, (goal / G.W) | 0);
+    if (!path) { skip.add(goal); return; } // 다음 프레임에 다른 곳을 고른다
+    setWalk(path.pts.slice(1));
   },
-  waitBtn() { if (G.player.st.frozen || G.player.st.stun) return; this.travel = null; this.explore = false; this.rest = null; if (this.mode === 'target') this.exitTarget(); act(() => playerWait()); },
   startRest() {
-    if (Anim.active || G.over) return;
+    if (G.over) return;
     if (visibleFoes().length) { this.toast('적이 보인다.'); return; }
     if (this.underAttack()) { this.toast('공격받고 있다.'); return; }
     if (G.player.hp >= G.player.max && !G.player.st.poison) { this.toast('쉴 필요가 없다.'); return; }
-    this.rest = { n: 0 }; G.restN = 0; this.toast('쉬는 중… 탭하면 멈춘다.'); this.restStep();
+    this.travel = null; this.explore = false; setWalk(null); setRest(true); G.restN = 0;
+    this.toast('쉬는 중이다. 탭하면 멈춘다.');
   },
-  restStep() {
-    const r = this.rest; if (!r) return; const p = G.player;
-    if (visibleFoes().length || G.hurt || r.n >= 40 || (p.hp >= p.max && !p.st.poison && !p.st.burn)) { this.rest = null; if (G.hurt && !p.st.poison && !p.st.burn) this.toast('공격받았다. 휴식을 멈춘다.'); return; }
-    r.n++; act(() => { G.resting = true; return playerWait(); }); // 휴식 턴: 횃불 두 배 · 3턴마다 HP · 방랑하는 적
+  /** 매 프레임, 시간이 흐른 뒤: 자동 걷기·탐험·쉬기를 잇거나 멈추고, 멈춤 표시를 맞춘다 */
+  afterTick(n) {
+    const p = G.player, hurt = G.hurt; G.hurt = false;
+    if (G.pendingReturn) { const r = G.pendingReturn; G.pendingReturn = null; G.over = true; this.stopAuto(); setTimeout(() => returnToTown(r), 700); return; }
+    const foes = visibleFoes().length;
+    if (hurt && (this.travel || this.explore || G.resting)) this.stopAuto('공격받았다. 멈춘다.');
+    else if (this.explore && foes) this.stopAuto('적이 보인다. 탐험을 멈춘다.');
+    else if (this.travel && foes > this.travel.foes) this.stopAuto('적이 보인다. 멈춘다.');
+    else if (G.resting && (foes || G.stats.turns - G.restFrom >= RT.restMax || (p.hp >= p.max && !p.st.poison && !p.st.burn))) this.stopAuto();
+    if (this.explore && !G.walk) this.exploreStep();
+    if (this.travel && !G.walk) this.travel = null;
+    document.body.classList.toggle('frozen', Game.mode === 'dungeon' && !G.over && !flowing());
+    if (n > 0) { View.refreshDecals(); this.syncButtons(); }
   },
-  feedIntent() {},
-  afterTick() {},
   /* ---- 대상 지정 ---- */
   /** 영혼석 칸 = 스킬 버튼. 대상 스킬은 조준 → 칸 두 번 탭, 자기 대상 스킬은 한 번 더 누르면 발동 */
   stoneBtn(k) {
-    if (G.over || this.overlayOpen() || Anim.active) return;
+    if (G.over || this.overlayOpen()) return;
     const sl = G.slots[k], id = sl && sl.stone;
     if (!id && k >= (G.level || 6)) { this.toast(`레벨 ${k + 1}에 열리는 칸이다.`); return; }
     if (!id) { this.slotInfo(k); return; }
@@ -154,7 +135,7 @@ Object.assign(UI, {
     this.enterTarget({ kind: 'stone', slot: k, id, self, name: S.icon + ' ' + S.name, color: C.hex, run: self ? () => useStone(k) : (x, y) => useStone(k, x, y) });
   },
   enterTarget(pend) {
-    this.travel = null; this.rest = null; this.hideInfo();
+    this.travel = null; setRest(false); this.hideInfo();
     this.mode = 'target'; this.pend = pend; this.prevIdx = -1; this.prev = null;
     this.valid = targetsFor(pend);
     [...$('#souls').children].forEach((b, k) => b.classList.toggle('sel', pend.kind === 'stone' && k === pend.slot));
@@ -186,21 +167,11 @@ Object.assign(UI, {
   },
   key(e) {
     if (Game.mode !== 'dungeon') return;
-    if (e.repeat && !/Arrow|[wasdqezc]/.test(e.key)) return;
     const k = e.key.toLowerCase();
     if (k === 'escape') { this.exitTarget(); this.hideInfo(); $('#sheet').classList.add('hidden'); $('#help').classList.add('hidden'); return; }
     if (this.overlayOpen()) return;
-    const map = { arrowup: [0, -1], w: [0, -1], arrowdown: [0, 1], s: [0, 1], arrowleft: [-1, 0], a: [-1, 0], arrowright: [1, 0], d: [1, 0], q: [-1, -1], e: [1, -1], z: [-1, 1], c: [1, 1] };
-    if (map[k]) {
-      e.preventDefault();
-      const [sx, sy] = map[k], yaw = View.dio.rig.yaw, wx = Math.cos(yaw) * sx + Math.sin(yaw) * sy, wy = -Math.sin(yaw) * sx + Math.cos(yaw) * sy;
-      const st = Math.round(Math.atan2(wy, wx) / (Math.PI / 4)), dx = Math.round(Math.cos(st * Math.PI / 4)), dy = Math.round(Math.sin(st * Math.PI / 4));
-      if (Anim.active) return;
-      this.tapTile(G.player.x + dx, G.player.y + dy); return;
-    }
-    if (k === ' ' || k === '.') { e.preventDefault(); this.waitBtn(); return; }
+    if (/^(arrow(up|down|left|right)|[wasdqezc ])$/.test(k)) { e.preventDefault(); if (k !== ' ') this.stopAuto(); this.joyKeys.add(k); return; }
     if (k === '>') { if (G.tile[I(G.player.x, G.player.y)] === T_STAIRS) descend(); return; }
-    if (k === 'i') { this.openBag(); return; }
-    const n = parseInt(k, 10); if (n >= 1 && n <= 6) this.stoneBtn(n - 1);
+    if (k === 'i') this.openBag();
   },
 });

@@ -37,6 +37,7 @@ await page.evaluate(async () => {
     G.gear.clear(); G.chests.clear(); G.items.clear(); G.stones.clear(); G.mats.clear(); G.block = new Map(); if (G.lamps) G.lamps.clear();
     G.ents = [p, ...foes.map(([x, y, o = {}]) => ({ id: G.nextId++, type: 'goblin', x: cx + x, y: cy + y, hp: 30, max: 30, atk: 0, alive: true, awake: true, face: [0, 1], cd: 0, cast: null, charge: null, aim: false, name: '허수아비', ...o, st: { wet: 0, frozen: 0, burn: 0, poison: 0, stun: 0, fear: 0, haste: 0, immune: 0, bleed: 0, frac: 0, vital: 0 } }))];
     for (const k of Object.keys(G.eq)) G.eq[k] = null; G.eq.weapon = g.makeGear('sword'); g.refreshStats(); G.ps.eva = 0; G.ps.block = 0; G.ps.torchSlow = 0; G.ps.torchCost = 0;
+    p.hp = p.max = 40; G.hurt = false; G.hurtTurn = -9; // 장비 계산이 최대 HP를 바꾼 뒤에
     if (window.M.C) window.M.C.initClock(); g.computeFOV(); return G;
   };
 });
@@ -88,6 +89,42 @@ check('옛 코드가 x, y만 바꿔도 위치가 따라간다', f2[0] === 13 && 
 
 const f3 = await page.evaluate(() => { const G = arena(), p = G.player; p.st.stun = 1; M.C.setIntent([1, 0], false); for (let k = 0; k < 6; k++) M.C.step(); return { stun: p.st.stun, moved: +(p.px - 15).toFixed(2) }; });
 check('기절 중에는 못 걷지만 시간이 흘러 풀린다', f3.stun === 0 && f3.moved < 0.2, JSON.stringify(f3));
+
+// ---------- 과제 3: 입력 ----------
+const i1 = await page.evaluate(() => { const G = arena(), U = window.__game.UI; U.startTravel(18, 17); let n = 0; while (G.walk && n++ < 200) M.C.step(); const p = G.player; return { cell: [p.x, p.y], n }; });
+check('탭한 곳까지 자동으로 걷는다', i1.cell[0] === 18 && i1.cell[1] === 17, JSON.stringify(i1));
+
+const i2 = await page.evaluate(() => { const G = arena([[3, 3, { awake: true }]]), U = window.__game.UI; U.explore = true; M.C.setWalk([[11, 11]]); G.hurt = false; U.afterTick(1); return { explore: U.explore, walk: G.walk }; });
+check('탐험은 적이 보이면 멈춘다', !i2.explore && i2.walk === null, JSON.stringify(i2));
+
+const i3 = await page.evaluate(() => { const G = arena(), U = window.__game.UI, p = G.player; p.hp = 38; M.C.setIntent(null, false); U.startRest(); let n = 0; while (G.resting && n++ < 400) { M.C.advance(0.15); U.afterTick(1); } return { hp: p.hp, resting: G.resting, n }; });
+check('쉬기: 손을 안 대도 흐르다가 다 나으면 멈춘다', i3.hp === 40 && !i3.resting, JSON.stringify(i3));
+
+await page.evaluate(() => { arena(); window.__game.UI.syncAll(); });
+// 조이스틱 칸(화면 아래 42%) 안에서 HUD가 아닌 캔버스가 받는 점
+const jy = await page.evaluate(() => { for (let y = Math.round(innerHeight * 0.6); y < innerHeight; y += 8) if (document.elementFromPoint(195, y)?.tagName === 'CANVAS') return y; return null; });
+await page.mouse.click(195, jy); await page.waitForTimeout(200);
+const j1 = await page.evaluate(() => ({ block: window.__game.UI.joyTapBlock, ring: getComputedStyle(document.querySelector('#joy')).display }));
+await page.evaluate(() => window.__game.UI.stopAuto()); // 짧은 탭은 그 칸으로 걷기일 수 있다
+const jc0 = await page.evaluate(() => window.__game.G.clock);
+await page.mouse.move(195, jy); await page.mouse.down(); await page.waitForTimeout(800);
+const held = await page.evaluate(() => ({ clock: window.__game.G.clock, frozen: document.body.classList.contains('frozen') }));
+await page.mouse.up(); await page.waitForTimeout(300);
+const after = await page.evaluate(() => document.body.classList.contains('frozen'));
+check('조이스틱: 짧은 탭은 탭으로 넘기고, 누르고 있으면 흐르고, 떼면 멈춘다', jy != null && !j1.block && j1.ring === 'none' && held.clock > jc0 && !held.frozen && after, JSON.stringify({ jy, j1, jc0, held, after }));
+
+await page.evaluate(() => arena());
+const k0 = await page.evaluate(() => [window.__game.G.player.px, window.__game.G.player.py]);
+await page.keyboard.down('d'); await page.waitForTimeout(1000); await page.keyboard.up('d'); await page.waitForTimeout(150); // 헤드리스는 프레임이 느리다
+const k1 = await page.evaluate(() => [window.__game.G.player.px, window.__game.G.player.py]);
+check('이동 키를 누르는 동안 걷는다', Math.hypot(k1[0] - k0[0], k1[1] - k0[1]) > 0.3, JSON.stringify({ k0, k1 }));
+
+// 검토 초점 4~5
+const f4 = await page.evaluate(() => { arena(); const U = window.__game.UI; document.querySelector('#sheet').classList.remove('hidden'); U.joyKeys.add('d'); U.feedIntent(); const on = M.C.flowing(); U.joyKeys.clear(); document.querySelector('#sheet').classList.add('hidden'); U.feedIntent(); return on; });
+check('창을 연 채 키를 누르고 있으면 흐르지 않는다', f4 === false);
+
+const f5 = await page.evaluate(() => { arena(); const U = window.__game.UI; U.joyKeys.add('d'); dispatchEvent(new Event('blur')); U.feedIntent(); return { keys: U.joyKeys.size, flowing: M.C.flowing() }; });
+check('포커스가 빠지면 눌린 키를 비운다', f5.keys === 0 && !f5.flowing, JSON.stringify(f5));
 
 // (과제 2~5의 검사가 여기 이어진다)
 

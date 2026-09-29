@@ -66,7 +66,7 @@ export function descend() {
   G.zf++; p.st = newSt();
   genFloor();
   refreshStats(); p.shield = armorShield();
-  UI.exitTarget(); UI.travel = null; UI.rest = null; UI.buffered = null;
+  UI.exitTarget(); UI.stopAuto();
   View.buildFloor(); UI.floorCard(); UI.syncAll();
   Sfx.play('stairs');
 }
@@ -108,7 +108,7 @@ export function returnToTown(reason) {
     h.hp = Math.max(1, G.player.hp); h.max = G.player.max; h.level = G.level; h.xp = G.xp; h.base = G.heroBase;
     if (reason === 'boss') { rep.first = !META.cleared[G.zone - 1]; META.cleared[G.zone - 1] = true; }
   }
-  G.over = true; UI.exitTarget(); UI.travel = null; UI.rest = null; UI.buffered = null; Anim.clear();
+  G.over = true; UI.exitTarget(); UI.stopAuto(); Anim.clear();
   saveMeta();
   Town.enter(rep);
 }

@@ -6,7 +6,7 @@ import { G, Game } from '../core/state.js';
 import { AMULETS, BAG_MAX, BRANDS, CAPS, EGOS, ELEM, GEAR_BASES, ORBS, QUALITY, RES_MUL, RINGS, SLOTS, SLOT_ICON, SLOT_NAME, UNRANDS, isJewel, isWeapon, matName, plusMax, slotKind, twoHanded, weaponOf } from '../data/gear.js';
 import { COLORS, ORB_PURPLE, STONE } from '../data/stones.js';
 import { CRITS, FORMS, SHAPES } from '../data/weapons.js';
-import { Anim, act } from '../flow.js';
+import { act } from '../flow.js';
 import { Sfx } from '../render/sfx.js';
 import { Town } from '../town/town.js';
 import { jo } from '../util/text.js';
@@ -152,11 +152,10 @@ Object.assign(UI, {
     if (a === 'take') { const it = META.gear.splice(sel.i, 1)[0]; H.bag.push(it); saveMeta(); this.invSel = null; this.renderInv(); return; }
     const it = sel && (sel.from === 'bag' ? H.bag[sel.i] : sel.from === 'eq' ? H.eq[sel.slot] : null);
     if (a === 'ident' || a === 'enchW' || a === 'enchA') { // 두루마리 읽기 = 한 턴
-      if (Anim.active) { this.toast('움직임이 끝난 뒤에.'); return; }
       const uid = it && it.uid; act(() => useItem(a, uid)); this.renderInv(); Sfx.play('gem'); return;
     }
     const run = (fn) => {
-      if (Game.mode === 'dungeon' && inCombat()) { if (Anim.active) { this.toast('움직임이 끝난 뒤에.'); return; } act(() => { fn(); return true; }); }
+      if (Game.mode === 'dungeon' && inCombat()) { act(() => { fn(); return true; }); }
       else this.instant(fn);
       if (Game.mode === 'town') { saveMeta(); Town.redressHero?.(); Town.renderHud(); }
       this.invSel = null; this.renderInv();
