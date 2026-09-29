@@ -1,6 +1,7 @@
 import { META, resetMeta, saveMeta } from '../core/meta.js';
 import { extinguish, perkOf, takeTorch, volunteers } from '../core/succession.js';
 import { acceptVisitor, dismissVisitor, requestState } from '../core/visitors.js';
+import { ROOMS, SCX, SCY } from '../data/build.js';
 import { ENDING, LORE, VOLUNTEER } from '../data/lines.js';
 import { BLD, JOBS, TRAITS, adj } from '../data/town.js';
 import { LANDS, PERKS } from '../data/visitors.js';
@@ -39,11 +40,11 @@ Object.assign(Town, {
   acceptScene(v) {
     const r = acceptVisitor(v); if (!r) return;
     saveMeta(); $('#sheet').classList.add('hidden');
-    const q = this.removeVisitor(v), pos = q ? [q.d.root.position.x, q.d.root.position.z] : [BLD.plaza.x, BLD.plaza.y + 1];
+    const q = this.removeVisitor(v), pos = q ? [q.d.root.position.x, q.d.root.position.z] : [SCX, SCY + 1.5];
     const t = new TownNPC(v.npc, [pos[0], 0, pos[1]]); this.npcs.push(t); this.bubble(t);
     View.dio.sparks.emit({ pos: W3(pos[0], pos[1], 0.8), n: 26, color: 0xffc070, color2: 0xffffff, speed: 2, up: 1.5, grav: 0, life: 0.8, size: 0.12 }); Sfx.chime(4);
     UI.banner(`${v.npc.name} — 정착지의 주민이 되었다`, 'info');
-    if (r.built) setTimeout(() => this.rise(r.built), 700);
+    if (r.want) setTimeout(() => UI.toast(`${jo(v.npc.name, '이가')} 일할 ${ROOMS[r.want].name}이 아직 없다.`), 900);
     this.applyGlow(); this.renderHud();
   },
   /* ---- 등불지기 잇기 ---- */
@@ -52,13 +53,13 @@ Object.assign(Town, {
     if (META.npcs.length === 1) { const n = META.npcs[0]; this.torchScene(n, `${jo(n.name, '이가')} 말없이 횃불을 들었다. 남은 사람은 ${jo(n.name, '뿐이었다')}.`); return; }
     const vs = volunteers();
     const cards = vs.map((n, k) => { const pk = perkOf(n), line = n.t.E <= -1 ? VOLUNTEER.lowE : n.t.H >= 1 ? VOLUNTEER.highH : n.t.A >= 1 ? VOLUNTEER.highA : VOLUNTEER.other;
-      return `<button class="vol" data-v="${k}"><b>${n.name}</b><small>${summary(n)} · ${BLD[JOBS[n.job].b].name}이(가) 빈다</small><span class="vline">“${line}”</span><span class="perk">${pk ? `✦ ${PERKS[pk].name} — ${PERKS[pk].desc}` : '✦ 특별한 시작 특성 없음'}</span></button>`; }).join('');
+      return `<button class="vol" data-v="${k}"><b>${n.name}</b><small>${summary(n)} · ${jo(BLD[JOBS[n.job].b].name, '이가')} 빈다</small><span class="vline">“${line}”</span><span class="perk">${pk ? `✦ ${PERKS[pk].name} — ${PERKS[pk].desc}` : '✦ 특별한 시작 특성 없음'}</span></button>`; }).join('');
     const sh = this.sheet(`<h3>누가 횃불을 들까</h3><div class="gtxt">모닥불을 지킬 사람이 남아 있는 한, 누군가 다시 어둠으로 내려간다.<br><small>고른 사람은 정착지를 떠나 등불지기가 된다. 그 사람의 일터는 비고, 가까웠던 이웃들은 슬퍼한다.</small></div><div class="vols">${cards}</div>`);
     sh.querySelectorAll('[data-v]').forEach((b) => { b.onclick = () => this.torchScene(vs[+b.dataset.v]); });
   },
   torchScene(n, note) {
     $('#sheet').classList.add('hidden'); this.busy = true;
-    const t = this.npcs.find((q) => q.n === n), c = BLD.plaza;
+    const t = this.npcs.find((q) => q.n === n), c = { x: SCX, y: SCY };
     if (t) t.goto(c.x - 0.8, c.y + 0.4, 'idle', 5, [c.x, c.y]);
     setTimeout(() => {
       const D = View.dio; D.pool.flash(W3(c.x, c.y), 0xffa040, 90, 1, 8); D.sparks.emit({ pos: W3(c.x - 0.6, c.y + 0.4, 1.0), n: 40, color: 0xff9a3a, color2: 0xffe36a, speed: 2.5, up: 2, grav: 0.3, life: 1, size: 0.14 }); Sfx.play('fire');

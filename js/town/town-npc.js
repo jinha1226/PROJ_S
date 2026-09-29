@@ -28,14 +28,16 @@ export class TownNPC {
     this.phase = Math.random() * 6; this.bubbleT = 3 + Math.random() * 8; this.partner = null; this.face = null; this.hop = 0;
     this.d.root.position.copy(this.pos);
   }
-  goto(x, z, next, dur, face) { this.target = new THREE.Vector3(x, 0, z); this.state = 'walk'; this.next = next; this.nextDur = dur; this.face = face || null; }
+  /** 벽을 돌아 문으로 다닌다(Town.route) */
+  goto(x, z, next, dur, face) { this.path = Town.route(this.pos.x, this.pos.z, x, z); const [px, pz] = this.path.shift(); this.target = new THREE.Vector3(px, 0, pz); this.state = 'walk'; this.next = next; this.nextDur = dur; this.face = face || null; }
   update(dt, time) {
     const r = this.d.root, n = this.n, slow = n.mood <= -1 ? 0.75 : 1;
     this.t += dt; this.bubbleT -= dt;
     let bob = 0, tiltX = 0, tiltZ = 0, sy = 1;
     if (this.state === 'walk') {
       const d = this.target.clone().sub(this.pos), L = d.length();
-      if (L < 0.05) { this.pos.copy(this.target); this.state = this.next; this.t = 0; this.dur = this.nextDur; if (this.face) this.yawT = Math.atan2(this.face[0] - this.pos.x, this.face[1] - this.pos.z); }
+      if (L < 0.05 && this.path && this.path.length) { this.pos.copy(this.target); const [px, pz] = this.path.shift(); this.target.set(px, 0, pz); }
+      else if (L < 0.05) { this.pos.copy(this.target); this.state = this.next; this.t = 0; this.dur = this.nextDur; if (this.face) this.yawT = Math.atan2(this.face[0] - this.pos.x, this.face[1] - this.pos.z); }
       else { const st = Math.min(L, dt * 1.7 * slow); this.pos.addScaledVector(d.normalize(), st); this.yawT = Math.atan2(d.x, d.z); bob = Math.abs(Math.sin(time * 11 + this.phase)) * 0.09; }
     } else if (this.state === 'work') {
       const w = JOBS[n.job].work, k = time * 6 + this.phase;

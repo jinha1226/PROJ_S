@@ -164,7 +164,26 @@ body.slowmo #banner{font-size:34px}
 #tname{font-size:17px}
 #tinfo{margin-top:6px;font-size:12px;color:#fff;background:rgba(20,30,20,.55);border-radius:10px;padding:5px 9px;display:inline-block}
 #tbottom{padding:0 10px calc(10px + var(--sb))}
-#tbtns{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+#tbtns{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+#tbtns.hidden{display:none}
+#buildbar{pointer-events:auto;background:rgba(28,24,18,.92);border:1px solid rgba(255,230,180,.25);border-radius:16px;padding:7px;display:flex;flex-direction:column;gap:6px}
+#bstat{font-size:12px;color:#e8dcc0;min-height:16px;line-height:1.35}
+#bopts{display:flex;flex-wrap:wrap;gap:5px;max-height:118px;overflow-y:auto}
+#bopts .brow2{display:flex;flex-wrap:nowrap;gap:5px;overflow-x:auto;width:100%;padding-bottom:2px}
+.bchip{flex:none;height:34px;padding:0 10px;border-radius:10px;border:1px solid rgba(255,230,180,.22);background:rgba(255,255,255,.06);font-size:12.5px;color:#f0e6d0;white-space:nowrap}
+.bchip.on{background:#ffcf6a;color:#2a1c08;border-color:#ffcf6a;font-weight:700}
+.bnote{font-size:12px;color:#c8bca0}
+#btabs{display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
+#btabs button{height:46px;border-radius:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,230,180,.18);font-size:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
+#btabs button.on{border-color:#ffcf6a;background:rgba(255,207,106,.18)}
+#btabs small{font-size:10px;color:#e8dcc0;margin-top:3px}
+#bacts{display:grid;grid-template-columns:44px 44px 58px 1fr 64px;gap:5px}
+#bacts button{height:44px;border-radius:11px;background:rgba(255,255,255,.07);border:1px solid rgba(255,230,180,.2);font-size:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1}
+#bacts button small{font-size:10px;color:#e8dcc0}
+#bacts button.pri{background:#3f7a3a;border-color:#7ad06a;font-weight:700;font-size:14px}
+#bacts button:disabled{opacity:.35}
+#mag{position:fixed;left:50%;top:calc(64px + var(--st));transform:translateX(-50%);width:162px;height:162px;border-radius:14px;border:2px solid rgba(255,255,255,.8);box-shadow:0 6px 20px rgba(0,0,0,.5);pointer-events:none;z-index:5}
+#mag.hidden{display:none}
 #tbtns button{height:60px;border-radius:15px;background:rgba(40,34,26,.86);border:1px solid rgba(255,230,180,.25);font-size:22px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
 #tbtns small{font-size:11px;color:#e8dcc0;margin-top:4px}
 .btag{position:absolute;left:0;top:0;font-size:11px;font-weight:800;color:#3a2a14;background:rgba(255,246,224,.9);border-radius:9px;padding:2px 7px;white-space:nowrap;box-shadow:0 2px 0 rgba(0,0,0,.25);pointer-events:none}
@@ -307,8 +326,9 @@ details{margin-top:4px;font-size:13px}details summary{cursor:pointer}details sum
 <div id="townhud" class="hidden">
   <div id="ttop"><div class="hprow"><b id="tname">🏕 정착지</b><span style="flex:1"></span><button id="btn-sound2" class="round">🔊</button><button id="btn-help2" class="round">?</button></div><div id="tinfo"></div></div>
   <div id="tbottom"><div id="tbtns">
-    <button data-o="gate">🚪<small>출발</small></button><button data-o="altar">💎<small>제단</small></button><button data-o="craft">🔨<small>제작</small></button><button data-o="storage">📦<small>창고</small></button><button data-o="plaza">🔥<small>휴식</small></button>
-  </div></div>
+    <button data-o="build">🔨<small>건설</small></button><button data-o="people">👥<small>사람</small></button><button data-o="craft">⚒<small>제작</small></button><button data-o="storage">📦<small>창고</small></button><button data-o="plaza">🔥<small>모닥불</small></button><button data-o="gate">🚪<small>출발</small></button>
+  </div><div id="buildbar" class="hidden"></div></div>
+  <canvas id="mag" class="hidden" width="162" height="162"></canvas>
 </div>
 <div id="camctl">
   <button id="btn-tilt">◢<small>기울기</small></button>

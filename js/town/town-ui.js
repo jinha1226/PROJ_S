@@ -1,6 +1,8 @@
 import { canEnchant, craftArmor, craftWeapon, gearCss, gearName, makeGear } from '../core/gear.js';
 import { META, craftNote, invAdd, invCount, moodAdd, newHero, packLimit, recipeName, saveMeta } from '../core/meta.js';
+import { hasRoom, radius } from '../core/settlement.js';
 import { cap, hearthGlow } from '../core/visitors.js';
+import { ROOMS, SCX, SCY } from '../data/build.js';
 import { BOSSES } from '../data/enemies.js';
 import { QUALITY, SLOTS, SLOT_ICON, hasQuality, isWeapon, slotKind } from '../data/gear.js';
 import { ITEMS, MATS } from '../data/items.js';
@@ -21,7 +23,8 @@ import { Town } from './town.js';
 Object.assign(Town, {
   renderHud() {
     const h = META.hero, cl = META.cleared.map((c, k) => (c ? `✓${k + 1}` : '')).filter(Boolean).join(' ');
-    $('#tinfo').innerHTML = `<b class="glow">🔥 ${hearthGlow()}</b> · 주민 ${META.npcs.length}/${cap()}${META.visitors.length ? ` · 방문자 ${META.visitors.length}` : ''} · ${h ? `등불지기 ${h.name}(${h.gen}대) HP ${h.hp}/${h.max}` : META.needSuccessor ? '횃불을 들 사람을 골라야 한다' : `다음 등불지기 ${META.gen + 1}대째`}${cl ? ` · 구역 ${cl}` : ''}`;
+    const S = META.settle, res = S ? `<br>🪵 ${S.stock.나무 || 0} · 🪨 ${S.stock.돌 || 0} · 🔮 ${META.mats.마석 || 0} · 빛 ${radius()}칸${S.bp.length ? ` · 청사진 ${S.bp.length}` : ''}` : '';
+    $('#tinfo').innerHTML = `<b class="glow">🔥 ${hearthGlow()}</b> · 주민 ${META.npcs.length}/${cap()}${META.visitors.length ? ` · 방문자 ${META.visitors.length}` : ''} · ${h ? `등불지기 ${h.name}(${h.gen}대) HP ${h.hp}/${h.max}` : META.needSuccessor ? '횃불을 들 사람을 골라야 한다' : `다음 등불지기 ${META.gen + 1}대째`}${cl ? ` · 구역 ${cl}` : ''}${res}`;
   },
   sheet(html) { const sh = $('#sheet'); sh.innerHTML = html; sh.classList.remove('hidden'); sh.querySelector('.close')?.addEventListener('click', () => sh.classList.add('hidden')); return sh; },
   /* ---- 출발문: 구역 선택 · 준비 ---- */
@@ -52,7 +55,7 @@ Object.assign(Town, {
     for (const [k, n] of Object.entries(P.items)) if (n > 0) { META.items[k] -= n; invAdd(h.inv, k, n); h.known[k] = true; }
     const zone = P.zone + 1; this.prep = null;
     $('#sheet').classList.add('hidden');
-    const D = View.dio, g = BLD.gate; D.fx.ring(W3(g.x, g.y), 0xb45aff, 0.3, 3, 0.6); D.pool.flash(W3(g.x, g.y), 0xc08aff, 80, 0.6, 8); Sfx.play('tele');
+    const D = View.dio, [gx, gy] = this.spot('gate'), g = { x: gx, y: gy }; D.fx.ring(W3(g.x, g.y), 0xb45aff, 0.3, 3, 0.6); D.pool.flash(W3(g.x, g.y), 0xc08aff, 80, 0.6, 8); Sfx.play('tele');
     for (const t of this.npcs) if (t.n.t.X >= 0 || t.n.t.E >= 1) { t.goto(g.x + (Math.random() - 0.5) * 3, g.y + 2 + Math.random(), 'gather', 3, [g.x, g.y]); }
     this.busy = true;
     setTimeout(() => { this.busy = false; enterDungeon(zone); }, 1300);
@@ -84,14 +87,14 @@ Object.assign(Town, {
       q.stone = selId; q.color = STONE[selId].color; q.cd = 0;
       this.altarSel = -1; this.altarArm = -1; saveMeta();
       this.altarMsg = lost ? `「${STONE[lost].name}」이(가) 빛이 되어 흩어졌다. 칸이 ${COLORS[q.color].name}으로 물들었다.` : `「${STONE[selId].name}」을(를) 끼웠다.`;
-      const b2 = BLD.altar; View.dio.fx.ring(W3(b2.x, b2.y), COLORS[q.color].hex, 0.3, 2.2, 0.5); View.dio.sparks.emit({ pos: W3(b2.x, b2.y, 1.4), n: 30, color: COLORS[q.color].hex, color2: 0xffffff, speed: 3, grav: 0, life: 0.7, size: 0.14 }); Sfx.chime(3);
+      const [ax, ay] = this.spot('altar'), b2 = { x: ax, y: ay }; View.dio.fx.ring(W3(b2.x, b2.y), COLORS[q.color].hex, 0.3, 2.2, 0.5); View.dio.sparks.emit({ pos: W3(b2.x, b2.y, 1.4), n: 30, color: COLORS[q.color].hex, color2: 0xffffff, speed: 3, grav: 0, life: 0.7, size: 0.14 }); Sfx.chime(3);
       this.altar();
     }; });
   },
   /* ---- 제작소 ---- */
   craft(bid) {
-    const have = CRAFT_B.filter((b) => META.buildings[b] && META.buildings[b].shown);
-    if (!have.length) return;
+    const have = CRAFT_B.filter((b) => hasRoom(b));
+    if (!have.length) { UI.toast('작업방이 아직 없다. 🔨 건설에서 대장간 같은 방을 지을 수 있다.'); return; }
     if (!bid || !have.includes(bid)) bid = have[0];
     const workers = META.npcs.filter((n) => JOBS[n.job].b === bid);
     if (!workers.some((n) => n.id === this.crafter)) this.crafter = workers[0]?.id;
@@ -123,7 +126,7 @@ Object.assign(Town, {
       const it = pool[+b.dataset.e][1]; META.mats.마석 -= 1; const save = n.t.C >= 1 && rand() < 0.35; META.mats.광석 -= save ? 1 : 2;
       if (q.quality) it.q = (it.q || 1) + 1; else { it.plus++; it.idP = true; } moodAdd(n, n.t.C >= 1 ? 1 : 0); saveMeta();
       this.craftMsg = `✅ <b>${gearName(it, true)}</b>${save ? ` — ${adj(n, 'C')} ${jo(n.name, '이가')} 광석을 하나 아꼈다` : ''}`;
-      const B = BLD[bid], D = View.dio; D.sparks.emit({ pos: W3(B.x, B.y, 1.2), n: 30, color: 0xffe14a, color2: 0xffffff, speed: 3, up: 2, grav: -3, life: 0.7, size: 0.13 }); Sfx.play('crit');
+      const [bx, by] = this.spot(bid), B = { x: bx, y: by }, D = View.dio; D.sparks.emit({ pos: W3(B.x, B.y, 1.2), n: 30, color: 0xffe14a, color2: 0xffffff, speed: 3, up: 2, grav: -3, life: 0.7, size: 0.13 }); Sfx.play('crit');
       Town.redressHero?.(); this.craft(bid);
     }; });
   },
@@ -141,7 +144,7 @@ Object.assign(Town, {
     moodAdd(n, t.C >= 1 ? 1 : 0);
     saveMeta();
     this.craftMsg = `✅ <b>${made}</b>${notes.length ? ' — ' + notes.join(' · ') : ''}`;
-    const b = BLD[bid], D = View.dio; D.sparks.emit({ pos: W3(b.x, b.y, 1.2), n: 30, color: plus ? 0xffe14a : 0xffb040, color2: 0xffffff, speed: 3, up: 2, grav: -3, life: 0.7, size: 0.13 }); D.pool.flash(W3(b.x, b.y), 0xffc070, 50, 0.5, 6); Sfx.play(plus ? 'crit' : 'blunt');
+    const [bx, by] = this.spot(bid), b = { x: bx, y: by }, D = View.dio; D.sparks.emit({ pos: W3(b.x, b.y, 1.2), n: 30, color: plus ? 0xffe14a : 0xffb040, color2: 0xffffff, speed: 3, up: 2, grav: -3, life: 0.7, size: 0.13 }); D.pool.flash(W3(b.x, b.y), 0xffc070, 50, 0.5, 6); Sfx.play(plus ? 'crit' : 'blunt');
     const tn = this.npcs.find((x) => x.n === n); if (tn) View.dio.labels.pop(W3(tn.pos.x, tn.pos.z, 1.75), '', { html: `<span class="bub">${plus ? '이건 걸작이야!' : t.C <= -1 ? '됐지? 이 정도면…' : '다 됐어!'}</span>`, cls: 'gem', vx: 0, rise: 14, dur: 2.4 });
   },
   /* ---- 창고 · 휴식 · 카드 ---- */
@@ -157,7 +160,7 @@ Object.assign(Town, {
       <div class="sec">기억할 이름들</div><div class="gtxt">${(META.rememberedKeepers || []).map((name) => `<div>🕯 ${name} — 등잔의 불씨를 이어받았다</div>`).join('') || '<div>아직 기억해 낸 이름이 없다.</div>'}${fallen}</div>`);
   },
   rest() {
-    const h = META.hero, D = View.dio, b = BLD.plaza;
+    const h = META.hero, D = View.dio, b = { x: SCX, y: SCY };
     D.pool.flash(W3(b.x, b.y), 0xffa040, 90, 0.8, 7); D.sparks.emit({ pos: W3(b.x, b.y, 0.5), n: 30, color: 0xff9a3a, color2: 0xffe36a, speed: 2, up: 2.5, grav: 0.5, life: 1, size: 0.15 }); Sfx.play('fire');
     this.sheet(`<h3>🔥 모닥불 <button class="close">닫기</button></h3>${this.hearthInfo()}`);
     if (!h) { UI.toast(META.needSuccessor ? '횃불을 들 사람을 골라야 한다 — 출발문' : '출발문에서 새 등불지기가 나선다'); return; }
@@ -182,7 +185,7 @@ Object.assign(Town, {
     const loot = r.loot && Object.keys(r.loot).length ? Object.entries(r.loot).map(([m, n]) => `${MATS[m]}${m} ${n}`).join(' · ') : '';
     const lost = r.lost && Object.keys(r.lost).length ? Object.entries(r.lost).map(([m, n]) => `${m} ${n}`).join(' · ') : '';
     const arr = res.arrived.map((n) => `<div>🙋 ${n.name} (${JOBS[n.job].name}) — ${adj(n, 'X')}, ${adj(n, 'C')}</div>`).join('');
-    const blt = res.built.map((b) => `<div>🏗 ${BLD[b].icon} ${jo(BLD[b].name, '이가')} 생겼다</div>`).join('');
+    const blt = [...new Set(res.wants)].map((b) => `<div>🏗 ${ROOMS[b].icon} ${jo(ROOMS[b].name, '이가')} 아직 없다. 일할 곳을 지어 주자.</div>`).join('');
     const evs = res.events.map((e) => `<div>${e.icon} ${e.text}</div>`).join('');
     const after = () => { const f = this.afterReport; this.afterReport = null; if (f) f(); };
     const vis = res.visitors.map((v) => `<div>❔ ${v.npc.name} (${JOBS[v.npc.job].name}) — 모닥불 앞에서 기다린다</div>`).join('') + res.left.map((v) => `<div>🚶 기다리던 ${jo(v.npc.name, '이가')} 떠났다</div>`).join('');
@@ -191,7 +194,7 @@ Object.assign(Town, {
     const rs = this.sheet(`<h3>귀환 보고 <button class="close">확인</button></h3><div class="gtxt">${W}</div>${sh2 ? `<div class="gtxt" style="color:#f0c070;margin-top:6px">${sh2}</div>` : ''}
       ${res.dark ? '<div class="gtxt" style="color:#8a9ab8;margin-top:6px">정착지에는 아무도 남아 있지 않다…</div>' : ''}${vis ? `<div class="sec">방문자</div><div class="gtxt">${vis}</div>` : ''}
       ${loot ? `<div class="sec">가져온 것</div><div class="gtxt">${loot}</div>` : ''}${lost ? `<div class="sec">잃은 것</div><div class="gtxt" style="color:#ff9aa4">${lost}</div>` : ''}
-      ${arr || blt ? `<div class="sec">새 얼굴 · 새 건물</div><div class="gtxt">${arr}${blt}</div>` : ''}
+      ${arr || blt ? `<div class="sec">새 얼굴</div><div class="gtxt">${arr}${blt}</div>` : ''}
       ${evs ? `<div class="sec">그동안 마을에서는</div><div class="gtxt">${evs}</div>` : ''}`);
     rs.querySelector('.close').addEventListener('click', after);
     this.renderHud();

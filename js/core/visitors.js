@@ -1,9 +1,11 @@
-import { VISIT } from '../data/lines.js';
+import { ROOMS } from '../data/build.js';
 import { MATS } from '../data/items.js';
+import { VISIT } from '../data/lines.js';
 import { JOBS } from '../data/town.js';
 import { GLOW, LANDS, WANDER_JOBS, WORK_GIFT, residentCap } from '../data/visitors.js';
 import { pick, rand } from '../util/rng.js';
 import { META, affinity, dominant, initRel, makeNpc, moodAdd } from './meta.js';
+import { hasRoom } from './settlement.js';
 
 /* ================= 모닥불 밝기 · 방문자 =================
    불은 사람으로 탄다: 주민 수·기분·관계·사건·등불 조각이 밝기를 정하고, 밝기가 방문자를 부른다. */
@@ -99,8 +101,7 @@ export function acceptVisitor(v) {
   META.npcs.push(n); initRel(n);
   if (v.req === 'A+') for (const m of META.npcs) moodAdd(m, 1);
   if (v.req === 'C+') { const g = WORK_GIFT[JOBS[n.job].b]; if (g) for (const [m, k] of Object.entries(g)) META.mats[m] = (META.mats[m] || 0) + k; }
-  const b = JOBS[n.job].b; let built = null;
-  if (!META.buildings[b]) { META.buildings[b] = { shown: false }; built = b; }
-  return { built };
+  const b = JOBS[n.job].b, want = ROOMS[b] && !hasRoom(b) ? b : null; // 작업방은 건설에서 짓는다
+  return { want };
 }
 export function dismissVisitor(v) { const i = META.visitors.indexOf(v); if (i >= 0) META.visitors.splice(i, 1); }

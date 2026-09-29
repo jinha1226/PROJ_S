@@ -83,7 +83,7 @@ const s10 = await page.evaluate(() => { const old = { v: 5, gen: 1, visits: 1, c
       eq: { weapon: { uid: 'c', base: 'axe', rarity: 'magic', affixes: [{ id: 'dmg', v: 1 }], known: true }, off: { uid: 'd', base: 'mace', rarity: 'common', affixes: [], known: true }, head: null, body: { uid: 'e', base: 'body_cloth', rarity: 'legend', legend: 'mistCloak', affixes: [], known: true }, hands: null, feet: null, neck: null, ring1: null, ring2: null } } };
   localStorage.setItem('torch-meta-v3', JSON.stringify(old)); const g = window.__game; g.resetMetaForTest(); const M = g.loadMeta(); const h = M.hero;
   return { v: M.v, weapon: h.eq.weapon.base + h.eq.weapon.plus, bag: h.bag.map((i) => i.base).join(), cloak: h.eq.cloak ? h.eq.cloak.un : null, body: h.eq.body, stash: M.gear.map((i) => i.base + i.plus).join(), seen: M.unrandsSeen.join() }; });
-check('옛 저장의 등급 장비가 새 형식으로', s10.v === 8 && s10.weapon === 'axe1' && s10.bag === 'mace' && s10.stash === 'boots2' && s10.seen.includes('stormRing'), JSON.stringify(s10));
+check('옛 저장의 등급 장비가 새 형식으로', s10.v >= 8 && s10.weapon === 'axe1' && s10.bag === 'mace' && s10.stash === 'boots2' && s10.seen.includes('stormRing'), JSON.stringify(s10));
 
 /* ================= 데드셀안 확인 목록 (docs/설계_아이템_장비_데드셀안.md §10) ================= */
 await page.evaluate(() => { const g = window.__game, M = g.META; document.querySelector('#sheet').classList.add('hidden'); M.hero = g.newHero(); g.enterDungeon(1); document.querySelector('#sheet').classList.add('hidden');
@@ -164,7 +164,7 @@ const d9 = await page.evaluate(() => { const g = window.__game, mk = (base, o = 
       bag: [mk('dagger', { plus: 2 }), mk('boots'), mk('spear')], eq: { weapon: mk('mace', { plus: 1 }), shield: mk('buckler'), head: null, body: mk('body_cloth'), cloak: null, hands: null, feet: null, neck: null, ring1: null, ring2: null } } };
   localStorage.setItem('torch-meta-v3', JSON.stringify(old)); g.resetMetaForTest(); const M = g.loadMeta(), h = M.hero;
   return { v: M.v, weapon: h.eq.weapon.base + h.eq.weapon.plus, off: h.eq.off && h.eq.off.base, bag: h.bag.map((i) => i.base).join(), stash: M.gear[0].base, q: h.eq.body.q, noShield: !('shield' in h.eq) }; });
-check('§10-9 옛 저장(v6) → 단검은 쌍단검, 방패 칸은 보조손', d9.v === 8 && d9.weapon === 'mace1' && d9.off === 'buckler' && d9.bag === 'twin,boots,spear' && d9.stash === 'twin' && d9.q === 1 && d9.noShield, JSON.stringify(d9));
+check('§10-9 옛 저장(v6) → 단검은 쌍단검, 방패 칸은 보조손', d9.v >= 8 && d9.weapon === 'mace1' && d9.off === 'buckler' && d9.bag === 'twin,boots,spear' && d9.stash === 'twin' && d9.q === 1 && d9.noShield, JSON.stringify(d9));
 
 // 저장 v7(무기 세트 두 벌) → v8: 세트 B는 가방으로
 const d9b = await page.evaluate(() => { const g = window.__game, mk = (base, o = {}) => ({ uid: 'v' + base, base, q: 1, plus: 0, brand: null, ego: null, jt: null, jv: 0, je: null, art: null, un: null, idP: true, idX: true, worn: 0, hits: 0, ...o });
@@ -173,7 +173,7 @@ const d9b = await page.evaluate(() => { const g = window.__game, mk = (base, o =
       eq: { weapon: mk('crossbow'), off: null, weapon2: mk('sword'), off2: mk('orb_red', { q: null }), head: null, body: mk('body_cloth'), cloak: null, hands: null, feet: null, neck: null, ring1: null, ring2: null } } };
   localStorage.setItem('torch-meta-v3', JSON.stringify(old)); g.resetMetaForTest(); const M = g.loadMeta(), h = M.hero;
   return { v: M.v, weapon: h.eq.weapon.base, bag: h.bag.map((i) => i.base).join(), keys: Object.keys(h.eq).length, wset: 'wset' in h }; });
-check('저장 v7 → v8: 세트 B의 무기·보조손은 가방으로', d9b.v === 8 && d9b.weapon === 'crossbow' && d9b.bag === 'boots,sword,orb_red' && d9b.keys === 10 && !d9b.wset, JSON.stringify(d9b));
+check('저장 v7 → v8: 세트 B의 무기·보조손은 가방으로', d9b.v >= 8 && d9b.weapon === 'crossbow' && d9b.bag === 'boots,sword,orb_red' && d9b.keys === 10 && !d9b.wset, JSON.stringify(d9b));
 
 check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 await browser.close(); server.close();

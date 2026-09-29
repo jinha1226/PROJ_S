@@ -1,3 +1,4 @@
+import { ROOMS } from '../data/build.js';
 import { GEAR_BASES } from '../data/gear.js';
 import { APPEAR, ITEMS } from '../data/items.js';
 import { LEVEL_XP } from '../data/stones.js';
@@ -6,15 +7,17 @@ import { FORMS, WPN } from '../data/weapons.js';
 import { pick, rand, ri, shuffle } from '../util/rng.js';
 import { jo } from '../util/text.js';
 import { calcStats, craftArmor, craftWeapon, fullyKnown, gearName, makeGear, migrateGear, migrateSets, newJewelLook, revealAll, starterKit } from './gear.js';
+import { hasRoom, migrateTown } from './settlement.js';
 import { ageVisitors, rollVisitors } from './visitors.js';
 
 export let META = null;
 
 export function defaultMeta() {
-  META = { v: 8, gen: 0, visits: 0, cleared: [false, false, false, false], npcs: [], newNpcs: [], buildings: { plaza: { shown: true }, gate: { shown: true }, altar: { shown: true }, storage: { shown: true }, forge: { shown: true } },
+  META = { v: 9, gen: 0, visits: 0, cleared: [false, false, false, false], npcs: [], newNpcs: [], buildings: { plaza: { shown: true }, gate: { shown: true }, altar: { shown: true }, storage: { shown: true }, forge: { shown: true } },
     mats: { 약초: 2, 가죽: 1, 광석: 2 }, items: { heal: 1 }, gear: [], recipes: {}, hero: null, fallen: [], closed: {}, buff: null, ending: null,
     lit: [false, false, false, false], visitors: [], lore: [], glowMods: [], rememberedKeepers: [], needSuccessor: false, watcher: null, unrandsSeen: [], relics: [] };
   const k = makeNpc('keeper'), b = makeNpc('blacksmith'); META.npcs.push(k); initRel(k); META.npcs.push(b); initRel(b);
+  migrateTown(META); // 모닥불 · 출발문 · 재료 더미 · 제단 + 대장간
   return META;
 }
 
@@ -28,6 +31,7 @@ function migrateMeta(M) {
   }
   if (M.v < 6) { migrateGear(M); if (M.hero) { const n = Math.max(1, M.hero.slots.filter((q) => q.stone).length); M.hero.level = n; M.hero.xp = LEVEL_XP[n - 1]; } M.v = 6; }
   if (M.v < 8) { migrateSets(M); M.v = 8; }
+  if (M.v < 9 || !M.settle) { migrateTown(M); M.v = 9; } // 고정 건물 → 방 (docs/설계_정착지_건설.md)
   M.rememberedKeepers ||= [];
   if (M.hero) { M.hero.torch ??= 100; M.hero.look ||= {}; if (!M.hero.look.ember_jar) M.hero.look.ember_jar = { name: '불씨 단지', color: 0xffc45c }; M.hero.known ||= {}; M.hero.known.ember_jar = true; }
 }
@@ -153,10 +157,10 @@ export function recipeName(q) { return q.out ? `${ITEMS[q.out].name}${q.n > 1 ? 
 export function processReturn(r) {
   META.visits++; META.closed = {}; META.glowMods = [];
   for (const n of META.npcs) n.mood = Math.trunc(n.mood / 2);
-  const out = { reason: r.reason, arrived: [], built: [], events: [], visitors: [], left: [], shard: 0 };
+  const out = { reason: r.reason, arrived: [], wants: [], events: [], visitors: [], left: [], shard: 0 };
   for (const n of META.newNpcs) {
     META.npcs.push(n); initRel(n); out.arrived.push(n);
-    const b = JOBS[n.job].b; if (!META.buildings[b]) { META.buildings[b] = { shown: false }; out.built.push(b); }
+    const b = JOBS[n.job].b; if (ROOMS[b] && !hasRoom(b)) out.wants.push(b); // 작업방은 건설에서 짓는다
   }
   META.newNpcs = [];
   const real = r.reason && r.reason !== 'first' && r.reason !== 'resume';
