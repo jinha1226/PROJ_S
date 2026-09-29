@@ -133,7 +133,7 @@ export function rollGear(depth, force) {
   let cat = force === 'art' ? (rand() < 0.2 ? 4 : 3) : wpick(dropTable(d).map((w, k) => [k, w]));
   if (cat === 4) {
     const seen = new Set(META ? META.unrandsSeen || [] : []), left = Object.keys(UNRANDS).filter((k) => !seen.has(k));
-    if (left.length) { const u = pick(left); if (META) { META.unrandsSeen = [...seen, u]; saveMeta(); } return makeUnrand(u); }
+    if (left.length) { const u = pick(left); if (META) { META.unrandsSeen = [...seen, u]; saveMeta(); } const un = makeUnrand(u); if (un.q) un.q = qualityOf(d); return un; } // 유품도 구역 품질
     cat = 3;
   }
   const base = rollBase(d);
