@@ -30,10 +30,10 @@ export class LabView {
     this.dio.rig.tilesAcross = 16.5;
     this.dio.rig.fit(container.clientWidth / container.clientHeight);
     this.dio.rig.focusT.set(7.5, 0, 7.5); this.dio.rig.snap();
-    this.dio.rig.onTap = (sx, sy) => {
-      const p = this.dio.pickGround(sx, sy);
-      if (p && p.x >= 1 && p.x <= 14 && p.y >= 1 && p.y <= 14) onTap(p);
-    };
+    const pick = (sx, sy) => { const p = this.dio.pickGround(sx, sy); return p && p.x >= 1 && p.x <= 14 && p.y >= 1 && p.y <= 14 ? p : null; };
+    this.dio.rig.onTap = (sx, sy) => { const p = pick(sx, sy); if (p) onTap(p); };
+    // 한 손가락 끌기: D에서 누른 칸을 따라 걷는다(다른 방식은 main이 무시한다)
+    this.dio.rig.drag = { down: (sx, sy) => this.onHold?.(pick(sx, sy)), move: (sx, sy) => { const p = pick(sx, sy); if (p) this.onHold?.(p); }, up: () => this.onHold?.(null), cancel: () => this.onHold?.(null) };
     const surf = new Uint8Array(256);
     for (let y = 7; y <= 9; y++) for (let x = 7; x <= 9; x++) surf[y * 16 + x] = K.SURF.WATER;
     for (let y = 2; y <= 5; y++) for (let x = 8; x <= 12; x++) surf[y * 16 + x] = K.SURF.GRASS;
@@ -307,7 +307,7 @@ export class LabView {
       const gap = Math.hypot(u.x - a.cur.x, u.y - a.cur.z);
       if (!a.dying) {
         if (gap > 0.02) {
-          const k = 1 - Math.exp(-dt * (b.mode === 'C' ? 18 : 12));
+          const k = 1 - Math.exp(-dt * (b.mode === 'C' ? 18 : b.mode === 'D' ? 16 : 12));
           if (!a.lunge) this.face(a, { x: u.x, z: u.y });
           a.cur.x += (u.x - a.cur.x) * k; a.cur.z += (u.y - a.cur.z) * k;
         } else if (!a.lunge && a !== boss && boss && !isFoe(u)) this.face(a, boss.cur);

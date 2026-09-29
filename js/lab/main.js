@@ -7,6 +7,7 @@ const STORE = 'torch-raid-lab-v1';
 const safe = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 let battle, saved = false, lastHp = {}, hurtUntil = {}, hudTime = 0, keys = new Set(), joy = { x: 0, y: 0, pointer: null };
 const view = new LabView($('#stage'), (point) => battle.direct(point));
+view.onHold = (point) => battle.hold(point);
 
 function records() { try { return JSON.parse(localStorage.getItem(STORE) || '[]'); } catch { return []; } }
 function writeRecord(r) { try { localStorage.setItem(STORE, JSON.stringify([...records(), r].slice(-50))); } catch { /* private mode */ } }
@@ -41,9 +42,9 @@ function render() {
   $('#pause').disabled = b.mode === 'A';
   $('#speed').textContent = `${b.speed}×`;
   $('#speed').classList.toggle('off', b.mode === 'A');
-  $('#autopause').textContent = `자동 멈춤 ${b.autoPause ? '켬' : '끔'}`;
-  $('#autopause').classList.toggle('off', b.mode !== 'B');
-  $('#hint').textContent = b.mode === 'A' ? '칸을 탭해 이동하거나 공격한다.' : b.mode === 'B' ? '칸을 탭하면 다음 행동에 움직인다. 멈춘 채 지시할 수 있다.' : '왼쪽 원을 밀어 움직인다. 적을 탭하면 공격한다.';
+  $('#autopause').textContent = `${b.mode === 'D' ? '첫 기믹 멈춤' : '자동 멈춤'} ${b.autoPause ? '켬' : '끔'}`;
+  $('#autopause').classList.toggle('off', b.mode !== 'B' && b.mode !== 'D');
+  $('#hint').textContent = b.mode === 'A' ? '칸을 탭해 이동하거나 공격한다.' : b.mode === 'B' ? '칸을 탭하면 다음 행동에 움직인다. 멈춘 채 지시할 수 있다.' : b.mode === 'D' ? '칸을 탭하면 바로 걷는다. 누른 채 끌면 그쪽으로 계속 걷는다.' : '왼쪽 원을 밀어 움직인다. 적을 탭하면 공격한다.';
   $$('.skills button').forEach((el) => {
     const k = el.dataset.skill, cd = b.cooldowns[k];
     el.classList.toggle('sel', b.skill === k); el.classList.toggle('cool', cd > 0);
@@ -72,10 +73,10 @@ function showResult() {
   $('#compare-now').onclick = compare;
 }
 function compare() {
-  const byMode = Object.fromEntries(['A', 'B', 'C'].map((m) => [m, records().filter((r) => r.mode === m).at(-1)]));
+  const byMode = Object.fromEntries(['A', 'B', 'C', 'D'].map((m) => [m, records().filter((r) => r.mode === m).at(-1)]));
   const cell = (m, fn) => byMode[m] ? safe(fn(byMode[m])) : '—';
-  const row = (label, fn) => `<tr><td>${label}</td>${['A','B','C'].map((m) => `<td>${cell(m, fn)}</td>`).join('')}</tr>`;
-  panel(`<h2>세 방식 비교</h2><table><thead><tr><th></th><th>A 턴제</th><th>B 격자</th><th>C 자유</th></tr></thead><tbody>
+  const row = (label, fn) => `<tr><td>${label}</td>${['A','B','C','D'].map((m) => `<td>${cell(m, fn)}</td>`).join('')}</tr>`;
+  panel(`<h2>세 방식 비교</h2><table><thead><tr><th></th><th>A 턴제</th><th>B 격자</th><th>C 자유</th><th>D 액션</th></tr></thead><tbody>
     ${row('결과', (r) => r.result)}${row('걸린 시간', (r) => `${r.seconds}초`)}${row('입력', (r) => r.inputs)}${row('멈춤', (r) => r.pauses)}${row('회피 / 피격', (r) => `${r.dodged}/${r.hit}`)}${row('동료 쓰러짐', (r) => r.fallen)}${row('재미', (r) => r.fun || '—')}${row('읽힘', (r) => r.readability || '—')}${row('조작 부담', (r) => r.burden || '—')}
     </tbody></table><p>각 방식의 마지막 기록을 보여준다.</p><button id="close">닫기</button>`);
   $('#close').onclick = () => { $('#overlay').hidden = true; };
@@ -98,7 +99,7 @@ $('#reset').onclick = () => launch(battle.mode);
 $('#compare').onclick = compare;
 $('#pause').onclick = () => battle.setPause(!battle.paused);
 $('#speed').onclick = () => { if (battle.mode === 'A') return; battle.speed = battle.speed === 0.5 ? 1 : battle.speed === 1 ? 2 : 0.5; battle.input(); render(); };
-$('#autopause').onclick = () => { if (battle.mode !== 'B') return; battle.autoPause = !battle.autoPause; battle.input(); render(); };
+$('#autopause').onclick = () => { if (battle.mode !== 'B' && battle.mode !== 'D') return; battle.autoPause = !battle.autoPause; battle.input(); render(); };
 
 const joyEl = $('#joystick'), stick = $('#stick');
 joyEl.addEventListener('pointerdown', (ev) => { joy.pointer = ev.pointerId; joyEl.setPointerCapture(ev.pointerId); updateJoy(ev); battle.input(); });
@@ -132,6 +133,11 @@ view.onFrame = (dt) => {
     if (keys.has('a') || keys.has('arrowleft')) x--;
     if (keys.has('d') || keys.has('arrowright')) x++;
     const l = Math.hypot(x, y); if (l) battle.continuousMove(x / Math.max(1, l), y / Math.max(1, l), dt);
+  }
+  if (battle.mode === 'D' && !battle.paused) { // 키보드: 누르고 있는 동안 그 방향으로 한 칸씩
+    const d = [keys.has('d') || keys.has('arrowright') ? 1 : 0, keys.has('s') || keys.has('arrowdown') ? 1 : 0];
+    if (keys.has('a') || keys.has('arrowleft')) d[0]--; if (keys.has('w') || keys.has('arrowup')) d[1]--;
+    if (d[0] || d[1]) battle.order = { type: 'move', point: { x: battle.hero.x + d[0], y: battle.hero.y + d[1] } };
   }
   battle.tick(dt);
   view.show(battle);

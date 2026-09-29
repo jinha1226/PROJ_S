@@ -45,6 +45,19 @@ try {
     requestAnimationFrame(f);
   }));
   check('C 동료가 끊기지 않고 걷는다', walk.moved >= 12 && walk.jump < 0.25);
+  // D: 탭하면 박자를 기다리지 않고 바로 걷는다. 기믹은 처음 볼 때만 멈춘다
+  await page.locator('[data-mode="D"]').click();
+  await page.locator('#pause').click();
+  const d = await page.evaluate(() => {
+    const b = window.__raidLab.battle, x0 = b.hero.x;
+    b.direct({ x: x0 + 3, y: b.hero.y });
+    b.tick(0.016); // 한 프레임 만에(동료 박자 0.6초를 기다리지 않고) 한 칸
+    const stepped = b.hero.x > x0;
+    b.boss.x = 6; b.boss.y = 8; b.bossActs = 0; b.bossAct(); const first = b.paused;
+    b.tele = null; b.setPause(false); b.bossActs = 0; b.bossAct();
+    return { stepped, first, second: b.paused };
+  });
+  check('D 탭하면 바로 걷고 처음 보는 기믹만 멈춘다', d.stepped && d.first && !d.second);
   await page.evaluate(() => { const b = window.__raidLab.battle; b.damage(b.boss, 120, '검증'); });
   await page.waitForSelector('#save');
   await page.locator('#fun').selectOption('4');
