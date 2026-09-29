@@ -144,10 +144,11 @@ function apply(b, S) {
 }
 /** 비용 없이 바로 짓는다(새 땅의 제단, 옛 마을 옮기기) */
 export function buildFree(list, S = st()) { const r = checkBps(list, S, ctxOf(S, 99)); for (const b of r.ok) apply(b, S); if (S === st()) changed(); return r.ok.length; }
-/** [짓기]: 청사진을 바닥 → 벽 → 가구 순으로, 재료가 되는 만큼 짓는다. 남은 것과 모자란 재료를 돌려준다 */
-export function commit(S = st()) {
+/** 짓기: 청사진을 바닥 → 벽 → 가구 순으로, 재료가 되는 만큼 짓는다. 남은 것과 모자란 재료를 돌려준다.
+    rec = false면 바로 앞 조작(놓기·베기)과 한 번의 되돌리기로 묶인다 */
+export function commit(S = st(), rec = true) {
   if (!S.bp.length) return { built: 0, left: 0, missing: {} };
-  record();
+  if (rec) record();
   const order = S.bp.map((b, k) => [b, k]).sort((a, b) => LAYER[a[0].L] - LAYER[b[0].L] || a[1] - b[1]).map(([b]) => b), left = [], need = {};
   let built = 0;
   for (const b of order) {

@@ -1,6 +1,6 @@
 import { META, saveMeta } from '../core/meta.js';
 import { furnCells } from '../core/rooms.js';
-import { autoPlan, canRedo, canUndo, checkBps, clearHistory, clipBps, commit, copyRoom, cutArea, demolish, fillBps, flipClip, inLight, lineBps, missing, neededRooms, paintZone, placeBps, presetBps, radius, redo, roomBps, rotateClip, stockOf, suggestSpots, sumCost, buildHours, undo } from '../core/settlement.js';
+import { autoPlan, buildHours, canRedo, canUndo, checkBps, clearHistory, clipBps, commit, copyRoom, cutArea, demolish, fillBps, flipClip, inLight, lineBps, missing, neededRooms, paintZone, placeBps, presetBps, radius, redo, roomBps, rotateClip, stockOf, suggestSpots, sumCost, undo } from '../core/settlement.js';
 import { FLOOR_TYPES, FURN, PRESETS, RES_ICON, ROOMS, SIZE_NAME, SW, TERRAIN, WALLS, ZONE_TYPES } from '../data/build.js';
 import { MATS } from '../data/items.js';
 import { JOBS, MOODS } from '../data/town.js';
@@ -10,15 +10,25 @@ import { $, UI } from '../ui/ui.js';
 import { Town } from './town.js';
 
 /* ================= 건설 모드 (docs/설계_정착지_건설.md §4 · §8) =================
-   한 손가락 = 그리기(끌기 또는 두 번 탭), 두 손가락 = 화면. 모든 것은 청사진으로 놓이고 [짓기]로 실체가 된다. */
-const TABS = [['room', '🏠', '방'], ['wall', '🧱', '벽·바닥'], ['furn', '🪑', '가구'], ['zone', '🟩', '구역'], ['cut', '🪓', '베기'], ['del', '🗑', '철거']];
-const RECT = new Set(['room', 'wline', 'wbox', 'floor', 'zone', 'cut', 'del']);
+   한 번에 한 단계만 보인다: 분류 카드 → 물건 한 줄 → 그리기([되돌리기] [그만]만).
+   한 손가락 = 그리기(끌기 또는 두 번 탭), 두 손가락 = 화면. 놓으면 재료가 되는 만큼 바로 지어지고, 모자란 것만 청사진(빨강)으로 남는다. */
+const CATS = [['room', '🏠', '방'], ['wall', '🧱', '벽·바닥'], ['furn', '🪑', '가구'], ['zone', '🟩', '구역'], ['cut', '🪓', '베기'], ['del', '🗑', '철거']];
+const RECT = new Set(['room', 'wall', 'floor', 'zone', 'cut', 'del']);
 const LAYERS = [['all', '전체'], ['floor', '바닥만'], ['walls', '벽까지'], ['zones', '구역만']];
 const FURN_LIST = Object.keys(FURN).filter((k) => !FURN[k].unique);
 const PRESET_KINDS = ['bedroom', 'forge', 'herb', 'hunter', 'library', 'inn', 'storage'];
 const I = (x, y) => y * SW + x;
+const resText = (cost) => Object.entries(cost).map(([m, n]) => `${RES_ICON[m] || MATS[m] || ''}${n}`).join(' ') || '무료';
 const costText = (cost, S) => Object.entries(cost).map(([m, n]) => { const have = stockOf(m, S); return `<span style="color:${have >= n ? '#e8dcc0' : '#ff8a8a'}">${RES_ICON[m] || MATS[m] || ''}${m} ${n}</span>`; }).join(' ') || '<span style="color:#9aa2bd">비용 없음</span>';
 const missText = (miss) => Object.entries(miss).map(([m, n]) => `${m} ${n}`).join(', ');
+/** 물건 카드 한 줄: [값, 아이콘, 이름, 비용] */
+function itemsOf(cat) {
+  if (cat === 'room') return [['draw', '▭', '직접 그리기', null], ...PRESET_KINDS.map((k) => [`preset:${k}`, ROOMS[k].icon, ROOMS[k].name, null]), ['copy', '📋', '방 복사', null]];
+  if (cat === 'wall') return [['wall:wood', '🪵', WALLS.wood.name, WALLS.wood.cost], ['wall:stone', '🪨', WALLS.stone.name, WALLS.stone.cost], ['door', '🚪', WALLS.door.name, WALLS.door.cost], ...Object.keys(FLOOR_TYPES).map((k) => [`floor:${k}`, '▦', FLOOR_TYPES[k].name, FLOOR_TYPES[k].cost])];
+  if (cat === 'furn') return FURN_LIST.map((k) => [`furn:${k}`, FURN[k].icon, FURN[k].name, FURN[k].cost]);
+  if (cat === 'zone') return [...Object.keys(ZONE_TYPES).map((k) => [`zone:${k}`, '🟩', ZONE_TYPES[k].name, {}]), ['zone:erase', '⌫', '구역 지우기', {}]];
+  return [];
+}
 
 Object.assign(Town, {
   bm: null,
@@ -26,11 +36,11 @@ Object.assign(Town, {
   enterBuild() {
     if (this.busy) return;
     this.buildMode = true; clearHistory();
-    this.bm ||= { tab: 'room', tool: 'room', wall: 'wood', floor: 'wood', furn: 'bed', rot: 0, zone: 'field', preset: null, spots: [], start: null, cur: null, clip: null, layer: 'all' };
-    this.bm.start = null; this.bm.cur = null;
-    $('#tbtns').classList.add('hidden'); $('#buildbar').classList.remove('hidden'); $('#sheet').classList.add('hidden');
+    this.bm = { stage: 'cats', cat: null, tool: null, wall: 'wood', floor: 'wood', furn: 'bed', rot: 0, zone: 'field', shape: 'line', preset: null, size: 'M', spots: [], start: null, cur: null, clip: null, layer: 'all', more: false, pv: null };
     this.dragHandler ||= { down: (x, y) => this.dragDown(x, y), move: (x, y) => this.dragMove(x, y), up: (x, y, ok) => this.dragUp(x, y, ok), cancel: () => this.dragCancel() };
-    this.setTool(this.bm.tool); Sfx.play('ui');
+    $('#tbtns').classList.add('hidden'); $('#buildbar').classList.remove('hidden'); $('#sheet').classList.add('hidden');
+    this.setTool(null); Sfx.play('ui');
+    if (META.settle.bp.length) { commit(META.settle, false); this.refreshWorld(); } // 그사이 재료가 들어왔으면 남은 청사진부터
     try { if (!localStorage.getItem('torch-build-hint')) { UI.toast('한 손가락으로 그리고, 두 손가락으로 화면을 옮긴다.'); localStorage.setItem('torch-build-hint', '1'); } } catch (_) { /* 없음 */ }
   },
   exitBuild() {
@@ -40,9 +50,9 @@ Object.assign(Town, {
     $('#buildbar').classList.add('hidden'); $('#tbtns').classList.remove('hidden');
     saveMeta(); this.renderHud();
   },
-  /** 도구 고르기: 사각형 도구만 한 손가락 끌기를 그리기로 쓴다(나머지는 끌면 화면 이동) */
+  /** 도구: 사각형 도구만 한 손가락 끌기를 그리기로 쓴다(나머지는 끌면 화면 이동) */
   setTool(tool) {
-    const bm = this.bm; bm.tool = tool; bm.start = null; bm.cur = null;
+    const bm = this.bm; bm.tool = tool; bm.start = null; bm.cur = null; bm.pv = null; bm.more = false;
     this.sv?.setPreview(); this.sv?.setSelect(null); this.magnify(null);
     if (tool !== 'preset') { bm.spots = []; this.sv?.setMarkers([]); }
     View.dio.rig.drag = RECT.has(tool) ? this.dragHandler : null;
@@ -53,9 +63,9 @@ Object.assign(Town, {
   dragDown(sx, sy) { const c = this.cellAt(sx, sy); if (!c) return; this.bm.start = c; this.bm.cur = c; this.previewRect(); },
   dragMove(sx, sy) { const c = this.cellAt(sx, sy); if (!c || !this.bm.start) return; this.bm.cur = c; this.previewRect(); },
   dragUp(sx, sy, ok) { const bm = this.bm; if (!ok || !bm.start) { this.dragCancel(); return; } const c = this.cellAt(sx, sy) || bm.cur; this.applyRect(bm.start, c); },
-  dragCancel() { const bm = this.bm; bm.start = null; bm.cur = null; this.sv?.setPreview(); this.sv?.setSelect(null); this.magnify(null); this.renderBuild(); },
+  dragCancel() { const bm = this.bm; bm.start = null; bm.cur = null; bm.pv = null; this.sv?.setPreview(); this.sv?.setSelect(null); this.magnify(null); this.renderBuild(); },
   buildTap(sx, sy) {
-    const bm = this.bm, c = this.cellAt(sx, sy); if (!c) return;
+    const bm = this.bm, c = this.cellAt(sx, sy); if (!c || bm.stage !== 'draw') return;
     const t = bm.tool;
     if (RECT.has(t)) {
       if (!bm.start) { bm.start = c; bm.cur = c; this.previewRect(); return; } // 첫 탭: 시작 칸 고정
@@ -64,9 +74,8 @@ Object.assign(Town, {
     if (t === 'door') this.place([{ L: 'wall', k: 'door', x: c.x, y: c.y }]);
     else if (t === 'furn') this.place([{ L: 'furn', k: bm.furn, x: c.x, y: c.y, rot: bm.rot }]);
     else if (t === 'preset') {
-      const s = bm.spots.find((q) => c.x >= q.x && c.x < q.x + q.w && c.y >= q.y && c.y < q.y + q.h);
-      const P = bm.preset; if (!P) return;
-      this.place(s ? s.bps : presetBps(P.kind, P.size, c.x, c.y, bm.rot, bm.wall));
+      const s = bm.spots.find((q) => c.x >= q.x && c.x < q.x + q.w && c.y >= q.y && c.y < q.y + q.h), P = bm.preset;
+      this.place(s ? presetBps(P, bm.size, s.x, s.y, s.rot, bm.wall) : presetBps(P, bm.size, c.x, c.y, 0, bm.wall));
     } else if (t === 'copy') {
       const clip = copyRoom(c.x, c.y);
       if (!clip) { UI.toast('벽으로 닫힌 방을 누른다.'); return; }
@@ -77,68 +86,75 @@ Object.assign(Town, {
   rectBps(a, b) {
     const bm = this.bm;
     if (bm.tool === 'room') return roomBps(a.x, a.y, b.x, b.y, bm.wall, bm.floor);
-    if (bm.tool === 'wline') return lineBps(a.x, a.y, b.x, b.y, 'wall', bm.wall);
-    if (bm.tool === 'wbox') return fillBps(a.x, a.y, b.x, b.y, 'wall', bm.wall, true);
+    if (bm.tool === 'wall') return bm.shape === 'box' ? fillBps(a.x, a.y, b.x, b.y, 'wall', bm.wall, true) : lineBps(a.x, a.y, b.x, b.y, 'wall', bm.wall);
     if (bm.tool === 'floor') return fillBps(a.x, a.y, b.x, b.y, 'floor', bm.floor);
     return [];
   },
   previewRect() {
     const bm = this.bm, a = bm.start, b = bm.cur; if (!a || !b) return;
-    const sel = { x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y), x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y) };
-    this.sv?.setSelect(sel);
+    this.sv?.setSelect({ x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y), x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y) });
     const list = this.rectBps(a, b);
     if (list.length) { const r = checkBps(list); this.sv?.setPreview(r.ok, r.bad); bm.pv = r; }
     else { this.sv?.setPreview(); bm.pv = null; }
     this.magnify(b); this.renderBuild();
   },
   applyRect(a, b) {
-    const bm = this.bm; bm.start = null; bm.cur = null;
+    const bm = this.bm; bm.start = null; bm.cur = null; bm.pv = null;
     this.sv?.setPreview(); this.sv?.setSelect(null); this.magnify(null);
-    if (bm.tool === 'cut') { const r = cutArea(a.x, a.y, b.x, b.y); if (r.n) { UI.toast(`${Object.entries(r.gained).map(([m, n]) => `${m} ${n}`).join(', ')}을 얻었다.`); Sfx.play('blunt'); } else UI.toast('빛 안의 나무·바위·광맥·폐허를 고른다.'); }
-    else if (bm.tool === 'del') { const r = demolish(a.x, a.y, b.x, b.y); if (r.n) { const back = Object.entries(r.back).map(([m, n]) => `${m} ${n}`).join(', '); UI.toast(back ? `철거했다. ${back}을 돌려받았다.` : '철거했다.'); Sfx.play('blunt'); } }
+    if (bm.tool === 'cut') {
+      const r = cutArea(a.x, a.y, b.x, b.y);
+      if (r.n) { const c = META.settle.bp.length ? commit(META.settle, false) : null; UI.toast(`${Object.entries(r.gained).map(([m, n]) => `${m} ${n}`).join(', ')}을 얻었다.${c && c.built ? ` 청사진 ${c.built}개를 마저 지었다.` : ''}`); Sfx.play('blunt'); }
+      else UI.toast('빛 안의 나무·바위·광맥·폐허를 고른다.');
+    } else if (bm.tool === 'del') { const r = demolish(a.x, a.y, b.x, b.y); if (r.n) { const back = Object.entries(r.back).map(([m, n]) => `${m} ${n}`).join(', '); UI.toast(back ? `철거했다. ${back}을 돌려받았다.` : '철거했다.'); Sfx.play('blunt'); } }
     else if (bm.tool === 'zone') { const n = paintZone(a.x, a.y, b.x, b.y, bm.zone === 'erase' ? null : bm.zone); if (!n) UI.toast('빛 안의 빈 땅을 고른다.'); }
     else { this.place(this.rectBps(a, b)); return; }
     this.afterEdit();
   },
-  /** 청사진 놓기 + 못 놓은 까닭 한 줄 */
+  /** 놓고 바로 짓는다(한 번의 되돌리기). 재료가 모자란 것은 청사진으로 남는다 */
   place(list) {
     if (!list.length) { UI.toast('방은 3×3보다 크게 그린다.'); return; }
     const r = placeBps(list);
-    if (r.bad.length && !r.ok.length) UI.toast(r.bad[0].why + '.');
+    if (!r.ok.length) { if (r.bad.length) UI.toast(r.bad[0].why + '.'); this.afterEdit(); return; }
+    const c = commit(META.settle, false);
+    if (c.left) UI.toast(`${missText(c.missing)} 모자라 ${c.left}개는 청사진으로 남았다.`);
     else if (r.bad.length) UI.toast(`${r.bad.length}칸은 못 놓았다. ${r.bad[0].why}.`);
-    if (r.ok.length) Sfx.play('pick');
+    if (c.built) { Sfx.play('blunt'); View.dio.rig.shake(0.12); } else Sfx.play('pick');
     this.afterEdit();
   },
   afterEdit() { this.refreshWorld(); if (this.bm.tool === 'preset') this.showSpots(); this.renderBuild(); this.renderHud(); },
   /** 프리셋: 추천 자리 2~3곳을 반짝인다 */
   showSpots() {
-    const bm = this.bm, P = bm.preset; if (!P) return;
-    bm.spots = suggestSpots(P.kind, P.size, 3); this.sv?.setMarkers(bm.spots.map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h })));
+    const bm = this.bm; if (!bm.preset) return;
+    bm.spots = suggestSpots(bm.preset, bm.size, 3); this.sv?.setMarkers(bm.spots.map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h })));
   },
   /* ---------- 버튼 ---------- */
   buildAct(a, v) {
-    const bm = this.bm;
-    if (a === 'tab') { bm.tab = v; this.setTool({ room: 'room', wall: 'wline', furn: 'furn', zone: 'zone', cut: 'cut', del: 'del' }[v]); Sfx.play('ui'); return; }
-    if (a === 'tool') { this.setTool(v); return; }
-    if (a === 'wall') { bm.wall = v; if (bm.tool === 'preset') this.showSpots(); }
-    if (a === 'floor') { bm.floor = v; if (bm.tool !== 'room') this.setTool('floor'); }
-    if (a === 'furn') { bm.furn = v; this.setTool('furn'); }
-    if (a === 'zone') bm.zone = v;
-    if (a === 'preset') { const [kind, size] = v.split(':'); bm.preset = { kind, size }; this.setTool('preset'); this.showSpots(); if (!bm.spots.length) UI.toast('빛 안에 놓을 자리가 없다. 나무를 베거나 빛을 넓히자.'); return; }
-    if (a === 'rot') { bm.rot = (bm.rot + 1) % 4; if (bm.clip) bm.clip = rotateClip(bm.clip); }
-    if (a === 'flip' && bm.clip) bm.clip = flipClip(bm.clip);
-    if (a === 'auto') {
-      const r = autoPlan();
-      if (r.placed.length) UI.toast(`${r.placed.map((k) => ROOMS[k].name).join(', ')} 청사진을 놓았다.`); else if (!r.failed.length) UI.toast('지금은 모자란 방이 없다.');
-      if (r.failed.length) UI.toast(`${r.failed.map((k) => ROOMS[k].name).join(', ')}을 놓을 자리가 없다.`);
-      this.afterEdit(); return;
+    const bm = this.bm; Sfx.play('ui');
+    if (a === 'cat') { bm.cat = v; if (v === 'cut' || v === 'del') { bm.stage = 'draw'; this.setTool(v); } else { bm.stage = 'items'; this.setTool(null); } return; }
+    if (a === 'back') { bm.stage = 'cats'; bm.cat = null; this.setTool(null); return; }
+    if (a === 'stop') { bm.stage = bm.cat === 'cut' || bm.cat === 'del' ? 'cats' : 'items'; this.setTool(null); return; }
+    if (a === 'item') {
+      const [k, x] = v.split(':'); bm.stage = 'draw';
+      if (k === 'draw') this.setTool('room');
+      else if (k === 'copy') this.setTool('copy');
+      else if (k === 'preset') { bm.preset = x; if (!PRESETS[x][bm.size]) bm.size = 'S'; this.setTool('preset'); this.showSpots(); if (!bm.spots.length) UI.toast('빛 안에 놓을 자리가 없다. 나무를 베거나 더 작은 방을 고르자.'); this.renderBuild(); }
+      else if (k === 'wall') { bm.wall = x; this.setTool('wall'); }
+      else if (k === 'door') this.setTool('door');
+      else if (k === 'floor') { bm.floor = x; this.setTool('floor'); }
+      else if (k === 'furn') { bm.furn = x; this.setTool('furn'); }
+      else if (k === 'zone') { bm.zone = x; this.setTool('zone'); }
+      return;
     }
-    if (a === 'commit') {
-      const r = commit();
-      if (r.built && !r.left) { UI.toast(`청사진 ${r.built}개를 지었다.`); Sfx.play('blunt'); View.dio.rig.shake(0.2); }
-      else if (r.built) UI.toast(`${r.built}개를 지었다. ${missText(r.missing)} 모자라 ${r.left}개가 남았다.`);
-      else if (r.left) UI.toast(`${missText(r.missing)} 모자란다.`);
-      else UI.toast('지을 청사진이 없다.');
+    if (a === 'size') { bm.size = v; this.showSpots(); }
+    if (a === 'mat') { bm.wall = v; if (bm.tool === 'preset') this.showSpots(); }
+    if (a === 'shape') bm.shape = v;
+    if (a === 'rot') { bm.rot = (bm.rot + 1) % 4; if (bm.tool === 'paste' && bm.clip) bm.clip = rotateClip(bm.clip); if (bm.tool === 'preset') this.showSpots(); }
+    if (a === 'flip' && bm.clip) bm.clip = flipClip(bm.clip);
+    if (a === 'more') bm.more = !bm.more;
+    if (a === 'auto') {
+      const r = autoPlan(), c = r.placed.length ? commit(META.settle, false) : null;
+      if (r.placed.length) UI.toast(`${r.placed.map((k) => ROOMS[k].name).join(', ')}을 놓았다.${c && c.left ? ` ${missText(c.missing)} 모자라 일부는 청사진으로 남았다.` : ''}`); else if (!r.failed.length) UI.toast('지금은 모자란 방이 없다.');
+      if (r.failed.length) UI.toast(`${r.failed.map((k) => ROOMS[k].name).join(', ')}을 놓을 자리가 없다.`);
       this.afterEdit(); return;
     }
     if (a === 'undo') { if (undo()) this.afterEdit(); return; }
@@ -147,38 +163,50 @@ Object.assign(Town, {
     if (a === 'exit') { this.exitBuild(); return; }
     this.renderBuild();
   },
-  renderBuild() {
-    const bm = this.bm, S = META.settle, el = $('#buildbar'); if (!el || !bm) return;
-    const chip = (a, v, label, on) => `<button class="bchip ${on ? 'on' : ''}" data-a="${a}" data-v="${v}">${label}</button>`;
-    const wallChips = ['wood', 'stone'].map((k) => chip('wall', k, WALLS[k].name, bm.wall === k)).join('');
-    let opts = '';
-    if (bm.tab === 'room') {
-      opts = `${chip('tool', 'room', '▭ 방 그리기', bm.tool === 'room')}${chip('auto', '', '✨ 알아서 짓기', false)}${chip('tool', 'copy', '📋 복사', bm.tool === 'copy')}${bm.clip ? chip('tool', 'paste', '📌 붙이기', bm.tool === 'paste') : ''}${bm.tool === 'paste' ? chip('rot', '', '⟳ 회전', false) + chip('flip', '', '⇋ 반전', false) : ''}${wallChips}`
-        + `<div class="brow2">${PRESET_KINDS.map((k) => Object.keys(PRESETS[k]).map((s) => chip('preset', `${k}:${s}`, `${ROOMS[k].icon} ${SIZE_NAME[s]} ${ROOMS[k].name}`, bm.tool === 'preset' && bm.preset && bm.preset.kind === k && bm.preset.size === s)).join('')).join('')}${bm.tool === 'preset' ? chip('rot', '', '⟳', false) : ''}</div>`;
-    } else if (bm.tab === 'wall') {
-      opts = `${chip('tool', 'wline', '╱ 벽 선', bm.tool === 'wline')}${chip('tool', 'wbox', '▢ 벽 윤곽', bm.tool === 'wbox')}${chip('tool', 'door', '🚪 문', bm.tool === 'door')}${wallChips}<div class="brow2">${Object.keys(FLOOR_TYPES).map((k) => chip('floor', k, `▦ ${FLOOR_TYPES[k].name}`, bm.tool === 'floor' && bm.floor === k)).join('')}</div>`;
-    } else if (bm.tab === 'furn') {
-      opts = `${FURN_LIST.map((k) => chip('furn', k, `${FURN[k].icon} ${FURN[k].name}`, bm.furn === k)).join('')}${chip('rot', '', `⟳ 회전 ${bm.rot * 90}°`, false)}`;
-    } else if (bm.tab === 'zone') {
-      opts = `${Object.keys(ZONE_TYPES).map((k) => chip('zone', k, ZONE_TYPES[k].name, bm.zone === k)).join('')}${chip('zone', 'erase', '지우개', bm.zone === 'erase')}`;
-    } else if (bm.tab === 'cut') opts = '<span class="bnote">나무·바위·광맥·폐허를 사각형으로 고르면 바로 베고 캔다.</span>';
-    else opts = '<span class="bnote">사각형 안의 청사진은 취소, 지은 것은 재료 절반이 돌아온다.</span>';
-    // 상태 줄: 그리는 중이면 미리보기 비용, 아니면 쌓인 청사진
-    let stat;
+  /** 지금 단계의 상태 줄 */
+  buildStat() {
+    const bm = this.bm, S = META.settle, stock = `🪵 ${S.stock.나무 || 0} · 🪨 ${S.stock.돌 || 0}`;
+    if (bm.stage === 'cats') {
+      const need = neededRooms(), left = S.bp.length, miss = missing(sumCost(S.bp), S);
+      return `${stock}${left ? ` · <b style="color:#ff9a9a">청사진 ${left}개: ${missText(miss) || '재료'} 모자란다</b>` : need.length ? ` · 모자란 방: ${need.map(([k]) => ROOMS[k].name).join(', ')}` : ''}`;
+    }
+    if (bm.stage === 'items') return `${stock} · 무엇을 지을까`;
     if (bm.start && bm.pv) {
-      const miss = missing(bm.pv.cost, S);
-      stat = `${bm.pv.ok.length}칸 · ${costText(bm.pv.cost, S)} · ${buildHours(bm.pv.ok)}시간${Object.keys(miss).length ? ` · <b style="color:#ff8a8a">${missText(miss)} 모자란다</b>` : ''}${bm.pv.bad.length ? ` · <b style="color:#ff8a8a">${bm.pv.bad[0].why}</b>` : ''}`;
-    } else if (bm.start) stat = '끝 칸을 누르거나 끌어서 사각형을 만든다.';
-    else if (bm.tool === 'preset' && bm.preset) { const s = bm.spots[0]; stat = s ? `반짝이는 자리를 누른다 · ${costText(s.cost, S)}` : '놓을 자리가 없다.'; }
-    else if (bm.tool === 'copy') stat = '떠 올 방을 누른다.';
-    else if (bm.tool === 'paste') stat = '붙일 자리(왼쪽 위)를 누른다.';
-    else { const need = neededRooms(); stat = need.length ? `모자란 방: ${need.map(([k]) => ROOMS[k].name).join(', ')}` : '빛 안에 무엇이든 지을 수 있다.'; }
-    const bpCost = sumCost(S.bp), miss = missing(bpCost, S);
-    el.innerHTML = `<div id="bstat">${stat}</div><div id="bopts">${opts}</div>
-      <div id="btabs">${TABS.map(([k, ic, n]) => `<button class="${bm.tab === k ? 'on' : ''}" data-a="tab" data-v="${k}">${ic}<small>${n}</small></button>`).join('')}</div>
-      <div id="bacts"><button data-a="undo" ${canUndo() ? '' : 'disabled'}>↶</button><button data-a="redo" ${canRedo() ? '' : 'disabled'}>↷</button><button data-a="layer">👁<small>${LAYERS.find(([m]) => m === bm.layer)[1]}</small></button>
-        <button class="pri" data-a="commit" ${S.bp.length ? '' : 'disabled'}>✔ 짓기 ${S.bp.length ? `<small style="color:${Object.keys(miss).length ? '#ff9a9a' : '#e8dcc0'}">${S.bp.length}개 · ${Object.entries(bpCost).map(([m, n]) => `${RES_ICON[m] || MATS[m] || ''}${n}`).join(' ') || '무료'}</small>` : ''}</button><button data-a="exit">완료</button></div>`;
-    el.querySelectorAll('[data-a]').forEach((b) => { b.onclick = () => this.buildAct(b.dataset.a, b.dataset.v); });
+      const m = missing(bm.pv.cost, S);
+      return `${bm.pv.ok.length}칸 · ${costText(bm.pv.cost, S)} · ${buildHours(bm.pv.ok)}시간${Object.keys(m).length ? ` · <b style="color:#ff8a8a">${missText(m)} 모자란다</b>` : ''}${bm.pv.bad.length ? ` · <b style="color:#ff8a8a">${bm.pv.bad[0].why}</b>` : ''}`;
+    }
+    if (bm.start) return '끝 칸을 누르거나 끌어서 사각형을 만든다.';
+    const T = bm.tool;
+    if (T === 'preset') { const s = bm.spots[0]; return s ? `${ROOMS[bm.preset].icon} ${SIZE_NAME[bm.size]} ${ROOMS[bm.preset].name} · 반짝이는 자리를 누른다 · ${costText(s.cost, S)}` : '놓을 자리가 없다. 나무를 베거나 크기를 줄이자.'; }
+    if (T === 'copy') return '떠 올 방을 누른다.';
+    if (T === 'paste') return '붙일 자리(왼쪽 위)를 누른다.';
+    if (T === 'furn') return `${FURN[bm.furn].icon} ${FURN[bm.furn].name} · 놓을 칸을 누른다 · ${costText(FURN[bm.furn].cost, S)}`;
+    if (T === 'door') return '🚪 벽이나 빈칸을 누른다.';
+    if (T === 'cut') return `${stock} · 나무·바위·광맥·폐허를 끌어서 고른다.`;
+    if (T === 'del') return '끌어서 고른 곳을 철거한다. 재료 절반이 돌아온다.';
+    if (T === 'zone') return `${bm.zone === 'erase' ? '구역 지우기' : ZONE_TYPES[bm.zone].name} · 끌어서 칠한다.`;
+    return `${stock} · 끌거나 두 번 눌러 사각형을 그린다.`;
+  },
+  renderBuild() {
+    const bm = this.bm, el = $('#buildbar'); if (!el || !bm) return;
+    const btn = (a, v, label, cls = '') => `<button class="${cls}" data-a="${a}" data-v="${v ?? ''}">${label}</button>`;
+    let body = '';
+    if (bm.stage === 'cats') {
+      body = `<div class="bcards">${CATS.map(([k, ic, n]) => btn('cat', k, `${ic}<small>${n}</small>`, 'bcard')).join('')}${btn('auto', '', '✨<small>알아서 짓기</small>', 'bcard')}${btn('exit', '', '✔<small>완료</small>', 'bcard done')}</div>`;
+    } else if (bm.stage === 'items') {
+      const S = META.settle, items = itemsOf(bm.cat).map(([v, ic, n, cost]) => btn('item', v, `<b>${ic}</b><small>${n}</small>${cost ? `<i style="color:${Object.keys(missing(cost, S)).length ? '#ff9a9a' : '#c8bca0'}">${resText(cost)}</i>` : ''}`, 'bitem')).join('');
+      body = `<div class="bitems">${items}</div><div class="bdraw">${btn('back', '', '‹ 뒤로', 'wide')}</div>`;
+    } else {
+      const T = bm.tool, ctx = [];
+      if (T === 'preset') { ctx.push(...Object.keys(PRESETS[bm.preset]).map((s) => btn('size', s, SIZE_NAME[s], bm.size === s ? 'on' : ''))); ctx.push(btn('mat', bm.wall === 'wood' ? 'stone' : 'wood', bm.wall === 'wood' ? '🪵 나무' : '🪨 돌')); }
+      if (T === 'room') ctx.push(btn('mat', bm.wall === 'wood' ? 'stone' : 'wood', bm.wall === 'wood' ? '🪵 나무 벽' : '🪨 돌 벽'));
+      if (T === 'wall') ctx.push(btn('shape', bm.shape === 'line' ? 'box' : 'line', bm.shape === 'line' ? '╱ 선' : '▢ 윤곽'));
+      if (T === 'furn' || T === 'paste') ctx.push(btn('rot', '', `⟳ ${T === 'furn' ? `${bm.rot * 90}°` : '회전'}`));
+      const more = bm.more ? `<div class="bdraw bmore">${btn('redo', '', '↷ 다시 하기', canRedo() ? '' : 'off')}${btn('layer', '', `👁 ${LAYERS.find(([m]) => m === bm.layer)[1]}`)}${T === 'paste' ? btn('flip', '', '⇋ 반전') : ''}</div>` : '';
+      body = `${more}<div class="bdraw">${btn('undo', '', '↶', canUndo() ? 'sq' : 'sq off')}${ctx.join('')}<span style="flex:1"></span>${btn('more', '', '⋯', 'sq')}${btn('stop', '', '✕ 그만', 'stop')}</div>`;
+    }
+    el.innerHTML = `<div id="bstat">${this.buildStat()}</div>${body}`;
+    el.querySelectorAll('[data-a]').forEach((b) => { b.onclick = () => { if (!b.classList.contains('off')) this.buildAct(b.dataset.a, b.dataset.v); }; });
   },
   /* ---------- 돋보기: 손가락 아래 칸을 화면 위쪽에 크게 ---------- */
   magnify(c) {
