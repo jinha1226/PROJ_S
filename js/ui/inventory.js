@@ -126,16 +126,15 @@ Object.assign(UI, {
           <div class="row"><button class="pri" data-act="equip" data-slot="${tgt}" ${blocked ? 'disabled' : ''}>${SLOT_NAME[tgt]}에 장착${inCombat() ? ' (한 턴)' : ''}</button>${scrollButtons(it)}<button data-act="drop">${town ? '창고로' : '버리기'}</button><button data-act="back">닫기</button></div>`;
       }
     }
-    sh.classList.toggle('stones-view', tab === 'stones');
     sh.innerHTML = `<h3>🎒 가방 · 장비 <small style="color:#9aa2bd;font-weight:400">${inCombat() ? '⚠ 전투 중 · 장비 교체에 한 턴' : '장비 교체 가능'}</small><button class="close">닫기</button></h3>
-      ${tab === 'stones' ? '' : `<div class="eqgrid">${SLOTS.map((k) => cell(k)).join('')}</div>
-      <button class="stline" data-act="stats">HP ${H.unit.max} · 방어 ${s.def} · 회피 ${s.eva}%${s.block ? ` · 막기 ${s.block}%` : ''} · 피해 ${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} <b style="color:${COLORS[w.color].css}">×${cmul(w).toFixed(2)}</b> <small>▸ 자세히</small></button>`}
+      <div class="eqgrid">${SLOTS.map((k) => cell(k)).join('')}</div>
+      <button class="stline" data-act="stats">HP ${H.unit.max} · 방어 ${s.def} · 회피 ${s.eva}%${s.block ? ` · 막기 ${s.block}%` : ''} · 피해 ${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} <b style="color:${COLORS[w.color].css}">×${cmul(w).toFixed(2)}</b> <small>▸ 자세히</small></button>
       ${detail ? `<div class="gdetail">${detail}</div>` : ''}
       <div class="invtabs">${tabs.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-itab="${k}">${l}</button>`).join('')}</div>
       ${tab === 'items' ? this.itemsHtml(inv) : tab === 'stones' ? this.stonesHtml() : `<div class="sec">가방 ${bag.length}/${BAG_MAX} <small>▲ = 아는 것만 봐도 지금 것보다 나아 보인다 · ? = 모르는 것이 있다</small></div><div class="bggrid">${bagCells}</div>
       ${town ? `<div class="sec">창고 ${stash.length} <small>정착지에 남는다 — 죽어도 잃지 않는다</small></div><div class="bggrid">${stashCells}</div>` : ''}`}`;
     sh.classList.remove('hidden');
-    sh.querySelector('.close').onclick = () => { sh.classList.add('hidden'); sh.classList.remove('tall', 'stones-view'); };
+    sh.querySelector('.close').onclick = () => { sh.classList.add('hidden'); sh.classList.remove('tall'); };
     sh.querySelectorAll('[data-eq]').forEach((b) => { b.onclick = () => { this.invSel = eq[b.dataset.eq] ? { from: 'eq', slot: b.dataset.eq } : null; this.renderInv(); }; });
     sh.querySelectorAll('[data-bag]').forEach((b) => { b.onclick = () => { this.invSel = { from: 'bag', i: +b.dataset.bag }; this.renderInv(); }; });
     sh.querySelectorAll('[data-st]').forEach((b) => { b.onclick = () => { this.invSel = { from: 'stash', i: +b.dataset.st }; this.renderInv(); }; });

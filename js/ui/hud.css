@@ -69,9 +69,7 @@
 .slot.locked{opacity:.45;border-style:dotted!important}
 .slot.locked .si{font-size:15px}
 .eqs.empty{font-size:12px;font-weight:700;color:var(--dim)}
-#sheet.stones-view{height:min(74vh,640px);display:flex;flex-direction:column}
-#sheet.stones-view h3,#sheet.stones-view .invtabs{flex:none}
-.stone-vault{flex:1;min-height:230px;display:flex;flex-direction:column;justify-content:center;gap:14px}
+.stone-vault{min-height:230px;display:flex;flex-direction:column;justify-content:center;gap:14px;margin-top:10px}
 .stone-vault-head{text-align:center;font-size:13px;color:var(--dim)}
 .stone-vault-head b{display:block;margin-bottom:3px;font-size:17px;color:var(--text)}
 .stone-storage{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;width:100%;max-width:560px;margin:0 auto}

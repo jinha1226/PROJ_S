@@ -33,7 +33,7 @@ Object.assign(UI, {
       detail = `<div class="gdetail"><div class="gcard" style="--c:${col(sel.k)}"><div class="gct"><small>${{ potion: '물약', scroll: '두루마리', throw: '던지는 것' }[def.cat] || '소모품'} · ${sel.n}개</small><b style="color:${col(sel.k)}">${CAT_ICON[def.cat]} ${itemName(sel.k)}${known ? '' : ' ?'}</b></div><div>${known ? def.desc : def.cat === 'throw' ? '던지면 정체를 안다.' : '써 보면 정체를 안다.'}</div></div>
         <div class="row">${town ? '<button disabled>정착지에서는 쓰지 않는다</button>' : `<button class="pri" data-use="${sel.k}">${def.cat === 'throw' ? '🎯 던지기' : '사용'}</button>`}<button data-iback="1">닫기</button></div></div>`;
     }
-    return `${detail}<div class="sec">소모품 ${inv.reduce((a, q) => a + q.n, 0)} <small>? = 아직 정체를 모른다</small></div>${inv.length ? `<div class="bggrid">${grid}</div>` : '<p style="color:#9aa2bd;font-size:13px">비어 있다. 바닥의 반짝이는 물건을 밟으면 줍는다.</p>'}`;
+    return `${detail}<div class="sec">소모품 ${inv.reduce((a, q) => a + q.n, 0)} <small>? = 아직 정체를 모른다</small></div><div class="bggrid">${grid}</div>`;
   },
   bindItems(sh) {
     sh.querySelectorAll('[data-k]').forEach((b) => { b.onclick = () => { this.itemSel = this.itemSel === b.dataset.k ? null : b.dataset.k; this.renderInv(); }; });
