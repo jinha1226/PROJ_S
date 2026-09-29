@@ -12,7 +12,7 @@ Object.assign(UI, {
   title() {
     this.screen(`<h1>횃불과 원소</h1><p style="color:#9fb0ff;margin-top:0">한 손 턴제 던전 · 3차 시제품 (원정 · 정착지)</p>
       <p>세상에 남은 마지막 모닥불은 <b>사람으로</b> 탄다.<br>횃불을 들고 내려가 원소와 지형으로 어둠의 주인을 쓰러뜨려라.<br>되찾은 등불 조각을 넣으면, 흩어진 이들이 불빛을 따라 찾아온다.</p>
-      <p style="font-size:13px">막타를 친 무기가 영혼석의 색을 정한다 — 🔴 찌르기 · 🟣 타격 · 🟢 베기.</p>
+      <p style="font-size:13px">몬스터마다 영혼석 셋 — 쓰러뜨리면 그중 하나가 무작위로 남는다. 영혼석 하나가 스킬 하나.</p>
       <div class="chips"><span>탭 — 이동·공격</span><span>먼 칸 탭 — 자동 이동</span><span>길게 누르기 — 정보</span><span>스킬 → 칸 탭 → 한 번 더 탭</span><span>두 손가락 — 회전</span><span>핀치 — 확대</span></div>
       <button class="bigbtn" id="btn-start">정착지로</button>
       <p style="font-size:12px;color:#7d86a6;margin-top:14px">진행은 이 브라우저에 저장된다 · <a href="#" id="btn-wipe" style="color:#9aa2bd">처음부터</a></p>`);
@@ -38,6 +38,6 @@ Object.assign(UI, {
   victory() { returnToTown('boss'); },
   statsHtml() {
     const s = G.stats, build = G.slots.filter((q) => q.stone).map((q) => `<span style="color:${COLORS[q.color].css}">${STONE[q.stone].icon}</span>`).join(' ') || '없음';
-    return `<div class="stats"><div>처치<b>${s.kills}</b></div><div>원소 반응<b>${s.combos}</b></div><div>3단계+ 연쇄<b>${s.chains}</b></div><div>최고 연쇄<b>${s.best}단계</b></div><div>영혼석<b>${s.stones}</b></div><div>턴<b>${s.turns}</b></div></div><p>이번 빌드: ${build}</p><p style="font-size:12.5px;color:#9aa2bd">다음 판엔 다른 색 조합을 노려 보자 — 막타 무기가 색을 정한다.</p>`;
+    return `<div class="stats"><div>처치<b>${s.kills}</b></div><div>원소 반응<b>${s.combos}</b></div><div>3단계+ 연쇄<b>${s.chains}</b></div><div>최고 연쇄<b>${s.best}단계</b></div><div>영혼석<b>${s.stones}</b></div><div>턴<b>${s.turns}</b></div></div><p>이번 빌드: ${build}</p><p style="font-size:12.5px;color:#9aa2bd">다음 판엔 다른 색 조합을 노려 보자 — 원하는 영혼석을 가진 몬스터를 사냥하자.</p>`;
   },
 });

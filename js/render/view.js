@@ -238,7 +238,7 @@ export const View = {
         if (G.weakKnown[ev.cat]) extra += `<span class="wk">${FORMS[CATS[ev.cat].weak].icon}</span>`;
         const w = weaponOf(G.eq.weapon), weak = CATS[ev.cat].weak === w.form;
         const mx = Math.ceil((w.dmg[1] + G.ps.dmg) * (weak ? 1.5 : 1) * (ev.st.frozen ? 1.5 : 1)) * (w.form === 'pierce' && ev.st.vital ? 2 : 1);
-        if (ev.hp <= mx) extra += `<b class="fin" style="color:${COLORS[FORMS[w.form].color].css}">◆</b>`;
+        if (ev.hp <= mx) extra += '<b class="fin" style="color:#ffe38a">◆</b>';
       }
       const txt = txtIntent + extra + txtSt;
       if (txt !== ev.tagTxt) { ev.tagTxt = txt; ev.tagIco.innerHTML = txt; ev.tagIco.className = 'ico' + (txtIntent && txtIntent !== '💤' ? ' intent' : ''); }

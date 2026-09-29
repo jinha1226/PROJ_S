@@ -66,11 +66,11 @@ Object.assign(UI, {
     if (e.poison) extra = ' 칼에 독이 묻어 있다 — 맞으면 중독.';
     if (e.armor) extra = ' 갑옷이 두껍다.';
     const inj = [e.st.bleed ? `🩸 출혈 ${e.st.bleed}` : '', e.st.frac ? `🦴 골절 ${e.st.frac} (한 턴씩 쉰다)` : '', e.st.vital ? '✧ 급소 노출 — 다음 찌르기 치명타' : ''].filter(Boolean).join(' · ');
-    const drops = ['slash', 'blunt', 'pierce'].map((f) => { const F = FORMS[f], S = STONE[DROPS[kd][F.color]], col = COLORS[F.color].css; return `<div>${F.icon} ${F.name} → ${F.part} <b style="color:${col}">● ${S.icon} ${S.name}</b> <span style="color:#9aa2bd">${S.line}</span></div>`; }).join('');
+    const drops = ['red', 'purple', 'green'].map((c) => { const S = STONE[DROPS[kd][c]], col = COLORS[c].css; return `<div><b style="color:${col}">● ${S.icon} ${S.name}</b> <span style="color:#9aa2bd">${S.line}</span></div>`; }).join('');
     this.info(`<h3>${e.name} <small style="color:#9aa2bd">${C.name} · HP ${e.hp}/${e.max} ${st}</small></h3><div>${B.desc}${extra}</div><div class="hint">💡 ${B.tip}</div>
       ${inj ? `<div style="margin-top:4px">${inj}</div>` : ''}
       <div style="margin-top:6px">약점: ${G.weakKnown[cat] ? `<b style="color:#ffe14a">${FORMS[C.weak].icon} ${FORMS[C.weak].name}</b> (피해 1.5배·부상 강화)` : '? — 맞혀 보면 드러난다'}</div>
-      <div class="gtxt" style="margin-top:6px">막타 형태에 따라 떨어지는 영혼석${drops}</div>`);
+      <div class="gtxt" style="margin-top:6px">떨어지는 영혼석 <small style="color:#9aa2bd">셋 중 하나 무작위(각 1/3)</small>${drops}</div>`);
   },
   showTile(x, y) {
     const i = I(x, y); if (!G.seen[i]) return;
@@ -92,7 +92,7 @@ Object.assign(UI, {
       <tr><td>📜 귀환</td><td>귀환 두루마리로 전리품을 들고 돌아올 수 있지만, 그 구역은 처음부터 다시</td></tr>
       <tr><td>🕯 죽음</td><td>모험가·영혼석·이번 전리품을 잃는다. 정착지와 마을 사람은 남고 새 모험가가 나선다</td></tr>
       <tr><td>🆘 구조</td><td>갇히거나 길 잃은 사람을 부딪혀 풀어 주고, 곁에 둔 채 계단을 내려가면 마을로 온다</td></tr>
-      <tr><td>재료</td><td>무기 막타 → 가죽·뼈·심장. 바닥의 약초·광석·기름·얼음을 밟으면 채집</td></tr>
+      <tr><td>재료</td><td>무기로 쓰러뜨리면 가죽·뼈·심장 중 하나. 바닥의 약초·광석·기름·얼음을 밟으면 채집</td></tr>
       <tr><td>마을</td><td>💎 제단(다른 색 덮어쓰기) · 🔨 제작(누가 만드느냐로 결과가 다름) · 🚪 준비 · 🔥 휴식</td></tr></table>
       <h4>장비</h4><table>
       <tr><td>🛡 장비 창</td><td>무기·보조·머리·몸통·장갑·신발·목걸이·반지 2. 가방 20칸은 소모품·영혼석과 따로</td></tr>
@@ -104,9 +104,9 @@ Object.assign(UI, {
       <tr><td>얻는 곳</td><td>적 12%(갑옷 고블린·멧돼지 25%), 층마다 상자 1~2, 보스 2개. 정착지 대장간 제작</td></tr>
       <tr><td>죽으면</td><td>입은 장비·가방은 잃고, 정착지 창고의 장비는 남는다</td></tr></table>
       <h4>공격 형태 · 부상 · 약점</h4><table>
-      <tr><td>⚔ 베기</td><td>출혈(매 턴 1). 짐승에게 약점. 막타 → 가죽 → 🟢 초록 영혼석</td></tr>
-      <tr><td>🔨 타격</td><td>골절: 한 턴씩 쉬고 돌진을 못 한다. 해골에게 약점. 막타 → 뼈 → 🟣 보라</td></tr>
-      <tr><td>🗡 찌르기</td><td>급소 표식 → 다음 찌르기 치명타(×2). 갑옷에게 약점. 막타 → 심장 → 🔴 빨강</td></tr>
+      <tr><td>⚔ 베기</td><td>출혈(매 턴 1). 짐승에게 약점</td></tr>
+      <tr><td>🔨 타격</td><td>골절: 한 턴씩 쉬고 돌진을 못 한다. 해골에게 약점</td></tr>
+      <tr><td>🗡 찌르기</td><td>급소 표식 → 다음 찌르기 치명타(×2). 갑옷에게 약점</td></tr>
       <tr><td>약점</td><td>피해 1.5배·부상 강화. 처음 맞혀 본 뒤 머리 위에 표시된다</td></tr>
       <tr><td>◆ 표시</td><td>지금 무기로 한 방에 쓰러뜨릴 수 있다 — 색은 떨어질 영혼석의 색</td></tr></table>
       <h4>영혼석</h4><table>
@@ -118,7 +118,7 @@ Object.assign(UI, {
       <tr><td>한 라운드</td><td>영혼석마다 색 감소는 한 라운드(내 턴 + 적 턴)에 한 번, 방금 쓴 스킬은 제외</td></tr>
       <tr><td>연쇄</td><td>스킬이 원소 반응을 부르면 단계가 오른다(물벼락 → 번개). 3단계부터 슬로모션</td></tr>
       <tr><td>칸</td><td>6칸은 처음 끼운 색으로 고정. 차면 가방(3개)으로. 같은 색끼리만, 적이 안 보일 때 교체</td></tr>
-      <tr><td>원소 막타</td><td>무기가 아닌 불·번개 등으로 쓰러뜨리면 영혼석이 40%만 남고 부위가 무작위</td></tr></table>
+      <tr><td>드롭</td><td>몬스터마다 영혼석 셋(🔴🟣🟢) 중 하나가 무작위. 무기로 쓰러뜨리면 확실히, 불·번개 등으로 쓰러뜨리면 40%</td></tr></table>
       <h4>원소 시너지</h4><table>
       <tr><td>💧 + ⚡</td><td>젖은 대상·물웅덩이에 번개 → 이어진 물과 젖은 대상 전체로 감전(+2 피해, 기절)</td></tr>
       <tr><td>💧 + ❄</td><td>젖은 대상이 얼면 빙결 2턴 → 5턴. 물웅덩이는 얼음이 된다</td></tr>

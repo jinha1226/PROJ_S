@@ -2,7 +2,6 @@ import { CATS, DROPS, catOf, kindOf } from '../data/enemies.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { S_ASH, S_GRASS, S_NONE, S_WATER } from '../data/terrain.js';
 import { HIDDEN_BY_ELEM } from '../data/visitors.js';
-import { FORMS } from '../data/weapons.js';
 import { D8, cheb, sgn } from '../util/grid.js';
 import { pick, rand, shuffle } from '../util/rng.js';
 import { cancelIntent, damage, freeDropSpot, heal, push, weaponHit } from './combat.js';
@@ -15,14 +14,12 @@ import { G, I, TL, emit, entAt, isFoe, log, newSt, standable } from './state.js'
 export function synergy(text, elem) { G.stats.combos++; emit('banner', { text, elem }); log(text, 'syn'); if (G.ctx && (G.ctx.stones > 0 || G.ctx.origin !== 'enemy')) bumpStage(G.ctx); }
 
 export function dropStone(e, f) {
-  let color = f ? FORMS[f].color : null;
-  if (!color) {
-    if (rand() < 0.4) color = pick(['red', 'purple', 'green']);
-    else { if (G.dropHint++ < 2) log('영혼이 흩어졌다 — 무기로 막타를 쳐야 영혼석이 확실히 남는다', 'info'); return; }
-  }
+  // 몬스터별 랜덤: 가진 세 색 중 하나(각 1/3). 확률은 그대로 — 무기로 쓰러뜨리면 확실히, 아니면 40%
+  if (!f && rand() >= 0.4) { if (G.dropHint++ < 2) log('영혼이 흩어졌다 — 무기로 쓰러뜨려야 영혼석이 확실히 남는다', 'info'); return; }
+  const color = pick(['red', 'purple', 'green']);
   const id = DROPS[kindOf(e)][color], spot = freeDropSpot(e.x, e.y); if (!spot) return;
   G.stones.set(I(spot[0], spot[1]), id);
-  emit('stoneDrop', { from: [e.x, e.y], to: spot, id, part: f ? FORMS[f].part : '잔해' });
+  emit('stoneDrop', { from: [e.x, e.y], to: spot, id, part: '영혼석' });
 }
 
 /* ---------- 연쇄 단계: 스킬 발동과 원소 반응이 단계를 올린다 ---------- */

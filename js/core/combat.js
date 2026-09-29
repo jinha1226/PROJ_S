@@ -68,15 +68,16 @@ export function kill(e) {
   if (e.ally) return;
   if (e.npc) { log(`${jo(e.name, '을를')} 잃었다…`, 'bad'); return; }
   G.stats.kills++;
-  const f = e.lastForm;
-  if (f) { addLoot(FORMS[f].part, 1); emit('loot', { x: e.x, y: e.y, m: FORMS[f].part }); }
+  // 무기로 쓰러뜨리면 재료 하나(무작위 — 막타 형태와 상관없다)
+  const f = e.lastForm, part = f ? pick(['가죽', '뼈', '심장']) : null;
+  if (part) { addLoot(part, 1); emit('loot', { x: e.x, y: e.y, m: part }); }
   if (e.boss) {
     G.exitOpen = true; G.tile[G.stairs] = T_STAIRS; snapTerrain();
     addLoot('마석', 1); addLoot(pick(['가죽', '뼈', '심장']), 2);
     emit('portal', { x: G.stairs % G.W, y: (G.stairs / G.W) | 0 }); emit('banner', { text: `${e.name} 격파!`, elem: 'chain' });
     log('귀환의 문이 열렸다 — 올라서서 ⬇ 버튼', 'syn');
   }
-  log(`${e.name} 처치${shatter ? ' — 산산조각!' : ''}${f ? ` · ${FORMS[f].name} → ${FORMS[f].part}` : ''}`, 'good');
+  log(`${e.name} 처치${shatter ? ' — 산산조각!' : ''}${part ? ` · ${part}` : ''}`, 'good');
   if (e.st.bleed > 0 && G.ps && G.ps.legend.has('bloodFang')) {
     emit('bloodBurst', { x: e.x, y: e.y }); log('피의 송곳니 — 피가 터진다!', 'syn');
     for (const [dx, dy] of D8) { const o = entAt(e.x + dx, e.y + dy); if (o && o.alive && isFoe(o) && !CATS[catOf(o)].noBleed) { o.st.bleed += 2; emitStatus(o); } }

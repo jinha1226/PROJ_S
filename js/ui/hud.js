@@ -20,10 +20,10 @@ Object.assign(UI, {
     if (Anim.active || G.over) return;
     if (!isWeapon(G.eq.off)) { this.toast('보조 칸에 무기가 없다 — 🛡 장비 창에서 두 번째 무기를 보조에'); return; }
     this.instant(() => swapHands());
-    const W = weaponOf(G.eq.weapon); this.toast(`${FORMS[W.form].icon} ${gearName(G.eq.weapon)} — ${FORMS[W.form].name} (${FORMS[W.form].injury}, 막타 → ${FORMS[W.form].part})`); Sfx.play('ui');
+    const W = weaponOf(G.eq.weapon); this.toast(`${FORMS[W.form].icon} ${gearName(G.eq.weapon)} — ${FORMS[W.form].name} (${FORMS[W.form].injury})`); Sfx.play('ui');
   },
   weaponInfo() {
-    const r = ['weapon', 'off'].map((k) => { const it = G.eq[k]; if (!it) return `<div>　${k === 'off' ? '보조' : '무기'}: 없음</div>`; if (!isWeapon(it)) return `<div>　보조: <b style="color:${RARITY[it.rarity].css}">${gearName(it)}</b></div>`; const W = weaponOf(it), F = FORMS[W.form], C = COLORS[F.color]; return `<div>${k === 'weapon' ? '▶' : '　'} ${F.icon} <b style="color:${RARITY[it.rarity].css}">${gearName(it)}</b> ${F.name} ${W.dmg[0]}–${W.dmg[1]} · 부상 ${F.injury} · 막타 → ${F.part} <b style="color:${C.css}">●${C.name}</b></div>`; }).join('');
+    const r = ['weapon', 'off'].map((k) => { const it = G.eq[k]; if (!it) return `<div>　${k === 'off' ? '보조' : '무기'}: 없음</div>`; if (!isWeapon(it)) return `<div>　보조: <b style="color:${RARITY[it.rarity].css}">${gearName(it)}</b></div>`; const W = weaponOf(it), F = FORMS[W.form], C = COLORS[F.color]; return `<div>${k === 'weapon' ? '▶' : '　'} ${F.icon} <b style="color:${RARITY[it.rarity].css}">${gearName(it)}</b> ${F.name} ${W.dmg[0]}–${W.dmg[1]} · 부상 ${F.injury}</div>`; }).join('');
     this.info(`<h3>무기 · 보조 <small style="color:#9aa2bd">탭 = 맞바꾸기(보조가 무기일 때, 턴 소모 없음)</small></h3>${r}<div class="hint" style="margin-top:6px">💡 베기 = 출혈, 타격 = 골절(한 턴씩 쉰다·돌진 끊음), 찌르기 = 급소 표식 → 다음 찌르기 치명타</div>`);
   },
   renderWeapon() {
@@ -99,7 +99,7 @@ Object.assign(UI, {
   },
   slotInfo(k) {
     const q = (this.slotsSnap || { slots: G.slots }).slots[k];
-    if (!q.stone) { this.info('<div>빈 칸 — 영혼석을 얻으면 스킬 버튼이 된다. 처음 끼우는 영혼석의 색으로 이 칸의 색이 정해진다.<br>몬스터를 <b>무기로</b> 쓰러뜨리면 막타 형태에 따라 영혼석이 떨어진다: ⚔베기→가죽🟢 · 🔨타격→뼈🟣 · 🗡찌르기→심장🔴</div>'); return; }
+    if (!q.stone) { this.info('<div>빈 칸 — 영혼석을 얻으면 스킬 버튼이 된다. 처음 끼우는 영혼석의 색으로 이 칸의 색이 정해진다.<br>몬스터를 <b>무기로</b> 쓰러뜨리면 그 몬스터의 영혼석 셋(🔴🟣🟢) 중 하나가 무작위로 떨어진다 — 몬스터를 길게 누르면 무엇이 나오는지 보인다</div>'); return; }
     const d = STONE[q.stone], C = COLORS[d.color];
     this.info(`<h3><span style="color:${C.css}">●</span> ${d.icon} ${d.name} <small style="color:#9aa2bd">쿨타임 ${stoneCd(q.stone)}턴${q.cd > 0 ? ` · 남은 ${q.cd}` : ' · 준비됨'}</small></h3><div>${d.line}</div><div class="hint" style="margin-top:4px">${C.name}: ${C.trig} 쿨타임 1 더 감소 (한 라운드 한 번)</div>`);
   },
