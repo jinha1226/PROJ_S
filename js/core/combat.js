@@ -66,7 +66,7 @@ export function damage(e, amt, kind = 'hit', o = {}) {
     emit('hp', { id: e.id, hp: Math.max(0, e.hp), max: e.max });
   }
   if (o.form) e.lastForm = o.form; else if (kind !== 'bleed') e.lastForm = null;
-  if (isP(e)) { G.hurt = true; G.hurtTurn = G.stats.turns; }
+  if (isP(e)) { G.hurt = true; if (src && src !== e && isFoe(src)) G.hurtTurn = G.stats.turns; } // 공격받은 턴: 적의 공격만(중독·출혈·불 같은 지속 피해는 아니다)
   if (e.hp <= 0) { kill(e); return amt; }
   if (struck && e.alive) auraOnHurt(src); // 반격·독 가시·번개 갑주·서리 갑주
   return amt;

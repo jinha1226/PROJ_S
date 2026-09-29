@@ -7,7 +7,6 @@ import { AMULETS, BAG_MAX, BRANDS, CAPS, EGOS, ELEM, GEAR_BASES, ORBS, QUALITY, 
 import { COLORS, ORB_PURPLE, STONE } from '../data/stones.js';
 import { CRITS, FORMS, SHAPES } from '../data/weapons.js';
 import { Anim, act } from '../flow.js';
-import { Preview } from '../render/gear-preview.js';
 import { Sfx } from '../render/sfx.js';
 import { Town } from '../town/town.js';
 import { $, UI } from './ui.js';
@@ -128,14 +127,13 @@ Object.assign(UI, {
       }
     }
     sh.innerHTML = `<h3>🎒 가방 · 장비 <small style="color:#9aa2bd;font-weight:400">${inCombat() ? '⚠ 전투 중 — 바꿀 때마다 한 턴' : '안전 — 자유롭게 바꾼다'}</small><button class="close">닫기</button></h3>
-      <div class="eqgrid">${SLOTS.map((k) => cell(k)).join('')}<div class="doll" style="grid-area:doll" id="invdoll"></div></div>
+      <div class="eqgrid">${SLOTS.map((k) => cell(k)).join('')}</div>
       <button class="stline" data-act="stats">HP ${H.unit.max} · 방어 ${s.def} · 회피 ${s.eva}%${s.block ? ` · 막기 ${s.block}%` : ''} · 피해 ${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} <b style="color:${COLORS[w.color].css}">×${cmul(w).toFixed(2)}</b> <small>▸ 자세히</small></button>
       ${detail ? `<div class="gdetail">${detail}</div>` : ''}
       <div class="invtabs">${tabs.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-itab="${k}">${l}</button>`).join('')}</div>
       ${tab === 'items' ? this.itemsHtml(inv) : tab === 'stones' ? this.stonesHtml() : `<div class="sec">가방 ${bag.length}/${BAG_MAX} <small>▲ = 아는 것만 봐도 지금 것보다 나아 보인다 · ? = 모르는 것이 있다</small></div><div class="bggrid">${bagCells}</div>
       ${town ? `<div class="sec">창고 ${stash.length} <small>정착지에 남는다 — 죽어도 잃지 않는다</small></div><div class="bggrid">${stashCells}</div>` : ''}`}`;
     sh.classList.remove('hidden');
-    Preview.mount($('#invdoll'), eq);
     sh.querySelector('.close').onclick = () => { sh.classList.add('hidden'); sh.classList.remove('tall'); };
     sh.querySelectorAll('[data-eq]').forEach((b) => { b.onclick = () => { this.invSel = eq[b.dataset.eq] ? { from: 'eq', slot: b.dataset.eq } : null; this.renderInv(); }; });
     sh.querySelectorAll('[data-bag]').forEach((b) => { b.onclick = () => { this.invSel = { from: 'bag', i: +b.dataset.bag }; this.renderInv(); }; });

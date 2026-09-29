@@ -77,10 +77,9 @@ Object.assign(UI, {
     if (!best?.length) { this.toast('적에게 다가갈 길이 없다'); return; }
     const [x, y] = best[0]; act(() => playerMove(x - p.x, y - p.y));
   },
-  /** 방금(지난 두 턴 안에) 공격받았거나, 안 보여도 가까이(7칸) 깨어 있는 적이 있다 — 어둠 속에서 맞으며 걷지 않게 */
+  /** 방금(지난 두 턴 안에) 적에게 공격받았다 */
   underAttack() {
-    const p = G.player;
-    return (G.hurtTurn ?? -9) >= G.stats.turns - 1 || G.ents.some((e) => e.alive && isFoe(e) && e.awake && cheb(e.x, e.y, p.x, p.y) <= 7);
+    return (G.hurtTurn ?? -9) >= G.stats.turns - 1; // 실제로 적에게 맞은(또는 피한) 직후만 — 깨어 있는 먼 적·물속 거머리는 세지 않는다
   },
   /** 탐험은 적을 만났을 때만 멈춘다 */
   exploreDiscovery() { return visibleFoes().length > 0; },

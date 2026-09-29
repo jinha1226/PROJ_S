@@ -62,7 +62,7 @@ check('§10-4 레벨업: 잃은 HP의 절반이 찬다', d4.level === 2 && d4.hp
 // §10-5 속도: 빠른 쥐는 한 턴 두 칸, 느린 거머리(땅 위)는 두 턴에 한 칸. 머리 위 » «
 const d5 = await page.evaluate(async () => { const g = window.__game, G = arena([[-4, 0, { type: 'rat', name: '굶주린 쥐', speed: 'fast', hp: 99, max: 99 }], [4, 4, { type: 'leech', name: '거머리', speed: 'slow', hp: 99, max: 99, atk: 0 }]]); const rat = G.ents[1], lee = G.ents[2], d = (e) => Math.max(Math.abs(e.x - G.player.x), Math.abs(e.y - G.player.y));
   g.View.buildFloor(); g.UI.syncAll(); const r0 = d(rat), l0 = d(lee); g.act(() => g.playerWait()); drain(); const r1 = d(rat), l1 = d(lee); g.act(() => g.playerWait()); drain(); const l2 = d(lee);
-  await new Promise((r) => setTimeout(r, 400)); const tags = [...document.querySelectorAll('.spd')].map((b) => b.textContent).join('');
+  let tags = ''; for (let k = 0; k < 20 && !(/»/.test(tags) && /«/.test(tags)); k++) { await new Promise((r) => setTimeout(r, 100)); tags = [...document.querySelectorAll('.spd')].map((b) => b.textContent).join(''); } // 그려질 때까지
   return { rat: r0 - r1, leech1: l0 - l1, leech2: l0 - l2, tags }; });
 check('§10-5 빠름 두 칸 · 느림 두 턴에 한 칸 · 머리 위 » «', d5.rat === 2 && d5.leech2 === 1 && d5.leech1 <= 1 && /»/.test(d5.tags) && /«/.test(d5.tags), JSON.stringify(d5));
 
@@ -89,6 +89,14 @@ const d8 = await page.evaluate(async () => { const g = window.__game, G = arena(
   G.ents[1].alive = true; g.act(() => { C.damage(p, 99, 'hit', { src: G.ents[1] }); return true; }); drain(); await new Promise((r) => setTimeout(r, 1500)); drain(); await new Promise((r) => setTimeout(r, 1200));
   const scr = document.querySelector('#screen').textContent; return { stop, big, low, refused, summary: /고블린에게/.test(scr) && /쓰러지다/.test(scr) && /턴/.test(scr) }; });
 check('5단계: 큰 피해 멈칫·붉은 테 · 빈사 화면·탐험 막기 · 사망 요약', d8.stop && d8.big && d8.low > 0.4 && d8.refused && d8.summary, JSON.stringify(d8));
+
+// 자동 탐험 오판 없음: 물속에 깨어 있는 거머리가 가까이 있어도(맞지 않았으면) 탐험이 시작된다. 지속 피해는 '공격받는 중'이 아니다
+const d9 = await page.evaluate(async () => { const g = window.__game, water = {}; for (let x = 16; x <= 19; x++) for (let y = 11; y <= 19; y++) water[y * 40 + x] = 1;
+  const G = arena([[3, 0, { type: 'leech', name: '거머리', speed: 'slow', hidden: true, hp: 99, max: 99 }]], water), C = await import('/js/core/combat.js'); G.hurtTurn = -9; G.stats.turns = 50;
+  C.damage(G.player, 1, 'poison'); const dot = (G.hurtTurn ?? -9) < 0; G.hurt = false;
+  g.UI.startExplore(); const started = g.UI.explore || !/공격받고 있어서/.test(document.querySelector('#toast').textContent); g.UI.explore = false; g.UI.travel = null; drain();
+  return { dot, started }; });
+check('자동 탐험 오판 없음: 숨은 적·지속 피해는 공격받는 중이 아니다', d9.dot && d9.started, JSON.stringify(d9));
 
 check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 await browser.close(); server.close();
