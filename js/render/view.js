@@ -199,7 +199,7 @@ export const View = {
     }
   },
   frame(sdt) {
-    ports.Anim.step(sdt * 1000);
+    ports.Loop.frame(sdt);
     const time = K.SHARED.uTime.value, D = this.dio;
     const casting = new Set(this.intents.casting), winding = new Set(this.intents.winding);
     for (const [id, ev] of this.evs) {

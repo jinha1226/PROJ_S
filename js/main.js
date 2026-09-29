@@ -14,7 +14,8 @@ import { acceptVisitor, glowParts, hearthGlow, requestState, rollVisitors } from
 import { DROPS } from './data/enemies.js';
 import { STONE } from './data/stones.js';
 import { RECIPES } from './data/town.js';
-import { Anim, act, descend, enterDungeon, returnToTown } from './flow.js';
+import { Anim, Loop, act, descend, enterDungeon, returnToTown } from './flow.js';
+import * as C from './core/clock.js';
 import { ports } from './render/ports.js';
 import { Sfx } from './render/sfx.js';
 import { View } from './render/view.js';
@@ -36,7 +37,7 @@ import './town/visitor-ui.js';
 import './town/build-ui.js';
 
 setListener((type, data) => View.on(type, data));
-Object.assign(ports, { UI, Town, Anim });
+Object.assign(ports, { UI, Town, Anim, Loop });
 
 /* ================= 시작 ================= */
 View.init();
@@ -49,4 +50,4 @@ newRun();
 View.buildFloor();
 UI.syncAll();
 UI.title();
-window.__game = { get META() { return META; }, Town, Game, enterDungeon, returnToTown, newHero, RECIPES, G, UI, View, act, playerMove, playerMelee, canHit, critReady, colorMul, useStone, useItem, reduceColor, inCombat, descend, TL, Anim, computeFOV, playerWait, addStone, pickGear, equip, unequip, makeGear, rollGear, calcStats, refreshStats, STONE, DROPS, hearthGlow, glowParts, requestState, acceptVisitor, rollVisitors, volunteers, takeTorch, openHidden, processReturn, regen: () => { genFloor(); View.buildFloor(); }, makeUnrand, stoneCd, gearName, loadMeta, resetMetaForTest: resetMeta, Settle };
+window.__game = { clock: C, genFloorForTest: () => { genFloor(); View.buildFloor(); }, get META() { return META; }, Town, Game, enterDungeon, returnToTown, newHero, RECIPES, G, UI, View, act, playerMove, playerMelee, canHit, critReady, colorMul, useStone, useItem, reduceColor, inCombat, descend, TL, Anim, computeFOV, playerWait, addStone, pickGear, equip, unequip, makeGear, rollGear, calcStats, refreshStats, STONE, DROPS, hearthGlow, glowParts, requestState, acceptVisitor, rollVisitors, volunteers, takeTorch, openHidden, processReturn, regen: () => { genFloor(); View.buildFloor(); }, makeUnrand, stoneCd, gearName, loadMeta, resetMetaForTest: resetMeta, Settle };

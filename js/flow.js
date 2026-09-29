@@ -1,8 +1,8 @@
+import { advance } from './core/clock.js';
 import { armorShield } from './core/combat.js';
 import { leaveRelics, newJewelLook, refreshStats } from './core/gear.js';
 import { genFloor } from './core/mapgen.js';
 import { META, saveMeta } from './core/meta.js';
-import { endTurn } from './core/run.js';
 import { G, Game, I, TL, newSt } from './core/state.js';
 import { leaveStone } from './core/stones.js';
 import { startTorch } from './core/torch.js';
@@ -18,25 +18,34 @@ import { cheb } from './util/grid.js';
 import { mulberry32, pick, seedOr, setR } from './util/rng.js';
 import { jo } from './util/text.js';
 
-/* 한 번의 행동 = 로직 해결 → 연출 재생 */
+/* 행동 하나: 규칙은 즉시, 연출은 대기열로. 실시간이라 턴을 넘기지 않고 입력도 막지 않는다 */
 export function act(fn) {
-  if (Anim.active || G.over || Game.mode !== 'dungeon') return false; // 늦게 온 자동 턴(기절·빙결)이 정착지에서 돌지 않게
-  TL.reset(); G.hurt = false; G.prevWaited = G.waited; G.waited = false; // 대검: 직전 턴에 대기했는가
+  if (G.over || Game.mode !== 'dungeon') return false;
+  TL.reset();
   if (G.stoneOffer != null) leaveStone(); // 고르지 않고 움직이면 발밑 영혼석은 흩어진다
   const took = fn();
-  if (took) endTurn();
-  Anim.start();
+  Anim.take();
   return took;
 }
 
+/** 연출 대기열: 사건을 적힌 지연(ms)대로 화면에 보낸다. active = 남은 연출이 있다(입력은 막지 않는다) */
 export const Anim = {
-  active: false, q: [], i: 0, t: 0, end: 0,
-  start() { this.q = TL.q.slice().sort((a, b) => a.t - b.t); TL.q = []; this.i = 0; this.t = 0; this.end = TL.cur + 40; this.active = true; this.step(0); },
-  step(ms) {
-    if (!this.active) return;
-    this.t += ms;
-    while (this.i < this.q.length && this.q[this.i].t <= this.t) this.q[this.i++].fn();
-    if (this.i >= this.q.length && this.t >= this.end) { this.active = false; UI.afterTurn(); }
+  q: [], t: 0,
+  get active() { return this.q.length > 0; },
+  take() { for (const e of TL.q) this.q.push({ t: this.t + e.t, fn: e.fn }); TL.reset(); this.q.sort((a, b) => a.t - b.t); },
+  step(ms) { this.t += ms; while (this.q.length && this.q[0].t <= this.t) this.q.shift().fn(); if (!this.q.length) this.t = 0; },
+  clear() { this.q = []; this.t = 0; },
+};
+
+/** 화면 한 프레임(초): 입력 → 시간 → 연출 → 자동 걷기·멈춤 표시 */
+export const Loop = {
+  frame(dt) {
+    if (Game.mode === 'dungeon' && !G.over) {
+      UI.feedIntent();
+      TL.reset(); const n = advance(dt); Anim.take();
+      Anim.step(dt * 1000);
+      UI.afterTick(n);
+    } else Anim.step(dt * 1000);
   },
 };
 
@@ -49,7 +58,7 @@ export function rescueFollowers() {
 }
 
 export function descend() {
-  if (G.over || Anim.active) return;
+  if (G.over) return;
   if (G.tile[I(G.player.x, G.player.y)] !== T_STAIRS) return;
   if (G.bossFloor) { returnToTown('boss'); return; }
   const p = G.player;
@@ -64,7 +73,7 @@ export function descend() {
 
 export function enterDungeon(zone) {
   const h = META.hero;
-  Town.clear(); Game.mode = 'dungeon'; Anim.active = false; Anim.q = []; // 남은 연출은 버린다
+  Town.clear(); Game.mode = 'dungeon'; Anim.clear(); // 남은 연출은 버린다
   setR(mulberry32(seedOr(((Date.now() & 0xffffffff) ^ Math.floor(Math.random() * 1e9)) >>> 0)));
   Object.assign(G, { zone, zf: 1, over: false, won: false, nextId: 1, hasteFlip: false, pendingReturn: null, known: h.known, look: h.look, inv: h.inv, eq: h.eq, bag: h.bag, heroBase: h.base, jlook: h.jlook || (h.jlook = newJewelLook()), jknown: h.jknown || (h.jknown = {}), reload: null, aimed: false, lastHit: null, riposte: -1, slots: h.slots, level: h.level || 6, xp: h.xp || 0, sbag: h.sbag, weakKnown: h.weakKnown, ctx: null, curSrc: null, dropHint: 0 });
   for (const k of ALWAYS_KNOWN) G.known[k] = true;
@@ -99,7 +108,7 @@ export function returnToTown(reason) {
     h.hp = Math.max(1, G.player.hp); h.max = G.player.max; h.level = G.level; h.xp = G.xp; h.base = G.heroBase;
     if (reason === 'boss') { rep.first = !META.cleared[G.zone - 1]; META.cleared[G.zone - 1] = true; }
   }
-  G.over = true; UI.exitTarget(); UI.travel = null; UI.rest = null; UI.buffered = null; Anim.active = false; Anim.q = [];
+  G.over = true; UI.exitTarget(); UI.travel = null; UI.rest = null; UI.buffered = null; Anim.clear();
   saveMeta();
   Town.enter(rep);
 }

@@ -99,7 +99,7 @@ export function worldTick() {
     G.curSrc = null;
   }
   if (!G.over) envTick();
-  if (G.resting && !G.over) { G.resting = false; restTick(); }
+  if (G.resting && !G.over) restTick(); // 쉬기: 켜 둔 동안 턴마다(끄는 것은 입력 쪽)
   if (p.alive && G.stats.turns % 6 === 0 && p.hp < p.max && !p.st.poison && !p.st.burn) { p.hp++; emit('hp', { id: 0, hp: p.hp, max: p.max }); }
   computeFOV(); snapVis(); noticeFoes(); endRound(); emitIntents(); snapHud(); emitSlots();
   // 귀환 두루마리: 빛이 모인 한 턴이 지나면 사라진다

@@ -3,6 +3,7 @@ import { ITEM_W } from '../data/items.js';
 import { FLOORS, SURF_OF, S_GRASS, S_ICE, S_NONE, S_OIL, S_WATER, T_DOOR, T_FLOOR, T_STAIRS, T_WALL, ZONES, ZONE_FLOORS } from '../data/terrain.js';
 import { D4, D8, cheb, sgn } from '../util/grid.js';
 import { pick, rand, ri, shuffle, wpick } from '../util/rng.js';
+import { initClock } from './clock.js';
 import { bfsDist, computeFOV } from './fov.js';
 import { placeChests, placeFloorGear } from './gear.js';
 import { placeHidden, stockHidden } from './hidden.js';
@@ -144,6 +145,7 @@ export function genFloor() {
   stockHidden();
   G.intents = { decals: [], tags: {}, casting: [], winding: [] };
   placeLamps();
+  initClock(); // 새 층: 걷기·의도·쉬기를 지운다
   computeFOV();
 }
 

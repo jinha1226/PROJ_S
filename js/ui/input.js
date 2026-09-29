@@ -2,13 +2,12 @@ import { canHit, playerMelee, playerMove, playerWait } from '../core/combat.js';
 import { findPath, visibleFoes } from '../core/fov.js';
 import { pickGear } from '../core/gear.js';
 import { previewFor, selfPreview, targetsFor } from '../core/skills.js';
-import { emitStatus } from '../core/snap.js';
-import { G, Game, I, XY, entAt, inb, isFoe, isP, log } from '../core/state.js';
+import { G, Game, I, XY, entAt, inb, isFoe, isP } from '../core/state.js';
 import { useStone } from '../core/stones.js';
 import { useLamp } from '../core/torch.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { T_DOOR, T_STAIRS, T_WALL } from '../data/terrain.js';
-import { Anim, act, descend, returnToTown } from '../flow.js';
+import { Anim, act, descend } from '../flow.js';
 import { Sfx } from '../render/sfx.js';
 import { View } from '../render/view.js';
 import { Town } from '../town/town.js';
@@ -133,22 +132,8 @@ Object.assign(UI, {
     if (visibleFoes().length || G.hurt || r.n >= 40 || (p.hp >= p.max && !p.st.poison && !p.st.burn)) { this.rest = null; if (G.hurt && !p.st.poison && !p.st.burn) this.toast('공격받았다. 휴식을 멈춘다.'); return; }
     r.n++; act(() => { G.resting = true; return playerWait(); }); // 휴식 턴: 횃불 두 배 · 3턴마다 HP · 방랑하는 적
   },
-  afterTurn() {
-    View.refreshDecals(); this.syncButtons();
-    if (G.over) return;
-    if (G.pendingReturn) { const r = G.pendingReturn; G.pendingReturn = null; G.over = true; setTimeout(() => returnToTown(r), 700); return; }
-    const p = G.player;
-    // 맞았으면(감전·기절 포함) 자동 탐험·이동·휴식을 먼저 멈춘다 — 기절 턴이 지나가며 '맞았다'가 지워지기 전에
-    if (G.hurt && (this.travel || this.explore || this.rest)) { this.travel = null; this.explore = false; this.rest = null; this.toast('공격받았다. 멈춘다.'); }
-    if (p.st.frozen > 0 || p.st.stun > 0) {
-      setTimeout(() => act(() => { const fz = p.st.frozen > 0; if (p.st.frozen > 0) p.st.frozen--; if (p.st.stun > 0) p.st.stun--; emitStatus(p); log(fz ? '얼어붙어 움직일 수 없다…' : '기절해서 움직일 수 없다…', 'bad'); return true; }), 260);
-      return;
-    }
-    if (this.buffered) { const b = this.buffered; this.buffered = null; this.tapTile(b.x, b.y); return; }
-    if (this.travel) { setTimeout(() => this.travelStep(), 30); return; }
-    if (this.explore) { setTimeout(() => this.exploreStep(), 30); return; }
-    if (this.rest) { setTimeout(() => this.restStep(), 20); }
-  },
+  feedIntent() {},
+  afterTick() {},
   /* ---- 대상 지정 ---- */
   /** 영혼석 칸 = 스킬 버튼. 대상 스킬은 조준 → 칸 두 번 탭, 자기 대상 스킬은 한 번 더 누르면 발동 */
   stoneBtn(k) {

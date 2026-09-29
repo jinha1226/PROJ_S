@@ -123,6 +123,7 @@ export function faceTo(e, t) { const dx = sgn(t.x - e.x), dy = sgn(t.y - e.y); i
 
 export function moveEnt(e, x, y, o = {}) {
   const fx = e.x, fy = e.y; e.x = x; e.y = y;
+  if (e.px != null) { e.px = x; e.py = y; } // 칸을 옮기면 소수 위치도 그 칸 가운데로
   if (G.curSrc === e && isFoe(e) && G.player && cheb(x, y, G.player.x, G.player.y) < cheb(fx, fy, G.player.x, G.player.y)) e.appr = G.stats.turns; // 창: 이번 적 턴에 다가온 적
   if (o.face !== false && (x !== fx || y !== fy)) e.face = [sgn(x - fx), sgn(y - fy)];
   emit('move', { id: e.id, x, y, dur: o.dur ?? 115, hop: o.hop ?? 0.1, kind: o.kind || 'step', seen: isP(e) || (G.vis[I(x, y)] && !e.hidden) ? 1 : 0 });
@@ -195,6 +196,11 @@ export function push(e, dx, dy, n) {
 export function openDoor(x, y) { G.tile[I(x, y)] = T_OPEN; emit('door', { x, y, open: true }); snapTerrain(); }
 
 /* ================= 주인공 행동 ================= */
+/** 갇힌 사람을 풀어 준다(부딪히거나 구하기 버튼) */
+export function freeNpc(e) {
+  const p = G.player; e.freed = true; faceTo(p, e); emit('free', { id: e.id });
+  log(`${JOBS[e.npcData.job].name} ${jo(e.name, '을를')} 풀어 주었다.`, 'good');
+}
 export function playerMove(dx, dy) {
   const p = G.player, nx = p.x + dx, ny = p.y + dy;
   if (!inb(nx, ny)) return false;
@@ -202,7 +208,7 @@ export function playerMove(dx, dy) {
   if (t === T_WALL) return false;
   const e = entAt(nx, ny);
   if (e) {
-    if (e.npc && !e.freed) { e.freed = true; faceTo(p, e); emit('free', { id: e.id }); log(`${JOBS[e.npcData.job].name} ${jo(e.name, '을를')} 풀어 주었다.`, 'good'); return true; }
+    if (e.npc && !e.freed) { freeNpc(e); return true; }
     if (e.ally) { moveEnt(e, p.x, p.y); stepEnt(p, dx, dy); return true; }
     playerMelee(e); return true;
   }
