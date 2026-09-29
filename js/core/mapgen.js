@@ -1,12 +1,14 @@
-import { bfsDist, computeFOV } from './fov.js';
-import { makeNpc } from './meta.js';
-import { G, I, entAt, inb, newSt } from './state.js';
 import { BOSSES, ENEMY, MAGE } from '../data/enemies.js';
+import { isWeapon, weaponOf } from '../data/gear.js';
 import { ITEM_W } from '../data/items.js';
 import { FLOORS, SURF_OF, S_GRASS, S_ICE, S_NONE, S_OIL, S_WATER, T_DOOR, T_FLOOR, T_STAIRS, T_WALL, ZONES } from '../data/terrain.js';
-import { WEAPONS, WPN } from '../data/weapons.js';
+import { WEAPONS } from '../data/weapons.js';
 import { D4, D8, cheb, sgn } from '../util/grid.js';
 import { pick, rand, ri, shuffle, wpick } from '../util/rng.js';
+import { bfsDist, computeFOV } from './fov.js';
+import { makeGear, placeChests } from './gear.js';
+import { makeNpc } from './meta.js';
+import { G, I, entAt, inb, newSt } from './state.js';
 
 export function genFloor() {
   const Z = ZONES[G.zone - 1], boss = G.zf === 3, F = FLOORS[boss && Z.lastTheme != null ? Z.lastTheme : Z.theme], W = G.W, H = G.H, N = W * H;
@@ -76,7 +78,7 @@ export function genFloor() {
   for (let y = start.y - 1; y <= start.y + 1; y++) for (let x = start.x - 1; x <= start.x + 1; x++) if (inb(x, y)) surf[I(x, y)] = S_NONE;
   surf[far] = S_NONE;
 
-  Object.assign(G, { tile, surf, room, rooms, fire: new Uint8Array(N), cloud: new Uint8Array(N), cloudT: new Uint8Array(N), vis: new Uint8Array(N), seen: new Uint8Array(N), items: new Map(), stones: new Map(), weps: new Map(), stairs: far });
+  Object.assign(G, { tile, surf, room, rooms, fire: new Uint8Array(N), cloud: new Uint8Array(N), cloudT: new Uint8Array(N), vis: new Uint8Array(N), seen: new Uint8Array(N), items: new Map(), stones: new Map(), gear: new Map(), chests: new Map(), stairs: far });
   const p = G.player; p.x = start.x; p.y = start.y; p.face = [0, 1];
   G.ents = [p];
   // 적 무리
@@ -119,16 +121,17 @@ export function genFloor() {
   }
   // 무기 한 자루: 가진 적 없는 형태를 조금 더 자주
   {
-    const have = new Set(G.wpn.map((w) => WPN(w).form));
+    const have = new Set([G.eq.weapon, G.eq.off].filter(isWeapon).map((w) => weaponOf(w).form));
     const pool = Object.keys(WEAPONS).filter((k) => n >= 2 || ['sword', 'mace', 'dagger'].includes(k));
     const lacking = pool.filter((k) => !have.has(WEAPONS[k].form));
     const wid = lacking.length && rand() < 0.65 ? pick(lacking) : pick(pool);
     for (let k = 0; k < 200; k++) {
       const r = rooms[ri(0, rooms.length - 1)], x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1), i = I(x, y);
       if (tile[i] !== T_FLOOR || G.items.has(i) || G.mats.has(i) || cheb(x, y, start.x, start.y) < 3) continue;
-      G.weps.set(i, wid); break;
+      G.gear.set(i, makeGear(wid, rand() < 0.3 ? 'magic' : 'common', n >= 7 ? 2 : 1)); break;
     }
   }
+  placeChests(rooms, tile);
   computeFOV();
 }
 

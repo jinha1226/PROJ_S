@@ -24,8 +24,12 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npx playwright install --with-deps chromium
+      - name: Module import check
+        run: npm run lint
       - name: Smoke test (headless Chromium)
         run: node tests/smoke.mjs
+      - name: Gear checklist
+        run: node tests/gear.mjs
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4

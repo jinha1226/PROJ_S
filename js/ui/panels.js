@@ -1,16 +1,15 @@
 import * as THREE from 'three';
 import { visibleFoes } from '../core/fov.js';
-import { itemName, takeWeapon, useItem } from '../core/items.js';
+import { itemName, useItem } from '../core/items.js';
 import { G, I } from '../core/state.js';
 import { swapStone } from '../core/stones.js';
 import { CATS, DROPS, ENEMY, MAGE, catOf, kindOf } from '../data/enemies.js';
 import { CAT_ICON, ITEMS, ITEM_COL } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { C_STEAM, S_ASH, S_GRASS, S_ICE, S_OIL, S_WATER, T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrain.js';
-import { FORMS, WPN } from '../data/weapons.js';
+import { FORMS } from '../data/weapons.js';
 import { Anim, act } from '../flow.js';
 import { stIcons } from '../render/entity-view.js';
-import { Sfx } from '../render/sfx.js';
 import { $, UI } from './ui.js';
 
 Object.assign(UI, {
@@ -19,7 +18,6 @@ Object.assign(UI, {
   renderBag() {
     const sh = $('#sheet'), safe = !visibleFoes().some((e) => e.awake), sel = this.selBag ?? -1, selId = sel >= 0 ? G.sbag[sel] : null;
     const chip = (id, attrs, cls = '') => { if (!id) return `<button class="gch empty" ${attrs}>·<small>빈 칸</small></button>`; const d = STONE[id]; return `<button class="gch ${cls}" style="--c:${COLORS[d.color].css}" ${attrs}>${d.icon}<small>${d.name}</small></button>`; };
-    const weps = G.wpn.map((w, k) => { const W = WPN(w), F = FORMS[W.form]; return `<button class="wbtn ${k === G.wi ? 'on' : ''}" data-w="${k}">${F.icon} ${W.name}<small style="color:#9aa2bd">${F.name}·${W.dmg[0]}–${W.dmg[1]}</small></button>`; }).join('');
     const slots = G.slots.map((q, k) => chip(q.stone, `data-s="${k}"`, selId && q.stone && q.color === STONE[selId].color ? 'ok' : '')).join('');
     const bag = [0, 1, 2].map((k) => chip(G.sbag[k], `data-b="${k}"`, k === sel ? 'sel' : '')).join('');
     const line = selId ? `<b style="color:${COLORS[STONE[selId].color].css}">${STONE[selId].icon} ${STONE[selId].name}</b> — ${STONE[selId].line}${safe ? ' · 반짝이는 같은 색 칸을 탭하면 교체' : ' · <span style="color:#ff9aa4">적이 보여서 지금은 교체할 수 없다</span>'} <button class="close" data-drop="1" style="height:28px;margin-left:6px">버리기</button>` : '영혼석을 탭하면 설명이 나온다';
@@ -28,13 +26,13 @@ Object.assign(UI, {
       return `<button class="item" data-k="${q.k}"><span class="sw" style="background:${col}">${CAT_ICON[def.cat]}</span><span class="nm">${itemName(q.k)}${known ? '' : ' <span style="color:#ffe38a">?</span>'}<small>${known ? def.desc : def.cat === 'throw' ? '던지면 정체를 안다' : '써 보면 정체를 안다'}</small></span><span class="n">×${q.n}</span></button>`;
     }).join('') : '<p style="color:#9aa2bd;font-size:13px">비어 있다. 바닥의 반짝이는 물건을 밟으면 줍는다.</p>';
     sh.innerHTML = `<h3>가방 <button class="close">닫기</button></h3>
-      <div class="sec">무기 <small>탭하면 바꿔 든다 (턴 소모 없음)</small></div><div class="wrow">${weps}</div>
+      <button class="wbtn" data-inv="1" style="width:100%;margin-top:4px">🛡 장비 창 열기 <small>무기·방어구·장신구 · 가방 ${G.bag.length}/20</small></button>
       <div class="sec">영혼석 6칸 <small>🔴 공격 적중 · 🟣 대기 · 🟢 피격 때 발동</small></div><div class="gems">${slots}</div>
       <div class="sec">영혼석 가방 ${G.sbag.length}/3 <small>같은 색 칸하고만 교체 · 적이 안 보일 때</small></div><div class="gems" style="grid-template-columns:repeat(3,1fr)">${bag}</div>
       <div class="gline">${line}</div>
       <div class="sec">물건</div>${rows}`;
     sh.querySelector('.close').onclick = () => sh.classList.add('hidden');
-    sh.querySelectorAll('[data-w]').forEach((b) => { b.onclick = () => { if (+b.dataset.w !== G.wi) this.swapWeapon(); this.renderBag(); }; });
+    sh.querySelector('[data-inv]').onclick = () => this.openInv();
     sh.querySelectorAll('[data-b]').forEach((b) => { b.onclick = () => { const k = +b.dataset.b; this.selBag = G.sbag[k] && this.selBag !== k ? k : -1; this.renderBag(); }; });
     sh.querySelectorAll('[data-s]').forEach((b) => { b.onclick = () => {
       const k = +b.dataset.s, q = G.slots[k];
@@ -48,15 +46,6 @@ Object.assign(UI, {
     }; });
     const drop = sh.querySelector('[data-drop]'); if (drop) drop.onclick = () => { const id = G.sbag.splice(sel, 1)[0]; this.selBag = -1; this.toast(`「${STONE[id].name}」을 버렸다`); this.instant(() => {}); this.renderBag(); };
     sh.querySelectorAll('.item').forEach((b) => { b.onclick = () => { sh.classList.add('hidden'); this.useFromBag(b.dataset.k); }; });
-  },
-  weaponCard() {
-    const i = I(G.player.x, G.player.y), id = G.weps.get(i); if (!id) return;
-    const W = WPN(id), F = FORMS[W.form];
-    const el = $('#info');
-    el.innerHTML = `<h3>${F.icon} ${W.name} <small style="color:#9aa2bd">${F.name} ${W.dmg[0]}–${W.dmg[1]} · ${F.injury} · 막타 → ${F.part}</small></h3><div>무엇과 바꿀까? (바꾼 무기는 이 자리에 둔다)</div>
-      <div class="row">${G.wpn.map((w, k) => `<button data-k="${k}">${WPN(w).name}와 교체</button>`).join('')}<button data-k="-1">그냥 둔다</button></div>`;
-    el.classList.remove('hidden');
-    el.onclick = (ev) => { const b = ev.target.closest('button'); if (!b) return; const k = +b.dataset.k; this.hideInfo(); if (k >= 0) { this.instant(() => takeWeapon(k)); Sfx.play('pick'); } };
   },
   useFromBag(k) {
     const def = ITEMS[k];
@@ -100,6 +89,15 @@ Object.assign(UI, {
       <tr><td>🆘 구조</td><td>갇히거나 길 잃은 사람을 부딪혀 풀어 주고, 곁에 둔 채 계단을 내려가면 마을로 온다</td></tr>
       <tr><td>재료</td><td>무기 막타 → 가죽·뼈·심장. 바닥의 약초·광석·기름·얼음을 밟으면 채집</td></tr>
       <tr><td>마을</td><td>💎 제단(다른 색 덮어쓰기) · 🔨 제작(누가 만드느냐로 결과가 다름) · 🚪 준비 · 🔥 휴식</td></tr></table>
+      <h4>장비</h4><table>
+      <tr><td>🛡 장비 창</td><td>무기·보조·머리·몸통·장갑·신발·목걸이·반지 2. 가방 20칸은 소모품·영혼석과 따로</td></tr>
+      <tr><td>등급</td><td>일반(흰) · 마법(파랑, 옵션 1~2) · 희귀(노랑, 3~4, 미확인) · 전설(주황, 고유 효과, 미확인)</td></tr>
+      <tr><td>미확인</td><td>입으면 옵션이 하나씩, 한 층 내려가면 전부 드러난다. 확인 두루마리는 즉시</td></tr>
+      <tr><td>비교</td><td>가방 장비를 누르면 입은 것과 나란히 — 바뀌는 수치가 초록(오름)·빨강(내림)</td></tr>
+      <tr><td>전투 중</td><td>장착·해제마다 한 턴. 무기↔보조(두 번째 무기) 맞바꾸기는 턴 없음</td></tr>
+      <tr><td>기본</td><td>회피 10%. 상한: 방어 6 · 회피 40% · 막기 30% · 최대 HP +20 · 저항 50%</td></tr>
+      <tr><td>얻는 곳</td><td>적 12%(갑옷 고블린·멧돼지 25%), 층마다 상자 1~2, 보스 2개. 정착지 대장간 제작</td></tr>
+      <tr><td>죽으면</td><td>입은 장비·가방은 잃고, 정착지 창고의 장비는 남는다</td></tr></table>
       <h4>공격 형태 · 부상 · 약점</h4><table>
       <tr><td>⚔ 베기</td><td>출혈(매 턴 1). 짐승에게 약점. 막타 → 가죽 → 🟢 초록 영혼석</td></tr>
       <tr><td>🔨 타격</td><td>골절: 한 턴씩 쉬고 돌진을 못 한다. 해골에게 약점. 막타 → 뼈 → 🟣 보라</td></tr>

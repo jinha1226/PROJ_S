@@ -1,22 +1,15 @@
-import { plus } from './ai.js';
+import { ITEMS } from '../data/items.js';
+import { C_SMOKE, S_ICE, S_OIL, S_WATER, T_DOOR, T_WALL } from '../data/terrain.js';
+import { D8, cheb, sgn } from '../util/grid.js';
+import { pick, ri } from '../util/rng.js';
+import { plus, square3 } from './ai.js';
 import { cancelIntent, heal, moveEnt, onEnter } from './combat.js';
 import { addCloud, fireAt, oilBlast } from './elements.js';
 import { canSee, computeFOV } from './fov.js';
+import { identifyGear } from './gear.js';
 import { emitStatus, snapTerrain, snapVis } from './snap.js';
 import { G, I, TL, emit, entAt, inb, isFoe, log, standable } from './state.js';
-import { ITEMS } from '../data/items.js';
-import { C_SMOKE, S_ICE, S_OIL, S_WATER, T_DOOR, T_WALL } from '../data/terrain.js';
-import { FORMS, WPN } from '../data/weapons.js';
-import { D8, cheb, sgn } from '../util/grid.js';
-import { pick, ri } from '../util/rng.js';
 
-export function takeWeapon(slot) {
-  const p = G.player, i = I(p.x, p.y), w = G.weps.get(i); if (!w) return false;
-  const old = G.wpn[slot]; G.wpn[slot] = w; G.weps.set(i, old); G.wi = slot;
-  emit('weps', [...G.weps.entries()]); emit('weapon', { id: w });
-  log(`${WPN(w).name}(${FORMS[WPN(w).form].name})을 들었다 — ${WPN(old).name}은 바닥에`, 'good');
-  return false;
-}
 
 export function itemName(k) { return G.known[k] ? ITEMS[k].name : G.look[k].name; }
 
@@ -45,7 +38,8 @@ export function useItem(k, tx, ty) {
   emit(cat === 'potion' ? 'drink' : 'read', { color: G.look[k].color });
   TL.wait(140);
   identify(k);
-  if (k === 'heal') { heal(p, 15); if (p.st.burn) { p.st.burn = 0; emitStatus(p); } }
+  if (k === 'heal') { heal(p, Math.round(15 * (1 + (G.ps ? G.ps.potion : 0) / 100))); if (p.st.burn) { p.st.burn = 0; emitStatus(p); } }
+  else if (k === 'ident') { const n = identifyGear(); log(n ? `장비 ${n}개의 정체가 드러났다!` : '정체를 모르는 장비가 없다', n ? 'syn' : ''); }
   else if (k === 'cure') { Object.assign(p.st, { poison: 0, burn: 0, wet: 0, immune: 12 }); emitStatus(p); log('몸이 깨끗해졌다 (12턴 중독 면역)', 'good'); }
   else if (k === 'haste') { p.st.haste = 8; emitStatus(p); log('몸이 가벼워졌다! 8턴 동안 두 배로 움직인다', 'good'); }
   else if (k === 'tele') {
@@ -67,19 +61,30 @@ export function useItem(k, tx, ty) {
 
 export function throwItem(k, tx, ty) {
   if (!takeItem(k)) return false;
-  const p = G.player, d = cheb(p.x, p.y, tx, ty), dur = 130 + d * 50;
+  landThrow(k, tx, ty);
+  // 연금술사의 장갑: 하나가 더 옆으로 갈라져 날아간다
+  if (G.ps && G.ps.legend.has('alchGlove')) {
+    const p = G.player, dx = sgn(tx - p.x), dy = sgn(ty - p.y), side = [[-dy, dx], [dy, -dx]].map(([a, b]) => [tx + a * 2, ty + b * 2]).find(([x, y]) => inb(x, y) && G.tile[I(x, y)] !== T_WALL);
+    if (side) { log('연금술사의 장갑 — 병이 둘로 갈라진다!', 'syn'); landThrow(k, side[0], side[1]); }
+  }
+  TL.wait(100);
+  return true;
+}
+function landThrow(k, tx, ty) {
+  const p = G.player, d = cheb(p.x, p.y, tx, ty), dur = 130 + d * 50, wide = G.ps && G.ps.throwArea;
   const dx = sgn(tx - p.x), dy = sgn(ty - p.y); if (dx || dy) { p.face = [dx, dy]; emit('face', { id: 0, dx, dy }); }
   emit('lunge', { id: 0, dx, dy, amt: 0.2 });
   emit('proj', { kind: 'flask', from: [p.x, p.y], to: [tx, ty], dur, color: G.look[k].color }); TL.wait(dur);
   emit('shatter', { x: tx, y: ty, color: G.look[k].color });
   identify(k);
   if (k === 'smoke') {
-    for (let yy = -1; yy <= 1; yy++) for (let xx = -1; xx <= 1; xx++) { const x = tx + xx, y = ty + yy; if (inb(x, y)) addCloud(I(x, y), C_SMOKE, 6); }
+    const r = wide ? 2 : 1;
+    for (let yy = -r; yy <= r; yy++) for (let xx = -r; xx <= r; xx++) { const x = tx + xx, y = ty + yy; if (inb(x, y)) addCloud(I(x, y), C_SMOKE, 6); }
     snapTerrain(); emit('smokeburst', { x: tx, y: ty });
     for (const e of G.ents) if (e.aim && !canSee(e, p)) { e.aim = false; }
   } else {
     let ign = null;
-    for (const [x, y] of plus(tx, ty)) {
+    for (const [x, y] of (wide ? square3(tx, ty) : plus(tx, ty))) {
       const i = I(x, y); if (G.tile[i] === T_DOOR) continue;
       if (k === 'oil') { if (G.surf[i] === S_WATER || G.surf[i] === S_ICE) continue; G.surf[i] = S_OIL; if (G.fire[i]) ign = [x, y]; }
       else {
@@ -92,6 +97,4 @@ export function throwItem(k, tx, ty) {
     snapTerrain();
     if (ign) oilBlast(ign[0], ign[1]);
   }
-  TL.wait(100);
-  return true;
 }

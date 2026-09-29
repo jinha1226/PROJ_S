@@ -16,7 +16,8 @@
 | `versions/v1~v3.html` | 1차·2차·3차 한 파일 보존본 (v3 = 모듈로 나누기 전 원본) |
 | `docs/코드정리_가이드.md` | **코드 구조와 규칙 — 기능을 추가할 때 먼저 읽는다** (§9 기능별로 고칠 파일) |
 | `docs/prompts/`, `docs/설계_아이템_장비.md` | 단계별 제작 프롬프트, 다음 단계(장비) 설계 |
-| `tests/smoke.mjs` | 헤드리스 크롬 스모크 테스트 |
+| `tests/smoke.mjs`, `tests/gear.mjs` | 헤드리스 크롬 스모크 테스트, 장비 확인 목록(설계 §15) |
+| `tools/fix-imports.mjs` | 모듈의 빠진·안 쓰는·없는 import를 찾고 고치며 의존 규칙 위반을 알린다 (`npm run lint` / `npm run fix-imports`) |
 | `tools/equivalence.mjs` | 리팩터링 전후 동작 비교 (`node tools/equivalence.mjs versions/v3.html index.html`) |
 
 던전과 정착지는 같은 3D 체계(`render/diorama.js`)를 `preset: 'dungeon' | 'settlement'`로 바꿔 쓴다.
@@ -25,7 +26,7 @@
 
 `main`에 push하면 GitHub Actions가
 
-1. 헤드리스 크롬으로 `tests/smoke.mjs`를 돌리고(이전 버전 로드·정착지·출발·무작위 200턴·영혼석 24종·보스 귀환·콘솔 오류 0), 스크린샷을 아티팩트로 올린 뒤
+1. import 검사(`npm run lint`), 헤드리스 크롬 `tests/smoke.mjs`(이전 버전 로드·정착지·출발·무작위 200턴·영혼석 24종·보스 귀환·콘솔 오류 0)와 `tests/gear.mjs`(장비 확인 목록)를 돌리고, 스크린샷을 아티팩트로 올린 뒤
 2. 통과하면 GitHub Pages로 배포한다.
 
 로컬에서:
@@ -33,7 +34,9 @@
 ```bash
 npm install
 npx playwright install chromium
-npm test
+npm run lint        # import · 의존 규칙
+npm test            # 스모크
+node tests/gear.mjs # 장비
 ```
 
 ## 이전 Godot 본편

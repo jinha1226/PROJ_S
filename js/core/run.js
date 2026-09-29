@@ -1,14 +1,15 @@
+import { APPEAR, ITEMS } from '../data/items.js';
+import { cheb } from '../util/grid.js';
+import { mulberry32, pick, seedOr, setR, shuffle } from '../util/rng.js';
 import { allyAct, enemyAct } from './ai.js';
 import { envTick } from './elements.js';
 import { computeFOV, distMap } from './fov.js';
+import { calcStats, makeGear } from './gear.js';
 import { addItem } from './items.js';
 import { genFloor } from './mapgen.js';
 import { emitIntents, emitSlots, snapHud, snapVis } from './snap.js';
 import { G, TL, emit, isFoe, newSt } from './state.js';
 import { withCtx } from './stones.js';
-import { APPEAR, ITEMS } from '../data/items.js';
-import { cheb } from '../util/grid.js';
-import { mulberry32, pick, seedOr, setR, shuffle } from '../util/rng.js';
 
 /* ================= 새 게임 · 층 생성 ================= */
 export function newRun() {
@@ -19,14 +20,15 @@ export function newRun() {
     Object.keys(ITEMS).filter((k) => ITEMS[k].cat === cat).forEach((k, j) => { G.look[k] = { name: looks[j][0], color: looks[j][1] }; });
   }
   G.player = { id: 0, type: 'hero', name: '나', x: 0, y: 0, hp: 30, max: 30, st: newSt(), alive: true, face: [0, 1], shield: 0 };
-  G.zone = 1; G.zf = 1; G.loot = { mats: {}, npcs: [] }; G.armor = null;
+  G.zone = 1; G.zf = 1; G.loot = { mats: {}, npcs: [] };
   G.inv = [];
   addItem(pick(['heal', 'heal', 'cure', 'haste'])); addItem(pick(['oil', 'water', 'smoke'])); addItem(pick(['oil', 'water'])); addItem(pick(['tele', 'fear', 'blaze']));
   G.cd = { push: 0, fire: 0, bolt: 0, frost: 0, venom: 0 };
   G.stats = { kills: 0, combos: 0, turns: 0, items: 0, stones: 0, chains: 0, best: 0 };
   G.mageOf = ['bolt', pick(['fire', 'frost', 'bolt']), pick(['fire', 'frost']), pick(['frost', 'bolt', 'fire']), 'mix'];
   const starts = shuffle(['sword', 'mace', 'dagger']);
-  G.wpn = [starts[0], starts[1]]; G.wi = 0;
+  G.eq = { weapon: makeGear(starts[0]), off: makeGear(starts[1]), head: null, body: makeGear('body_cloth'), hands: null, feet: null, neck: null, ring1: null, ring2: null };
+  G.bag = []; G.heroBase = 30; G.legendsDropped = new Set(); G.ps = calcStats(G.eq);
   G.slots = Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 }));
   G.sbag = []; G.weakKnown = {}; G.ctx = null; G.curSrc = null; G.dropHint = 0;
   genFloor();

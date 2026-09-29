@@ -1,16 +1,17 @@
 import * as THREE from 'three';
-import * as K from '../render/diorama.js';
 import { META, processReturn, saveMeta } from '../core/meta.js';
 import { Game } from '../core/state.js';
+import { weaponId } from '../data/gear.js';
 import { S_GRASS, S_NONE, S_WATER } from '../data/terrain.js';
 import { BLD, JOBS, TH, TOWN_PAL, TW, WORKTALK } from '../data/town.js';
 import { W3, _tv, _w } from '../render/common.js';
-import { buildingModel, dollSpec, matProp } from '../render/dolls.js';
+import * as K from '../render/diorama.js';
+import { buildingModel, dollSpec, matProp, weaponDoll } from '../render/dolls.js';
 import { Sfx } from '../render/sfx.js';
 import { View } from '../render/view.js';
-import { TownNPC, talkLine } from './town-npc.js';
 import { UI } from '../ui/ui.js';
 import { pick } from '../util/rng.js';
+import { TownNPC, talkLine } from './town-npc.js';
 
 export const Town = {
   grid: null,
@@ -75,10 +76,19 @@ export const Town = {
     D.scene.add(trees); this.objs.push(trees);
     for (const n of META.npcs) this.npcs.push(new TownNPC(n));
     if (META.hero) {
-      const sp = dollSpec({ type: 'hero', face: [0, 1] }), d = K.doll(sp.parts, { scale: 1.3, gloss: 0.75 }); sp.extra(d);
+      const sp = dollSpec({ type: 'hero', face: [0, 1], eq: META.hero.eq }), d = K.doll(sp.parts, { scale: 1.3, gloss: sp.gloss }); const ex = sp.extra(d); if (META.hero.eq.weapon) ex.wh.add(weaponDoll(weaponId(META.hero.eq.weapon)).root);
       d.root.position.set(4.1, 0, 8.1); d.root.rotation.y = 0.6; d.mesh.userData.pick = { hero: true }; D.scene.add(d.root); this.objs.push(d.root); this.hero = d;
     }
     D.lightTarget = this.center; D.rig.focusT.copy(this.center); D.rig.snap();
+  },
+  /** 장비를 바꾸면 광장의 모험가 인형도 다시 입힌다 */
+  redressHero() {
+    if (!this.hero || !META.hero) return;
+    const D = View.dio, old = this.hero, sp = dollSpec({ type: 'hero', face: [0, 1], eq: META.hero.eq }), d = K.doll(sp.parts, { scale: 1.3, gloss: sp.gloss }), ex = sp.extra(d);
+    if (META.hero.eq.weapon) ex.wh.add(weaponDoll(weaponId(META.hero.eq.weapon)).root);
+    d.root.position.copy(old.root.position); d.root.rotation.y = old.root.rotation.y; d.mesh.userData.pick = { hero: true };
+    D.scene.remove(old.root); this.objs.splice(this.objs.indexOf(old.root), 1, d.root); D.scene.add(d.root); this.hero = d;
+    D.sparks.emit({ pos: _w.set(d.root.position.x, 0.6, d.root.position.z), n: 20, color: 0xffffff, color2: 0xffd84a, speed: 1.6, up: 1.4, grav: 0, life: 0.6, size: 0.12, spread: 0.4 });
   },
   placeBuilding(id, shown) {
     const D = View.dio, b = BLD[id], m = buildingModel(id);

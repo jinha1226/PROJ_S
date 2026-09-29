@@ -1,8 +1,10 @@
 import { armorShield } from './core/combat.js';
+import { refreshStats, revealAll } from './core/gear.js';
 import { genFloor } from './core/mapgen.js';
 import { META, saveMeta } from './core/meta.js';
 import { endTurn } from './core/run.js';
 import { G, Game, I, TL, newSt } from './core/state.js';
+import { SLOTS } from './data/gear.js';
 import { T_STAIRS } from './data/terrain.js';
 import { Sfx } from './render/sfx.js';
 import { View } from './render/view.js';
@@ -47,10 +49,14 @@ export function descend() {
   if (G.bossFloor) { returnToTown('boss'); return; }
   const p = G.player;
   rescueFollowers();
-  G.zf++; p.st = newSt(); p.shield = armorShield();
+  G.zf++; p.st = newSt();
   genFloor();
+  // 한 층을 내려가면 입은 장비·가방 장비의 정체가 모두 드러난다
+  let rv = 0; for (const it of [...SLOTS.map((k) => G.eq[k]), ...G.bag]) if (revealAll(it)) rv++;
+  refreshStats(); p.shield = armorShield();
   UI.exitTarget(); UI.travel = null; UI.rest = null; UI.buffered = null;
   View.buildFloor(); UI.floorCard(); UI.syncAll();
+  if (rv) UI.log(`장비 ${rv}개의 정체가 드러났다`, 'syn');
   Sfx.play('stairs');
 }
 
@@ -58,10 +64,11 @@ export function enterDungeon(zone) {
   const h = META.hero;
   Town.clear(); Game.mode = 'dungeon';
   setR(mulberry32(seedOr(((Date.now() & 0xffffffff) ^ Math.floor(Math.random() * 1e9)) >>> 0)));
-  Object.assign(G, { zone, zf: 1, over: false, won: false, nextId: 1, hasteFlip: false, pendingReturn: null, known: h.known, look: h.look, inv: h.inv, wpn: h.wpn, wi: h.wi, slots: h.slots, sbag: h.sbag, weakKnown: h.weakKnown, armor: h.armor, ctx: null, curSrc: null, dropHint: 0 });
+  Object.assign(G, { zone, zf: 1, over: false, won: false, nextId: 1, hasteFlip: false, pendingReturn: null, known: h.known, look: h.look, inv: h.inv, eq: h.eq, bag: h.bag, heroBase: h.base, legendsDropped: new Set(h.legends || []), slots: h.slots, sbag: h.sbag, weakKnown: h.weakKnown, ctx: null, curSrc: null, dropHint: 0 });
   G.known.recall = true;
   for (const sl of G.slots) sl.cd = 0;
   G.player = { id: 0, type: 'hero', name: h.name, x: 0, y: 0, hp: h.hp, max: h.max, st: newSt(), alive: true, face: [0, 1], shield: 0 };
+  refreshStats();
   G.player.shield = armorShield() + (META.buff === 'feast' ? 6 : 0); META.buff = null;
   G.cd = { push: 0, fire: 0, bolt: 0, frost: 0, venom: 0 };
   G.stats = { kills: 0, combos: 0, turns: 0, items: 0, stones: 0, chains: 0, best: 0 };
@@ -81,7 +88,7 @@ export function returnToTown(reason) {
     rescueFollowers(); rep.npcs = G.loot.npcs.slice();
     for (const [m, n] of Object.entries(G.loot.mats)) META.mats[m] = (META.mats[m] || 0) + n;
     rep.loot = { ...G.loot.mats };
-    h.hp = Math.max(1, G.player.hp); h.wi = G.wi; h.wpn = G.wpn; h.armor = G.armor;
+    h.hp = Math.max(1, G.player.hp); h.max = G.player.max; h.legends = [...G.legendsDropped];
     if (reason === 'boss') { rep.first = !META.cleared[G.zone - 1]; META.cleared[G.zone - 1] = true; }
   }
   G.over = true; UI.exitTarget(); UI.travel = null; UI.rest = null; UI.buffered = null;

@@ -1,5 +1,6 @@
-import { playerMove, playerWait } from '../core/combat.js';
+import { canReach, playerMelee, playerMove, playerWait } from '../core/combat.js';
 import { findPath, visibleFoes } from '../core/fov.js';
+import { pickGear } from '../core/gear.js';
 import { previewFor, targetsFor, useSkill } from '../core/skills.js';
 import { emitStatus } from '../core/snap.js';
 import { G, Game, I, XY, entAt, inb, isFoe, isP, log } from '../core/state.js';
@@ -9,8 +10,8 @@ import { Anim, act, descend, returnToTown } from '../flow.js';
 import { Sfx } from '../render/sfx.js';
 import { View } from '../render/view.js';
 import { Town } from '../town/town.js';
-import { $, UI } from './ui.js';
 import { cheb } from '../util/grid.js';
+import { $, UI } from './ui.js';
 
 Object.assign(UI, {
   /* ---- 지도 입력 ---- */
@@ -34,7 +35,8 @@ Object.assign(UI, {
     if (G.over || G.player.st.frozen || G.player.st.stun) return;
     if (this.mode === 'target') { this.tapTarget(x, y); return; }
     const p = G.player, d = cheb(p.x, p.y, x, y), i = I(x, y), e = entAt(x, y), seenFoe = e && isFoe(e) && G.vis[i];
-    if (d === 0) { if (G.tile[i] === T_STAIRS) descend(); else if (G.weps.has(i)) this.weaponCard(); else this.toast('⏳ 대기는 아래 버튼 — 길게 누르면 휴식'); return; }
+    if (d === 0) { if (G.tile[i] === T_STAIRS) descend(); else if (G.gear.has(i)) { this.instant(() => pickGear()); this.renderWeapon(); } else this.toast('⏳ 대기는 아래 버튼 — 길게 누르면 휴식'); return; }
+    if (seenFoe && d === 2 && canReach(x, y)) { act(() => { playerMelee(e); return true; }); return; }
     if (seenFoe && d > 1) { this.showEnemy(e); return; }
     if (d === 1) { if (G.tile[i] === T_WALL) return; act(() => playerMove(x - p.x, y - p.y)); return; }
     if (!G.seen[i] || G.tile[i] === T_WALL) { this.toast('아직 모르는 곳이다'); return; }

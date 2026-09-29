@@ -1,19 +1,34 @@
+import { GEAR_BASES } from '../data/gear.js';
 import { APPEAR, ITEMS } from '../data/items.js';
 import { BLD, CRAFT_B, HAIRS, HERO_NAMES, JOBS, JOB_CLOTH, NAMES, RECIPES, SKINS, TRAITS, adj } from '../data/town.js';
 import { ARMORS, FORMS, WPN } from '../data/weapons.js';
 import { pick, rand, ri, shuffle } from '../util/rng.js';
 import { jo } from '../util/text.js';
+import { calcStats, craftArmor, craftWeapon, makeGear } from './gear.js';
 
 export let META = null;
 
 export function defaultMeta() {
-  META = { v: 3, gen: 0, visits: 0, cleared: [false, false, false, false], npcs: [], newNpcs: [], buildings: { plaza: { shown: true }, gate: { shown: true }, altar: { shown: true }, storage: { shown: true }, forge: { shown: true } },
-    mats: { 약초: 2, 가죽: 1, 광석: 2 }, items: { heal: 1, recall: 1 }, weapons: [], armors: [], recipes: {}, hero: null, fallen: [], closed: {}, buff: null, ending: false };
+  META = { v: 4, gen: 0, visits: 0, cleared: [false, false, false, false], npcs: [], newNpcs: [], buildings: { plaza: { shown: true }, gate: { shown: true }, altar: { shown: true }, storage: { shown: true }, forge: { shown: true } },
+    mats: { 약초: 2, 가죽: 1, 광석: 2 }, items: { heal: 1, recall: 1 }, gear: [], recipes: {}, hero: null, fallen: [], closed: {}, buff: null, ending: false };
   const k = makeNpc('keeper'), b = makeNpc('blacksmith'); META.npcs.push(k); initRel(k); META.npcs.push(b); initRel(b);
   return META;
 }
 
-export function loadMeta() { try { const s = localStorage.getItem('torch-meta-v3'); if (s) { META = JSON.parse(s); return META; } } catch (_) { /* 저장소 없음 */ } return defaultMeta(); }
+export function loadMeta() { try { const s = localStorage.getItem('torch-meta-v3'); if (s) { META = JSON.parse(s); migrateMeta(META); return META; } } catch (_) { /* 저장소 없음 */ } return defaultMeta(); }
+/** 저장 형식 v3(무기 두 자루·갑옷) → v4(장비 칸·가방·창고) */
+function migrateMeta(M) {
+  if ((M.v || 3) >= 4) return;
+  M.gear = [...(M.weapons || []).map(craftWeapon), ...(M.armors || []).map(craftArmor)];
+  delete M.weapons; delete M.armors;
+  const h = M.hero;
+  if (h && !h.eq) {
+    h.eq = { weapon: craftWeapon(h.wpn[h.wi || 0]), off: craftWeapon(h.wpn[(h.wi || 0) ^ 1]), head: null, body: h.armor ? craftArmor(h.armor) : makeGear('body_cloth'), hands: null, feet: null, neck: null, ring1: null, ring2: null };
+    h.bag = []; delete h.wpn; delete h.wi; delete h.armor;
+    h.max = h.base + calcStats(h.eq).maxHp; h.hp = Math.min(h.hp, h.max);
+  }
+  M.v = 4;
+}
 
 export function saveMeta() { try { if (META) localStorage.setItem('torch-meta-v3', JSON.stringify(META)); } catch (_) { /* 저장 실패는 무시 */ } }
 
@@ -47,7 +62,8 @@ export function newHero() {
   const look = {};
   for (const cat of ['potion', 'scroll', 'throw']) { const looks = shuffle(APPEAR[cat].slice()); Object.keys(ITEMS).filter((k) => ITEMS[k].cat === cat).forEach((k, j) => { look[k] = { name: looks[j][0], color: looks[j][1] }; }); }
   const base = 30 + Math.min(15, Math.max(0, META.npcs.length - 2) * 2), starts = shuffle(['sword', 'mace', 'dagger']);
-  return { name: pick(HERO_NAMES), gen: META.gen, base, max: base, hp: base, inv: [], wpn: [starts[0], starts[1]], wi: 0, slots: Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 })), sbag: [], weakKnown: {}, known: { recall: true }, look, armor: null };
+  const eq = { weapon: makeGear(starts[0]), off: makeGear(starts[1]), head: null, body: makeGear('body_cloth'), hands: null, feet: null, neck: null, ring1: null, ring2: null };
+  return { name: pick(HERO_NAMES), gen: META.gen, base, max: base, hp: base, inv: [], eq, bag: [], slots: Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 })), sbag: [], weakKnown: {}, known: { recall: true }, look };
 }
 
 export const packLimit = () => Math.min(8, 3 + Math.floor(META.npcs.length / 2));
@@ -101,7 +117,7 @@ export function genEvents(out, r) {
   return ev.slice(0, 4);
 }
 
-export function recipeName(q) { return q.out ? `${ITEMS[q.out].name}${q.n > 1 ? ' ×' + q.n : ''}` : q.weapon ? `${WPN(q.weapon).name} (${FORMS[WPN(q.weapon).form].name} ${WPN(q.weapon).dmg.join('–')})` : q.armor ? `${ARMORS[q.armor].name} (${ARMORS[q.armor].desc})` : '든든한 한 끼 (다음 출발 보호막 +6)'; }
+export function recipeName(q) { return q.out ? `${ITEMS[q.out].name}${q.n > 1 ? ' ×' + q.n : ''}` : q.weapon ? `${WPN(q.weapon).name} (${FORMS[WPN(q.weapon).form].name} ${WPN(q.weapon).dmg.join('–')})` : q.armor ? `${ARMORS[q.armor].name} (${ARMORS[q.armor].desc})` : q.gear ? `${GEAR_BASES[q.gear].name} (${q.gear === 'shield' ? '방어 +1, 막기 15%' : '시야 +1, 붙은 적을 칠 때 불 1'})` : '든든한 한 끼 (다음 출발 보호막 +6)'; }
 
 export function processReturn(r) {
   META.visits++; META.closed = {};

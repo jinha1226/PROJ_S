@@ -64,7 +64,7 @@ button{font-family:inherit;color:inherit;cursor:pointer}
 .sk .cd{position:absolute;inset:0;border-radius:15px;background:rgba(0,0,0,.66);display:none;place-items:center;font-size:20px;font-weight:900;color:#dfe3f5}
 .sk.cooling .cd{display:grid}
 .sk.sel{outline:2px solid var(--c);box-shadow:0 0 18px color-mix(in srgb,var(--c) 70%,transparent),inset 0 -3px 0 var(--c)}
-#actions{display:grid;grid-template-columns:.9fr 1.15fr 1.2fr .95fr;gap:6px}
+#actions{display:grid;grid-template-columns:.8fr .8fr 1.15fr 1.1fr .85fr;gap:5px}
 #actions button{position:relative;height:56px;border-radius:15px;background:var(--panel);border:1px solid var(--line);font-size:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
 #actions small{font-size:11px;color:var(--dim);margin-top:4px}
 #btn-wait{background:linear-gradient(180deg,rgba(60,66,100,.95),rgba(30,34,56,.95))!important}
@@ -186,6 +186,41 @@ body.slowmo #banner{font-size:34px}
 .trt .tb{position:relative;flex:1;height:7px;border-radius:4px;background:rgba(255,255,255,.1)}
 .trt .tb::after{content:'';position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:rgba(255,255,255,.35)}
 .trt i{position:absolute;top:0;bottom:0;border-radius:4px}
+/* ---------- 장비 ---------- */
+#gearcount{position:absolute;top:6px;right:8px;font-size:11px;font-weight:800;color:#9fd8ff}
+#btn-gear{position:relative}
+#legendflash{position:fixed;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,rgba(255,170,60,.25),rgba(255,120,20,.6))}
+#legendflash.on{animation:lflash .45s ease-out}
+@keyframes lflash{0%{opacity:0}15%{opacity:1}100%{opacity:0}}
+#log .legend{color:#ff9a3a;font-weight:800}
+#sheet.tall{max-height:94%;background:rgba(22,24,40,.985)}
+#info{z-index:8}
+.eqgrid{display:grid;grid-template-columns:1fr 1.25fr 1fr;grid-template-areas:"head doll neck" "weapon doll off" "hands body feet" "ring1 . ring2";gap:6px;margin:4px 0 8px}
+.eqgrid .doll{min-height:150px;border-radius:14px;background:radial-gradient(ellipse at 50% 70%,rgba(120,140,220,.25),transparent 70%)}
+.eqgrid .doll canvas{width:100%!important;height:100%!important;display:block}
+.eqs{height:52px;border-radius:12px;border:2px dashed rgba(255,255,255,.18);background:rgba(0,0,0,.35);font-size:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;padding:2px 3px;overflow:hidden}
+.eqs small{font-size:9.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.eqs.on{border:2px solid var(--c);box-shadow:inset 0 0 10px color-mix(in srgb,var(--c) 35%,transparent)}
+.eqs.on small{color:var(--c)}
+.stline{width:100%;text-align:left;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.05);font-size:13px;font-weight:700}
+.stline small{color:var(--dim);font-weight:400;float:right}
+.bggrid{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
+.bgc{position:relative;height:50px;border-radius:10px;border:2px solid var(--c);background:rgba(0,0,0,.35);font-size:15px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1px 2px;overflow:hidden}
+.bgc small{font-size:8.5px;color:var(--c);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.bgc i{position:absolute;top:2px;right:4px;font-style:normal;font-size:10px;color:#7dffa0}
+.bgc.empty{border:1px dashed rgba(255,255,255,.1);background:transparent}
+.gdetail{margin:8px 0;padding:8px;border-radius:12px;background:rgba(0,0,0,.35);border:1px solid var(--line)}
+.gdetail .row{display:flex;gap:6px;margin-top:8px}
+.gdetail .row button{flex:1;height:42px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.08);font-size:13px;font-weight:700}
+.gdetail .row button.pri{background:linear-gradient(180deg,#4b6bd6,#3148a0);border-color:#6b8cff}
+.gdetail .row button:disabled{opacity:.35}
+.gcard{border-left:3px solid var(--c);padding:4px 8px;margin-bottom:6px;font-size:12.5px;line-height:1.55}
+.gct{display:flex;flex-direction:column;margin-bottom:2px}
+.gct b{font-size:14px}.gct small{color:var(--dim);font-size:11px}
+.gline .up{color:#7dffa0;margin-right:8px}.gline .dn{color:#ff8a8a;margin-right:8px}.gline .form{color:#ffe38a;font-weight:800;margin-right:8px}
+details{margin-top:4px;font-size:13px}details summary{cursor:pointer}details summary b{color:#fff}
+.srcl{padding-left:14px;color:#aeb4cc;font-size:12px}
+.gtag{position:absolute;left:0;top:0;font-size:11px;font-weight:800;white-space:nowrap;background:rgba(10,10,20,.72);padding:1px 6px;border-radius:7px;pointer-events:none;text-shadow:0 1px 1px #000}
 </style>
 <script type="importmap">
 { "imports": {
@@ -197,6 +232,7 @@ body.slowmo #banner{font-size:34px}
 <body>
 <div id="stage"></div>
 <div id="hurt"></div>
+<div id="legendflash"></div>
 <div id="labels"></div>
 <div id="hud">
   <div id="top">
@@ -215,6 +251,7 @@ body.slowmo #banner{font-size:34px}
     <div id="skills"></div>
     <div id="actions">
       <button id="btn-bag">🎒<small>가방</small><b id="bagcount"></b></button>
+      <button id="btn-gear">🛡<small>장비</small><b id="gearcount"></b></button>
       <button id="btn-wpn">⚔<small>무기</small></button>
       <button id="btn-wait">⏳<small>대기 · 길게 누르면 휴식</small></button>
       <button id="btn-ctx" disabled>·<small>—</small></button>

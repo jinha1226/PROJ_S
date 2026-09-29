@@ -1,10 +1,11 @@
-import { chargePath } from './ai.js';
-import { lineTiles } from './fov.js';
-import { G, I, emit, entAt, inb, isP } from './state.js';
 import { HEX } from '../data/colors.js';
 import { MAGE } from '../data/enemies.js';
 import { T_OPEN, T_STAIRS } from '../data/terrain.js';
 import { D8 } from '../util/grid.js';
+import { chargePath } from './ai.js';
+import { lineTiles } from './fov.js';
+import { gearName } from './gear.js';
+import { G, I, emit, entAt, inb, isP } from './state.js';
 
 /* ================= 스냅샷 사건 ================= */
 export function snapTerrain() { emit('terrain', { tile: G.tile.slice(), surf: G.surf.slice(), fire: G.fire.slice(), cloud: G.cloud.slice(), cloudT: G.cloudT.slice() }); }
@@ -16,7 +17,7 @@ export function emitStatus(e) { emit('status', { id: e.id, st: { ...e.st } }); }
 export function snapHud() {
   const p = G.player, i = I(p.x, p.y); let door = null;
   for (const [dx, dy] of D8) { const x = p.x + dx, y = p.y + dy; if (inb(x, y) && G.tile[I(x, y)] === T_OPEN && !entAt(x, y) && !G.items.has(I(x, y))) { door = [x, y]; break; } }
-  emit('hud', { hp: p.hp, max: p.max, st: { ...p.st }, cd: { ...G.cd }, turn: G.stats.turns, floor: G.floor, stairs: G.tile[i] === T_STAIRS, door, inv: G.inv.reduce((a, b) => a + b.n, 0), wep: G.weps.get(i) || null, shield: p.shield || 0, boss: (() => { const b = G.ents.find((e) => e.boss); return b && b.alive && b.awake ? { name: b.name, hp: b.hp, max: b.max } : null; })() });
+  emit('hud', { hp: p.hp, max: p.max, st: { ...p.st }, cd: { ...G.cd }, turn: G.stats.turns, floor: G.floor, stairs: G.tile[i] === T_STAIRS, door, inv: G.inv.reduce((a, b) => a + b.n, 0), gear: G.gear.has(i) ? { name: gearName(G.gear.get(i)), rarity: G.gear.get(i).rarity } : null, shield: p.shield || 0, boss: (() => { const b = G.ents.find((e) => e.boss); return b && b.alive && b.awake ? { name: b.name, hp: b.hp, max: b.max } : null; })() });
 }
 
 export function emitIntents() {

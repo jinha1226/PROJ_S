@@ -1,13 +1,13 @@
-import { cancelIntent, damage, freeDropSpot, heal, push, weaponHit } from './combat.js';
-import { fireAt, shock } from './elements.js';
-import { emitSlots, emitStatus } from './snap.js';
-import { G, I, TL, emit, entAt, isFoe, log, newSt, standable } from './state.js';
 import { CATS, DROPS, catOf, kindOf } from '../data/enemies.js';
 import { STONE } from '../data/stones.js';
 import { S_WATER } from '../data/terrain.js';
 import { FORMS } from '../data/weapons.js';
 import { D8, cheb, sgn } from '../util/grid.js';
 import { pick, rand, shuffle } from '../util/rng.js';
+import { cancelIntent, damage, freeDropSpot, heal, push, weaponHit } from './combat.js';
+import { dotBonus, fireAt, shock } from './elements.js';
+import { emitSlots, emitStatus } from './snap.js';
+import { G, I, TL, emit, entAt, isFoe, log, newSt, standable } from './state.js';
 
 export function synergy(text, elem) { G.stats.combos++; emit('banner', { text, elem }); log(text, 'syn'); if (G.ctx && (G.ctx.stones > 0 || G.ctx.origin !== 'enemy')) bumpStage(G.ctx); }
 
@@ -51,6 +51,13 @@ export function trigger(color, info, ctx) {
     TL.wait(120);
     const prev = G.ctx; G.ctx = ctx;
     runStone(id, info, ctx);
+    // 장비: 빨강 한 번 더 · 보라 회복 · 초록 보호막 · 가시 판금(초록 두 번)
+    const ps = G.ps;
+    if (ps && ((color === 'red' && ps.redTwice && rand() * 100 < ps.redTwice) || (color === 'green' && ps.legend.has('thornPlate'))) && stoneReady(id, info)) {
+      emit('stone', { slot: s, id, stage: ctx.stage }); TL.wait(100); runStone(id, info, ctx);
+    }
+    if (ps && color === 'purple' && ps.purpleHeal) heal(G.player, ps.purpleHeal);
+    if (ps && color === 'green' && ps.greenShield) addShield(ps.greenShield);
     G.ctx = prev;
     if (color === 'purple') { sl.cd = 2; emitSlots(); }
     TL.wait(50);
@@ -118,7 +125,7 @@ export function runStone(id, info, ctx) {
   }
 }
 
-export function poisonOn(e, n) { if (!e || !e.alive || e.st.immune) return; e.st.poison = Math.max(e.st.poison, n); emitStatus(e); emit('splat', { x: e.x, y: e.y }); }
+export function poisonOn(e, n) { if (!e || !e.alive || e.st.immune) return; e.st.poison = Math.max(e.st.poison, n + dotBonus(e)); emitStatus(e); emit('splat', { x: e.x, y: e.y }); }
 
 export function zapOn(e, dmg, hitSet) {
   if (!e || !e.alive) return;

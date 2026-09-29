@@ -14,21 +14,22 @@ export function useSkill(id, tx, ty) { let r = false; withCtx('skill', () => { r
 export function useSkillRaw(id, tx, ty) {
   const p = G.player, sk = SK[id], dx = sgn(tx - p.x), dy = sgn(ty - p.y), d = cheb(p.x, p.y, tx, ty);
   if (dx || dy) { p.face = [dx, dy]; emit('face', { id: 0, dx, dy }); }
-  G.cd[id] = sk.cd;
+  G.cd[id] = sk.cd - ((G.ps && G.ps.skillCd[id]) || 0);
+  const sd = G.ps ? G.ps.skillDmg : 0;
   emit('pcast', { elem: id });
   if (id === 'push') {
     const e = entAt(tx, ty); if (!e) return false;
     emit('lunge', { id: 0, dx, dy }); TL.wait(90); emit('shove', { x: tx, y: ty, dx, dy });
     damage(e, 1, 'hit', { dx, dy }); if (e.alive) push(e, dx, dy, 2);
   } else if (id === 'fire') {
-    const dur = 90 + d * 45; emit('proj', { kind: 'fire', from: [p.x, p.y], to: [tx, ty], dur }); TL.wait(dur); fireAt(tx, ty, 4);
+    const dur = 90 + d * 45; emit('proj', { kind: 'fire', from: [p.x, p.y], to: [tx, ty], dur }); TL.wait(dur); fireAt(tx, ty, 4 + sd);
   } else if (id === 'bolt') {
     emit('bolt', { from: [p.x, p.y], to: [tx, ty] }); TL.wait(70);
     const c = entAt(tx, ty);
-    if (G.surf[I(tx, ty)] === S_WATER || (c && c.st.wet && !c.st.frozen)) shock(tx, ty, 5);
-    else if (c) damage(c, 5, 'shock'); else emit('zap', { x: tx, y: ty });
+    if (G.surf[I(tx, ty)] === S_WATER || (c && c.st.wet && !c.st.frozen)) shock(tx, ty, 5 + sd);
+    else if (c) damage(c, 5 + sd, 'shock'); else emit('zap', { x: tx, y: ty });
   } else if (id === 'frost') {
-    const dur = 90 + d * 40; emit('proj', { kind: 'frost', from: [p.x, p.y], to: [tx, ty], dur }); TL.wait(dur); frostCast(tx, ty, 2);
+    const dur = 90 + d * 40; emit('proj', { kind: 'frost', from: [p.x, p.y], to: [tx, ty], dur }); TL.wait(dur); frostCast(tx, ty, 2 + sd);
   } else if (id === 'venom') {
     const dur = 70 + d * 35; emit('proj', { kind: 'dart', from: [p.x, p.y], to: [tx, ty], dur }); TL.wait(dur); venomAt(tx, ty);
   }

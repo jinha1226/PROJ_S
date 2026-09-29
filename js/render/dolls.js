@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import * as K from './diorama.js';
 import { G } from '../core/state.js';
 import { BOSSES, MAGE } from '../data/enemies.js';
 import { ITEMS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
-import { SKIN, _w } from './common.js';
+import { _w } from './common.js';
+import * as K from './diorama.js';
+import { heroSpec } from './hero-doll.js';
 import { View } from './view.js';
 
 export function dollSpec(e) {
@@ -34,36 +35,7 @@ export function dollSpecBase(e) {
   const eyes = (y, z, sp = 0.09, c = 0x1a1420, k = [0.04, 0.055, 0.03]) => [
     { s: 'sphere', p: [-sp, y, z], k, c }, { s: 'sphere', p: [sp, y, z], k, c },
     { s: 'sphere', p: [-sp + 0.012, y + 0.02, z + 0.022], k: 0.014, c: 0xffffff }, { s: 'sphere', p: [sp + 0.012, y + 0.02, z + 0.022], k: 0.014, c: 0xffffff }];
-  if (e.type === 'hero') return {
-    h: 1.15, col: 0x3f86d8, scale: 1,
-    parts: [...feet(0x6b3f25),
-      { s: 'sphere', p: [0, 0.32, 0], k: [0.24, 0.25, 0.21], c: 0x3f86d8 },
-      { s: 'cyl', p: [0, 0.25, 0], k: [0.238, 0.05, 0.208], c: 0x7a4a28 },
-      { s: 'sphere', p: [0, 0.26, 0.205], k: [0.045, 0.04, 0.02], c: 0xffd35a },
-      { s: 'torus', p: [0, 0.5, 0], r: [Math.PI / 2, 0, 0], k: 0.15, tube: 0.4, c: 0xe0443a },
-      { s: 'cone', p: [0.06, 0.44, -0.2], r: [-0.5, 0, 0.3], k: [0.06, 0.18, 0.04], c: 0xe0443a },
-      { s: 'sphere', p: [0, 0.75, 0], k: 0.27, c: SKIN },
-      { s: 'sphere', p: [0, 0.8, -0.05], k: [0.285, 0.23, 0.28], c: 0x5a3020 },
-      { s: 'sphere', p: [0, 0.9, -0.02], k: [0.27, 0.17, 0.27], c: 0x2f7fe0 },
-      { s: 'cyl', p: [0, 0.86, 0.02], k: [0.29, 0.04, 0.29], c: 0xf2e6c8 },
-      { s: 'cone', p: [0.2, 1.02, -0.08], r: [0.3, 0, -0.9], k: [0.05, 0.22, 0.03], c: 0xe0443a },
-      { s: 'sphere', p: [0.05, 0.83, 0.2], k: [0.15, 0.06, 0.08], r: [0, 0, -0.2], c: 0x5a3020 },
-      ...eyes(0.72, 0.235),
-      { s: 'sphere', p: [-0.16, 0.65, 0.2], k: [0.045, 0.025, 0.02], c: 0xff9a9a }, { s: 'sphere', p: [0.16, 0.65, 0.2], k: [0.045, 0.025, 0.02], c: 0xff9a9a },
-      { s: 'sphere', p: [-0.27, 0.36, 0.04], k: 0.075, c: SKIN }, { s: 'sphere', p: [0.28, 0.4, 0.07], k: 0.075, c: SKIN },
-      { s: 'cyl', p: [0, 0.37, -0.24], r: [Math.PI / 2, 0, 0], k: [0.17, 0.04, 0.17], c: 0x9aa6b8 },
-      { s: 'sphere', p: [0, 0.37, -0.27], k: [0.05, 0.05, 0.03], c: 0xffd35a },
-      { s: 'cyl', p: [0.31, 0.5, 0.09], r: [0.15, 0, -0.15], k: [0.028, 0.32, 0.028], c: 0x5a3a22 },
-      { s: 'cyl', p: [0.33, 0.64, 0.1], k: [0.05, 0.05, 0.05], c: 0x3a2a1a }],
-    extra: (d) => {
-      const f = new THREE.Group();
-      const o = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.22, 7).translate(0, 0.11, 0), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 0.9, 0.2) }));
-      const i = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.14, 7).translate(0, 0.07, 0), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2.5, 1) }));
-      f.add(o, i); f.position.set(0.335, 0.66, 0.1); d.body.add(f);
-      const wh = new THREE.Group(); wh.position.set(-0.28, 0.37, 0.06); wh.rotation.x = 0.5; d.body.add(wh);
-      return { wh, update(dt, t) { const s = 1 + Math.sin(t * 20) * 0.12 + Math.sin(t * 33) * 0.08; o.scale.set(1, s, 1); i.scale.set(1, s * 1.05, 1); f.rotation.z = Math.sin(t * 6) * 0.1; if (Math.random() < dt * 8) { f.getWorldPosition(_w); _w.y += 0.2; View.dio.sparks.emit({ pos: _w, n: 1, color: 0xff9a3a, color2: 0xffe36a, speed: 0.3, up: 1.2, grav: 0.6, life: 0.6, size: 0.07 }); } } };
-    },
-  };
+  if (e.type === 'hero') return heroSpec(e.eq || G.eq);
   if (e.type === 'goblin') {
     const skin = e.poison ? 0x9ccf6a : 0x86c05a, tunic = e.poison ? 0x7a3f9a : 0xa0573a;
     return {

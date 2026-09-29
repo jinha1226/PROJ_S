@@ -90,6 +90,7 @@ try {
       G.ents = [p, mk(cx + 1, cy), mk(cx - 2, cy - 2)];
       G.slots.forEach((q) => { q.stone = null; q.color = null; q.cd = 0; q.gTurn = -1; });
       g.addStone(id); g.computeFOV();
+      if (G.ps) { G.ps.eva = 0; G.ps.block = 0; } // 장비의 기본 회피 10%가 초록(피격) 검사를 흔들지 않게
       fired = [];
       const c = g.STONE[id].color;
       if (c === 'red') g.act(() => { g.playerMove(1, 0); return true; }); else if (c === 'purple') g.act(() => g.playerWait()); else g.act(() => true);

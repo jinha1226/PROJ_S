@@ -1,25 +1,35 @@
 import { closeDoor } from '../core/combat.js';
-import { G, I, emit, entAt } from '../core/state.js';
+import { gearName, pickGear, swapHands } from '../core/gear.js';
+import { G, I, entAt } from '../core/state.js';
 import { BOSSES } from '../data/enemies.js';
+import { RARITY, isWeapon, weaponOf } from '../data/gear.js';
 import { SK, SKILLS } from '../data/skills.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { T_OPEN, ZONES } from '../data/terrain.js';
-import { FORMS, WPN } from '../data/weapons.js';
+import { FORMS } from '../data/weapons.js';
 import { Anim, act, descend } from '../flow.js';
 import { Sfx } from '../render/sfx.js';
 import { $, UI } from './ui.js';
 
 Object.assign(UI, {
-  swapWeapon() { if (Anim.active || G.over) return; this.instant(() => { G.wi ^= 1; emit('weapon', { id: G.wpn[G.wi] }); }); const W = WPN(G.wpn[G.wi]); this.toast(`${FORMS[W.form].icon} ${W.name} — ${FORMS[W.form].name} (${FORMS[W.form].injury}, 막타 → ${FORMS[W.form].part})`); Sfx.play('ui'); },
+  swapWeapon() {
+    if (Anim.active || G.over) return;
+    if (!isWeapon(G.eq.off)) { this.toast('보조 칸에 무기가 없다 — 🛡 장비 창에서 두 번째 무기를 보조에'); return; }
+    this.instant(() => swapHands());
+    const W = weaponOf(G.eq.weapon); this.toast(`${FORMS[W.form].icon} ${gearName(G.eq.weapon)} — ${FORMS[W.form].name} (${FORMS[W.form].injury}, 막타 → ${FORMS[W.form].part})`); Sfx.play('ui');
+  },
   weaponInfo() {
-    const r = G.wpn.map((w, k) => { const W = WPN(w), F = FORMS[W.form], C = COLORS[F.color]; return `<div>${k === G.wi ? '▶' : '　'} ${F.icon} <b>${W.name}</b> ${F.name} ${W.dmg[0]}–${W.dmg[1]} · 부상 ${F.injury} · 막타 → ${F.part} <b style="color:${C.css}">●${C.name}</b></div>`; }).join('');
-    this.info(`<h3>무기 두 자루 <small style="color:#9aa2bd">탭 = 바꿔 들기</small></h3>${r}<div class="hint" style="margin-top:6px">💡 베기 = 출혈, 타격 = 골절(한 턴씩 쉰다·돌진 끊음), 찌르기 = 급소 표식 → 다음 찌르기 치명타</div>`);
+    const r = ['weapon', 'off'].map((k) => { const it = G.eq[k]; if (!it) return `<div>　${k === 'off' ? '보조' : '무기'}: 없음</div>`; if (!isWeapon(it)) return `<div>　보조: <b style="color:${RARITY[it.rarity].css}">${gearName(it)}</b></div>`; const W = weaponOf(it), F = FORMS[W.form], C = COLORS[F.color]; return `<div>${k === 'weapon' ? '▶' : '　'} ${F.icon} <b style="color:${RARITY[it.rarity].css}">${gearName(it)}</b> ${F.name} ${W.dmg[0]}–${W.dmg[1]} · 부상 ${F.injury} · 막타 → ${F.part} <b style="color:${C.css}">●${C.name}</b></div>`; }).join('');
+    this.info(`<h3>무기 · 보조 <small style="color:#9aa2bd">탭 = 맞바꾸기(보조가 무기일 때, 턴 소모 없음)</small></h3>${r}<div class="hint" style="margin-top:6px">💡 베기 = 출혈, 타격 = 골절(한 턴씩 쉰다·돌진 끊음), 찌르기 = 급소 표식 → 다음 찌르기 치명타</div>`);
   },
   renderWeapon() {
-    const W = WPN(G.wpn[G.wi]), F = FORMS[W.form], o = WPN(G.wpn[G.wi ^ 1]);
-    $('#btn-wpn').innerHTML = `${F.icon}<small>${W.name}·${F.name}</small><small style="font-size:9px;opacity:.7">⇄ ${o.name}</small>`;
+    if (!G.eq) return;
+    const W = weaponOf(G.eq.weapon), F = FORMS[W.form], o = G.eq.off;
+    $('#btn-wpn').innerHTML = `${F.icon}<small>${G.eq.weapon ? gearName(G.eq.weapon) : '맨손'}</small><small style="font-size:9px;opacity:.7">${isWeapon(o) ? '⇄ ' + gearName(o) : o ? gearName(o) : '보조 없음'}</small>`;
     $('#btn-wpn').style.boxShadow = `inset 0 -3px 0 ${COLORS[F.color].css}`;
+    $('#gearcount').textContent = G.bag && G.bag.length ? G.bag.length : '';
   },
+  legendFlash() { const el = $('#legendflash'); el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); },
   renderSlots(d) {
     this.slotsSnap = d;
     [...$('#souls').children].forEach((b, k) => {
@@ -59,7 +69,7 @@ Object.assign(UI, {
     for (const sk of SKILLS) { const b = this.skEls[sk.id], cd = d.cd[sk.id]; b.classList.toggle('cooling', cd > 0); b.querySelector('.cd').textContent = cd > 0 ? cd : ''; }
     const c = $('#btn-ctx');
     if (d.stairs) { c.disabled = false; c.classList.add('live'); c.innerHTML = '⬇<small>내려가기</small>'; c.dataset.act = 'stairs'; }
-    else if (d.wep) { const W = WPN(d.wep); c.disabled = false; c.classList.add('live'); c.innerHTML = `${FORMS[W.form].icon}<small>${W.name} 줍기</small>`; c.dataset.act = 'wep'; }
+    else if (d.gear) { c.disabled = false; c.classList.add('live'); c.innerHTML = `✋<small style="color:${RARITY[d.gear.rarity].css}">${d.gear.name} 줍기</small>`; c.dataset.act = 'gear'; }
     else if (d.door) { c.disabled = false; c.classList.remove('live'); c.innerHTML = '🚪<small>문 닫기</small>'; c.dataset.act = 'door'; c.dataset.x = d.door[0]; c.dataset.y = d.door[1]; }
     else { c.disabled = true; c.classList.remove('live'); c.innerHTML = '·<small>—</small>'; c.dataset.act = ''; }
   },
@@ -67,7 +77,7 @@ Object.assign(UI, {
     if (Anim.active || G.over) return;
     const c = $('#btn-ctx');
     if (c.dataset.act === 'stairs') descend();
-    else if (c.dataset.act === 'wep') this.weaponCard();
+    else if (c.dataset.act === 'gear') { this.instant(() => pickGear()); this.renderWeapon(); }
     else if (c.dataset.act === 'door') { const x = +c.dataset.x, y = +c.dataset.y; if (G.tile[I(x, y)] === T_OPEN && !entAt(x, y)) act(() => closeDoor(x, y)); }
   },
   log(t, cls) {

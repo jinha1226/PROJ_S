@@ -1,17 +1,21 @@
-import { cancelIntent, damage } from './combat.js';
-import { emitStatus, snapTerrain } from './snap.js';
-import { G, I, TL, XY, emit, entAt, inb, isP, log } from './state.js';
-import { synergy } from './stones.js';
 import { C_STEAM, S_ASH, S_GRASS, S_ICE, S_OIL, S_WATER, T_WALL } from '../data/terrain.js';
 import { D4, D8 } from '../util/grid.js';
+import { cancelIntent, damage } from './combat.js';
+import { emitStatus, snapTerrain } from './snap.js';
+import { G, I, TL, XY, emit, entAt, inb, isFoe, isP, log } from './state.js';
+import { synergy } from './stones.js';
 
 /* ================= 원소 ================= */
 export function addCloud(i, type, ttl) { if (G.tile[i] === T_WALL) return; G.cloud[i] = type; G.cloudT[i] = Math.max(G.cloudT[i], ttl); }
 
 export function steamAround(x, y) { for (const [dx, dy] of [[0, 0], ...D4]) { const nx = x + dx, ny = y + dy; if (inb(nx, ny) && G.tile[I(nx, ny)] !== T_WALL) addCloud(I(nx, ny), C_STEAM, 3); } snapTerrain(); }
 
+/** 내가 건 화상·중독이면 장비의 지속 +턴 */
+export const dotBonus = (e) => (isFoe(e) && G.ps && G.ctx && G.ctx.origin !== 'enemy' ? G.ps.dot : 0);
+
 export function applyFire(e, dmg, o = {}) {
   if (!e.alive) return;
+  if (isP(e) && G.ps && G.ps.burnImm && (G.surf[I(e.x, e.y)] === S_GRASS || G.fire[I(e.x, e.y)])) { emit('immune', { id: 0 }); return; }
   if (e.st.frozen > 0) {
     e.st.frozen = 0; e.st.wet = 3; emitStatus(e); cancelIntent(e);
     synergy('증기 폭발!', 'steam'); emit('steam', { x: e.x, y: e.y, big: true });
@@ -21,7 +25,8 @@ export function applyFire(e, dmg, o = {}) {
   if (e.st.poison > 0) { poisonBurst(e, o.chain || new Set()); return; }
   if (e.st.wet > 0) { e.st.wet = 0; emitStatus(e); emit('steam', { x: e.x, y: e.y, small: true }); damage(e, Math.ceil(dmg / 2), 'fire', { label: '치익' }); return; }
   damage(e, dmg, 'fire');
-  if (e.alive && e.st.burn < 3) { e.st.burn = 3; emitStatus(e); }
+  const bt = 3 + dotBonus(e);
+  if (e.alive && e.st.burn < bt) { e.st.burn = bt; emitStatus(e); }
 }
 
 export function poisonBurst(e, chain) {
@@ -98,6 +103,12 @@ export function conductSet(x0, y0) {
     if (next.length) layers.push(next);
     layer = next;
   }
+  // 번개 감긴 반지: 번질 때 1칸 더
+  if (seen.size > 1 && G.ps && G.ps.legend.has('stormRing') && G.ctx && G.ctx.origin !== 'enemy') {
+    const next = [];
+    for (const i of [...seen]) { const [x, y] = XY(i); for (const [dx, dy] of D8) { const nx = x + dx, ny = y + dy; if (!inb(nx, ny)) continue; const j = I(nx, ny); if (seen.has(j) || G.tile[j] === T_WALL) continue; seen.add(j); next.push(j); edges.push([i, j, layers.length]); } }
+    if (next.length) layers.push(next);
+  }
   return { layers, edges, seen };
 }
 
@@ -143,7 +154,7 @@ export function venomAt(x, y) {
   const c = entAt(x, y); emit('splat', { x, y });
   if (!c) return;
   damage(c, 1, 'poison');
-  if (c.alive && !c.st.immune) { c.st.poison = Math.max(c.st.poison, 6); emitStatus(c); }
+  if (c.alive && !c.st.immune) { c.st.poison = Math.max(c.st.poison, 6 + dotBonus(c)); emitStatus(c); }
 }
 
 export function fireAt(x, y, dmg) {

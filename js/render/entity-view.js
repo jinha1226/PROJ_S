@@ -10,7 +10,7 @@ export class EntView {
   constructor(e) {
     this.id = e.id; this.type = e.type;
     const sp = dollSpec(e);
-    this.d = K.doll(sp.parts, { scale: sp.scale * 1.3, gloss: 0.75 });
+    this.d = K.doll(sp.parts, { scale: sp.scale * 1.3, gloss: sp.gloss ?? 0.75 });
     this.h = sp.h * sp.scale * 1.3; this.col = sp.col;
     this.extra = sp.extra ? sp.extra(this.d) : {};
     View.dio.scene.add(this.d.root);
@@ -25,8 +25,18 @@ export class EntView {
     this.tagIco = this.tag.firstChild; this.tagHp = e.id === 0 ? null : this.tag.lastChild.firstChild; this.tagTxt = null; this.tagW = -1;
     View.labelRoot.appendChild(this.tag);
     this.cat = e.id === 0 || e.ally ? null : catOf(e); this.boss = !!e.boss; this.ally = !!e.ally; this.swing = null;
+    if (sp.glow) this.baseEm = sp.glow;
     if (e.ally && !e.npc) { this.d.mat.transparent = true; this.d.mat.opacity = 0.6; this.baseEm = [0.28, 0.12, 0.45]; }
     this.d.root.position.copy(this.cur); this.d.root.rotation.y = this.yaw; this.d.root.visible = this.visible;
+  }
+  /** 장비가 바뀌면 인형을 다시 입힌다(위치·자세는 그대로, 한 번 찌그러졌다 펴진다) */
+  redress(e) {
+    const old = this.d, sp = dollSpec(e);
+    View.dio.scene.remove(old.root); old.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+    this.d = K.doll(sp.parts, { scale: sp.scale * 1.3, gloss: sp.gloss ?? 0.75 }); this.h = sp.h * sp.scale * 1.3; this.col = sp.col;
+    this.extra = sp.extra ? sp.extra(this.d) : {}; this.baseEm = sp.glow || null;
+    this.ice = this.stars = this.vmark = this.bubble = null;
+    View.dio.scene.add(this.d.root); this.d.root.position.copy(this.cur); this.d.root.rotation.y = this.yaw; this.sqv -= 7;
   }
   moveTo(x, y, dur, hop, kind) {
     this.from.copy(this.cur); this.to.set(x, 0, y); this.t = 0; this.dur = Math.max(0.02, dur / 1000); this.hop = hop; this.mk = kind;

@@ -1,19 +1,20 @@
+import { craftArmor, craftWeapon, gearName, makeGear } from '../core/gear.js';
 import { META, craftNote, invAdd, invCount, moodAdd, newHero, packLimit, recipeName, saveMeta } from '../core/meta.js';
 import { BOSSES } from '../data/enemies.js';
+import { RARITY, SLOTS, SLOT_ICON, slotKind } from '../data/gear.js';
 import { ITEMS, MATS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { ZONES } from '../data/terrain.js';
 import { BLD, CRAFT_B, JOBS, MOODS, RECIPES, TRAITS, adj } from '../data/town.js';
-import { ARMORS, FORMS, WPN } from '../data/weapons.js';
 import { enterDungeon } from '../flow.js';
 import { W3 } from '../render/common.js';
 import { Sfx } from '../render/sfx.js';
 import { View } from '../render/view.js';
-import { talkLine } from './town-npc.js';
-import { Town } from './town.js';
 import { $, UI } from '../ui/ui.js';
 import { pick, rand } from '../util/rng.js';
 import { jo } from '../util/text.js';
+import { talkLine } from './town-npc.js';
+import { Town } from './town.js';
 
 Object.assign(Town, {
   renderHud() {
@@ -29,43 +30,22 @@ Object.assign(Town, {
     const P = this.prep, lim = packLimit(), carried = invCount(h.inv) + Object.values(P.items).reduce((a, b) => a + b, 0);
     const zones = ZONES.map((z, k) => { const open = k === 0 || META.cleared[k - 1]; return `<button class="wbtn ${P.zone === k ? 'on' : ''}" data-z="${k}" ${open ? '' : 'disabled style="opacity:.35"'}>${META.cleared[k] ? '✓' : open ? '▶' : '🔒'} 구역 ${k + 1}<small style="color:#9aa2bd">${z.name} · ${BOSSES[z.boss].name}</small></button>`; }).join('');
     const items = Object.entries(META.items).filter(([, n]) => n > 0).map(([k, n]) => `<div class="prow"><span>${ITEMS[k].name} <small style="color:#9aa2bd">창고 ${n}</small></span><span><button data-m="${k}">−</button><b>${P.items[k] || 0}</b><button data-p="${k}">+</button></span></div>`).join('') || '<p style="color:#9aa2bd;font-size:13px">창고에 소모품이 없다 — 제작소에서 만들 수 있다.</p>';
-    const pool = this.weaponPool(h);
-    const opt = (sel) => pool.map((w, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${FORMS[WPN(w.id).form].icon} ${WPN(w.id).name} (${FORMS[WPN(w.id).form].name} ${WPN(w.id).dmg.join('–')})${w.src === 'meta' ? ' · 창고' : w.src === 'basic' ? ' · 기본' : ''}</option>`).join('');
-    const arms = [null, ...(h.armor ? [h.armor] : []), ...META.armors];
-    const aopt = arms.map((a, i) => `<option value="${i}" ${i === (h.armor ? 1 : 0) ? 'selected' : ''}>${a ? `${ARMORS[a].name} — ${ARMORS[a].desc}` : '갑옷 없음'}</option>`).join('');
     const sh = this.sheet(`<h3>🚪 출발문 <button class="close">닫기</button></h3>
       <div class="gtxt">모험가 <b>${h.name}</b> (${h.gen}대째) · HP ${h.hp}/${h.max} · 영혼석 ${h.slots.filter((q) => q.stone).map((q) => `<span style="color:${COLORS[q.color].css}">${STONE[q.stone].icon}</span>`).join('') || '없음'}</div>
       <div class="sec">구역 <small>보스를 잡아야 다음 구역이 열린다 · 안에서는 돌아올 수 없다</small></div><div class="wrow">${zones}</div>
       <div class="sec">준비물 ${carried}/${lim} <small>이미 든 것 ${invCount(h.inv)} · 마을 사람이 늘면 더 챙겨 준다</small></div>${items}
-      <div class="sec">무기 두 자루</div><div class="wrow"><select id="wA">${opt(0)}</select><select id="wB">${opt(1)}</select></div>
-      <div class="sec">갑옷</div><select id="arm" style="width:100%">${aopt}</select>
+      <div class="sec">장비 <small>창고의 장비는 죽어도 남는다</small></div><div class="gtxt">${SLOTS.filter((k) => h.eq[k]).map((k) => `<span style="color:${RARITY[h.eq[k].rarity].css}">${SLOT_ICON[k]} ${gearName(h.eq[k])}</span>`).join(' · ')}</div>
+      <button class="wbtn" data-inv="1" style="width:100%;margin-top:6px">🛡 장비 창 — 창고 ${META.gear.length} · 가방 ${h.bag.length}/20</button>
       ${META.buff === 'feast' ? '<div class="gtxt" style="margin-top:6px">🍲 든든한 한 끼 — 출발 시 보호막 +6</div>' : ''}
       <button class="bigbtn" id="btn-depart">구역 ${P.zone + 1}로 출발</button>`);
     sh.querySelectorAll('[data-z]').forEach((b) => { b.onclick = () => { P.zone = +b.dataset.z; this.gate(); }; });
     sh.querySelectorAll('[data-p]').forEach((b) => { b.onclick = () => { const k = b.dataset.p; if (carried >= lim) { UI.toast('더는 못 챙긴다'); return; } if ((P.items[k] || 0) < META.items[k]) { P.items[k] = (P.items[k] || 0) + 1; this.gate(); } }; });
     sh.querySelectorAll('[data-m]').forEach((b) => { b.onclick = () => { const k = b.dataset.m; if (P.items[k]) { P.items[k]--; this.gate(); } }; });
-    sh.querySelector('#btn-depart').onclick = () => this.depart(pool, arms);
+    sh.querySelector('[data-inv]').onclick = () => UI.openInv();
+    sh.querySelector('#btn-depart').onclick = () => this.depart();
   },
-  weaponPool(h) {
-    const pool = h.wpn.map((id) => ({ id, src: 'hero' }));
-    META.weapons.forEach((id, i) => pool.push({ id, src: 'meta', i }));
-    for (const id of ['sword', 'mace', 'dagger']) pool.push({ id, src: 'basic' });
-    return pool;
-  },
-  depart(pool, arms) {
-    const h = META.hero, P = this.prep, a = +$('#wA').value, b = +$('#wB').value, ai = +$('#arm').value;
-    if (a === b) { UI.toast('서로 다른 무기 두 자루를 골라야 한다'); return; }
-    const chosen = [pool[a], pool[b]], basic = new Set(['sword', 'mace', 'dagger']);
-    for (const w of pool) if (w.src === 'hero' && !chosen.includes(w) && !basic.has(w.id)) META.weapons.push(w.id);
-    for (const w of chosen.filter((w) => w.src === 'meta').sort((x, y) => y.i - x.i)) META.weapons.splice(w.i, 1);
-    h.wpn = chosen.map((w) => w.id); h.wi = 0;
-    const na = arms[ai];
-    if (na !== h.armor) {
-      if (h.armor) META.armors.push(h.armor);
-      if (na) { const idx = META.armors.indexOf(na); if (idx >= 0) META.armors.splice(idx, 1); }
-      h.armor = na;
-      const mx = h.base + ((na && ARMORS[na].maxHp) || 0); h.hp = Math.min(mx, h.hp + Math.max(0, mx - h.max)); h.max = mx;
-    }
+  depart() {
+    const h = META.hero, P = this.prep;
     for (const [k, n] of Object.entries(P.items)) if (n > 0) { META.items[k] -= n; invAdd(h.inv, k, n); h.known[k] = true; }
     const zone = P.zone + 1; this.prep = null;
     $('#sheet').classList.add('hidden');
@@ -137,8 +117,9 @@ Object.assign(Town, {
     if (t.H <= -1 && rand() < 0.3) { const m = pick(Object.keys(q.in)); if (META.mats[m] > 0) { META.mats[m]--; notes.push(`${jo(n.name, '이가')} ${m} 하나를 슬쩍 챙겼다`); } }
     let made;
     if (q.out) { const cnt = (q.n || 1) + (extra ? 1 : 0) + (plus ? 1 : 0); META.items[q.out] = (META.items[q.out] || 0) + cnt; made = `${ITEMS[q.out].name} ×${cnt}`; if (extra) notes.push(`${adj(n, 'C')} ${jo(n.name, '이가')} 하나 더 만들었다`); if (plus) notes.push('손끝이 좋아 하나 더!'); }
-    else if (q.weapon) { const id = q.weapon + (plus ? '+' : ''); META.weapons.push(id); made = WPN(id).name; if (plus) notes.push(`명품! ${adj(n, 'O')} ${n.name}의 손길`); }
-    else if (q.armor) { const id = q.armor + (plus ? '+' : ''); META.armors.push(id); made = ARMORS[id].name; if (plus) notes.push(`명품! ${adj(n, 'O')} ${n.name}의 손길`); }
+    else if (q.weapon) { const it = craftWeapon(q.weapon + (plus ? '+' : '')); META.gear.push(it); made = gearName(it); if (plus) notes.push(`명품! ${adj(n, 'O')} ${n.name}의 손길`); }
+    else if (q.gear) { const it = makeGear(q.gear, plus ? 'magic' : 'common'); META.gear.push(it); made = gearName(it); if (plus) notes.push(`명품! ${adj(n, 'O')} ${n.name}의 손길`); }
+    else if (q.armor) { const it = craftArmor(q.armor + (plus ? '+' : '')); META.gear.push(it); made = gearName(it); if (plus) notes.push(`명품! ${adj(n, 'O')} ${n.name}의 손길`); }
     else { META.buff = 'feast'; made = '든든한 한 끼 (다음 출발 보호막 +6)'; }
     moodAdd(n, t.C >= 1 ? 1 : 0);
     saveMeta();
@@ -149,12 +130,12 @@ Object.assign(Town, {
   /* ---- 창고 · 휴식 · 카드 ---- */
   storage() {
     const it = Object.entries(META.items).filter(([, n]) => n > 0).map(([k, n]) => `${ITEMS[k].name} ×${n}`).join(' · ') || '없음';
-    const ws = META.weapons.map((w) => WPN(w).name).join(' · ') || '없음', ar = META.armors.map((a) => ARMORS[a].name).join(' · ') || '없음';
+    const ws = META.gear.map((it) => `<span style="color:${RARITY[it.rarity].css}">${SLOT_ICON[slotKind(it)]} ${gearName(it)}</span>`).join(' · ') || '없음';
     const fallen = META.fallen.slice(-6).reverse().map((f) => `<div>🕯 ${f.name} (${f.gen}대) — 구역 ${f.zone}-${f.zf}, ${f.kills}마리</div>`).join('') || '<div>아직 아무도 쓰러지지 않았다.</div>';
     this.sheet(`<h3>📦 창고 <button class="close">닫기</button></h3>
       <div class="sec">재료</div><div class="gems" style="grid-template-columns:repeat(4,1fr)">${Object.entries(MATS).map(([m, ic]) => `<div class="gch" style="--c:#6a6050">${ic}<small>${m} ${META.mats[m] || 0}</small></div>`).join('')}</div>
       <div class="sec">소모품</div><div class="gtxt">${it}</div>
-      <div class="sec">무기 · 갑옷</div><div class="gtxt">${ws}<br>${ar}</div>
+      <div class="sec">장비 ${META.gear.length} <small>🛡 장비 창에서 가방으로 옮긴다</small></div><div class="gtxt">${ws}</div>
       <div class="sec">구역</div><div class="gtxt">${ZONES.map((z, k) => `${META.cleared[k] ? '✓' : '·'} ${k + 1}. ${z.name} — ${BOSSES[z.boss].name}`).join('<br>')}</div>
       <div class="sec">기억할 이름들</div><div class="gtxt">${fallen}</div>`);
   },
@@ -176,7 +157,7 @@ Object.assign(Town, {
   },
   heroCard() {
     const h = META.hero; if (!h) return;
-    UI.info(`<h3>🧭 ${h.name} <small style="color:#9aa2bd">${h.gen}대째 모험가 · HP ${h.hp}/${h.max}</small></h3><div class="gtxt">무기: ${h.wpn.map((w) => `${FORMS[WPN(w).form].icon} ${WPN(w).name}`).join(' / ')}<br>갑옷: ${h.armor ? ARMORS[h.armor].name : '없음'}<br>영혼석: ${h.slots.filter((q) => q.stone).map((q) => `<span style="color:${COLORS[q.color].css}">${STONE[q.stone].icon}${STONE[q.stone].name}</span>`).join(' ') || '없음'}<br>가방: ${h.inv.map((q) => `${ITEMS[q.k].name}×${q.n}`).join(', ') || '비어 있음'}</div>`);
+    UI.info(`<h3>🧭 ${h.name} <small style="color:#9aa2bd">${h.gen}대째 모험가 · HP ${h.hp}/${h.max}</small></h3><div class="gtxt">장비: ${SLOTS.filter((k) => h.eq[k]).map((k) => `<span style="color:${RARITY[h.eq[k].rarity].css}">${SLOT_ICON[k]}${gearName(h.eq[k])}</span>`).join(' ')}<br>영혼석: ${h.slots.filter((q) => q.stone).map((q) => `<span style="color:${COLORS[q.color].css}">${STONE[q.stone].icon}${STONE[q.stone].name}</span>`).join(' ') || '없음'}<br>가방: ${h.inv.map((q) => `${ITEMS[q.k].name}×${q.n}`).join(', ') || '비어 있음'}</div>`);
   },
   report(r, res) {
     const W = { boss: `🏆 구역 ${r.zone} 보스 격파!${r.first ? ' 다음 구역이 열렸다.' : ''}`, recall: `📜 귀환 두루마리로 구역 ${r.zone}-${r.zf}에서 돌아왔다. 이 구역은 처음부터 다시.`, death: `🕯 ${jo(r.hero, '이가')} 구역 ${r.zone}-${r.zf}에서 쓰러졌다. 영혼석과 전리품을 잃었다.`, first: '🏕 작은 정착지. 출발문에서 원정을 떠나고, 전리품으로 마을을 키운다.', resume: '🏕 정착지로 돌아왔다.' }[r.reason] || '';

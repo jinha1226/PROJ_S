@@ -1,22 +1,23 @@
 import * as THREE from 'three';
-import * as K from './diorama.js';
 import { G, Game, I, XY, entAt, inb, itemSnap, tileAt } from '../core/state.js';
 import { HEX } from '../data/colors.js';
 import { CATS } from '../data/enemies.js';
+import { weaponId, weaponOf } from '../data/gear.js';
 import { MATS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrain.js';
-import { FORMS, WPN } from '../data/weapons.js';
+import { FORMS } from '../data/weapons.js';
+import { D8 } from '../util/grid.js';
 import { W3, _tv, _w } from './common.js';
+import * as K from './diorama.js';
 import { itemDoll, makeGem, matProp, propDoll, weaponDoll } from './dolls.js';
 import { EntView, stIcons } from './entity-view.js';
 import { ports } from './ports.js';
 import { Sfx } from './sfx.js';
-import { D8 } from '../util/grid.js';
 
 export const View = {
   gems: new Map(),
-  wepMeshes: new Map(),
+
   matMeshes: new Map(),
   portal: null,
   shield: 0,
@@ -47,7 +48,7 @@ export const View = {
     for (const m of this.itemMeshes.values()) this.dio.scene.remove(m.root); this.itemMeshes.clear();
     if (this.stairs) this.dio.scene.remove(this.stairs); this.stairs = null;
     for (const g of this.gems.values()) this.dio.scene.remove(g); this.gems.clear();
-    for (const w of this.wepMeshes.values()) this.dio.scene.remove(w); this.wepMeshes.clear();
+    this.clearGear();
     for (const m of this.matMeshes.values()) this.dio.scene.remove(m); this.matMeshes.clear();
     if (this.portal) { this.dio.scene.remove(this.portal); this.portal = null; }
     this.dio.labels.clear();
@@ -65,8 +66,8 @@ export const View = {
     this.grid.setTerrain({ surf: G.surf, fire: G.fire, cloud: G.cloud, cloudT: G.cloudT });
     this.applyVis(G.vis, G.seen);
     this.syncItems(itemSnap());
-    this.syncGems([...G.stones.entries()]); this.syncWeps([...G.weps.entries()]);
-    this.setWeapon(G.wpn[G.wi]); this.shield = G.player.shield || 0;
+    this.syncGems([...G.stones.entries()]); this.syncGear([...G.gear.entries()]); this.syncChests();
+    this.setWeapon(weaponId(G.eq.weapon)); this.shield = G.player.shield || 0;
     this.intents = { decals: [], tags: {}, casting: [], winding: [] };
     const p = G.player; this.lightPos.set(p.x, 0, p.y); this.dio.lightTarget = this.lightPos;
     this.dio.rig.focusT.set(p.x, 0, p.y); this.dio.rig.snap();
@@ -104,22 +105,12 @@ export const View = {
     const sn = (i) => !!(this.seen && this.seen[i]);
     for (const [i, d] of this.itemMeshes) d.root.visible = sn(i);
     for (const [i, g] of this.gems) if (!g.userData.drop) g.visible = sn(i);
-    for (const [i, w] of this.wepMeshes) w.visible = sn(i);
     for (const [i, m] of this.matMeshes) m.visible = sn(i);
   },
   syncGems(list) {
     const keep = new Set(list.map(([i]) => i));
     for (const [i, g] of this.gems) if (!keep.has(i)) { this.dio.scene.remove(g); this.gems.delete(i); }
     for (const [i, id] of list) if (!this.gems.has(i)) { const g = makeGem(id), [x, y] = XY(i); g.position.set(x, 0, y); this.dio.scene.add(g); this.gems.set(i, g); }
-    this.applyItemVis();
-  },
-  syncWeps(list) {
-    for (const w of this.wepMeshes.values()) this.dio.scene.remove(w); this.wepMeshes.clear();
-    for (const [i, id] of list) {
-      const g = new THREE.Group(), d = weaponDoll(id), [x, y] = XY(i);
-      d.root.rotation.set(Math.PI / 2, 0, 0.7); d.root.position.set(0, 0.07, -0.2); g.add(d.root); g.position.set(x, 0, y); g.userData.ph = Math.random() * 6;
-      this.dio.scene.add(g); this.wepMeshes.set(i, g);
-    }
     this.applyItemVis();
   },
   syncMats() {
@@ -196,7 +187,7 @@ export const View = {
       } else g.position.y = 0.04 + Math.sin(time * 2.2 + u.ph) * 0.05;
       u.crystal.rotation.y = time * 1.6 + u.ph; u.glow.material.opacity = 0.5 + 0.3 * Math.sin(time * 3 + u.ph);
     }
-    for (const [, w] of this.wepMeshes) w.position.y = 0.03 + Math.abs(Math.sin(time * 1.8 + w.userData.ph)) * 0.05;
+    this.gearFrame(sdt, time);
     const s = {};
     for (const ev of this.evs.values()) {
       const r = ev.d.root, txtIntent = this.intents.tags[ev.id] || '', txtSt = stIcons(ev.st), show = r.visible && !ev.dead && (ev.id !== 0 || txtSt);
@@ -207,8 +198,8 @@ export const View = {
       let extra = '';
       if (ev.cat) {
         if (G.weakKnown[ev.cat]) extra += `<span class="wk">${FORMS[CATS[ev.cat].weak].icon}</span>`;
-        const w = WPN(G.wpn[G.wi]), weak = CATS[ev.cat].weak === w.form;
-        const mx = Math.ceil(w.dmg[1] * (weak ? 1.5 : 1) * (ev.st.frozen ? 1.5 : 1)) * (w.form === 'pierce' && ev.st.vital ? 2 : 1);
+        const w = weaponOf(G.eq.weapon), weak = CATS[ev.cat].weak === w.form;
+        const mx = Math.ceil((w.dmg[1] + G.ps.dmg) * (weak ? 1.5 : 1) * (ev.st.frozen ? 1.5 : 1)) * (w.form === 'pierce' && ev.st.vital ? 2 : 1);
         if (ev.hp <= mx) extra += `<b class="fin" style="color:${COLORS[FORMS[w.form].color].css}">◆</b>`;
       }
       const txt = txtIntent + extra + txtSt;
@@ -218,6 +209,7 @@ export const View = {
   },
   /* ---------- 사건 → 연출 ---------- */
   on(type, d) {
+    if (this.gearOn(type, d)) return;
     const D = this.dio, ev = d && d.id != null ? this.evs.get(d.id) : null;
     switch (type) {
       case 'move': if (ev) { ev.moveTo(d.x, d.y, d.dur, d.hop, d.kind); ev.visible = d.id === 0 || !!d.seen; if (d.kind === 'step' && ev.visible) D.puffs.emit({ pos: W3(ev.cur.x, ev.cur.z, 0.06), n: 2, color: 0x8a8098, speed: 0.4, grav: 0, life: 0.4, size: 0.18, flat: true }); if (d.id === 0 && d.kind === 'step') Sfx.play('step'); if (d.kind === 'dash') D.puffs.emit({ pos: W3(ev.cur.x, ev.cur.z, 0.1), n: 3, color: 0x9a8e80, speed: 0.8, grav: 0, life: 0.5, size: 0.3, flat: true }); } break;
@@ -250,8 +242,6 @@ export const View = {
       case 'chainEnd': this.boost = 1; break;
       case 'slowmo': this.slowmo(d.stage); break;
       case 'slots': ports.UI.renderSlots(d); break;
-      case 'weapon': this.setWeapon(d.id); ports.UI.renderWeapon(); break;
-      case 'weps': this.syncWeps(d); break;
       case 'stoneDrop': {
         const [tx, ty] = d.to, i = I(tx, ty); let g = this.gems.get(i);
         if (!g) { g = makeGem(d.id); this.dio.scene.add(g); this.gems.set(i, g); }
