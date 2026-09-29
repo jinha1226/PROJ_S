@@ -54,7 +54,7 @@ Object.assign(Town, {
     const vs = volunteers();
     const cards = vs.map((n, k) => { const pk = perkOf(n), line = n.t.E <= -1 ? VOLUNTEER.lowE : n.t.H >= 1 ? VOLUNTEER.highH : n.t.A >= 1 ? VOLUNTEER.highA : VOLUNTEER.other;
       return `<button class="vol" data-v="${k}"><b>${n.name}</b><small>${summary(n)} · ${jo(BLD[JOBS[n.job].b].name, '이가')} 빈다</small><span class="vline">“${line}”</span><span class="perk">${pk ? `✦ ${PERKS[pk].name}: ${PERKS[pk].desc}` : '✦ 특별한 시작 특성 없음'}</span></button>`; }).join('');
-    const sh = this.sheet(`<h3>누가 횃불을 들까</h3><div class="gtxt">등불지기가 쓰러졌다. 누군가 다시 내려가야 한다.<br><small>고른 사람은 정착지를 떠나 등불지기가 된다. 그 사람의 일터는 비고, 가까웠던 이웃들은 슬퍼한다.</small></div><div class="vols">${cards}</div>`);
+    const sh = this.sheet(`<h3>누가 횃불을 들까</h3><div class="gtxt">등불지기가 쓰러졌다. 누군가 다시 내려가야 한다.</div><div class="vols">${cards}</div>`);
     sh.querySelectorAll('[data-v]').forEach((b) => { b.onclick = () => this.torchScene(vs[+b.dataset.v]); });
   },
   torchScene(n, note) {

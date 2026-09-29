@@ -1,4 +1,4 @@
-import { kindOf } from '../data/enemies.js';
+import { catOf, kindOf } from '../data/enemies.js';
 import { APPEAR, ITEMS } from '../data/items.js';
 import { cheb } from '../util/grid.js';
 import { mulberry32, pick, rand, ri, seedOr, setR, shuffle } from '../util/rng.js';
@@ -66,7 +66,7 @@ export function noticeFoes() {
   for (const e of G.ents) {
     if (!e.alive || !isFoe(e) || e.npc || !seesEnt(e)) continue;
     const k = e.boss || kindOf(e); if (seen.includes(k)) continue;
-    seen.push(k); saveMeta(); e.firstSeen = true;
+    seen.push(k); (META.foeBook ||= {})[k] = { name: e.name, cat: catOf(e), hp: e.max, atk: e.atk }; saveMeta(); e.firstSeen = true;
     emit('firstSeen', { id: e.id, name: e.name }); log(`처음 보는 적: ${e.name}.`, 'info');
   }
 }

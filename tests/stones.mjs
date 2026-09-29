@@ -112,7 +112,7 @@ check('넓어진 층(40칸·방 10개 이상·적 늘어남) · 지도에서 누
 const s13 = await page.evaluate(async () => { const g = window.__game, C = await import('/js/core/combat.js'), G = arena([[3, 3, { hp: 999, max: 999, awake: false }]]), p = G.player, foe = G.ents[1], U = g.UI;
   G.ps.eva = 100; G.ps.block = 0; p.shield = 0; let dodged = false; for (let k = 0; k < 60 && !dodged; k++) { G.hurt = false; const hp = p.hp; if (C.damage(p, 3, 'hit', { src: foe }) === 0 && p.hp === hp) dodged = G.hurt; else p.hp = hp; }
   U.travel = { path: [[p.x + 1, p.y], [p.x + 2, p.y]], first: false }; U.explore = true; U.travelStep(); const stopped = !U.travel && !U.explore && /공격받았다/.test(document.querySelector('#toast').textContent);
-  foe.alive = false; U.startExplore(); const refused = !U.explore && /공격받고 있어서/.test(document.querySelector('#toast').textContent);
+  foe.alive = false; U.startExplore(); const refused = !U.explore && /공격받고 있다/.test(document.querySelector('#toast').textContent);
   // 감전으로 기절: 기절 턴이 지나가도 탐험을 이어 가지 않는다
   G.hurt = true; p.st.stun = 1; U.explore = true; U.travel = { path: [[p.x + 1, p.y]], first: false }; U.afterTurn(); const stun = !U.explore && !U.travel; await new Promise((r) => setTimeout(r, 500)); drain(); p.st.stun = 0;
   G.ps.eva = 0; G.hurt = false; G.hurtTurn = -9; return { dodged, stopped, refused, stun }; });

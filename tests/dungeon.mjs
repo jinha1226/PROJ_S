@@ -85,7 +85,7 @@ check('§10-7 처음 보는 적 알림 · 정보 카드 속도·위험', d7.reme
 const d8 = await page.evaluate(async () => { const g = window.__game, G = arena([[1, 0, { hp: 99, max: 99, name: '고블린' }]]), p = G.player, C = await import('/js/core/combat.js'), D = g.View.dio; p.hp = p.max = 30; G.ps.def = 0;
   window.hurts = []; const h0 = g.UI.hurt.bind(g.UI); g.UI.hurt = (b) => { window.hurts.push(b); h0(b); }; window.hits2 = []; const on = g.View.on; g.View.on = function (t, d) { if (t === 'hit') window.hits2.push([d.id, d.amt, d.kind]); return on.apply(this, arguments); };
   g.act(() => { C.damage(p, 8, 'hit', { src: G.ents[1] }); return true; }); drain(); g.View.on = on; g.UI.hurt = h0; const stop = D._stop > 0, big = window.hurts[0] === true; // 첫 피격(8 = 최대 HP의 20% 이상)이 큰 피해로
-  p.hp = 6; g.UI.hp(6, 30); const low = +document.querySelector('#lowhp').style.opacity; G.hurtTurn = -9; G.ents[1].alive = false; g.UI.startExplore(); const refused = !g.UI.explore && /너무 다쳐서/.test(document.querySelector('#toast').textContent);
+  p.hp = 6; g.UI.hp(6, 30); const low = +document.querySelector('#lowhp').style.opacity; G.hurtTurn = -9; G.ents[1].alive = false; g.UI.startExplore(); const refused = !g.UI.explore && /너무 다쳤다/.test(document.querySelector('#toast').textContent);
   G.ents[1].alive = true; g.act(() => { C.damage(p, 99, 'hit', { src: G.ents[1] }); return true; }); drain(); await new Promise((r) => setTimeout(r, 1500)); drain(); await new Promise((r) => setTimeout(r, 1200));
   const scr = document.querySelector('#screen').textContent; return { stop, big, low, refused, summary: /고블린에게/.test(scr) && /쓰러지다/.test(scr) && /턴/.test(scr) }; });
 check('5단계: 큰 피해 멈칫·붉은 테 · 빈사 화면·탐험 막기 · 사망 요약', d8.stop && d8.big && d8.low > 0.4 && d8.refused && d8.summary, JSON.stringify(d8));
@@ -94,7 +94,7 @@ check('5단계: 큰 피해 멈칫·붉은 테 · 빈사 화면·탐험 막기 ·
 const d9 = await page.evaluate(async () => { const g = window.__game, water = {}; for (let x = 16; x <= 19; x++) for (let y = 11; y <= 19; y++) water[y * 40 + x] = 1;
   const G = arena([[3, 0, { type: 'leech', name: '거머리', speed: 'slow', hidden: true, hp: 99, max: 99 }]], water), C = await import('/js/core/combat.js'); G.hurtTurn = -9; G.stats.turns = 50;
   C.damage(G.player, 1, 'poison'); const dot = (G.hurtTurn ?? -9) < 0; G.hurt = false;
-  g.UI.startExplore(); const started = g.UI.explore || !/공격받고 있어서/.test(document.querySelector('#toast').textContent); g.UI.explore = false; g.UI.travel = null; drain();
+  g.UI.startExplore(); const started = g.UI.explore || !/공격받고 있다/.test(document.querySelector('#toast').textContent); g.UI.explore = false; g.UI.travel = null; drain();
   return { dot, started }; });
 check('자동 탐험 오판 없음: 숨은 적·지속 피해는 공격받는 중이 아니다', d9.dot && d9.started, JSON.stringify(d9));
 

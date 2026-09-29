@@ -35,7 +35,7 @@ Object.assign(UI, {
       ${perk ? `<div class="gtxt" style="color:#ffe38a">✦ ${perk.name}: ${perk.desc}</div>` : ''}
       <div class="st-bars">${bar('HP', p.hp, p.max, '#ff5a6a')}${bar('보호막', p.shield || 0, 10, '#9fd8ff', String(p.shield || 0))}${bar('횃불', torch, tmax, '#ffb040', `${Number.isInteger(torch) ? torch : torch.toFixed(1)} · 시야 ${torchSight(torch)}칸`)}</div>
       <div class="sec">상태 이상 · 지속 효과</div><div class="st-list">${st + auras || '<div style="color:#9aa2bd">없음</div>'}</div>
-      <div class="sec">영혼석 스킬 <small>🔴 적중 · 🟣 대기 · 🟢 피격 때 한 턴 더 줄어든다</small></div><div class="st-grid">${stones}</div>
+      <div class="sec">영혼석 스킬</div><div class="st-grid">${stones}</div>
       <div class="gtxt" style="margin-top:4px">영혼석 가방 ${G.sbag.length}/${G.sbagMax || 3}: ${bag}</div>
       <div class="sec">전투 수치 <small>누르면 출처</small></div>${this.statsRows()}
       <div class="sec">알아낸 약점</div><div class="gtxt">${weak}</div>

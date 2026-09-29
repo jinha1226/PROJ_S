@@ -13,13 +13,14 @@ import { adjFoes, areaTiles, arrowPath, castBolt, castFire, castFrost, castPush,
 import { emitSlots, emitStatus, snapTerrain } from './snap.js';
 import { G, I, TL, emit, entAt, isFoe, log, newSt, seesEnt, standable } from './state.js';
 import { jo } from '../util/text.js';
+import { META, saveMeta } from './meta.js';
 
 export function synergy(text, elem) { G.stats.combos++; emit('banner', { text, elem }); log(text, 'syn'); if (G.ctx && (G.ctx.stones > 0 || G.ctx.origin !== 'enemy')) bumpStage(G.ctx); }
 
 export function dropStone(e, f) {
   // 몬스터별 랜덤: 가진 세 색 중 하나(각 1/3). 무기로 쓰러뜨리면 45%, 아니면 15% — 횃불이 어두울수록 더 잘 남는다. 보스는 확실히
   const chance = Math.min(0.95, (f ? STONE_DROP.weapon : STONE_DROP.other) * DARK[torchTier(G.torch ?? 100)].drop);
-  if (!e.boss && rand() >= chance) { if (!f && G.dropHint++ < 2) log('영혼이 흩어졌다. 무기로 쓰러뜨리면 더 잘 남는다.', 'info'); return; }
+  if (!e.boss && rand() >= chance) { if (!f && G.dropHint++ < 2) log('영혼이 흩어졌다.', 'info'); return; }
   const color = pick(['red', 'purple', 'green']);
   const id = DROPS[kindOf(e)][color], spot = freeDropSpot(e.x, e.y); if (!spot) return;
   G.stones.set(I(spot[0], spot[1]), id);
@@ -186,6 +187,7 @@ export function boneArrow(e, dmg) {
 }
 
 export function addStone(id) {
+  if (META) { const seen = (META.seenStones ||= []); if (!seen.includes(id)) { seen.push(id); saveMeta(); } }
   const sl = G.slots.find((q, k) => !q.stone && k < (G.level || 6));
   if (sl) { sl.stone = id; sl.color = STONE[id].color; G.stats.stones++; log(`영혼석 ${jo(STONE[id].name, '을를')} 흡수했다.`, 'syn'); return true; }
   if (G.sbag.length < (G.sbagMax || 3)) { G.sbag.push(id); G.stats.stones++; log(`영혼석 ${jo(STONE[id].name, '을를')} 가방에 넣었다.`, 'good'); return true; }

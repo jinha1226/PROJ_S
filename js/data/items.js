@@ -11,7 +11,7 @@ export const ITEMS = {
   ident: { cat: 'scroll', name: '확인 두루마리', desc: '장비 하나의 정체를 드러낸다.', target: true },
   enchW: { cat: 'scroll', name: '무기 강화 두루마리', desc: '무기 하나를 강화한다.', target: true },
   enchA: { cat: 'scroll', name: '방어구 강화 두루마리', desc: '방어구 하나를 강화한다.', target: true },
-  recall: { cat: 'scroll', name: '귀환 두루마리', desc: '한 턴 뒤 정착지로 돌아간다. 이 구역은 처음부터 다시 해야 한다.' },
+  recall: { cat: 'scroll', name: '귀환 두루마리', desc: '한 턴 뒤 정착지로 돌아간다.' },
   oil: { cat: 'throw', name: '기름병', desc: '십자 모양으로 기름을 쏟는다. 불이 닿으면 잇따라 터진다.' },
   water: { cat: 'throw', name: '물병', desc: '십자 모양으로 물을 쏟는다. 닿은 적은 젖는다.' },
   smoke: { cat: 'throw', name: '연막탄', desc: '떨어진 곳 둘레에 6턴 동안 연기가 낀다. 연기 너머로는 궁수와 마법사가 겨누지 못한다.' },

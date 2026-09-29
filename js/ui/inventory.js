@@ -132,8 +132,8 @@ Object.assign(UI, {
       <button class="stline" data-act="stats">HP ${H.unit.max} · 방어 ${s.def} · 회피 ${s.eva}%${s.block ? ` · 막기 ${s.block}%` : ''} · 피해 ${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} <b style="color:${COLORS[w.color].css}">×${cmul(w).toFixed(2)}</b> <small>▸ 자세히</small></button>
       ${detail ? `<div class="gdetail">${detail}</div>` : ''}
       <div class="invtabs">${tabs.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-itab="${k}">${l}</button>`).join('')}</div>
-      ${tab === 'items' ? this.itemsHtml(inv) : tab === 'stones' ? this.stonesHtml() : `<div class="sec">가방 ${bag.length}/${BAG_MAX} <small>▲ 지금 것보다 나음 · ? 모르는 것이 있음</small></div><div class="bggrid">${bagCells}</div>
-      ${town ? `<div class="sec">창고 ${stash.length} <small>죽어도 잃지 않는다</small></div><div class="bggrid">${stashCells}</div>` : ''}`}`;
+      ${tab === 'items' ? this.itemsHtml(inv) : tab === 'stones' ? this.stonesHtml() : `<div class="sec">가방 ${bag.length}/${BAG_MAX}</div><div class="bggrid">${bagCells}</div>
+      ${town ? `<div class="sec">창고 ${stash.length}</div><div class="bggrid">${stashCells}</div>` : ''}`}`;
     sh.classList.remove('hidden');
     sh.querySelector('.close').onclick = () => { sh.classList.add('hidden'); sh.classList.remove('tall'); };
     sh.querySelectorAll('[data-eq]').forEach((b) => { b.onclick = () => { this.invSel = eq[b.dataset.eq] ? { from: 'eq', slot: b.dataset.eq } : null; this.renderInv(); }; });

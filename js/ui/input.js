@@ -91,9 +91,9 @@ Object.assign(UI, {
   },
   startExplore() {
     if (Anim.active || G.over || this.overlayOpen()) return;
-    if (visibleFoes().length) { this.toast('적이 보여서 탐험할 수 없다.'); return; }
-    if (this.underAttack()) { this.toast('공격받고 있어서 탐험할 수 없다.'); return; }
-    if (G.player.hp <= G.player.max * 0.3) { this.toast('너무 다쳐서 탐험할 수 없다.'); return; } // 빈사
+    if (visibleFoes().length) { this.toast('적이 보인다.'); return; }
+    if (this.underAttack()) { this.toast('공격받고 있다.'); return; }
+    if (G.player.hp <= G.player.max * 0.3) { this.toast('너무 다쳤다.'); return; } // 빈사
     this.explore = true; this.rest = null; this.exploreSkip = new Set();
     this.exploreStep();
   },
@@ -123,8 +123,8 @@ Object.assign(UI, {
   waitBtn() { if (G.player.st.frozen || G.player.st.stun) return; this.travel = null; this.explore = false; this.rest = null; if (this.mode === 'target') this.exitTarget(); act(() => playerWait()); },
   startRest() {
     if (Anim.active || G.over) return;
-    if (visibleFoes().length) { this.toast('적이 보여서 쉴 수 없다.'); return; }
-    if (this.underAttack()) { this.toast('공격받고 있어서 쉴 수 없다.'); return; }
+    if (visibleFoes().length) { this.toast('적이 보인다.'); return; }
+    if (this.underAttack()) { this.toast('공격받고 있다.'); return; }
     if (G.player.hp >= G.player.max && !G.player.st.poison) { this.toast('쉴 필요가 없다.'); return; }
     this.rest = { n: 0 }; G.restN = 0; this.toast('쉬는 중… 탭하면 멈춘다.'); this.restStep();
   },
