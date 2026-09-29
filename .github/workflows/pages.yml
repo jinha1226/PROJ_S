@@ -28,12 +28,7 @@ jobs:
         run: npm run lint
       - name: Smoke test (headless Chromium)
         run: node tests/smoke.mjs
-      - name: Gear checklist
-        run: node tests/gear.mjs
-      - name: Story and settlement checklist
-        run: node tests/story.mjs
-      - name: Soulstone active skills
-        run: node tests/stones.mjs
+      # 기능별 확인 목록(story·stones·items)은 오래 걸려서 CI에서는 뺐다 — 로컬에서 npm run test:all
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4

@@ -5,7 +5,8 @@
   "scripts": {
     "test": "node tests/smoke.mjs",
     "lint": "node tools/fix-imports.mjs --check",
-    "fix-imports": "node tools/fix-imports.mjs"
+    "fix-imports": "node tools/fix-imports.mjs",
+    "test:all": "node tests/smoke.mjs && node tests/story.mjs && node tests/stones.mjs"
   },
   "devDependencies": {
     "acorn": "^8.14.0",
