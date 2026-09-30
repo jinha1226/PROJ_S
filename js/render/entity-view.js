@@ -6,6 +6,8 @@ import { _w, easeInOut, easeOut } from './common.js';
 import { dollSpec } from './dolls.js';
 import { View } from './view.js';
 
+const STRIDE = 0.6, BOUNCE = 0.11; // 등불지기 한 걸음(칸) · 튀어 오르는 높이
+
 export class EntView {
   constructor(e) {
     this.id = e.id; this.type = e.type;
@@ -28,6 +30,10 @@ export class EntView {
     if (sp.glow) this.baseEm = sp.glow;
     if (e.ally && !e.npc) { this.d.mat.transparent = true; this.d.mat.opacity = 0.6; this.baseEm = [0.28, 0.12, 0.45]; }
     this.d.root.position.copy(this.cur); this.d.root.rotation.y = this.yaw; this.d.root.visible = this.visible;
+    if (e.id === 0) { // 발밑 고리: 인형을 따라 바닥에 붙는다
+      this.foot = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.38, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffc070, transparent: true, opacity: 0.6, depthWrite: false }));
+      this.foot.renderOrder = 2; this.foot.position.set(this.cur.x, 0.04, this.cur.z); View.dio.scene.add(this.foot);
+    }
   }
   /** 장비가 바뀌면 인형을 다시 입힌다(위치·자세는 그대로, 한 번 찌그러졌다 펴진다) */
   redress(e) {
@@ -45,13 +51,15 @@ export class EntView {
     if (kind === 'tele') { this.cur.set(x, 0, y); this.t = 1; }
   }
   lunge(dx, dy, amt = 0.36) { this.ld = [dx, dy]; this.la = amt; this.lt = 0; if (dx || dy) this.yawT = Math.atan2(dx, dy); this.sqv += this.id === 0 ? 2.5 : 1.2; }
-  /** 연속 위치를 매 프레임 따라간다(등불지기). 밀치기·미끄러짐 트윈이 도는 동안은 트윈에 맡긴다 */
-  follow(x, y, dt) {
-    if (this.t < 1) return;
+  /** 등불지기: 틱 사이를 보간한 자리에 바로 선다(뒤쫓지 않는다). 걸은 만큼 걸음이 돌아 통통 튄다 */
+  place(x, y, dt) {
+    if (this.t < 1) return; // 밀치기·미끄러짐 트윈이 도는 동안은 트윈에 맡긴다
     const dx = x - this.cur.x, dz = y - this.cur.z, d = Math.hypot(dx, dz);
-    if (d > 2) { this.cur.set(x, 0, y); return; } // 순간이동·층 이동
-    const k = 1 - Math.exp(-dt * 18); this.cur.x += dx * k; this.cur.z += dz * k;
-    if (d > 0.02) { this.yawT = Math.atan2(dx, dz); this.walkT = (this.walkT || 0) + d * k; if (this.walkT > 0.9) { this.walkT = 0; this.sqv -= 2.2; } } // 한 걸음마다 살짝 눌린다
+    this.cur.set(x, 0, y);
+    if (d > 2) return; // 순간이동·층 이동
+    this.walking = d > 1e-4;
+    if (this.walking) { this.yawT = Math.atan2(dx, dz); this.stride = (this.stride || 0) + d / STRIDE; }
+    else if ((this.stride || 0) % 1 > 1e-3) this.stride = Math.min(Math.floor(this.stride) + 1, this.stride + dt * 3.5); // 멈추면 걸음을 마저 딛고 선다
   }
   update(dt, time) {
     const r = this.d.root;
@@ -74,11 +82,18 @@ export class EntView {
     const frozen = this.st.frozen > 0;
     let wx = 0;
     if (this.winding && !frozen) wx = Math.sin(time * 40) * 0.035;
-    r.position.set(this.cur.x + this.jolt.x + lx + wx, sy + hopY + this.jolt.y, this.cur.z + this.jolt.z + lz);
+    if (this.stride != null) { // 걸음: 한 걸음마다 통 튀어 오르고, 딛는 순간 살짝 눌리며 먼지가 인다
+      const k = this.stride % 1; this.bounce = Math.sin(Math.PI * k) * BOUNCE;
+      if (this.lastK != null && k < this.lastK) { this.sqv -= 2.4; if (r.visible) View.dio.puffs.emit({ pos: _w.set(this.cur.x, 0.05, this.cur.z), n: 2, color: 0x8a8098, speed: 0.4, grav: 0, life: 0.35, size: 0.1 }); }
+      this.lastK = k;
+    }
+    r.position.set(this.cur.x + this.jolt.x + lx + wx, sy + hopY + this.jolt.y + (this.bounce || 0), this.cur.z + this.jolt.z + lz);
+    if (this.foot) { this.foot.position.set(this.cur.x + this.jolt.x + lx, sy + 0.04, this.cur.z + this.jolt.z + lz); this.foot.visible = r.visible && !this.dead; } // 발밑 고리는 튀지 않고 바닥에
     r.rotation.y = this.yaw;
     const sq = frozen ? 0 : this.sq;
     this.d.pivot.scale.set(1 - sq * 0.5, 1 + sq, 1 - sq * 0.5);
     this.d.pivot.position.y = frozen || this.dead ? 0 : Math.abs(Math.sin(time * 3.2 + this.phase)) * 0.02;
+    if (this.id === 0) { this.lean = (this.lean || 0) + ((this.walking ? 0.12 : 0) - (this.lean || 0)) * Math.min(1, dt * 10); this.d.pivot.rotation.x = this.lean; } // 걸을 때 앞으로 살짝 기운다
     if (this.id !== 0) { const k = Math.min(1, dt * 8), fr = this.st.frac > 0 && !this.dead; this.d.pivot.rotation.z += ((fr ? 0.32 : 0) - this.d.pivot.rotation.z) * k; this.d.pivot.rotation.x += ((fr ? 0.14 : 0) - this.d.pivot.rotation.x) * k; }
     this.flash = Math.max(0, this.flash - dt * 7);
     const em = this.d.mat.emissive; em.setRGB(...(this.baseEm || [0, 0, 0]));
@@ -153,6 +168,7 @@ export class EntView {
     if (this.st.wet > 0 && !frozen && Math.random() < 0.4) D.sparks.emit({ pos: _w.set(p.x + (Math.random() - 0.5) * 0.4, p.y + this.h * 0.6, p.z + (Math.random() - 0.5) * 0.4), n: 1, color: 0x5aa8ff, speed: 0.1, grav: -7, life: 0.45, size: 0.07, drag: 0 });
   }
   dispose() {
+    if (this.foot) { View.dio.scene.remove(this.foot); this.foot.geometry.dispose(); this.foot.material.dispose(); }
     View.dio.scene.remove(this.d.root); this.tag.remove();
     this.d.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material && o.material !== this.d.ol.material) o.material.dispose?.(); });
   }

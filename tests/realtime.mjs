@@ -115,7 +115,7 @@ check('조이스틱: 짧은 탭은 탭으로 넘기고, 누르고 있으면 흐�
 
 await page.evaluate(() => arena());
 const k0 = await page.evaluate(() => [window.__game.G.player.px, window.__game.G.player.py]);
-await page.keyboard.down('d'); await page.waitForTimeout(1000); await page.keyboard.up('d'); await page.waitForTimeout(150); // 헤드리스는 프레임이 느리다
+await page.keyboard.down('d'); await page.waitForFunction((x0) => window.__game.G.player.px - x0 > 0.3, k0[0], { timeout: 5000 }).catch(() => {}); await page.keyboard.up('d'); await page.waitForTimeout(150); // 헤드리스는 프레임 빠르기가 들쭉날쭉하다: 움직일 때까지 기다린다
 const k1 = await page.evaluate(() => [window.__game.G.player.px, window.__game.G.player.py]);
 check('이동 키를 누르는 동안 걷는다', Math.hypot(k1[0] - k0[0], k1[1] - k0[1]) > 0.3, JSON.stringify({ k0, k1 }));
 
@@ -136,6 +136,24 @@ check('인형이 걷는 위치를 따라간다', v1.gap < 0.35, JSON.stringify(v
 check('시계는 초로, 멈추면 "멈춤"', /초/.test(v1.turns) && !/멈춤/.test(v1.turns) && /멈춤/.test(v2), JSON.stringify({ v1: v1.turns, v2 }));
 const v3 = await page.evaluate(() => { arena([[1, 0]]); window.__game.View.refreshDecals(); return window.__game.View.grid.lastDecals.filter((d) => d.kind === 1).length; });
 check('칸 이동 표시(주변 8칸 테)가 없다', v3 === 0, String(v3));
+
+// 걸음: 두 틱 사이를 보간하고(뒤쫓지 않는다), 통통 튀며 걷고, 멈추면 바닥에 선다. 발밑 고리는 인형 발밑 바닥에
+const w0 = await page.evaluate(() => { const g = window.__game, G = arena(), p = G.player, ev = g.View.evs.get(0); ev.cur.set(15, 0, 15); ev.t = 1; p.ppx = 15; p.ppy = 15; p.px = 15.165; p.py = 15; G.alpha = 0.5; g.View.placeHero(0.016); const x = +ev.cur.x.toFixed(4); p.px = 15; return x; });
+check('인형은 두 틱 사이를 보간한다(뒤쫓지 않는다)', w0 === 15.0825, String(w0));
+await page.evaluate(() => arena());
+await page.keyboard.down('d');
+const w1 = await page.evaluate(() => new Promise((done) => { const ev = window.__game.View.evs.get(0); let maxY = 0, n = 0; const f = () => { maxY = Math.max(maxY, ev.d.root.position.y); if (++n < 40) requestAnimationFrame(f); else done({ maxY, ring: !!ev.foot, gap: ev.foot ? Math.hypot(ev.foot.position.x - ev.cur.x, ev.foot.position.z - ev.cur.z) : -1, y: ev.foot ? ev.foot.position.y : -1 }); }; requestAnimationFrame(f); }));
+await page.keyboard.up('d'); await page.waitForTimeout(800);
+const w2 = await page.evaluate(() => { const g = window.__game, ev = g.View.evs.get(0); g.View.refreshDecals(); return { y: +ev.d.root.position.y.toFixed(3), decal: g.View.grid.lastDecals.some((d) => d.color === 0xffc070) }; });
+check('걸을 때 통통 튄다', w1.maxY > 0.05, JSON.stringify(w1));
+check('발밑 고리는 인형 발밑 바닥에 붙는다(칸 표식이 아니다)', w1.ring && w1.gap < 0.02 && w1.y < 0.1 && !w2.decal, JSON.stringify({ w1, w2 }));
+check('멈추면 바닥에 선다', w2.y < 0.02, JSON.stringify(w2));
+
+await page.evaluate(() => arena());
+await page.keyboard.down('d');
+const cam = await page.evaluate(() => new Promise((done) => { const g = window.__game, ev = g.View.evs.get(0), rig = g.View.dio.rig; let lag = 0, n = 0; const f = () => { if (n > 10) lag = Math.max(lag, Math.hypot(rig.focus.x - ev.cur.x, rig.focus.z - ev.cur.z)); if (++n < 30) requestAnimationFrame(f); else done(+lag.toFixed(3)); }; requestAnimationFrame(f); }));
+await page.keyboard.up('d'); await page.waitForTimeout(300);
+check('카메라가 걷는 등불지기를 바짝 따라간다(반 칸씩 처지지 않는다)', cam < 0.3, String(cam));
 
 // ---------- 과제 5: 영혼석 꺼짐 ----------
 const z1 = await page.evaluate(async () => { const G = arena([[1, 0]]), S = await import('/js/core/stones.js'); for (let k = 0; k < 20; k++) S.dropStone(G.ents[1], true); return { stones: G.stones.size, souls: getComputedStyle(document.querySelector('#souls')).display }; });

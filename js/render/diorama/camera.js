@@ -75,7 +75,7 @@ export class CameraRig {
   fit(aspect) { const t = Math.tan(this.cam.fov * Math.PI / 360); this.base = Math.max(this.tilesAcross / (2 * t * aspect), (this.tilesAcross * 1.25) / (2 * t)); }
   shake(a) { this.shakeAmt = Math.min(0.9, this.shakeAmt + a); }
   update(dt) {
-    const k = 1 - Math.exp(-dt * 9), kf = 1 - Math.exp(-dt * 6.5);
+    const k = 1 - Math.exp(-dt * 9), kf = 1 - Math.exp(-dt * (this.followRate || 6.5)); // followRate: 초점이 따라가는 빠르기(던전은 걷는 주인공을 바짝)
     this.yaw += (this.yawT - this.yaw) * k; this.pitch += (this.pitchT - this.pitch) * k; this.zoom += (this.zoomT - this.zoom) * k;
     const dist = this.base * this.zoom;
     this.focus.lerp(this.focusT, kf);

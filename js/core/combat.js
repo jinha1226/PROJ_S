@@ -123,7 +123,7 @@ export function faceTo(e, t) { const dx = sgn(t.x - e.x), dy = sgn(t.y - e.y); i
 
 export function moveEnt(e, x, y, o = {}) {
   const fx = e.x, fy = e.y; e.x = x; e.y = y;
-  if (e.px != null) { e.px = x; e.py = y; } // 칸을 옮기면 소수 위치도 그 칸 가운데로
+  if (e.px != null) { e.px = e.ppx = x; e.py = e.ppy = y; } // 칸을 옮기면 소수 위치도 그 칸 가운데로(보간하지 않고 바로)
   if (G.curSrc === e && isFoe(e) && G.player && cheb(x, y, G.player.x, G.player.y) < cheb(fx, fy, G.player.x, G.player.y)) e.appr = G.stats.turns; // 창: 이번 적 턴에 다가온 적
   if (o.face !== false && (x !== fx || y !== fy)) e.face = [sgn(x - fx), sgn(y - fy)];
   emit('move', { id: e.id, x, y, dur: o.dur ?? 115, hop: o.hop ?? 0.1, kind: o.kind || 'step', seen: isP(e) || (G.vis[I(x, y)] && !e.hidden) ? 1 : 0 });

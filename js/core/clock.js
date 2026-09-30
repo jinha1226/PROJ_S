@@ -12,7 +12,8 @@ import { G, I, log } from './state.js';
    흐르는 동안 고정 틱(RT.tick)으로 나아가고, 걸음 기준(RT.turn)마다 옛 턴(endTurn: 적·횃불·환경)을 한 번 돌린다. */
 export function initClock() {
   Object.assign(G, { clock: G.clock || 0, paused: false, stuckAbort: false, acc: 0, turnAcc: 0, swingT: 0, stuckT: 0, intent: { dir: null, hold: false }, walk: null, resting: false, target: null });
-  const p = G.player; if (p) setPos(p, p.x, p.y);
+  const p = G.player; if (p) { setPos(p, p.x, p.y); p.ppx = p.px; p.ppy = p.py; }
+  G.alpha = 1;
 }
 /** 입력이 매 프레임 알려 준다: dir = 지도 기준 방향(길이 ≤ 1), hold = 제자리에서 흘리기. 방향을 주면 자동 걷기·쉬기는 멈춘다 */
 export function setIntent(dir, hold = false) {
@@ -33,12 +34,14 @@ export function advance(dt) {
   G.acc = Math.min(G.acc + dt, RT.tick * RT.maxTicks);
   let n = 0;
   while (G.acc >= RT.tick - 1e-9 && flowing()) { G.acc -= RT.tick; step(); n++; }
+  G.alpha = flowing() ? G.acc / RT.tick : 1; // 화면: 지난 틱과 이번 틱 사이 어디쯤인가(멈추면 이번 틱)
   return n;
 }
 /** 한 틱: 걸음 → 발밑 칸이 바뀌면 칸 규칙 → 걸음 박자마다 옛 턴 → 닿는 적을 친다 */
 export function step() {
   const p = G.player;
   if (p.px == null || Math.round(p.px) !== p.x || Math.round(p.py) !== p.y) setPos(p, p.x, p.y); // 밀치기·순간이동처럼 옛 코드가 칸만 옮기면 칸이 이긴다
+  p.ppx = p.px; p.ppy = p.py; // 화면이 틱 사이를 보간할 이전 자리
   G.clock += RT.tick;
   const held = p.st.frozen > 0 || p.st.stun > 0;
   if (!held) moveHero(RT.tick);

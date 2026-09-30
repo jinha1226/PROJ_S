@@ -163,7 +163,6 @@ export const View = {
       list.push({ x: hi.x, y: hi.y, kind: 4, color: 0xffdf79, alpha: 1, blink: 0.5 });
       for (const q of this.intents.decals) if (q.kind !== 1) list.push({ ...q, alpha: 1 });
     }
-    list.push({ x: p.px ?? p.x, y: p.py ?? p.y, kind: 4, color: 0xffc070, alpha: 0.65 }); // 발밑 고리는 실제 위치에
     if (G.seen[G.stairs] && G.tile[G.stairs] === T_STAIRS) list.push({ x: G.stairs % G.W, y: (G.stairs / G.W) | 0, kind: 4, color: 0x7fb8ff, alpha: 0.9, blink: 0.6, scale: 1.15 });
     this.grid.setDecals(list);
   },
@@ -188,17 +187,24 @@ export const View = {
       this.dio.scene.add(g); this.lamps.set(i, g);
     }
   },
+  /** 등불지기 인형: 지난 틱과 이번 틱 사이를 G.alpha만큼 보간한 자리 */
+  placeHero(dt) {
+    const ev = this.evs.get(0), P = G.player; if (!ev || !P || P.px == null) return;
+    const a = G.alpha ?? 1, ox = P.ppx ?? P.px, oy = P.ppy ?? P.py;
+    ev.place(ox + (P.px - ox) * a, oy + (P.py - oy) * a, dt);
+  },
   frame(sdt) {
     ports.Loop.frame(sdt);
     const time = K.SHARED.uTime.value, D = this.dio;
     const casting = new Set(this.intents.casting), winding = new Set(this.intents.winding);
-    const pe0 = this.evs.get(0), P = G.player; if (pe0 && P && P.px != null) pe0.follow(P.px, P.py, sdt);
+    this.placeHero(sdt);
     for (const [id, ev] of this.evs) {
       ev.casting = casting.has(id); ev.winding = winding.has(id);
       ev.update(sdt, time);
       if (ev.gone) { ev.dispose(); this.evs.delete(id); }
     }
     const pev = this.evs.get(0);
+    D.rig.followRate = 16; // 던전: 걷는 등불지기를 바짝 따라간다(정착지는 기본 6.5)
     if (pev) { D.rig.focusT.set(pev.cur.x, 0, pev.cur.z); this.lightPos.copy(pev.d.root.position); }
     const tier = torchTier(G.torch ?? 100);
     // 밝기: 가장 어두울 때(꺼짐)가 예전의 가장 밝을 때(거리 10 · 세기 42), 밝을수록 더 밝다
