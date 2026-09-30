@@ -68,7 +68,7 @@ for (const f of files) {
   for (const im of imports) {
     const tgt = im.source.value.startsWith('.') ? path.resolve(path.dirname(f), im.source.value) : null; if (!tgt) continue;
     const T = layer(tgt);
-    const bad = (L === 'core' && ['render', 'ui', 'town', 'flow'].includes(T)) || (L === 'data' && T !== 'data') || (L === 'util' && T !== 'util') || (L === 'render' && ['ui', 'town', 'flow'].includes(T));
+    const bad = ((L === 'core' || L === 'sim') && ['render', 'ui', 'town', 'flow'].includes(T)) || (L === 'data' && T !== 'data') || (L === 'util' && T !== 'util') || (L === 'render' && ['ui', 'town', 'flow'].includes(T));
     if (bad) { problems++; console.log(`규칙 위반: ${path.relative(ROOT, f)} → ${path.relative(ROOT, tgt)}`); }
   }
   if (!Object.keys(missing).length && !unused.length) continue;

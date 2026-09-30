@@ -3,7 +3,7 @@
 모바일 세로 화면에서 한 손으로 하는 던전 크롤러. 움직일 때만 시간이 흐른다(슈퍼핫식). 혼자 시작해 마을을 키우고, 마을 사람들로 파티를 꾸려 다섯 명이 보스를 친다(`docs/설계_전체_방향.md`). 빌드 도구 없이 브라우저 ES 모듈 + Three.js(CDN)로 돈다.
 세상에 남은 마지막 모닥불은 사람으로 탄다 — 원소·지형·소모품·장비로 어둠의 주인을 쓰러뜨리고, 되찾은 등불 조각으로 흩어진 사람들을 불러 모은다.
 
-- **플레이**: GitHub Pages — `https://jinha1226.github.io/PROJ_S/` (이전 단계: `versions/v1.html` ~ `v3.html`)
+- **플레이**: GitHub Pages — `https://jinha1226.github.io/PROJ_S/` (이전 단계: `versions/v1.html` ~ `v3.html`, `versions/v4/`)
 - **로컬**: 저장소 루트에서 `python3 -m http.server 8000` → `http://localhost:8000` (모듈이라 `file://` 더블클릭으로는 안 열린다. 인터넷 필요 — Three.js를 CDN에서 받는다). `?seed=123`을 붙이면 같은 층이 나온다.
 - 진행은 브라우저 localStorage에 저장된다. 타이틀의 "처음부터"로 지운다.
 
@@ -14,6 +14,7 @@
 | `index.html` | 화면 틀·CSS·importmap. `js/main.js`를 불러온다 |
 | `js/` | 게임 코드. `data/`(표) · `core/`(규칙, 화면을 모름) · `render/`(3D, `render/diorama.js` = DioramaKit) · `ui/` · `town/` · `flow.js`(모드 전환) · `main.js`(연결) |
 | `versions/v1~v3.html` | 1차·2차·3차 한 파일 보존본 (v3 = 모듈로 나누기 전 원본) |
+| `versions/v4/` | 실시간 1단계 보존본(새 전투 코어 전, 적이 0.3초 박자에 칸으로 움직이던 판) |
 | `docs/코드정리_가이드.md` | **코드 구조와 규칙 — 기능을 추가할 때 먼저 읽는다** (§9 기능별로 고칠 파일) |
 | `tests/smoke.mjs` (CI), `tests/items.mjs`, `tests/story.mjs`, `tests/stones.mjs` | 헤드리스 크롬 스모크 테스트(CI는 이것과 import 검사만), DCSS식 장비 확인 목록(설계 §17), 스토리·정착지(§9), 영혼석 스킬(§6) — `npm run test:all` |
 | `tools/shots.mjs` | 화면 확인용 헤드리스 스크린샷(`test-results/`) |
