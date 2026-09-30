@@ -2,7 +2,7 @@
   "name": "last-ember", "version": "1.0.0", "private": true, "type": "module",
   "scripts": {
     "lint": "node tools/lint.mjs",
-    "test:rules": "node --test tests/sim/*.test.mjs tests/town/*.test.mjs",
+    "test:rules": "node --test tests/sim/*.test.mjs tests/town/*.test.mjs tests/render/*.test.mjs",
     "test:browser": "node tests/smoke.mjs",
     "test": "npm run test:rules && npm run test:browser",
     "measure": "node tools/measure.mjs",

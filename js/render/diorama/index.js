@@ -86,7 +86,7 @@ export class Diorama {
       const x=u.prevX+(u.x-u.prevX)*alpha,y=u.prevY+(u.y-u.prevY)*alpha;
       model.doll.position.set(x,0,y);model.doll.rotation.y=-u.facing+Math.PI/2;
       const walking=Math.hypot(u.x-u.prevX,u.y-u.prevY)>0.001;
-      const stride=walking?Math.sin((w?.time||m.time)*14)*0.22:0;
+      const stride=walking?Math.sin((w?.time ?? m?.time ?? 0)*14)*0.22:0;
       model.legs[0].rotation.x=stride;model.legs[1].rotation.x=-stride;
       model.torso.scale.y=0.29+(walking?Math.abs(stride)*0.08:0);
       model.hit=Math.max(0,model.hit-dt);model.swing=Math.max(0,model.swing-dt);
