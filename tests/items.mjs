@@ -51,7 +51,7 @@ check('강화 두루마리: +1, 상한(무기 +6), 유물 불가', s3.a === 6 &&
 
 // 4. 화염 브랜드: 풀 위의 적 → 불이 번진다
 const s4 = await page.evaluate(() => { const g = window.__game, surf = {}; for (let x = 16; x <= 18; x++) surf[x + 15 * 40] = 2; const G = arena([[1, 0, { hp: 999, max: 999 }]], surf); G.eq.weapon = g.makeGear('sword', { brand: 'fire', known: true }); g.refreshStats();
-  g.act(() => { g.playerMove(1, 0); return true; }); drain(); g.act(() => g.playerWait()); drain(); return { fire: G.fire[16 + 15 * 40] > 0 || G.surf[16 + 15 * 40] === 5, spread: G.fire[17 + 15 * 40] > 0 || G.surf[17 + 15 * 40] === 5 }; });
+  g.act(() => { g.playerMove(1, 0); return true; }); drain(); const C = g.clock; C.setIntent(null, true); for (let k = 0; k < 6; k++) C.step(); C.setIntent(null, false); drain(); return { fire: G.fire[16 + 15 * 40] > 0 || G.surf[16 + 15 * 40] === 5, spread: G.fire[17 + 15 * 40] > 0 || G.surf[17 + 15 * 40] === 5 }; });
 check('화염 브랜드로 풀 위의 적을 치면 불이 번진다', s4.fire && s4.spread, JSON.stringify(s4));
 
 // 5. 색의 반지: 그 색 영혼석 기본 쿨타임 −1
@@ -114,7 +114,8 @@ const d1 = await page.evaluate(() => { const g = window.__game, out = {}, big = 
   r = swing('rapier', [[1, 0, big]], 0, (G) => { G.player.hp = 10; }); out.rapier = r.hits[0].crit && r.G.player.x === 14;
   r = swing('sling', [[3, 0, big]], 0); out.sling = r.hits.length >= 1 && r.es[0].x === 19;
   return out; });
-check('§10-1 무기 12종이 모양·치명 조건대로', Object.values(d1).every(Boolean), JSON.stringify(d1));
+// 대검(직전 턴 대기)·쌍단검(연속 턴) 치명은 턴 개념이라 실시간에서 끈다(docs/설계_실시간_전환.md §4)
+check('§10-1 무기 12종이 모양·치명 조건대로', Object.entries(d1).filter(([k]) => !['greatsword', 'twinChain'].includes(k)).every(([, v]) => v), JSON.stringify(d1));
 
 // §10-2 색 배율: 같은 색 영혼석이 늘면 오르고, 비교 창에 보인다
 const d2 = await page.evaluate(() => { const g = window.__game, G = arena(); G.eq.weapon = g.makeGear('sword', { known: true }); g.refreshStats();
@@ -142,12 +143,12 @@ const d5 = await page.evaluate(() => { const g = window.__game, big = { hp: 999,
   let r = swing('crossbow', [[1, 0, big]], 0); const half = r.hits.length === 1 && r.hits[0].label === '너무 가깝다' && r.hits[0].amt <= 4;
   r = swing('sling', [[3, 0, big]], 0, (G) => { Object.assign(G.slots[0], { stone: 'r_fire', color: 'red', cd: 5, usedRound: -1, redRound: -1 }); });
   return { half, cd: r.G.slots[0].cd }; });
-check('§10-5 원거리: 붙은 적 절반 · 빨강 쿨타임 감소 (석궁 장전은 §10-1)', d5.half && d5.cd === 3, JSON.stringify(d5));
+check('§10-5 원거리: 붙은 적 절반 (석궁 장전은 §10-1, 영혼석 쿨타임은 영혼석을 끄는 동안 뺀다)', d5.half, JSON.stringify(d5));
 
 // §10-6 치명 조건이 충족된 적 위에 "×2"
 const d6 = await page.evaluate(async () => { const g = window.__game, G = arena([[1, 0, { hp: 999, max: 999 }], [-1, 0, { hp: 999, max: 999 }]]); G.eq.weapon = g.makeGear('axe', { known: true }); g.refreshStats(); G.ents[1].st.bleed = 3; g.View.buildFloor(); g.UI.syncAll();
   await new Promise((r) => setTimeout(r, 600)); return { ready: g.critReady(G.ents[1]), notReady: !g.critReady(G.ents[2]), marks: document.querySelectorAll('.x2').length }; });
-check('§10-6 치명 조건이 충족된 적 위에 ×2', d6.ready && d6.notReady && d6.marks === 1, JSON.stringify(d6));
+check('§10-6 치명 조건 판정(머리 위 ×2 표시는 실시간에서 뺐다)', d6.ready && d6.notReady && d6.marks === 0, JSON.stringify(d6));
 
 // §10-7 품질: 구역마다 오르고, 강화 +N과 따로 더해진다. 대장장이가 품질을 올린다
 const d7 = await page.evaluate(() => { const g = window.__game, G = arena(), M = g.META; const qs = {}; for (const d of [3, 8, 13, 18]) { let q = 0; for (let k = 0; k < 40 && !q; k++) { const it = g.rollGear(d); if (it.q) q = it.q; } qs[d] = q; }

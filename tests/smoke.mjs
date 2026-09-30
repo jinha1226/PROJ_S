@@ -54,61 +54,32 @@ try {
   await page.screenshot({ path: path.join(outDir, '2-dungeon.png') });
   const hud = await page.evaluate(() => {
     const g = window.__game, { G, UI, Anim } = g, before = G.torch;
-    UI.waitBtn(); let n = 0; while (Anim.active && n++ < 800) Anim.step(1000);
+    const C = g.clock; C.setIntent(null, true); for (let k = 0; k < 6; k++) C.step(); C.setIntent(null, false); // 옛 1턴 = 걸음 박자 0.3초
+    let n = 0; while (Anim.active && n++ < 800) Anim.step(1000);
     const burn = before - G.torch;
     G.torch = 40; G.lamps.set(G.player.y * G.W + G.player.x, '이솔');
     const known = (g.META.rememberedKeepers || []).length;
     UI.syncAll(); UI.ctxBtn();
     const lamp = G.torch === 80 && !G.lamps.has(G.player.y * G.W + G.player.x) && g.META.rememberedKeepers.length === known + 1;
     G.torch = before; g.META.hero.torch = before; UI.syncAll();
-    return { burn, lamp, slots: getComputedStyle(document.querySelector('#souls')).gridTemplateColumns.split(' ').length, quick: document.querySelectorAll('#quick .qs').length, actions: document.querySelectorAll('#actions button').length };
+    return { burn, lamp, souls: getComputedStyle(document.querySelector('#souls')).display, quick: document.querySelectorAll('#quick .qs').length, actions: document.querySelectorAll('#actions button').length };
   });
-  check('모바일 HUD 퀵슬롯 6 · 영혼석 6 한 줄 · 5개 행동', hud.slots === 6 && hud.quick === 6 && hud.actions === 5, JSON.stringify(hud));
+  check('모바일 HUD 퀵슬롯 6 · 영혼석 칸 꺼짐 · 5개 행동', hud.souls === 'none' && hud.quick === 6 && hud.actions === 5, JSON.stringify(hud));
   check('횃불 소모와 등잔 보충', hud.burn === 0.5 && hud.lamp, JSON.stringify(hud));
 
-  // 무작위 200턴 (연출은 즉시 소화)
+  // 무작위 걷기 30초(600틱): 조이스틱 방향을 20틱마다 바꾼다
   const play = await page.evaluate(() => {
-    const g = window.__game, { G, UI, Anim } = g, D8 = [[0, -1], [1, 0], [0, 1], [-1, 0], [1, -1], [1, 1], [-1, 1], [-1, -1]];
-    const drain = () => { let n = 0; while (Anim.active && n++ < 800) Anim.step(1000); };
-    const ids = Object.keys(g.STONE); for (let k = 0; k < 6; k++) g.addStone(ids[(k * 5) % ids.length]);
-    let turns = 0;
-    for (let t = 0; t < 200 && !G.over && g.Game.mode === 'dungeon'; t++) {
-      const p = G.player;
-      if (p.st.frozen || p.st.stun) { g.act(() => { if (p.st.frozen) p.st.frozen--; if (p.st.stun) p.st.stun--; return true; }); drain(); continue; }
-      const r = Math.random();
-      if (r < 0.25) { const ks = [0, 1, 2, 3, 4, 5].filter((k) => G.slots[k].stone && !G.slots[k].cd); if (ks.length) { const k = ks[t % ks.length]; UI.stoneBtn(k); if (UI.pend && UI.pend.self) UI.stoneBtn(k); else { const v = [...UI.valid]; if (v.length && UI.mode === 'target') { const i = v[t % v.length]; UI.tapTarget(i % G.W, (i / G.W) | 0); UI.tapTarget(i % G.W, (i / G.W) | 0); } else UI.exitTarget(); } drain(); turns++; continue; } }
-      if (r < 0.3) { UI.waitBtn(); drain(); turns++; continue; }
-      const o = D8.filter(([dx, dy]) => G.tile[(p.y + dy) * G.W + p.x + dx] !== 0), [dx, dy] = o[Math.floor(Math.random() * o.length)];
-      UI.tapTile(p.x + dx, p.y + dy); drain(); turns++;
+    const g = window.__game, { G, Anim } = g, C = g.clock;
+    let ticks = 0, dir = [1, 0];
+    for (let t = 0; t < 600 && !G.over && g.Game.mode === 'dungeon'; t++) {
+      if (t % 20 === 0) { const a = Math.random() * Math.PI * 2; dir = [Math.cos(a), Math.sin(a)]; }
+      C.setIntent(dir, false); C.step(); Anim.take(); Anim.step(1000); ticks++;
     }
-    return { turns, over: G.over };
+    C.setIntent(null, false);
+    return { ticks, turns: G.stats.turns, over: G.over };
   });
-  check('무작위 200턴', play.turns > 50 || play.over, JSON.stringify(play));
+  check('무작위 걷기 30초', play.turns >= 90 || play.over, JSON.stringify(play));
 
-  // 영혼석 24종이 각각 발동하는지
-  const stones = await page.evaluate(() => {
-    const g = window.__game, { G, Anim } = g, out = {};
-    const drain = () => { let n = 0; while (Anim.active && n++ < 800) Anim.step(1000); };
-    let fired = []; const on = g.View.on.bind(g.View); g.View.on = (t, d2) => { if (t === 'stone') fired.push(d2.id); return on(t, d2); };
-    for (const id of Object.keys(g.STONE)) {
-      const cx = 15, cy = 15, p = G.player;
-      for (let y = 0; y < G.H; y++) for (let x = 0; x < G.W; x++) { const i = y * G.W + x; G.tile[i] = Math.abs(x - cx) <= 4 && Math.abs(y - cy) <= 4 ? 1 : 0; G.surf[i] = 0; G.fire[i] = 0; G.cloud[i] = 0; }
-      p.x = cx; p.y = cy; p.hp = 20; p.shield = 0; p.alive = true; G.over = false; for (const k in p.st) p.st[k] = 0; G.auras = {};
-      const mk = (x, y) => ({ id: G.nextId++, type: 'goblin', x, y, hp: 30, max: 30, atk: 2, st: { wet: 3, frozen: 0, burn: 0, poison: 0, stun: 0, fear: 0, haste: 0, immune: 0, bleed: 3, frac: 0, vital: 0 }, alive: true, awake: true, face: [0, 1], cd: 0, name: 'T' });
-      G.ents = [p, mk(cx + 1, cy), mk(cx - 2, cy - 2)];
-      G.slots.forEach((q) => { q.stone = null; q.color = null; q.cd = 0; });
-      g.addStone(id); g.computeFOV();
-      if (G.ps) { G.ps.eva = 0; G.ps.block = 0; }
-      fired = [];
-      const T = g.STONE[id].tgt.t, at = T === 'empty' ? [cx, cy + 1] : T === 'self' || T === 'around' || T === 'sight' ? [] : [cx + 1, cy];
-      drain(); // 앞 단계(무작위 200턴)의 연출이 남아 있으면 act가 무시된다
-      let ok = false; g.act(() => (ok = g.useStone(0, ...at))); drain();
-      out[id] = ok && fired.includes(id) && G.slots[0].cd >= 0;
-    }
-    g.View.on = on;
-    return Object.entries(out).filter(([, v]) => !v).map(([k]) => k);
-  });
-  check('영혼석 스킬 24종 사용', stones.length === 0, stones.length ? '안 터짐: ' + stones.join(',') : '');
 
   // 보스 층 → 처치 → 귀환
   await page.evaluate(() => { const g = window.__game; g.returnToTown('recall'); });
@@ -125,7 +96,7 @@ try {
     // 무기로 마지막 한 대
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const x = b.x + dx, y = b.y + dy; if (G.tile[y * G.W + x] === 1 && !G.ents.some((e) => e.alive && e.x === x && e.y === y)) { p.x = x; p.y = y; break; } }
     g.computeFOV();
-    g.act(() => { g.playerMove(Math.sign(b.x - p.x), Math.sign(b.y - p.y)); return true; });
+    g.clock.initClock(); g.clock.setIntent(null, true); for (let k = 0; k < 30 && b.alive; k++) g.clock.step(); g.clock.setIntent(null, false); // 닿은 적을 저절로 친다
     let n = 0; while (g.Anim.active && n++ < 800) g.Anim.step(1000);
     const open = G.exitOpen;
     p.x = G.stairs % G.W; p.y = (G.stairs / G.W) | 0; g.descend();

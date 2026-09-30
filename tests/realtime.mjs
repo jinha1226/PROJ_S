@@ -137,7 +137,10 @@ check('시계는 초로, 멈추면 "멈춤"', /초/.test(v1.turns) && !/멈춤/.
 const v3 = await page.evaluate(() => { arena([[1, 0]]); window.__game.View.refreshDecals(); return window.__game.View.grid.lastDecals.filter((d) => d.kind === 1).length; });
 check('칸 이동 표시(주변 8칸 테)가 없다', v3 === 0, String(v3));
 
-// (과제 2~5의 검사가 여기 이어진다)
+// ---------- 과제 5: 영혼석 꺼짐 ----------
+const z1 = await page.evaluate(async () => { const G = arena([[1, 0]]), S = await import('/js/core/stones.js'); for (let k = 0; k < 20; k++) S.dropStone(G.ents[1], true); return { stones: G.stones.size, souls: getComputedStyle(document.querySelector('#souls')).display }; });
+check('영혼석 꺼짐: 떨어지지 않고 칸도 안 보인다', z1.stones === 0 && z1.souls === 'none', JSON.stringify(z1));
+
 
 check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 await browser.close(); server.close();

@@ -1,23 +1,25 @@
 import { CATS, DROPS, catOf, kindOf } from '../data/enemies.js';
+import { STONES_ON } from '../data/realtime.js';
 import { COLORS, STONE, levelOf } from '../data/stones.js';
 import { S_ASH, S_GRASS, S_NONE, S_WATER } from '../data/terrain.js';
 import { DARK, STONE_DROP, torchTier } from '../data/torch.js';
 import { HIDDEN_BY_ELEM } from '../data/visitors.js';
 import { D8, cheb, sgn } from '../util/grid.js';
 import { pick, rand, shuffle } from '../util/rng.js';
+import { jo } from '../util/text.js';
 import { cancelIntent, damage, freeDropSpot, heal, push, resistOk, weaponHit } from './combat.js';
 import { dotBonus, fireAt, shock } from './elements.js';
 import { refreshStats } from './gear.js';
 import { blockAt, openHidden } from './hidden.js';
+import { META, saveMeta } from './meta.js';
 import { adjFoes, areaTiles, arrowPath, castBolt, castFire, castFrost, castPush, castVenom, sdmg, wetTarget } from './skills.js';
 import { emitSlots, emitStatus, snapTerrain } from './snap.js';
 import { G, I, TL, emit, entAt, isFoe, log, newSt, seesEnt, standable } from './state.js';
-import { jo } from '../util/text.js';
-import { META, saveMeta } from './meta.js';
 
 export function synergy(text, elem) { G.stats.combos++; emit('banner', { text, elem }); log(text, 'syn'); if (G.ctx && (G.ctx.stones > 0 || G.ctx.origin !== 'enemy')) bumpStage(G.ctx); }
 
 export function dropStone(e, f) {
+  if (!STONES_ON) return; // 영혼석은 직업·역할 시스템이 들어올 때까지 꺼 둔다
   // 몬스터별 랜덤: 가진 세 색 중 하나(각 1/3). 무기로 쓰러뜨리면 45%, 아니면 15% — 횃불이 어두울수록 더 잘 남는다. 보스는 확실히
   const chance = Math.min(0.95, (f ? STONE_DROP.weapon : STONE_DROP.other) * DARK[torchTier(G.torch ?? 100)].drop);
   if (!e.boss && rand() >= chance) { if (!f && G.dropHint++ < 2) log('영혼이 흩어졌다.', 'info'); return; }

@@ -82,6 +82,7 @@ check('숨은 방: 틀린 스킬로는 안 열리고 맞는 스킬로 조준해 
 const s10 = await page.evaluate(() => { const g = window.__game, G = g.G; const drain = () => { let n = 0; while (g.Anim.active && n++ < 800) g.Anim.step(1000); };
   G.inv.push({ k: 'recall', n: 1 }); G.bossFloor = true; const boss = g.useItem('recall'); G.bossFloor = false;
   g.act(() => g.useItem('recall')); drain(); const armed = G.pendingReturn || G.over ? 'early' : 'wait';
+  const C = g.clock; C.setIntent(null, true); for (let k = 0; k < 6; k++) C.step(); C.setIntent(null, false); drain(); // 실시간: 한 턴(0.3초)이 흘러야 빛이 모인다
   return { boss, armed, pending: G.pendingReturn || (G.over ? 'gone' : null) }; });
 await page.waitForFunction(() => window.__game.Game.mode === 'town', null, { timeout: 30000 }).catch(() => {});
 const s10b = await page.evaluate(() => ({ mode: window.__game.Game.mode }));

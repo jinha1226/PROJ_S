@@ -1,12 +1,13 @@
+import { STONES_ON } from '../data/realtime.js';
 import { STONE } from '../data/stones.js';
 import { S_ASH, S_ICE, S_WATER, T_FLOOR, T_WALL } from '../data/terrain.js';
 import { HIDDEN } from '../data/visitors.js';
-import { makeNpc } from './meta.js';
 import { pick, rand } from '../util/rng.js';
+import { jo } from '../util/text.js';
 import { computeFOV } from './fov.js';
+import { makeNpc } from './meta.js';
 import { snapTerrain, snapVis } from './snap.js';
 import { G, I, emit, inb, log, newSt } from './state.js';
-import { jo } from '../util/text.js';
 
 /* ================= 스킬로 여는 숨은 방 =================
    층마다 0~1개. 방 벽 너머에 3×3 골방을 파고, 입구 한 칸을 막는다(core에서는 벽).
@@ -42,7 +43,7 @@ export function stockHidden() {
   const ci = I(h.cx, h.cy), side = I(h.cx + 1, h.cy);
   if (h.kind === 'thorn') { G.chests.set(ci, { open: false }); G.mats.set(I(h.cx - 1, h.cy), pick(['가죽', '뼈', '약초'])); G.mats.set(side, pick(['광석', '심장'])); }
   else if (h.kind === 'water') {
-    G.stones.set(ci, pick(Object.keys(STONE)));
+    if (STONES_ON) G.stones.set(ci, pick(Object.keys(STONE))); // 영혼석 꺼짐
     if (!G.zoneFlags.npc) { const data = makeNpc(null); G.zoneFlags.npc = true; G.ents.push({ id: G.nextId++, type: 'npc', ally: true, npc: true, npcData: data, caged: false, freed: false, name: data.name, x: h.cx - 1, y: h.cy + 1, hp: 12, max: 12, st: newSt(), alive: true, awake: true, face: [0, 1] }); }
   } else if (h.kind === 'gate') G.chests.set(ci, { open: false, rare: true });
   else G.mats.set(ci, '마석');
