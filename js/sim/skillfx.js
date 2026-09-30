@@ -174,7 +174,7 @@ export function useSkill(u, id, x, y) {
   if (!skillReady(u, id)) return false;
   const T = skillTarget(u, id, x, y); if (!T) return false;
   const P = skillParams(u.skillInfo[id], u.build);
-  u.scd[id] = P.cd;
+  u.scd[id] = P.cd * (1 - ((isP(u) && G.ps && G.ps.cdr) || 0) / 100); // 집중 반지·명료 목걸이
   if (T.ang != null && P.tgt !== 'self') faceAng(u, T.ang);
   startAct(u, 'skill', { wind: P.cast, recover: 0, id, T, P: P.p, cd: u.cd, fx: 'skillCast' });
   emit('skillName', { id: u.id, name: CSKILLS[id].name, icon: CSKILLS[id].icon });

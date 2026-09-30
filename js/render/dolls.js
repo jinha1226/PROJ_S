@@ -221,6 +221,9 @@ export const WEAPON_PARTS = {
   sling: [{ s: 'torus', p: [0, 0.02, 0], r: [Math.PI / 2, 0, 0], k: 0.035, tube: 0.3, c: 0xa07a4a }, { s: 'box', p: [-0.03, -0.15, 0], r: [0, 0, 0.1], k: [0.012, 0.28, 0.012], c: 0xa07a4a }, { s: 'box', p: [0.03, -0.15, 0], r: [0, 0, -0.1], k: [0.012, 0.28, 0.012], c: 0xa07a4a },
     { s: 'sphere', p: [0, -0.31, 0], k: [0.065, 0.035, 0.055], c: 0x7a4a28 }, { s: 'sphere', p: [0, -0.275, 0], k: 0.04, c: 0x9a9aa8 }],
 };
+// 지팡이: 비틀린 나무 자루 + 가지 고리 + 빛나는 보석
+WEAPON_PARTS.staff = [{ s: 'cyl', p: [0, 0.3, 0], k: [0.024, 0.9, 0.024], c: 0x6a4a2a }, { s: 'torus', p: [0, 0.76, 0], r: [Math.PI / 2, 0, 0], k: 0.06, tube: 0.25, c: 0x5a3a22 },
+  { s: 'sphere', p: [0, 0.8, 0], k: 0.055, c: 0x9a6aff }, { s: 'sphere', p: [0.012, 0.815, 0.03], k: 0.015, c: 0xffffff }, { s: 'cyl', p: [0, -0.1, 0], k: [0.03, 0.08, 0.03], c: 0x3a2a4a }];
 for (const [o, n] of Object.entries(OLD_WEAPON)) WEAPON_PARTS[o] = WEAPON_PARTS[n]; // 옛 id(단검) → 쌍단검
 /** 색 리본을 매는 높이(기본 손 바로 아래) · 두 손 무기의 둘째 손 자리 */
 const RIB = { greatsword: -0.26, crossbow: -0.12, sling: -0.08 };

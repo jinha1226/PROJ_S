@@ -83,7 +83,7 @@ export function makeGear(base, o = {}) {
 }
 function rollJewel(it, jt) {
   const neck = GEAR_BASES[it.base].slot === 'neck', T = neck ? AMULETS : RINGS;
-  it.jt = jt || pick(Object.keys(T));
+  it.jt = jt || pick(Object.keys(T).filter((k) => !T[k].color && k !== 'chain')); // 영혼석이 꺼져 있는 동안 색 반지·연쇄 목걸이는 나오지 않는다
   const R = !neck && RINGS[it.jt];
   if (R && R.ench) { it.jv = ri(...R.ench); if (it.jv === 0) it.jv = R.ench[1] > 4 ? 5 : 2; }
   if (it.jt === 'res') it.je = pick(ELEMS);
@@ -183,7 +183,7 @@ export function calcStats(eq, levels = heldLevels()) {
     seeing: false, regen: false, chainStart: false, reflect: 0, silence: false, bleed: 0, fracPush: false, fracBonus: 0, vamp: false, reso: false,
     // 예전 옵션 자리(쓰는 곳이 남아 있어 0으로 둔다)
     skillCd: {}, skillDmg: 0, redTwice: 0, purpleHeal: 0, greenShield: 0, wetDmg: 0, weakDmg: 0, dot: 0, waterEva: 0, burnImm: false, potion: 0, autoId: false, throwArea: false, torchFire: 0, elem: { fire: 0, frost: 0, bolt: 0, poison: 0 },
-    spell: 0, speed: 0, src: { eva: [['기본', BASE_EVA]] }, capped: {} };
+    spell: 0, speed: 0, cdr: 0, healUp: 0, src: { eva: [['기본', BASE_EVA]] }, capped: {} };
   const add = (k, v, lab) => { (s.src[k] ||= []).push([lab, v]); };
   const brand = (b) => { s.brand = b; if (b === 'blood') s.bleed += 2; if (b === 'shatter') { s.fracPush = true; s.fracBonus = 2; } if (b === 'pierce') s.critMul = 3; if (b === 'vamp') s.vamp = true; if (b === 'reso') s.reso = true; };
   const ego = (g, lab) => {
@@ -201,16 +201,18 @@ export function calcStats(eq, levels = heldLevels()) {
     if (B.weapon && slot === 'weapon') {
       if (Q && Q.dmg) { s.dmg += Q.dmg; add('dmg', Q.dmg, `${lab} (품질)`); }
       if (it.plus) { s.dmg += it.plus; add('dmg', it.plus, lab); s.acc += it.plus * 2; add('acc', it.plus * 2, lab); }
-    } else if (B.orb) { s.orb[B.orb] += 1 + (it.plus || 0); if (B.orb === 'green') s.greenShield += 2 + (it.plus || 0); }
+      const W = WPN(B.weapon); if (W.spell) { const v = W.spell + Math.floor(Math.max(0, it.plus || 0) / 3); s.spell += v; add('spell', v, lab); } // 지팡이
+    } else if (B.orb) { const v = 1 + (it.plus || 0); s.spell += v; add('spell', v, lab); } // 오브: 주문력
     else if (!B.jewel && !B.weapon) { if (Q && Q.def) { s.def += Q.def; add('def', Q.def, `${lab} (품질)`); } if (it.plus) { s.def += it.plus; add('def', it.plus, lab); } }
     if (it.brand) brand(it.brand);
     if (it.ego) ego(it.ego, lab);
     if (B.jewel && it.jt && it.jt !== '?') {
-      if (B.slot === 'neck') { const k = it.jt; if (k === 'memory') { s.torchSlow += 30; s.lampBonus += 20; } if (k === 'regen') s.regen = true; if (k === 'chain') s.chainStart = true; if (k === 'reflect') s.reflect += 20; if (k === 'silence') s.silence = true; }
+      if (B.slot === 'neck') { const k = it.jt; if (k === 'memory') { s.torchSlow += 30; s.lampBonus += 20; } if (k === 'regen') s.regen = true; if (k === 'chain') s.chainStart = true; if (k === 'reflect') s.reflect += 20; if (k === 'silence') s.silence = true; if (k === 'sage') { s.spell += 2; add('spell', 2, lab); s.cdr += 8; add('cdr', 8, lab); } if (k === 'wind') { s.speed += 8; add('speed', 8, lab); } if (k === 'clarity') { s.cdr += 15; add('cdr', 15, lab); } if (k === 'vigor') { s.maxHp += 8; add('maxHp', 8, lab); }; }
       else if (RINGS[it.jt]) {
         const k = it.jt, v = it.jv;
         if (k === 'prot') { s.def += v; add('def', v, lab); } if (k === 'eva') { s.eva += v; add('eva', v, lab); } if (k === 'str') { s.dmg += v; add('dmg', v, lab); }
         if (k === 'vit') { s.maxHp += 5; add('maxHp', 5, lab); } if (k === 'res' && it.je) { s.res[it.je]++; add('res' + it.je, 1, lab); } if (k === 'see') s.seeing = true;
+        if (k === 'arcana') { s.spell += v; add('spell', v, lab); } if (k === 'swift') { s.speed += v; add('speed', v, lab); } if (k === 'focus') { s.cdr += v; add('cdr', v, lab); } if (k === 'mend') { s.healUp += v; add('healUp', v, lab); }
         if (RINGS[k].color) s.colorCd[RINGS[k].color]--;
       }
     }
@@ -227,7 +229,7 @@ export function calcStats(eq, levels = heldLevels()) {
   }
   classStats(s, levels, add);
   const cap = (k, max) => { if (s[k] > max) { s[k] = max; s.capped[k] = true; } if (s[k] < 0) s[k] = 0; };
-  cap('def', CAPS.def); cap('eva', CAPS.eva); cap('block', CAPS.block);
+  cap('def', CAPS.def); cap('eva', CAPS.eva); cap('block', CAPS.block); cap('cdr', 40); cap('spell', 10); // 스킬 쿨타임은 40%까지, 주문력은 10까지
   for (const k in s.res) s.res[k] = clampRes(s.res[k]);
   return s;
 }

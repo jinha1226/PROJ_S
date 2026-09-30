@@ -39,7 +39,7 @@ export const root = (t, s) => { addFx(t, 'root', s); emit('rooted', { id: t.id }
 export const taunt = (t, by, s) => { if (!t.boss || s >= 1) addFx(t, 'taunt', s, { id: by.id }); };
 
 /** 치유: 시전자의 특성 "생명의 권능"을 더한다 */
-export function healBy(u, t, amt) { if (t.alive) heal(t, amt + traitVal(u, 'life')); }
+export function healBy(u, t, amt) { if (t.alive) heal(t, amt + traitVal(u, 'life') + ((isP(u) && G.ps && G.ps.healUp) || 0)); } // 치유 반지
 export function shieldTo(t, amt) {
   t.shield = (t.shield || 0) + amt;
   if (isP(t)) emit('shield', { v: t.shield, add: amt }); else emit('pshield', { id: t.id, add: amt });

@@ -28,10 +28,11 @@ export const GEAR_BASES = {
   ring: { slot: 'ring', name: '반지', jewel: true },
 };
 /** 오브 (§4.1): 강화 +N = 효과 한 단계 */
+/** 오브: 주문력 1 + 강화치(무기가 아닌 스킬의 피해·치유·보호막). 색은 모양만 다르다 */
 export const ORBS = {
-  red: { line: (n) => `빨강 영혼석 스킬 피해 +${n}` },
-  purple: { line: (n) => `보라 영혼석 스킬의 범위나 지속이 ${n}단계 는다` },
-  green: { line: (n) => `초록 영혼석 스킬을 쓰면 보호막 ${n + 1}을 얻는다` },
+  red: { line: (n) => `주문력 +${n}` },
+  purple: { line: (n) => `주문력 +${n}` },
+  green: { line: (n) => `주문력 +${n}` },
 };
 /** 품질 (§5): 구역마다 한 단계. 무기 피해 +0~3, 방어구·방패 방어 +0/+0/+1/+1 */
 export const QUALITY = [null, { name: '낡은', dmg: 0, def: 0 }, { name: '평범한', dmg: 1, def: 0 }, { name: '좋은', dmg: 2, def: 1 }, { name: '명장의', dmg: 3, def: 1 }];
@@ -81,6 +82,10 @@ export const RINGS = {
   purple: { name: '명상', line: '보라 영혼석이 한 턴 빨리 돈다', color: 'purple' },
   green: { name: '인내', line: '초록 영혼석이 한 턴 빨리 돈다', color: 'green' },
   see: { name: '투시', line: '벽 너머 2칸의 적이 보인다' },
+  arcana: { name: '비전', line: '주문력 {v}', ench: [1, 3], obvious: true },
+  swift: { name: '질주', line: '이동 {v}%', ench: [3, 8], obvious: true },
+  focus: { name: '집중', line: '스킬 쿨타임 −{v}%', ench: [5, 12], obvious: true },
+  mend: { name: '치유', line: '치유 {v}', ench: [1, 3], obvious: true },
 };
 export const AMULETS = {
   memory: { name: '기억', line: '횃불이 30% 느리게 탄다. 등잔에서 횃불을 20 더 얻는다' },
@@ -88,6 +93,10 @@ export const AMULETS = {
   chain: { name: '연쇄', line: '연쇄가 한 단계 높게 시작한다. 3단계 이상이면 보호막 2를 얻는다' },
   reflect: { name: '반사', line: '화살을 20% 확률로 되돌린다' },
   silence: { name: '고요', line: '들키기 전에 제자리에 서 있으면 적이 나를 지나칠 수 있다' },
+  sage: { name: '현자', line: '주문력 +2, 스킬 쿨타임 −8%' },
+  wind: { name: '바람', line: '이동 +8%' },
+  clarity: { name: '명료', line: '스킬 쿨타임 −15%' },
+  vigor: { name: '활력', line: '최대 HP +8' },
 };
 /** 장신구 모양(원정마다 정체와 짝이 섞인다) */
 export const JEWEL_LOOK = {

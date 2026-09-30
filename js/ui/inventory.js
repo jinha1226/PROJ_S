@@ -4,7 +4,7 @@ import { useItem } from '../core/items.js';
 import { META, saveMeta } from '../core/meta.js';
 import { G, Game } from '../core/state.js';
 import { AMULETS, BAG_MAX, BRANDS, CAPS, EGOS, ELEM, GEAR_BASES, ORBS, QUALITY, RES_MUL, RINGS, SLOTS, SLOT_ICON, SLOT_NAME, UNRANDS, isJewel, isWeapon, matName, plusMax, slotKind, twoHanded, weaponOf } from '../data/gear.js';
-import { COLORS, ORB_PURPLE, STONE } from '../data/stones.js';
+import { COLORS } from '../data/stones.js';
 import { FORMS, SHAPES } from '../data/weapons.js';
 import { act } from '../flow.js';
 import { Sfx } from '../render/sfx.js';
@@ -39,7 +39,7 @@ function cardLines(it) {
     out.push(`피해 ${w.dmg[0]}–${w.dmg[1]}${w.shape === 'twin' ? ' ×2' : ''}${Q && Q.dmg ? ` <b>+${Q.dmg}</b>(품질)` : ''}${it.idP ? (it.plus ? ` <b>${sign(it.plus)}</b> (명중 ${sign(it.plus * 2)}%)` : '') : ' · 강화치 ?'}`);
     out.push(`모양: ${SHAPES[w.shape]}${w.stun ? ' · 기절 25%' : ''}${w.retreat ? ' · 치고 반 걸음 물러남' : ''}`);
     if (w.range) out.push('<small style="color:#9aa2bd">붙은 적에게 쏘면 피해 절반</small>');
-  } else if (B.orb) out.push(`${dot(B.orb)} ${ORBS[B.orb].line(1 + (it.idP ? it.plus : 0))}${it.idP ? '' : ' · 강화치 ?'}${B.orb === 'purple' ? `<br><small style="color:#9aa2bd">${Object.entries(ORB_PURPLE).map(([k, l]) => `${STONE[k].name} ${l}`).join(' · ')}</small>` : ''} <small style="color:#9aa2bd">한손 무기와 함께 · 강화 최대 +${plusMax(it)}</small>`);
+  } else if (B.orb) out.push(`${dot(B.orb)} ${ORBS[B.orb].line(1 + (it.idP ? it.plus : 0))}${it.idP ? '' : ' · 강화치 ?'} <small style="color:#9aa2bd">한손 무기와 함께 · 무기가 아닌 스킬의 피해·치유·보호막 · 강화 최대 +${plusMax(it)}</small>`);
   else if (!B.jewel) out.push(`${B.mat ? matName(it.base) + ' · ' : ''}방어 ${B.def}${Q && Q.def ? ` <b>+${Q.def}</b>(품질)` : ''}${it.idP ? (it.plus ? ` <b>${sign(it.plus)}</b>` : '') : ' · 강화치 ?'}${B.eva ? ` · 회피 ${sign(B.eva)}%` : ''}${B.block ? ` · 막기 ${B.block}%` : ''} <small style="color:#9aa2bd">강화 최대 +${plusMax(it)}</small>`);
   if (it.brand) out.push(it.idX ? `<span style="color:${gearCss(it)}">⚔ ${BRANDS[it.brand].name}: ${BRANDS[it.brand].line}</span>` : '<span style="color:#bcd4ff">빛이 어린다. 무기 속성 ?</span>');
   if (it.ego) out.push(it.idX ? `<span style="color:${gearCss(it)}">✦ ${EGOS[it.ego].name}: ${EGOS[it.ego].line}</span>` : '<span style="color:#bcd4ff">빛이 어린다. 방어구 속성 ?</span>');
@@ -179,7 +179,7 @@ Object.assign(UI, {
       if (!fullyKnown(it)) flags.push(`<div style="color:#bcd4ff">? ${gearName(it)}: 모르는 효과가 있다</div>`);
     }
     return `${row('최대 HP', `${H.unit.max} <small style="color:#9aa2bd">기본 ${H.base}</small>`, 'maxHp')}${row('방어', `${s.def} <small style="color:#9aa2bd">맞을 때 0~${s.def} 줄인다</small>`, 'def', s.capped.def)}${row('회피', `${s.eva}% / ${CAPS.eva}%`, 'eva', s.capped.eva)}
-      ${row('막기', `${s.block}%`, 'block', s.capped.block)}${row('피해', `${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} <small>${FORMS[w.form].name} · ${beatOfWeapon(w)}초마다</small>`, 'dmg')}${row('급소 확률', `${s.crit}%${s.critMul > 2 ? ` · ×${s.critMul}` : ''}`, 'crit')}${s.acc ? row('명중', `${100 + s.acc}%`, 'acc') : ''}${s.spell ? row('주문력', `${s.spell} <small style="color:#9aa2bd">무기가 아닌 스킬 피해·치유·보호막 +${s.spell}</small>`, 'spell') : ''}${s.speed ? row('이동', `${s.speed > 0 ? '+' : ''}${s.speed}%`, 'speed') : ''}
+      ${row('막기', `${s.block}%`, 'block', s.capped.block)}${row('피해', `${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} <small>${FORMS[w.form].name} · ${beatOfWeapon(w)}초마다</small>`, 'dmg')}${row('급소 확률', `${s.crit}%${s.critMul > 2 ? ` · ×${s.critMul}` : ''}`, 'crit')}${s.acc ? row('명중', `${100 + s.acc}%`, 'acc') : ''}${s.spell ? row('주문력', `${s.spell} <small style="color:#9aa2bd">무기가 아닌 스킬 피해·치유·보호막 +${s.spell}</small>`, 'spell') : ''}${s.speed ? row('이동', `${s.speed > 0 ? '+' : ''}${s.speed}%`, 'speed') : ''}${s.cdr ? row('스킬 쿨타임', `−${s.cdr}%`, 'cdr', s.capped.cdr) : ''}${s.healUp ? row('치유', `+${s.healUp}`, 'healUp') : ''}
       ${['fire', 'frost', 'bolt', 'poison'].map((k) => row(`${ELEM[k].name} 저항`, `${RES_DOT(s.res[k])} <small style="color:#9aa2bd">받는 피해 ×${RES_MUL[s.res[k]]}</small>`, 'res' + k)).join('')}
       <div class="gtxt" style="margin-top:6px">${flags.join('') || '<span style="color:#9aa2bd">특수 효과 없음</span>'}</div>`;
   },

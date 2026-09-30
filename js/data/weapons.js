@@ -20,6 +20,7 @@ export const WEAPONS = {
   mace: { name: '철퇴', color: 'green', hands: 1, form: 'blunt', dmg: [3, 5], shape: 'front', stun: 25 },
   rapier: { name: '레이피어', color: 'green', hands: 1, form: 'pierce', dmg: [2, 4], shape: 'front', retreat: true },
   sling: { name: '투석구', color: 'green', hands: 1, form: 'blunt', dmg: [2, 4], shape: 'shot', range: 4, knock: 1 },
+  staff: { name: '지팡이', color: 'purple', hands: 1, form: 'blunt', dmg: [2, 3], shape: 'front', spell: 2 }, // 주문력 +2(강화 +3마다 +1). 보조손 오브와 함께 든다
 };
 export const WEAPON_IDS = Object.keys(WEAPONS);
 /** 모양 한 줄 */
