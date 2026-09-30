@@ -1,6 +1,7 @@
+import { CLASS_RULE } from '../data/classes.js';
 import { CATS, DROPS, catOf, kindOf } from '../data/enemies.js';
 import { STONES_ON } from '../data/realtime.js';
-import { COLORS, STONE, levelOf } from '../data/stones.js';
+import { COLORS, STONE } from '../data/stones.js';
 import { S_ASH, S_GRASS, S_NONE, S_WATER } from '../data/terrain.js';
 import { DARK, STONE_DROP, torchTier } from '../data/torch.js';
 import { HIDDEN_BY_ELEM } from '../data/visitors.js';
@@ -12,6 +13,7 @@ import { dotBonus, fireAt, shock } from './elements.js';
 import { refreshStats } from './gear.js';
 import { blockAt, openHidden } from './hidden.js';
 import { META, saveMeta } from './meta.js';
+import { addXp, newProg } from './progress.js';
 import { adjFoes, areaTiles, arrowPath, castBolt, castFire, castFrost, castPush, castVenom, sdmg, wetTarget } from './skills.js';
 import { emitSlots, emitStatus, snapTerrain } from './snap.js';
 import { G, I, emit, entAt, isFoe, log, newSt, seesEnt, standable } from './state.js';
@@ -226,15 +228,17 @@ export function takeStone(mode, slot) {
 }
 
 /** 경험치: 적의 최대 HP(보스 두 배). 레벨이 오르면 영혼석 칸 하나가 열리고 최대 HP +2 */
+/** 경험: 쓰러뜨린 적의 최대 HP(보스 두 배). 레벨마다 기본 HP +2, 잃은 HP 절반, 찍을 점수 1 (core/progress.js) */
 export function gainXp(e) {
-  G.xp = (G.xp || 0) + e.max * (e.boss ? 2 : 1);
-  const lv = levelOf(G.xp);
-  while ((G.level || 1) < lv) {
-    G.level = (G.level || 1) + 1; G.heroBase += 2; G.player.hp += 2; refreshStats();
+  const prog = G.prog || (G.prog = newProg());
+  const up = addXp(prog, e.max * (e.boss ? 2 : 1));
+  G.xp = prog.xp;
+  for (let k = 0; k < up; k++) {
+    G.level = prog.level - up + k + 1; G.heroBase += CLASS_RULE.hpLevel; G.player.hp += CLASS_RULE.hpLevel; refreshStats();
     const lost = G.player.max - G.player.hp; if (lost > 0) heal(G.player, Math.ceil(lost / 2)); // 레벨업: 잃은 HP의 절반
-    emit('levelUp', { level: G.level }); log(`레벨 ${G.level}. 영혼석 칸이 하나 열리고 상처가 반쯤 아문다.`, 'syn');
-    emitSlots();
+    emit('levelUp', { level: G.level }); log(`레벨 ${G.level}. 찍을 점수가 ${prog.points}이다. 상처가 반쯤 아문다.`, 'syn');
   }
+  G.level = prog.level;
 }
 
 export function summon(at, extra = 0) {

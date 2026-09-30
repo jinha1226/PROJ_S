@@ -206,15 +206,16 @@ const cj1 = await page.evaluate(() => {
   const g = window.__game; if (g.Game.mode !== 'dungeon') { g.META.hero = g.META.hero || g.newHero(); g.enterDungeon(1); } // 앞의 검사가 정착지로 돌아갔다
   const G = arena([[3, 0, { hp: 99, max: 99, atk: 0 }]]), U = g.UI; G.ents[1].awake = false; document.querySelector('#screen').classList.add('hidden'); // 싸우는 중이 아니다
   const before = getComputedStyle(document.querySelector('#souls')).display;
+  G.prog = g.META.hero.prog; G.prog.level = 10; G.prog.points = 10; G.prog.build = { levels: {} }; // 레벨 10, 찍을 점수 10
   U.openClassPicker();
   const click = (sel) => document.querySelector(sel).click();
   for (let k = 0; k < 7; k++) click('[data-lv="fighter"][data-d="1"]');
   for (let k = 0; k < 3; k++) click('[data-lv="cleric"][data-d="1"]');
   click('[data-act="apply"]');
   const btns = [...document.querySelectorAll('#souls .slot')].map((b) => b.querySelector('.sn').textContent);
-  return { before, title: G.player.klass.title, shown: getComputedStyle(document.querySelector('#souls')).display, btns, saved: g.META.hero && g.META.hero.cls && g.META.hero.cls.levels.fighter };
+  return { before, title: G.player.klass.title, shown: getComputedStyle(document.querySelector('#souls')).display, btns, saved: g.META.hero.prog.build.levels.fighter, left: g.META.hero.prog.points };
 });
-check('직업 정하기: 파이터 7 / 클레릭 3 = 방패의 팔라딘, 스킬 3칸이 뜬다', cj1.before === 'none' && cj1.title === '방패의 팔라딘' && cj1.shown !== 'none' && cj1.btns.length === 3 && cj1.btns[0] === '수호의 맹세', JSON.stringify(cj1));
+check('직업 정하기: 파이터 7 / 클레릭 3 = 방패의 팔라딘, 스킬 3칸이 뜬다', cj1.before === 'none' && cj1.title === '방패의 팔라딘' && cj1.shown !== 'none' && cj1.btns.length === 3 && cj1.btns[0] === '수호의 맹세' && cj1.saved === 7 && cj1.left === 0, JSON.stringify(cj1));
 const cj2 = await page.evaluate(() => {
   const g = window.__game, G = g.G, U = g.UI, p = G.player;
   U.skillBtn(1); // 신성한 일격(자기): 바로 시전, 시전하는 동안 시간이 흐른다
@@ -224,6 +225,15 @@ const cj2 = await page.evaluate(() => {
   return { flowing, next, cd, tgt };
 });
 check('스킬 버튼: 자기 대상은 바로 시전(그동안 시간이 흐른다), 아군 대상은 조준', cj2.flowing && cj2.next && cj2.cd && cj2.tgt, JSON.stringify(cj2));
+
+const cj3 = await page.evaluate(() => {
+  const g = window.__game, n = g.META.npcs[0]; n.prog.points = 1;
+  g.Town.npcCard(n); const line = document.querySelector('#info').textContent;
+  document.querySelector('#info [data-grow]').click();
+  const title = document.querySelector('#sheet h3').textContent; document.querySelector('[data-lv="bard"][data-d="1"]').click(); document.querySelector('[data-act="apply"]').click();
+  return { line: /레벨 1/.test(line) && /찍을 점수 1/.test(line), title: title.includes(n.name), bard: n.prog.build.levels.bard, left: n.prog.points };
+});
+check('주민도 같은 규칙: 카드에 레벨·점수, 직업 창에서 찍는다', cj3.line && cj3.title && cj3.bard === 1 && cj3.left === 0, JSON.stringify(cj3));
 
 check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 await browser.close(); server.close();

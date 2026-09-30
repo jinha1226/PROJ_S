@@ -9,6 +9,7 @@ import { G, newSt, setListener } from '../../js/core/state.js';
 import { S_NONE, T_FLOOR, T_WALL } from '../../js/data/terrain.js';
 import { mulberry32, setR } from '../../js/util/rng.js';
 import { setClass } from '../../js/sim/classes.js';
+import { newProg } from '../../js/core/progress.js';
 
 export const events = [];
 setListener((type, data) => events.push({ type, ...data }));
@@ -32,7 +33,7 @@ export function arena(foes = [], o = {}) {
   G.over = false; G.torch = 100; G.theme = G.theme || { packs: [] };
   for (const k of Object.keys(G.eq)) G.eq[k] = null;
   if (o.body) G.eq.body = makeGear(o.body, { known: true });
-  G.xp = 0; G.level = 1; G.heroBase = 30; G.vengeance = 0; G.auras = {}; G.darkAmbushUsed = false;
+  G.xp = 0; G.level = 1; G.prog = newProg(); G.heroBase = 30; G.vengeance = 0; G.auras = {}; G.darkAmbushUsed = false;
   Object.assign(p, { fx: {}, scd: {}, classHp: 0 }); setClass(p, o.cls || { levels: {} });
   G.eq.weapon = makeGear(o.weapon ?? 'sword'); refreshStats();
   G.ps.eva = 0; G.ps.block = 0; G.ps.def = 0; G.ps.acc = 0; G.ps.crit = 0; G.ps.vamp = 0; G.ps.torchSlow = 0; G.ps.torchCost = 0;

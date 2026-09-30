@@ -115,7 +115,7 @@ const s9 = await page.evaluate(() => { const g = window.__game;
     mats: { 약초: 2 }, items: {}, recipes: {}, fallen: [], closed: {}, lit: [true, false, false, false], visitors: [], lore: [], glowMods: [], relics: [], unrandsSeen: [], gear: [], hero: null, rememberedKeepers: [] };
   localStorage.setItem('torch-meta-v3', JSON.stringify(old)); g.resetMetaForTest(); const M = g.loadMeta(); const Z = g.Settle;
   return { v: M.v, has: ['forge', 'herb', 'inn', 'library', 'altar'].map((k) => Z.hasRoom(k)), gate: M.settle.furn.some((f) => f.k === 'gate'), heap: M.settle.furn.some((f) => f.k === 'heap'), bld: Object.keys(M.buildings).sort().join() }; });
-check('§11-9 옛 마을의 고정 건물이 같은 기능의 방으로', s9.v === 9 && s9.has.every(Boolean) && s9.gate && s9.heap && /forge/.test(s9.bld), JSON.stringify(s9));
+check('§11-9 옛 마을의 고정 건물이 같은 기능의 방으로', s9.v === 10 && s9.has.every(Boolean) && s9.gate && s9.heap && /forge/.test(s9.bld), JSON.stringify(s9));
 
 check('§11-11 페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 await browser.close(); server.close();

@@ -1,8 +1,10 @@
 import { canEnchant, craftArmor, craftWeapon, gearCss, gearName, makeGear } from '../core/gear.js';
 import { META, craftNote, invAdd, invCount, moodAdd, newHero, packLimit, recipeName, saveMeta } from '../core/meta.js';
+import { progOf } from '../core/progress.js';
 import { hasRoom, radius } from '../core/settlement.js';
 import { cap, hearthGlow } from '../core/visitors.js';
 import { ROOMS, SCX, SCY } from '../data/build.js';
+import { ROLES } from '../data/classes.js';
 import { BOSSES } from '../data/enemies.js';
 import { QUALITY, SLOTS, SLOT_ICON, hasQuality, isWeapon, slotKind } from '../data/gear.js';
 import { ITEMS, MATS } from '../data/items.js';
@@ -15,6 +17,7 @@ import { enterDungeon } from '../flow.js';
 import { W3 } from '../render/common.js';
 import { Sfx } from '../render/sfx.js';
 import { View } from '../render/view.js';
+import { classOf } from '../sim/classes.js';
 import { $, UI } from '../ui/ui.js';
 import { pick, rand } from '../util/rng.js';
 import { jo } from '../util/text.js';
@@ -179,11 +182,19 @@ Object.assign(Town, {
     const rs = META.npcs.filter((m) => m !== n).map((m) => [m, n.rel[m.id] || 0]).sort((a, b) => b[1] - a[1]);
     const fr = rs.filter(([, v]) => v >= 20).map(([m]) => m.name).join(', ') || '—', fo = rs.filter(([, v]) => v <= -20).map(([m]) => m.name).join(', ') || '—';
     UI.info(`<h3>${MOODS[n.mood + 2]} ${n.name} <small style="color:#9aa2bd">${JOBS[n.job].name} · ${BLD[JOBS[n.job].b].name}</small></h3><div class="gtxt">“${talkLine(n)}”</div>${bars}
-      <div class="gtxt" style="margin-top:6px">😊 친한 사이: ${fr}<br>😠 불편한 사이: ${fo}<br>🔨 솜씨: ${craftNote(n)}</div>`);
+      <div class="gtxt" style="margin-top:6px">😊 친한 사이: ${fr}<br>😠 불편한 사이: ${fo}<br>🔨 솜씨: ${craftNote(n)}</div>${this.growthLine(n)}`);
+    this.growthBtn(n);
   },
+  /** 성장: 레벨 · Class · 찍을 점수 (등불지기와 같은 규칙, docs/설계_직업.md) */
+  growthLine(rec) {
+    const pr = progOf(rec), k = classOf(pr.build);
+    return `<div class="gtxt" style="margin-top:6px">🎓 레벨 ${pr.level} · ${k.kind === 'none' ? '직업 없음' : `<b style="color:${ROLES[k.role].css}">${k.title}</b>`}${pr.points ? ` · <b style="color:#ffe38a">찍을 점수 ${pr.points}</b>` : ''} <button class="mini" data-grow="1">직업</button></div>`;
+  },
+  growthBtn(rec) { const b = document.querySelector('#info [data-grow]'); if (b) b.onclick = (ev) => { ev.stopPropagation(); UI.hideInfo(); UI.openClassPicker(rec); }; },
   heroCard() {
     const h = META.hero; if (!h) return;
-    UI.info(`<h3>🧭 ${h.name} <small style="color:#9aa2bd">${h.gen}대째 모험가 · HP ${h.hp}/${h.max}</small></h3><div class="gtxt">장비: ${SLOTS.filter((k) => h.eq[k]).map((k) => `<span style="color:${gearCss(h.eq[k])}">${SLOT_ICON[k]}${gearName(h.eq[k])}</span>`).join(' ')}<br>영혼석: ${h.slots.filter((q) => q.stone).map((q) => `<span style="color:${COLORS[q.color].css}">${STONE[q.stone].icon}${STONE[q.stone].name}</span>`).join(' ') || '없음'}<br>가방: ${h.inv.map((q) => `${ITEMS[q.k].name}×${q.n}`).join(', ') || '비어 있음'}</div>`);
+    UI.info(`<h3>🧭 ${h.name} <small style="color:#9aa2bd">${h.gen}대째 모험가 · HP ${h.hp}/${h.max}</small></h3><div class="gtxt">장비: ${SLOTS.filter((k) => h.eq[k]).map((k) => `<span style="color:${gearCss(h.eq[k])}">${SLOT_ICON[k]}${gearName(h.eq[k])}</span>`).join(' ')}<br>영혼석: ${h.slots.filter((q) => q.stone).map((q) => `<span style="color:${COLORS[q.color].css}">${STONE[q.stone].icon}${STONE[q.stone].name}</span>`).join(' ') || '없음'}<br>가방: ${h.inv.map((q) => `${ITEMS[q.k].name}×${q.n}`).join(', ') || '비어 있음'}</div>${this.growthLine(h)}`);
+    this.growthBtn(h);
   },
   report(r, res) {
     const W = { boss: `🏆 구역 ${r.zone} 보스 격파!${r.first ? ' 다음 구역이 열렸다.' : ''}`, recall: `📜 귀환 두루마리로 구역 ${r.zone}-${r.zf}에서 돌아왔다.`, death: `🕯 ${jo(r.hero, '이가')} 구역 ${r.zone}-${r.zf}에서 쓰러졌다. 영혼석과 전리품을 잃었다. 이름을 비석에 새겼다.`, first: '🔥 세상에 남은 마지막 모닥불. 사람이 모일수록 밝게 탄다.', resume: '🏕 정착지로 돌아왔다.' }[r.reason] || '';

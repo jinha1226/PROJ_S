@@ -78,6 +78,8 @@ export const CLASS_RULE = {
   leanGap: 2, // 차이가 이만큼 이상이면 기운 형태(수식어)
   slots: 3, // 장착 스킬 칸
   mastery: { cd: 0.75, amt: 1.25 }, // 한 우물 강화판
+  xp: [0, 80, 200, 380, 620, 950, 1400, 2000, 2800, 3800], // 레벨 1~10에 닿는 누적 경험(1구역을 마치면 약 5)
+  hpLevel: 2, // 레벨마다 기본 HP
 };
 /** 위력: 그 스킬이 속한 Class 레벨로 */
 export const potencyOf = (lv) => 0.55 + 0.045 * lv;

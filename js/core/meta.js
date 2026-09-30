@@ -1,19 +1,22 @@
 import { ROOMS } from '../data/build.js';
+import { CLASS_RULE } from '../data/classes.js';
 import { GEAR_BASES } from '../data/gear.js';
 import { APPEAR, ITEMS } from '../data/items.js';
 import { LEVEL_XP } from '../data/stones.js';
 import { BLD, CRAFT_B, HAIRS, HERO_NAMES, JOBS, JOB_CLOTH, NAMES, RECIPES, SKINS, TRAITS, adj } from '../data/town.js';
 import { FORMS, WPN } from '../data/weapons.js';
+import { validLevels } from '../sim/classes.js';
 import { pick, rand, ri, shuffle } from '../util/rng.js';
 import { jo } from '../util/text.js';
 import { calcStats, craftArmor, craftWeapon, fullyKnown, gearName, makeGear, migrateGear, migrateSets, newJewelLook, revealAll, starterKit } from './gear.js';
+import { newProg, spentOf } from './progress.js';
 import { hasRoom, migrateTown } from './settlement.js';
 import { ageVisitors, rollVisitors } from './visitors.js';
 
 export let META = null;
 
 export function defaultMeta() {
-  META = { v: 9, gen: 0, visits: 0, cleared: [false, false, false, false], npcs: [], newNpcs: [], buildings: { plaza: { shown: true }, gate: { shown: true }, altar: { shown: true }, storage: { shown: true }, forge: { shown: true } },
+  META = { v: 10, gen: 0, visits: 0, cleared: [false, false, false, false], npcs: [], newNpcs: [], buildings: { plaza: { shown: true }, gate: { shown: true }, altar: { shown: true }, storage: { shown: true }, forge: { shown: true } },
     mats: { 약초: 2, 가죽: 1, 광석: 2 }, items: { heal: 1, ember_jar: 1 }, gear: [], recipes: {}, hero: null, fallen: [], closed: {}, buff: null, ending: null,
     lit: [false, false, false, false], visitors: [], lore: [], glowMods: [], rememberedKeepers: [], needSuccessor: false, watcher: null, unrandsSeen: [], relics: [] };
   const k = makeNpc('keeper'), b = makeNpc('blacksmith'); META.npcs.push(k); initRel(k); META.npcs.push(b); initRel(b);
@@ -32,8 +35,18 @@ function migrateMeta(M) {
   if (M.v < 6) { migrateGear(M); if (M.hero) { const n = Math.max(1, M.hero.slots.filter((q) => q.stone).length); M.hero.level = n; M.hero.xp = LEVEL_XP[n - 1]; } M.v = 6; }
   if (M.v < 8) { migrateSets(M); M.v = 8; }
   if (M.v < 9 || !M.settle) { migrateTown(M); M.v = 9; } // 고정 건물 → 방 (docs/설계_정착지_건설.md)
+  if (M.v < 10) { migrateProg(M); M.v = 10; } // 성장: 레벨 10 · Class 점수 (docs/설계_직업.md)
   M.rememberedKeepers ||= [];
   if (M.hero) { M.hero.torch ??= 100; M.hero.look ||= {}; if (!M.hero.look.ember_jar) M.hero.look.ember_jar = { name: '불씨 단지', color: 0xffc45c }; M.hero.known ||= {}; M.hero.known.ember_jar = true; }
+}
+/** v9 → v10: 옛 레벨(1~6) → 새 레벨, 찍지 않은 점수로. 주민에게도 성장 기록 */
+function migrateProg(M) {
+  const h = M.hero;
+  if (h && !h.prog) {
+    const lv = Math.max(1, Math.min(CLASS_RULE.cap, h.level || 1)), b = h.cls && validLevels(h.cls.levels) && spentOf(h.cls) <= lv ? h.cls : { levels: {} };
+    h.prog = { level: lv, xp: CLASS_RULE.xp[lv - 1], points: lv - spentOf(b), build: b }; delete h.cls;
+  }
+  for (const n of [...(M.npcs || []), ...(M.newNpcs || []), ...(M.visitors || []).map((v) => v.npc)]) if (n && !n.prog) n.prog = newProg();
 }
 function migrate4(M) {
   M.gear = [...(M.weapons || []).map(craftWeapon), ...(M.armors || []).map(craftArmor)];
@@ -54,7 +67,7 @@ export function makeNpc(job) {
   if (!job) { const have = new Set(everyone.map((n) => n.job)), miss = all.filter((j) => !have.has(j)); job = miss.length && rand() < 0.75 ? pick(miss) : pick(all); }
   const used = new Set(everyone.map((n) => n.name)), free = NAMES.filter((x) => !used.has(x));
   const t = {}; for (const [k] of TRAITS) t[k] = ri(-2, 2);
-  return { id: 'n' + Math.floor(rand() * 1e9).toString(36), name: free.length ? pick(free) : pick(NAMES), job, t, mood: 0, rel: {}, look: { skin: pick(SKINS), hair: pick(HAIRS), cloth: JOB_CLOTH[job] } };
+  return { id: 'n' + Math.floor(rand() * 1e9).toString(36), name: free.length ? pick(free) : pick(NAMES), job, t, mood: 0, rel: {}, look: { skin: pick(SKINS), hair: pick(HAIRS), cloth: JOB_CLOTH[job] }, prog: newProg() };
 }
 
 /** 궁합: 원만할수록, 성실성·정직이 비슷할수록 좋다. 외향성은 비슷한 사람끼리 편하다(과묵한 둘도 서로 싫어하지 않는다) */
@@ -84,7 +97,8 @@ export function newHero(from) {
   const look = {};
   for (const cat of ['potion', 'scroll', 'throw']) { const looks = shuffle(APPEAR[cat].slice()); Object.keys(ITEMS).filter((k) => ITEMS[k].cat === cat).forEach((k, j) => { look[k] = { name: looks[j][0], color: looks[j][1] }; }); }
   let base = 30 + Math.min(15, Math.max(0, META.npcs.length - 2) * 2); const { eq, bag } = starterKit();
-  const h = { level: 1, xp: 0, name: from ? from.name : pick(HERO_NAMES), gen: META.gen, base, max: base, hp: base, torch: 100, inv: [], eq, bag, jlook: newJewelLook(), jknown: {}, slots: Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 })), sbag: [], sbagMax: 3, weakKnown: {}, known: { recall: true, ember_jar: true }, look, job: from ? from.job : null, npcLook: from ? from.look : null, perk: null };
+  const prog = from && from.prog ? from.prog : newProg(); base += CLASS_RULE.hpLevel * (prog.level - 1); // 주민이 등불을 이으면 그 사람의 성장이 그대로 온다
+  const h = { prog, level: prog.level, xp: prog.xp, name: from ? from.name : pick(HERO_NAMES), gen: META.gen, base, max: base, hp: base, torch: 100, inv: [], eq, bag, jlook: newJewelLook(), jknown: {}, slots: Array.from({ length: 6 }, () => ({ color: null, stone: null, cd: 0 })), sbag: [], sbagMax: 3, weakKnown: {}, known: { recall: true, ember_jar: true }, look, job: from ? from.job : null, npcLook: from ? from.look : null, perk: null };
   const perk = from ? dominant(from) : null;
   if (perk && ['H+', 'H-', 'E+', 'E-', 'X+', 'A+', 'C+', 'O+'].includes(perk)) h.perk = perk;
   if (h.perk === 'H+') h.sbagMax = 4;

@@ -52,7 +52,7 @@ const d3 = await page.evaluate(async () => { const g = window.__game; g.regen();
 check('§10-3 방랑하는 적: 먼 방에 깨어 있는 무리', d3.ok && d3.n >= 1 && d3.awake && d3.far, JSON.stringify(d3));
 
 // §10-4 레벨업: 잃은 HP의 절반
-const d4 = await page.evaluate(async () => { const g = window.__game, G = arena(), S = await import('/js/core/stones.js'), p = G.player; G.level = 1; G.xp = 0; p.hp = 10; const max0 = p.max; S.gainXp({ max: 15 }); drain(); return { level: G.level, hp: p.hp, max: p.max, max0 }; });
+const d4 = await page.evaluate(async () => { const g = window.__game, G = arena(), S = await import('/js/core/stones.js'), p = G.player; G.level = 1; G.xp = 0; G.prog = { level: 1, xp: 0, points: 0, build: { levels: {} } }; p.hp = 10; const max0 = p.max; S.gainXp({ max: 80 }); drain(); return { level: G.level, hp: p.hp, max: p.max, max0 }; });
 check('§10-4 레벨업: 잃은 HP의 절반이 찬다', d4.level === 2 && d4.hp === 14 + Math.ceil((d4.max - 14) / 2), JSON.stringify(d4));
 
 // §10-5 속도(칸/초): 굶주린 쥐 5.3, 거머리(땅 위) 1.65 (docs/설계_전투_코어.md §3)
