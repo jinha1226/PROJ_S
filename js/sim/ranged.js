@@ -64,15 +64,15 @@ export function castLand(e, cells) {
     const hitSet = new Set();
     for (const [x, y] of cells) {
       const i = I(x, y), here = entsAt(x, y);
-      if (G.surf[i] === S_WATER || here.some((c) => c.st.wet)) shock(x, y, 4, { hitSet });
-      else for (const c of here) if (!hitSet.has(c.id)) { hitSet.add(c.id); damage(c, 4, 'shock'); }
+      if (G.surf[i] === S_WATER || here.some((c) => c.st.wet)) shock(x, y, 5, { hitSet });
+      else for (const c of here) if (!hitSet.has(c.id)) { hitSet.add(c.id); damage(c, 5, 'shock'); }
     }
   } else if (e.elem === 'fire') {
     emit('meteor', { tiles: cells });
-    for (const [x, y] of cells) fireAt(x, y, 4);
+    for (const [x, y] of cells) fireAt(x, y, 5);
   } else {
     emit('frostfall', { tiles: cells });
-    const o = {}; for (const [x, y] of cells) freezeAt(x, y, 2, o); if (o.changed) snapTerrain();
+    const o = {}; for (const [x, y] of cells) freezeAt(x, y, 3, o); if (o.changed) snapTerrain();
   }
   if (e.boss) e.elem = { bolt: 'fire', fire: 'frost', frost: 'bolt' }[e.elem];
 }

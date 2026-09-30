@@ -18,7 +18,7 @@ export function initBody(e) {
 }
 
 /** 공격 간격(초): 골절이면 1.5배 */
-export function beatOf(e) { return (COMBAT.beat[e.type] ?? 1) * (e.st && e.st.frac > 0 ? 1.5 : 1); }
+export function beatOf(e) { return (COMBAT.beat[e.boss] ?? COMBAT.beat[e.type] ?? 1) * (e.st && e.st.frac > 0 ? 1.5 : 1); }
 
 /** 걷는 속도(칸/초): 빙결·기절이면 0, 골절 절반, 가속 1.5배 */
 export function speedOf(e) {

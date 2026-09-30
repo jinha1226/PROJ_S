@@ -18,7 +18,7 @@ export function meleeBrain(e) {
   const d = dist(e, t);
   if (d <= COMBAT.reach) {
     faceAng(e, angTo(e, t));
-    if (e.cd <= 0) startAct(e, 'melee', { target: t.id, fx: 'ready' });
+    if (e.cd <= 0) startAct(e, 'melee', { target: t.id, wind: e.boss ? COMBAT.bossWindup : COMBAT.windup, fx: 'ready' });
     return d > COMBAT.reach * 0.8 ? steerTo(e, t.px, t.py) : null;
   }
   return spread(e, steerTo(e, t.px, t.py));

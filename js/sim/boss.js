@@ -34,7 +34,7 @@ function chiefBrain(e) {
   const t = foeTarget(e); if (!t) return null;
   e.hornT = (e.hornT ?? COMBAT.hornEvery * 0.5);
   if (e.hornT <= 0 && canSee(e, t) && adds(e) < COMBAT.maxAdds) { e.hornT = COMBAT.hornEvery; startAct(e, 'horn', { wind: COMBAT.tele.horn, cd: 0.6, fx: 'windup' }); log('족장이 뿔나팔을 든다.', 'bad'); return null; }
-  if (e.cd <= 0 && (e.slamN = (e.slamN || 0)) >= 2 && dist(e, t) <= 1.8) {
+  if (e.cd <= 0 && (e.slamN = (e.slamN || 0)) >= 3 && dist(e, t) <= 1.8) {
     e.slamN = 0; faceAng(e, angTo(e, t));
     const cells = square3(t.x, t.y);
     startAct(e, 'slam', { wind: COMBAT.tele.slam, cells, cd: 1.2, recover: 0.5, tele: { kind: 'cells', cells, elem: 'push' }, fx: 'windup' });
@@ -48,7 +48,7 @@ ACTS.horn = { resolve(u) { emit('horn', { id: u.id }); summonFoes(u, 'goblin', 2
 ACTS.slam = {
   resolve(u, a) {
     emit('lunge', { id: u.id, dx: Math.cos(u.ang), dy: Math.sin(u.ang), amt: 0.6 }); emit('shake', { a: 0.5 });
-    for (const t of G.ents.filter((o) => o.alive && o.team !== u.team && !o.npc && onCells(a.cells, o))) damage(t, u.atk + 3, 'hit', { label: '강타', big: true, src: u });
+    for (const t of G.ents.filter((o) => o.alive && o.team !== u.team && !o.npc && onCells(a.cells, o))) damage(t, u.atk + 2, 'hit', { label: '강타', big: true, src: u });
   },
 };
 

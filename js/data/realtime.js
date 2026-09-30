@@ -23,18 +23,19 @@ export const COMBAT = {
   reach: 1.2, // 적 근접: 닿는 거리(중심 사이)
   whiff: 0.3, // 힘 모으는 동안 닿는 거리 + 이만큼 밖으로 빠지면 헛친다
   windup: 0.35, // 적 근접 힘 모으기(초)
+  bossWindup: 0.6, // 보스의 무거운 한 방
   recover: 0.25, // 친 뒤 멈춰 있는 시간(초)
-  beat: { rat: 0.8 }, // 적 공격 간격(초), 없으면 1
+  beat: { rat: 0.8, chief: 1.6 }, // 적 공격 간격(초), 없으면 1. 보스는 이름으로
   tele: { cast: 1.2, aim: 0.8, charge: 1.0, slam: 1.2, horn: 1.2, heal: 0.5 }, // 예고(초)
   recast: 2.4, // 마법사 다시 외우기까지(초)
-  healEvery: 2.5, hornEvery: 8, summonEvery: 10, blinkEvery: 4, // 주술사 치유 · 족장 뿔나팔 · 파수꾼 소환 · 대마법사 순간이동(초)
+  healEvery: 2.5, hornEvery: 15, summonEvery: 10, blinkEvery: 4, // 주술사 치유 · 족장 뿔나팔 · 파수꾼 소환 · 대마법사 순간이동(초)
   chargeCd: 3, bossChargeCd: 1.5, // 돌진 뒤 다시 노리기까지(초)
   dashSpeed: 12, dashMax: 8, // 돌진: 칸/초, 최대 칸
   arrow: { speed: 14, range: 8 }, // 해골 궁수 화살
   keepAway: [3, 5], // 원거리·시전하는 적이 두려는 거리(칸)
   castRange: 6, aimRange: 7, // 주문·조준을 시작하는 거리(칸)
   wake: 4, // 깨어난 적이 깨우는 거리(칸)
-  maxAdds: 4, // 족장·파수꾼이 불러 둔 부하가 이만큼이면 더 부르지 않는다
+  maxAdds: 2, // 족장·파수꾼이 불러 둔 부하가 이만큼이면 더 부르지 않는다
 };
 /** 등불지기 무기 모양 (docs/설계_실시간_전환.md §4): half = 부채꼴 반각(도), reach = 닿는 거리(칸), beat = 박자(초) */
 export const WSHAPE = {

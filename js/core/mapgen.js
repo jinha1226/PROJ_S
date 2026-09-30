@@ -161,7 +161,7 @@ export function mkEnemy(type, x, y, F) {
     st: newSt(), alive: true, awake: type === 'leech', face: [0, 1], cd: ri(0, 1), cast: null, charge: null, aim: false, name: B.name };
   if (type === 'mage') { const m = G.mageOf[G.zone - 1]; e.elem = m === 'mix' ? pick(['bolt', 'fire', 'frost']) : m; e.name = '해골 ' + MAGE[e.elem].name; }
   if (type === 'goblin' && F.poison && rand() < 0.5) { e.poison = true; e.name = '독칼 고블린'; }
-  else if (type === 'goblin' && G.floor >= 2 && rand() < 0.4) { e.armor = true; e.name = '갑옷 고블린'; e.hp += 2; e.max += 2; }
+  else if (type === 'goblin' && G.floor >= 2 && rand() < 0.4) { e.armor = true; e.name = '갑옷 고블린'; e.hp += 4; e.max += 4; }
   if (G.surf && G.surf[I(x, y)] === S_WATER) e.st.wet = 3;
   return e;
 }
