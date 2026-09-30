@@ -105,6 +105,7 @@ Object.assign(UI, {
   },
   /** 매 프레임, 시간이 흐른 뒤: 자동 걷기·탐험·쉬기를 잇거나 멈추고, 멈춤 표시를 맞춘다 */
   afterTick(n) {
+    this.renderSkills();
     const p = G.player, hurt = G.hurt; G.hurt = false;
     if (G.pendingReturn) { const r = G.pendingReturn; G.pendingReturn = null; G.over = true; this.stopAuto(); setTimeout(() => returnToTown(r), 700); return; }
     const foes = visibleFoes().length;
@@ -141,8 +142,8 @@ Object.assign(UI, {
   enterTarget(pend) {
     this.travel = null; setRest(false); this.hideInfo();
     this.mode = 'target'; this.pend = pend; this.prevIdx = -1; this.prev = null;
-    this.valid = targetsFor(pend);
-    [...$('#souls').children].forEach((b, k) => b.classList.toggle('sel', pend.kind === 'stone' && k === pend.slot));
+    this.valid = pend.kind === 'skill' ? this.skillTargets(pend) : targetsFor(pend);
+    [...$('#souls').children].forEach((b, k) => b.classList.toggle('sel', (pend.kind === 'stone' || pend.kind === 'skill') && k === pend.slot));
     $('#targetbar').classList.add('on');
     if (pend.self) { this.prev = selfPreview(pend.id); $('#targettext').innerHTML = `<b>${pend.name}</b> ${this.prev.note}<br><small style="color:#9aa2bd">칸을 한 번 더 누르면 발동</small>`; }
     else $('#targettext').innerHTML = this.valid.size ? `<b>${pend.name}</b> 대상 칸을 탭하면 결과가 보인다` : `<b>${pend.name}</b> 닿는 대상이 없다`;
@@ -165,7 +166,7 @@ Object.assign(UI, {
     if (this.pend.self) { if (x === G.player.x && y === G.player.y) { const pend = this.pend; this.exitTarget(); act(() => pend.run()); return; } this.exitTarget(); return; }
     if (!this.valid.has(i)) { if (x === G.player.x && y === G.player.y) { this.exitTarget(); return; } this.toast('사거리·시야 밖이다.'); return; }
     if (this.prevIdx === i) { const pend = this.pend; this.exitTarget(); act(() => pend.run(x, y)); return; }
-    this.prevIdx = i; this.prev = previewFor(this.pend, x, y); Sfx.play('ui');
+    this.prevIdx = i; this.prev = this.pend.kind === 'skill' ? this.skillPreview(this.pend) : previewFor(this.pend, x, y); Sfx.play('ui');
     $('#targettext').innerHTML = `<b>${this.pend.name}</b> ${this.prev.note}<br><small style="color:#9aa2bd">같은 칸을 한 번 더 탭하면 발동</small>`;
     View.refreshDecals();
   },

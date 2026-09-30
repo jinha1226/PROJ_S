@@ -1,11 +1,11 @@
-import { CSKILLS } from '../data/class-skills.js';
-import { S_ASH, S_GRASS, S_NONE, S_WATER, T_WALL } from '../data/terrain.js';
-import { damage, dir8, push, weaponHit } from '../core/combat.js';
-import { fireAt, freezeAt, shock } from '../core/elements.js';
+import { cancelIntent, damage, dir8, push, resistOk, weaponHit } from '../core/combat.js';
+import { applyFire, igniteTile, oilBlast, shock } from '../core/elements.js';
 import { los } from '../core/fov.js';
 import { emitStatus, snapTerrain } from '../core/snap.js';
 import { posOf, rad, sweep } from '../core/space.js';
 import { G, I, emit, entsAt, inb, isP, log, newSt, standable } from '../core/state.js';
+import { CSKILLS } from '../data/class-skills.js';
+import { S_ASH, S_GRASS, S_ICE, S_NONE, S_OIL, S_WATER, T_WALL } from '../data/terrain.js';
 import { startAct } from './action.js';
 import { ACTS } from './acts.js';
 import { angTo, dist, faceAng, initBody } from './body.js';
@@ -29,9 +29,17 @@ setCounter((e, src, mul) => strike(e, src, mul, { counter: true }));
 export function elemAt(u, x, y, elem, dmg) {
   const prev = G.curSrc; G.curSrc = u;
   try {
-    if (elem === 'fire') fireAt(x, y, dmg);
-    else if (elem === 'frost') { const o = {}; freezeAt(x, y, dmg, o); if (o.changed) snapTerrain(); }
-    else { const here = entsAt(x, y).filter((e) => enemyOf(u, e)); if (G.surf[I(x, y)] === S_WATER || here.some((e) => e.st.wet)) shock(x, y, dmg); else for (const e of here) damage(e, dmg, 'shock', { src: u }); emit('zap', { x, y }); }
+    // 스킬은 적만 친다. 스킬이 남긴 지형(불붙은 풀·기름 폭발·물을 타는 번개)은 누구에게나 위험하다
+    const i = I(x, y), here = entsAt(x, y).filter((e) => enemyOf(u, e));
+    if (!inb(x, y) || G.tile[i] === T_WALL) return;
+    if (elem === 'fire') { if (G.surf[i] === S_OIL) { oilBlast(x, y); return; } for (const e of here) applyFire(e, dmg); igniteTile(x, y, { noFlash: here.length > 0 }); }
+    else if (elem === 'frost') {
+      const wasWater = G.surf[i] === S_WATER; let ch = false;
+      if (wasWater) { G.surf[i] = S_ICE; ch = true; } if (G.fire[i]) { G.fire[i] = 0; ch = true; }
+      emit('freeze', { x, y, water: wasWater, center: true });
+      for (const e of here) { const wet = e.st.wet > 0 || wasWater; damage(e, dmg, 'frost', { src: u }); if (e.alive && wet && resistOk(e, 'frost')) { e.st.frozen = Math.max(e.st.frozen, 4); e.st.wet = 0; e.st.burn = 0; emitStatus(e); cancelIntent(e); } }
+      if (ch) snapTerrain();
+    } else { if (G.surf[i] === S_WATER || here.some((e) => e.st.wet)) shock(x, y, dmg); else for (const e of here) damage(e, dmg, 'shock', { src: u }); emit('zap', { x, y }); }
   } finally { G.curSrc = prev; }
 }
 const CYCLE = ['fire', 'frost', 'bolt'];
@@ -84,7 +92,7 @@ const RUN = {
   b_fog: (u, P, T) => fogAt(T.x, T.y, P.r, P.dur),
 
   g_wall: (u, P) => { addFx(u, 'guard', P.guard, { half: 180 }); for (const f of unitsNear(u, u.px, u.py, P.r, false)) taunt(f, u, P.taunt); },
-  g_charge: (u, P, T) => dashLine(u, T.ang, P.dist, (f) => { interrupt(f); push(f, ...dir8(u, f), P.n); }),
+  g_charge: (u, P, T) => dashLine(u, T.ang, P.dist, (f) => { strike(u, f, P.mul); if (f.alive) { interrupt(f); push(f, ...dir8(u, f), P.n); } }),
   a_mark: (u, P, T) => addFx(T.t, 'vuln', P.dur, { v: P.vuln }),
   a_step: (u, P, T) => { const t = T.t, a = angTo(u, t), bx = t.px + Math.cos(a) * 0.9, by = t.py + Math.sin(a) * 0.9; if (standable(Math.round(bx), Math.round(by))) { teleport(u, bx, by); faceAng(u, a + Math.PI); } strike(u, t, P.mul); },
   s_aim: (u, P, T) => shoot(u, T.ang, { range: P.range, pierce: true, look: 'quarrel', speed: 20 }, (f) => strike(u, f, P.mul)),

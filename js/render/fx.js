@@ -132,6 +132,15 @@ Object.assign(View, {
       case 'windup': if (ev) { ev.jolt.set(-(G.ents.find((e) => e.id === d.id)?.face[0] ?? 0) * 0.15, 0, 0); D.puffs.emit({ pos: W3(ev.cur.x, ev.cur.z, 0.1), n: 8, color: 0x9a8e80, speed: 1.4, grav: 0, life: 0.6, size: 0.3, flat: true }); D.rig.shake(0.1); Sfx.play('snort'); } break;
       case 'ready': if (ev) { const e = G.ents.find((q) => q.id === d.id), a = e && e.ang != null ? e.ang : 0; ev.jolt.set(-Math.cos(a) * 0.22, 0.05, -Math.sin(a) * 0.22); ev.sqv -= 2.2; ev.flash = 0.35; } break; // 힘 모으기: 뒤로 젖히며 번쩍
       case 'whiff': if (ev) D.labels.pop(W3(ev.cur.x, ev.cur.z, ev.h + 0.3), '헛침', { color: '#c8ccd8', cls: 'word', vx: 0 }); break;
+      case 'skillCast': if (ev) { ev.flash = 0.5; ev.sqv += 3; D.sparks.emit({ pos: W3(ev.cur.x, ev.cur.z, 0.7), n: 12, color: 0x9fd8ff, color2: 0xffffff, speed: 1.4, up: 1.2, grav: 0, life: 0.4, size: 0.1 }); } break;
+      case 'skillName': if (ev) D.labels.pop(W3(ev.cur.x, ev.cur.z, ev.h + 0.5), `${d.icon} ${d.name}`, { color: '#bfe4ff', cls: 'word', vx: 0, rise: 30, dur: 1.1 }); Sfx.play('cast'); break;
+      case 'block': if (ev) { D.labels.pop(W3(ev.cur.x, ev.cur.z, ev.h + 0.2), d.what || '막기', { color: '#9fd8ff', cls: 'word', vx: 0 }); D.sparks.emit({ pos: W3(ev.cur.x, ev.cur.z, 0.6), n: 14, color: 0x9fd8ff, color2: 0xffffff, speed: 3, life: 0.3, size: 0.1 }); Sfx.play('shield'); } break;
+      case 'parry': if (ev) { D.labels.pop(W3(ev.cur.x, ev.cur.z, ev.h + 0.2), '반격!', { color: '#ffe38a', cls: 'big', vx: 0 }); Sfx.play('swing'); } break;
+      case 'ward': if (ev) { D.labels.pop(W3(ev.cur.x, ev.cur.z, ev.h + 0.4), '버텼다!', { color: '#fff2b0', cls: 'big', vx: 0 }); D.fx.ring(W3(ev.cur.x, ev.cur.z), 0xfff2b0, 0.2, 1.6, 0.5); } break;
+      case 'interrupt': if (ev) D.labels.pop(W3(ev.cur.x, ev.cur.z, ev.h + 0.3), d.boss ? '늦춤' : '끊김!', { color: '#d6a0ff', cls: 'word', vx: 0 }); break;
+      case 'rooted': if (ev) D.labels.pop(W3(ev.cur.x, ev.cur.z, ev.h + 0.2), '묶임', { color: '#9fffb0', cls: 'word', vx: 0 }); break;
+      case 'cleanse': if (ev) D.sparks.emit({ pos: W3(ev.cur.x, ev.cur.z, 0.6), n: 16, color: 0xffffff, color2: 0x9fffb0, speed: 1.2, up: 1.5, grav: 0, life: 0.5, size: 0.1 }); break;
+      case 'pshield': if (ev) D.labels.pop(W3(ev.cur.x, ev.cur.z, ev.h + 0.3), `🛡+${d.add}`, { color: '#9fd8ff', cls: 'word', vx: 0 }); break;
       case 'aim': Sfx.play('draw'); break;
       case 'dash': Sfx.play('dash'); break;
       case 'shove': D.fx.ring(P(d.x, d.y), 0xf2e6c8, 0.2, 1.1, 0.25); D.sparks.emit({ pos: P(d.x, d.y, 0.5), n: 12, color: 0xffffff, color2: 0xf2e6c8, speed: 4, vx: d.dx * 4, vz: d.dy * 4, life: 0.3, size: 0.12 }); Sfx.play('push'); break;

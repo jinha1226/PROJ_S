@@ -28,6 +28,7 @@
 /* 위: 퀵슬롯 6칸(소모품) · 아래: 영혼석 6칸(스킬) — 둘 다 한 줄 */
 #souls{grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:4px!important;margin-bottom:5px}
 .slot{height:50px!important;min-width:0}
+#souls.skills{grid-template-columns:repeat(3,minmax(0,1fr))!important}
 #quick{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;margin-bottom:4px;pointer-events:auto}
 .qs{position:relative;height:40px;min-width:0;border-radius:10px;background:rgba(10,12,22,.82);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;padding:0 1px;font-size:17px}
 .qs small{font-size:9px;color:var(--dim);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;margin-top:2px}

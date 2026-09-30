@@ -2,6 +2,7 @@ import { META } from '../core/meta.js';
 import { G } from '../core/state.js';
 import { stoneCd } from '../core/stones.js';
 import { CATS } from '../data/enemies.js';
+import { STONES_ON } from '../data/realtime.js';
 import { AURA, COLORS, LEVEL_XP, STONE } from '../data/stones.js';
 import { torchSight } from '../data/torch.js';
 import { JOBS } from '../data/town.js';
@@ -35,12 +36,12 @@ Object.assign(UI, {
       ${perk ? `<div class="gtxt" style="color:#ffe38a">✦ ${perk.name}: ${perk.desc}</div>` : ''}
       <div class="st-bars">${bar('HP', p.hp, p.max, '#ff5a6a')}${bar('보호막', p.shield || 0, 10, '#9fd8ff', String(p.shield || 0))}${bar('횃불', torch, tmax, '#ffb040', `${Number.isInteger(torch) ? torch : torch.toFixed(1)} · 시야 ${torchSight(torch)}칸`)}</div>
       <div class="sec">상태 이상 · 지속 효과</div><div class="st-list">${st + auras || '<div style="color:#9aa2bd">없음</div>'}</div>
-      <div class="sec">영혼석 스킬</div><div class="st-grid">${stones}</div>
-      <div class="gtxt" style="margin-top:4px">영혼석 가방 ${G.sbag.length}/${G.sbagMax || 3}: ${bag}</div>
+      ${STONES_ON ? `<div class="sec">영혼석 스킬</div><div class="st-grid">${stones}</div><div class="gtxt" style="margin-top:4px">영혼석 가방 ${G.sbag.length}/${G.sbagMax || 3}: ${bag}</div>` : this.classSection()}
       <div class="sec">전투 수치 <small>누르면 출처</small></div>${this.statsRows()}
       <div class="sec">알아낸 약점</div><div class="gtxt">${weak}</div>
       <div class="sec">이번 원정</div><div class="gtxt">처치 ${s.kills || 0} · ${Math.floor(G.clock || 0)}초 · 원소 반응 ${s.combos || 0} · 최고 연쇄 ${s.best || 0}단계 · 영혼석 ${s.stones || 0}</div>`;
     sh.classList.add('tall'); sh.classList.remove('hidden');
     sh.querySelector('.close').onclick = () => { sh.classList.add('hidden'); sh.classList.remove('tall'); };
+    sh.querySelectorAll('[data-act="pickclass"]').forEach((b) => { b.onclick = () => this.openClassPicker(); });
   },
 });

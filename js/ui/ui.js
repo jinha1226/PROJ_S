@@ -1,6 +1,6 @@
 import { emitSlots, snapHud } from '../core/snap.js';
 import { G, Game } from '../core/state.js';
-import { RT } from '../data/realtime.js';
+import { RT, STONES_ON } from '../data/realtime.js';
 import { Sfx } from '../render/sfx.js';
 import { View } from '../render/view.js';
 
@@ -35,7 +35,8 @@ export const UI = {
     for (let k = 0; k < 6; k++) { const b = document.createElement('button'); b.className = 'qs empty'; this.hold(b, () => this.quickUse(k), () => this.quickInfo(k)); $('#quick').appendChild(b); }
     const souls = $('#souls');
     // 영혼석 6칸(한 줄) = 스킬 버튼. 탭 = 조준/발동, 길게 = 설명
-    for (let k = 0; k < 6; k++) { const b = document.createElement('button'); b.className = 'slot'; b.innerHTML = '<span class="si"></span><small class="sn"></small><span class="scd"></span><b class="aur"></b>'; this.hold(b, () => this.stoneBtn(k), () => this.slotInfo(k)); souls.appendChild(b); }
+    if (!STONES_ON) souls.classList.add('skills', 'empty'); // 영혼석 대신 Class 스킬 3칸 (docs/설계_직업.md)
+    for (let k = 0; k < (STONES_ON ? 6 : 3); k++) { const b = document.createElement('button'); b.className = 'slot'; b.innerHTML = '<span class="si"></span><small class="sn"></small><span class="scd"></span><b class="aur"></b>'; this.hold(b, () => (STONES_ON ? this.stoneBtn(k) : this.skillBtn(k)), () => (STONES_ON ? this.slotInfo(k) : this.skillInfo(k))); souls.appendChild(b); }
     this.hold($('#btn-wpn'), () => this.weaponInfo(), () => this.weaponInfo());
     $('#btn-bag').onclick = () => { Sfx.play('ui'); this.openInv(); }; // 가방 = 장비 창(서브탭으로 소모품·영혼석)
     $('#btn-ctx').onclick = () => this.ctxBtn();

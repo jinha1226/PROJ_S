@@ -14,6 +14,7 @@ import { T_STAIRS } from './data/terrain.js';
 import { GLOW } from './data/visitors.js';
 import { Sfx } from './render/sfx.js';
 import { View } from './render/view.js';
+import { setClass } from './sim/classes.js';
 import { Town } from './town/town.js';
 import { UI } from './ui/ui.js';
 import { cheb } from './util/grid.js';
@@ -69,7 +70,8 @@ export function enterDungeon(zone) {
   Object.assign(G, { clock: 0, hurtLog: [], deathBy: null, zone, zf: 1, over: false, won: false, nextId: 1, pendingReturn: null, known: h.known, look: h.look, inv: h.inv, eq: h.eq, bag: h.bag, heroBase: h.base, jlook: h.jlook || (h.jlook = newJewelLook()), jknown: h.jknown || (h.jknown = {}),  slots: h.slots, level: h.level || 6, xp: h.xp || 0, sbag: h.sbag, weakKnown: h.weakKnown, ctx: null, curSrc: null, dropHint: 0 });
   for (const k of ALWAYS_KNOWN) G.known[k] = true;
   for (const sl of G.slots) sl.cd = 0;
-  G.player = { id: 0, type: 'hero', name: h.name, x: 0, y: 0, hp: h.hp, max: h.max, st: newSt(), alive: true, face: [0, 1], shield: 0 };
+  G.player = { id: 0, type: 'hero', name: h.name, x: 0, y: 0, hp: h.hp, max: h.max, st: newSt(), alive: true, face: [0, 1], shield: 0, fx: {}, scd: {} };
+  setClass(G.player, h.cls || { levels: {} }); // 직업(docs/설계_직업.md)
   refreshStats();
   G.player.shield = armorShield() + (META.buff === 'feast' ? 6 : 0); META.buff = null;
   G.round = 0; G.auras = {}; G.combatDmg = 0;

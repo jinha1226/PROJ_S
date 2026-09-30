@@ -33,6 +33,7 @@ import './ui/hud.js';
 import './ui/status.js';
 import './ui/panels.js';
 import './ui/screens.js';
+import './ui/classes.js';
 import './town/town-ui.js';
 import './town/hearth.js';
 import './town/visitor-ui.js';

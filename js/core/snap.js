@@ -17,7 +17,7 @@ export function snapHud() {
   for (const [dx, dy] of D8) { const x = p.x + dx, y = p.y + dy; if (inb(x, y) && G.tile[I(x, y)] === T_OPEN && !entAt(x, y) && !G.items.has(I(x, y))) { door = [x, y]; break; } }
   for (const [dx, dy] of D8) { const x = p.x + dx, y = p.y + dy; if (!inb(x, y)) continue; const j = I(x, y); if (!closedDoor && G.tile[j] === T_DOOR) closedDoor = [x, y]; const e = entAt(x, y); if (!rescue && e?.npc && !e.freed) rescue = [x, y]; }
   const enemyCount = G.ents.filter((e) => e.alive && !e.ally && e !== p && seesEnt(e)).length;
-  const danger = (G.intents?.decals || []).some((q) => q.x === p.x && q.y === p.y && q.kind !== 1);
+  const danger = (G.intents?.decals || []).some((q) => q.x === p.x && q.y === p.y && q.kind !== 1 && !q.zone);
   emit('hud', { hp: p.hp, max: p.max, st: { ...p.st }, turn: G.stats.turns, clock: G.clock || 0, floor: G.floor, torch: G.torch ?? 100, torchMax: G.torchMax ?? 100, enemyCount, danger, stairs: G.tile[i] === T_STAIRS, lamp: G.lamps?.has(i), door, closedDoor, rescue, inv: G.inv.reduce((a, b) => a + b.n, 0), gear: G.gear.has(i) ? { name: gearName(G.gear.get(i)), css: gearCss(G.gear.get(i)) } : null, shield: p.shield || 0, boss: (() => { const b = G.ents.find((e) => e.boss); return b && b.alive && b.awake ? { name: b.name, hp: b.hp, max: b.max } : null; })() });
 }
 
@@ -43,6 +43,11 @@ export function emitIntents() {
     // 이름 없는 투구: 곧 예고를 걸 적
     if (!a && G.ps && G.ps.legend.has('namelessHelm') && ['mage', 'charger', 'archer'].includes(e.type) && e.cd <= 0.6 && seesEnt(e)) tags[e.id] = '⚠';
   }
+  // 스킬 효과: 머리 위 작은 표시 · 구역은 바닥에 옅게
+  const FXI = { root: '🌿', taunt: '📣', vuln: '☠', weak: '🕯', silence: '📿', guard: '🛡', link: '🤝', ward: '⏳', veil: '🌑', up: '⚔', haste: '⏩' };
+  for (const e of G.ents) if (e.alive && e.fx && !isP(e)) { const s = Object.keys(e.fx).map((k) => FXI[k] || '').join(''); if (s) tags[e.id] = (tags[e.id] || '') + s; }
+  const ZC = { trap: 0xc8a060, line: 0x6aa8ff, heal: 0x8fffb0, sanct: 0xfff2b0, flare: 0xffd060 };
+  for (const z of G.zones || []) { const R = Math.ceil(z.r); for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) if (Math.hypot(dx, dy) <= z.r + 0.2) decals.push({ x: Math.round(z.x) + dx, y: Math.round(z.y) + dy, kind: z.kind === 'trap' ? 4 : 0, color: ZC[z.kind] || 0xffffff, alpha: 0.35, zone: true }); }
   emit('intents', { decals, tags, casting, winding });
   G.intents = { decals, tags, casting, winding };
 }

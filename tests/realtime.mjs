@@ -201,6 +201,30 @@ check('포커스가 빠지면 누르던 조이스틱도 놓는다', r11.joy === 
 const r6 = await page.evaluate(async () => { const g = window.__game; document.body.classList.add('frozen'); g.returnToTown('recall'); await new Promise((r) => setTimeout(r, 2500)); return { mode: g.Game.mode, frozen: document.body.classList.contains('frozen') }; });
 check('정착지로 돌아가면 멈춤 표시(채도 빠짐)가 풀린다', r6.mode === 'town' && !r6.frozen, JSON.stringify(r6));
 
+// ---------- 직업: Class 정하기 · 스킬 3칸 (docs/설계_직업.md) ----------
+const cj1 = await page.evaluate(() => {
+  const g = window.__game; if (g.Game.mode !== 'dungeon') { g.META.hero = g.META.hero || g.newHero(); g.enterDungeon(1); } // 앞의 검사가 정착지로 돌아갔다
+  const G = arena([[3, 0, { hp: 99, max: 99, atk: 0 }]]), U = g.UI; G.ents[1].awake = false; document.querySelector('#screen').classList.add('hidden'); // 싸우는 중이 아니다
+  const before = getComputedStyle(document.querySelector('#souls')).display;
+  U.openClassPicker();
+  const click = (sel) => document.querySelector(sel).click();
+  for (let k = 0; k < 7; k++) click('[data-lv="fighter"][data-d="1"]');
+  for (let k = 0; k < 3; k++) click('[data-lv="cleric"][data-d="1"]');
+  click('[data-act="apply"]');
+  const btns = [...document.querySelectorAll('#souls .slot')].map((b) => b.querySelector('.sn').textContent);
+  return { before, title: G.player.klass.title, shown: getComputedStyle(document.querySelector('#souls')).display, btns, saved: g.META.hero && g.META.hero.cls && g.META.hero.cls.levels.fighter };
+});
+check('직업 정하기: 파이터 7 / 클레릭 3 = 방패의 팔라딘, 스킬 3칸이 뜬다', cj1.before === 'none' && cj1.title === '방패의 팔라딘' && cj1.shown !== 'none' && cj1.btns.length === 3 && cj1.btns[0] === '수호의 맹세', JSON.stringify(cj1));
+const cj2 = await page.evaluate(() => {
+  const g = window.__game, G = g.G, U = g.UI, p = G.player;
+  U.skillBtn(1); // 신성한 일격(자기): 바로 시전, 시전하는 동안 시간이 흐른다
+  const flowing = M.C.flowing(); for (let k = 0; k < 3; k++) M.C.step();
+  const next = !!(p.fx && p.fx.next), cd = p.scd.pa_smite > 0;
+  U.skillBtn(0); const tgt = U.mode === 'target' && U.valid.has(p.y * G.W + p.x); U.exitTarget(); // 수호의 맹세(아군): 조준, 내 칸도 대상
+  return { flowing, next, cd, tgt };
+});
+check('스킬 버튼: 자기 대상은 바로 시전(그동안 시간이 흐른다), 아군 대상은 조준', cj2.flowing && cj2.next && cj2.cd && cj2.tgt, JSON.stringify(cj2));
+
 check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 await browser.close(); server.close();
 const bad = results.filter((r) => !r).length;

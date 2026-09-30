@@ -7,6 +7,7 @@ import { useLamp } from '../core/torch.js';
 import { BOSSES } from '../data/enemies.js';
 import { weaponOf } from '../data/gear.js';
 import { CAT_ICON, ITEMS } from '../data/items.js';
+import { STONES_ON } from '../data/realtime.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { T_OPEN, T_STAIRS, T_WALL, ZONES, ZONE_FLOORS } from '../data/terrain.js';
 import { torchTier } from '../data/torch.js';
@@ -67,6 +68,7 @@ Object.assign(UI, {
   legendFlash() { const el = $('#legendflash'); el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); },
   renderSlots(d) {
     this.slotsSnap = d;
+    if (!STONES_ON) { this.renderSkills(true); $('#bagcount').textContent = G.inv.reduce((a, b) => a + b.n, 0) || ''; return; } // 영혼석이 꺼져 있으면 그 칸은 Class 스킬
     [...$('#souls').children].forEach((b, k) => {
       const q = d.slots[k], def = q.stone ? STONE[q.stone] : null, locked = k >= (G.level || 6);
       b.classList.toggle('locked', locked);
@@ -92,6 +94,7 @@ Object.assign(UI, {
   },
   /** 지속 효과: 남은 라운드를 칸에 작게 */
   renderAuras() {
+    if (!STONES_ON) return;
     const A = G.auras || {};
     [...$('#souls').children].forEach((b, k) => { const q = G.slots[k], a = q && q.stone && STONE[q.stone].aura, r = a && A[a] ? A[a] - 1 : 0; b.querySelector('.aur').textContent = r > 0 ? `${r}R` : ''; });
   },
