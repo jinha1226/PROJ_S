@@ -7,10 +7,10 @@ import { G, I, emit, entsAt, inb, isP, log, newSt, standable } from '../core/sta
 import { CSKILLS } from '../data/class-skills.js';
 import { S_ASH, S_GRASS, S_ICE, S_NONE, S_OIL, S_WATER, T_WALL } from '../data/terrain.js';
 import { startAct } from './action.js';
-import { ACTS } from './acts.js';
+import { ACTS, HOOKS } from './acts.js';
 import { angTo, dist, faceAng, initBody } from './body.js';
 import { loadoutOf, skillParams } from './classes.js';
-import { addFx, addZone, cleanse, enemyOf, fogAt, fxOf, healBy, interrupt, root, setCounter, shieldTo, stun, taunt, teleport, unitsNear } from './effects.js';
+import { addFx, addZone, cleanse, enemyOf, fogAt, fxOf, healBy, interrupt, root, shieldTo, stun, taunt, teleport, unitsNear } from './effects.js';
 import { spawnProj } from './projectile.js';
 import { cellsAlong, plus, square3 } from './shapes.js';
 
@@ -23,10 +23,10 @@ export function strike(u, t, mul, o = {}) {
   if (isP(u)) { const h0 = t.hp; weaponHit(t, null, { ...o, mul }); return h0 - Math.max(0, t.hp); }
   return damage(t, Math.max(1, Math.round((u.atk || 2) * mul) + (o.bonus || 0)), 'hit', { src: u });
 }
-setCounter((e, src, mul) => strike(e, src, mul, { counter: true }));
+HOOKS.counter = (e, src, mul) => strike(e, src, mul, { counter: true });
 
 /** 원소 한 번(칸 기준, 원소 규칙 그대로) */
-export function elemAt(u, x, y, elem, dmg) {
+export function elemAt(u, x, y, elem, dmg, eo = {}) {
   const prev = G.curSrc; G.curSrc = u;
   try {
     // 스킬은 적만 친다. 스킬이 남긴 지형(불붙은 풀·기름 폭발·물을 타는 번개)은 누구에게나 위험하다
@@ -37,7 +37,7 @@ export function elemAt(u, x, y, elem, dmg) {
       const wasWater = G.surf[i] === S_WATER; let ch = false;
       if (wasWater) { G.surf[i] = S_ICE; ch = true; } if (G.fire[i]) { G.fire[i] = 0; ch = true; }
       emit('freeze', { x, y, water: wasWater, center: true });
-      for (const e of here) { const wet = e.st.wet > 0 || wasWater; damage(e, dmg, 'frost', { src: u }); if (e.alive && wet && resistOk(e, 'frost')) { e.st.frozen = Math.max(e.st.frozen, 4); e.st.wet = 0; e.st.burn = 0; emitStatus(e); cancelIntent(e); } }
+      for (const e of here) { const wet = e.st.wet > 0 || wasWater; damage(e, dmg, 'frost', { src: u }); if (e.alive && wet && !eo.noFreeze && resistOk(e, 'frost')) { e.st.frozen = Math.max(e.st.frozen, 4); e.st.wet = 0; e.st.burn = 0; emitStatus(e); cancelIntent(e); } }
       if (ch) snapTerrain();
     } else { if (G.surf[i] === S_WATER || here.some((e) => e.st.wet)) shock(x, y, dmg); else for (const e of here) damage(e, dmg, 'shock', { src: u }); emit('zap', { x, y }); }
   } finally { G.curSrc = prev; }
@@ -58,8 +58,7 @@ function dashLine(u, ang, d, onPass) {
     const vx = r.x - x0, vy = r.y - y0, L = Math.hypot(vx, vy) || 1, k = Math.max(0, Math.min(1, ((f.px - x0) * vx + (f.py - y0) * vy) / (L * L)));
     if (Math.hypot(x0 + vx * k - f.px, y0 + vy * k - f.py) <= rad(f) + 0.6) hit.push(f);
   }
-  teleport(u, r.x, r.y); emit('dash', { id: u.id });
-  if (isP(u)) G.moved = true;
+  teleport(u, r.x, r.y); const r2 = sweep(u, 0.001, 0); teleport(u, r2.x, r2.y); emit('dash', { id: u.id }); // 몸 속에서 멈추지 않는다
   if (onPass) for (const f of hit) onPass(f);
 }
 const nearestFoe = (u, r = 99) => G.ents.filter((f) => f.alive && f.px != null && enemyOf(u, f) && !f.hidden && !f.npc && dist(u, f) <= r).sort((a, b) => dist(u, a) - dist(u, b))[0] || null;
@@ -94,7 +93,7 @@ const RUN = {
   g_wall: (u, P) => { addFx(u, 'guard', P.guard, { half: 180 }); for (const f of unitsNear(u, u.px, u.py, P.r, false)) taunt(f, u, P.taunt); },
   g_charge: (u, P, T) => dashLine(u, T.ang, P.dist, (f) => { strike(u, f, P.mul); if (f.alive) { interrupt(f); push(f, ...dir8(u, f), P.n); } }),
   a_mark: (u, P, T) => addFx(T.t, 'vuln', P.dur, { v: P.vuln }),
-  a_step: (u, P, T) => { const t = T.t, a = angTo(u, t), bx = t.px + Math.cos(a) * 0.9, by = t.py + Math.sin(a) * 0.9; if (standable(Math.round(bx), Math.round(by))) { teleport(u, bx, by); faceAng(u, a + Math.PI); } strike(u, t, P.mul); },
+  a_step: (u, P, T) => { const t = T.t, a = angTo(u, t); for (const da of [0, 0.8, -0.8, 1.6, -1.6]) { const bx = t.px + Math.cos(a + da) * 0.9, by = t.py + Math.sin(a + da) * 0.9; if (standable(Math.round(bx), Math.round(by)) && !entsAt(Math.round(bx), Math.round(by)).some((e) => e !== t && e !== u)) { teleport(u, bx, by); faceAng(u, angTo(u, t)); break; } } if (dist(u, t) <= 1.9) strike(u, t, P.mul); }, // 뒤(없으면 옆)에 설 자리가 있어야 찌른다
   s_aim: (u, P, T) => shoot(u, T.ang, { range: P.range, pierce: true, look: 'quarrel', speed: 20 }, (f) => strike(u, f, P.mul)),
   s_volley: (u, P, T) => { for (const f of unitsNear(u, T.x, T.y, P.r, false)) { emit('proj', { kind: 'arrow', from: [u.x, u.y], to: [f.x, f.y], dur: 200 }); strike(u, f, P.mul); } },
   am_flood: (u, P, T) => {
@@ -122,11 +121,11 @@ const RUN = {
   st_venom: (u, P) => addFx(u, 'venom', P.dur, { poison: P.poison }),
   st_net: (u, P, T) => shoot(u, T.ang, { range: P.range, look: 'pebble', speed: 12 }, (f) => { const hit = P.area ? unitsNear(u, f.px, f.py, P.area, false) : [f]; for (const h of hit) { root(h, P.root); addFx(h, 'vuln', P.root, { v: P.vuln }); } }),
   nb_edge: (u, P, T) => { const t = T.t, x = t.x, y = t.y; strike(u, t, P.mul); elemAt(u, x, y, 'bolt', P.dmg); },
-  nb_blink: (u, P, T) => { const x0 = u.x, y0 = u.y; teleport(u, T.x, T.y); if (isP(u)) G.moved = true; for (const [x, y] of plus(x0, y0)) elemAt(u, x, y, 'frost', P.dmg); if (P.next) addFx(u, 'next', 6, { mul: P.next }); },
+  nb_blink: (u, P, T) => { const x0 = u.x, y0 = u.y; teleport(u, T.x, T.y); for (const [x, y] of plus(x0, y0)) elemAt(u, x, y, 'frost', P.dmg, { noFreeze: !P.freeze }); if (P.next) addFx(u, 'next', 6, { mul: P.next }); },
   sp_veil: (u, P) => { for (const a of unitsNear(u, u.px, u.py, P.r, true)) addFx(a, 'veil', P.dur, { n: P.n, heal: P.heal }); },
   sp_drain: (u, P, T) => { const got = damage(T.t, P.dmg, 'impact', { src: u, label: '흡수' }), h = Math.max(1, Math.round(got * P.ratio)); healBy(u, u, h); const low = unitsNear(u, u.px, u.py, 6, true).filter((a) => a !== u).sort((a, b) => a.hp / a.max - b.hp / b.max)[0]; if (low) healBy(u, low, h); },
   tr_decoy: (u, P, T) => spawnDecoy(u, T.x, T.y, P),
-  tr_swap: (u, P, T) => { const t = T.t, [ux, uy] = posOf(u), [tx, ty] = posOf(t); teleport(u, tx, ty); teleport(t, ux, uy); if (isP(u)) G.moved = true; if (enemyOf(u, t)) { interrupt(t); if (P.stun) stun(t, P.stun); } if (P.next) addFx(u, 'next', 6, { mul: P.next }); },
+  tr_swap: (u, P, T) => { const t = T.t, [ux, uy] = posOf(u), [tx, ty] = posOf(t); teleport(u, tx, ty); teleport(t, ux, uy); if (enemyOf(u, t)) { interrupt(t); if (P.stun) stun(t, P.stun); } if (P.next) addFx(u, 'next', 6, { mul: P.next }); },
   aa_storm: (u, P, T) => { const seen = new Set(); for (const f of unitsNear(u, T.x, T.y, P.r, false)) { const k = f.y * G.W + f.x; if (seen.has(k)) continue; seen.add(k); elemAt(u, f.x, f.y, 'bolt', P.dmg); } emit('skybolt', { tiles: [[T.x, T.y]] }); },
   aa_elem: (u, P, T) => { let i = 0; shoot(u, T.ang, { range: P.range, pierce: !!P.pierce }, (f) => { const x = f.x, y = f.y; strike(u, f, P.mul); elemAt(u, x, y, CYCLE[i++ % 3], P.dmg); }); },
   wh_seal: (u, P, T) => shoot(u, T.ang, { range: P.range }, (f) => { strike(u, f, P.mul); if (f.alive) { interrupt(f); addFx(f, 'silence', P.dur); } if (P.heal) healBy(u, u, P.heal); }),
@@ -162,9 +161,9 @@ export function skillTarget(u, id, x, y) {
   if (P.tgt === 'self') return { t: u, x: u.x, y: u.y, ang: u.ang };
   if (x == null) return null;
   const d = Math.hypot(x - ux, y - uy), ang = Math.atan2(y - uy, x - ux);
-  if (P.tgt === 'dir') return { x, y, ang };
+  if (P.tgt === 'dir') return x === u.x && y === u.y ? null : { x, y, ang };
   if (d > P.r + 0.6 || !los(u.x, u.y, x, y)) return null;
-  if (P.tgt === 'tile') return standable(x, y) || G.tile[I(x, y)] !== T_WALL ? { x, y, ang } : null;
+  if (P.tgt === 'tile') return standable(x, y) && !(CSKILLS[id].empty && G.ents.some((e) => e.alive && e.x === x && e.y === y)) ? { x, y, ang } : null; // 문·벽은 안 되고, 옮겨 가는 스킬은 빈 칸만
   const want = (e) => e.alive && e.px != null && !e.hidden && (P.tgt === 'foe' ? enemyOf(u, e) && !e.npc : e.team === u.team && !e.decoy);
   const t = entsAt(x, y).find(want) || G.ents.filter((e) => want(e) && Math.hypot(e.px - x, e.py - y) < 0.8).sort((a, b) => Math.hypot(a.px - x, a.py - y) - Math.hypot(b.px - x, b.py - y))[0];
   return t ? { t, x: t.x, y: t.y, ang: angTo(u, t) } : null;
@@ -183,7 +182,7 @@ export function useSkill(u, id, x, y) {
 }
 ACTS.skill = {
   resolve(u, a) {
-    if (a.T.t && (!a.T.t.alive)) return;
+    if (a.T.t && !a.T.t.alive) { u.scd[a.id] = 0; return; } // 시전 중 대상이 쓰러지면 쿨타임을 돌려준다
     if (a.T.t && a.T.t !== u) { a.T.x = a.T.t.x; a.T.y = a.T.t.y; if (CSKILLS[a.id].tgt !== 'ally') a.T.ang = angTo(u, a.T.t); }
     RUN[a.id](u, a.P, a.T);
     if (isP(u)) log(`${CSKILLS[a.id].icon} ${CSKILLS[a.id].name}.`, 'info');

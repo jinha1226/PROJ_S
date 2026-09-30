@@ -30,7 +30,7 @@ export function damage(e, amt, kind = 'hit', o = {}) {
   if (isFoe(e) && !e.awake) e.awake = true;
   if (e.hidden) reveal(e); // 숨어 있던 적은 맞으면 드러난다
   const src = o.src || G.curSrc;
-  if (!DOT[kind]) { amt = incoming(e, outgoing(src, e, amt, kind), kind, src); if (amt <= 0) { if (isP(e)) G.hurt = true; return 0; } } // 스킬 효과: 막기·되치기·장막·표식·강화·특성(sim/effects.js)
+  if (!DOT[kind] && !o.raw) { amt = incoming(e, outgoing(src, e, amt, kind), kind, src); if (amt <= 0) { if (isP(e)) G.hurt = true; return 0; } } // 스킬 효과: 막기·되치기·장막·표식·강화·특성(sim/effects.js)
   // 장비: 내가 맞을 때 회피·막기·방어·저항, 내가 칠 때 원소 피해
   const struck = isP(e) && src && src !== e && isFoe(src);
   if (isP(e) && G.ps) {

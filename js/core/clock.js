@@ -14,7 +14,7 @@ import { G, I, log } from './state.js';
    걸음 박자(RT.turn)마다 endTurn: 횃불·회복·쉬기·깨어남(적은 움직이지 않는다). */
 export function initClock() {
   Object.assign(G, { clock: G.clock || 0, paused: false, stuckAbort: false, acc: 0, turnAcc: 0, swingT: 0, stuckT: 0, intent: { dir: null, hold: false }, walk: null, resting: false, target: null, projs: [], zones: [], twin: null, envAcc: 0, stillT: 0, holdAcc: 0, flowCache: null });
-  const p = G.player; if (p) { setPos(p, p.x, p.y); p.ppx = p.px; p.ppy = p.py; }
+  const p = G.player; if (p) { setPos(p, p.x, p.y); p.ppx = p.px; p.ppy = p.py; p.act = null; } // 옛 층의 시전은 버린다
   G.alpha = 1;
 }
 /** 입력이 매 프레임 알려 준다: dir = 지도 기준 방향(길이 ≤ 1), hold = 제자리에서 흘리기. 방향을 주면 자동 걷기·쉬기는 멈춘다 */
@@ -65,7 +65,7 @@ function moveHero(dt) {
   if (r.body && r.body.npc && !r.body.freed) freeNpc(r.body);
   const moved = Math.hypot(r.x - px, r.y - py);
   if (G.walk && moved < s * 0.2) { G.stuckT += dt; if (G.stuckT >= RT.stuck) { G.walk = null; G.stuckAbort = true; } } else G.stuckT = 0;
-  setPos(p, r.x, r.y); if (Math.hypot(r.x - px, r.y - py) > 1e-4) p.movedAt = G.clock;
+  setPos(p, r.x, r.y); if (Math.hypot(r.x - px, r.y - py) > 1e-4) { p.movedAt = G.clock; p.ang = Math.atan2(r.y - py, r.x - px); } // 걷는 쪽을 본다(방패 세우기의 앞)
   if (moved > 1e-4) p.face = [Math.sign(Math.round(dx * 10)), Math.sign(Math.round(dy * 10))];
   if (p.x !== ox || p.y !== oy) enterCell(p);
 }

@@ -41,6 +41,7 @@ Object.assign(UI, {
       if (pend.tgt === 'foe' && !G.ents.some((e) => e.alive && e.x === x && e.y === y && !e.hidden && !e.npc && enemyOf(p, e))) continue;
       if (pend.tgt === 'ally' && !G.ents.some((e) => e.alive && e.x === x && e.y === y && e.team === p.team && !e.decoy)) continue;
       if (pend.tgt !== 'dir' && !los(p.x, p.y, x, y)) continue;
+      if (pend.tgt !== 'ally' && x === p.x && y === p.y) continue; // 내 칸은 아군 대상 스킬만
       set.add(i);
     }
     return set;
@@ -82,6 +83,7 @@ Object.assign(UI, {
     if (inCombat()) { this.toast('싸우는 중에는 바꿀 수 없다.'); return; }
     const b = draft || structuredClone(p.build || { levels: {} });
     b.levels ||= {}; b.branch ||= {};
+    for (const c of BASE_IDS) if ((b.levels[c] || 0) >= CLASS_RULE.branchAt && !b.branch[c]) b.branch[c] = 'A'; // 보이는 대로 저장된다
     const ks = BASE_IDS.filter((c) => b.levels[c] > 0), tot = ks.reduce((a, c) => a + b.levels[c], 0), ok = validLevels(b.levels), k = classOf(b);
     const row = (c) => { const v = b.levels[c] || 0; return `<div class="gtxt" style="display:flex;align-items:center;gap:6px"><b style="width:70px;color:${roleCss(BASE[c].role)}">${BASE[c].name}</b><button class="mini" data-lv="${c}" data-d="-1">−</button><b style="width:22px;text-align:center">${v}</b><button class="mini" data-lv="${c}" data-d="1">＋</button><small style="color:#9aa2bd">${ROLES[BASE[c].role].name} · ${BASE[c].line}</small></div>`; };
     const open = k.skills || [];
@@ -105,7 +107,7 @@ Object.assign(UI, {
     sh.querySelectorAll('[data-sk]').forEach((el) => { el.onclick = () => { const id = el.dataset.sk; b.loadout = load.includes(id) ? load.filter((q) => q !== id) : load.length < CLASS_RULE.slots ? [...load, id] : load; again(); }; });
     sh.querySelector('[data-act="apply"]').onclick = () => {
       if (!validLevels(b.levels)) return;
-      setClass(p, b); refreshStats();
+      const hp0 = p.hp; setClass(p, b); refreshStats(); p.hp = Math.min(hp0, p.max); // 바꿔서 회복되지는 않는다
       if (META && META.hero) { META.hero.cls = structuredClone(p.build); saveMeta(); }
       sh.classList.add('hidden'); sh.classList.remove('tall');
       this.renderSkills(true); this.syncAll(); View.refreshDecals(); this.toast(`${p.klass.title || '직업 없음'}.`);

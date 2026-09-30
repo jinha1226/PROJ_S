@@ -48,7 +48,7 @@ export function classOf(build) {
 export function skillParams(info, build) {
   const S = CSKILLS[info.id], p = { ...S.p };
   let cd = S.cd, cast = S.cast;
-  const br = build && build.branch && build.branch[info.cls];
+  const br = (build && build.branch && build.branch[info.cls]) || 'A'; // 고르지 않았으면 갈래 A
   if (!info.sig && br && info.lv >= R.branchAt) { const m = BRANCHES[info.cls][br].mod[info.id]; if (m) for (const [k, v] of Object.entries(m)) { if (k === 'cdAdd') cd += v; else p[k] = v; } }
   if (info.lean && S[info.lean]) for (const [k, v] of Object.entries(S[info.lean])) { if (k === 'cd') cd = v; else p[k] = v; }
   const pot = potencyOf(info.lv);

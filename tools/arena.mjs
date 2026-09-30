@@ -55,7 +55,7 @@ function botDir() {
 
 function fight(pack, seed, cls) {
   arena(pack.foes.map(([x, y, type, o = {}]) => [x, y, type, { awake: true, ...o }]), { weapon: WEAPON, body: 'body_cloth', seed, size: 5, cls });
-  const p = G.player; p.hp = p.max = 30; G.level = 99; // 싸우는 도중 레벨업 회복이 끼지 않게
+  const p = G.player; p.hp = p.max = 30 + (p.classHp || 0); G.level = 99; // 싸우는 도중 레벨업 회복이 끼지 않게
   G.hurtLog = { push: (x) => { const k = x.who + (x.kind !== 'hit' ? `·${x.kind}` : ''); BY[k] = (BY[k] || 0) + x.amt; }, length: 0, shift() {}, slice: () => [] }; // 누구에게 얼마나 맞았나
   let t = 0;
   for (; t < 120 / 0.05 && p.alive && foes().length; t++) {
@@ -64,7 +64,7 @@ function fight(pack, seed, cls) {
   }
   setIntent(null, false);
   const taken = events.filter((e) => e.type === 'hit' && e.id === 0).reduce((a, e) => a + e.amt, 0);
-  return { secs: t * 0.05, loss: (Math.min(30, taken) / 30) * 100, died: !p.alive, end: Math.max(0, p.hp) / p.max };
+  return { secs: t * 0.05, loss: (Math.min(p.max, taken) / p.max) * 100, died: !p.alive, end: Math.max(0, p.hp) / p.max };
 }
 
 const q = (xs, k) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(k * s.length))]; };

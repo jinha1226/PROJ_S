@@ -57,7 +57,7 @@ test('스킬 60개가 모두 쓰이고 오류 없이 돈다', () => {
     const b = owner(id); assert.ok(b, id);
     arena([[2, 0, 'goblin', { hp: 99, max: 99, atk: 1 }], [2, 1, 'goblin', { hp: 99, max: 99, atk: 1 }]], { cls: { ...b, loadout: [id] } });
     const p = G.player; p.hp = 20;
-    const S = CSKILLS[id], t = S.tgt === 'ally' ? [p.x, p.y] : S.tgt === 'self' ? [null, null] : [CX + 2, CY];
+    const S = CSKILLS[id], t = S.tgt === 'ally' ? [p.x, p.y] : S.tgt === 'self' ? [null, null] : S.empty ? [CX, CY + 2] : [CX + 2, CY];
     run(1);
     foe(1).act = { kind: 'melee', t: 0, wind: 9, recover: 0, done: false, target: 0 }; // 힘 모으는 적(끊기 스킬용)
     assert.ok(skillReady(p, id), id);
@@ -129,4 +129,48 @@ test('등불지기 Class HP: 파이터 10은 HP +10', () => {
   arena([], { cls: L({ fighter: 10 }) });
   setClass(G.player, L({ fighter: 10 }));
   assert.equal(G.player.classHp, 10);
+});
+
+test('검토: 점멸로 옮기면 그 칸의 아이템을 줍고 시야가 다시 선다', () => {
+  arena([[4, 4, 'goblin', { hp: 99, max: 99, atk: 0 }]], { cls: { levels: { rogue: 5, wizard: 5 }, loadout: ['nb_blink'] } });
+  G.items.set(CY * G.W + CX + 3, 'heal'); const n0 = G.inv.reduce((a, b) => a + b.n, 0);
+  useSkill(G.player, 'nb_blink', CX + 3, CY); run(2);
+  assert.equal(G.player.x, CX + 3); assert.ok(!G.items.has(CY * G.W + CX + 3)); assert.equal(G.inv.reduce((a, b) => a + b.n, 0), n0 + 1);
+});
+
+test('검토: 걸어간 쪽이 방패의 앞이다', () => {
+  arena([[-1, 0, 'goblin', { atk: 5, hp: 99, max: 99, cd: 0, cdInit: true }]], { cls: L({ fighter: 1 }) });
+  G.eq.weapon = null; foe().st.stun = 0.5;
+  G.player.ang = 0; run(3, [-1, 0]); useSkill(G.player, 'f_block'); G.eq.weapon = null;
+  const hp = G.player.hp; run(secs(1));
+  assert.equal(G.player.hp, hp);
+});
+
+test('검토: 그림자 걸음은 설 자리가 없으면 멀리서 찌르지 않는다', () => {
+  arena([[4, 0, 'goblin', { atk: 0, hp: 99, max: 99 }]], { cls: { levels: { rogue: 10 }, loadout: ['a_step'] } });
+  G.eq.weapon = null; for (let y = CY - 2; y <= CY + 2; y++) G.tile[y * G.W + CX + 5] = 0; for (const [x, y] of [[CX + 4, CY - 1], [CX + 4, CY + 1]]) G.tile[y * G.W + x] = 0;
+  foe().st.stun = 99; useSkill(G.player, 'a_step', CX + 4, CY); run(2);
+  assert.ok(foe().hp === 99 || G.player.px > CX + 2);
+});
+
+test('검토: 반격 태세는 먼 곳의 화살을 튕긴다', () => {
+  arena([[4, 0, 'archer', { cd: 0, cdInit: true, hp: 99, max: 99 }]], { cls: { levels: { fighter: 5, rogue: 5 }, loadout: ['sm_riposte'] } });
+  G.eq.weapon = null; run(secs(0.8)); useSkill(G.player, 'sm_riposte'); run(secs(0.7));
+  assert.equal(G.player.hp, 40);
+});
+
+test('검토: 수호의 맹세를 서로 걸어도 되풀이되지 않는다', async () => {
+  const { damage } = await import('../../js/core/combat.js'), { addFx } = await import('../../js/sim/effects.js');
+  arena([[3, 0, 'goblin', { atk: 0, hp: 99, max: 99 }]], { cls: L({ fighter: 5, cleric: 5 }) });
+  const ally = { id: 901, type: 'goblin', name: '동료', team: 'party', ally: true, x: CX, y: CY + 1, hp: 30, max: 30, st: { ...foe().st }, alive: true, face: [0, 1], atk: 0, cdInit: true, cd: 99 };
+  G.ents.push(ally); setPos(ally, CX, CY + 1);
+  addFx(ally, 'link', 5, { id: 0, share: 0.5 }); addFx(G.player, 'link', 5, { id: 901, share: 0.5 });
+  damage(ally, 10, 'hit', { src: foe() });
+  assert.ok(ally.hp < 30 && G.player.hp < 40);
+});
+
+test('검토: 약한 표식이 강한 표식을 덮지 않는다', async () => {
+  const { addFx } = await import('../../js/sim/effects.js');
+  arena([[3, 0]]); addFx(foe(), 'vuln', 5, { v: 4 }); addFx(foe(), 'vuln', 5, { v: 1 });
+  assert.equal(foe().fx.vuln.v, 4);
 });
