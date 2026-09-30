@@ -19,16 +19,17 @@ export const seesEnt = (e) => isP(e) || (!!G.vis[I(e.x, e.y)] && !e.hidden);
 
 export function entAt(x, y) { for (const e of G.ents) if (e.alive && e.x === x && e.y === y) return e; return null; }
 
+/** 발밑 칸이 (x, y)인 존재 모두: 연속 좌표에서는 한 칸에 둘 이상 설 수 있다 */
+export const entsAt = (x, y) => G.ents.filter((e) => e.alive && e.x === x && e.y === y);
+
 export const tileAt = (x, y) => (inb(x, y) ? G.tile[I(x, y)] : T_WALL);
 
 export const standable = (x, y) => { const t = tileAt(x, y); return t !== T_WALL && t !== T_DOOR; };
 
 export const opaque = (i) => { const t = G.tile[i]; return t === T_WALL || t === T_DOOR || G.cloud[i] > 0; };
 
-/* ================= 타임라인: 로직은 즉시, 연출은 순서대로 ================= */
-export const TL = { cur: 0, q: [], reset() { this.cur = 0; this.q = []; }, add(fn, d = 0) { this.q.push({ t: this.cur + d, fn }); }, wait(ms) { this.cur += ms; } };
-
-export function emit(type, data = {}, d = 0) { TL.add(() => listener(type, data), d); }
+/* ================= 사건: 그 틱에 바로 화면으로 간다(로직은 연출을 기다리지 않는다) ================= */
+export function emit(type, data = {}) { listener(type, data); }
 
 export function log(t, cls = '') { emit('log', { t, cls }); }
 

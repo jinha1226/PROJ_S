@@ -1,4 +1,4 @@
-import { closeDoor, colorMul, playerMove } from '../core/combat.js';
+import { closeDoor, playerMove } from '../core/combat.js';
 import { gearCss, gearName, pickGear } from '../core/gear.js';
 import { itemName } from '../core/items.js';
 import { G, Game, I, entAt } from '../core/state.js';
@@ -10,16 +10,17 @@ import { CAT_ICON, ITEMS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { T_OPEN, T_STAIRS, T_WALL, ZONES, ZONE_FLOORS } from '../data/terrain.js';
 import { torchTier } from '../data/torch.js';
-import { CRITS, FORMS, SHAPES } from '../data/weapons.js';
+import { FORMS, SHAPES } from '../data/weapons.js';
 import { act, descend } from '../flow.js';
 import { Sfx } from '../render/sfx.js';
+import { beatOfWeapon } from '../sim/weapon.js';
 import { $, UI } from './ui.js';
 
 Object.assign(UI, {
   /** 공격 길게 누르기: 지금 무기 정보 (무기 교체는 없다 — 바꾸려면 가방에서 장착) */
   weaponInfo() {
     const w = G.eq.weapon, W = weaponOf(w), F = FORMS[W.form], o = G.eq.off;
-    this.info(`<h3>${F.icon} ${w ? gearName(w) : '맨손'} <small style="color:${COLORS[W.color].css}">● ${COLORS[W.color].name} ×${colorMul(W).toFixed(2)}</small></h3><div>${W.hands === 2 ? '양손' : '한손'} · ${F.name} · 피해 ${W.dmg[0]}–${W.dmg[1]}${W.range ? ` · 원거리 ${W.range}칸` : ''}</div><div>모양: ${SHAPES[W.shape]}</div><div style="color:#ffd27a">치명 ×2: ${CRITS[W.crit]}</div>${o ? `<div>보조손: <b style="color:${gearCss(o)}">${gearName(o)}</b></div>` : ''}<div class="hint" style="margin-top:6px">💡 같은 색 영혼석 하나마다 무기 피해 15% 증가 · 베기는 출혈, 타격은 골절, 찌르기는 급소 표식</div>`);
+    this.info(`<h3>${F.icon} ${w ? gearName(w) : '맨손'}</h3><div>${W.hands === 2 ? '양손' : '한손'} · ${F.name} · 피해 ${W.dmg[0]}–${W.dmg[1]} · ${beatOfWeapon(W)}초마다${W.range ? ` · 원거리 ${W.range}칸` : ''}</div><div>모양: ${SHAPES[W.shape]}</div>${o ? `<div>보조손: <b style="color:${gearCss(o)}">${gearName(o)}</b></div>` : ''}<div class="hint" style="margin-top:6px">💡 베기는 출혈, 타격은 골절, 찌르기는 급소 표식</div>`);
   },
   renderWeapon() {
     if (!G.eq) return;

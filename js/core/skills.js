@@ -1,8 +1,3 @@
-import { colorMul, damage, push } from './combat.js';
-import { conductSet, fireAt, frostCast, oilSet, shock, venomAt } from './elements.js';
-import { los, lineTiles } from './fov.js';
-import { G, I, TL, XY, emit, entAt, inb, isFoe, isP, standable } from './state.js';
-import { blockAt } from './hidden.js';
 import { HEX } from '../data/colors.js';
 import { CATS, catOf } from '../data/enemies.js';
 import { weaponOf } from '../data/gear.js';
@@ -12,6 +7,11 @@ import { S_GRASS, S_ICE, S_OIL, S_WATER, T_DOOR, T_WALL } from '../data/terrain.
 import { HIDDEN, HIDDEN_BY_ELEM } from '../data/visitors.js';
 import { D4, D8, cheb, sgn } from '../util/grid.js';
 import { jo } from '../util/text.js';
+import { damage, push } from './combat.js';
+import { conductSet, fireAt, frostCast, oilSet, shock, venomAt } from './elements.js';
+import { lineTiles, los } from './fov.js';
+import { blockAt } from './hidden.js';
+import { G, I, XY, emit, entAt, inb, isFoe, isP, standable } from './state.js';
 
 /* ================= 스킬 효과 · 조준 · 미리보기 =================
    옛 스킬 5개(밀치기·불씨·번개·냉기·독침)의 효과·조준·연출을 영혼석 스킬이 이어받는다.
@@ -20,18 +20,18 @@ export const sdmg = () => (G.ps ? G.ps.skillDmg : 0);
 
 export function castPush(tx, ty, n) {
   const p = G.player, dx = sgn(tx - p.x), dy = sgn(ty - p.y), e = entAt(tx, ty); if (!e) return false;
-  emit('lunge', { id: 0, dx, dy }); TL.wait(90); emit('shove', { x: tx, y: ty, dx, dy });
+  emit('lunge', { id: 0, dx, dy }); emit('shove', { x: tx, y: ty, dx, dy });
   damage(e, 1, 'hit', { dx, dy }); if (e.alive) push(e, dx, dy, n);
   return true;
 }
-export function castFire(tx, ty, dmg) { const p = G.player, dur = 90 + cheb(p.x, p.y, tx, ty) * 45; emit('proj', { kind: 'fire', from: [p.x, p.y], to: [tx, ty], dur }); TL.wait(dur); fireAt(tx, ty, dmg); }
+export function castFire(tx, ty, dmg) { const p = G.player, dur = 90 + cheb(p.x, p.y, tx, ty) * 45; emit('proj', { kind: 'fire', from: [p.x, p.y], to: [tx, ty], dur }); fireAt(tx, ty, dmg); }
 export function castBolt(tx, ty, dmg) {
-  const p = G.player; emit('bolt', { from: [p.x, p.y], to: [tx, ty] }); TL.wait(70);
+  const p = G.player; emit('bolt', { from: [p.x, p.y], to: [tx, ty] }); 
   const c = entAt(tx, ty);
   if (G.surf[I(tx, ty)] === S_WATER || (c && c.st.wet && !c.st.frozen)) shock(tx, ty, dmg); else if (c) damage(c, dmg, 'shock'); else emit('zap', { x: tx, y: ty });
 }
-export function castFrost(tx, ty, dmg) { const p = G.player, dur = 90 + cheb(p.x, p.y, tx, ty) * 40; emit('proj', { kind: 'frost', from: [p.x, p.y], to: [tx, ty], dur }); TL.wait(dur); frostCast(tx, ty, dmg); }
-export function castVenom(tx, ty) { const p = G.player, dur = 70 + cheb(p.x, p.y, tx, ty) * 35; emit('proj', { kind: 'dart', from: [p.x, p.y], to: [tx, ty], dur }); TL.wait(dur); venomAt(tx, ty); }
+export function castFrost(tx, ty, dmg) { const p = G.player, dur = 90 + cheb(p.x, p.y, tx, ty) * 40; emit('proj', { kind: 'frost', from: [p.x, p.y], to: [tx, ty], dur }); frostCast(tx, ty, dmg); }
+export function castVenom(tx, ty) { const p = G.player, dur = 70 + cheb(p.x, p.y, tx, ty) * 35; emit('proj', { kind: 'dart', from: [p.x, p.y], to: [tx, ty], dur }); venomAt(tx, ty); }
 
 /** 뼈 화살이 지나갈 칸: 나 → (tx,ty) 방향으로 n칸, 벽에서 멈춘다 */
 export function arrowPath(tx, ty, n) {
@@ -69,8 +69,8 @@ export function targetsFor(pend) {
 
 /** 무기 한 방 예상 피해 */
 function weaponRange(t, bonus = 0) {
-  const w = weaponOf(G.eq.weapon), weak = t && CATS[catOf(t)].weak === w.form, k = (weak ? 1.5 : 1) * (t && t.st.frozen ? 1.5 : 1), m = colorMul(w);
-  return [Math.ceil(Math.round((w.dmg[0] + G.ps.dmg + bonus) * m) * k), Math.ceil(Math.round((w.dmg[1] + G.ps.dmg + bonus) * m) * k)];
+  const w = weaponOf(G.eq.weapon), weak = t && CATS[catOf(t)].weak === w.form, k = (weak ? 1.5 : 1) * (t && t.st.frozen ? 1.5 : 1);
+  return [Math.ceil((w.dmg[0] + G.ps.dmg + bonus) * k), Math.ceil((w.dmg[1] + G.ps.dmg + bonus) * k)];
 }
 function pushPreview(x, y, dx, dy, n, add) {
   let cx = x, cy = y, left = n, k = 0, note = ''; const rot = Math.atan2(dx, -dy);

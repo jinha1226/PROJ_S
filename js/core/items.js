@@ -2,15 +2,15 @@ import { SLOTS } from '../data/gear.js';
 import { ITEMS } from '../data/items.js';
 import { C_SMOKE, S_ICE, S_OIL, S_WATER, T_DOOR, T_WALL } from '../data/terrain.js';
 import { JAR_REFILL } from '../data/torch.js';
+import { plus, square3 } from '../sim/shapes.js';
 import { D8, cheb, sgn } from '../util/grid.js';
 import { pick, ri } from '../util/rng.js';
-import { plus, square3 } from './ai.js';
 import { cancelIntent, heal, moveEnt, onEnter } from './combat.js';
 import { addCloud, fireAt, oilBlast } from './elements.js';
 import { canSee, computeFOV } from './fov.js';
 import { canEnchant, enchantItem, fullyKnown, identifyItem } from './gear.js';
 import { emitStatus, snapTerrain, snapVis } from './snap.js';
-import { G, I, TL, emit, entAt, inb, isFoe, log, standable } from './state.js';
+import { G, I, emit, entAt, inb, isFoe, log, standable } from './state.js';
 import { refillTorch } from './torch.js';
 
 
@@ -48,7 +48,7 @@ export function useItem(k, tx, ty) {
   }
   if (!takeItem(k)) return false;
   emit(cat === 'potion' ? 'drink' : 'read', { color: G.look[k].color });
-  TL.wait(140);
+  
   identify(k);
   if (k === 'heal') { heal(p, Math.round(15 * (1 + (G.ps ? G.ps.potion : 0) / 100))); if (p.st.burn) { p.st.burn = 0; emitStatus(p); } }
   else if (k === 'ember_jar') { refillTorch(JAR_REFILL); log('모닥불 불씨를 옮겨 담았다.', 'good'); computeFOV(); snapVis(); }
@@ -57,7 +57,7 @@ export function useItem(k, tx, ty) {
   else if (k === 'cure') { Object.assign(p.st, { poison: 0, burn: 0, wet: 0, immune: 12 }); emitStatus(p); log('몸이 깨끗해졌다. 한동안 독이 듣지 않는다.', 'good'); }
   else if (k === 'haste') { p.st.haste = 8; emitStatus(p); log('몸이 가벼워졌다.', 'good'); }
   else if (k === 'tele') {
-    const [x, y] = teleSpot(); emit('poof', { x: p.x, y: p.y }); TL.wait(80);
+    const [x, y] = teleSpot(); emit('poof', { x: p.x, y: p.y }); 
     moveEnt(p, x, y, { dur: 1, hop: 0, kind: 'tele' }); emit('poof', { x, y }); computeFOV(); snapVis(); onEnter(p); log('공간이 뒤틀렸다.', 'info');
   } else if (k === 'fear') {
     let n = 0;
@@ -66,10 +66,10 @@ export function useItem(k, tx, ty) {
   } else if (k === 'recall') {
     emit('recallGlow', { x: p.x, y: p.y }); log('두루마리에 빛이 모인다.', 'syn'); G.recallArm = true;
   } else if (k === 'blaze') {
-    emit('ring', { x: p.x, y: p.y, elem: 'fire' }); TL.wait(90);
+    emit('ring', { x: p.x, y: p.y, elem: 'fire' }); 
     for (const [dx, dy] of D8) { const x = p.x + dx, y = p.y + dy; if (inb(x, y) && G.tile[I(x, y)] !== T_WALL) fireAt(x, y, 4); }
   }
-  TL.wait(100);
+  
   return true;
 }
 
@@ -81,14 +81,14 @@ export function throwItem(k, tx, ty) {
     const p = G.player, dx = sgn(tx - p.x), dy = sgn(ty - p.y), side = [[-dy, dx], [dy, -dx]].map(([a, b]) => [tx + a * 2, ty + b * 2]).find(([x, y]) => inb(x, y) && G.tile[I(x, y)] !== T_WALL);
     if (side) { log('병이 둘로 갈라졌다.', 'syn'); landThrow(k, side[0], side[1]); }
   }
-  TL.wait(100);
+  
   return true;
 }
 function landThrow(k, tx, ty) {
   const p = G.player, d = cheb(p.x, p.y, tx, ty), dur = 130 + d * 50, wide = G.ps && G.ps.throwArea;
   const dx = sgn(tx - p.x), dy = sgn(ty - p.y); if (dx || dy) { p.face = [dx, dy]; emit('face', { id: 0, dx, dy }); }
   emit('lunge', { id: 0, dx, dy, amt: 0.2 });
-  emit('proj', { kind: 'flask', from: [p.x, p.y], to: [tx, ty], dur, color: G.look[k].color }); TL.wait(dur);
+  emit('proj', { kind: 'flask', from: [p.x, p.y], to: [tx, ty], dur, color: G.look[k].color }); 
   emit('shatter', { x: tx, y: ty, color: G.look[k].color });
   identify(k);
   if (k === 'smoke') {

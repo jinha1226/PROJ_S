@@ -24,14 +24,14 @@ export const WEAPONS = {
 export const WEAPON_IDS = Object.keys(WEAPONS);
 /** 모양 한 줄 */
 export const SHAPES = {
-  front: '앞 1칸',
-  fan: '앞 3칸 부채꼴, 모두 맞힌다',
-  twin: '같은 적을 두 번 찌른다',
-  boomerang: '4칸 직선. 갈 때와 올 때 길 위의 적을 모두 맞힌다',
-  sweep: '주변 8칸을 휩쓴다',
-  smash: '앞 1칸을 치고 1칸 밀친다',
-  line2: '일직선 2칸, 둘 다 맞힌다',
-  bolt: '7칸 직선을 꿰뚫는다. 쏜 뒤 한 턴 장전한다',
+  front: '앞의 한 적',
+  fan: '앞 넓은 부채꼴의 적 모두',
+  twin: '한 적을 두 번 찌른다',
+  boomerang: '4칸 날아갔다 돌아오며 길 위의 적을 모두 맞힌다',
+  sweep: '바라보는 쪽 반원의 적 모두. 뒤는 비어 있다',
+  smash: '한 적을 치고 1칸 밀친다',
+  line2: '앞 직선 2.6칸, 줄지은 적을 꿰뚫는다',
+  bolt: '7칸 직선을 꿰뚫는다',
   shot: '4칸까지 날아가 맞은 적을 1칸 밀친다',
 };
 /** 치명 조건 한 줄 */

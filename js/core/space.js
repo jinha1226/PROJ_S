@@ -58,7 +58,7 @@ export function sweep(e, dx, dy, o = {}) {
   return { x, y, wall, body };
 }
 /** 두 점 사이를 반지름 r 원이 벽에 걸리지 않고 지나가는가 */
-function segClear(ax, ay, bx, by, r) {
+export function segClear(ax, ay, bx, by, r) {
   const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 0.15));
   for (let k = 0; k <= n; k++) { const x = ax + ((bx - ax) * k) / n, y = ay + ((by - ay) * k) / n, [px, py] = pushOutWalls(x, y, r); if (Math.hypot(px - x, py - y) > 0.01) return false; }
   return true;

@@ -1,24 +1,23 @@
 import { catOf, kindOf } from '../data/enemies.js';
 import { APPEAR, ITEMS } from '../data/items.js';
+import { wakeFoes } from '../sim/foes.js';
 import { cheb } from '../util/grid.js';
 import { mulberry32, pick, rand, ri, seedOr, setR, shuffle } from '../util/rng.js';
-import { allyAct, enemyAct } from './ai.js';
 import { heal } from './combat.js';
-import { envTick } from './elements.js';
-import { computeFOV, distMap } from './fov.js';
+import { computeFOV } from './fov.js';
 import { calcStats, newJewelLook, starterKit, tickWorn } from './gear.js';
 import { addItem } from './items.js';
 import { genFloor, mkEnemy } from './mapgen.js';
 import { META, saveMeta } from './meta.js';
 import { emitIntents, emitSlots, snapHud, snapVis } from './snap.js';
-import { G, I, TL, emit, entAt, isFoe, log, newSt, seesEnt, standable } from './state.js';
-import { endRound, inCombat, tickStones, withCtx } from './stones.js';
+import { G, I, emit, entAt, isFoe, log, newSt, seesEnt, standable } from './state.js';
+import { endRound, inCombat, tickStones } from './stones.js';
 import { burnTorch } from './torch.js';
 
 /* ================= 새 게임 · 층 생성 ================= */
 export function newRun() {
   setR(mulberry32(seedOr(((Date.now() & 0xffffffff) ^ Math.floor(Math.random() * 1e9)) >>> 0)));
-  Object.assign(G, { floor: 1, over: false, won: false, nextId: 1, hasteFlip: false, known: {}, look: {} });
+  Object.assign(G, { floor: 1, over: false, won: false, nextId: 1, known: {}, look: {} });
   for (const cat of ['potion', 'scroll', 'throw']) {
     const looks = shuffle(APPEAR[cat].slice());
     Object.keys(ITEMS).filter((k) => ITEMS[k].cat === cat).forEach((k, j) => { G.look[k] = { name: looks[j][0], color: looks[j][1] }; });
@@ -71,37 +70,25 @@ export function noticeFoes() {
   }
 }
 
-/* ================= 턴 ================= */
+/* ================= 걸음 박자(0.3초): 횃불 · 회복 · 쉬기 · 깨어남 (docs/설계_전투_코어.md §2) =================
+   적·행동·상태이상은 전투 코어(sim/tick.js)가 틱마다 돌린다. 여기서는 걸은 시간에 딸린 경제만 */
 export function endTurn() {
-  const p = G.player;
   burnTorch();
-  if (p.st.haste > 0 && !G.hasteFlip) { G.hasteFlip = true; computeFOV(); snapVis(); emitIntents(); snapHud(); return; }
-  G.hasteFlip = false;
   worldTick();
 }
 
 export function worldTick() {
-  G.stats.turns++;
-  tickStones(); // 내 턴이 끝났다: 영혼석 쿨타임 1 감소
-  tickWorn(); // 입고 지낸 장비의 정체
-  if (G.ps && G.ps.regen && G.stats.turns % 2 === 0 && G.player.hp < G.player.max && !inCombat()) heal(G.player, 1); // 재생 목걸이
-  computeFOV(); snapVis();
   const p = G.player;
-  G.tickMoveEnd = TL.cur + 110;
-  const dm = distMap(p.x, p.y);
-  for (const a of G.ents.filter((e) => e.alive && e.ally)) if (a.alive && !G.over) allyAct(a, dm);
-  const foes = G.ents.filter((e) => e.alive && isFoe(e)).sort((a, b) => cheb(a.x, a.y, p.x, p.y) - cheb(b.x, b.y, p.x, p.y));
-  for (const e of foes) {
-    if (G.over) break; if (!e.alive) continue;
-    if (e.speed === 'slow' && e.awake) { e.slowSkip = !e.slowSkip; if (e.slowSkip) continue; } // 느림: 두 턴에 한 번
-    G.curSrc = e; e.didAttack = false; withCtx('enemy', () => enemyAct(e, dm));
-    if (e.speed === 'fast' && e.alive && e.awake && !e.didAttack && !G.over) withCtx('enemy', () => enemyAct(e, dm)); // 빠름: 한 번 더(공격은 한 번)
-    G.curSrc = null;
-  }
-  if (!G.over) envTick();
-  if (G.resting && !G.over) restTick(); // 쉬기: 켜 둔 동안 턴마다(끄는 것은 입력 쪽)
-  if (p.alive && G.stats.turns % 6 === 0 && p.hp < p.max && !p.st.poison && !p.st.burn) { p.hp++; emit('hp', { id: 0, hp: p.hp, max: p.max }); }
+  G.stats.turns++;
+  tickStones(); // 영혼석 쿨타임(꺼져 있다)
+  tickWorn(); // 입고 지낸 장비의 정체
+  const fight = inCombat();
+  if (G.ps && G.ps.regen && G.stats.turns % 2 === 0 && p.hp < p.max && !fight) heal(p, 1); // 재생 목걸이
+  for (const a of G.ents) if (a.alive && a.ally && !a.npc && a.life != null && --a.life <= 0) { a.alive = false; emit('vanish', { id: a.id }); } // 불러낸 동료는 때가 되면 사라진다
+  wakeFoes();
+  if (G.resting && !G.over) restTick(); // 쉬기: 켜 둔 동안(끄는 것은 입력 쪽)
+  if (p.alive && G.stats.turns % 6 === 0 && p.hp < p.max && !p.st.poison && !p.st.burn && !fight) { p.hp++; emit('hp', { id: 0, hp: p.hp, max: p.max }); } // 자동 회복: 전투 중에는 멈춘다
   computeFOV(); snapVis(); noticeFoes(); endRound(); emitIntents(); snapHud(); emitSlots();
-  // 귀환 두루마리: 빛이 모인 한 턴이 지나면 사라진다
+  // 귀환 두루마리: 빛이 모인 한 박자가 지나면 사라진다
   if (G.recallArm && p.alive && !G.over) { G.recallArm = false; emit('poof', { x: p.x, y: p.y }); log('빛에 싸여 정착지로 돌아간다.', 'syn'); G.pendingReturn = 'recall'; }
 }

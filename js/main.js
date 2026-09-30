@@ -1,5 +1,6 @@
 // 시작 · 모듈 연결. 규칙(core)과 화면(render/ui/town)은 여기서만 이어진다.
-import { canHit, colorMul, critReady, playerMelee, playerMove, playerWait } from './core/combat.js';
+import * as C from './core/clock.js';
+import { playerMove } from './core/combat.js';
 import { computeFOV } from './core/fov.js';
 import { calcStats, equip, gearName, makeGear, makeUnrand, pickGear, refreshStats, rollGear, unequip } from './core/gear.js';
 import { openHidden } from './core/hidden.js';
@@ -7,19 +8,18 @@ import { useItem } from './core/items.js';
 import { genFloor } from './core/mapgen.js';
 import { META, loadMeta, newHero, processReturn, resetMeta } from './core/meta.js';
 import { newRun } from './core/run.js';
-import { G, Game, TL, setListener } from './core/state.js';
+import * as Settle from './core/settlement.js';
+import { G, Game, setListener } from './core/state.js';
 import { addStone, inCombat, reduceColor, stoneCd, useStone } from './core/stones.js';
 import { takeTorch, volunteers } from './core/succession.js';
 import { acceptVisitor, glowParts, hearthGlow, requestState, rollVisitors } from './core/visitors.js';
 import { DROPS } from './data/enemies.js';
 import { STONE } from './data/stones.js';
 import { RECIPES } from './data/town.js';
-import { Anim, Loop, act, descend, enterDungeon, returnToTown } from './flow.js';
-import * as C from './core/clock.js';
+import { Loop, act, descend, enterDungeon, returnToTown } from './flow.js';
 import { ports } from './render/ports.js';
 import { Sfx } from './render/sfx.js';
 import { View } from './render/view.js';
-import * as Settle from './core/settlement.js';
 import { Town } from './town/town.js';
 import { $, UI } from './ui/ui.js';
 import './render/fx.js';
@@ -38,7 +38,7 @@ import './town/visitor-ui.js';
 import './town/build-ui.js';
 
 setListener((type, data) => View.on(type, data));
-Object.assign(ports, { UI, Town, Anim, Loop });
+Object.assign(ports, { UI, Town, Loop });
 
 /* ================= 시작 ================= */
 View.init();
@@ -52,4 +52,4 @@ newRun();
 View.buildFloor();
 UI.syncAll();
 UI.title();
-window.__game = { clock: C, genFloorForTest: () => { genFloor(); View.buildFloor(); }, get META() { return META; }, Town, Game, enterDungeon, returnToTown, newHero, RECIPES, G, UI, View, act, playerMove, playerMelee, canHit, critReady, colorMul, useStone, useItem, reduceColor, inCombat, descend, TL, Anim, computeFOV, playerWait, addStone, pickGear, equip, unequip, makeGear, rollGear, calcStats, refreshStats, STONE, DROPS, hearthGlow, glowParts, requestState, acceptVisitor, rollVisitors, volunteers, takeTorch, openHidden, processReturn, regen: () => { genFloor(); View.buildFloor(); }, makeUnrand, stoneCd, gearName, loadMeta, resetMetaForTest: resetMeta, Settle };
+window.__game = { clock: C, genFloorForTest: () => { genFloor(); View.buildFloor(); }, get META() { return META; }, Town, Game, enterDungeon, returnToTown, newHero, RECIPES, G, UI, View, act, playerMove, useStone, useItem, reduceColor, inCombat, descend,  computeFOV, addStone, pickGear, equip, unequip, makeGear, rollGear, calcStats, refreshStats, STONE, DROPS, hearthGlow, glowParts, requestState, acceptVisitor, rollVisitors, volunteers, takeTorch, openHidden, processReturn, regen: () => { genFloor(); View.buildFloor(); }, makeUnrand, stoneCd, gearName, loadMeta, resetMetaForTest: resetMeta, Settle };

@@ -2,7 +2,7 @@ import { C_STEAM, S_ASH, S_GRASS, S_ICE, S_OIL, S_WATER, T_WALL } from '../data/
 import { D4, D8 } from '../util/grid.js';
 import { cancelIntent, damage, resistOk } from './combat.js';
 import { emitStatus, snapTerrain } from './snap.js';
-import { G, I, TL, XY, emit, entAt, inb, isFoe, isP, log } from './state.js';
+import { G, I, XY, emit, entsAt, inb, isFoe, isP, log } from './state.js';
 import { synergy } from './stones.js';
 
 /* ================= 원소 ================= */
@@ -36,13 +36,12 @@ export function poisonBurst(e, chain) {
   synergy(chain.size > 1 ? `독 폭발 ${chain.size}연쇄!` : '독 폭발!', 'poison');
   emit('explosion', { x: e.x, y: e.y, elem: 'poison' });
   damage(e, 7, 'blast', { label: '독 폭발', big: true });
-  TL.wait(160);
+  
   const cx = e.x, cy = e.y;
   for (const [dx, dy] of D8) {
     const nx = cx + dx, ny = cy + dy; if (!inb(nx, ny) || G.tile[I(nx, ny)] === T_WALL) continue;
     igniteTile(nx, ny, { chain, noFlash: true });
-    const o = entAt(nx, ny);
-    if (o && o.alive && !chain.has(o.id)) { if (o.st.poison > 0) poisonBurst(o, chain); else applyFire(o, 3, { chain }); }
+    for (const o of entsAt(nx, ny)) if (!chain.has(o.id)) { if (o.st.poison > 0) poisonBurst(o, chain); else applyFire(o, 3, { chain }); }
   }
 }
 
@@ -75,22 +74,22 @@ export function oilBlast(x0, y0, chain = new Set()) {
     for (const i of L) { G.surf[i] = S_ASH; G.fire[i] = 2; const [x, y] = XY(i); emit('explosion', { x, y, elem: 'fire', small: L.length > 2 }); }
     snapTerrain();
     for (const i of L) {
-      const [x, y] = XY(i), c = entAt(x, y);
-      if (c && !hit.has(c.id)) { hit.add(c.id); applyFire(c, 6, { chain }); }
+      const [x, y] = XY(i);
+      for (const c of entsAt(x, y)) if (!hit.has(c.id)) { hit.add(c.id); applyFire(c, 6, { chain }); }
       for (const [dx, dy] of D8) {
         const nx = x + dx, ny = y + dy; if (!inb(nx, ny)) continue; const j = I(nx, ny);
         if (G.surf[j] === S_GRASS && !G.fire[j]) { G.fire[j] = 3; emit('ignite', { x: nx, y: ny, small: true }); }
-        const o = entAt(nx, ny); if (o && !hit.has(o.id) && G.surf[j] !== S_OIL) { hit.add(o.id); applyFire(o, 3, { chain }); }
+        if (G.surf[j] !== S_OIL) for (const o of entsAt(nx, ny)) if (!hit.has(o.id)) { hit.add(o.id); applyFire(o, 3, { chain }); }
       }
     }
-    emit('shake', { a: 0.4 }); TL.wait(110);
+    emit('shake', { a: 0.4 }); 
   }
   snapTerrain();
 }
 
 export function conductSet(x0, y0) {
   const start = I(x0, y0);
-  const cond = (i) => { if (G.surf[i] === S_WATER) return true; const [x, y] = XY(i), c = entAt(x, y); return !!(c && c.st.wet > 0 && !c.st.frozen); };
+  const cond = (i) => { if (G.surf[i] === S_WATER) return true; const [x, y] = XY(i); return entsAt(x, y).some((c) => c.st.wet > 0 && !c.st.frozen); };
   const layers = [[start]], edges = [], seen = new Set([start]);
   if (!cond(start)) return { layers, edges, seen };
   let layer = [start];
@@ -115,20 +114,22 @@ export function conductSet(x0, y0) {
 export function shock(x0, y0, dmg, o = {}) {
   const hitSet = o.hitSet || new Set();
   const { layers, edges, seen } = conductSet(x0, y0);
-  const who = [...seen].map((i) => entAt(...XY(i))).filter(Boolean);
+  const who = [...seen].flatMap((i) => entsAt(...XY(i)));
   if (seen.size > 1 && who.length > 1) synergy(`감전 ${who.length}연쇄!`, 'bolt');
   else if (seen.size > 1) emit('banner', { text: '물을 타고 번진다!', elem: 'bolt' });
   for (let L = 0; L < layers.length; L++) {
     for (const [a, b, l] of edges) if (l === L) emit('arc', { a: XY(a), b: XY(b) });
     for (const i of layers[L]) {
-      const [x, y] = XY(i), c = entAt(x, y);
+      const [x, y] = XY(i);
       if (G.surf[i] === S_WATER) emit('zap', { x, y });
-      if (!c || hitSet.has(c.id)) continue; hitSet.add(c.id);
-      const wet = c.st.wet > 0 || G.surf[i] === S_WATER;
-      damage(c, wet ? dmg + 2 : dmg, 'shock', { label: wet && seen.size > 1 ? '감전' : '' });
-      if (c.alive && wet && resistOk(c, 'bolt')) { c.st.stun = Math.max(c.st.stun, 1); emitStatus(c); if (!isP(c)) cancelIntent(c); }
+      for (const c of entsAt(x, y)) {
+        if (hitSet.has(c.id)) continue; hitSet.add(c.id);
+        const wet = c.st.wet > 0 || G.surf[i] === S_WATER;
+        damage(c, wet ? dmg + 2 : dmg, 'shock', { label: wet && seen.size > 1 ? '감전' : '' });
+        if (c.alive && wet && resistOk(c, 'bolt')) { c.st.stun = Math.max(c.st.stun, 1); emitStatus(c); if (!isP(c)) cancelIntent(c); }
+      }
     }
-    TL.wait(L === 0 ? 90 : 80);
+    
   }
 }
 
@@ -138,33 +139,36 @@ export function freezeAt(x, y, dmg, o) {
   if (wasWater) { G.surf[i] = S_ICE; o.changed = true; }
   if (G.fire[i]) { G.fire[i] = 0; o.changed = true; }
   emit('freeze', { x, y, water: wasWater, center: dmg > 0 });
-  const c = entAt(x, y);
-  if (!c || !c.alive || !(dmg > 0 || wasWater)) return;
-  const wet = c.st.wet > 0 || wasWater;
-  if (dmg) damage(c, dmg, 'frost');
-  if (!c.alive || !resistOk(c, 'frost')) return;
-  let dur = wet ? 5 : 2; if (isP(c)) dur = Math.min(dur, 2);
-  if (wet && !o.said) { o.said = true; synergy(isP(c) ? '젖은 채로 얼었다!' : '젖은 채 얼어붙었다!', 'ice'); }
-  c.st.frozen = Math.max(c.st.frozen, dur); c.st.wet = 0; c.st.burn = 0; emitStatus(c); if (!isP(c)) cancelIntent(c);
+  if (!(dmg > 0 || wasWater)) return;
+  for (const c of entsAt(x, y)) {
+    const wet = c.st.wet > 0 || wasWater;
+    if (dmg) damage(c, dmg, 'frost');
+    if (!c.alive || !resistOk(c, 'frost')) continue;
+    let dur = wet ? 4 : 2; if (isP(c)) dur = Math.min(dur, 2); // 초
+    if (wet && !o.said) { o.said = true; synergy(isP(c) ? '젖은 채로 얼었다!' : '젖은 채 얼어붙었다!', 'ice'); }
+    c.st.frozen = Math.max(c.st.frozen, dur); c.st.wet = 0; c.st.burn = 0; emitStatus(c); if (!isP(c)) cancelIntent(c);
+  }
 }
 
 export function frostCast(x, y, dmg) { const o = {}; freezeAt(x, y, dmg, o); for (const [dx, dy] of D4) freezeAt(x + dx, y + dy, 0, o); if (o.changed) snapTerrain(); }
 
 export function venomAt(x, y) {
-  const c = entAt(x, y); emit('splat', { x, y });
-  if (!c) return;
-  damage(c, 1, 'poison');
-  if (c.alive && !c.st.immune && resistOk(c, 'poison')) { c.st.poison = Math.max(c.st.poison, 6 + dotBonus(c)); emitStatus(c); }
+  emit('splat', { x, y });
+  for (const c of entsAt(x, y)) {
+    damage(c, 1, 'poison');
+    if (c.alive && !c.st.immune && resistOk(c, 'poison')) { c.st.poison = Math.max(c.st.poison, 6 + dotBonus(c)); emitStatus(c); }
+  }
 }
 
 export function fireAt(x, y, dmg) {
-  const i = I(x, y), c = entAt(x, y);
+  const i = I(x, y), here = entsAt(x, y);
   if (G.surf[i] === S_OIL) { oilBlast(x, y); return; }
-  if (c) applyFire(c, dmg);
-  igniteTile(x, y, { noFlash: !!c });
+  for (const c of here) applyFire(c, dmg);
+  igniteTile(x, y, { noFlash: here.length > 0 });
 }
 
-/* ================= 환경 틱: 불 번짐 · 구름 · 상태 ================= */
+/* ================= 환경 틱(1초마다): 불 번짐 · 구름 · 상태이상 (docs/설계_전투_코어.md §2) =================
+   숫자는 모두 초: 출혈 3 = 3초 동안 1초마다 1, 빙결 2 = 2초 동안 못 움직임 */
 export function envTick() {
   const W = G.W, N = W * G.H, spread = new Set(), oilIgn = [];
   for (let i = 0; i < N; i++) if (G.fire[i] > 0) {
@@ -192,6 +196,7 @@ export function envTick() {
     if (st.frac > 0) st.frac--;
     if (G.surf[i] === S_WATER) st.wet = 3; else if (st.wet > 0) st.wet--;
     if (st.haste > 0) st.haste--; if (st.immune > 0) st.immune--;
+    if (st.frozen > 0) st.frozen--; if (st.stun > 0) st.stun--; if (st.fear > 0) st.fear--;
     if (e.alive && JSON.stringify(st) !== before) emitStatus(e);
   }
 }

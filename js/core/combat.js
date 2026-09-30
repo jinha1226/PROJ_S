@@ -1,8 +1,7 @@
 import { PHYS } from '../data/colors.js';
 import { CATS, catOf, monRes } from '../data/enemies.js';
 import { CAPS, RES_MUL, clampRes, weaponOf } from '../data/gear.js';
-import { STONE } from '../data/stones.js';
-import { S_ASH, S_ICE, S_NONE, S_WATER, T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrain.js';
+import { S_ICE, S_WATER, T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrain.js';
 import { DARK, torchTier } from '../data/torch.js';
 import { JOBS } from '../data/town.js';
 import { FORMS } from '../data/weapons.js';
@@ -10,13 +9,12 @@ import { D8, cheb, sgn } from '../util/grid.js';
 import { pick, rand, ri } from '../util/rng.js';
 import { jo } from '../util/text.js';
 import { applyFire, fireAt, shock } from './elements.js';
-import { lineTiles, los } from './fov.js';
 import { dropGearFrom, gearName, openChest, weaponUsed } from './gear.js';
 import { addItem, identify, itemName } from './items.js';
 import { META, saveMeta } from './meta.js';
 import { emitStatus, snapTerrain } from './snap.js';
-import { G, I, TL, emit, entAt, inb, isFoe, isP, itemSnap, log, standable } from './state.js';
-import { addShield, auraOnHurt, dropStone, gainXp, reduceColor, withCtx } from './stones.js';
+import { G, I, emit, entAt, inb, isFoe, isP, itemSnap, log, standable } from './state.js';
+import { auraOnHurt, dropStone, gainXp, reduceColor } from './stones.js';
 
 const ELEM_OF = { fire: 'fire', burn: 'fire', blast: 'fire', shock: 'bolt', frost: 'frost', poison: 'poison' };
 const DOT = { burn: 1, poison: 1, bleed: 1 }; // 지속 피해는 '적중'이 아니다
@@ -36,9 +34,8 @@ export function damage(e, amt, kind = 'hit', o = {}) {
     const ps = G.ps, el = ELEM_OF[kind];
     if ((kind === 'hit' || kind === 'charge') && src && isFoe(src)) {
       const eva = Math.min(CAPS.eva, ps.eva);
-      if (rand() * 100 < eva) { emit('dodge', { id: 0 }); G.riposte = G.stats.turns; G.hurt = true; G.hurtTurn = G.stats.turns; return 0; } // 피해도 공격받은 것(자동 탐험·휴식이 멈춘다) // 장검: 막거나 피한 뒤 첫 공격 치명
-      if (ps.block && rand() * 100 < ps.block) { emit('block', { id: 0 }); G.riposte = G.stats.turns; amt = 0; }
-      src.hitMe = G.stats.turns; // 철퇴·투석구: 나를 방금 때린 적
+      if (rand() * 100 < eva) { emit('dodge', { id: 0 }); G.hurt = true; G.hurtTurn = G.stats.turns; return 0; } // 피해도 공격받은 것(자동 탐험·휴식이 멈춘다)
+      if (ps.block && rand() * 100 < ps.block) { emit('block', { id: 0 }); amt = 0; }
     }
     if (amt > 0 && src && isFoe(src) && G.torch === 0 && !G.darkAmbushUsed) {
       G.darkAmbushUsed = true; amt = Math.ceil(amt * 1.5); label = '어둠 속 기습';
@@ -51,7 +48,7 @@ export function damage(e, amt, kind = 'hit', o = {}) {
     if (amt > 0 && el && ps.res[el]) amt = Math.max(ps.res[el] >= 3 ? 0 : 1, Math.round(amt * RES_MUL[ps.res[el]]));
   } else if (isFoe(e) && ELEM_OF[kind]) { const r = monRes(e, ELEM_OF[kind]); if (r) { amt = Math.max(r >= 3 ? 0 : 1, Math.round(amt * RES_MUL[clampRes(r)])); if (r >= 2 && !label) label = '저항'; if (r <= -1 && !label) label = '약함'; } if (amt <= 0) { emit('immune', { id: e.id }); return 0; } }
   if (struck && G.ps && G.ps.vengeance) G.vengeance = G.ps.vengeance; // 되갚음: 다음 무기 공격 +2
-  if (struck && G.ps && G.ps.thorns && src.alive && PHYS[kind] && cheb(src.x, src.y, e.x, e.y) === 1) { const s0 = src; TL.wait(40); damage(s0, G.ps.thorns, 'impact', { label: '가시', src: G.player }); } // 가시
+  if (struck && G.ps && G.ps.thorns && src.alive && PHYS[kind] && cheb(src.x, src.y, e.x, e.y) <= 1) { const s0 = src; damage(s0, G.ps.thorns, 'impact', { label: '가시', src: G.player }); } // 가시
   if (struck) reduceColor('green'); // 초록: 적에게 맞았을 때(0 피해·보호막이 막아도)
   if (isP(e) && G.auras && G.auras.guard && amt > 0) amt = Math.ceil(amt / 2); // 막기
   if (isP(e) && e.shield > 0) { const a = Math.min(e.shield, amt); e.shield -= a; amt -= a; emit('shieldHit', { absorbed: a, left: e.shield }); }
@@ -73,7 +70,7 @@ export function damage(e, amt, kind = 'hit', o = {}) {
 
 export function kill(e) {
   const shatter = e.st.frozen > 0;
-  e.alive = false; e.cast = e.charge = null; e.aim = false;
+  e.alive = false; e.act = null;
   emit('die', { id: e.id, shatter });
   if (isP(e)) { G.over = true; G.deathBy = (G.hurtLog || []).slice(-1)[0] || null; log('쓰러졌다…', 'bad'); emit('gameover'); return; }
   if (e.ally) return;
@@ -117,28 +114,16 @@ export function freeDropSpot(x, y) {
 
 export function heal(e, n) { const v = Math.min(n, e.max - e.hp); if (v <= 0) return; e.hp += v; emit('heal', { id: e.id, amt: v }); emit('hp', { id: e.id, hp: e.hp, max: e.max }); }
 
-export function cancelIntent(e) { e.cast = null; e.charge = null; e.aim = false; }
+/** 힘 모으던 행동·예고를 끊는다(기절·빙결·골절) */
+export function cancelIntent(e) { if (e.act) { e.act = null; e.cd = Math.max(e.cd || 0, 0.4); } }
 
 export function faceTo(e, t) { const dx = sgn(t.x - e.x), dy = sgn(t.y - e.y); if (dx || dy) { e.face = [dx, dy]; emit('face', { id: e.id, dx, dy }); } }
 
 export function moveEnt(e, x, y, o = {}) {
   const fx = e.x, fy = e.y; e.x = x; e.y = y;
   if (e.px != null) { e.px = e.ppx = x; e.py = e.ppy = y; } // 칸을 옮기면 소수 위치도 그 칸 가운데로(보간하지 않고 바로)
-  if (G.curSrc === e && isFoe(e) && G.player && cheb(x, y, G.player.x, G.player.y) < cheb(fx, fy, G.player.x, G.player.y)) e.appr = G.stats.turns; // 창: 이번 적 턴에 다가온 적
   if (o.face !== false && (x !== fx || y !== fy)) e.face = [sgn(x - fx), sgn(y - fy)];
   emit('move', { id: e.id, x, y, dur: o.dur ?? 115, hop: o.hop ?? 0.1, kind: o.kind || 'step', seen: isP(e) || (G.vis[I(x, y)] && !e.hidden) ? 1 : 0 });
-}
-
-export function stepEnt(e, dx, dy) {
-  moveEnt(e, e.x + dx, e.y + dy);
-  let n = 0;
-  while (G.surf[I(e.x, e.y)] === S_ICE && n < 12 && !(isP(e) && G.ps && G.ps.noSlide)) {
-    const nx = e.x + dx, ny = e.y + dy;
-    if (!standable(nx, ny) || entAt(nx, ny)) break;
-    TL.wait(n === 0 ? 100 : 70); moveEnt(e, nx, ny, { dur: 75, hop: 0, kind: 'slide' }); n++;
-  }
-  if (n) { if (isP(e)) log('얼음 위에서 미끄러졌다.', 'info'); else if (G.vis[I(e.x, e.y)]) log(`${jo(e.name, '이가')} 미끄러진다.`, 'info'); TL.wait(70); }
-  onEnter(e);
 }
 
 export function onEnter(e) {
@@ -172,7 +157,7 @@ export function push(e, dx, dy, n) {
   while (left > 0 && k < 12 && e.alive) {
     const nx = e.x + dx, ny = e.y + dy;
     if (!standable(nx, ny)) {
-      emit('bump', { id: e.id, dx, dy }); TL.wait(30);
+      emit('bump', { id: e.id, dx, dy }); 
       damage(e, 4 + (isFoe(e) && G.ps ? G.ps.wallDmg : 0), 'wall', { dx, dy, label: '벽 쾅!', big: true });
       if (e.alive && !isP(e)) { e.st.stun = Math.max(e.st.stun, 1); emitStatus(e); cancelIntent(e); }
       if (giant) { emit('shake', { a: 0.3 }); for (const [ax, ay] of D8) { const o = entAt(e.x + ax, e.y + ay); if (o && o !== e && o.alive && isFoe(o)) damage(o, 1, 'impact', { label: '흔들림' }); } }
@@ -182,11 +167,11 @@ export function push(e, dx, dy, n) {
     }
     const o = entAt(nx, ny);
     if (o) {
-      emit('bump', { id: e.id, dx, dy }); TL.wait(30);
+      emit('bump', { id: e.id, dx, dy }); 
       damage(e, 3, 'impact', { dx, dy, label: '충돌' }); damage(o, 3, 'impact', { dx, dy });
       emit('shake', { a: 0.3 }); break;
     }
-    moveEnt(e, nx, ny, { dur: 85, hop: 0.05, kind: 'push', face: false }); TL.wait(85); k++; left--;
+    moveEnt(e, nx, ny, { dur: 85, hop: 0.05, kind: 'push', face: false }); k++; left--;
     if (G.surf[I(nx, ny)] === S_ICE && left === 0) left = 1;
   }
   if (e.alive) onEnter(e);
@@ -201,170 +186,57 @@ export function freeNpc(e) {
   const p = G.player; e.freed = true; faceTo(p, e); emit('free', { id: e.id });
   log(`${JOBS[e.npcData.job].name} ${jo(e.name, '을를')} 풀어 주었다.`, 'good');
 }
+/** 붙은 칸 하나를 건드린다(구하기·상자·문 버튼). 걷기는 시계(clock.js)가, 공격은 전투 코어(sim/weapon.js)가 맡는다 */
 export function playerMove(dx, dy) {
   const p = G.player, nx = p.x + dx, ny = p.y + dy;
   if (!inb(nx, ny)) return false;
   const t = G.tile[I(nx, ny)];
   if (t === T_WALL) return false;
   const e = entAt(nx, ny);
-  if (e) {
-    if (e.npc && !e.freed) { freeNpc(e); return true; }
-    if (e.ally) { moveEnt(e, p.x, p.y); stepEnt(p, dx, dy); return true; }
-    playerMelee(e); return true;
-  }
+  if (e && e.npc && !e.freed) { freeNpc(e); return true; }
   if (G.chests.has(I(nx, ny)) && !G.chests.get(I(nx, ny)).open) { p.face = [dx, dy]; emit('face', { id: 0, dx, dy }); openChest(nx, ny); return true; }
   if (t === T_DOOR) { p.face = [dx, dy]; emit('face', { id: 0, dx, dy }); openDoor(nx, ny); log('문을 열었다.', 'info'); return true; }
-  stepEnt(p, dx, dy);
-  return true;
-}
-
-export function playerMelee(t) { withCtx('hit', (ctx) => weaponAttack(t, ctx)); }
-
-export function playerWait() {
-  emit('lunge', { id: 0, dx: 0, dy: 0, amt: 0 });
-  if (G.ps && G.ps.legend.has('mistCloak')) {
-    const p = G.player;
-    for (const [dx, dy] of D8) {
-      const x = p.x + dx, y = p.y + dy; if (!standable(x, y)) continue; const i = I(x, y);
-      if (G.surf[i] === S_NONE || G.surf[i] === S_ASH) G.surf[i] = S_WATER;
-      const c = entAt(x, y); if (c && isFoe(c)) { c.st.wet = Math.max(c.st.wet, 3); c.st.burn = 0; emitStatus(c); }
-    }
-    snapTerrain(); emit('splash', { x: p.x, y: p.y });
-  }
-  reduceColor('purple');
-  if (G.reload && G.eq.weapon && G.reload === G.eq.weapon.uid) { G.reload = null; G.aimed = true; emit('reload', { aimed: true }); log('숨을 고르며 겨누었다. 다음 발은 치명타다.', 'good'); } // 석궁
-  if (G.ps && G.ps.patience) addShield(G.ps.patience); // 기다림 망토
-  G.waited = true; // 고요 목걸이
-  return true;
-}
-/* ================= 무기 12종: 모양 · 치명 조건 · 색 배율 · 원거리 (docs/설계_아이템_장비_데드셀안.md §3) ================= */
-const curW = () => weaponOf(G.eq && G.eq.weapon);
-const RING = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
-const foeAt = (x, y) => { const e = entAt(x, y); return e && e.alive && isFoe(e) ? e : null; };
-/** 같은 색 영혼석 1개당 피해 +15% (§3.4) */
-export const colorCount = (color) => (G.slots || []).filter((q) => q.stone && STONE[q.stone].color === color).length;
-export const colorMul = (w = curW()) => 1 + 0.15 * colorCount(w.color);
-/** 도리깨: 앞 3칸 부채꼴의 적 */
-function fanFoes(t) {
-  const p = G.player, k = RING.findIndex(([a, b]) => a === sgn(t.x - p.x) && b === sgn(t.y - p.y));
-  return [RING[(k + 7) % 8], RING[k], RING[(k + 1) % 8]].map(([a, b]) => foeAt(p.x + a, p.y + b)).filter(Boolean);
-}
-/** 원거리 경로: 나 → 대상 방향으로 n칸, 벽에서 멈춘다 */
-function shotPath(t, n) {
-  const p = G.player, d = Math.max(1, cheb(p.x, p.y, t.x, t.y)), fx = p.x + Math.round(((t.x - p.x) / d) * n), fy = p.y + Math.round(((t.y - p.y) / d) * n), out = [];
-  for (const [x, y] of [...lineTiles(p.x, p.y, fx, fy), [fx, fy]]) { if (x === p.x && y === p.y) continue; if (!inb(x, y) || !standable(x, y) || out.some(([a, b]) => a === x && b === y)) break; out.push([x, y]); if (out.length >= n) break; }
-  if (!out.some(([x, y]) => x === t.x && y === t.y)) return [...lineTiles(p.x, p.y, t.x, t.y).filter(([x, y]) => !(x === p.x && y === p.y)), [t.x, t.y]].filter(([x, y], k, a) => a.findIndex(([u, v]) => u === x && v === y) === k);
-  return out;
-}
-/** 지금 무기로 이 적을 칠 수 있는가: 근접은 붙은 적(창은 일직선 2칸), 원거리는 사거리 안의 트인 적 */
-export function canHit(t, w = curW()) {
-  if (!t || !t.alive || !isFoe(t) || !G.player) return false;
-  const p = G.player, dx = t.x - p.x, dy = t.y - p.y, d = cheb(p.x, p.y, t.x, t.y);
-  if (d === 1) return true;
-  if (w.range) return d <= w.range && !!G.vis[I(t.x, t.y)] && los(p.x, p.y, t.x, t.y);
-  if (w.shape === 'line2') return d === 2 && (dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy)) && standable(p.x + sgn(dx), p.y + sgn(dy));
   return false;
 }
-/** 치명 조건(모양에 따라 정해지는 것 — 부채꼴 3명·부메랑 두 번째 — 은 공격할 때 따로) */
-function critCond(t, w) {
-  const p = G.player, T = G.stats ? G.stats.turns : 0;
-  switch (w.crit) {
-    case 'bleeding': return t.st.bleed > 0;
-    case 'chain': return !!G.lastHit && G.lastHit.id === t.id && G.lastHit.turn === T - 1;
-    case 'waited': return !!G.prevWaited;
-    case 'approach': return t.appr === T;
-    case 'aimed': return !!G.aimed;
-    case 'riposte': return G.riposte === T;
-    case 'avenge': return t.hitMe === T;
-    case 'low': return p.hp * 2 <= p.max;
-    case 'slam': { const dx = sgn(t.x - p.x), dy = sgn(t.y - p.y); return cheb(p.x, p.y, t.x, t.y) === 1 && (!standable(t.x + dx, t.y + dy) || !!entAt(t.x + dx, t.y + dy)); }
-    case 'crowd': return cheb(p.x, p.y, t.x, t.y) === 1 && fanFoes(t).length >= 3;
-    default: return false;
-  }
-}
-/** 적 위 "×2" 표시: 지금 칠 수 있고 치명 조건이 충족됐다 */
-export function critReady(t) { const w = curW(); return canHit(t, w) && critCond(t, w); }
-/** 한 번 칠 때 예상 피해 [최소, 최대] — 색 배율·약점·빙결·급소 포함 */
+
+export const curW = () => weaponOf(G.eq && G.eq.weapon);
+/** 한 번 칠 때 예상 피해 [최소, 최대]: 약점·빙결·급소·쌍단검 포함 (적 위 ◆ 표시) */
 export function hitRange(t) {
-  const w = curW(), ps = G.ps || { dmg: 0, critMul: 2 }, weak = t && CATS[catOf(t)].weak === w.form, crit = t && (critCond(t, w) || (w.form === 'pierce' && t.st.vital > 0));
-  const k = (weak ? 1.5 : 1) * (t && t.st.frozen ? 1.5 : 1) * (crit ? ps.critMul + (weak ? 0.5 : 0) : 1) * (t && w.range && cheb(t.x, t.y, G.player.x, G.player.y) === 1 ? 0.5 : 1) * (w.shape === 'twin' ? 2 : 1);
-  return w.dmg.map((v) => Math.ceil(Math.round((v + ps.dmg) * colorMul(w)) * k));
+  const w = curW(), ps = G.ps || { dmg: 0, critMul: 2 }, weak = t && CATS[catOf(t)].weak === w.form, vital = t && w.form === 'pierce' && t.st.vital > 0;
+  const k = (weak ? 1.5 : 1) * (t && t.st.frozen ? 1.5 : 1) * (vital ? ps.critMul + (weak ? 0.5 : 0) : 1) * (w.shape === 'twin' ? 2 : 1);
+  return w.dmg.map((v) => Math.ceil((v + ps.dmg) * k));
 }
 
-/** 기본 공격(행동 한 번): 무기 모양대로 친다 */
-export function weaponAttack(t, ctx) {
-  if (!t || !t.alive) return;
-  const p = G.player, it = G.eq.weapon, w = curW(), dx = sgn(t.x - p.x), dy = sgn(t.y - p.y), T = G.stats.turns;
-  if (dx || dy) { p.face = [dx, dy]; emit('face', { id: 0, dx, dy }); }
-  if (w.reload && it && G.reload === it.uid) { G.reload = null; emit('reload', { aimed: false }); log('석궁을 장전했다.', 'info'); TL.wait(160); return; }
-  const cond = critCond(t, w);
-  switch (w.shape) {
-    case 'fan': { const fs = fanFoes(t), all = fs.length >= 3; emit('swing', { id: 0, dx, dy, form: w.form, tx: t.x, ty: t.y, shape: 'fan' }); TL.wait(80); if (all) log('도리깨가 셋을 한꺼번에 휩쓸었다.', 'syn'); for (const e of fs) weaponHit(e, ctx, { crit: all, quiet: true }); TL.wait(60); break; }
-    case 'twin': weaponHit(t, ctx, { crit: cond, noMark: true }); TL.wait(40); if (t.alive) weaponHit(t, ctx, { crit: cond, extra: true }); break;
-    case 'sweep': { const fs = RING.map(([a, b]) => foeAt(p.x + a, p.y + b)).filter(Boolean); emit('swing', { id: 0, dx, dy, form: w.form, tx: t.x, ty: t.y, shape: 'sweep' }); emit('ring', { x: p.x, y: p.y, elem: 'push' }); TL.wait(90); for (const e of fs) weaponHit(e, ctx, { crit: cond, quiet: true }); TL.wait(60); break; }
-    case 'smash': weaponHit(t, ctx, { crit: cond, noPush: true }); if (t.alive) { emit('shove', { x: t.x, y: t.y, dx, dy }); push(t, dx, dy, 1 + (G.ps.fracPush ? 1 : 0)); } break;
-    case 'line2': { emit('swing', { id: 0, dx, dy, form: w.form, tx: t.x, ty: t.y, shape: 'line' }); TL.wait(80); for (const k of [1, 2]) { const e = foeAt(p.x + dx * k, p.y + dy * k); if (e) weaponHit(e, ctx, { crit: critCond(e, w), quiet: true }); } TL.wait(60); break; }
-    case 'boomerang': {
-      const path = shotPath(t, w.range), end = path[path.length - 1] || [t.x, t.y], dur = 60 + path.length * 40, hit = new Set();
-      emit('proj', { kind: 'boomerang', from: [p.x, p.y], to: end, dur }); TL.wait(dur * 0.5);
-      for (const [x, y] of path) { const e = foeAt(x, y); if (e) { hit.add(e.id); weaponHit(e, ctx, { crit: false, quiet: true }); } }
-      TL.wait(dur * 0.5); emit('proj', { kind: 'boomerang', from: end, to: [p.x, p.y], dur }); TL.wait(dur * 0.5);
-      for (const [x, y] of path.slice().reverse()) { const e = foeAt(x, y); if (e) weaponHit(e, ctx, { crit: hit.has(e.id), quiet: true, back: true }); } // 두 번째 적중 = 치명
-      break;
-    }
-    case 'bolt': {
-      const path = shotPath(t, w.range), end = path[path.length - 1] || [t.x, t.y], dur = 50 + path.length * 25, aimed = !!G.aimed;
-      emit('proj', { kind: 'quarrel', from: [p.x, p.y], to: end, dur }); TL.wait(dur * 0.6);
-      for (const [x, y] of path) { const e = foeAt(x, y); if (e) weaponHit(e, ctx, { crit: aimed, quiet: true }); } // 관통
-      G.aimed = false; if (it) G.reload = it.uid; break;
-    }
-    case 'shot': {
-      const path = shotPath(t, w.range), e = path.map(([x, y]) => foeAt(x, y)).find(Boolean) || t, dur = 60 + cheb(p.x, p.y, e.x, e.y) * 35;
-      emit('proj', { kind: 'pebble', from: [p.x, p.y], to: [e.x, e.y], dur }); TL.wait(dur);
-      weaponHit(e, ctx, { crit: critCond(e, w), quiet: true, noPush: true }); if (e.alive) push(e, sgn(e.x - p.x), sgn(e.y - p.y), w.knock); break;
-    }
-    default: {
-      weaponHit(t, ctx, { crit: cond });
-      if (w.retreat && t.alive) { const bx = p.x - dx, by = p.y - dy; if (standable(bx, by) && !entAt(bx, by) && !G.fire[I(bx, by)]) { TL.wait(30); moveEnt(p, bx, by, { dur: 90, hop: 0.1, kind: 'step', face: false }); onEnter(p); } } // 레이피어: 치고 물러난다
-    }
-  }
-  G.lastHit = { id: t.id, turn: T };
-}
-
-/* ---------- 무기 한 번 적중: 형태 → 부상, 약점, 치명, 빨강 발동 ---------- */
+/* ---------- 무기 한 번 적중: 형태 → 부상, 약점, 급소 ---------- */
 export function weaponHit(t, ctx, o = {}) {
   if (!t || !t.alive) return;
   const p = G.player, w = curW(), f = w.form, dx = sgn(t.x - p.x), dy = sgn(t.y - p.y), ps = G.ps;
-  if (dx || dy) p.face = [dx, dy];
-  if (!o.quiet) { emit('swing', { id: 0, dx, dy, form: f, tx: t.x, ty: t.y, extra: !!o.extra, counter: !!o.counter }); TL.wait(o.extra ? 60 : 80); }
-  if (ps.acc < 0 && rand() * 100 < -ps.acc) { emit('miss', { x: t.x, y: t.y }); log('빗나갔다.', 'info'); TL.wait(90); return; }
+  if (ps.acc < 0 && rand() * 100 < -ps.acc) { emit('miss', { x: t.x, y: t.y }); log('빗나갔다.', 'info'); return; }
   const cat = catOf(t), C = CATS[cat], weak = C.weak === f;
-  // 더하기: 기본 + 품질·강화치·반지 힘(ps.dmg), 되갚음 → 색 배율 → 곱하기: 약점·치명 (docs/밸런스_기준.md §2)
+  // 더하기: 기본 + 품질·강화치·반지 힘(ps.dmg), 되갚음 → 곱하기: 약점·급소 (docs/밸런스_기준.md §2)
   const venge = G.vengeance || 0; G.vengeance = 0;
-  let dmg = Math.round((ri(w.dmg[0], w.dmg[1]) + ps.dmg + (o.bonus || 0) + venge) * colorMul(w)), label = o.counter ? '반격' : o.extra ? '추가 타격' : venge ? '되갚음' : '', crit = false;
+  let dmg = ri(w.dmg[0], w.dmg[1]) + ps.dmg + (o.bonus || 0) + venge, label = o.counter ? '반격' : o.extra ? '추가 타격' : venge ? '되갚음' : '', crit = false;
   if (weak) {
     dmg = Math.ceil(dmg * 1.5) + ps.weakDmg;
     if (!G.weakKnown[cat]) { G.weakKnown[cat] = true; emit('weakReveal', { id: t.id, form: f }); log(`${jo(C.name, '은는')} ${FORMS[f].name}에 약하다.`, 'syn'); }
     label = label || '약점';
   }
   const cm = ps.critMul + (weak ? 0.5 : 0); // 꿰뚫기: ×3
-  if (o.crit ?? critCond(t, w)) { crit = true; dmg = Math.ceil(dmg * cm); label = '치명!'; if (w.crit === 'riposte') G.riposte = -1; }
-  else if (f === 'pierce' && t.st.vital > 0) { crit = true; dmg = Math.ceil(dmg * cm); t.st.vital = 0; label = '급소!'; }
+  if (f === 'pierce' && t.st.vital > 0) { crit = true; dmg = Math.ceil(dmg * cm); t.st.vital = 0; label = '급소!'; }
   else if (f === 'pierce' && ps.crit && rand() * 100 < ps.crit) { crit = true; dmg = Math.ceil(dmg * cm); label = '급소!'; }
-  if (w.range && cheb(p.x, p.y, t.x, t.y) === 1) { dmg = Math.max(1, Math.floor(dmg / 2)); label = label || '너무 가깝다'; } // 붙은 적에게 쏘면 절반
-  const dealt = damage(t, dmg, 'hit', { dx, dy, label, big: crit || weak, form: f, crit });
+  if (w.range && o.near) { dmg = Math.max(1, Math.floor(dmg / 2)); label = label || '너무 가깝다'; } // 붙은 적에게 쏘면 절반
+  const dealt = damage(t, dmg, 'hit', { dx, dy, label, big: crit || weak, form: f, crit, src: p });
   weaponUsed();
   if (ps.vamp && dealt > 0 && !C.noBleed) heal(p, Math.max(1, Math.floor(dealt * 0.3))); // 흡혈(해골 제외)
   if (t.alive) {
     if (f === 'slash' && !C.noBleed) t.st.bleed += (weak ? 5 : 3) + ps.bleed;
-    if (f === 'blunt') { t.st.frac = Math.max(t.st.frac, (weak ? 5 : 3) + ps.fracBonus); if (t.charge) { t.charge = null; log(`${t.name}의 다리가 부러져 돌진이 끊겼다.`, 'good'); } }
+    if (f === 'blunt') { t.st.frac = Math.max(t.st.frac, (weak ? 5 : 3) + ps.fracBonus); if (t.act && t.act.kind === 'charge') { cancelIntent(t); log(`${t.name}의 다리가 부러져 돌진이 끊겼다.`, 'good'); } }
     if (f === 'pierce' && !crit && !o.noMark) t.st.vital = 1;
     if (w.stun && rand() * 100 < w.stun) { t.st.stun = Math.max(t.st.stun, 1); cancelIntent(t); log(`${jo(t.name, '이가')} 기절했다.`, 'good'); } // 철퇴
     emitStatus(t);
     if (f === 'blunt' && ps.fracPush && !o.noPush) push(t, dx, dy, 1);
     weaponBrand(t, ps.brand);
   }
-  TL.wait(o.quiet ? 40 : 90);
 }
 /** 무기 브랜드: 원소는 원소 규칙 그대로 반응한다 */
 function weaponBrand(t, b) {

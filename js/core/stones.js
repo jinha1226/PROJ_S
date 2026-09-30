@@ -14,7 +14,7 @@ import { blockAt, openHidden } from './hidden.js';
 import { META, saveMeta } from './meta.js';
 import { adjFoes, areaTiles, arrowPath, castBolt, castFire, castFrost, castPush, castVenom, sdmg, wetTarget } from './skills.js';
 import { emitSlots, emitStatus, snapTerrain } from './snap.js';
-import { G, I, TL, emit, entAt, isFoe, log, newSt, seesEnt, standable } from './state.js';
+import { G, I, emit, entAt, isFoe, log, newSt, seesEnt, standable } from './state.js';
 
 export function synergy(text, elem) { G.stats.combos++; emit('banner', { text, elem }); log(text, 'syn'); if (G.ctx && (G.ctx.stones > 0 || G.ctx.origin !== 'enemy')) bumpStage(G.ctx); }
 
@@ -90,23 +90,23 @@ export function useStoneRaw(slot, tx, ty, ctx) {
   const S = STONE[id], p = G.player, sd = sdmg(), t = tx != null ? entAt(tx, ty) : null, op = S.color === 'purple' && G.ps ? G.ps.orb.purple : 0; // 보랏빛 오브
   if (tx != null) { const dx = sgn(tx - p.x), dy = sgn(ty - p.y); if (dx || dy) { p.face = [dx, dy]; emit('face', { id: 0, dx, dy }); } }
   sl.cd = stoneCd(id); sl.usedRound = G.round;
-  emit('stone', { slot, id, stage: 1 }); emit('pcast', { color: COLORS[S.color].hex }); TL.wait(110);
+  emit('stone', { slot, id, stage: 1 }); emit('pcast', { color: COLORS[S.color].hex }); 
   emitSlots();
   // 숨은 방 입구
   if (tx != null && S.elem && blockAt(tx, ty) === HIDDEN_BY_ELEM[S.elem]) {
-    if (S.elem === 'push') { emit('lunge', { id: 0, dx: sgn(tx - p.x), dy: sgn(ty - p.y) }); TL.wait(90); }
-    else if (S.elem === 'bolt') { emit('bolt', { from: [p.x, p.y], to: [tx, ty] }); TL.wait(70); }
-    else { const dur = 90 + cheb(p.x, p.y, tx, ty) * 45; emit('proj', { kind: S.elem === 'fire' ? 'fire' : 'frost', from: [p.x, p.y], to: [tx, ty], dur }); TL.wait(dur); }
-    openHidden(tx, ty, S.elem); TL.wait(120); return true;
+    if (S.elem === 'push') { emit('lunge', { id: 0, dx: sgn(tx - p.x), dy: sgn(ty - p.y) }); }
+    else if (S.elem === 'bolt') { emit('bolt', { from: [p.x, p.y], to: [tx, ty] }); }
+    else { const dur = 90 + cheb(p.x, p.y, tx, ty) * 45; emit('proj', { kind: S.elem === 'fire' ? 'fire' : 'frost', from: [p.x, p.y], to: [tx, ty], dur }); }
+    openHidden(tx, ty, S.elem); return true;
   }
   switch (id) {
     case 'r_bleed': if (t) { weaponHit(t, ctx); if (t.alive && !CATS[catOf(t)].noBleed) { t.st.bleed += 5; emitStatus(t); } } break;
-    case 'r_extra': if (t) { weaponHit(t, ctx); TL.wait(40); if (t.alive) weaponHit(t, ctx, { extra: true, bonus: t.st.bleed > 0 ? 2 : 0 }); } break;
+    case 'r_extra': if (t) { weaponHit(t, ctx); if (t.alive) weaponHit(t, ctx, { extra: true, bonus: t.st.bleed > 0 ? 2 : 0 }); } break;
     case 'r_poison': castVenom(tx, ty); break;
     case 'r_push': castPush(tx, ty, 2); break;
     case 'r_arrow': {
       const path = arrowPath(tx, ty, 6), end = path[path.length - 1] || [tx, ty], dur = 60 + path.length * 35;
-      emit('proj', { kind: 'bone', from: [p.x, p.y], to: end, dur }); TL.wait(dur * 0.5); let n = 0;
+      emit('proj', { kind: 'bone', from: [p.x, p.y], to: end, dur }); let n = 0;
       for (const [x, y] of path) { const e = entAt(x, y); if (e && isFoe(e) && e.alive && n < 2) { n++; damage(e, 4 + sd, 'hit', { label: '뼈 화살', dx: sgn(x - p.x), dy: sgn(y - p.y) }); } }
       break;
     }
@@ -116,12 +116,12 @@ export function useStoneRaw(slot, tx, ty, ctx) {
     case 'p_summon': summon([tx, ty], op); break;
     case 'p_shield': addShield(6 + op * 2, 10 + op * 2); break;
     case 'p_poison': emit('venomCloud', { x: p.x, y: p.y }); for (const e of adjFoes()) poisonOn(e, 4 + op); break;
-    case 'p_push': emit('ring', { x: p.x, y: p.y, elem: 'push' }); TL.wait(80); for (const e of adjFoes()) if (e.alive) { emit('shove', { x: e.x, y: e.y, dx: sgn(e.x - p.x), dy: sgn(e.y - p.y) }); push(e, ...dirFrom(p, e), 2 + op); } break;
+    case 'p_push': emit('ring', { x: p.x, y: p.y, elem: 'push' }); for (const e of adjFoes()) if (e.alive) { emit('shove', { x: e.x, y: e.y, dx: sgn(e.x - p.x), dy: sgn(e.y - p.y) }); push(e, ...dirFrom(p, e), 2 + op); } break;
     case 'p_heal': heal(p, 6 + op * 2); if (p.st.poison || p.st.burn) { p.st.poison = 0; p.st.burn = 0; emitStatus(p); } break;
     case 'p_shock': { const hs = new Set(); for (const e of G.ents.filter((q) => q.alive && isFoe(q) && G.vis[I(q.x, q.y)] && wetTarget(q))) if (e.alive && !hs.has(e.id)) zapOn(e, 4 + sd + op, hs); break; }
-    case 'p_fire': { const dur = 90 + cheb(p.x, p.y, tx, ty) * 45; emit('proj', { kind: 'fire', from: [p.x, p.y], to: [tx, ty], dur }); TL.wait(dur); for (const [x, y] of areaTiles(tx, ty, 1 + op)) fireAt(x, y, 3 + sd); break; }
+    case 'p_fire': { const dur = 90 + cheb(p.x, p.y, tx, ty) * 45; emit('proj', { kind: 'fire', from: [p.x, p.y], to: [tx, ty], dur }); for (const [x, y] of areaTiles(tx, ty, 1 + op)) fireAt(x, y, 3 + sd); break; }
     case 'p_wet': {
-      emit('splash', { x: tx, y: ty, big: true }); TL.wait(80);
+      emit('splash', { x: tx, y: ty, big: true }); 
       for (const [x, y] of areaTiles(tx, ty, 2 + op)) {
         const i = I(x, y); if (G.surf[i] === S_NONE || G.surf[i] === S_ASH || G.surf[i] === S_GRASS) G.surf[i] = S_WATER; G.fire[i] = 0;
         const e = entAt(x, y); if (e && e.alive && !e.st.frozen) { e.st.wet = Math.max(e.st.wet, 3); e.st.burn = 0; emitStatus(e); if (isFoe(e)) emit('splash', { x, y }); }
@@ -135,13 +135,13 @@ export function useStoneRaw(slot, tx, ty, ctx) {
     }
     case 'g_push': if (t) { castPush(tx, ty, 3); if (t.alive) { t.st.stun = Math.max(t.st.stun, 1); cancelIntent(t); emitStatus(t); } } break;
     case 'g_heal': { const v = Math.min(8, Math.ceil((G.combatDmg || 0) / 2)); if (v > 0) heal(p, v); else log('아직 봉합할 상처가 없다.', 'info'); break; }
-    case 'g_fire': emit('ring', { x: p.x, y: p.y, elem: 'fire' }); TL.wait(80); for (const e of adjFoes()) if (e.alive) fireAt(e.x, e.y, 3 + sd); break;
+    case 'g_fire': emit('ring', { x: p.x, y: p.y, elem: 'fire' }); for (const e of adjFoes()) if (e.alive) fireAt(e.x, e.y, 3 + sd); break;
     default: break;
   }
   // 장비: 보라 스킬 → 회복, 초록 스킬 → 보호막
   if (G.ps && S.color === 'purple' && G.ps.purpleHeal) heal(p, G.ps.purpleHeal);
   if (G.ps && S.color === 'green' && G.ps.greenShield) addShield(G.ps.greenShield);
-  TL.wait(80);
+  
   return true;
 }
 
@@ -169,7 +169,7 @@ export function poisonOn(e, n) { if (!e || !e.alive || e.st.immune || !resistOk(
 
 export function zapOn(e, dmg, hitSet) {
   if (!e || !e.alive) return;
-  const p = G.player; emit('bolt', { from: [p.x, p.y], to: [e.x, e.y] }); TL.wait(60);
+  const p = G.player; emit('bolt', { from: [p.x, p.y], to: [e.x, e.y] }); 
   if (e.st.wet > 0 || G.surf[I(e.x, e.y)] === S_WATER) shock(e.x, e.y, dmg, { hitSet }); else { hitSet?.add(e.id); damage(e, dmg, 'shock'); }
 }
 
@@ -184,7 +184,7 @@ export function addShield(n, cap = 8) { const p = G.player; p.shield = Math.min(
 
 export function boneArrow(e, dmg) {
   if (!e) return; const p = G.player, dur = 60 + cheb(p.x, p.y, e.x, e.y) * 35;
-  emit('proj', { kind: 'bone', from: [p.x, p.y], to: [e.x, e.y], dur }); TL.wait(dur);
+  emit('proj', { kind: 'bone', from: [p.x, p.y], to: [e.x, e.y], dur }); 
   damage(e, dmg, 'hit', { label: '뼈 화살' });
 }
 
