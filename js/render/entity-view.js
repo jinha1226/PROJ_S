@@ -6,7 +6,7 @@ import { _w, easeInOut, easeOut } from './common.js';
 import { dollSpec } from './dolls.js';
 import { View } from './view.js';
 
-const STRIDE = 0.6, BOUNCE = 0.11; // 등불지기 한 걸음(칸) · 튀어 오르는 높이
+const STRIDE = 0.6, BOUNCE = 0.11; // 한 걸음(칸) · 튀어 오르는 높이(모든 인형이 같이 쓴다)
 
 export class EntView {
   constructor(e) {
@@ -51,7 +51,7 @@ export class EntView {
     if (kind === 'tele') { this.cur.set(x, 0, y); this.t = 1; }
   }
   lunge(dx, dy, amt = 0.36) { this.ld = [dx, dy]; this.la = amt; this.lt = 0; if (dx || dy) this.yawT = Math.atan2(dx, dy); this.sqv += this.id === 0 ? 2.5 : 1.2; }
-  /** 등불지기: 틱 사이를 보간한 자리에 바로 선다(뒤쫓지 않는다). 걸은 만큼 걸음이 돌아 통통 튄다 */
+  /** 틱 사이를 보간한 자리에 바로 선다(뒤쫓지 않는다). 걸은 만큼 걸음이 돌아 통통 튄다 */
   place(x, y, dt) {
     if (this.t < 1) return; // 밀치기·미끄러짐 트윈이 도는 동안은 트윈에 맡긴다
     const dx = x - this.cur.x, dz = y - this.cur.z, d = Math.hypot(dx, dz);

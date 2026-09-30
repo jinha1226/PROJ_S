@@ -5,9 +5,10 @@ import { META, saveMeta } from '../core/meta.js';
 import { G, Game } from '../core/state.js';
 import { AMULETS, BAG_MAX, BRANDS, CAPS, EGOS, ELEM, GEAR_BASES, ORBS, QUALITY, RES_MUL, RINGS, SLOTS, SLOT_ICON, SLOT_NAME, UNRANDS, isJewel, isWeapon, matName, plusMax, slotKind, twoHanded, weaponOf } from '../data/gear.js';
 import { COLORS, ORB_PURPLE, STONE } from '../data/stones.js';
-import { CRITS, FORMS, SHAPES } from '../data/weapons.js';
+import { FORMS, SHAPES } from '../data/weapons.js';
 import { act } from '../flow.js';
 import { Sfx } from '../render/sfx.js';
+import { beatOfWeapon } from '../sim/weapon.js';
 import { Town } from '../town/town.js';
 import { jo } from '../util/text.js';
 import { $, UI } from './ui.js';
@@ -15,8 +16,6 @@ import { $, UI } from './ui.js';
 /* ================= 가방 · 장비 창 (docs/설계_아이템_장비.md §12) ================= */
 /** 같은 색 영혼석 개수 · 배율 (정착지에서는 등불지기의 영혼석) */
 const stonesOf = () => (holder().town ? META.hero.slots : G.slots) || [];
-const colorN = (color) => stonesOf().filter((q) => q.stone && STONE[q.stone].color === color).length;
-const cmul = (w) => 1 + 0.15 * colorN(w.color);
 const dot = (color) => `<span style="color:${COLORS[color].css}">●</span>`;
 
 const inCombat = () => Game.mode === 'dungeon' && visibleFoes().some((e) => e.awake);
@@ -35,10 +34,10 @@ function cardLines(it) {
   const B = GEAR_BASES[it.base], out = [];
   const Q = QUALITY[it.q];
   if (B.weapon) {
-    const w = weaponOf(it), F = FORMS[w.form], C = COLORS[w.color], n = colorN(w.color);
-    out.push(`${dot(w.color)} <b style="color:${C.css}">${C.name}</b> · ${w.hands === 2 ? '양손' : '한손'} · ${F.icon} ${F.name}${w.range ? ` · 원거리 ${w.range}칸` : ''}`);
-    out.push(`피해 ${w.dmg[0]}–${w.dmg[1]}${w.shape === 'twin' ? ' ×2' : ''}${Q && Q.dmg ? ` <b>+${Q.dmg}</b>(품질)` : ''}${it.idP ? (it.plus ? ` <b>${sign(it.plus)}</b> (명중 ${sign(it.plus * 2)}%)` : '') : ' · 강화치 ?'} × <b style="color:${C.css}">${cmul(w).toFixed(2)}</b> <small style="color:#9aa2bd">(${C.name} 영혼석 ${n}개)</small>`);
-    out.push(`모양: ${SHAPES[w.shape]}`, `<span style="color:#ffd27a">치명 ×2: ${CRITS[w.crit]}</span>${w.stun ? ' · 기절 25%' : ''}${w.retreat ? ' · 치고 1칸 물러남' : ''}`);
+    const w = weaponOf(it), F = FORMS[w.form];
+    out.push(`${w.hands === 2 ? '양손' : '한손'} · ${F.icon} ${F.name} · ${beatOfWeapon(w)}초마다${w.range ? ` · 원거리 ${w.range}칸` : ''}`);
+    out.push(`피해 ${w.dmg[0]}–${w.dmg[1]}${w.shape === 'twin' ? ' ×2' : ''}${Q && Q.dmg ? ` <b>+${Q.dmg}</b>(품질)` : ''}${it.idP ? (it.plus ? ` <b>${sign(it.plus)}</b> (명중 ${sign(it.plus * 2)}%)` : '') : ' · 강화치 ?'}`);
+    out.push(`모양: ${SHAPES[w.shape]}${w.stun ? ' · 기절 25%' : ''}${w.retreat ? ' · 치고 반 걸음 물러남' : ''}`);
     if (w.range) out.push('<small style="color:#9aa2bd">붙은 적에게 쏘면 피해 절반</small>');
   } else if (B.orb) out.push(`${dot(B.orb)} ${ORBS[B.orb].line(1 + (it.idP ? it.plus : 0))}${it.idP ? '' : ' · 강화치 ?'}${B.orb === 'purple' ? `<br><small style="color:#9aa2bd">${Object.entries(ORB_PURPLE).map(([k, l]) => `${STONE[k].name} ${l}`).join(' · ')}</small>` : ''} <small style="color:#9aa2bd">한손 무기와 함께 · 강화 최대 +${plusMax(it)}</small>`);
   else if (!B.jewel) out.push(`${B.mat ? matName(it.base) + ' · ' : ''}방어 ${B.def}${Q && Q.def ? ` <b>+${Q.def}</b>(품질)` : ''}${it.idP ? (it.plus ? ` <b>${sign(it.plus)}</b>` : '') : ' · 강화치 ?'}${B.eva ? ` · 회피 ${sign(B.eva)}%` : ''}${B.block ? ` · 막기 ${B.block}%` : ''} <small style="color:#9aa2bd">강화 최대 +${plusMax(it)}</small>`);
@@ -57,8 +56,8 @@ function cardHtml(it, title) {
   return `<div class="gcard" style="--c:${gearCss(it)}"><div class="gct"><small>${title}</small><b style="color:${gearCss(it)}">${gearName(it)}${it.art ? ' <small>(유물)</small>' : ''}</b><small>${tag} · ${SLOT_NAME[slotKind(it)]}${fullyKnown(it) ? '' : ' · 모르는 것이 있다. 무기는 10번 맞히면, 방어구는 30턴 입으면 드러난다.'}</small></div>${cardLines(it).map((l) => `<div>${l}</div>`).join('')}</div>`;
 }
 const knownEq = (eq) => Object.fromEntries(Object.entries(eq).map(([k, v]) => [k, knownView(v)]));
-/** 무기 피해 최대(색 배율 포함) */
-const topDmg = (w, s) => Math.round((w.dmg[1] + s.dmg) * cmul(w)) * (w.shape === 'twin' ? 2 : 1);
+/** 무기 피해 최대 */
+const topDmg = (w, s) => (w.dmg[1] + s.dmg) * (w.shape === 'twin' ? 2 : 1);
 /** 갈아입으면 바뀌는 최종 수치 — 아는 것만. 모르는 것이 있으면 "?" */
 function statDiff(eq, slot, it) {
   const known = knownEq(eq), next = { ...known, [slot]: knownView(it) };
@@ -68,8 +67,7 @@ function statDiff(eq, slot, it) {
   for (const k of ['fire', 'frost', 'bolt', 'poison']) rows.push([ELEM[k].name + ' 저항', a.res[k], b.res[k], '단계']);
   const out = rows.filter(([, x, y]) => x !== y).map(([n, x, y, u]) => `<span class="${y > x ? 'up' : 'dn'}">${n} ${y > x ? '+' : ''}${y - x}${u}</span>`);
   if (slot === 'weapon') {
-    if (wA.color !== wB.color) out.unshift(`<span class="form" style="font-weight:700">색: ${dot(wA.color)} ${COLORS[wA.color].name} → ${dot(wB.color)} ${COLORS[wB.color].name}</span>`);
-    out.push(`<span style="color:${COLORS[wB.color].css}">${COLORS[wB.color].name} 영혼석 ${colorN(wB.color)}개 → 피해 ×${cmul(wB).toFixed(2)}</span>`);
+    if (wA.shape !== wB.shape) out.push(`<span class="form">모양: ${SHAPES[wB.shape]} · ${beatOfWeapon(wB)}초마다</span>`);
     if (wA.form !== wB.form) out.unshift(`<span class="form">형태: ${FORMS[wA.form].name} → ${FORMS[wB.form].name}</span>`);
     if (twoHanded(it) && known.off) out.push(`<span class="dn">⚠ 양손 무기. ${jo(gearName(known.off), '은는')} 가방으로 간다</span>`);
   }
@@ -129,7 +127,7 @@ Object.assign(UI, {
     }
     sh.innerHTML = `<h3>🎒 가방 · 장비 <small style="color:#9aa2bd;font-weight:400">${inCombat() ? '⚠ 전투 중 · 장비 교체에 한 턴' : '장비 교체 가능'}</small><button class="close">닫기</button></h3>
       <div class="eqgrid">${SLOTS.map((k) => cell(k)).join('')}</div>
-      <button class="stline" data-act="stats">HP ${H.unit.max} · 방어 ${s.def} · 회피 ${s.eva}%${s.block ? ` · 막기 ${s.block}%` : ''} · 피해 ${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} <b style="color:${COLORS[w.color].css}">×${cmul(w).toFixed(2)}</b> <small>▸ 자세히</small></button>
+      <button class="stline" data-act="stats">HP ${H.unit.max} · 방어 ${s.def} · 회피 ${s.eva}%${s.block ? ` · 막기 ${s.block}%` : ''} · 피해 ${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} <small>▸ 자세히</small></button>
       ${detail ? `<div class="gdetail">${detail}</div>` : ''}
       <div class="invtabs">${tabs.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-itab="${k}">${l}</button>`).join('')}</div>
       ${tab === 'items' ? this.itemsHtml(inv) : tab === 'stones' ? this.stonesHtml() : `<div class="sec">가방 ${bag.length}/${BAG_MAX}</div><div class="bggrid">${bagCells}</div>
@@ -166,8 +164,8 @@ Object.assign(UI, {
   },
   /** 전투 수치(누르면 출처) — 캐릭터 정보 카드와 상태창이 함께 쓴다. 모르는 장비 효과는 빼고 */
   statsRows() {
-    const H = holder(), s = calcStats(knownEq(H.eq)), w = weaponOf(H.eq.weapon), m = cmul(w);
-    s.src.dmg = [[`${H.eq.weapon ? gearName(H.eq.weapon) : '맨손'} 기본`, `${w.dmg[0]}~${w.dmg[1]}`], ...(s.src.dmg || []), [`${COLORS[w.color].name} 영혼석 ${colorN(w.color)}개`, `×${m.toFixed(2)}`]];
+    const H = holder(), s = calcStats(knownEq(H.eq)), w = weaponOf(H.eq.weapon);
+    s.src.dmg = [[`${H.eq.weapon ? gearName(H.eq.weapon) : '맨손'} 기본`, `${w.dmg[0]}~${w.dmg[1]}`], ...(s.src.dmg || [])];
     const src = (k) => (s.src[k] || []).map(([l, v]) => `<div class="srcl">${l} <b>${typeof v === 'number' && v > 0 ? '+' : ''}${v}</b></div>`).join('') || '<div class="srcl">—</div>';
     const row = (name, val, k, cap) => `<details><summary>${name} <b>${val}</b>${cap ? ` <small style="color:#ffd84a">최대</small>` : ''}</summary>${src(k)}</details>`;
     const flags = [];
@@ -181,7 +179,7 @@ Object.assign(UI, {
       if (!fullyKnown(it)) flags.push(`<div style="color:#bcd4ff">? ${gearName(it)}: 모르는 효과가 있다</div>`);
     }
     return `${row('최대 HP', `${H.unit.max} <small style="color:#9aa2bd">기본 ${H.base}</small>`, 'maxHp')}${row('방어', `${s.def} <small style="color:#9aa2bd">맞을 때 0~${s.def} 줄인다</small>`, 'def', s.capped.def)}${row('회피', `${s.eva}% / ${CAPS.eva}%`, 'eva', s.capped.eva)}
-      ${row('막기', `${s.block}%`, 'block', s.capped.block)}${row('피해', `${Math.round((w.dmg[0] + s.dmg) * m)}–${Math.round((w.dmg[1] + s.dmg) * m)} <small>${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} ×${m.toFixed(2)} · ${FORMS[w.form].name} · 치명: ${CRITS[w.crit]}</small>`, 'dmg')}${row('급소 확률', `${s.crit}%${s.critMul > 2 ? ` · ×${s.critMul}` : ''}`, 'crit')}${s.acc ? row('명중', `${100 + s.acc}%`, 'acc') : ''}
+      ${row('막기', `${s.block}%`, 'block', s.capped.block)}${row('피해', `${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} <small>${FORMS[w.form].name} · ${beatOfWeapon(w)}초마다</small>`, 'dmg')}${row('급소 확률', `${s.crit}%${s.critMul > 2 ? ` · ×${s.critMul}` : ''}`, 'crit')}${s.acc ? row('명중', `${100 + s.acc}%`, 'acc') : ''}
       ${['fire', 'frost', 'bolt', 'poison'].map((k) => row(`${ELEM[k].name} 저항`, `${RES_DOT(s.res[k])} <small style="color:#9aa2bd">받는 피해 ×${RES_MUL[s.res[k]]}</small>`, 'res' + k)).join('')}
       <div class="gtxt" style="margin-top:6px">${flags.join('') || '<span style="color:#9aa2bd">특수 효과 없음</span>'}</div>`;
   },

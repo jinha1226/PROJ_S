@@ -73,13 +73,13 @@ const s6 = await page.evaluate(() => { const g = window.__game, G = g.G; let tri
   // 입구 앞 방 바닥에 서서 스킬로 조준 → 발동
   const p = G.player, nb = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => [x + dx, y + dy]).find(([a, b]) => G.tile[b * G.W + a] === 1 && G.room[b * G.W + a] >= 0);
   G.ents = [p]; p.x = nb[0]; p.y = nb[1]; const sid = { fire: 'r_fire', frost: 'r_freeze', bolt: 'r_shock', push: 'r_push' }[want]; Object.assign(G.slots[0], { stone: sid, color: g.STONE[sid].color, cd: 0 }); g.computeFOV(); g.View.buildFloor();
-  g.UI.stoneBtn(0); const valid = g.UI.valid.has(i); g.UI.tapTarget(x, y); g.UI.tapTarget(x, y); let n = 0; while (g.Anim.active && n++ < 800) g.Anim.step(1000);
+  g.UI.stoneBtn(0); const valid = g.UI.valid.has(i); g.UI.tapTarget(x, y); g.UI.tapTarget(x, y);
   const ok = G.tile[i] !== 0;
   return { tries, kind, bad, valid, ok, left: G.block.size }; });
 check('숨은 방: 틀린 스킬로는 안 열리고 맞는 스킬로 조준해 연다', !s6.bad && s6.valid && s6.ok && s6.left === 0, JSON.stringify(s6));
 
 // 10. 귀환 두루마리: 보스 층 금지 · 한 턴 뒤 귀환
-const s10 = await page.evaluate(() => { const g = window.__game, G = g.G; const drain = () => { let n = 0; while (g.Anim.active && n++ < 800) g.Anim.step(1000); };
+const s10 = await page.evaluate(() => { const g = window.__game, G = g.G; const drain = () => { };
   G.inv.push({ k: 'recall', n: 1 }); G.bossFloor = true; const boss = g.useItem('recall'); G.bossFloor = false;
   g.act(() => g.useItem('recall')); drain(); const armed = G.pendingReturn || G.over ? 'early' : 'wait';
   const C = g.clock; C.setIntent(null, true); for (let k = 0; k < 6; k++) C.step(); C.setIntent(null, false); drain(); // 실시간: 한 턴(0.3초)이 흘러야 빛이 모인다

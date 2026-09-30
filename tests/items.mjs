@@ -26,10 +26,10 @@ await page.waitForFunction(() => !!window.__game, null, { timeout: 30000 });
 await page.tap('#btn-start'); await page.waitForTimeout(1500);
 
 await page.evaluate(() => { const g = window.__game, G = g.G; document.querySelector('#sheet').classList.add('hidden'); g.META.hero = g.newHero(); g.enterDungeon(1); document.querySelector('#sheet').classList.add('hidden');
-  window.drain = () => { let n = 0; while (g.Anim.active && n++ < 800) g.Anim.step(1000); };
+  window.drain = () => {}; // 연출 대기열이 없어졌다: 사건은 그 틱에 바로 간다
   window.arena = (foes = [], surf = {}) => { drain(); const cx = 15, cy = 15, p = G.player;
     for (let y = 0; y < G.H; y++) for (let x = 0; x < G.W; x++) { const i = y * G.W + x; G.tile[i] = Math.abs(x - cx) <= 4 && Math.abs(y - cy) <= 4 ? 1 : 0; G.surf[i] = surf[i] || 0; G.fire[i] = 0; G.cloud[i] = 0; }
-    p.x = cx; p.y = cy; p.hp = p.max = 40; p.alive = true; for (const k in p.st) p.st[k] = 0; G.over = false; G.gear.clear(); G.chests.clear(); G.items.clear(); G.stones.clear();
+    p.x = cx; p.y = cy; p.px = cx; p.py = cy; p.hp = p.max = 40; p.alive = true; for (const k in p.st) p.st[k] = 0; G.over = false; G.gear.clear(); G.chests.clear(); G.items.clear(); G.stones.clear();
     G.ents = [p, ...foes.map(([x, y, o = {}]) => ({ id: G.nextId++, type: 'goblin', x: cx + x, y: cy + y, hp: 30, max: 30, atk: 0, alive: true, awake: true, face: [0, 1], cd: 0, cast: null, charge: null, aim: false, name: '허수아비', ...o, st: { wet: 0, frozen: 0, burn: 0, poison: 0, stun: 0, fear: 0, haste: 0, immune: 0, bleed: 0, frac: 0, vital: 0, ...(o.st || {}) } }))];
     g.refreshStats(); G.ps.eva = 0; g.computeFOV(); return G; };
 });
@@ -40,7 +40,7 @@ check('층마다 장비 1.5~4개, 대부분 평범', s1.perFloor >= 1.5 && s1.pe
 
 // 2. 미확인 무기: 적중 10번 뒤 드러남, 음수도 있다
 const s2 = await page.evaluate(() => { const g = window.__game, G = arena([[1, 0, { hp: 999, max: 999 }]]); const it = g.makeGear('sword'); it.plus = -2; G.bag.push(it); g.equip(G.bag.length - 1, 'weapon'); const before = g.gearName(it);
-  for (let k = 0; k < 16 && !it.idP; k++) { g.act(() => { g.playerMove(1, 0); return true; }); drain(); } return { before, after: g.gearName(it), known: it.idP }; });
+  G.ents[1].st.stun = 99; const C = g.clock; C.initClock(); C.setIntent(null, true); for (let k = 0; k < 400 && !it.idP; k++) C.step(); C.setIntent(null, false); return { before, after: g.gearName(it), known: it.idP }; });
 check('미확인 무기는 적중 10번 뒤 강화치가 드러남(음수 포함)', /\?/.test(s2.before) && s2.known && /-2/.test(s2.after), JSON.stringify(s2));
 
 // 3. 강화: +1, 상한, 랜다트 불가
@@ -51,7 +51,7 @@ check('강화 두루마리: +1, 상한(무기 +6), 유물 불가', s3.a === 6 &&
 
 // 4. 화염 브랜드: 풀 위의 적 → 불이 번진다
 const s4 = await page.evaluate(() => { const g = window.__game, surf = {}; for (let x = 16; x <= 18; x++) surf[x + 15 * 40] = 2; const G = arena([[1, 0, { hp: 999, max: 999 }]], surf); G.eq.weapon = g.makeGear('sword', { brand: 'fire', known: true }); g.refreshStats();
-  g.act(() => { g.playerMove(1, 0); return true; }); drain(); const C = g.clock; C.setIntent(null, true); for (let k = 0; k < 6; k++) C.step(); C.setIntent(null, false); drain(); return { fire: G.fire[16 + 15 * 40] > 0 || G.surf[16 + 15 * 40] === 5, spread: G.fire[17 + 15 * 40] > 0 || G.surf[17 + 15 * 40] === 5 }; });
+  G.ents[1].st.stun = 99; const C = g.clock; C.initClock(); C.setIntent(null, true); for (let k = 0; k < 30; k++) C.step(); C.setIntent(null, false); return { fire: G.fire[16 + 15 * 40] > 0 || G.surf[16 + 15 * 40] === 5, spread: G.fire[17 + 15 * 40] > 0 || G.surf[17 + 15 * 40] === 5 }; });
 check('화염 브랜드로 풀 위의 적을 치면 불이 번진다', s4.fire && s4.spread, JSON.stringify(s4));
 
 // 5. 색의 반지: 그 색 영혼석 기본 쿨타임 −1
@@ -89,41 +89,32 @@ check('옛 저장의 등급 장비가 새 형식으로', s10.v >= 8 && s10.weapo
 await page.evaluate(() => { const g = window.__game, M = g.META; document.querySelector('#sheet').classList.add('hidden'); M.hero = g.newHero(); g.enterDungeon(1); document.querySelector('#sheet').classList.add('hidden');
   window.hits = []; const on = g.View.on; g.View.on = function (t, d) { if (t === 'hit' && d.id !== 0 && d.kind === 'hit') window.hits.push({ id: d.id, amt: d.amt, crit: !!d.crit, label: d.label }); return on.apply(this, arguments); };
   // 무기 base로 foes 중 k번째를 친다. setup(G, foes)로 조건을 만든다. hits = 무기 적중만(출혈 틱·내가 맞은 것 제외)
-  window.swing = (base, foes, k = 0, setup) => { const G = arena(foes); G.eq.weapon = g.makeGear(base, { known: true }); G.eq.off = null; g.refreshStats(); G.ps.acc = 0;
-    for (const q of G.slots) { q.stone = null; q.color = null; } const es = G.ents.slice(1); if (setup) setup(G, es); drain(); window.hits = []; g.act(() => { g.playerMelee(es[k]); return true; }); drain(); return { G, es, hits: window.hits.filter((h) => h.id !== 0) }; };
+  window.swing = (base, foes, k = 0, setup) => { const G = arena(foes); G.eq.weapon = g.makeGear(base, { known: true }); G.eq.off = null; g.refreshStats(); G.ps.acc = 0; G.ps.crit = 0;
+    const es = G.ents.slice(1); for (const e of es) e.st.stun = 99; if (setup) setup(G, es);
+    const C = g.clock; C.initClock(); G.target = es[k].id; window.hits = []; C.setIntent(null, true); C.step(); for (let i = 0; i < 24; i++) { G.swingT = 99; C.step(); } C.setIntent(null, false); // 한 번 휘두르고, 날아간 것이 닿을 때까지
+    return { G, es, hits: window.hits.filter((h) => h.id !== 0) }; };
 });
-// §10-1 무기 12종: 모양 + 치명 조건
-const d1 = await page.evaluate(() => { const g = window.__game, out = {}, big = { hp: 999, max: 999 };
-  let r = swing('flail', [[1, -1, big], [1, 0, big], [1, 1, big]], 1); out.flail = r.hits.length === 3 && r.hits.every((h) => h.crit);
-  r = swing('flail', [[1, 0, big], [1, 1, big]], 0); out.flail2 = r.hits.length === 2 && !r.hits.some((h) => h.crit);
-  r = swing('greatsword', [[1, 0, big], [-1, 0, big], [0, 1, big], [1, 1, big]], 0, (G) => { g.act(() => g.playerWait()); }); out.greatsword = r.hits.length === 4 && r.hits.every((h) => h.crit);
-  r = swing('greatsword', [[1, 0, big], [-1, 0, big]], 0); out.greatswordNoWait = r.hits.length === 2 && !r.hits.some((h) => h.crit);
+// §10-1 무기 12종: 실시간 모양 (docs/설계_실시간_전환.md §4, 치명 조건·색 배율은 없앴다)
+const d1 = await page.evaluate(() => { const out = {}, big = { hp: 999, max: 999 };
+  let r = swing('flail', [[1, -1, big], [1, 0, big], [1, 1, big]], 1); out.flail = r.hits.length === 3;
+  r = swing('greatsword', [[1, 0, big], [-1, 0, big], [0, 1, big], [1, 1, big]], 0); out.greatsword = r.hits.length === 3 && !r.hits.some((h) => h.id === r.es[1].id);
   r = swing('spear', [[1, 0, big], [2, 0, big]], 1); out.spear = r.hits.length === 2;
-  r = swing('spear', [[2, 0, big]], 0, (G, es) => { es[0].appr = G.stats.turns; }); out.spearApproach = r.hits.length === 1 && r.hits[0].crit;
-  r = swing('twin', [[1, 0, big]], 0); const G1 = r.G; out.twin = r.hits.length === 2 && !r.hits.some((h) => h.crit); window.hits = []; g.act(() => { g.playerMelee(r.es[0]); return true; }); drain(); out.twinChain = window.hits.filter((h) => h.id !== 0).length === 2 && window.hits.every((h) => h.crit);
-  r = swing('boomerang', [[3, 0, big]], 0); out.boomerang = r.hits.length === 2 && !r.hits[0].crit && r.hits[1].crit;
-  r = swing('crossbow', [[2, 0, big], [4, 0, big]], 0); out.crossbow = r.hits.length === 2 && !!r.G.reload;
-  window.hits = []; g.act(() => { g.playerMelee(r.es[0]); return true; }); drain(); out.reload = window.hits.filter((h) => h.id !== 0).length === 0 && !r.G.reload;
-  g.act(() => { g.playerMelee(r.es[0]); return true; }); drain(); g.act(() => g.playerWait()); drain(); out.aimedReady = !!r.G.aimed && g.critReady(r.es[0]);
-  window.hits = []; g.act(() => { g.playerMelee(r.es[0]); return true; }); drain(); out.aimed = window.hits.some((h) => h.id === r.es[0].id && h.crit) && !r.G.aimed;
-  r = swing('hammer', [[1, 0, big], [2, 0, big]], 0); out.hammer = r.hits.some((h) => h.id === r.es[0].id && h.crit && h.label === '치명!');
-  r = swing('axe', [[1, 0, big]], 0, (G, es) => { es[0].st.bleed = 3; }); out.axe = r.hits[0].crit;
-  r = swing('axe', [[1, 0, big]], 0); out.axeNo = !r.hits[0].crit;
-  r = swing('sword', [[1, 0, big]], 0, (G) => { G.riposte = G.stats.turns; }); out.sword = r.hits[0].crit;
-  r = swing('mace', [[1, 0, big]], 0, (G, es) => { es[0].hitMe = G.stats.turns; }); out.mace = r.hits[0].crit;
-  r = swing('rapier', [[1, 0, big]], 0, (G) => { G.player.hp = 10; }); out.rapier = r.hits[0].crit && r.G.player.x === 14;
-  r = swing('sling', [[3, 0, big]], 0); out.sling = r.hits.length >= 1 && r.es[0].x === 19;
+  r = swing('twin', [[1, 0, big]], 0); out.twin = r.hits.length === 2;
+  r = swing('boomerang', [[3, 0, big]], 0); out.boomerang = r.hits.length === 2;
+  r = swing('crossbow', [[2, 0, big], [4, 0, big]], 0); out.crossbow = r.hits.length === 2;
+  r = swing('hammer', [[1, 0, big]], 0); out.hammer = r.hits.length === 1 && r.es[0].x === 17;
+  r = swing('axe', [[1, 0, big]], 0); out.axe = r.hits.length === 1 && r.es[0].st.bleed > 0;
+  r = swing('rapier', [[1, 0, big]], 0); out.rapier = r.hits.length === 1 && r.G.player.px < 15;
+  r = swing('sling', [[3, 0, big]], 0); out.sling = r.hits.length === 1 && r.es[0].x === 19;
+  r = swing('sword', [[1, 0, big], [-1, 0, big]], 0); out.sword = r.hits.length === 1;
   return out; });
-// 대검(직전 턴 대기)·쌍단검(연속 턴) 치명은 턴 개념이라 실시간에서 끈다(docs/설계_실시간_전환.md §4)
-check('§10-1 무기 12종이 모양·치명 조건대로', Object.entries(d1).filter(([k]) => !['greatsword', 'twinChain'].includes(k)).every(([, v]) => v), JSON.stringify(d1));
+check('§10-1 무기 12종이 실시간 모양대로', Object.values(d1).every(Boolean), JSON.stringify(d1));
 
-// §10-2 색 배율: 같은 색 영혼석이 늘면 오르고, 비교 창에 보인다
-const d2 = await page.evaluate(() => { const g = window.__game, G = arena(); G.eq.weapon = g.makeGear('sword', { known: true }); g.refreshStats();
-  const put = (n) => G.slots.forEach((q, k) => { q.stone = k < n ? 'r_fire' : null; q.color = k < n ? 'red' : null; });
-  put(0); const w = g.makeGear('axe', { known: true }), m0 = g.colorMul({ color: 'red' }); put(3); const m3 = g.colorMul({ color: 'red' }); put(6); const m6 = g.colorMul({ color: 'red' }); put(3);
+// §10-2 (바뀜) 색 배율은 없다: 무기 창에는 모양과 박자가 보인다
+const d2 = await page.evaluate(() => { const g = window.__game, G = arena(); G.eq.weapon = g.makeGear('sword', { known: true }); g.refreshStats(); const w = g.makeGear('greatsword', { known: true });
   G.bag.push(w); g.UI.openInv(); g.UI.invTab = 'gear'; g.UI.invSel = { from: 'bag', i: G.bag.length - 1 }; g.UI.renderInv(); const t = document.querySelector('.gdetail').textContent; document.querySelector('#sheet').classList.add('hidden');
-  return { m0, m3, m6: +m6.toFixed(2), shown: /빨강 영혼석 3개 → 피해 ×1\.45/.test(t), colorChange: /색: .*초록 → .*빨강/.test(t) }; });
-check('§10-2 같은 색 영혼석 → 무기 피해 배율(×1.45·×1.9), 비교 창에 표시', d2.m0 === 1 && d2.m3 === 1.45 && d2.m6 === 1.9 && d2.shown && d2.colorChange, JSON.stringify(d2));
+  return { beat: /0\.9초마다/.test(t), shape: /반원/.test(t), noColor: !/영혼석/.test(t) && !/치명/.test(t) }; });
+check('§10-2 무기 창: 모양·박자, 색 배율·치명 조건 없음', d2.beat && d2.shape && d2.noColor, JSON.stringify(d2));
 
 // §10-3 (바뀜) 무기 세트·교체는 없다: 칸은 10개, 공격 길게 누르기는 무기 정보
 const d3 = await page.evaluate(() => { const g = window.__game, G = arena(); G.eq.weapon = g.makeGear('sword', { known: true }); g.refreshStats(); const t0 = G.stats.turns, before = G.eq.weapon;
@@ -138,17 +129,9 @@ const d4 = await page.evaluate(() => { const g = window.__game, G = arena(); G.e
   const ok = G.eq.weapon === gs && !G.eq.off && G.bag.some((it) => it.base === 'buckler'); const orb = g.makeGear('orb_red'); G.bag.push(orb); const refused = !g.equip(G.bag.length - 1, 'off'); return { warn, ok, refused }; });
 check('§10-4 양손 무기 → 보조손은 가방으로(미리 알림), 양손 세트엔 보조손 불가', d4.warn && d4.ok && d4.refused, JSON.stringify(d4));
 
-// §10-5 원거리: 붙은 적 절반, 석궁 장전, 원거리 적중도 빨강 쿨타임 감소
-const d5 = await page.evaluate(() => { const g = window.__game, big = { hp: 999, max: 999 };
-  let r = swing('crossbow', [[1, 0, big]], 0); const half = r.hits.length === 1 && r.hits[0].label === '너무 가깝다' && r.hits[0].amt <= 4;
-  r = swing('sling', [[3, 0, big]], 0, (G) => { Object.assign(G.slots[0], { stone: 'r_fire', color: 'red', cd: 5, usedRound: -1, redRound: -1 }); });
-  return { half, cd: r.G.slots[0].cd }; });
-check('§10-5 원거리: 붙은 적 절반 (석궁 장전은 §10-1, 영혼석 쿨타임은 영혼석을 끄는 동안 뺀다)', d5.half, JSON.stringify(d5));
-
-// §10-6 치명 조건이 충족된 적 위에 "×2"
-const d6 = await page.evaluate(async () => { const g = window.__game, G = arena([[1, 0, { hp: 999, max: 999 }], [-1, 0, { hp: 999, max: 999 }]]); G.eq.weapon = g.makeGear('axe', { known: true }); g.refreshStats(); G.ents[1].st.bleed = 3; g.View.buildFloor(); g.UI.syncAll();
-  await new Promise((r) => setTimeout(r, 600)); return { ready: g.critReady(G.ents[1]), notReady: !g.critReady(G.ents[2]), marks: document.querySelectorAll('.x2').length }; });
-check('§10-6 치명 조건 판정(머리 위 ×2 표시는 실시간에서 뺐다)', d6.ready && d6.notReady && d6.marks === 0, JSON.stringify(d6));
+// §10-5 원거리: 붙은 적은 절반
+const d5 = await page.evaluate(() => { const big = { hp: 999, max: 999 }, r = swing('crossbow', [[1, 0, big]], 0); return { half: r.hits.length === 1 && r.hits[0].label === '너무 가깝다' && r.hits[0].amt <= 4 }; });
+check('§10-5 원거리: 붙은 적 절반', d5.half, JSON.stringify(d5));
 
 // §10-7 품질: 구역마다 오르고, 강화 +N과 따로 더해진다. 대장장이가 품질을 올린다
 const d7 = await page.evaluate(() => { const g = window.__game, G = arena(), M = g.META; const qs = {}; for (const d of [3, 8, 13, 18]) { let q = 0; for (let k = 0; k < 40 && !q; k++) { const it = g.rollGear(d); if (it.q) q = it.q; } qs[d] = q; }

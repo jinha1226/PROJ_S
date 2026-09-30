@@ -187,17 +187,22 @@ export const View = {
       this.dio.scene.add(g); this.lamps.set(i, g);
     }
   },
-  /** 등불지기 인형: 지난 틱과 이번 틱 사이를 G.alpha만큼 보간한 자리 */
-  placeHero(dt) {
-    const ev = this.evs.get(0), P = G.player; if (!ev || !P || P.px == null) return;
-    const a = G.alpha ?? 1, ox = P.ppx ?? P.px, oy = P.ppy ?? P.py;
-    ev.place(ox + (P.px - ox) * a, oy + (P.py - oy) * a, dt);
+  /** 모든 인형: 지난 틱과 이번 틱 사이를 G.alpha만큼 보간한 자리. 서 있는 적은 노리는 쪽을 본다 */
+  placeUnits(dt) {
+    const a = G.alpha ?? 1;
+    for (const e of G.ents) {
+      if (!e.alive || e.px == null) continue;
+      const ev = this.evs.get(e.id); if (!ev) continue;
+      const ox = e.ppx ?? e.px, oy = e.ppy ?? e.py;
+      ev.place(ox + (e.px - ox) * a, oy + (e.py - oy) * a, dt);
+      if (e.id !== 0 && !ev.walking && e.ang != null) ev.yawT = Math.atan2(Math.cos(e.ang), Math.sin(e.ang));
+    }
   },
   frame(sdt) {
     ports.Loop.frame(sdt);
     const time = K.SHARED.uTime.value, D = this.dio;
     const casting = new Set(this.intents.casting), winding = new Set(this.intents.winding);
-    this.placeHero(sdt);
+    this.placeUnits(sdt);
     for (const [id, ev] of this.evs) {
       ev.casting = casting.has(id); ev.winding = winding.has(id);
       ev.update(sdt, time);

@@ -1,6 +1,7 @@
 // 시작 · 모듈 연결. 규칙(core)과 화면(render/ui/town)은 여기서만 이어진다.
 import * as C from './core/clock.js';
 import { playerMove } from './core/combat.js';
+import { swing } from './sim/weapon.js';
 import { computeFOV } from './core/fov.js';
 import { calcStats, equip, gearName, makeGear, makeUnrand, pickGear, refreshStats, rollGear, unequip } from './core/gear.js';
 import { openHidden } from './core/hidden.js';
@@ -52,4 +53,4 @@ newRun();
 View.buildFloor();
 UI.syncAll();
 UI.title();
-window.__game = { clock: C, genFloorForTest: () => { genFloor(); View.buildFloor(); }, get META() { return META; }, Town, Game, enterDungeon, returnToTown, newHero, RECIPES, G, UI, View, act, playerMove, useStone, useItem, reduceColor, inCombat, descend,  computeFOV, addStone, pickGear, equip, unequip, makeGear, rollGear, calcStats, refreshStats, STONE, DROPS, hearthGlow, glowParts, requestState, acceptVisitor, rollVisitors, volunteers, takeTorch, openHidden, processReturn, regen: () => { genFloor(); View.buildFloor(); }, makeUnrand, stoneCd, gearName, loadMeta, resetMetaForTest: resetMeta, Settle };
+window.__game = { clock: C, genFloorForTest: () => { genFloor(); View.buildFloor(); }, get META() { return META; }, Town, Game, enterDungeon, returnToTown, newHero, RECIPES, G, UI, View, act, playerMove, swing, useStone, useItem, reduceColor, inCombat, descend,  computeFOV, addStone, pickGear, equip, unequip, makeGear, rollGear, calcStats, refreshStats, STONE, DROPS, hearthGlow, glowParts, requestState, acceptVisitor, rollVisitors, volunteers, takeTorch, openHidden, processReturn, regen: () => { genFloor(); View.buildFloor(); }, makeUnrand, stoneCd, gearName, loadMeta, resetMetaForTest: resetMeta, Settle };

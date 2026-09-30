@@ -57,7 +57,7 @@ export function damage(e, amt, kind = 'hit', o = {}) {
   if (isFoe(e) && amt > 0 && (!src || src === G.player) && G.ctx && G.ctx.origin !== 'enemy' && !DOT[kind]) reduceColor('red');
   if (amt > 0) {
     e.hp -= amt;
-    if (isP(e)) { (G.hurtLog ||= []).push({ turn: G.stats.turns, who: src && src !== e ? src.name : HURT_BY[kind] || '알 수 없는 것', amt, kind }); if (G.hurtLog.length > 8) G.hurtLog.shift(); } // 사망 요약
+    if (isP(e)) { (G.hurtLog ||= []).push({ t: G.clock || 0, who: src && src !== e ? src.name : HURT_BY[kind] || '알 수 없는 것', amt, kind }); if (G.hurtLog.length > 8) G.hurtLog.shift(); } // 사망 요약
     emit('hit', { id: e.id, amt, kind, dx: o.dx || 0, dy: o.dy || 0, label, big: !!o.big || amt >= 7, crit: !!o.crit });
     emit('hp', { id: e.id, hp: Math.max(0, e.hp), max: e.max });
   }

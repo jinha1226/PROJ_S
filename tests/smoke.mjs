@@ -53,9 +53,8 @@ try {
   check('원정 출발 → 던전', d.mode === 'dungeon' && d.ents > 1, JSON.stringify(d));
   await page.screenshot({ path: path.join(outDir, '2-dungeon.png') });
   const hud = await page.evaluate(() => {
-    const g = window.__game, { G, UI, Anim } = g, before = G.torch;
+    const g = window.__game, { G, UI } = g, before = G.torch;
     const C = g.clock; C.setIntent(null, true); for (let k = 0; k < 6; k++) C.step(); C.setIntent(null, false); // 옛 1턴 = 걸음 박자 0.3초
-    let n = 0; while (Anim.active && n++ < 800) Anim.step(1000);
     const burn = before - G.torch;
     G.torch = 40; G.lamps.set(G.player.y * G.W + G.player.x, '이솔');
     const known = (g.META.rememberedKeepers || []).length;
@@ -69,11 +68,11 @@ try {
 
   // 무작위 걷기 30초(600틱): 조이스틱 방향을 20틱마다 바꾼다
   const play = await page.evaluate(() => {
-    const g = window.__game, { G, Anim } = g, C = g.clock;
+    const g = window.__game, { G } = g, C = g.clock;
     let ticks = 0, dir = [1, 0];
     for (let t = 0; t < 600 && !G.over && g.Game.mode === 'dungeon'; t++) {
       if (t % 20 === 0) { const a = Math.random() * Math.PI * 2; dir = [Math.cos(a), Math.sin(a)]; }
-      C.setIntent(dir, false); C.step(); Anim.take(); Anim.step(1000); ticks++;
+      C.setIntent(dir, false); C.step(); ticks++;
     }
     C.setIntent(null, false);
     return { ticks, turns: G.stats.turns, over: G.over };
@@ -97,7 +96,6 @@ try {
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const x = b.x + dx, y = b.y + dy; if (G.tile[y * G.W + x] === 1 && !G.ents.some((e) => e.alive && e.x === x && e.y === y)) { p.x = x; p.y = y; break; } }
     g.computeFOV();
     g.clock.initClock(); g.clock.setIntent(null, true); for (let k = 0; k < 30 && b.alive; k++) g.clock.step(); g.clock.setIntent(null, false); // 닿은 적을 저절로 친다
-    let n = 0; while (g.Anim.active && n++ < 800) g.Anim.step(1000);
     const open = G.exitOpen;
     p.x = G.stairs % G.W; p.y = (G.stairs / G.W) | 0; g.descend();
     return { ok: open, mode: g.Game.mode, cleared: M.cleared[0] };

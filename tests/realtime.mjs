@@ -63,7 +63,7 @@ const c2 = await page.evaluate(() => { const G = arena(), c0 = G.clock; M.C.setI
 check('한 프레임에 최대 3틱(0.15초)', c2.n === 3 && c2.dc === 0.15, JSON.stringify(c2));
 
 const c3 = await page.evaluate(() => { const G = arena(), p = G.player; M.C.setIntent([1, 0], false); for (let k = 0; k < 20; k++) M.C.step(); return +(p.px - 15).toFixed(2); });
-check('걷기 3.3칸/초(20틱 = 1초)', Math.abs(c3 - 3.3) < 0.06, String(c3));
+check('걷기 4.0칸/초(20틱 = 1초)', Math.abs(c3 - 4.0) < 0.06, String(c3));
 
 const c4 = await page.evaluate(() => { const G = arena(); G.torch = 80; const n0 = G.stats.turns; M.C.setIntent(null, true); for (let k = 0; k < 20; k++) M.C.step(); return { turns: G.stats.turns - n0, burn: +(80 - G.torch).toFixed(2), tb: M.TB }; });
 check('0.3초마다 옛 턴 한 번(1초 = 3턴, 횃불도 3턴어치)', c4.turns === 3 && c4.burn === +(3 * c4.tb).toFixed(2), JSON.stringify(c4));
@@ -75,10 +75,10 @@ const c6 = await page.evaluate(() => { const G = arena(), n0 = G.inv.reduce((a, 
 check('발밑 칸이 바뀌면 줍기·시야', c6.picked && c6.inv === 1 && c6.vis === 1, JSON.stringify(c6));
 
 const c7 = await page.evaluate(() => { const G = arena([[1, 0]]), e = G.ents[1]; M.C.setIntent(null, true); for (let k = 0; k < 24; k++) M.C.step(); return e.hp; });
-check('닿는 적을 저절로 친다(1단계 다리, 0.6초마다)', c7 < 30, String(c7));
+check('닿는 적을 무기 박자마다 저절로 친다', c7 < 30, String(c7));
 
-const c8 = await page.evaluate(() => { const G = arena([[4, 0]]), e = G.ents[1], d0 = e.x - 15; M.C.setIntent(null, true); for (let k = 0; k < 6; k++) M.C.step(); return { d0, d1: e.x - 15 }; });
-check('적은 걸음 박자(0.3초)마다 한 칸', c8.d1 === c8.d0 - 1, JSON.stringify(c8));
+const c8 = await page.evaluate(() => { const G = arena([[4, 0]]), e = G.ents[1], d0 = e.x - 15; M.C.setIntent(null, true); for (let k = 0; k < 6; k++) M.C.step(); return { d0, d1: +(e.px - 15).toFixed(3) }; });
+check('적은 칸이 아니라 연속 좌표로 다가온다(0.3초에 약 1칸)', c8.d1 < c8.d0 - 0.5 && c8.d1 !== Math.round(c8.d1), JSON.stringify(c8));
 
 // 검토 초점 1~3
 const f1 = await page.evaluate(() => { const G = arena(); M.C.setWalk([[18, 15]]); M.C.setIntent([1, 0], false); window.__game.genFloorForTest(); return { walk: G.walk, dir: G.intent.dir, px: G.player.px === G.player.x }; });
@@ -87,8 +87,8 @@ check('층을 옮기면 걷기·의도가 지워진다', f1.walk === null && f1.
 const f2 = await page.evaluate(async () => { const G = arena(), p = G.player, Cb = await import('/js/core/combat.js'); Cb.moveEnt(p, 13, 13); M.C.setIntent(null, true); M.C.step(); return [p.px, p.py, p.x, p.y]; });
 check('옛 코드가 x, y만 바꿔도 위치가 따라간다', f2[0] === 13 && f2[1] === 13 && f2[2] === 13, JSON.stringify(f2));
 
-const f3 = await page.evaluate(() => { const G = arena(), p = G.player; p.st.stun = 1; M.C.setIntent([1, 0], false); for (let k = 0; k < 6; k++) M.C.step(); return { stun: p.st.stun, moved: +(p.px - 15).toFixed(2) }; });
-check('기절 중에는 못 걷지만 시간이 흘러 풀린다', f3.stun === 0 && f3.moved < 0.2, JSON.stringify(f3));
+const f3 = await page.evaluate(() => { const G = arena(), p = G.player; p.st.stun = 1; M.C.setIntent([1, 0], false); for (let k = 0; k < 19; k++) M.C.step(); const mid = +(p.px - 15).toFixed(2); for (let k = 0; k < 3; k++) M.C.step(); return { stun: p.st.stun, mid }; });
+check('기절(1초) 중에는 못 걷지만 시간이 흘러 풀린다', f3.stun === 0 && f3.mid < 0.01, JSON.stringify(f3));
 
 // ---------- 과제 3: 입력 ----------
 const i1 = await page.evaluate(() => { const G = arena(), U = window.__game.UI; U.startTravel(18, 17); let n = 0; while (G.walk && n++ < 200) M.C.step(); const p = G.player; return { cell: [p.x, p.y], n }; });
@@ -138,7 +138,7 @@ const v3 = await page.evaluate(() => { arena([[1, 0]]); window.__game.View.refre
 check('칸 이동 표시(주변 8칸 테)가 없다', v3 === 0, String(v3));
 
 // 걸음: 두 틱 사이를 보간하고(뒤쫓지 않는다), 통통 튀며 걷고, 멈추면 바닥에 선다. 발밑 고리는 인형 발밑 바닥에
-const w0 = await page.evaluate(() => { const g = window.__game, G = arena(), p = G.player, ev = g.View.evs.get(0); ev.cur.set(15, 0, 15); ev.t = 1; p.ppx = 15; p.ppy = 15; p.px = 15.165; p.py = 15; G.alpha = 0.5; g.View.placeHero(0.016); const x = +ev.cur.x.toFixed(4); p.px = 15; return x; });
+const w0 = await page.evaluate(() => { const g = window.__game, G = arena(), p = G.player, ev = g.View.evs.get(0); ev.cur.set(15, 0, 15); ev.t = 1; p.ppx = 15; p.ppy = 15; p.px = 15.165; p.py = 15; G.alpha = 0.5; g.View.placeUnits(0.016); const x = +ev.cur.x.toFixed(4); p.px = 15; return x; });
 check('인형은 두 틱 사이를 보간한다(뒤쫓지 않는다)', w0 === 15.0825, String(w0));
 await page.evaluate(() => arena());
 await page.keyboard.down('d');
@@ -186,10 +186,10 @@ await tap(17, 15); const r5b = await page.evaluate(() => !document.querySelector
 await page.evaluate(() => window.__game.UI.hideInfo());
 check('노린 적을 한 번 더 탭하면 정보 카드(조이스틱 칸에서도 살펴볼 수 있다)', r5a && r5b, JSON.stringify({ r5a, r5b }));
 
-const r7 = await page.evaluate(() => { const g = window.__game, G = arena(), p = G.player; G.tile[15 * G.W + 15] = M.T.T_STAIRS; G.bossFloor = false; g.Anim.q.push({ t: 99999, fn: () => { window.__stale = true; } }); window.__stale = false; g.descend(); return { q: g.Anim.q.length, zf: G.zf }; });
-check('계단을 내려가면 남은 연출을 버린다', r7.q === 0, JSON.stringify(r7));
+const r7 = await page.evaluate(() => { const g = window.__game, G = arena(); G.tile[15 * G.W + 15] = M.T.T_STAIRS; G.bossFloor = false; G.projs.push({ x: 15, y: 15, ang: 0, speed: 1, left: 5, range: 5, hit: new Set(), team: 'foe', onHit() {} }); g.descend(); return { projs: G.projs.length, zf: G.zf }; });
+check('계단을 내려가면 날던 투사체를 버린다', r7.projs === 0, JSON.stringify(r7));
 
-const r8 = await page.evaluate(() => { const g = window.__game, G = arena(); G.tile[15 * G.W + 16] = M.T.T_DOOR; g.computeFOV(); const seen = []; const on = g.View.on; g.View.on = function (t, d) { seen.push(t); return on.apply(this, arguments); }; g.act(() => g.playerMove(1, 0)); g.Anim.take(); g.Anim.step(99999); g.View.on = on; return { hud: seen.includes('hud'), vis: seen.includes('vis'), ctx: document.querySelector('#btn-ctx').textContent }; });
+const r8 = await page.evaluate(() => { const g = window.__game, G = arena(); G.tile[15 * G.W + 16] = M.T.T_DOOR; g.computeFOV(); const seen = []; const on = g.View.on; g.View.on = function (t, d) { seen.push(t); return on.apply(this, arguments); }; g.act(() => g.playerMove(1, 0)); g.View.on = on; return { hud: seen.includes('hud'), vis: seen.includes('vis'), ctx: document.querySelector('#btn-ctx').textContent }; });
 check('행동 뒤 화면이 새로 맞춰진다(문을 열면 "문 열기"가 사라진다)', r8.hud && r8.vis && !/문 열기/.test(r8.ctx), JSON.stringify(r8));
 
 const r10 = await page.evaluate(() => { arena(); const U = window.__game.UI, G = window.__game.G; U.explore = true; U.exploreSkip = new Set(); U.exploreGoal = 15 * G.W + 18; G.walk = null; G.stuckAbort = true; G.hurt = false; U.afterTick(0); const r = U.exploreSkip.has(15 * G.W + 18); U.stopAuto(); return r; });
