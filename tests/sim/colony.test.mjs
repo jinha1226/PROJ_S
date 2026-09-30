@@ -1,8 +1,8 @@
 // 정착지 2단계: 시간과 일 · 제작 (docs/설계_정착지_2단계.md §12)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { colony, have, hourTick, markCut, passHours } from '../../js/core/colony.js';
-import { addOrder, rollQuality, stationWorker, tierOf } from '../../js/core/crafting.js';
+import { colony, have, hourTick, markCut, passHours, rateOf } from '../../js/core/colony.js';
+import { addOrder, orderWhy, rollQuality, stationWorker, tierOf } from '../../js/core/crafting.js';
 import { META, loadMeta, resetMeta } from '../../js/core/meta.js';
 import { inLight, invalidate, placeBps, stockOf } from '../../js/core/settlement.js';
 import { SCX, SCY, TR } from '../../js/data/build.js';
@@ -64,7 +64,7 @@ test('제작: 대장간에 대장장이가 서서 한손 무기를 만든다', (
 
 test('품질: 1등급 작업방이면 기본 낡은(1), 특기면 오를 수 있다', () => {
   const smith = { job: 'blacksmith', t: { O: 0, C: 0 }, mood: 0 }, other = { job: 'cook', t: { O: 0, C: 0 }, mood: 0 };
-  setR(mulberry32(1)); const qs = Array.from({ length: 200 }, () => rollQuality(smith, 1)), qo = Array.from({ length: 200 }, () => rollQuality(other, 1));
+  setR(mulberry32(1)); const qs = Array.from({ length: 200 }, () => rollQuality(smith, 1, 'forge')), qo = Array.from({ length: 200 }, () => rollQuality(other, 1, 'forge'));
   assert.ok(qs.filter((q) => q === 2).length > 60 && qo.every((q) => q === 1));
 });
 
@@ -82,4 +82,34 @@ test('전리품: 모든 적이 마석, 마법사는 자기 원소 결정, 보스
   assert.ok(mage.filter((m) => m === '마석').length >= 90 && mage.includes('번개 결정') && !mage.includes('불 결정'));
   const boss = lootOf({ type: 'goblin', boss: 'chief' });
   assert.equal(boss.filter((m) => m === '마석').length, 10); assert.ok(boss.includes('심장'));
+});
+
+test('굶지 않는다: 처음 밭 · 들에서 먹을 것 · 고기로 버틴다', () => {
+  const M = fresh(), s = M.settle;
+  assert.ok(s.zone.filter((z) => z === 2).length >= 12, '처음 밭 3×4');
+  s.stock.식량 = 0; s.stock.식사 = 0; M.mats.고기 = 0;
+  passHours(72);
+  assert.ok(M.npcs.every((n) => n.hunger < 6), JSON.stringify(M.npcs.map((n) => n.hunger)));
+  s.stock.식량 = 0; s.stock.식사 = 0; M.mats.고기 = 4; M.colony.forage = 0; const h0 = M.npcs.map((n) => n.hunger);
+  M.time = { day: M.time.day, hour: 6, min: 0 }; hourTick(); // 7시 아침: 고기를 먹는다
+  assert.equal(M.mats.고기, 4 - M.npcs.length); assert.ok(M.npcs.every((n) => n.hunger === 0), JSON.stringify(h0));
+});
+
+test('침대가 있고 잘 먹으면 기분이 제자리로 돌아온다', () => {
+  const M = fresh(); M.npcs.forEach((n) => { n.mood = -2; }); M.settle.stock.식사 = 200;
+  for (const n of M.npcs) M.settle.furn.push({ id: 'bed' + n.id, k: 'bed', x: 1, y: 1, rot: 0 });
+  passHours(72);
+  assert.ok(M.npcs.every((n) => n.mood >= 0), JSON.stringify(M.npcs.map((n) => n.mood)));
+});
+
+test('잔치는 한 번만 준비된다 · 다툼으로 멈춘 방은 주문이 멈춘다', () => {
+  const M = fresh(); M.buff = 'feast'; M.settle.furn.push({ id: 'x', k: 'hearth', x: 1, y: 1, rot: 0 });
+  const o = addOrder('feast'); assert.match(orderWhy(o) || '', /작업방|이미/);
+  M.buff = null; M.closed = { forge: '갑과 을의 다툼' }; const w = addOrder('enh', { target: 'none' });
+  assert.match(orderWhy(w), /다툼/);
+});
+
+test('제작 특기는 제 방에서만(대장장이가 서재에서 일하면 보통 속도)', () => {
+  const M = fresh(), b = { job: 'blacksmith', mood: 0, t: { C: 0 } };
+  assert.ok(rateOf(b, 'craft', 'forge') > rateOf(b, 'craft', 'library'));
 });

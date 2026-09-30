@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { colony, tickReal } from '../core/colony.js';
+import { colony, resetSum, tickReal } from '../core/colony.js';
 import { META, processReturn, rel, saveMeta } from '../core/meta.js';
 import { furnCells, roomName } from '../core/rooms.js';
 import { costOf, inLight, invalidate, missing, radius, roomAt, roomTier, rooms } from '../core/settlement.js';
@@ -25,6 +25,8 @@ import { TownNPC, talkLine } from './town-npc.js';
 /* ================= 정착지: 40×40 땅 · 방 · 주민 (docs/설계_정착지_건설.md 1단계) ================= */
 const I = (x, y) => y * SW + x;
 const HERO_AT = [SCX - 1, SCY + 1.1];
+const CROP_GEO = new THREE.ConeGeometry(0.28, 0.6, 5).translate(0, 0.3, 0);
+const CROP_MAT = [new THREE.MeshStandardMaterial({ color: 0x6ac04a, roughness: 0.8 }), new THREE.MeshStandardMaterial({ color: 0xe0b840, roughness: 0.7 })];
 const CRAFT_ROOMS = Object.keys(STATIONS);
 
 export const Town = {
@@ -39,6 +41,7 @@ export const Town = {
   busy: false,
   spIdx: 1, // 배속(CLOCK.speeds)
   pileObjs: new Map(),
+  cropObjs: new Map(),
   /** 기능 자리(월드 좌표 [x, z]): 모닥불 · 출발문 · 제단 · 창고 더미 · 작업방 가운데 */
   spot(kind) {
     const S = META.settle;
@@ -74,7 +77,7 @@ export const Town = {
   },
   enter(r = {}) {
     Game.mode = 'town';
-    const res = processReturn(r); saveMeta();
+    const res = processReturn(r); resetSum(); saveMeta();
     UI.toTown(); View.clear(); $('#lowhp').style.opacity = '0';
     View.dio.rig.followRate = 6.5; // 정착지: 끌어서 둘러보는 느긋한 초점
     // 조각을 넣기 전의 원경, 아직 오지 않은 방문자로 짓고 연출로 바꾼다
@@ -105,7 +108,7 @@ export const Town = {
     for (const n of this.npcs) D.scene.remove(n.d.root); this.npcs = [];
     for (const t of [...this.tags, ...this.roomTags]) t.remove(); this.tags = []; this.roomTags = [];
     for (const s of this.shower) D.scene.remove(s.o); this.shower = [];
-    for (const o of this.pileObjs.values()) D.scene.remove(o); this.pileObjs.clear();
+    for (const o of [...this.pileObjs.values(), ...this.cropObjs.values()]) D.scene.remove(o); this.pileObjs.clear(); this.cropObjs.clear();
     this.hero = null; this.lands = []; this.graves = []; this.visitorDolls = []; this.orbs = []; this.intro = null;
     const rig = D.rig; Object.assign(rig, { drag: null, onePan: false, panMode: false, bounds: null, maxZoom: 1.7 }); D.camera.far = 140; D.camera.updateProjectionMatrix();
     $('#townhud').style.opacity = '';
@@ -117,7 +120,7 @@ export const Town = {
     Object.assign(D.rig, { onePan: true, panMode: true, bounds: [2, 2, SW - 3, SH - 3], maxZoom: 2.2 });
     D.rig.reset(); // 정착지는 늘 탑뷰(정면·기본 확대)로 시작한다
     this.sv = new SettleView(D.scene);
-    colony(); this.refreshWorld(); this.syncPiles();
+    colony(); this.refreshWorld(); this.syncPiles(); this.syncCrops();
     for (const n of META.npcs) this.npcs.push(new TownNPC(n));
     if (META.hero) {
       const sp = dollSpec({ type: 'hero', face: [0, 1], eq: META.hero.eq }), d = K.doll(sp.parts, { scale: 1.3, gloss: sp.gloss }); const ex = sp.extra(d); if (META.hero.eq.weapon) ex.wh.add(weaponDoll(weaponId(META.hero.eq.weapon), META.hero.eq.weapon).root);
@@ -147,10 +150,30 @@ export const Town = {
       o.scale.setScalar(0.9 + Math.min(0.8, p.n * 0.05));
     }
   },
+  /** 밭 작물: 심은 날부터 자라고, 다 자라면 누렇게 */
+  syncCrops() {
+    const D = View.dio, C = META.colony; if (!C) return;
+    const d = META.time.day + META.time.hour / 24;
+    for (const [i, o] of this.cropObjs) if (!C.crops[i]) { D.scene.remove(o); this.cropObjs.delete(i); }
+    for (const [i, c] of Object.entries(C.crops)) {
+      let o = this.cropObjs.get(i);
+      if (!o) { o = new THREE.Mesh(CROP_GEO, CROP_MAT[0]); o.position.set(i % SW, 0, (i / SW) | 0); o.castShadow = true; D.scene.add(o); this.cropObjs.set(i, o); }
+      const ripe = c.ready <= META.time.day, g = ripe ? 1 : Math.max(0.4, Math.min(1, (d - c.planted) / (c.ready - c.planted)));
+      o.material = CROP_MAT[ripe ? 1 : 0]; o.scale.set(g, g, g);
+    }
+  },
+  /** 낮과 밤: 해가 지면 어둡고 푸르게, 모닥불만 밝다 */
+  dayLight() {
+    const L = View.dio.lights; if (!L || !L.hemi || !META.time) return;
+    const h = META.time.hour + META.time.min / 60, f = h < 5 || h >= 21 ? 0 : h < 7 ? (h - 5) / 2 : h >= 19 ? (21 - h) / 2 : 1, k = 0.28 + 0.72 * f;
+    L.hemi.intensity = 1.25 * k; L.sun.intensity = 2.6 * (0.1 + 0.9 * f);
+    View.dio.scene.background.setRGB(0.44 * k + 0.05 * (1 - k), 0.6 * k + 0.07 * (1 - k), 0.35 * k + 0.16 * (1 - k));
+  },
   /** 한 시간(또는 여러 시간)이 흐른 뒤: 화면을 따라잡는다 */
   afterHours() {
     const C = META.colony;
     if (C.changed) { C.changed = false; this.refreshWorld(); this.syncPiles(); if (this.buildMode) this.renderBuild?.(); }
+    this.syncCrops();
     this.renderClock(); this.renderHud(); saveMeta(); this.workRefresh?.();
     for (const t of this.npcs) if (t.doing !== t.n.doing || t.n.carry) { t.doing = t.n.doing; if (t.state !== 'walk') t.t = t.dur; } // 할 일이 바뀌면 곧 움직인다
   },
@@ -261,8 +284,8 @@ export const Town = {
   },
   frame(sdt) {
     const D = View.dio, time = K.SHARED.uTime.value;
-    this.introFrame(sdt);
-    if (!this.busy && !this.intro && META.settle && tickReal(sdt, CLOCK.speeds[this.spIdx])) this.afterHours();
+    this.introFrame(sdt); this.dayLight();
+    if (!this.busy && !this.intro && !this.buildMode && META.settle && tickReal(sdt, CLOCK.speeds[this.spIdx])) this.afterHours();
     this.sv?.frame(sdt, time);
     for (const t of this.npcs) t.update(sdt, time);
     this.hearthFrame(sdt, time);

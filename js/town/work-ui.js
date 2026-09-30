@@ -3,9 +3,9 @@ import { addOrder, orderCost, orderWhy, roomOfKind, stationWorker, tierOf } from
 import { gearCss, gearName } from '../core/gear.js';
 import { META, saveMeta } from '../core/meta.js';
 import { addStock, stockOf } from '../core/settlement.js';
-import { CRAFT, CRAFT_BY_ID, CRYSTALS, STATIONS, WORKS, WORK_IDS } from '../data/colony.js';
 import { ROOMS } from '../data/build.js';
-import { hasQuality, isWeapon } from '../data/gear.js';
+import { CRAFT, CRAFT_BY_ID, CRYSTALS, STATIONS, WORKS, WORK_IDS } from '../data/colony.js';
+import { hasQuality, isWeapon, plusMax } from '../data/gear.js';
 import { MATS } from '../data/items.js';
 import { JOBS, MOODS } from '../data/town.js';
 import { $, UI } from '../ui/ui.js';
@@ -20,7 +20,8 @@ const matTxt = (c) => Object.entries(c).map(([m, k]) => `<span style="color:${st
 function gearPool(R) {
   const h = META.hero, list = [...(META.gear || []).map((it) => ['창고', it]), ...(h ? [...Object.values(h.eq || {}), ...(h.bag || [])].filter(Boolean).map((it) => ['등불지기', it]) : [])];
   const out = R.out;
-  return list.filter(([, it]) => (out.brand ? isWeapon(it) : out.ego ? !isWeapon(it) && hasQuality(it.base) : out.quality ? hasQuality(it.base) : true));
+  const t = tierOf(R.room);
+  return list.filter(([, it]) => (out.brand ? isWeapon(it) : out.ego ? !isWeapon(it) && hasQuality(it.base) : out.quality ? hasQuality(it.base) && (it.q || 1) < Math.min(4, t + 1) : out.enhance ? (it.plus || 0) < plusMax(it) : true));
 }
 
 Object.assign(Town, {
@@ -37,13 +38,19 @@ Object.assign(Town, {
     const tabs = [['jobs', '👥 일 배정'], ['craft', '⚒ 제작'], ['stock', '📦 목표 재고']].map(([k, t]) => `<button class="wbtn ${k === tab ? 'on' : ''}" data-tab="${k}" style="height:40px">${t}</button>`).join('');
     const body = tab === 'jobs' ? this.jobsHtml() : tab === 'craft' ? this.craftHtml() : this.stockHtml();
     const sh = this.sheet(`<h3>📋 일 <button class="close">닫기</button></h3><div class="wrow" style="grid-template-columns:repeat(3,1fr)">${tabs}</div>${body}`);
-    sh.classList.add('tall');
-    sh.querySelector('.close').addEventListener('click', () => sh.classList.remove('tall'));
+    sh.classList.add('tall'); sh.onpointerdown = () => { this.workTouch = performance.now(); };
+    sh.querySelector('.close').addEventListener('click', () => { sh.classList.remove('tall'); sh.onpointerdown = null; });
     sh.querySelectorAll('[data-tab]').forEach((b) => { b.onclick = () => this.workSheet(b.dataset.tab); });
     if (tab === 'jobs') this.jobsWire(sh); else if (tab === 'craft') this.craftWire(sh); else this.stockWire(sh);
   },
   /** 열려 있으면 다시 그린다(시간이 흐를 때) */
-  workRefresh() { const sh = $('#sheet'); if (!sh.classList.contains('hidden') && sh.querySelector('[data-tab]') && !sh.querySelector('[data-pick]')) this.workSheet(); },
+  workRefresh() {
+    const sh = $('#sheet'); if (sh.classList.contains('hidden') || !sh.querySelector('[data-tab]') || sh.querySelector('[data-pick]')) return;
+    if (performance.now() - (this.workTouch || 0) < 1500) return; // 누르는 중에는 다시 그리지 않는다
+    const wrap = sh.querySelector('.jobwrap'), sx = wrap ? wrap.scrollLeft : 0, sy = sh.scrollTop;
+    this.workSheet();
+    const w2 = sh.querySelector('.jobwrap'); if (w2) w2.scrollLeft = sx; sh.scrollTop = sy;
+  },
 
   /* ---------- 일 배정 표 ---------- */
   jobsHtml() {
@@ -54,7 +61,7 @@ Object.assign(Town, {
       return `<tr><td class="who"><b>${JOBS[n.job].icon} ${n.name}</b> ${MOODS[n.mood + 2]}<br><small>${DOING[n.doing] || '💭'} ${n.doing && WORKS[n.doing] ? WORKS[n.doing].name : n.doing === 'sleep' ? '잠' : n.doing === 'faint' ? '배고파 쓰러짐' : '쉼'}${n.hunger ? ` · 굶음 ${n.hunger}` : ''}</small><br><button class="autob ${auto ? 'on' : ''}" data-auto="${n.id}">${auto ? '✓ 알아서' : '직접'}</button></td>${cells}</tr>`;
     }).join('');
     return `<div class="gtxt" style="color:#9aa2bd;margin-top:8px">칸을 누르면 우선순위가 바뀐다(· 안 함 → ●●● 먼저). 알아서 = 직업 특기 일을 먼저.</div>
-      <div style="overflow-x:auto"><table class="jobs">${head}${rows}</table></div>`;
+      <div class="jobwrap" style="overflow-x:auto"><table class="jobs">${head}${rows}</table></div>`;
   },
   jobsWire(sh) {
     sh.querySelectorAll('[data-w]').forEach((b) => { b.onclick = () => {
@@ -96,7 +103,7 @@ Object.assign(Town, {
       const id = b.dataset.st; for (const [q, v] of Object.entries(C.stations)) if (v === id && q !== k) delete C.stations[q]; // 한 사람은 한 곳에만
       C.stations[k] = id; for (const n of META.npcs) if (n.task?.kind === 'craft') n.task = null; saveMeta(); this.workSheet('craft');
     }; });
-    sh.querySelectorAll('[data-q]').forEach((b) => { b.onclick = () => { const o = C.orders.find((q) => q.id === +b.dataset.q); o.n = Math.max(1, Math.min(20, o.n + +b.dataset.d)); saveMeta(); this.workSheet('craft'); }; });
+    sh.querySelectorAll('[data-q]').forEach((b) => { b.onclick = () => { const o = C.orders.find((q) => q.id === +b.dataset.q); o.n = Math.max(1, Math.min(CRAFT_BY_ID[o.rid].out.buff ? 1 : 20, o.n + +b.dataset.d)); saveMeta(); this.workSheet('craft'); }; });
     sh.querySelectorAll('[data-del]').forEach((b) => { b.onclick = () => {
       const o = C.orders.find((q) => q.id === +b.dataset.del); if (o.paid) for (const [m, q] of Object.entries(orderCost(o))) addStock(m, q); // 치른 재료는 돌려준다
       C.orders = C.orders.filter((q) => q !== o); saveMeta(); this.workSheet('craft');

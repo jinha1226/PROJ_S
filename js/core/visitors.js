@@ -5,7 +5,7 @@ import { JOBS } from '../data/town.js';
 import { GLOW, LANDS, WANDER_JOBS, WORK_GIFT, residentCap } from '../data/visitors.js';
 import { pick, rand } from '../util/rng.js';
 import { META, affinity, dominant, initRel, makeNpc, moodAdd } from './meta.js';
-import { hasRoom } from './settlement.js';
+import { addStock, hasRoom } from './settlement.js';
 
 /* ================= 모닥불 밝기 · 방문자 =================
    불은 사람으로 탄다: 주민 수·기분·관계·사건·등불 조각이 밝기를 정하고, 밝기가 방문자를 부른다. */
@@ -83,7 +83,7 @@ export function requestState(v) {
       ok = !!pay; if (pay) note = pay.stone ? '건넬 것: 등불지기 가방의 영혼석 하나' : '건넬 것: 🔮마석 1';
       break;
     }
-    case 'C+': { const g = WORK_GIFT[JOBS[n.job].b]; if (g) note = '가져온 것: ' + Object.entries(g).map(([m, k]) => `${MATS[m] || ''}${m} ${k}`).join(' · '); break; }
+    case 'C+': { const g = WORK_GIFT[JOBS[n.job].b || n.job]; if (g) note = '가져온 것: ' + Object.entries(g).map(([m, k]) => `${MATS[m] || ''}${m} ${k}`).join(' · '); break; }
     default:
   }
   return { ok, line, need: V.need, pay, note };
@@ -100,7 +100,7 @@ export function acceptVisitor(v) {
   META.visitors.splice(META.visitors.indexOf(v), 1);
   META.npcs.push(n); initRel(n);
   if (v.req === 'A+') for (const m of META.npcs) moodAdd(m, 1);
-  if (v.req === 'C+') { const g = WORK_GIFT[JOBS[n.job].b]; if (g) for (const [m, k] of Object.entries(g)) META.mats[m] = (META.mats[m] || 0) + k; }
+  if (v.req === 'C+') { const g = WORK_GIFT[JOBS[n.job].b || n.job]; if (g) for (const [m, k] of Object.entries(g)) addStock(m, k); }
   const b = JOBS[n.job].b, want = ROOMS[b] && !hasRoom(b) ? b : null; // 작업방은 건설에서 짓는다
   return { want };
 }

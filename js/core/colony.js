@@ -1,4 +1,4 @@
-import { CLOCK, CROP_DAYS, DAYS_PER_MONTH, GATHER, MONTHS, NEAR_RES, RATE, REGROW_DAYS, TARGETS, WORK_IDS, WORK_ORDER, foodTarget, mealTarget } from '../data/colony.js';
+import { CLOCK, CROP_DAYS, DAYS_PER_MONTH, FORAGE, GATHER, MEAT_MEALS, STARTER_FIELD, MONTHS, NEAR_RES, RATE, REGROW_DAYS, TARGETS, WORK_IDS, WORK_ORDER, foodTarget, mealTarget } from '../data/colony.js';
 import { SCX, SCY, SW, TERRAIN, TR, ZONE_TYPES } from '../data/build.js';
 import { JOBS } from '../data/town.js';
 import { META, moodAdd } from './meta.js';
@@ -17,11 +17,14 @@ const S = () => META.settle;
 export function colony() {
   META.time ||= { day: 1, hour: 8, min: 0 };
   const C = (META.colony ||= {});
-  C.targets ||= { ...TARGETS }; C.marks ||= []; C.orders ||= []; C.stations ||= {}; C.piles ||= []; C.sprouts ||= []; C.crops ||= {}; C.nid ||= 1; C.sum ||= newSum();
+  C.targets ||= { ...TARGETS }; C.marks ||= []; C.orders ||= []; C.stations ||= {}; C.piles ||= []; C.sprouts ||= []; C.crops ||= {}; C.nid ||= 1; C.sum ||= newSum(); C.forage ??= FORAGE.perDay(radius());
+  if (!C.fieldInit && META.settle) { C.fieldInit = true; starterField(); }
   for (const n of META.npcs) { n.work ||= { auto: true, pri: {} }; n.hunger ||= 0; }
   return C;
 }
 const newSum = () => ({ got: {}, built: 0, made: [], meals: 0, hungry: 0, hours: 0 });
+/** 귀환 보고를 만든 뒤 비운다(정착지에 있는 동안 저장이 불어나지 않게) */
+export function resetSum() { if (META.colony) META.colony.sum = newSum(); }
 
 /* ---------- 시간 ---------- */
 export const clockText = () => { const t = META.time, m = Math.floor((t.day - 1) / DAYS_PER_MONTH) % MONTHS.length, d = ((t.day - 1) % DAYS_PER_MONTH) + 1; return `${MONTHS[m]} ${d}일 · ${t.hour < 12 ? '오전' : '오후'} ${((t.hour + 11) % 12) + 1}시`; };
@@ -56,9 +59,10 @@ const glowIdx = () => { const g = hearthGlow(); return g >= 60 ? 0 : g >= 30 ? 1
 function newDay() {
   const C = META.colony, s = S(), d = META.time.day;
   C.sprouts = C.sprouts.filter((q) => { if (q.day > d) return true; if (s.terr[q.i] === TR.grass || s.terr[q.i] === TR.dirt) s.terr[q.i] = TR.tree; return false; });
-  // 잠자리: 침대 수보다 많은 사람은 바닥에서 잤다
+  C.forage = FORAGE.perDay(radius());
+  // 잠자리: 침대 수보다 많은 사람은 바닥에서 잤다(가끔 언짢다). 배불리 먹은 사람은 기분이 조금씩 돌아온다
   const beds = s.furn.filter((f) => f.k === 'bed').length;
-  META.npcs.slice(beds).forEach((n) => moodAdd(n, -1));
+  META.npcs.forEach((n, k) => { if (!n.hunger && n.mood < 0 && Math.random() < 0.6) moodAdd(n, 1); if (k >= beds && Math.random() < 0.35) moodAdd(n, -1); });
 }
 
 /* ---------- 식사 ---------- */
@@ -66,7 +70,8 @@ function meals() {
   const C = META.colony;
   for (const n of META.npcs) {
     if (stockOf('식사') > 0) { addStock('식사', -1); n.hunger = 0; C.sum.meals++; if (Math.random() < 0.5) moodAdd(n, 1); }
-    else if (stockOf('식량') > 0) { addStock('식량', -1); n.hunger = 0; C.sum.meals++; if (Math.random() < 0.3) moodAdd(n, -1); }
+    else if (stockOf('식량') > 0) { addStock('식량', -1); n.hunger = 0; C.sum.meals++; if (Math.random() < 0.1) moodAdd(n, -1); }
+    else if (stockOf('고기') > 0) { addStock('고기', -1); n.hunger = 0; C.sum.meals++; if (Math.random() < 0.3) moodAdd(n, -1); } // 날고기
     else { n.hunger++; C.sum.hungry++; moodAdd(n, -1); }
   }
 }
@@ -79,10 +84,10 @@ export function priOf(n, w) {
 }
 const stationRoomOf = (n) => Object.keys({ forge: 1, herb: 1, library: 1, inn: 1 }).find((k) => stationWorker(k) === n);
 /** 한 시간 일의 배율: 기분 · 성실성 · 특기 */
-export function rateOf(n, w) {
+export function rateOf(n, w, room) {
   let r = RATE.mood[Math.max(-2, Math.min(2, n.mood | 0))] ?? 1;
   if (n.t.C >= 1) r *= RATE.cHigh; else if (n.t.C <= -1) r *= RATE.cLow;
-  if (JOBS[n.job].spec.includes(w)) r *= RATE.spec;
+  if (w === 'craft' ? JOBS[n.job].b === room : JOBS[n.job].spec.includes(w)) r *= RATE.spec; // 제작 특기는 제 방에서만
   return r;
 }
 function work(n) {
@@ -91,7 +96,7 @@ function work(n) {
   if (!n.task) n.task = pick(n);
   if (!n.task) { n.doing = 'rest'; return; }
   n.doing = n.task.kind;
-  if (DO[n.task.kind](n, n.task, rateOf(n, n.task.kind))) n.task = null;
+  if (DO[n.task.kind](n, n.task, rateOf(n, n.task.kind, n.task.room))) n.task = null;
 }
 /** 할 일 고르기: 우선순위 높은 일부터, 같으면 WORK_ORDER 순 */
 function pick(n) {
@@ -103,7 +108,7 @@ const taken = (key) => META.npcs.some((m) => m.task && m.task.key === key);
 function valid(t) {
   const s = S();
   if (t.kind === 'build') return s.bp.some((b) => b.id === t.bid);
-  if (t.kind === 'gather') return !!TERRAIN[s.terr[t.i]].cut;
+  if (t.kind === 'gather') return t.what === 'forage' || !!TERRAIN[s.terr[t.i]].cut;
   if (t.kind === 'craft') return META.colony.orders.some((o) => o.id === t.oid);
   if (t.kind === 'haul') return META.colony.piles.some((p) => p.id === t.pid);
   return true;
@@ -120,7 +125,7 @@ const FIND = {
   craft: (n) => { const k = stationRoomOf(n); if (!k) return null; const o = orderFor(k); if (!o) return null; const r = rooms().find((q) => q.kind === k); return { oid: o.id, room: k, key: 'or' + o.id, x: r.cx, y: r.cy }; },
   cook: () => {
     const r = rooms().find((q) => q.kind === 'inn'), people = META.npcs.length;
-    if (!r || taken('cook') || stockOf('식사') >= mealTarget(people) || stockOf('식량') < 1) return null;
+    if (!r || taken('cook') || stockOf('식사') >= mealTarget(people) || (stockOf('식량') < 1 && stockOf('고기') < 1)) return null;
     return { key: 'cook', x: r.cx, y: r.cy };
   },
   farm: () => {
@@ -136,7 +141,11 @@ const FIND = {
     C.marks = C.marks.filter((i) => TERRAIN[s.terr[i]].cut); // 표시한 곳은 목표 재고와 상관없이 먼저
     const mk = near(C.marks.filter((i) => !taken('gt' + i)).map((i) => ({ i, x: i % SW, y: (i / SW) | 0 })));
     if (mk) { const k = Object.keys(GATHER).find((q) => TR[q] === s.terr[mk.i]); if (k) return { i: mk.i, key: 'gt' + mk.i, x: mk.x, y: mk.y, what: k, h: GATHER[k].h }; }
-    const R = radius(), want = Object.entries(GATHER).filter(([k, g]) => k !== 'ruin' && have(g.m) < target(g.m));
+    const R = radius();
+    if (have('식량') < target('식량') && C.forage > 0 && !taken('fg')) { // 들에서 먹을 것(하루치 한도 안에서, 한 번에 한 사람)
+      for (let k = 0; k < 20; k++) { const a = Math.random() * 6.28, d = R - 1.5 - Math.random() * 2, x = Math.round(SCX + Math.cos(a) * d), y = Math.round(SCY + Math.sin(a) * d), i = I(x, y); if (inLight(x, y, R) && s.terr[i] === TR.grass && !s.wall[i] && !s.floor[i] && !s.zone[i]) return { i, key: 'fg', x, y, what: 'forage', h: FORAGE.h }; }
+    }
+    const want = Object.entries(GATHER).filter(([k, g]) => k !== 'ruin' && have(g.m) < target(g.m));
     if (!want.length) return null;
     const kinds = new Set(want.map(([k]) => TR[k])), list = [];
     for (let i = 0; i < s.terr.length; i++) { if (!kinds.has(s.terr[i])) continue; const x = i % SW, y = (i / SW) | 0; if (!inLight(x, y, R) || taken('gt' + i)) continue; list.push({ i, x, y }); }
@@ -168,7 +177,9 @@ const DO = {
     return false;
   },
   craft: (n, t, r) => craftStep(n, t, r),
-  cook: (n) => { const spec = JOBS[n.job].spec.includes('cook'), k = Math.min(stockOf('식량'), spec ? RATE.cookSpec / RATE.cook : 1); addStock('식량', -k); addStock('식사', k * RATE.cook); return true; }, // 식량 1 → 식사 2(특기면 한 시간에 두 번)
+  cook: (n) => {
+    if (stockOf('식량') < 1) { addStock('고기', -1); addStock('식사', MEAT_MEALS); return true; } // 식량이 없으면 고기로
+    const spec = JOBS[n.job].spec.includes('cook'), k = Math.min(stockOf('식량'), spec ? RATE.cookSpec / RATE.cook : 1); addStock('식량', -k); addStock('식사', k * RATE.cook); return true; }, // 식량 1 → 식사 2(특기면 한 시간에 두 번)
   farm: (n, t, r) => { // 한 시간에 네 칸쯤: 빈 칸은 심고, 다 자란 칸은 거둔다(거둔 식량은 그 자리에 더미로)
     const C = META.colony, s = S(), d = META.time.day; let left = Math.max(1, Math.round(RATE.plant * r / RATE.spec));
     for (let i = t.i; i < s.zone.length && left > 0; i++) {
@@ -181,6 +192,7 @@ const DO = {
   haul: (n, t) => { const C = META.colony, p = C.piles.find((q) => q.id === t.pid); if (!p) return true; C.piles = C.piles.filter((q) => q !== p); addStock(p.m, p.n); n.carry = p.m; META.colony.changed = true; return true; },
   gather: (n, t, r) => {
     t.prog += r; if (t.prog < t.h - 1e-6) return false;
+    if (t.what === 'forage') { const C = META.colony, k = Math.min(FORAGE.n, C.forage); C.forage -= k; if (k > 0) { dropPile(t.x, t.y, '식량', k); got('식량', k); C.changed = true; } return true; }
     const s = S(), g = GATHER[t.what]; if (!TERRAIN[s.terr[t.i]].cut) return true;
     s.terr[t.i] = t.what === 'tree' ? TR.grass : TR.dirt;
     if (t.what === 'tree') META.colony.sprouts.push({ i: t.i, day: META.time.day + REGROW_DAYS[glowIdx()] });
@@ -189,6 +201,23 @@ const DO = {
   },
 };
 const got = (m, n) => { const g = META.colony.sum.got; g[m] = (g[m] || 0) + n; };
+
+/* ---------- 처음 밭: 모닥불 가까운 빈 땅 3×4 ---------- */
+function starterField(s = S()) {
+  const { w, h, minDist } = STARTER_FIELD, R = radius(), id = ZONE_TYPES.field.id;
+  if (s.zone.some((z) => z === id)) return false;
+  const free = (x, y) => { const i = I(x, y); return inLight(x, y, R - 1) && (s.terr[i] === TR.grass || s.terr[i] === TR.dirt) && !s.wall[i] && !s.floor[i] && !s.zone[i] && !s.furn.some((f) => Math.abs(f.x - x) <= 1 && Math.abs(f.y - y) <= 1); }; // 방 · 가구 · 길목은 비운다
+  // 가까운 자리부터: 4×3, 3×4, 3×3 순으로 들어가는 곳
+  const spots = []; for (let y0 = SCY - R; y0 <= SCY + R; y0++) for (let x0 = SCX - R; x0 <= SCX + R; x0++) spots.push([x0, y0]);
+  for (const [W, H] of [[w, h], [h, w], [h, h]]) {
+    const c = (x0, y0) => Math.hypot(x0 + (W - 1) / 2 - SCX, y0 + (H - 1) / 2 - SCY);
+    for (const [x0, y0] of spots.filter(([x, y]) => c(x, y) >= minDist).sort((p, q) => c(...p) - c(...q))) {
+      let ok = true; for (let y = y0; y < y0 + H && ok; y++) for (let x = x0; x < x0 + W && ok; x++) ok = free(x, y);
+      if (ok) { for (let y = y0; y < y0 + H; y++) for (let x = x0; x < x0 + W; x++) s.zone[I(x, y)] = id; return true; }
+    }
+  }
+  return false;
+}
 
 /* ---------- 새 땅: 근처 자원을 넉넉히 (§5) ---------- */
 export function ensureNearResources(s = S(), seed = 1) {

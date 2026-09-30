@@ -35,6 +35,8 @@ export function orderCost(o) {
 export function orderWhy(o) {
   const R = CRAFT_BY_ID[o.rid], t = tierOf(R.room);
   if (!t) return '작업방이 없다';
+  if (META.closed && META.closed[R.room]) return `${META.closed[R.room]}으로 멈췄다(다음 귀환까지)`;
+  if (R.out.buff && META.buff) return '이미 다음 원정 준비가 되어 있다';
   if (t < R.tier) return `${R.tier}등급 작업방이 필요하다`;
   if (R.crystal && !o.crystal) return '원소 결정을 고른다';
   if ((R.out.enhance || R.out.quality || R.out.brand || R.out.ego) && !findGear(o.target)) return '장비를 고른다';
@@ -48,9 +50,9 @@ export function addOrder(rid, o = {}) { const C = META.colony; const ord = { id:
 export const orderFor = (k) => META.colony.orders.find((o) => CRAFT_BY_ID[o.rid].room === k && !orderWhy(o)) || null;
 
 /** 품질: 등급 → 특기 · 성격 · 기분 */
-export function rollQuality(n, tier) {
+export function rollQuality(n, tier, room) {
   let q = Math.max(1, Math.min(3, tier));
-  if (n && JOBS[n.job].spec.includes('craft') && rand() < QUAL.spec) q++;
+  if (n && JOBS[n.job].b === room && rand() < QUAL.spec) q++; // 특기: 제 방에서 일할 때만
   if (n && n.t.O >= 1 && rand() < QUAL.open) q++;
   if (n && n.t.C <= -1 && rand() < QUAL.sloppy) q--;
   if (n && n.mood >= 1 && rand() < QUAL.moodUp) q++;
@@ -74,7 +76,7 @@ export function craftStep(n, t, r) {
 function produce(R, o, n) {
   const out = R.out, tier = tierOf(R.room);
   if (out.pick) {
-    const base = out.pick[Math.floor(rand() * out.pick.length)], q = GEAR_BASES[base].jewel ? null : rollQuality(n, tier);
+    const base = out.pick[Math.floor(rand() * out.pick.length)], q = GEAR_BASES[base].jewel ? null : rollQuality(n, tier, R.room);
     const it = makeGear(base, { q, known: true });
     if (out.brandFromCrystal && o.crystal) it.brand = CRYSTALS[o.crystal].brand;
     (META.gear ||= []).push(it);

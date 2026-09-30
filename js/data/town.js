@@ -49,7 +49,7 @@ export const BLD = {
   library: { name: '서재', icon: '📜', x: 7.9, y: 12.4 },
 };
 
-export const CRAFT_B = ['forge', 'herb', 'hunter', 'library', 'inn'];
+export const CRAFT_B = ['forge', 'herb', 'library', 'inn'];
 
 export const TW = 11, TH = 15;
 

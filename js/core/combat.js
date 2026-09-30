@@ -82,7 +82,8 @@ export function kill(e) {
   if (e.npc) { log(`${jo(e.name, '을를')} 잃었다…`, 'bad'); return; }
   G.stats.kills++; gainXp(e);
   // 전리품: 마석 + 적 종류별 특별 재료 (docs/설계_정착지_2단계.md §8.1)
-  const f = e.lastForm, got = lootOf(e), part = got.find((m) => m !== '마석') || null;
+  const f = e.lastForm, got = e.summoned ? [] : lootOf(e), // 보스가 부른 졸개는 아무것도 남기지 않는다(끌며 모으기 막기)
+    part = got.find((m) => m !== '마석') || null;
   for (const m of got) addLoot(m, 1);
   if (got.length) emit('loot', { x: e.x, y: e.y, m: part || '마석', list: got });
   if (e.boss) {
@@ -95,6 +96,7 @@ export function kill(e) {
     emit('bloodBurst', { x: e.x, y: e.y }); log('피의 송곳니에서 피가 터졌다.', 'syn');
     for (const [dx, dy] of D8) { const o = entAt(e.x + dx, e.y + dy); if (o && o.alive && isFoe(o) && !CATS[catOf(o)].noBleed) { o.st.bleed += 2; emitStatus(o); } }
   }
+  if (e.summoned) return;
   dropStone(e, f);
   dropGearFrom(e);
 }

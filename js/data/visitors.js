@@ -33,7 +33,7 @@ export const PERKS = {
 };
 
 /** 성실한 방문자가 가져오는 자기 일터 재료 */
-export const WORK_GIFT = { forge: { 광석: 2 }, herb: { 약초: 2 }, hunter: { 가죽: 2 }, library: { 뼈: 2 }, inn: { 약초: 1, 가죽: 1 }, altar: { 뼈: 1, 심장: 1 }, storage: { 가죽: 1, 광석: 1 } };
+export const WORK_GIFT = { carpenter: { 나무: 10 }, forge: { 광석: 2 }, herb: { 약초: 2 }, library: { 뼈: 2 }, inn: { 약초: 1, 가죽: 1 }, altar: { 뼈: 1, 심장: 1 }, storage: { 가죽: 1, 광석: 1 } };
 
 /** 숨은 방: 막힌 것 → 여는 스킬 → 안에 든 것 */
 export const HIDDEN = {

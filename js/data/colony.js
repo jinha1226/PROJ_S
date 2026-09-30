@@ -30,6 +30,12 @@ export const RATE = {
 };
 /** 채집: 땅 → 몇 시간 → 무엇 */
 export const GATHER = { tree: { h: 2, m: '나무', n: 8 }, rock: { h: 2, m: '돌', n: 6 }, ore: { h: 3, m: '광석', n: 2 }, ruin: { h: 2, m: '돌', n: 4 } }; // 폐허는 표시했을 때만
+/** 들에서 먹을 것 찾기: 식량이 목표보다 적을 때. 하루에 빛 반경만큼만 난다(밭이 없어도 굶지는 않게, 늘리려면 밭) */
+export const FORAGE = { h: 2, n: 3, perDay: (radius) => radius };
+/** 처음 밭(3×4): 새 땅과 옛 저장 모두 */
+export const STARTER_FIELD = { w: 4, h: 3, minDist: 3 };
+/** 고기: 날로 먹으면 한 끼, 요리하면 식사 3 */
+export const MEAT_MEALS = 3;
 /** 다시 자람(일): 모닥불 밝기 60 이상 · 30~59 · 30 미만 */
 export const REGROW_DAYS = [6, 8, 10];
 export const CROP_DAYS = [4, 6, 8];
@@ -63,15 +69,17 @@ export const CRAFT = [
   { id: 't_water', room: 'herb', tier: 1, name: '물병', in: { 마석: 1 }, h: 1, out: { item: 'water', n: 2 } },
   { id: 't_smoke', room: 'herb', tier: 1, name: '연막탄', in: { 약초: 1, 뼈: 1 }, h: 1, out: { item: 'smoke', n: 1 } },
   { id: 'p_haste', room: 'herb', tier: 2, name: '가속 물약', in: { '얼음 결정': 1, 약초: 1 }, h: 2, out: { item: 'haste', n: 1 } },
-  { id: 'ember', room: 'herb', tier: 1, name: '불씨 단지', in: { 마석: 1, 약초: 1 }, h: 1, out: { item: 'ember_jar', n: 1 } },
+  { id: 'ember', room: 'herb', tier: 1, name: '모닥불 불씨 단지', in: { 마석: 1, 약초: 1 }, h: 1, out: { item: 'ember_jar', n: 1 } },
+  { id: 'p_heal3', room: 'herb', tier: 3, name: '회복 물약 한 솥', in: { 약초: 4, 마석: 1 }, h: 2, out: { item: 'heal', n: 3 } },
+  { id: 'c_bulk', room: 'herb', tier: 3, name: '대량 환원: 나무·돌', in: { 마석: 3 }, h: 2, out: { convert: { 나무: 24, 돌: 16 } } },
   { id: 'c_wood', room: 'herb', tier: 1, name: '환원: 나무', in: { 마석: 1 }, h: 1, out: { convert: { 나무: 6 } } },
   { id: 'c_stone', room: 'herb', tier: 1, name: '환원: 돌', in: { 마석: 1 }, h: 1, out: { convert: { 돌: 4 } } },
   { id: 'c_herb', room: 'herb', tier: 1, name: '환원: 약초', in: { 마석: 1 }, h: 1, out: { convert: { 약초: 2 } } },
   { id: 'c_ore', room: 'herb', tier: 1, name: '환원: 광석', in: { 마석: 2 }, h: 2, out: { convert: { 광석: 1 } } },
-  { id: 's_ident', room: 'library', tier: 1, name: '식별 두루마리', in: { 마석: 1, 약초: 1 }, h: 1, out: { item: 'ident', n: 1 } },
+  { id: 's_ident', room: 'library', tier: 1, name: '확인 두루마리', in: { 마석: 1, 약초: 1 }, h: 1, out: { item: 'ident', n: 1 } },
   { id: 's_tele', room: 'library', tier: 2, name: '순간이동 두루마리', in: { 마석: 2, 뼈: 1 }, h: 2, out: { item: 'tele', n: 1 } },
   { id: 's_fear', room: 'library', tier: 2, name: '공포 두루마리', in: { 마석: 2, 뼈: 1 }, h: 2, out: { item: 'fear', n: 1 } },
-  { id: 's_blaze', room: 'library', tier: 2, name: '불길 두루마리', in: { '불 결정': 1, 마석: 1 }, h: 2, out: { item: 'blaze', n: 1 } },
+  { id: 's_blaze', room: 'library', tier: 2, name: '불꽃 두루마리', in: { '불 결정': 1, 마석: 1 }, h: 2, out: { item: 'blaze', n: 1 } },
   { id: 's_recall', room: 'library', tier: 2, name: '귀환 두루마리', in: { 마석: 3, 심장: 1 }, h: 3, out: { item: 'recall', n: 1 } },
   { id: 'staff', room: 'library', tier: 2, name: '지팡이', in: { 마석: 4 }, crystal: 1, h: 5, out: { pick: ['staff'], brandFromCrystal: true } },
   { id: 'orb', room: 'library', tier: 2, name: '오브', in: { 마석: 4 }, crystal: 1, h: 4, out: { pick: ['orb_red', 'orb_purple', 'orb_green'] } },

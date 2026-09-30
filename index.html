@@ -172,6 +172,8 @@ body.slowmo #banner{font-size:34px}
 #tname{font-size:17px}
 #tinfo{margin-top:6px;font-size:12px;color:#fff;background:rgba(20,30,20,.55);border-radius:10px;padding:5px 9px;display:inline-block}
 #tbottom{padding:0 10px calc(10px + var(--sb))}
+#talert{margin-top:5px;display:flex;flex-wrap:wrap;gap:5px}
+#talert button{height:28px;padding:0 9px;border-radius:9px;border:1px solid rgba(255,140,120,.45);background:rgba(60,20,20,.75);color:#ffd0c8;font-size:12px}
 #tclock{margin-top:6px;display:flex;align-items:center;gap:5px;font-size:13px;color:#fff}
 #tclock #ttime{background:rgba(20,30,20,.55);border-radius:10px;padding:5px 9px;font-weight:700;color:#ffe9b0}
 #tclock.night #ttime{background:rgba(20,24,50,.7);color:#b8c6ff}
@@ -351,7 +353,7 @@ details{margin-top:4px;font-size:13px}details summary{cursor:pointer}details sum
 </div>
 <div id="hud-overlay" class="hidden"><button id="hud-overlay-close">닫기 ✕</button><div id="hud-overlay-body"></div></div>
 <div id="townhud" class="hidden">
-  <div id="ttop"><div class="hprow"><b id="tname">🏕 정착지</b><span style="flex:1"></span><button id="btn-sound2" class="round">🔊</button><button id="btn-help2" class="round" title="도감">📖</button></div><div id="tclock"><span id="ttime"></span><button data-sp="0">⏸</button><button data-sp="1">▶</button><button data-sp="2">⏩</button></div><div id="tinfo"></div></div>
+  <div id="ttop"><div class="hprow"><b id="tname">🏕 정착지</b><span style="flex:1"></span><button id="btn-sound2" class="round">🔊</button><button id="btn-help2" class="round" title="도감">📖</button></div><div id="tclock"><span id="ttime"></span><button data-sp="0">⏸</button><button data-sp="1">▶</button><button data-sp="2">⏩</button></div><div id="tinfo"></div><div id="talert"></div></div>
   <div id="tbottom"><div id="tbtns">
     <button data-o="build">🔨<small>건설</small></button><button data-o="people">👥<small>사람</small></button><button data-o="work">📋<small>일</small></button><button data-o="storage">📦<small>창고</small></button><button data-o="plaza">🔥<small>모닥불</small></button><button data-o="gate">🚪<small>출발</small></button>
   </div><div id="buildbar" class="hidden"></div></div>

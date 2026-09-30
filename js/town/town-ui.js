@@ -1,4 +1,5 @@
 import { clockText, isNight } from '../core/colony.js';
+import { orderWhy } from '../core/crafting.js';
 import { gearCss, gearName } from '../core/gear.js';
 import { META, craftNote, invAdd, invCount, newHero, packLimit, saveMeta } from '../core/meta.js';
 import { progOf } from '../core/progress.js';
@@ -29,6 +30,21 @@ Object.assign(Town, {
     const h = META.hero, cl = META.cleared.map((c, k) => (c ? `✓${k + 1}` : '')).filter(Boolean).join(' ');
     const S = META.settle, n = (m) => stockOf(m), res = S ? `<br>🪵 ${n('나무')} · 🪨 ${n('돌')} · ⛓ ${n('광석')} · 🌾 ${n('식량')} · 🍲 ${n('식사')} · 🔮 ${n('마석')} · 빛 ${radius()}칸${S.bp.length ? ` · 청사진 ${S.bp.length}` : ''}` : '';
     $('#tinfo').innerHTML = `<b class="glow">🔥 ${hearthGlow()}</b> · 주민 ${META.npcs.length}/${cap()}${META.visitors.length ? ` · 방문자 ${META.visitors.length}` : ''} · ${h ? `등불지기 ${h.name}(${h.gen}대) HP ${h.hp}/${h.max}` : META.needSuccessor ? '횃불을 들 사람을 골라야 한다' : `다음 등불지기 ${META.gen + 1}대째`}${cl ? ` · 구역 ${cl}` : ''}${res}`;
+    this.renderAlerts();
+  },
+  /** 챙겨야 할 것: 누르면 그 화면으로 */
+  renderAlerts() {
+    const el = $('#talert'); if (!el) return;
+    const C = META.colony, N = META.npcs.length, out = [];
+    if (C && N) {
+      const food = stockOf('식량') + stockOf('식사') + stockOf('고기'), days = food / (N * 2);
+      if (days < 2) out.push(['stock', `🍞 먹을 것 ${days < 1 ? '하루치도 안 된다' : '이틀치 남짓'}`]);
+      const hungry = META.npcs.filter((n) => n.hunger).length; if (hungry) out.push(['jobs', `😣 굶는 사람 ${hungry}`]);
+      const beds = META.settle.furn.filter((f) => f.k === 'bed').length + META.settle.bp.filter((b) => b.k === 'bed').length; if (beds < N) out.push(['build', `🛏 침대 ${N - beds}개 모자람`]);
+      const stuck = C.orders.filter((o) => orderWhy(o)).length; if (stuck) out.push(['craft', `⚒ 멈춘 주문 ${stuck}`]);
+    }
+    el.innerHTML = out.map(([k, t]) => `<button data-al="${k}">${t}</button>`).join('');
+    el.querySelectorAll('[data-al]').forEach((b) => { b.onclick = () => { if (this.busy) return; const k = b.dataset.al; if (k === 'build') this.enterBuild(); else this.workSheet(k); }; });
   },
   /** 시계 · 배속 */
   renderClock() {
@@ -108,7 +124,7 @@ Object.assign(Town, {
     const ws = META.gear.map((it) => `<span style="color:${gearCss(it)}">${SLOT_ICON[slotKind(it)]} ${gearName(it)}</span>`).join(' · ') || '없음';
     const fallen = META.fallen.slice(-6).reverse().map((f) => `<div>🕯 ${f.name} (${f.gen}대) · 구역 ${f.zone}-${f.zf}, ${f.kills}마리</div>`).join('') || '<div>아직 아무도 쓰러지지 않았다.</div>';
     this.sheet(`<h3>📦 창고 <button class="close">닫기</button></h3>
-      <div class="sec">재료</div><div class="gems" style="grid-template-columns:repeat(4,1fr)">${Object.entries(MATS).map(([m, ic]) => `<div class="gch" style="--c:#6a6050">${ic}<small>${m} ${META.mats[m] || 0}</small></div>`).join('')}</div>
+      <div class="sec">재료</div><div class="gems" style="grid-template-columns:repeat(4,1fr)">${Object.entries(MATS).filter(([m]) => stockOf(m) > 0 || !['기름', '얼음'].includes(m)).map(([m, ic]) => `<div class="gch" style="--c:#6a6050">${ic}<small>${m} ${stockOf(m)}</small></div>`).join('')}</div>
       <div class="sec">소모품</div><div class="gtxt">${it}</div>
       <div class="sec">장비 ${META.gear.length}</div><div class="gtxt">${ws}</div>
       <div class="sec">구역</div><div class="gtxt">${ZONES.map((z, k) => `${META.cleared[k] ? '✓' : '·'} ${k + 1}. ${z.name} · ${BOSSES[z.boss].name}`).join('<br>')}</div>

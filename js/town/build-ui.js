@@ -18,7 +18,7 @@ const CATS = [['room', '🏠', '방'], ['wall', '🧱', '벽·바닥'], ['furn',
 const RECT = new Set(['room', 'wall', 'floor', 'zone', 'cut', 'del']);
 const LAYERS = [['all', '전체'], ['floor', '바닥만'], ['walls', '벽까지'], ['zones', '구역만']];
 const FURN_LIST = Object.keys(FURN).filter((k) => !FURN[k].unique);
-const PRESET_KINDS = ['bedroom', 'forge', 'herb', 'hunter', 'library', 'inn', 'storage'];
+const PRESET_KINDS = ['bedroom', 'forge', 'herb', 'library', 'inn', 'storage'];
 const I = (x, y) => y * SW + x;
 const resText = (cost) => Object.entries(cost).map(([m, n]) => `${RES_ICON[m] || MATS[m] || ''}${n}`).join(' ') || '무료';
 const costText = (cost, S) => Object.entries(cost).map(([m, n]) => { const have = stockOf(m, S); return `<span style="color:${have >= n ? '#e8dcc0' : '#ff8a8a'}">${RES_ICON[m] || MATS[m] || ''}${m} ${n}</span>`; }).join(' ') || '<span style="color:#9aa2bd">비용 없음</span>';

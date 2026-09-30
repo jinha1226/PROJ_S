@@ -3,7 +3,7 @@ import { CLASS_RULE } from '../data/classes.js';
 import { CLOCK } from '../data/colony.js';
 import { APPEAR, ITEMS } from '../data/items.js';
 import { LEVEL_XP } from '../data/stones.js';
-import { BLD, CRAFT_B, HAIRS, HERO_NAMES, JOBS, JOB_CLOTH, JOB_IDS, NAMES, ORIGINS, SKINS, TRAITS, adj } from '../data/town.js';
+import { CRAFT_B, HAIRS, HERO_NAMES, JOBS, JOB_CLOTH, JOB_IDS, NAMES, ORIGINS, SKINS, TRAITS, adj } from '../data/town.js';
 import { validLevels } from '../sim/classes.js';
 import { pick, rand, ri, shuffle } from '../util/rng.js';
 import { jo } from '../util/text.js';
@@ -150,7 +150,7 @@ export function genEvents(out, r) {
     const [a, b] = pick(fights), dil = a.t.C > b.t.C ? a : b, lazy = dil === a ? b : a, bb = JOBS[dil.job].b;
     rel(a, b, -15); moodAdd(a, -1); moodAdd(b, -1); glowMod(-5, '다툼');
     if (CRAFT_B.includes(bb)) META.closed[bb] = `${jo(dil.name, '과와')} ${lazy.name}의 다툼`;
-    add('💢', `${adj(dil, 'C')} ${jo(dil.name, '과와')} ${adj(lazy, 'C')} ${jo(lazy.name, '이가')} 일하는 방식을 두고 다퉜다.${CRAFT_B.includes(bb) ? ` 이번엔 ${BLD[bb].name} 일이 멈췄다.` : ''}`);
+    add('💢', `${adj(dil, 'C')} ${jo(dil.name, '과와')} ${adj(lazy, 'C')} ${jo(lazy.name, '이가')} 일하는 방식을 두고 다퉜다.${CRAFT_B.includes(bb) ? ` 한동안 ${ROOMS[bb].name} 일이 멈췄다.` : ''}`);
   } else {
     const grumpy = N.filter((n) => n.t.A <= -1), soft = N.filter((n) => n.t.A >= 1);
     if (grumpy.length && soft.length && rand() < 0.4) { const a = pick(grumpy), b = pick(soft); rel(a, b, -8); moodAdd(b, -1); add('😤', `${adj(a, 'A')} ${jo(a.name, '이가')} ${b.name}에게 쏘아붙였다. ${jo(b.name, '은는')} 참고 넘어갔다.`); }

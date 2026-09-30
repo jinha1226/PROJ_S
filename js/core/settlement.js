@@ -372,7 +372,7 @@ function edgeSpot(kind, S, R = radius()) { const all = suggestSpots(kind, 'S', 6
 export function migrateTown(M) {
   const old = Object.keys(M.buildings || {});
   M.settle = newSettle();
-  for (const b of ['forge', 'herb', 'hunter', 'library', 'inn']) { // 창고는 모닥불 옆 재료 더미가 맡는다
+  for (const b of ['forge', 'herb', 'library', 'inn']) { // 창고는 모닥불 옆 재료 더미가 맡는다
     if (!old.includes(b)) continue;
     const spot = edgeSpot(b, M.settle) || suggestSpots(b, 'S', 1, M.settle, 20)[0]; if (spot) buildFree(spot.bps, M.settle);
   }
