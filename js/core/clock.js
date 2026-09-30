@@ -11,7 +11,7 @@ import { G, I, log } from './state.js';
 /* ================= 시간: 움직일 때만 흐른다 (docs/설계_실시간_전환.md §1) =================
    흐르는 동안 고정 틱(RT.tick)으로 나아가고, 걸음 기준(RT.turn)마다 옛 턴(endTurn: 적·횃불·환경)을 한 번 돌린다. */
 export function initClock() {
-  Object.assign(G, { clock: G.clock || 0, acc: 0, turnAcc: 0, swingT: 0, stuckT: 0, intent: { dir: null, hold: false }, walk: null, resting: false, target: null });
+  Object.assign(G, { clock: G.clock || 0, paused: false, stuckAbort: false, acc: 0, turnAcc: 0, swingT: 0, stuckT: 0, intent: { dir: null, hold: false }, walk: null, resting: false, target: null });
   const p = G.player; if (p) setPos(p, p.x, p.y);
 }
 /** 입력이 매 프레임 알려 준다: dir = 지도 기준 방향(길이 ≤ 1), hold = 제자리에서 흘리기. 방향을 주면 자동 걷기·쉬기는 멈춘다 */
@@ -23,7 +23,9 @@ export function setIntent(dir, hold = false) {
 export function setWalk(pts) { G.walk = pts && pts.length ? pts.map(([x, y]) => [x, y]) : null; G.stuckT = 0; }
 export function setTarget(id) { G.target = id; }
 export function setRest(on) { G.resting = !!on; G.restFrom = G.stats.turns; }
-export const flowing = () => !!(G.player && G.player.alive && !G.over && G.intent && (G.intent.dir || G.intent.hold || G.walk || G.resting));
+/** 가방·정보 창이 열려 있으면 자동 걷기·쉬기도 멈춘다(입력이 매 프레임 알려 준다) */
+export function setPaused(on) { G.paused = !!on; }
+export const flowing = () => !!(G.player && G.player.alive && !G.over && !G.paused && G.intent && (G.intent.dir || G.intent.hold || G.walk || G.resting));
 
 /** 실시간 dt(초)만큼 흘린다. 흐르지 않으면 0. 돈 틱 수를 돌려준다 */
 export function advance(dt) {
@@ -65,10 +67,10 @@ function moveHero(dt) {
   }
   if (Math.abs(dx) + Math.abs(dy) < 1e-6) return;
   const ox = p.x, oy = p.y;
-  const r = sweep(p, dx, dy, { ghost: true, onDoor: (x, y) => { openDoor(x, y); log('문을 열었다.', 'info'); } });
+  const r = sweep(p, dx, dy, { ghost: true, cellBlock: true, onDoor: (x, y) => { openDoor(x, y); log('문을 열었다.', 'info'); } });
   if (r.body && r.body.npc && !r.body.freed) freeNpc(r.body);
   const moved = Math.hypot(r.x - px, r.y - py);
-  if (G.walk && moved < s * 0.2) { G.stuckT += dt; if (G.stuckT >= RT.stuck) G.walk = null; } else G.stuckT = 0;
+  if (G.walk && moved < s * 0.2) { G.stuckT += dt; if (G.stuckT >= RT.stuck) { G.walk = null; G.stuckAbort = true; } } else G.stuckT = 0;
   setPos(p, r.x, r.y);
   if (moved > 1e-4) p.face = [Math.sign(Math.round(dx * 10)), Math.sign(Math.round(dy * 10))];
   if (p.x !== ox || p.y !== oy) enterCell(p);

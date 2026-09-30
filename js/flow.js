@@ -1,8 +1,10 @@
 import { advance } from './core/clock.js';
 import { armorShield } from './core/combat.js';
+import { computeFOV } from './core/fov.js';
 import { leaveRelics, newJewelLook, refreshStats } from './core/gear.js';
 import { genFloor } from './core/mapgen.js';
 import { META, saveMeta } from './core/meta.js';
+import { emitSlots, snapHud, snapVis } from './core/snap.js';
 import { G, Game, I, TL, newSt } from './core/state.js';
 import { leaveStone } from './core/stones.js';
 import { startTorch } from './core/torch.js';
@@ -24,6 +26,7 @@ export function act(fn) {
   TL.reset();
   if (G.stoneOffer != null) leaveStone(); // 고르지 않고 움직이면 발밑 영혼석은 흩어진다
   const took = fn();
+  computeFOV(); snapVis(); snapHud(); emitSlots(); // 턴을 넘기지 않으니 화면은 여기서 맞춘다(문·구하기·소모품)
   Anim.take();
   return took;
 }
@@ -45,7 +48,7 @@ export const Loop = {
       TL.reset(); const n = advance(dt); Anim.take();
       Anim.step(dt * 1000);
       UI.afterTick(n);
-    } else Anim.step(dt * 1000);
+    } else { Anim.step(dt * 1000); document.body.classList.remove('frozen'); }
   },
 };
 
@@ -61,6 +64,7 @@ export function descend() {
   if (G.over) return;
   if (G.tile[I(G.player.x, G.player.y)] !== T_STAIRS) return;
   if (G.bossFloor) { returnToTown('boss'); return; }
+  Anim.clear(); // 옛 층의 연출(시야·지형 스냅샷)을 새 층에 그리지 않는다
   const p = G.player;
   rescueFollowers();
   G.zf++; p.st = newSt();
@@ -96,6 +100,7 @@ export function enterDungeon(zone) {
 }
 
 export function returnToTown(reason) {
+  document.body.classList.remove('frozen'); // 정착지는 멈춤 표시를 쓰지 않는다
   const h = META.hero, rep = { reason, zone: G.zone, zf: G.zf, loot: {}, npcs: [], hurt: G.player.hp < G.player.max * 0.5, kills: G.stats.kills };
   if (reason === 'death') {
     leaveRelics(); // 입고 있던 픽다트는 그 층에 남는다

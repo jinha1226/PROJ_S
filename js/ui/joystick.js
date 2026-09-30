@@ -1,4 +1,4 @@
-import { setIntent } from '../core/clock.js';
+import { setIntent, setPaused } from '../core/clock.js';
 import { G, Game } from '../core/state.js';
 import { RT } from '../data/realtime.js';
 import { View } from '../render/view.js';
@@ -15,15 +15,16 @@ Object.assign(UI, {
   joyInit() {
     const c = View.dio.renderer.domElement, ring = $('#joy');
     c.addEventListener('pointerdown', (e) => {
+      this.joyTapBlock = false; // 새 손: 지난 조이스틱의 탭 막기는 끝났다
       if (Game.mode !== 'dungeon' || this.overlayOpen() || this.joy || e.clientY < innerHeight * (1 - RT.joyZone)) return;
       this.joy = { id: e.pointerId, ox: e.clientX, oy: e.clientY, dx: 0, dy: 0, t0: performance.now(), on: false };
-      this.joyTapBlock = false;
     });
     c.addEventListener('pointermove', (e) => { const j = this.joy; if (j && e.pointerId === j.id) { j.dx = e.clientX - j.ox; j.dy = e.clientY - j.oy; } });
     const up = (e) => { const j = this.joy; if (!j || e.pointerId !== j.id) return; this.joy = null; ring.style.display = 'none'; };
     c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
     addEventListener('keyup', (e) => { this.joyKeys.delete(e.key.toLowerCase()); });
-    addEventListener('blur', () => { this.joyKeys.clear(); this.joyHold = false; });
+    const drop = () => { this.joyKeys.clear(); this.joyHold = false; this.joy = null; ring.style.display = 'none'; }; // 포커스·화면을 잃으면 누르던 손도 놓는다
+    addEventListener('blur', drop); document.addEventListener('visibilitychange', () => { if (document.hidden) drop(); });
   },
   /** 매 프레임(Loop.frame): 조이스틱·키 → 시간이 흐를 의도 */
   feedIntent() {
@@ -40,6 +41,6 @@ Object.assign(UI, {
     for (const k of this.joyKeys) { const v = KEYV[k]; if (v) { sx += v[0]; sy += v[1]; } }
     const L = Math.hypot(sx, sy); if (L > 1) { sx /= L; sy /= L; }
     const off = this.overlayOpen() || G.over || Game.mode !== 'dungeon';
-    setIntent(L > 0 && !off ? worldDir(sx, sy) : null, hold && !off);
+    setIntent(L > 0 && !off ? worldDir(sx, sy) : null, hold && !off); setPaused(off);
   },
 });

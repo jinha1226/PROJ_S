@@ -24,7 +24,9 @@ Object.assign(UI, {
     if (Game.mode === 'town') { Town.tap(sx, sy); return; }
     if (this.joyTapBlock) { this.joyTapBlock = false; return; } // 조이스틱으로 누르고 있던 손
     const t = View.pickTile(sx, sy); if (!t || !inb(t.x, t.y) || G.over) return;
+    if (this.mode === 'target') { this.tapTarget(t.x, t.y); return; } // 던지기 조준
     const p = G.player, i = I(t.x, t.y), e = entAt(t.x, t.y);
+    if (e && isFoe(e) && seesEnt(e) && G.target === e.id) { this.highlightEnemy = e.id; this.showEnemy(e); View.refreshDecals(); return; } // 노린 적을 한 번 더: 정보 카드
     if (e && isFoe(e) && seesEnt(e)) { setTarget(e.id); this.highlightEnemy = e.id; View.refreshDecals(); this.toast(`${jo(e.name, '을를')} 먼저 노린다.`); return; }
     this.stopAuto();
     if (t.x === p.x && t.y === p.y) { if (G.tile[i] === T_STAIRS) descend(); else if (G.gear.has(i)) { this.instant(() => pickGear()); this.renderWeapon(); } return; }
@@ -91,7 +93,7 @@ Object.assign(UI, {
     if (goal == null) { this.explore = false; this.toast('더 탐험할 곳이 없다.'); return; }
     const path = pathPoints(p, cm, goal % G.W, (goal / G.W) | 0);
     if (!path) { skip.add(goal); return; } // 다음 프레임에 다른 곳을 고른다
-    setWalk(path.pts.slice(1));
+    this.exploreGoal = goal; setWalk(path.pts.slice(1));
   },
   startRest() {
     if (G.over) return;
@@ -110,6 +112,7 @@ Object.assign(UI, {
     else if (this.explore && foes) this.stopAuto('적이 보인다. 탐험을 멈춘다.');
     else if (this.travel && foes > this.travel.foes) this.stopAuto('적이 보인다. 멈춘다.');
     else if (G.resting && (foes || G.stats.turns - G.restFrom >= RT.restMax || (p.hp >= p.max && !p.st.poison && !p.st.burn))) this.stopAuto();
+    if (G.stuckAbort) { G.stuckAbort = false; if (this.explore && this.exploreGoal != null) (this.exploreSkip ||= new Set()).add(this.exploreGoal); } // 막힌 목표는 건너뛴다
     if (this.explore && !G.walk) this.exploreStep();
     if (this.travel && !G.walk) this.travel = null;
     document.body.classList.toggle('frozen', Game.mode === 'dungeon' && !G.over && !flowing());

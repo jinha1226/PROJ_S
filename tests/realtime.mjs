@@ -142,6 +142,47 @@ const z1 = await page.evaluate(async () => { const G = arena([[1, 0]]), S = awai
 check('영혼석 꺼짐: 떨어지지 않고 칸도 안 보인다', z1.stones === 0 && z1.souls === 'none', JSON.stringify(z1));
 
 
+// ---------- 최종 검토에서 찾은 것 ----------
+// 실제 탭은 늘 pointerdown으로 시작해 조이스틱 탭 막기를 푼다
+const tap = (x, y) => page.evaluate(([x, y]) => { const g = window.__game, pt = g.View.pickTile; g.View.pickTile = () => ({ x, y }); g.UI.joyTapBlock = false; g.UI.onTap(0, 0); g.View.pickTile = pt; }, [x, y]);
+await page.evaluate(() => { const G = arena([[2, 0]]); G.inv = [{ k: 'oil', n: 2 }]; window.__game.UI.useFromBag('oil'); });
+await tap(17, 15); await tap(17, 15);
+const r1 = await page.evaluate(() => { const G = window.__game.G; return { oil: G.inv.find((q) => q.k === 'oil')?.n || 0, walk: G.walk, mode: window.__game.UI.mode }; });
+check('던지기: 조준 모드에서 탭은 대상 칸(걷지 않는다)', r1.oil === 1 && r1.walk === null && r1.mode === 'normal', JSON.stringify(r1));
+
+const r2 = await page.evaluate(() => { const G = arena([[1, 1, { type: 'rat', name: '쥐', atk: 3, hp: 99, max: 99 }]]), p = G.player, e = G.ents[1]; M.C.setIntent([Math.SQRT1_2, Math.SQRT1_2], false); for (let k = 0; k < 60; k++) M.C.step(); M.C.setIntent(null, false); return { hero: [p.x, p.y], foe: [e.x, e.y], foeHp: e.hp, heroHp: p.hp, max: p.max }; });
+check('대각선으로 다가가도 적 칸에 들어가지 않고 서로 친다', (r2.hero[0] !== r2.foe[0] || r2.hero[1] !== r2.foe[1]) && r2.foeHp < 99 && r2.heroHp < r2.max, JSON.stringify(r2));
+
+const r3 = await page.evaluate(() => { arena(); const U = window.__game.UI; U.startTravel(18, 18); document.querySelector('#sheet').classList.remove('hidden'); U.feedIntent(); const open = M.C.flowing(); document.querySelector('#sheet').classList.add('hidden'); U.feedIntent(); const closed = M.C.flowing(); U.stopAuto(); return { open, closed }; });
+check('창을 열면 자동 걷기 중에도 시간이 멈춘다', r3.open === false && r3.closed === true, JSON.stringify(r3));
+
+await page.evaluate(() => { arena(); window.__game.UI.joyTapBlock = true; });
+await page.mouse.move(195, 200); await page.mouse.down();
+const r4 = await page.evaluate(() => window.__game.UI.joyTapBlock);
+await page.mouse.up(); await page.evaluate(() => { window.__game.UI.stopAuto(); window.__game.UI.hideInfo(); });
+check('조이스틱을 쓴 뒤 다음 탭이 먹히지 않는다', r4 === false, String(r4));
+
+await page.evaluate(() => { const G = arena([[2, 0]]); window.__game.UI.hideInfo(); M.C.setTarget(null); });
+await tap(17, 15); const r5a = await page.evaluate(() => document.querySelector('#info').classList.contains('hidden'));
+await tap(17, 15); const r5b = await page.evaluate(() => !document.querySelector('#info').classList.contains('hidden'));
+await page.evaluate(() => window.__game.UI.hideInfo());
+check('노린 적을 한 번 더 탭하면 정보 카드(조이스틱 칸에서도 살펴볼 수 있다)', r5a && r5b, JSON.stringify({ r5a, r5b }));
+
+const r7 = await page.evaluate(() => { const g = window.__game, G = arena(), p = G.player; G.tile[15 * G.W + 15] = M.T.T_STAIRS; G.bossFloor = false; g.Anim.q.push({ t: 99999, fn: () => { window.__stale = true; } }); window.__stale = false; g.descend(); return { q: g.Anim.q.length, zf: G.zf }; });
+check('계단을 내려가면 남은 연출을 버린다', r7.q === 0, JSON.stringify(r7));
+
+const r8 = await page.evaluate(() => { const g = window.__game, G = arena(); G.tile[15 * G.W + 16] = M.T.T_DOOR; g.computeFOV(); const seen = []; const on = g.View.on; g.View.on = function (t, d) { seen.push(t); return on.apply(this, arguments); }; g.act(() => g.playerMove(1, 0)); g.Anim.take(); g.Anim.step(99999); g.View.on = on; return { hud: seen.includes('hud'), vis: seen.includes('vis'), ctx: document.querySelector('#btn-ctx').textContent }; });
+check('행동 뒤 화면이 새로 맞춰진다(문을 열면 "문 열기"가 사라진다)', r8.hud && r8.vis && !/문 열기/.test(r8.ctx), JSON.stringify(r8));
+
+const r10 = await page.evaluate(() => { arena(); const U = window.__game.UI, G = window.__game.G; U.explore = true; U.exploreSkip = new Set(); U.exploreGoal = 15 * G.W + 18; G.walk = null; G.stuckAbort = true; G.hurt = false; U.afterTick(0); const r = U.exploreSkip.has(15 * G.W + 18); U.stopAuto(); return r; });
+check('탐험이 막힌 곳에 걸리면 그 목표를 건너뛴다', r10 === true, String(r10));
+
+const r11 = await page.evaluate(() => { arena(); const U = window.__game.UI; U.joy = { id: 1, ox: 100, oy: 700, dx: 40, dy: 0, t0: 0, on: true }; dispatchEvent(new Event('blur')); U.feedIntent(); return { joy: U.joy, flowing: M.C.flowing() }; });
+check('포커스가 빠지면 누르던 조이스틱도 놓는다', r11.joy === null && !r11.flowing, JSON.stringify(r11));
+
+const r6 = await page.evaluate(async () => { const g = window.__game; document.body.classList.add('frozen'); g.returnToTown('recall'); await new Promise((r) => setTimeout(r, 2500)); return { mode: g.Game.mode, frozen: document.body.classList.contains('frozen') }; });
+check('정착지로 돌아가면 멈춤 표시(채도 빠짐)가 풀린다', r6.mode === 'town' && !r6.frozen, JSON.stringify(r6));
+
 check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 await browser.close(); server.close();
 const bad = results.filter((r) => !r).length;
