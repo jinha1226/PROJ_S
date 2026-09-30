@@ -95,7 +95,7 @@ function landThrow(k, tx, ty) {
     const r = wide ? 2 : 1;
     for (let yy = -r; yy <= r; yy++) for (let xx = -r; xx <= r; xx++) { const x = tx + xx, y = ty + yy; if (inb(x, y)) addCloud(I(x, y), C_SMOKE, 6); }
     snapTerrain(); emit('smokeburst', { x: tx, y: ty });
-    for (const e of G.ents) if (e.aim && !canSee(e, p)) { e.aim = false; }
+    for (const e of G.ents) if (e.act && !e.act.done && (e.act.kind === 'aim' || e.act.kind === 'cast') && !canSee(e, p)) cancelIntent(e); // 연기 너머로는 겨누지 못한다
   } else {
     let ign = null;
     for (const [x, y] of (wide ? square3(tx, ty) : plus(tx, ty))) {

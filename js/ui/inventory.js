@@ -122,10 +122,10 @@ Object.assign(UI, {
         const cur = eq[tgt], blocked = k === 'off' && twoHanded(eq.weapon);
         detail = `${tabs2}${cur ? cardHtml(cur, '입은 것') : ''}${cardHtml(it, cur ? '새것' : '가방')}
           <div class="gline">${statDiff(eq, tgt, it)}</div>
-          <div class="row"><button class="pri" data-act="equip" data-slot="${tgt}" ${blocked ? 'disabled' : ''}>${SLOT_NAME[tgt]}에 장착${inCombat() ? ' · 한 턴' : ''}</button>${scrollButtons(it)}<button data-act="drop">${town ? '창고로' : '버리기'}</button><button data-act="back">닫기</button></div>`;
+          <div class="row"><button class="pri" data-act="equip" data-slot="${tgt}" ${blocked ? 'disabled' : ''}>${SLOT_NAME[tgt]}에 장착</button>${scrollButtons(it)}<button data-act="drop">${town ? '창고로' : '버리기'}</button><button data-act="back">닫기</button></div>`;
       }
     }
-    sh.innerHTML = `<h3>🎒 가방 · 장비 <small style="color:#9aa2bd;font-weight:400">${inCombat() ? '⚠ 전투 중 · 장비 교체에 한 턴' : '장비 교체 가능'}</small><button class="close">닫기</button></h3>
+    sh.innerHTML = `<h3>🎒 가방 · 장비 <small style="color:#9aa2bd;font-weight:400">${inCombat() ? '⚠ 전투 중' : '장비 교체 가능'}</small><button class="close">닫기</button></h3>
       <div class="eqgrid">${SLOTS.map((k) => cell(k)).join('')}</div>
       <button class="stline" data-act="stats">HP ${H.unit.max} · 방어 ${s.def} · 회피 ${s.eva}%${s.block ? ` · 막기 ${s.block}%` : ''} · 피해 ${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} <small>▸ 자세히</small></button>
       ${detail ? `<div class="gdetail">${detail}</div>` : ''}

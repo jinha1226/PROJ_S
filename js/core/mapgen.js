@@ -151,14 +151,14 @@ export function genFloor() {
 
 export function mkBoss(kind, x, y) {
   const B = BOSSES[kind], hp = Math.round(B.hp * (1 + 0.025 * (G.floor - ZONE_FLOORS))); // 구역이 5층이라 층당 오름을 줄였다
-  return { id: G.nextId++, type: B.type, boss: kind, x, y, hp, max: hp, atk: B.atk, st: newSt(), alive: true, awake: false, face: [0, 1], cd: 1, cast: null, charge: null, aim: false, name: B.name, elem: B.elem, horn: 3, blink: 0, sum: 4 };
+  return { id: G.nextId++, type: B.type, boss: kind, x, y, hp, max: hp, atk: B.atk, st: newSt(), alive: true, awake: false, face: [0, 1], name: B.name, elem: B.elem };
 }
 
 export function mkEnemy(type, x, y, F) {
   const B = ENEMY[type], hp = Math.round(B.hp * (1 + 0.05 * (G.floor - 1))); // 층마다 +5%(20층 ≈ ×2)
   const e = { id: G.nextId++, type, x, y, hp, max: hp, atk: B.atk + (G.zone - 1), // 구역마다 공격 +1(기준안)
     speed: B.speed || null, hidden: type === 'leech' && !!G.surf && G.surf[I(x, y)] === S_WATER, // 거머리는 물속에 숨는다
-    st: newSt(), alive: true, awake: type === 'leech', face: [0, 1], cd: ri(0, 1), cast: null, charge: null, aim: false, name: B.name };
+    st: newSt(), alive: true, awake: type === 'leech', face: [0, 1], name: B.name };
   if (type === 'mage') { const m = G.mageOf[G.zone - 1]; e.elem = m === 'mix' ? pick(['bolt', 'fire', 'frost']) : m; e.name = '해골 ' + MAGE[e.elem].name; }
   if (type === 'goblin' && F.poison && rand() < 0.5) { e.poison = true; e.name = '독칼 고블린'; }
   else if (type === 'goblin' && G.floor >= 2 && rand() < 0.4) { e.armor = true; e.name = '갑옷 고블린'; e.hp += 4; e.max += 4; }

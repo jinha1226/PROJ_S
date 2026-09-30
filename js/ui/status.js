@@ -20,7 +20,7 @@ Object.assign(UI, {
     Sfx.play('ui');
     const p = G.player, h = META && META.hero, sh = $('#sheet');
     const perk = h && h.perk && PERKS[h.perk], torch = G.torch ?? 100, tmax = G.torchMax ?? 100;
-    const st = ST.filter(([k]) => p.st[k] > 0).map(([k, ic, nm]) => `<div>${ic} ${nm} <b>${p.st[k]}턴</b></div>`).join('');
+    const st = ST.filter(([k]) => p.st[k] > 0).map(([k, ic, nm]) => `<div>${ic} ${nm} <b>${p.st[k]}초</b></div>`).join('');
     const auras = Object.entries(G.auras || {}).map(([k, r]) => `<div style="color:#${AURA[k].hex.toString(16).padStart(6, '0')}">◎ ${AURA[k].name} <b>${Math.max(0, r - 1)}라운드</b></div>`).join('');
     const stones = G.slots.map((q) => {
       if (!q.stone) return '<div class="st-stone empty">·<small>빈 칸</small></div>';
@@ -39,7 +39,7 @@ Object.assign(UI, {
       <div class="gtxt" style="margin-top:4px">영혼석 가방 ${G.sbag.length}/${G.sbagMax || 3}: ${bag}</div>
       <div class="sec">전투 수치 <small>누르면 출처</small></div>${this.statsRows()}
       <div class="sec">알아낸 약점</div><div class="gtxt">${weak}</div>
-      <div class="sec">이번 원정</div><div class="gtxt">처치 ${s.kills || 0} · 턴 ${s.turns || 0} · 원소 반응 ${s.combos || 0} · 최고 연쇄 ${s.best || 0}단계 · 영혼석 ${s.stones || 0}</div>`;
+      <div class="sec">이번 원정</div><div class="gtxt">처치 ${s.kills || 0} · ${Math.floor(G.clock || 0)}초 · 원소 반응 ${s.combos || 0} · 최고 연쇄 ${s.best || 0}단계 · 영혼석 ${s.stones || 0}</div>`;
     sh.classList.add('tall'); sh.classList.remove('hidden');
     sh.querySelector('.close').onclick = () => { sh.classList.add('hidden'); sh.classList.remove('tall'); };
   },

@@ -10,7 +10,7 @@ Object.assign(UI, {
   /* ---- 큰 화면 ---- */
   screen(html) { const s = $('#screen'); s.innerHTML = `<div class="box">${html}</div>`; s.classList.remove('hidden'); },
   title() {
-    this.screen(`<h1>횃불과 원소</h1><p style="color:#9fb0ff;margin-top:0">턴제 던전 · 정착지</p>
+    this.screen(`<h1>횃불과 원소</h1><p style="color:#9fb0ff;margin-top:0">움직일 때만 시간이 흐르는 던전 · 정착지</p>
       <p>던전에서 영혼석과 재료를 모아 정착지를 키운다. 원소와 지형을 이용해 싸운다.</p>
       <p style="font-size:13px">몬스터를 쓰러뜨리면 영혼석 하나가 무작위로 떨어진다. 영혼석마다 스킬이 하나씩 있다.</p>
       <div class="chips"><span>탭: 이동·공격</span><span>먼 칸 탭: 자동 이동</span><span>길게 누르기: 정보</span><span>스킬: 칸 탭 후 한 번 더 탭</span><span>두 손가락: 회전</span><span>핀치: 확대</span></div>

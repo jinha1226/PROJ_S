@@ -83,7 +83,7 @@ function pushPreview(x, y, dx, dy, n, add) {
   }
   if (!note) note = k > n ? '얼음 위로 끝까지 미끄러진다.' : `${k}칸 밀려난다.`;
   const li = I(cx, cy); if (G.surf[li] === S_WATER) note += ' 물에 빠져 젖는다.'; if (G.fire[li]) note += ' 불 속으로 밀려난다.';
-  if (G.ents.some((e) => e.cast && e.cast.tiles.some(([a, b]) => a === cx && b === cy))) note += ' 마법사의 표식 위에 선다.';
+  if (G.ents.some((e) => e.act && e.act.kind === 'cast' && e.act.cells.some(([a, b]) => a === cx && b === cy))) note += ' 마법사의 표식 위에 선다.';
   return note;
 }
 

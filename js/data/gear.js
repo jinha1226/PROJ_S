@@ -45,7 +45,7 @@ export const ELEM = { fire: { name: '불', css: '#ff8a3a', hex: 0xff7a1a }, fros
 /** 무기 브랜드 (§7.1, 하나만) */
 export const BRANDS = {
   fire: { name: '화염', line: '맞히면 불 2. 풀과 기름에 불이 붙는다', elem: 'fire' },
-  frost: { name: '냉기', line: '맞히면 냉기 2. 젖은 적은 한 턴 얼어붙는다', elem: 'frost' },
+  frost: { name: '냉기', line: '맞히면 냉기 2. 젖은 적은 1초 얼어붙는다', elem: 'frost' },
   bolt: { name: '번개', line: '맞히면 25% 확률로 번개 3. 젖은 적이면 번진다', elem: 'bolt' },
   poison: { name: '독', line: '맞히면 중독 2', elem: 'poison' },
   blood: { name: '피', line: '출혈이 2 더 쌓인다', form: 'slash', css: '#ff5a6a' },
@@ -62,7 +62,7 @@ export const EGOS = {
   rPoison: { name: '독 저항', slots: ['body', 'cloak', 'off'], line: '독 저항 +1', res: 'poison' },
   thorns: { name: '가시', slots: ['body'], line: '붙어서 나를 때린 적에게 피해 2', css: '#c8a060' },
   protect: { name: '보호', slots: ['body', 'off'], line: '층마다 보호막 4를 두르고 시작한다', css: '#9fd8ff' },
-  patience: { name: '기다림', slots: ['cloak'], line: '대기하면 보호막 2를 얻는다', css: '#c27dff' },
+  patience: { name: '기다림', slots: ['cloak'], line: '제자리에서 시간을 흘리면 1초마다 보호막 2를 얻는다', css: '#c27dff' },
   vengeance: { name: '되갚음', slots: ['body', 'off'], line: '맞으면 다음 무기 공격의 피해가 2 는다', css: '#62e27a' },
   insight: { name: '통찰', slots: ['head'], line: '시야가 1칸 넓어지고, 적의 약점을 처음부터 안다', css: '#ffe38a' },
   waterwalk: { name: '물걸음', slots: ['feet'], line: '물에 젖지 않고, 얼음에서 미끄러지지 않는다', css: '#4d97ff' },
@@ -84,10 +84,10 @@ export const RINGS = {
 };
 export const AMULETS = {
   memory: { name: '기억', line: '횃불이 30% 느리게 탄다. 등잔에서 횃불을 20 더 얻는다' },
-  regen: { name: '재생', line: '전투 밖에서 2턴마다 HP 1을 회복한다' },
+  regen: { name: '재생', line: '전투 밖에서 0.6초마다 HP 1을 회복한다' },
   chain: { name: '연쇄', line: '연쇄가 한 단계 높게 시작한다. 3단계 이상이면 보호막 2를 얻는다' },
   reflect: { name: '반사', line: '화살을 20% 확률로 되돌린다' },
-  silence: { name: '고요', line: '들키기 전에 대기하면 적이 나를 지나칠 수 있다' },
+  silence: { name: '고요', line: '들키기 전에 제자리에 서 있으면 적이 나를 지나칠 수 있다' },
 };
 /** 장신구 모양(원정마다 정체와 짝이 섞인다) */
 export const JEWEL_LOOK = {
@@ -103,14 +103,14 @@ export const ART_B = ['속삭임', '맹세', '송곳니', '그림자', '약속',
 
 /** 픽다트 = 옛 등불지기의 유품 (§9) */
 export const UNRANDS = {
-  mistCloak: { base: 'cloak', name: '물안개 망토', owner: '이랑', line: '대기할 때마다 주변 1칸이 젖는다', story: '호숫가 뱃사공 출신 등불지기가 두르던 것' },
+  mistCloak: { base: 'cloak', name: '물안개 망토', owner: '이랑', line: '제자리에서 시간을 흘리면 1초마다 주변 1칸이 젖는다', story: '호숫가 뱃사공 출신 등불지기가 두르던 것' },
   bloodFang: { base: 'twin', plus: 2, name: '피의 송곳니', owner: '다솜', line: '출혈 중인 적이 죽으면 곁의 적들에게 출혈 2', story: '굶주린 해에 사냥으로 마을을 먹여 살린 이의 칼' },
   thornPlate: { base: 'body_plate', plus: 1, name: '가시 판금', owner: '무진', line: '맞을 때마다 초록 영혼석 쿨타임이 1 더 준다. 받는 피해가 20% 는다', story: '물러서지 않았던 문지기의 갑옷' },
   stormRing: { base: 'ring', name: '번개 감긴 반지', owner: '하율', line: '번개가 1칸 더 멀리 번진다', story: '폭풍을 셌던 학자의 반지' },
   giantMace: { base: 'mace', plus: 1, name: '거인의 철퇴', owner: '석주', line: '1칸 더 멀리 밀친다. 적이 벽에 부딪히면 주변에 피해 1', story: '광산 붕괴에서 동료를 파낸 광부의 망치' },
   alchGlove: { base: 'gloves', name: '연금술사의 장갑', owner: '보늬', line: '던지는 물건이 두 개로 나뉘어 날아간다', story: '불씨 단지를 처음 만든 이의 장갑' },
   firstLamp: { base: 'neck', name: '첫 불씨 등잔', owner: '첫 등불지기', line: '횃불이 꺼져도 3칸까지는 보인다', story: '모닥불을 처음 옮겨 붙인 등불지기의 등잔' },
-  namelessHelm: { base: 'head_chain', name: '이름 없는 투구', owner: null, line: '다음 턴에 공격을 예고할 적이 미리 보인다', story: '누구의 것인지 아무도 기억하지 못한다' },
+  namelessHelm: { base: 'head_chain', name: '이름 없는 투구', owner: null, line: '곧 공격을 예고할 적이 미리 보인다', story: '누구의 것인지 아무도 기억하지 못한다' },
 };
 
 /** 떨어진 장비의 종류 (§11) [평범, 강화치, 속성, 랜다트, 픽다트] */
