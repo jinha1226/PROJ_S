@@ -1,6 +1,7 @@
+import { markCut } from '../core/colony.js';
 import { META, saveMeta } from '../core/meta.js';
 import { furnCells } from '../core/rooms.js';
-import { autoPlan, buildHours, canRedo, canUndo, checkBps, clearHistory, clipBps, commit, copyRoom, cutArea, demolish, fillBps, flipClip, inLight, lineBps, missing, neededRooms, paintZone, placeBps, presetBps, radius, redo, roomBps, rotateClip, stockOf, suggestSpots, sumCost, undo } from '../core/settlement.js';
+import { autoPlan, buildHours, canRedo, canUndo, checkBps, clearHistory, clipBps, copyRoom, demolish, fillBps, flipClip, inLight, lineBps, missing, neededRooms, paintZone, placeBps, presetBps, radius, redo, roomBps, rotateClip, stockOf, suggestSpots, sumCost, undo } from '../core/settlement.js';
 import { FLOOR_TYPES, FURN, PRESETS, RES_ICON, ROOMS, SIZE_NAME, SW, TERRAIN, WALLS, ZONE_TYPES } from '../data/build.js';
 import { MATS } from '../data/items.js';
 import { JOBS, MOODS } from '../data/town.js';
@@ -41,7 +42,6 @@ Object.assign(Town, {
     this.dragHandler ||= { down: (x, y) => this.dragDown(x, y), move: (x, y) => this.dragMove(x, y), up: (x, y, ok) => this.dragUp(x, y, ok), cancel: () => this.dragCancel() };
     $('#tbtns').classList.add('hidden'); $('#buildbar').classList.remove('hidden'); $('#sheet').classList.add('hidden');
     this.setTool(null); Sfx.play('ui');
-    if (META.settle.bp.length) { commit(META.settle, false); this.refreshWorld(); } // 그사이 재료가 들어왔으면 남은 청사진부터
     try { if (!localStorage.getItem('torch-build-hint')) { UI.toast('한 손가락으로 그리고, 두 손가락으로 화면을 옮긴다.'); localStorage.setItem('torch-build-hint', '1'); } } catch (_) { /* 없음 */ }
   },
   exitBuild() {
@@ -103,23 +103,22 @@ Object.assign(Town, {
     const bm = this.bm; bm.start = null; bm.cur = null; bm.pv = null;
     this.sv?.setPreview(); this.sv?.setSelect(null); this.magnify(null);
     if (bm.tool === 'cut') {
-      const r = cutArea(a.x, a.y, b.x, b.y);
-      if (r.n) { const c = META.settle.bp.length ? commit(META.settle, false) : null; UI.toast(`얻은 재료: ${Object.entries(r.gained).map(([m, n]) => `${m} ${n}`).join(', ')}.${c && c.built ? ` 청사진 ${c.built}개를 마저 지었다.` : ''}`); Sfx.play('blunt'); }
+      const n = markCut(a.x, a.y, b.x, b.y); // 베기 표시: 주민이 목표 재고와 상관없이 먼저 벤다
+      if (n) { UI.toast(`${n}곳을 베기로 표시했다. 손이 비는 주민이 먼저 한다.`); Sfx.play('pick'); }
       else UI.toast('빛 안의 나무·바위·광맥·폐허를 고른다.');
     } else if (bm.tool === 'del') { const r = demolish(a.x, a.y, b.x, b.y); if (r.n) { const back = Object.entries(r.back).map(([m, n]) => `${m} ${n}`).join(', '); UI.toast(back ? `철거했다. 돌려받은 재료: ${back}.` : '철거했다.'); Sfx.play('blunt'); } }
     else if (bm.tool === 'zone') { const n = paintZone(a.x, a.y, b.x, b.y, bm.zone === 'erase' ? null : bm.zone); if (!n) UI.toast('빛 안의 빈 땅을 고른다.'); }
     else { this.place(this.rectBps(a, b)); return; }
     this.afterEdit();
   },
-  /** 놓고 바로 짓는다(한 번의 되돌리기). 재료가 모자란 것은 청사진으로 남는다 */
+  /** 청사진을 놓는다. 주민이 재료를 가져다 시간을 들여 짓는다(docs/설계_정착지_2단계.md §4) */
   place(list) {
     if (!list.length) { UI.toast('방은 가로세로 세 칸보다 크게 그린다.'); return; }
     const r = placeBps(list);
     if (!r.ok.length) { if (r.bad.length) UI.toast(r.bad[0].why + '.'); this.afterEdit(); return; }
-    const c = commit(META.settle, false);
-    if (c.left) UI.toast(`${missText(c.missing)} 모자라 ${c.left}개는 청사진으로 남았다.`);
-    else if (r.bad.length) UI.toast(`${r.bad.length}칸은 못 놓았다. ${r.bad[0].why}.`);
-    if (c.built) { Sfx.play('blunt'); View.dio.rig.shake(0.12); } else Sfx.play('pick');
+    const miss = missing(r.cost), hours = Math.ceil(buildHours(r.ok));
+    UI.toast(`청사진 ${r.ok.length}개 · 약 ${hours}시간 일.${Object.keys(miss).length ? ` ${missText(miss)} 모자라 재료가 들어오면 짓는다.` : ''}${r.bad.length ? ` ${r.bad.length}칸은 못 놓았다(${r.bad[0].why}).` : ''}`);
+    Sfx.play('pick');
     this.afterEdit();
   },
   afterEdit() { this.refreshWorld(); if (this.bm.tool === 'preset') this.showSpots(); this.renderBuild(); this.renderHud(); },
@@ -153,8 +152,8 @@ Object.assign(Town, {
     if (a === 'flip' && bm.clip) bm.clip = flipClip(bm.clip);
     if (a === 'more') bm.more = !bm.more;
     if (a === 'auto') {
-      const r = autoPlan(), c = r.placed.length ? commit(META.settle, false) : null;
-      if (r.placed.length) UI.toast(`${jo(r.placed.map((k) => ROOMS[k].name).join(', '), '을를')} 놓았다.${c && c.left ? ` ${missText(c.missing)} 모자라 일부는 청사진으로 남았다.` : ''}`); else if (!r.failed.length) UI.toast('지금은 모자란 방이 없다.');
+      const r = autoPlan();
+      if (r.placed.length) UI.toast(`${jo(r.placed.map((k) => ROOMS[k].name).join(', '), '을를')} 청사진으로 놓았다. 주민이 짓는다.`); else if (!r.failed.length) UI.toast('지금은 모자란 방이 없다.');
       if (r.failed.length) UI.toast(`${jo(r.failed.map((k) => ROOMS[k].name).join(', '), '을를')} 놓을 자리가 없다.`);
       this.afterEdit(); return;
     }

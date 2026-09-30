@@ -29,7 +29,7 @@ export const RATE = {
   cHigh: 1.1, cLow: 0.9, // 성실성
 };
 /** 채집: 땅 → 몇 시간 → 무엇 */
-export const GATHER = { tree: { h: 2, m: '나무', n: 8 }, rock: { h: 2, m: '돌', n: 6 }, ore: { h: 3, m: '광석', n: 2 } };
+export const GATHER = { tree: { h: 2, m: '나무', n: 8 }, rock: { h: 2, m: '돌', n: 6 }, ore: { h: 3, m: '광석', n: 2 }, ruin: { h: 2, m: '돌', n: 4 } }; // 폐허는 표시했을 때만
 /** 다시 자람(일): 모닥불 밝기 60 이상 · 30~59 · 30 미만 */
 export const REGROW_DAYS = [6, 8, 10];
 export const CROP_DAYS = [4, 6, 8];

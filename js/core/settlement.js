@@ -1,6 +1,7 @@
 import { FLOOR_BY_ID, FLOOR_TYPES, FURN, PRESETS, ROOMS, SCX, SCY, SH, START_STOCK, SW, TERRAIN, TR, UNDO_MAX, WALLS, WALL_BY_ID, ZONE_TYPES, lightRadius } from '../data/build.js';
 import { JOBS } from '../data/town.js';
 import { mulberry32 } from '../util/rng.js';
+import { ensureNearResources } from './colony.js';
 import { META, saveMeta } from './meta.js';
 import { detectRooms, furnCells, furnSize } from './rooms.js';
 import { hearthGlow, shardCount } from './visitors.js';
@@ -41,6 +42,7 @@ export function newSettle(seed = Date.now()) {
   S.furn.push({ id: 'f' + S.nid++, k: 'gate', x: SCX, y: SCY - 5, rot: 0 }, { id: 'f' + S.nid++, k: 'heap', x: SCX + 2, y: SCY + 1, rot: 0 });
   S.terr[I(SCX, SCY - 5)] = TR.dirt; S.terr[I(SCX + 2, SCY + 1)] = TR.dirt;
   const alt = edgeSpot('altar', S, 7); if (alt) buildFree(alt.bps, S);
+  ensureNearResources(S, seed); // 근처 자원을 넉넉히(docs/설계_정착지_2단계.md §5)
   return S;
 }
 
@@ -82,6 +84,15 @@ export const stockOf = (m, S = st()) => (m in START_STOCK ? S.stock[m] || 0 : (M
 /** 모자란 재료 { 나무: 3 } */
 export function missing(cost, S = st()) { const out = {}; for (const [m, n] of Object.entries(cost)) { const d = n - stockOf(m, S); if (d > 0) out[m] = d; } return out; }
 function pay(cost, S, sign = -1) { for (const [m, n] of Object.entries(cost)) { if (m in START_STOCK) S.stock[m] = (S.stock[m] || 0) + sign * n; else META.mats[m] = (META.mats[m] || 0) + sign * n; } }
+/** 재고에 더하기(나무·돌·식량·식사는 정착지, 나머지는 재료 창고) */
+export function addStock(m, n, S = st()) { pay({ [m]: n }, S, 1); }
+/** 청사진 하나를 실체로(비용은 이미 치렀다): 주민의 짓기가 끝났을 때 */
+export function finishBp(b, S = st()) { apply(b, S); S.bp = S.bp.filter((q) => q !== b); changed(); }
+/** 청사진 비용을 치른다(짓기 시작할 때). 모자라면 false */
+export function payBp(b, S = st()) { const c = costOf(b); if (Object.keys(missing(c, S)).length) return false; pay(c, S); b.paid = true; return true; }
+export const bpHours = (b) => (b.L === 'wall' ? WALLS[b.k].t : b.L === 'floor' ? FLOOR_TYPES[b.k].t : FURN[b.k].t);
+/** 작업방 등급: 1 + 그 방 등급 가구(FURN.tier) */
+export function roomTier(r) { if (!r || !r.kind) return 0; let t = 1; for (const k of Object.keys(r.furn)) { const T = FURN[k].tier; if (T && T[0] === r.kind) t = Math.max(t, T[1]); } return t; }
 export const buildHours = (list) => list.reduce((a, b) => a + (b.L === 'wall' ? WALLS[b.k].t : b.L === 'floor' ? FLOOR_TYPES[b.k].t : FURN[b.k].t), 0);
 
 /** 청사진 미리보기: 놓을 수 있는 것(ok)과 없는 것(bad, 까닭). 이미 있는 것은 빠진다 */

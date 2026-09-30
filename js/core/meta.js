@@ -1,5 +1,6 @@
 import { ROOMS } from '../data/build.js';
 import { CLASS_RULE } from '../data/classes.js';
+import { CLOCK } from '../data/colony.js';
 import { GEAR_BASES } from '../data/gear.js';
 import { APPEAR, ITEMS } from '../data/items.js';
 import { LEVEL_XP } from '../data/stones.js';
@@ -8,6 +9,7 @@ import { FORMS, WPN } from '../data/weapons.js';
 import { validLevels } from '../sim/classes.js';
 import { pick, rand, ri, shuffle } from '../util/rng.js';
 import { jo } from '../util/text.js';
+import { passHours } from './colony.js';
 import { calcStats, craftArmor, craftWeapon, fullyKnown, gearName, makeGear, migrateGear, migrateSets, newJewelLook, revealAll, starterKit } from './gear.js';
 import { newProg, spentOf } from './progress.js';
 import { hasRoom, migrateTown } from './settlement.js';
@@ -197,6 +199,7 @@ export function processReturn(r) {
   }
   META.newNpcs = [];
   const real = r.reason && r.reason !== 'first' && r.reason !== 'resume';
+  if (real) out.colony = passHours((r.zf || 1) * CLOCK.floorHours); // 원정 동안 마을이 굴러간 만큼(최대 3일)
   if (real) out.events = genEvents(out, r);
   // 등불 조각: 보스를 처음 쓰러뜨린 구역의 기억을 모닥불에 넣는다
   if (r.reason === 'boss' && !META.lit[r.zone - 1]) { META.lit[r.zone - 1] = true; out.shard = r.zone; }
