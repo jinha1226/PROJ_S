@@ -34,7 +34,7 @@ function chiefBrain(e) {
   const t = foeTarget(e); if (!t) return null;
   e.hornT = (e.hornT ?? COMBAT.hornEvery * 0.5);
   if (e.hornT <= 0 && canSee(e, t) && adds(e) < COMBAT.maxAdds) { e.hornT = COMBAT.hornEvery; startAct(e, 'horn', { wind: COMBAT.tele.horn, cd: 0.6, fx: 'windup' }); log('족장이 뿔나팔을 든다.', 'bad'); return null; }
-  if (e.cd <= 0 && (e.slamN = (e.slamN || 0)) >= 3 && dist(e, t) <= 1.8) {
+  if (e.cd <= 0 && (e.slamN = (e.slamN || 0)) >= 4 && dist(e, t) <= 1.8) {
     e.slamN = 0; faceAng(e, angTo(e, t));
     const cells = square3(t.x, t.y);
     startAct(e, 'slam', { wind: COMBAT.tele.slam, cells, cd: 1.2, recover: 0.5, tele: { kind: 'cells', cells, elem: 'push' }, fx: 'windup' });

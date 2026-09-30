@@ -5,7 +5,7 @@ import { S_ICE, S_WATER, T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrai
 import { DARK, torchTier } from '../data/torch.js';
 import { JOBS } from '../data/town.js';
 import { FORMS } from '../data/weapons.js';
-import { D8, cheb, sgn } from '../util/grid.js';
+import { D8, sgn } from '../util/grid.js';
 import { pick, rand, ri } from '../util/rng.js';
 import { jo } from '../util/text.js';
 import { applyFire, fireAt, shock } from './elements.js';
@@ -48,7 +48,7 @@ export function damage(e, amt, kind = 'hit', o = {}) {
     if (amt > 0 && el && ps.res[el]) amt = Math.max(ps.res[el] >= 3 ? 0 : 1, Math.round(amt * RES_MUL[ps.res[el]]));
   } else if (isFoe(e) && ELEM_OF[kind]) { const r = monRes(e, ELEM_OF[kind]); if (r) { amt = Math.max(r >= 3 ? 0 : 1, Math.round(amt * RES_MUL[clampRes(r)])); if (r >= 2 && !label) label = '저항'; if (r <= -1 && !label) label = '약함'; } if (amt <= 0) { emit('immune', { id: e.id }); return 0; } }
   if (struck && G.ps && G.ps.vengeance) G.vengeance = G.ps.vengeance; // 되갚음: 다음 무기 공격 +2
-  if (struck && G.ps && G.ps.thorns && src.alive && PHYS[kind] && cheb(src.x, src.y, e.x, e.y) <= 1) { const s0 = src; damage(s0, G.ps.thorns, 'impact', { label: '가시', src: G.player }); } // 가시
+  if (struck && G.ps && G.ps.thorns && src.alive && PHYS[kind] && Math.hypot((src.px ?? src.x) - (e.px ?? e.x), (src.py ?? src.y) - (e.py ?? e.y)) <= 1.6) { const s0 = src; damage(s0, G.ps.thorns, 'impact', { label: '가시', src: G.player }); } // 가시
   if (struck) reduceColor('green'); // 초록: 적에게 맞았을 때(0 피해·보호막이 막아도)
   if (isP(e) && G.auras && G.auras.guard && amt > 0) amt = Math.ceil(amt / 2); // 막기
   if (isP(e) && e.shield > 0) { const a = Math.min(e.shield, amt); e.shield -= a; amt -= a; emit('shieldHit', { absorbed: a, left: e.shield }); }
@@ -152,6 +152,7 @@ export function onEnter(e) {
 }
 
 export function push(e, dx, dy, n) {
+  if (!dx && !dy) return 0;
   const giant = isFoe(e) && G.ps && G.ps.legend.has('giantMace');
   let k = 0, left = n + (giant ? 1 : 0);
   while (left > 0 && k < 12 && e.alive) {
@@ -200,6 +201,11 @@ export function playerMove(dx, dy) {
 }
 
 export const curW = () => weaponOf(G.eq && G.eq.weapon);
+/** a에서 b로 향하는 8방향(소수 위치 기준: 한 칸에 둘이 서 있어도 방향이 선다) */
+export function dir8(a, b) {
+  const ax = a.px ?? a.x, ay = a.py ?? a.y, bx = b.px ?? b.x, by = b.py ?? b.y, g = Math.atan2(by - ay, bx - ax), c = Math.cos(g), s = Math.sin(g);
+  return [Math.abs(c) < 0.38 ? 0 : Math.sign(c), Math.abs(s) < 0.38 ? 0 : Math.sign(s)];
+}
 /** 한 번 칠 때 예상 피해 [최소, 최대]: 약점·빙결·급소·쌍단검 포함 (적 위 ◆ 표시) */
 export function hitRange(t) {
   const w = curW(), ps = G.ps || { dmg: 0, critMul: 2 }, weak = t && CATS[catOf(t)].weak === w.form, vital = t && w.form === 'pierce' && t.st.vital > 0;
@@ -210,7 +216,7 @@ export function hitRange(t) {
 /* ---------- 무기 한 번 적중: 형태 → 부상, 약점, 급소 ---------- */
 export function weaponHit(t, ctx, o = {}) {
   if (!t || !t.alive) return;
-  const p = G.player, w = curW(), f = w.form, dx = sgn(t.x - p.x), dy = sgn(t.y - p.y), ps = G.ps;
+  const p = G.player, w = curW(), f = w.form, [dx, dy] = dir8(p, t), ps = G.ps;
   if (ps.acc < 0 && rand() * 100 < -ps.acc) { emit('miss', { x: t.x, y: t.y }); log('빗나갔다.', 'info'); return; }
   const cat = catOf(t), C = CATS[cat], weak = C.weak === f;
   // 더하기: 기본 + 품질·강화치·반지 힘(ps.dmg), 되갚음 → 곱하기: 약점·급소 (docs/밸런스_기준.md §2)

@@ -203,6 +203,7 @@ export const View = {
     const time = K.SHARED.uTime.value, D = this.dio;
     const casting = new Set(this.intents.casting), winding = new Set(this.intents.winding);
     this.placeUnits(sdt);
+    this.syncProjs(sdt, time);
     for (const [id, ev] of this.evs) {
       ev.casting = casting.has(id); ev.winding = winding.has(id);
       ev.update(sdt, time);

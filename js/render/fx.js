@@ -152,8 +152,9 @@ Object.assign(View, {
       default: break;
     }
   },
-  projectile(d) {
-    const D = this.dio, a = W3(d.from[0], d.from[1], 0.75), b = W3(d.to[0], d.to[1], 0.45), dur = (d.dur ?? 250) / 1000;
+  /** 날아가는 것의 모양: { obj, arc, trail(p, dt) } */
+  projMesh(d) {
+    const D = this.dio;
     let obj, arc = 0.35, trail = null;
     if (d.kind === 'arrow') {
       obj = new THREE.Group();
@@ -188,7 +189,26 @@ Object.assign(View, {
       trail = (p) => D.sparks.emit({ pos: p, n: 2, color: c1, color2: 0xffffff, speed: 0.3, grav: 0, life: 0.3, size: 0.12 });
       arc = d.kind === 'dart' ? 0.15 : 0.4;
     }
-    D.fx.projectile(a, b, obj, dur, arc, trail);
+    return { obj, arc, trail };
+  },
+  /** 한 번 그리고 끝나는 연출(던진 물약·주문 구슬): 실제 규칙은 이미 끝났다 */
+  projectile(d) {
+    const a = W3(d.from[0], d.from[1], 0.75), b = W3(d.to[0], d.to[1], 0.45), dur = (d.dur ?? 250) / 1000, { obj, arc, trail } = this.projMesh(d);
+    this.dio.fx.projectile(a, b, obj, dur, arc, trail);
     Sfx.play(d.kind === 'arrow' || d.kind === 'quarrel' ? 'arrow' : d.kind === 'flask' || d.kind === 'pebble' ? 'throw' : 'whoosh');
+  },
+  /** 전투 코어의 투사체(G.projs)를 매 프레임 그 자리에: 멈추면 멈추고, 닿으면 사라진다 */
+  syncProjs(dt, time) {
+    const views = (this.projViews ||= new Map()), live = new Set(), a = G.alpha ?? 1;
+    for (const pr of G.projs || []) {
+      live.add(pr);
+      let v = views.get(pr);
+      if (!v) { v = this.projMesh({ kind: pr.look }); this.dio.scene.add(v.obj); views.set(pr, v); Sfx.play(pr.look === 'arrow' || pr.look === 'quarrel' ? 'arrow' : pr.look === 'pebble' ? 'throw' : 'whoosh'); }
+      const ox = pr.ox ?? pr.x, oy = pr.oy ?? pr.y, x = ox + (pr.x - ox) * a, y = oy + (pr.y - oy) * a, moved = Math.hypot(x - v.obj.position.x, y - v.obj.position.z) > 1e-3;
+      v.obj.position.set(x, 0.62, y);
+      if (v.obj.userData.align) v.obj.lookAt(x + Math.cos(pr.ang), 0.62, y + Math.sin(pr.ang));
+      if (moved) { if (v.obj.userData.spin) v.obj.rotation.x += dt * 14; v.trail?.(v.obj.position, dt); }
+    }
+    for (const [pr, v] of views) if (!live.has(pr)) { this.dio.scene.remove(v.obj); views.delete(pr); }
   },
 });

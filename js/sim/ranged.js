@@ -1,11 +1,11 @@
-import { COMBAT } from '../data/realtime.js';
-import { S_WATER } from '../data/terrain.js';
-import { damage, push } from '../core/combat.js';
+import { damage, onEnter, push } from '../core/combat.js';
 import { fireAt, freezeAt, shock } from '../core/elements.js';
 import { canSee } from '../core/fov.js';
 import { emitStatus, snapTerrain } from '../core/snap.js';
 import { posOf, segClear } from '../core/space.js';
 import { G, I, emit, entsAt, isP, log } from '../core/state.js';
+import { COMBAT } from '../data/realtime.js';
+import { S_WATER } from '../data/terrain.js';
 import { rand } from '../util/rng.js';
 import { jo } from '../util/text.js';
 import { ACTS, foeTarget, startAct } from './action.js';
@@ -95,6 +95,7 @@ ACTS.charge = {
   update(u, a, dt) {
     const r = walk(u, Math.cos(a.ang), Math.sin(a.ang), dt, { speed: COMBAT.dashSpeed, keepFace: true });
     a.left -= r.moved;
+    if (r.cell) { G.visDirty = true; onEnter(u); if (!u.alive) return true; }
     const dx = sgn8(Math.cos(a.ang)), dy = sgn8(Math.sin(a.ang));
     if (r.body && r.body.alive && !r.body.npc) {
       const v = r.body; emit('lunge', { id: u.id, dx: Math.cos(a.ang), dy: Math.sin(a.ang) });

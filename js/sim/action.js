@@ -27,10 +27,10 @@ export function tickAct(u, dt) {
     if (a.t < a.wind - 1e-6) return;
     a.done = true; a.t = a.wind; G.intentsDirty = true;
     u.cd = a.cd ?? beatOf(u);
-    A.resolve(u, a);
+    G.curSrc = u; try { A.resolve(u, a); } finally { G.curSrc = null; } // 주문·강타의 피해도 누가 했는지 남긴다
     if (!u.alive || u.act !== a) return;
   }
-  if (A.update) { if (A.update(u, a, dt)) { u.act = null; G.intentsDirty = true; } return; }
+  if (A.update) { G.curSrc = u; let end; try { end = A.update(u, a, dt); } finally { G.curSrc = null; } if (end) { u.act = null; G.intentsDirty = true; } return; }
   if (a.t >= a.wind + a.recover - 1e-6) { u.act = null; G.intentsDirty = true; }
 }
 

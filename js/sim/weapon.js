@@ -1,8 +1,9 @@
-import { RAPIER_BEAT, WSHAPE } from '../data/realtime.js';
+import { enterCell } from '../core/clock.js';
 import { curW, push, weaponHit } from '../core/combat.js';
 import { los } from '../core/fov.js';
 import { posOf } from '../core/space.js';
 import { G, emit, isFoe, seesEnt } from '../core/state.js';
+import { RAPIER_BEAT, WSHAPE } from '../data/realtime.js';
 import { angTo, dist, faceAng, walk } from './body.js';
 import { spawnProj } from './projectile.js';
 import { inArc, inLine } from './shapes.js';
@@ -63,5 +64,5 @@ export function swing(t) {
   for (const e of hits) weaponHit(e, null, { noPush: !!sh.knock });
   if (sh.twice && t.alive) G.twin = { id: t.id, t: sh.twice };
   if (sh.knock && t.alive) { emit('shove', { x: t.x, y: t.y, dx, dy }); push(t, dx, dy, sh.knock + (G.ps.fracPush ? 1 : 0)); }
-  if (w.retreat && t.alive) walk(p, -Math.cos(ang), -Math.sin(ang), 0.1, { keepFace: true }); // 레이피어: 치고 반 걸음 물러난다
+  if (w.retreat && t.alive && walk(p, -Math.cos(ang), -Math.sin(ang), 0.1, { keepFace: true }).cell) enterCell(p); // 레이피어: 치고 반 걸음 물러난다
 }

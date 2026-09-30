@@ -1,5 +1,6 @@
 import { catOf, kindOf } from '../data/enemies.js';
 import { APPEAR, ITEMS } from '../data/items.js';
+import { RT } from '../data/realtime.js';
 import { wakeFoes } from '../sim/foes.js';
 import { cheb } from '../util/grid.js';
 import { mulberry32, pick, rand, ri, seedOr, setR, shuffle } from '../util/rng.js';
@@ -17,7 +18,7 @@ import { burnTorch } from './torch.js';
 /* ================= 새 게임 · 층 생성 ================= */
 export function newRun() {
   setR(mulberry32(seedOr(((Date.now() & 0xffffffff) ^ Math.floor(Math.random() * 1e9)) >>> 0)));
-  Object.assign(G, { floor: 1, over: false, won: false, nextId: 1, known: {}, look: {} });
+  Object.assign(G, { clock: 0, hurtLog: [], floor: 1, over: false, won: false, nextId: 1, known: {}, look: {} });
   for (const cat of ['potion', 'scroll', 'throw']) {
     const looks = shuffle(APPEAR[cat].slice());
     Object.keys(ITEMS).filter((k) => ITEMS[k].cat === cat).forEach((k, j) => { G.look[k] = { name: looks[j][0], color: looks[j][1] }; });
@@ -84,7 +85,7 @@ export function worldTick() {
   tickWorn(); // 입고 지낸 장비의 정체
   const fight = inCombat();
   if (G.ps && G.ps.regen && G.stats.turns % 2 === 0 && p.hp < p.max && !fight) heal(p, 1); // 재생 목걸이
-  for (const a of G.ents) if (a.alive && a.ally && !a.npc && a.life != null && --a.life <= 0) { a.alive = false; emit('vanish', { id: a.id }); } // 불러낸 동료는 때가 되면 사라진다
+  for (const a of G.ents) if (a.alive && a.ally && !a.npc && a.life != null && (a.life -= RT.turn) <= 0) { a.alive = false; emit('vanish', { id: a.id }); } // 불러낸 동료는 때가 되면 사라진다
   wakeFoes();
   if (G.resting && !G.over) restTick(); // 쉬기: 켜 둔 동안(끄는 것은 입력 쪽)
   if (p.alive && G.stats.turns % 6 === 0 && p.hp < p.max && !p.st.poison && !p.st.burn && !fight) { p.hp++; emit('hp', { id: 0, hp: p.hp, max: p.max }); } // 자동 회복: 전투 중에는 멈춘다

@@ -78,7 +78,7 @@ Object.assign(UI, {
     if (e.type === 'mage') extra = ` 주문: ${MAGE[e.elem].icon}`;
     if (e.poison) extra = ' 칼에 독이 묻어 있어 맞으면 중독된다.';
     if (e.armor) extra = ' 갑옷이 두껍다.';
-    const inj = [e.st.bleed ? `🩸 출혈 ${e.st.bleed}` : '', e.st.frac ? `🦴 골절 ${e.st.frac}초 · 느려진다` : '', e.st.vital ? '✧ 급소 노출 · 다음 찌르기는 치명타' : ''].filter(Boolean).join(' · ');
+    const inj = [e.st.bleed ? `🩸 출혈 ${e.st.bleed}` : '', e.st.frac ? `🦴 골절 ${Math.ceil(e.st.frac)}초 · 느려진다` : '', e.st.vital ? '✧ 급소 노출 · 다음 찌르기는 치명타' : ''].filter(Boolean).join(' · ');
     const drops = ['red', 'purple', 'green'].map((c) => { const S = STONE[DROPS[kd][c]], col = COLORS[c].css; return `<div><b style="color:${col}">● ${S.icon} ${S.name}</b> <span style="color:#9aa2bd">${S.line}</span></div>`; }).join('');
     this.info(`<h3>${e.name} <small style="color:#9aa2bd">${C.name} · HP ${e.hp}/${e.max} ${st}</small></h3><div>${B.desc}${extra}</div><div class="hint">💡 ${B.tip}</div>
       ${B.speed || B.danger ? `<div style="margin-top:4px">${B.speed === 'fast' ? '<b style="color:#ff9a6a">» 빠르다</b> ' : B.speed === 'slow' ? '<b style="color:#9ab8ff">« 느리다</b> ' : ''}${B.danger ? `⚠ ${B.danger}` : ''}</div>` : ''}

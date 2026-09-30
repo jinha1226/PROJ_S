@@ -20,7 +20,7 @@ Object.assign(UI, {
     Sfx.play('ui');
     const p = G.player, h = META && META.hero, sh = $('#sheet');
     const perk = h && h.perk && PERKS[h.perk], torch = G.torch ?? 100, tmax = G.torchMax ?? 100;
-    const st = ST.filter(([k]) => p.st[k] > 0).map(([k, ic, nm]) => `<div>${ic} ${nm} <b>${p.st[k]}초</b></div>`).join('');
+    const st = ST.filter(([k]) => p.st[k] > 0).map(([k, ic, nm]) => `<div>${ic} ${nm} <b>${Math.ceil(p.st[k])}초</b></div>`).join('');
     const auras = Object.entries(G.auras || {}).map(([k, r]) => `<div style="color:#${AURA[k].hex.toString(16).padStart(6, '0')}">◎ ${AURA[k].name} <b>${Math.max(0, r - 1)}라운드</b></div>`).join('');
     const stones = G.slots.map((q) => {
       if (!q.stone) return '<div class="st-stone empty">·<small>빈 칸</small></div>';

@@ -32,7 +32,7 @@ export const flowing = () => !!(G.player && G.player.alive && !G.over && !G.paus
 
 /** 실시간 dt(초)만큼 흘린다. 흐르지 않으면 0. 돈 틱 수를 돌려준다 */
 export function advance(dt) {
-  if (!flowing()) { G.acc = 0; return 0; }
+  if (!flowing()) { G.acc = 0; G.alpha = 1; return 0; } // 멈추면 화면은 이번 틱 자리에
   G.acc = Math.min(G.acc + dt, RT.tick * RT.maxTicks);
   let n = 0;
   while (G.acc >= RT.tick - 1e-9 && flowing()) { G.acc -= RT.tick; step(); n++; }
@@ -70,7 +70,7 @@ function moveHero(dt) {
   if (p.x !== ox || p.y !== oy) enterCell(p);
 }
 /** 새 칸: 옛 칸 규칙(물·불·줍기), 상자, 시야 */
-function enterCell(p) {
+export function enterCell(p) {
   onEnter(p);
   const c = G.chests.get(I(p.x, p.y)); if (c && !c.open) openChest(p.x, p.y);
   computeFOV(); snapVis(); noticeFoes(); snapHud();

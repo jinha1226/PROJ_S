@@ -1,10 +1,10 @@
-import { COMBAT } from '../data/realtime.js';
-import { S_ASH, S_NONE, S_WATER } from '../data/terrain.js';
 import { onEnter } from '../core/combat.js';
-import { envTick } from '../core/elements.js';
+import { envTick, statusTick } from '../core/elements.js';
 import { emitIntents, emitStatus, snapTerrain, snapVis } from '../core/snap.js';
 import { G, I, emit, entsAt, isFoe, isP, standable } from '../core/state.js';
 import { addShield } from '../core/stones.js';
+import { COMBAT } from '../data/realtime.js';
+import { S_ASH, S_NONE, S_WATER } from '../data/terrain.js';
 import { tickAct } from './action.js';
 import { initBody, walk } from './body.js';
 import { BOSS_BRAINS, bossTimers } from './boss.js';
@@ -20,7 +20,7 @@ const BRAINS = { goblin: meleeBrain, rat: meleeBrain, leech: leechBrain, shaman:
 
 /** 이 유닛이 이번 틱에 걸을 방향(길이 ≤ 1) 또는 null. 행동 중에는 서 있다 */
 function think(e) {
-  if (e.act) return null;
+  if (e.act || e.st.frozen > 0 || e.st.stun > 0) return null; // 기절·빙결: 생각도 멈춘다
   if (e.npc) return npcBrain(e);
   if (!isFoe(e)) return e.ally ? meleeBrain(e) : null;
   if (!e.awake) return null;
@@ -45,6 +45,7 @@ export function simTick(dt) {
   for (const e of G.ents) if (e.alive && e.act) tickAct(e, dt);
   heroAttack(dt);
   tickProjs(dt);
+  for (const e of G.ents) if (e.alive) statusTick(e, dt);
   holdTick(dt);
   G.envAcc = (G.envAcc || 0) + dt;
   while (G.envAcc >= COMBAT.env - 1e-9 && !G.over) { G.envAcc -= COMBAT.env; envTick(); }

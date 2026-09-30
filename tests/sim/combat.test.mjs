@@ -207,3 +207,30 @@ test('같은 칸의 둘 모두 불에 탄다(entsAt)', async () => {
   fireAt(CX + 2, CY, 3);
   assert.ok(foe(1).hp < 99 && foe(2).hp < 99);
 });
+
+test('기절한 적은 생각도 멈춘다: 주문을 되풀이해 외우지 않고, 대마법사는 순간이동하지 않는다', () => {
+  arena([[4, 0, 'mage', { cd: 0, cdInit: true, hp: 99, max: 99 }], [1, 0, 'lich', { awake: true }]]);
+  G.eq.weapon = null;
+  foe(1).st.stun = 3; foe(2).st.frozen = 3; foe(2).blinkT = 0;
+  const x0 = foe(2).x, y0 = foe(2).y;
+  run(secs(1));
+  assert.equal(events.filter((e) => e.type === 'cast').length, 0);
+  assert.deepEqual([foe(2).x, foe(2).y], [x0, y0]);
+});
+
+test('기절 1초는 언제 걸려도 1초 간다', () => {
+  for (const phase of [0, 0.5, 0.94]) {
+    arena([]); G.envAcc = phase;
+    G.player.st.stun = 1;
+    run(secs(0.9)); assert.ok(G.player.st.stun > 0, `phase ${phase}`);
+    run(secs(0.15)); assert.equal(G.player.st.stun, 0);
+  }
+});
+
+test('한 칸에 겹쳐 선 적을 쳐도 등불지기가 제 몸에 부딪히지 않는다', () => {
+  arena([[0, 0, 'goblin', { hp: 99, max: 99, atk: 0 }]], { weapon: 'mace' });
+  foe().st.stun = 99; G.ps.fracPush = 1;
+  setPos(G.player, CX - 0.45, CY); setPos(foe(), CX + 0.45, CY);
+  run(1);
+  assert.equal(G.player.hp, 40);
+});

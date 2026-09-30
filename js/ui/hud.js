@@ -112,7 +112,7 @@ Object.assign(UI, {
   pstatus(st) {
     this.lastSt = st;
     const L = [['wet', '💧', '젖음'], ['frozen', '🧊', '빙결'], ['burn', '🔥', '화상'], ['poison', '☠', '중독'], ['stun', '💫', '기절'], ['haste', '💨', '가속'], ['immune', '🛡', '해독']];
-    $('#pstatus').innerHTML = (this.shieldV > 0 ? `<span class="pill" style="border-color:#9fd8ff">🛡${this.shieldV}</span> ` : '') + L.filter(([k]) => st[k] > 0).map(([k, ic]) => `<span class="pill">${ic}${st[k]}</span>`).join(' ');
+    $('#pstatus').innerHTML = (this.shieldV > 0 ? `<span class="pill" style="border-color:#9fd8ff">🛡${this.shieldV}</span> ` : '') + L.filter(([k]) => st[k] > 0).map(([k, ic]) => `<span class="pill">${ic}${Math.ceil(st[k])}</span>`).join(' ');
   },
   hud(d) {
     this.lastHud = d; this.shieldV = d.shield;

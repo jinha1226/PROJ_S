@@ -187,16 +187,23 @@ export function envTick() {
     if (G.fire[i] > 0) applyFire(e, 2);
     if (e.alive && G.cloud[i] === C_STEAM) { damage(e, 1, 'steam'); if (e.alive && e.st.wet < 2) { e.st.wet = 2; emitStatus(e); } }
   }
-  for (const e of G.ents) {
-    if (!e.alive) continue;
-    const st = e.st, i = I(e.x, e.y), before = JSON.stringify(st);
-    if (st.burn > 0) { if (G.surf[i] === S_WATER) st.burn = 0; else { damage(e, 1, 'burn'); st.burn--; } }
-    if (e.alive && st.poison > 0) { damage(e, 1, 'poison'); st.poison--; }
-    if (e.alive && st.bleed > 0) { damage(e, 1, 'bleed'); st.bleed--; }
-    if (st.frac > 0) st.frac--;
-    if (G.surf[i] === S_WATER) st.wet = 3; else if (st.wet > 0) st.wet--;
-    if (st.haste > 0) st.haste--; if (st.immune > 0) st.immune--;
-    if (st.frozen > 0) st.frozen--; if (st.stun > 0) st.stun--; if (st.fear > 0) st.fear--;
-    if (e.alive && JSON.stringify(st) !== before) emitStatus(e);
-  }
+}
+
+/* ---------- 한 유닛의 상태이상(틱마다, 초 단위): 지속은 흐른 시간만큼 줄고, 출혈·중독·화상은 그 유닛의 1초마다 1 ---------- */
+const TIMED = ['frac', 'haste', 'immune', 'frozen', 'stun', 'fear'];
+const stKey = (st) => Object.keys(st).map((k) => Math.ceil(st[k] - 1e-6)).join();
+export function statusTick(e, dt) {
+  const st = e.st, i = I(e.x, e.y), before = stKey(st);
+  for (const k of TIMED) if (st[k] > 0) st[k] = st[k] - dt < 1e-6 ? 0 : st[k] - dt;
+  if (G.surf[i] === S_WATER) { st.wet = 3; st.burn = 0; } else if (st.wet > 0) st.wet = st.wet - dt < 1e-6 ? 0 : st.wet - dt;
+  if (st.burn > 0 || st.poison > 0 || st.bleed > 0) {
+    e.dotT = (e.dotT || 0) + dt;
+    if (e.dotT >= 1 - 1e-6) {
+      e.dotT -= 1;
+      if (st.burn > 0) { damage(e, 1, 'burn'); st.burn--; }
+      if (e.alive && st.poison > 0) { damage(e, 1, 'poison'); st.poison--; }
+      if (e.alive && st.bleed > 0) { damage(e, 1, 'bleed'); st.bleed--; }
+    }
+  } else e.dotT = 0;
+  if (e.alive && stKey(st) !== before) emitStatus(e);
 }
