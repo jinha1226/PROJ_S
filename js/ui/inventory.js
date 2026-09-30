@@ -179,7 +179,7 @@ Object.assign(UI, {
       if (!fullyKnown(it)) flags.push(`<div style="color:#bcd4ff">? ${gearName(it)}: 모르는 효과가 있다</div>`);
     }
     return `${row('최대 HP', `${H.unit.max} <small style="color:#9aa2bd">기본 ${H.base}</small>`, 'maxHp')}${row('방어', `${s.def} <small style="color:#9aa2bd">맞을 때 0~${s.def} 줄인다</small>`, 'def', s.capped.def)}${row('회피', `${s.eva}% / ${CAPS.eva}%`, 'eva', s.capped.eva)}
-      ${row('막기', `${s.block}%`, 'block', s.capped.block)}${row('피해', `${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} <small>${FORMS[w.form].name} · ${beatOfWeapon(w)}초마다</small>`, 'dmg')}${row('급소 확률', `${s.crit}%${s.critMul > 2 ? ` · ×${s.critMul}` : ''}`, 'crit')}${s.acc ? row('명중', `${100 + s.acc}%`, 'acc') : ''}
+      ${row('막기', `${s.block}%`, 'block', s.capped.block)}${row('피해', `${w.dmg[0] + s.dmg}–${w.dmg[1] + s.dmg} <small>${FORMS[w.form].name} · ${beatOfWeapon(w)}초마다</small>`, 'dmg')}${row('급소 확률', `${s.crit}%${s.critMul > 2 ? ` · ×${s.critMul}` : ''}`, 'crit')}${s.acc ? row('명중', `${100 + s.acc}%`, 'acc') : ''}${s.spell ? row('주문력', `${s.spell} <small style="color:#9aa2bd">무기가 아닌 스킬 피해·치유·보호막 +${s.spell}</small>`, 'spell') : ''}${s.speed ? row('이동', `${s.speed > 0 ? '+' : ''}${s.speed}%`, 'speed') : ''}
       ${['fire', 'frost', 'bolt', 'poison'].map((k) => row(`${ELEM[k].name} 저항`, `${RES_DOT(s.res[k])} <small style="color:#9aa2bd">받는 피해 ×${RES_MUL[s.res[k]]}</small>`, 'res' + k)).join('')}
       <div class="gtxt" style="margin-top:6px">${flags.join('') || '<span style="color:#9aa2bd">특수 효과 없음</span>'}</div>`;
   },

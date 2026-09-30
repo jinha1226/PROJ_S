@@ -72,7 +72,6 @@ export function setClass(u, build) {
   u.klass = k;
   u.skillInfo = Object.fromEntries(k.skills.map((s) => [s.id, s]));
   u.scd = u.scd || {};
-  u.classHp = Math.round(Object.entries(b.levels || {}).reduce((a, [c, lv]) => a + (BASE[c] ? BASE[c].hpLv * lv : 0), 0));
   return k;
 }
 

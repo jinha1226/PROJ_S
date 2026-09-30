@@ -34,7 +34,7 @@ export function arena(foes = [], o = {}) {
   for (const k of Object.keys(G.eq)) G.eq[k] = null;
   if (o.body) G.eq.body = makeGear(o.body, { known: true });
   G.xp = 0; G.level = 1; G.prog = newProg(); G.heroBase = 30; G.vengeance = 0; G.auras = {}; G.darkAmbushUsed = false;
-  Object.assign(p, { fx: {}, scd: {}, classHp: 0 }); setClass(p, o.cls || { levels: {} });
+  Object.assign(p, { fx: {}, scd: {} }); setClass(p, o.cls || { levels: {} });
   G.eq.weapon = makeGear(o.weapon ?? 'sword'); refreshStats();
   G.ps.eva = 0; G.ps.block = 0; G.ps.def = 0; G.ps.acc = 0; G.ps.crit = 0; G.ps.vamp = 0; G.ps.torchSlow = 0; G.ps.torchCost = 0;
   Object.assign(p, { x: CX, y: CY, hp: 40, max: 40, shield: 0, alive: true, st: newSt(), face: [1, 0], ang: 0, act: null });

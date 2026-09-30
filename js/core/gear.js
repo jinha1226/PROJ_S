@@ -1,14 +1,15 @@
+import { BASE } from '../data/classes.js';
 import { kindOf } from '../data/enemies.js';
 import { AMULETS, ART_A, ART_B, BAG_MAX, BASE_EVA, BRANDS, CAPS, EGOS, ELEM, GEAR_BASES, GEAR_DROP, JEWEL_LOOK, QUALITY, RANDART_COSTS, RANDART_PROPS, RINGS, SLOTS, SLOT_NAME, UNRANDS, clampRes, dropTable, fitsSlot, hasQuality, isJewel, isWeapon, newBase, plusMax, twoHanded, weaponOf } from '../data/gear.js';
 import { T_FLOOR, T_STAIRS, ZONE_FLOORS } from '../data/terrain.js';
 import { DARK, torchTier } from '../data/torch.js';
 import { WEAPONS, WEAPON_IDS, WPN } from '../data/weapons.js';
 import { pick, rand, ri, shuffle, wpick } from '../util/rng.js';
+import { jo } from '../util/text.js';
 import { addLoot } from './combat.js';
 import { addItem } from './items.js';
 import { META, saveMeta } from './meta.js';
 import { G, Game, I, emit, inb, log, standable } from './state.js';
-import { jo } from '../util/text.js';
 
 /* ================= 장비 (DCSS식 — docs/설계_아이템_장비.md) =================
    장비 = { uid, base, plus, q(품질 1~4), brand, ego, jt(장신구 종류), jv(반지 수치), je(저항 원소), art(랜다트), un(픽다트),
@@ -175,14 +176,14 @@ export function knownView(it) {
   if (isJewel(it) && !it.art && !jewelKnown(it)) v.jt = '?';
   return v;
 }
-export function calcStats(eq) {
+export function calcStats(eq, levels = heldLevels()) {
   const s = { maxHp: 0, def: 0, eva: BASE_EVA, block: 0, dmg: 0, crit: 0, critMul: 2, acc: 0, vision: 0, orb: { red: 0, purple: 0, green: 0 },
     res: { fire: 0, frost: 0, bolt: 0, poison: 0 }, brand: null, egos: new Set(), legend: new Set(), colorCd: { red: 0, purple: 0, green: 0 },
     torchSlow: 0, torchCost: 0, lampBonus: 0, floorShield: 0, thorns: 0, patience: 0, vengeance: 0, insight: false, noSlide: false, wetImm: false, wallDmg: 0, throwRange: 0,
     seeing: false, regen: false, chainStart: false, reflect: 0, silence: false, bleed: 0, fracPush: false, fracBonus: 0, vamp: false, reso: false,
     // 예전 옵션 자리(쓰는 곳이 남아 있어 0으로 둔다)
     skillCd: {}, skillDmg: 0, redTwice: 0, purpleHeal: 0, greenShield: 0, wetDmg: 0, weakDmg: 0, dot: 0, waterEva: 0, burnImm: false, potion: 0, autoId: false, throwArea: false, torchFire: 0, elem: { fire: 0, frost: 0, bolt: 0, poison: 0 },
-    src: { eva: [['기본', BASE_EVA]] }, capped: {} };
+    spell: 0, speed: 0, src: { eva: [['기본', BASE_EVA]] }, capped: {} };
   const add = (k, v, lab) => { (s.src[k] ||= []).push([lab, v]); };
   const brand = (b) => { s.brand = b; if (b === 'blood') s.bleed += 2; if (b === 'shatter') { s.fracPush = true; s.fracBonus = 2; } if (b === 'pierce') s.critMul = 3; if (b === 'vamp') s.vamp = true; if (b === 'reso') s.reso = true; };
   const ego = (g, lab) => {
@@ -224,10 +225,24 @@ export function calcStats(eq) {
     }
     if (it.un) s.legend.add(it.un);
   }
+  classStats(s, levels, add);
   const cap = (k, max) => { if (s[k] > max) { s[k] = max; s.capped[k] = true; } if (s[k] < 0) s[k] = 0; };
   cap('def', CAPS.def); cap('eva', CAPS.eva); cap('block', CAPS.block);
   for (const k in s.res) s.res[k] = clampRes(s.res[k]);
   return s;
+}
+/** Class 레벨만큼 전투 수치(docs/설계_직업.md): 레벨마다 더해 합한 뒤 내림. 출처 목록에 Class 줄이 따로 선다 */
+function classStats(s, levels, add) {
+  for (const [c, lv] of Object.entries(levels || {})) {
+    const B = BASE[c]; if (!B || !(lv > 0)) continue; const lab = `${B.name} ${lv}`;
+    for (const [k, per] of Object.entries(B.stat)) { const v = Math.trunc(Math.round(per * lv * 1e6) / 1e6); if (!v) continue; s[k] += v; add(k, v, lab); }
+    const r = (B.resAt || []).filter((L) => lv >= L).length; if (r) for (const e of Object.keys(s.res)) { s.res[e] += r; add('res' + e, r, lab); }
+  }
+}
+/** 지금 장비를 입은 사람의 Class 레벨(던전 = 등불지기 유닛, 정착지 = 등불지기 기록) */
+function heldLevels() {
+  if (Game.mode === 'town' && META && META.hero) return (META.hero.prog && META.hero.prog.build.levels) || {};
+  return (G.player && G.player.build && G.player.build.levels) || {};
 }
 /** 비교용 점수(대략) — 아는 것만 */
 export function gearScore(it) {
@@ -246,7 +261,7 @@ export function holder() {
 }
 export function refreshStats() {
   const H = holder(); if (!H.eq) return;
-  const s = calcStats(H.eq), u = H.unit, mx = H.base + s.maxHp + ((!H.town && u && u.classHp) || 0); // Class 레벨마다 HP(data/classes.js hpLv)
+  const s = calcStats(H.eq), u = H.unit, mx = H.base + s.maxHp;
   if (!H.town) { G.ps = s; if (s.insight && G.weakKnown) for (const c of ['beast', 'armor', 'bone']) G.weakKnown[c] = true; }
   if (u && u.max !== mx) { u.hp = Math.max(1, Math.min(mx, u.hp + Math.max(0, mx - u.max))); u.max = mx; if (!H.town) emit('hp', { id: 0, hp: u.hp, max: u.max }); }
   return s;

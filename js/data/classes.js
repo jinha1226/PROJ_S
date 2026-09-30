@@ -8,14 +8,14 @@ export const ROLES = {
   support: { name: '서포터', icon: '✦', css: '#d6a0ff' },
 };
 
-/** 기본 Class: 스킬 셋은 Class 레벨 1 · 3 · 5에 열린다. hpLv = Class 레벨마다 최대 HP */
+/** 기본 Class: 스킬 셋은 Class 레벨 1 · 3 · 5에 열린다. stat = Class 레벨마다 전투 수치(합한 뒤 내림, 이동은 %), resAt = 모든 원소 저항 +1이 붙는 레벨 */
 export const BASE = {
-  fighter: { name: '파이터', role: 'tank', epi: '방패의', trait: 'stand', skills: ['f_block', 'f_taunt', 'f_bash'], hpLv: 1, line: '앞을 막는 벽' },
-  rogue: { name: '로그', role: 'dps', epi: '그림자의', trait: 'ambush', skills: ['r_stab', 'r_evade', 'r_dash'], hpLv: 0.4, line: '빈틈을 찌르는 암살자' },
-  ranger: { name: '레인저', role: 'dps', epi: '사냥의', trait: 'range', skills: ['ra_pierce', 'ra_trap', 'ra_leap'], hpLv: 0.4, line: '거리를 지키는 사냥꾼' },
-  wizard: { name: '위저드', role: 'dps', epi: '비전의', trait: 'elem', skills: ['w_fire', 'w_chain', 'w_ray'], hpLv: 0.2, line: '원소를 이어 붙여 터뜨리는 술사' },
-  cleric: { name: '클레릭', role: 'healer', epi: '기도의', trait: 'life', skills: ['c_heal', 'c_shield', 'c_ward'], hpLv: 0.6, line: '신앙으로 지키는 사제' },
-  bard: { name: '바드', role: 'support', epi: '노래의', trait: 'foresight', skills: ['b_disc', 'b_song', 'b_fog'], hpLv: 0.5, line: '노래로 판을 흔드는 음유시인' },
+  fighter: { name: '파이터', role: 'tank', epi: '방패의', trait: 'stand', skills: ['f_block', 'f_taunt', 'f_bash'], line: '앞을 막는 벽', stat: { maxHp: 1, def: 0.3, block: 2, speed: -1 } },
+  rogue: { name: '로그', role: 'dps', epi: '그림자의', trait: 'ambush', skills: ['r_stab', 'r_evade', 'r_dash'], line: '빈틈을 찌르는 암살자', stat: { maxHp: 0.4, eva: 1.5, dmg: 0.1, crit: 2, speed: 1 } },
+  ranger: { name: '레인저', role: 'dps', epi: '사냥의', trait: 'range', skills: ['ra_pierce', 'ra_trap', 'ra_leap'], line: '거리를 지키는 사냥꾼', stat: { maxHp: 0.4, eva: 1, dmg: 0.1, speed: 1.5 } },
+  wizard: { name: '위저드', role: 'dps', epi: '비전의', trait: 'elem', skills: ['w_fire', 'w_chain', 'w_ray'], line: '원소를 이어 붙여 터뜨리는 술사', stat: { maxHp: 0.2, spell: 0.4 }, resAt: [4, 8] },
+  cleric: { name: '클레릭', role: 'healer', epi: '기도의', trait: 'life', skills: ['c_heal', 'c_shield', 'c_ward'], line: '신앙으로 지키는 사제', stat: { maxHp: 0.6, def: 0.2, block: 1, spell: 0.3 }, resAt: [5, 10] },
+  bard: { name: '바드', role: 'support', epi: '노래의', trait: 'foresight', skills: ['b_disc', 'b_song', 'b_fog'], line: '노래로 판을 흔드는 음유시인', stat: { maxHp: 0.5, eva: 1, dmg: 0.1, speed: 1, spell: 0.2 } },
 };
 export const BASE_IDS = Object.keys(BASE);
 

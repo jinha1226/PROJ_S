@@ -180,11 +180,20 @@ export function useSkill(u, id, x, y) {
   emit('skillName', { id: u.id, name: CSKILLS[id].name, icon: CSKILLS[id].icon });
   return true;
 }
+/** 주문력: 무기가 아닌 피해·치유·보호막 +주문력(구역의 초마다 치유는 절반) */
+const ZONE_HEAL = new Set(['dr_bloom', 'hp_sanct']);
+function withSpell(u, id, P) {
+  const sp = isP(u) ? (G.ps && G.ps.spell) || 0 : u.spell || 0; if (!sp) return P;
+  const q = { ...P };
+  for (const k of ['dmg', 'burst', 'shield']) if (q[k]) q[k] += sp;
+  if (q.heal) q.heal += ZONE_HEAL.has(id) ? Math.floor(sp / 2) : sp;
+  return q;
+}
 ACTS.skill = {
   resolve(u, a) {
     if (a.T.t && !a.T.t.alive) { u.scd[a.id] = 0; return; } // 시전 중 대상이 쓰러지면 쿨타임을 돌려준다
     if (a.T.t && a.T.t !== u) { a.T.x = a.T.t.x; a.T.y = a.T.t.y; if (CSKILLS[a.id].tgt !== 'ally') a.T.ang = angTo(u, a.T.t); }
-    RUN[a.id](u, a.P, a.T);
+    RUN[a.id](u, withSpell(u, a.id, a.P), a.T);
     if (isP(u)) log(`${CSKILLS[a.id].icon} ${CSKILLS[a.id].name}.`, 'info');
   },
 };

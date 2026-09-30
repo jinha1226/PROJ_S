@@ -125,10 +125,21 @@ test('AI: 힘 모으는 적이 있으면 끊는 스킬부터', () => {
   assert.ok(pick && (pick.id === 'b_disc' || pick.id === 'b_song'), JSON.stringify(pick));
 });
 
-test('등불지기 Class HP: 파이터 10은 HP +10', () => {
-  arena([], { cls: L({ fighter: 10 }) });
-  setClass(G.player, L({ fighter: 10 }));
-  assert.equal(G.player.classHp, 10);
+test('Class 수치: 파이터 10 = HP +10 · 방어 +3 · 막기 +20% · 이동 −10%, 위저드 10 = 주문력 4 · 원소 저항 +2', async () => {
+  const { refreshStats } = await import('../../js/core/gear.js');
+  arena([], { cls: L({ fighter: 10 }) }); refreshStats();
+  const f = G.ps.src; assert.ok(f.maxHp.some(([l, v]) => l === '파이터 10' && v === 10)); assert.ok(f.def.some(([l, v]) => l === '파이터 10' && v === 3)); assert.equal(G.ps.speed, -10);
+  arena([], { cls: L({ wizard: 10 }) }); refreshStats();
+  assert.equal(G.ps.spell, 4); assert.equal(G.ps.res.fire, 2);
+});
+
+test('주문력이 스킬 피해와 치유에 더해진다', async () => {
+  const { refreshStats } = await import('../../js/core/gear.js');
+  arena([[2, 0, 'goblin', { hp: 99, max: 99, atk: 0 }]], { cls: { levels: { wizard: 10 }, loadout: ['w_chain'] } }); refreshStats();
+  G.eq.weapon = null; foe().st.stun = 99; run(1);
+  useSkill(G.player, 'w_chain', CX + 2, CY); run(secs(0.4));
+  const hit = events.find((e) => e.type === 'hit' && e.id === foe().id && e.kind === 'shock');
+  assert.ok(hit && hit.amt >= Math.ceil((5 * 1.25 + 4) * 1.5) - 1, JSON.stringify(hit));
 });
 
 test('검토: 점멸로 옮기면 그 칸의 아이템을 줍고 시야가 다시 선다', () => {

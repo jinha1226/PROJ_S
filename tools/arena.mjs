@@ -7,6 +7,7 @@ import { G, isFoe } from '../js/core/state.js';
 import { COMBAT } from '../js/data/realtime.js';
 import { shapeOf } from '../js/sim/weapon.js';
 import { rand } from '../js/util/rng.js';
+import { refreshStats } from '../js/core/gear.js';
 import { arena, events } from '../tests/sim/harness.mjs';
 import { BASE, BASE_IDS, PAIRS, ROLES } from '../js/data/classes.js';
 import { classOf } from '../js/sim/classes.js';
@@ -55,7 +56,7 @@ function botDir() {
 
 function fight(pack, seed, cls) {
   arena(pack.foes.map(([x, y, type, o = {}]) => [x, y, type, { awake: true, ...o }]), { weapon: WEAPON, body: 'body_cloth', seed, size: 5, cls });
-  const p = G.player; p.hp = p.max = 30 + (p.classHp || 0); G.prog.level = 10; // 싸우는 도중 레벨업 회복이 끼지 않게
+  refreshStats(); const p = G.player; p.hp = p.max = 30 + (G.ps.maxHp || 0); G.prog.level = 10; // 싸우는 도중 레벨업 회복이 끼지 않게
   G.hurtLog = { push: (x) => { const k = x.who + (x.kind !== 'hit' ? `·${x.kind}` : ''); BY[k] = (BY[k] || 0) + x.amt; }, length: 0, shift() {}, slice: () => [] }; // 누구에게 얼마나 맞았나
   let t = 0;
   for (; t < 120 / 0.05 && p.alive && foes().length; t++) {

@@ -28,6 +28,7 @@ export function speedOf(e) {
   if (e.st.frac > 0) v *= 0.5;
   if (e.st.haste > 0) v *= 1.5;
   if (e.fx && e.fx.haste) v *= 1 + e.fx.haste.v;
+  if (isP(e) && G.ps && G.ps.speed) v *= 1 + G.ps.speed / 100; // Class 이동(%)
   return v;
 }
 
