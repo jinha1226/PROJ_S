@@ -1,16 +1,22 @@
+/** 생활 직업 다섯 (docs/설계_정착지_2단계.md §2). b = 일하는 방(목수는 어디서나), spec = 특기 일 */
 export const JOBS = {
-  keeper: { name: '제단지기', b: 'altar', work: 'tend' },
-  blacksmith: { name: '대장장이', b: 'forge', work: 'hammer' },
-  herbalist: { name: '약초꾼', b: 'herb', work: 'farm' },
-  hunter: { name: '사냥꾼', b: 'hunter', work: 'carve' },
-  scholar: { name: '학자', b: 'library', work: 'read' },
-  cook: { name: '요리사', b: 'inn', work: 'stir' },
-  fisher: { name: '어부', b: 'inn', work: 'stir' },
-  boatman: { name: '뱃사공', b: 'storage', work: 'carve' },
-  gravekeeper: { name: '묘지기', b: 'altar', work: 'tend' },
-  miner: { name: '광부', b: 'forge', work: 'hammer' },
-  pilgrim: { name: '순례자', b: 'altar', work: 'tend' },
+  blacksmith: { name: '대장장이', icon: '🔨', b: 'forge', work: 'hammer', spec: ['craft'] },
+  alchemist: { name: '연금술사', icon: '⚗', b: 'herb', work: 'farm', spec: ['craft'] },
+  scholar: { name: '학자', icon: '📜', b: 'library', work: 'read', spec: ['craft'] },
+  cook: { name: '요리사', icon: '🍲', b: 'inn', work: 'stir', spec: ['cook', 'farm'] },
+  carpenter: { name: '목수', icon: '🪚', b: null, work: 'carve', spec: ['build'] },
 };
+export const JOB_IDS = Object.keys(JOBS);
+/** 출신(옛 직업): 모습과 사연 한 줄. 새 주민은 직업마다 이 중 하나로 온다 */
+export const ORIGINS = {
+  blacksmith: { name: '대장장이', job: 'blacksmith' }, miner: { name: '광부', job: 'blacksmith' },
+  herbalist: { name: '약초꾼', job: 'alchemist' },
+  scholar: { name: '학자', job: 'scholar' }, keeper: { name: '제단지기', job: 'scholar' }, gravekeeper: { name: '묘지기', job: 'scholar' }, pilgrim: { name: '순례자', job: 'scholar' },
+  cook: { name: '요리사', job: 'cook' }, fisher: { name: '어부', job: 'cook' }, hunter: { name: '사냥꾼', job: 'cook' },
+  boatman: { name: '뱃사공', job: 'carpenter' },
+};
+/** 일하는 방 이름(없으면 '어디서나') */
+export const jobPlace = (job) => (JOBS[job] && JOBS[job].b ? JOBS[job].b : null);
 
 export const TRAITS = [['H', '정직·겸손'], ['E', '감정성'], ['X', '외향성'], ['A', '원만성'], ['C', '성실성'], ['O', '개방성']];
 
@@ -27,7 +33,7 @@ export const SKINS = [0xffd7b0, 0xf1c29a, 0xd9a47a, 0xb87a52];
 
 export const HAIRS = [0x3a2618, 0x6a4020, 0xc89a4a, 0x2a2a30, 0xe0e0e0, 0xb04a2a];
 
-export const JOB_CLOTH = { keeper: 0x8a7ab0, blacksmith: 0x6a5a4a, herbalist: 0x6aa04a, hunter: 0x8a6a3a, scholar: 0x5a4aa0, cook: 0xe0d8c8, fisher: 0x4a7ab0, boatman: 0x3a6a8a, gravekeeper: 0x5a5a6a, miner: 0x9a7a4a, pilgrim: 0xc8b890 };
+export const JOB_CLOTH = { alchemist: 0x6aa04a, carpenter: 0x9a6a3a, keeper: 0x8a7ab0, blacksmith: 0x6a5a4a, herbalist: 0x6aa04a, hunter: 0x8a6a3a, scholar: 0x5a4aa0, cook: 0xe0d8c8, fisher: 0x4a7ab0, boatman: 0x3a6a8a, gravekeeper: 0x5a5a6a, miner: 0x9a7a4a, pilgrim: 0xc8b890 };
 
 export const MOODS = ['😠', '😟', '🙂', '😊', '😄'];
 

@@ -305,7 +305,7 @@ function furnCount(S = st()) { const c = {}; for (const f of [...S.furn, ...S.bp
 export function neededRooms(S = st()) {
   const c = furnCount(S), out = [], beds = META.npcs.length - (c.bed || 0);
   if (beds > 0) out.push(['bedroom', beds >= 4 ? 'L' : beds >= 2 ? 'M' : 'S']);
-  for (const b of new Set(META.npcs.map((n) => JOBS[n.job].b))) {
+  for (const b of new Set(META.npcs.map((n) => JOBS[n.job].b).filter(Boolean))) {
     const R = ROOMS[b]; if (!R || b === 'bedroom') continue;
     if (Object.keys(R.need).some((k) => !c[k])) out.push([b, 'M']);
   }

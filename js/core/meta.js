@@ -3,7 +3,7 @@ import { CLASS_RULE } from '../data/classes.js';
 import { GEAR_BASES } from '../data/gear.js';
 import { APPEAR, ITEMS } from '../data/items.js';
 import { LEVEL_XP } from '../data/stones.js';
-import { BLD, CRAFT_B, HAIRS, HERO_NAMES, JOBS, JOB_CLOTH, NAMES, RECIPES, SKINS, TRAITS, adj } from '../data/town.js';
+import { BLD, CRAFT_B, HAIRS, HERO_NAMES, JOBS, JOB_CLOTH, JOB_IDS, NAMES, ORIGINS, RECIPES, SKINS, TRAITS, adj } from '../data/town.js';
 import { FORMS, WPN } from '../data/weapons.js';
 import { validLevels } from '../sim/classes.js';
 import { pick, rand, ri, shuffle } from '../util/rng.js';
@@ -16,10 +16,10 @@ import { ageVisitors, rollVisitors } from './visitors.js';
 export let META = null;
 
 export function defaultMeta() {
-  META = { v: 10, gen: 0, visits: 0, cleared: [false, false, false, false], npcs: [], newNpcs: [], buildings: { plaza: { shown: true }, gate: { shown: true }, altar: { shown: true }, storage: { shown: true }, forge: { shown: true } },
-    mats: { 약초: 2, 가죽: 1, 광석: 2 }, items: { heal: 1, ember_jar: 1 }, gear: [], recipes: {}, hero: null, fallen: [], closed: {}, buff: null, ending: null,
+  META = { v: 11, gen: 0, visits: 0, cleared: [false, false, false, false], npcs: [], newNpcs: [], buildings: { plaza: { shown: true }, gate: { shown: true }, altar: { shown: true }, storage: { shown: true }, forge: { shown: true } },
+    mats: { 약초: 2, 가죽: 1, 광석: 2, 마석: 5 }, items: { heal: 1, ember_jar: 1 }, gear: [], recipes: {}, hero: null, fallen: [], closed: {}, buff: null, ending: null,
     lit: [false, false, false, false], visitors: [], lore: [], glowMods: [], rememberedKeepers: [], needSuccessor: false, watcher: null, unrandsSeen: [], relics: [] };
-  const k = makeNpc('keeper'), b = makeNpc('blacksmith'); META.npcs.push(k); initRel(k); META.npcs.push(b); initRel(b);
+  const k = makeNpc('keeper'), b = makeNpc('blacksmith'); META.npcs.push(k); initRel(k); META.npcs.push(b); initRel(b); // 제단지기 출신 학자 · 대장장이
   migrateTown(META); // 모닥불 · 출발문 · 재료 더미 · 제단 + 대장간
   return META;
 }
@@ -36,6 +36,7 @@ function migrateMeta(M) {
   if (M.v < 8) { migrateSets(M); M.v = 8; }
   if (M.v < 9 || !M.settle) { migrateTown(M); M.v = 9; } // 고정 건물 → 방 (docs/설계_정착지_건설.md)
   if (M.v < 10) { migrateProg(M); M.v = 10; } // 성장: 레벨 10 · Class 점수 (docs/설계_직업.md)
+  if (M.v < 11) { migrateColony(M); M.v = 11; } // 정착지 2단계: 생활 직업 다섯 · 시간 · 마석 경제 (docs/설계_정착지_2단계.md)
   M.rememberedKeepers ||= [];
   if (M.hero) { M.hero.torch ??= 100; M.hero.look ||= {}; if (!M.hero.look.ember_jar) M.hero.look.ember_jar = { name: '불씨 단지', color: 0xffc45c }; M.hero.known ||= {}; M.hero.known.ember_jar = true; }
 }
@@ -47,6 +48,18 @@ function migrateProg(M) {
     h.prog = { level: lv, xp: CLASS_RULE.xp[lv - 1], points: lv - spentOf(b), build: b }; delete h.cls;
   }
   for (const n of [...(M.npcs || []), ...(M.newNpcs || []), ...(M.visitors || []).map((v) => v.npc)]) if (n && !n.prog) n.prog = newProg();
+}
+/** v10 → v11: 옛 직업 → 출신 + 생활 직업, 기름·얼음 → 마석, 식량·시간·일 */
+function migrateColony(M) {
+  for (const n of [...(M.npcs || []), ...(M.newNpcs || []), ...(M.visitors || []).map((v) => v.npc)]) {
+    if (!n) continue;
+    if (!JOBS[n.job]) { n.origin = n.job; n.job = (ORIGINS[n.job] || ORIGINS.cook).job; }
+    n.origin ||= n.job; n.work ||= { auto: true, pri: {} };
+  }
+  if (M.hero && M.hero.job && !JOBS[M.hero.job] && ORIGINS[M.hero.job]) { M.hero.origin = M.hero.job; M.hero.job = ORIGINS[M.hero.job].job; }
+  const m = M.mats || (M.mats = {});
+  for (const k of ['기름', '얼음']) if (m[k]) { m.마석 = (m.마석 || 0) + m[k]; delete m[k]; }
+  if (M.settle) { const st = M.settle.stock || (M.settle.stock = {}); st.식량 ??= 20; st.식사 ??= 0; }
 }
 function migrate4(M) {
   M.gear = [...(M.weapons || []).map(craftWeapon), ...(M.armors || []).map(craftArmor)];
@@ -62,12 +75,18 @@ function migrate4(M) {
 
 export function saveMeta() { try { if (META) localStorage.setItem('torch-meta-v3', JSON.stringify(META)); } catch (_) { /* 저장 실패는 무시 */ } }
 
-export function makeNpc(job) {
-  const all = ['blacksmith', 'herbalist', 'hunter', 'scholar', 'cook'], everyone = [...(META?.npcs || []), ...(META?.newNpcs || []), ...(META?.visitors || []).map((v) => v.npc)];
-  if (!job) { const have = new Set(everyone.map((n) => n.job)), miss = all.filter((j) => !have.has(j)); job = miss.length && rand() < 0.75 ? pick(miss) : pick(all); }
+/**
+ * 새 주민. origin = 출신(옛 직업 — 모습과 사연), job = 생활 직업 다섯 중 하나(docs/설계_정착지_2단계.md §2).
+ * 인자는 출신이나 직업 어느 쪽이든 된다. 없으면 마을에 없는 직업 쪽으로 75% 기운다
+ */
+export function makeNpc(want) {
+  const everyone = [...(META?.npcs || []), ...(META?.newNpcs || []), ...(META?.visitors || []).map((v) => v.npc)];
+  let origin = ORIGINS[want] ? want : null, job = origin ? ORIGINS[origin].job : JOBS[want] ? want : null;
+  if (!job) { const have = new Set(everyone.map((n) => n.job)), miss = JOB_IDS.filter((j) => !have.has(j)); job = miss.length && rand() < 0.75 ? pick(miss) : pick(JOB_IDS); }
+  if (!origin) origin = pick(Object.keys(ORIGINS).filter((o) => ORIGINS[o].job === job));
   const used = new Set(everyone.map((n) => n.name)), free = NAMES.filter((x) => !used.has(x));
   const t = {}; for (const [k] of TRAITS) t[k] = ri(-2, 2);
-  return { id: 'n' + Math.floor(rand() * 1e9).toString(36), name: free.length ? pick(free) : pick(NAMES), job, t, mood: 0, rel: {}, look: { skin: pick(SKINS), hair: pick(HAIRS), cloth: JOB_CLOTH[job] }, prog: newProg() };
+  return { id: 'n' + Math.floor(rand() * 1e9).toString(36), name: free.length ? pick(free) : pick(NAMES), job, origin, t, mood: 0, rel: {}, look: { skin: pick(SKINS), hair: pick(HAIRS), cloth: JOB_CLOTH[origin] ?? JOB_CLOTH[job] }, prog: newProg(), work: { auto: true, pri: {} } };
 }
 
 /** 궁합: 원만할수록, 성실성·정직이 비슷할수록 좋다. 외향성은 비슷한 사람끼리 편하다(과묵한 둘도 서로 싫어하지 않는다) */

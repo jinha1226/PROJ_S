@@ -53,7 +53,7 @@ Object.assign(Town, {
     if (META.npcs.length === 1) { const n = META.npcs[0]; this.torchScene(n, `${jo(n.name, '이가')} 말없이 횃불을 들었다. 남은 사람은 ${n.name}뿐이었다.`); return; }
     const vs = volunteers();
     const cards = vs.map((n, k) => { const pk = perkOf(n), line = n.t.E <= -1 ? VOLUNTEER.lowE : n.t.H >= 1 ? VOLUNTEER.highH : n.t.A >= 1 ? VOLUNTEER.highA : VOLUNTEER.other;
-      return `<button class="vol" data-v="${k}"><b>${n.name}</b><small>${summary(n)} · ${jo(BLD[JOBS[n.job].b].name, '이가')} 빈다</small><span class="vline">“${line}”</span><span class="perk">${pk ? `✦ ${PERKS[pk].name}: ${PERKS[pk].desc}` : '✦ 특별한 시작 특성 없음'}</span></button>`; }).join('');
+      return `<button class="vol" data-v="${k}"><b>${n.name}</b><small>${summary(n)} · ${JOBS[n.job].b ? `${jo(BLD[JOBS[n.job].b].name, '이가')} 빈다` : '짓는 손이 빈다'}</small><span class="vline">“${line}”</span><span class="perk">${pk ? `✦ ${PERKS[pk].name}: ${PERKS[pk].desc}` : '✦ 특별한 시작 특성 없음'}</span></button>`; }).join('');
     const sh = this.sheet(`<h3>누가 횃불을 들까</h3><div class="gtxt">등불지기가 쓰러졌다. 누군가 다시 내려가야 한다.</div><div class="vols">${cards}</div>`);
     sh.querySelectorAll('[data-v]').forEach((b) => { b.onclick = () => this.torchScene(vs[+b.dataset.v]); });
   },

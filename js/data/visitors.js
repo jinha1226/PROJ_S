@@ -2,14 +2,14 @@
 
 /** 정착지 바깥의 땅. 그 구역의 등불 조각을 넣으면 밝아지고, 그 땅 출신 방문자가 온다 */
 export const LANDS = [
-  { id: 'lake', name: '물안개 호숫가', zone: 1, jobs: ['fisher', 'boatman', 'cook'], dir: [0, -1] },
+  { id: 'lake', name: '물안개 호숫가', zone: 1, jobs: ['fisher', 'boatman', 'cook'], dir: [0, -1] }, // jobs = 출신(ORIGINS)
   { id: 'forest', name: '이끼 숲', zone: 2, jobs: ['herbalist', 'gravekeeper', 'scholar'], dir: [-1, 0] },
-  { id: 'mine', name: '폐광 언덕', zone: 3, jobs: ['miner', 'blacksmith'], dir: [1, 0] },
-  { id: 'pass', name: '서리 고개', zone: 4, jobs: ['hunter', 'pilgrim'], dir: [0, 1] },
+  { id: 'mine', name: '폐광 언덕', zone: 3, jobs: ['miner', 'blacksmith', 'boatman'], dir: [1, 0] },
+  { id: 'pass', name: '서리 고개', zone: 4, jobs: ['hunter', 'pilgrim', 'herbalist'], dir: [0, 1] },
 ];
 
 /** 아직 어느 땅도 밝지 않을 때 떠도는 사람들 */
-export const WANDER_JOBS = ['herbalist', 'hunter', 'scholar', 'cook'];
+export const WANDER_JOBS = ['herbalist', 'hunter', 'scholar', 'cook', 'blacksmith', 'boatman']; // 출신
 
 /** 모닥불 밝기(0~100) 수치 */
 export const GLOW = {

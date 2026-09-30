@@ -279,7 +279,7 @@ export function npcParts(n) {
   const head = (o = {}) => headParts({ skin: S, hair: Hc, eye: 0x2a2030, style, mood: n.mood || 0, ...o });
   const tool = (parts) => parts; // 오른손(x 0.25, y 0.3)에 쥔 도구
   let P;
-  switch (n.job) {
+  switch (n.origin || (n.job === 'alchemist' ? 'herbalist' : n.job === 'carpenter' ? 'boatman' : n.job)) { // 모습은 출신(옛 직업)대로
     case 'blacksmith': P = [...npcBody({ cloth: C, skin: S, apron: 0x3a2618 }), ...head(), { s: 'tube', path: [[-0.085, 0.665, 0.25], [-0.04, 0.692, 0.272], [0, 0.686, 0.277], [0.04, 0.692, 0.272], [0.085, 0.665, 0.25]], r0: 0.02, r1: 0.02, rs: 8, c: tone(Hc, 1.15) }, // 콧수염
       ...tool([{ s: 'cyl', p: [0.26, 0.4, 0.07], k: [0.022, 0.28, 0.022], c: 0x6a4526 }, { s: 'box', p: [0.26, 0.55, 0.07], k: [0.14, 0.075, 0.075], c: 0x8a92a4 }])]; break;
     case 'herbalist': P = [...npcBody({ cloth: C, skin: S, apron: 0x8ab070 }), ...head({ cover: 2 }), ...hatParts('hood', { c: 0x5a9a4a, trim: 0x3f7a35 }),

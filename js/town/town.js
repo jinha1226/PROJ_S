@@ -46,7 +46,7 @@ export const Town = {
   },
   /** 일하는 자리: 작업방 안의 빈 칸 하나(없으면 모닥불 곁) */
   workSpot(n) {
-    const r = rooms().find((q) => q.kind === JOBS[n.job].b);
+    const b = JOBS[n.job].b, r = b && rooms().find((q) => q.kind === b);
     if (!r) return [SCX + 1.6, SCY + 1.6];
     const occ = new Set(); for (const f of META.settle.furn) for (const [x, y] of furnCells(f)) occ.add(I(x, y));
     const free = [...r.cells].filter((i) => !occ.has(i));
@@ -202,7 +202,7 @@ export const Town = {
       }
     }
     if (r < 0.6 + n.t.O * 0.1) { for (let k = 0; k < 6; k++) { const [x, z] = this.wanderSpot(); if (ok(x, z)) { t.goto(x, z, 'idle', 2 + Math.random() * 2); return; } } }
-    const room = rooms().find((q) => q.kind === JOBS[n.job].b);
+    const room = JOBS[n.job].b && rooms().find((q) => q.kind === JOBS[n.job].b);
     if (!room) { t.goto(this.center.x + 1.5, this.center.z + 1.5, 'idle', 3); return; }
     t.goto(w[0], w[1], 'work', Math.max(2.5, 6 + n.t.C * 1.6), [room.cx, room.cy]);
   },

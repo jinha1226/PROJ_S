@@ -11,7 +11,7 @@ import { ITEMS, MATS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { ZONES } from '../data/terrain.js';
 import { JAR_WOOD } from '../data/torch.js';
-import { BLD, CRAFT_B, JOBS, MOODS, RECIPES, TRAITS, adj } from '../data/town.js';
+import { BLD, CRAFT_B, JOBS, MOODS, ORIGINS, RECIPES, TRAITS, adj } from '../data/town.js';
 import { LANDS } from '../data/visitors.js';
 import { enterDungeon } from '../flow.js';
 import { W3 } from '../render/common.js';
@@ -72,7 +72,7 @@ Object.assign(Town, {
     const chip = (id, attrs, cls = '') => { if (!id) return `<button class="gch empty" ${attrs}>·<small>빈 칸</small></button>`; const d = STONE[id]; return `<button class="gch ${cls}" style="--c:${COLORS[d.color].css}" ${attrs}>${d.icon}<small>${d.name}</small></button>`; };
     const slots = h.slots.map((q, k) => chip(q.stone, `data-s="${k}"`, selId ? (q.color === STONE[selId].color || !q.stone ? 'ok' : 'warn') : '')).join('');
     const bag = [0, 1, 2].map((k) => chip(h.sbag[k], `data-b="${k}"`, k === sel ? 'sel' : '')).join('');
-    const keeper = META.npcs.find((n) => n.job === 'keeper');
+    const keeper = META.npcs.find((n) => n.origin === 'keeper');
     const line = this.altarMsg || (selId ? `<b style="color:${COLORS[STONE[selId].color].css}">${STONE[selId].icon} ${STONE[selId].name}</b><br>${STONE[selId].line}` : '');
     const sh = this.sheet(`<h3>💎 영혼석 제단 <button class="close">닫기</button></h3>
       ${keeper ? `<div class="gtxt">${keeper.name}: “${talkLine(keeper)}”</div>` : ''}
@@ -181,7 +181,7 @@ Object.assign(Town, {
     const bars = TRAITS.map(([k, nm]) => { const v = n.t[k], w = Math.abs(v) * 25; return `<div class="trt"><span>${nm}</span><div class="tb"><i style="${v >= 0 ? 'left:50%' : `left:${50 - w}%`};width:${w}%;background:${v >= 0 ? '#7fd08a' : '#ff8a8a'}"></i></div><b>${v > 0 ? '+' + v : v}</b></div>`; }).join('');
     const rs = META.npcs.filter((m) => m !== n).map((m) => [m, n.rel[m.id] || 0]).sort((a, b) => b[1] - a[1]);
     const fr = rs.filter(([, v]) => v >= 20).map(([m]) => m.name).join(', ') || '—', fo = rs.filter(([, v]) => v <= -20).map(([m]) => m.name).join(', ') || '—';
-    UI.info(`<h3>${MOODS[n.mood + 2]} ${n.name} <small style="color:#9aa2bd">${JOBS[n.job].name} · ${BLD[JOBS[n.job].b].name}</small></h3><div class="gtxt">“${talkLine(n)}”</div>${bars}
+    UI.info(`<h3>${MOODS[n.mood + 2]} ${n.name} <small style="color:#9aa2bd">${JOBS[n.job].icon} ${JOBS[n.job].name} · ${JOBS[n.job].b ? BLD[JOBS[n.job].b].name : '어디서나'}${n.origin && ORIGINS[n.origin] && ORIGINS[n.origin].name !== JOBS[n.job].name ? ` · ${ORIGINS[n.origin].name} 출신` : ''}</small></h3><div class="gtxt">“${talkLine(n)}”</div>${bars}
       <div class="gtxt" style="margin-top:6px">😊 친한 사이: ${fr}<br>😠 불편한 사이: ${fo}<br>🔨 솜씨: ${craftNote(n)}</div>${this.growthLine(n)}`);
     this.growthBtn(n);
   },

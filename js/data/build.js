@@ -5,7 +5,7 @@ export const SW = 40, SH = 40, SCX = 20, SCY = 20;
 export const lightRadius = (glow, shards = 0) => Math.min(20, 6 + Math.floor(Math.max(0, glow) / 10) + SHARD_RADIUS * shards);
 /** 등불 조각 하나(구역 보스)마다 어둠이 이만큼 더 물러난다 */
 export const SHARD_RADIUS = 3;
-export const START_STOCK = { 나무: 40, 돌: 20 };
+export const START_STOCK = { 나무: 40, 돌: 20, 식량: 20, 식사: 0 }; // 정착지 재고(나머지 재료는 META.mats)
 export const UNDO_MAX = 20;
 
 /** 지형 */
@@ -42,13 +42,21 @@ export const FURN = {
   table: { name: '탁자', icon: '🪵', w: 2, h: 1, cost: { 나무: 4 }, t: 2 },
   chair: { name: '의자', icon: '🪑', w: 1, h: 1, cost: { 나무: 2 }, t: 1 },
   shelf: { name: '저장 선반', icon: '🗄', w: 1, h: 1, cost: { 나무: 4 }, t: 2 },
-  lamp: { name: '등불', icon: '🏮', w: 1, h: 1, cost: { 나무: 2, 기름: 1 }, t: 1 },
+  lamp: { name: '등불', icon: '🏮', w: 1, h: 1, cost: { 나무: 2, 마석: 1 }, t: 1 },
   hearth: { name: '화덕', icon: '♨', w: 1, h: 1, cost: { 돌: 6 }, t: 3 },
   anvil: { name: '모루', icon: '⚒', w: 1, h: 1, cost: { 돌: 4, 광석: 4 }, t: 4 },
-  herbtable: { name: '약초대', icon: '🌿', w: 2, h: 1, cost: { 나무: 6, 약초: 2 }, t: 3 },
+  herbtable: { name: '연금대', icon: '⚗', w: 2, h: 1, cost: { 나무: 6, 약초: 2 }, t: 3 },
   leather: { name: '가죽대', icon: '🦌', w: 2, h: 1, cost: { 나무: 6, 가죽: 2 }, t: 3 },
   bookshelf: { name: '서가', icon: '📚', w: 2, h: 1, cost: { 나무: 8 }, t: 3 },
   decor: { name: '뼈 장식', icon: '🦴', w: 1, h: 1, cost: { 뼈: 1 }, t: 1 },
+  /* 작업방 등급 가구 (docs/설계_정착지_2단계.md §9.1): 작업방에 놓으면 그 방 등급이 오른다 */
+  whetstone: { name: '숫돌', icon: '🪨', w: 1, h: 1, cost: { 돌: 6, 마석: 4 }, t: 3, tier: ['forge', 2] },
+  furnace: { name: '용광로', icon: '🔥', w: 1, h: 1, cost: { 돌: 12, 광석: 4, 마석: 8 }, t: 6, tier: ['forge', 3] },
+  still: { name: '증류기', icon: '⚗', w: 1, h: 1, cost: { 나무: 6, 마석: 4 }, t: 3, tier: ['herb', 2] },
+  crucible: { name: '원소 도가니', icon: '🔮', w: 1, h: 1, cost: { 돌: 8, '불 결정': 1, '얼음 결정': 1, '번개 결정': 1, 마석: 8 }, t: 6, tier: ['herb', 3] },
+  desk: { name: '책상', icon: '📝', w: 1, h: 1, cost: { 나무: 8, 마석: 3 }, t: 3, tier: ['library', 2] },
+  starmap: { name: '별 지도', icon: '🌌', w: 1, h: 1, cost: { 나무: 6, 심장: 1, 마석: 8 }, t: 6, tier: ['library', 3] },
+  jar: { name: '저장 항아리', icon: '🏺', w: 1, h: 1, cost: { 나무: 4 }, t: 2, tier: ['inn', 2] },
   altar: { name: '영혼석 제단', icon: '💎', w: 1, h: 1, cost: {}, t: 0, unique: true },
   gate: { name: '출발문', icon: '🚪', w: 1, h: 1, cost: {}, t: 0, unique: true },
   heap: { name: '재료 더미', icon: '📦', w: 1, h: 1, cost: {}, t: 0, unique: true },
@@ -65,7 +73,7 @@ export const ZONE_BY_ID = Object.fromEntries(Object.entries(ZONE_TYPES).map(([k,
 export const ROOMS = {
   altar: { name: '제단', icon: '💎', need: { altar: 1 } },
   forge: { name: '대장간', icon: '🔨', need: { anvil: 1 } },
-  herb: { name: '약초 공방', icon: '🌿', need: { herbtable: 1 } },
+  herb: { name: '연금실', icon: '⚗', need: { herbtable: 1 } },
   hunter: { name: '사냥꾼 오두막', icon: '🏹', need: { leather: 1 } },
   library: { name: '서재', icon: '📜', need: { bookshelf: 1 } },
   inn: { name: '식당', icon: '🍲', need: { hearth: 1, table: 1 } },

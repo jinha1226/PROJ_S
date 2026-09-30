@@ -73,7 +73,7 @@ export function requestState(v) {
   switch (v.req) {
     case 'H+': ok = N.some((m) => m.t.H >= 1); break;
     case 'H-': pay = payMats(3); ok = !!pay; if (pay) note = '건넬 재료: ' + Object.entries(pay).map(([m, k]) => `${MATS[m] || ''}${m} ${k}`).join(' · '); break;
-    case 'E+': ok = N.some((m) => m.job === 'hunter') || !!META.buildings.hunter; break;
+    case 'E+': ok = N.some((m) => m.job === 'carpenter') || N.length >= 4; break; // 튼튼히 지을 사람이 있거나 사람이 많으면 안심
     case 'X+': ok = N.length >= 4; break;
     case 'X-': ok = N.length <= 6; break;
     case 'A-': { const foes = N.filter((m) => badMatch(n, m)); ok = !foes.length; line = foes.length ? line.replace('{who}', foes.map((m) => m.name).join(', ')) : '싫은 사람만 없으면 돼.'; if (foes.length) note = `궁합 나쁜 주민: ${foes.map((m) => m.name).join(', ')}`; break; }
