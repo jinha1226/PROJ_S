@@ -1,16 +1,12 @@
 {
-  "name": "proj-s-torch-and-elements",
-  "private": true,
-  "type": "module",
+  "name": "last-ember", "version": "1.0.0", "private": true, "type": "module",
   "scripts": {
-    "test": "node tests/smoke.mjs",
-    "lint": "node tools/fix-imports.mjs --check",
-    "fix-imports": "node tools/fix-imports.mjs",
-    "test:all": "node tests/smoke.mjs && node tests/realtime.mjs && node tests/items.mjs && node tests/story.mjs && node tests/settlement.mjs"
+    "lint": "node tools/lint.mjs",
+    "test:rules": "node --test tests/sim/*.test.mjs tests/town/*.test.mjs",
+    "test:browser": "node tests/smoke.mjs",
+    "test": "npm run test:rules && npm run test:browser",
+    "measure": "node tools/measure.mjs",
+    "serve": "node tools/serve.mjs"
   },
-  "devDependencies": {
-    "acorn": "^8.14.0",
-    "acorn-walk": "^8.3.4",
-    "playwright": "1.63.0"
-  }
+  "devDependencies": { "playwright": "1.63.0", "acorn": "8.15.0", "three": "0.180.0" }
 }

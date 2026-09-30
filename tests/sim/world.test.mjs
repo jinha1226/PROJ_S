@@ -1,0 +1,17 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { arena, enemy, advance, snapshot } from './helpers.mjs';
+import { createWorld, setInput, openDoor, explore, walkTo } from '../../js/sim/world.js';
+import { telegraph, resolveTelegraphs, strike } from '../../js/sim/combat.js';
+import { createUnit } from '../../js/sim/unit.js';
+import { move, visible, path } from '../../js/sim/space.js';
+import { descend } from '../../js/sim/dungeon/map.js';
+import { B } from '../../js/data/balance.js';
+test('손을 떼면 시간과 피해, 예고, 상태 이상이 모두 멈춘다',()=>{const w=arena();enemy(w);w.step();w.flowing=false;const before=snapshot(w);advance(w,3);assert.equal(snapshot(w),before);});
+test('같은 씨앗과 입력은 같은 결과를 만든다',()=>{const a=createWorld({seed:27}),b=createWorld({seed:27});for(const w of [a,b]){w.flowing=true;setInput(w,1,0);advance(w,2);}assert.equal(snapshot(a),snapshot(b));});
+test('벽과 다른 몸을 통과할 수 없다',()=>{const w=arena(),h=w.units[0];h.x=1.3;h.y=1.3;move(w,h,-1,0);assert.equal(h.x,1.3);const u=enemy(w,'rat',2,1.3);move(w,h,0.6,0);assert.equal(h.x,1.3);assert.ok(u.alive);});
+test('힘 모으기 중 범위를 벗어나면 적이 헛친다',()=>{const w=arena(),h=w.units[0],e=enemy(w);telegraph(w,e,{shape:'circle',x:h.x,y:h.y,radius:1});h.y-=2;w.time=B.tell;resolveTelegraphs(w);assert.equal(h.hp,h.maxHP);assert.ok(w.events.some(e=>e.type==='whiff'));});
+test('문은 시야와 길을 막고 열면 통과한다',()=>{const w=arena(),h=w.units[0];w.tiles['6,5'].kind='door';assert.equal(visible(w,h,{x:7.5,y:5.5}),false);assert.ok(openDoor(w,6,5));assert.equal(visible(w,h,{x:7.5,y:5.5}),true);});
+test('계단을 내려가도 체력과 횃불과 소모품이 보존된다',()=>{const w=createWorld(),h=w.units[0];h.hp=70;w.torch=32;w.items.heal=0;descend(w);assert.equal(w.floor,2);assert.equal(h.hp,70);assert.equal(w.torch,32);assert.equal(w.items.heal,0);});
+test('새 적이 나타나면 자동 걷기가 중단된다',()=>{const w=arena();enemy(w,'goblin',10.5,5.5);walkTo(w,{x:12,y:5});w.step();assert.equal(w.autoPath.length,0);});
+test('다섯 층과 숨은 방의 모든 열린 칸은 시작 위치에 연결된다',()=>{for(let seed=0;seed<8;seed++){const w=createWorld({seed});for(let floor=1;floor<=5;floor++){for(const t of Object.values(w.tiles))if(t.kind==='door')t.open=true;for(const t of Object.values(w.tiles).filter(t=>t.kind!=='wall'))assert.ok(path(w,w.units[0],{x:t.x+0.5,y:t.y+0.5}).length || Math.floor(w.units[0].x)===t.x&&Math.floor(w.units[0].y)===t.y);if(floor<5)descend(w);}}});

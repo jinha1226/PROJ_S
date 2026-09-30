@@ -1,0 +1,13 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import { arena, enemy, advance } from './helpers.mjs';
+import { element, changeTile } from '../../js/sim/elements.js';
+import { applyStatus } from '../../js/sim/status.js';
+import { useItem } from '../../js/sim/items.js';
+import { lightLamp } from '../../js/sim/torch.js';
+import { B } from '../../js/data/balance.js';
+test('젖은 무리에 번개가 번지며 각 유닛은 한 번씩 맞는다',()=>{const w=arena(),a=enemy(w,'boar',7,7),b=enemy(w,'boar',8,7);element(w,a,'water');element(w,b,'water');element(w,a,'lightning',w.units[0]);assert.equal(a.maxHP-a.hp,Math.round(B.chainDamage));assert.equal(b.maxHP-b.hp,Math.round(B.chainDamage));assert.equal(w.events.filter(e=>e.type==='chained').length,1);});
+test('젖은 적은 더 오래 얼고 불에 녹으면 증기가 난다',()=>{const w=arena(),e=enemy(w);element(w,e,'water');element(w,e,'ice');assert.equal(e.statuses.frozen.left,B.wetFreeze);element(w,e,'fire');assert.equal(e.statuses.frozen,undefined);assert.ok(w.events.some(e=>e.element==='steam'));});
+test('독과 불이 만나면 주변 유닛과 기름이 폭발한다',()=>{const w=arena(),a=enemy(w,'boar',8,8),b=enemy(w,'boar',9,8);element(w,a,'poison');element(w,a,'fire');assert.ok(b.hp<b.maxHP);assert.equal(w.tiles['8,8'].kind,'fire');});
+test('출혈은 흐른 초마다 피해를 주고 멈추면 유지된다',()=>{const w=arena(),h=w.units[0];applyStatus(w,h,'bleed');advance(w,1);assert.equal(h.maxHP-h.hp,B.bleedDamage);w.flowing=false;advance(w,4);assert.ok(h.statuses.bleed);});
+test('물병은 지형과 젖음을 만들고 사용 후 정체와 개수가 바뀐다',()=>{const w=arena(),e=enemy(w,'boar',7,5);const n=w.items.water;assert.ok(useItem(w,w.units[0],'water',e));assert.equal(w.items.water,n-1);assert.equal(w.identified.water,true);assert.equal(w.tiles['7,5'].kind,'water');assert.ok(e.statuses.wet);});
+test('등잔은 가까이서 한 번만 불씨와 이름을 남긴다',()=>{const w=arena();const lamp={x:5,y:5,name:'old',used:false};w.torch=1;assert.ok(lightLamp(w,lamp));assert.equal(lightLamp(w,lamp),false);assert.deepEqual(w.memories,['old']);assert.ok(w.torch>1);});
