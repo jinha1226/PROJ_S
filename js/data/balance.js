@@ -14,7 +14,7 @@ export const B = Object.freeze({
   armorPenalty: 0.15, dropChance: 0.24, artifactChance: 0.06,
   raidLimit: 100, raidInterval: 5, raidTell: 1.5, raidRadius: 1.1, stackRadius: 2,
   townDay: 45, monthDays: 10, cropTime: 24, workTime: 2.5,
-  injuryDays: 3, visitorDays: 2, baseLight: 5, memoryLight: 0.15,
+  injuryDays: 3, visitorDays: 2, baseLight: 6, memoryLight: 0.15,
   moodLight: 0.018, roomMood: 6, hungerTime: 20, partyUnlock: [0, 1, 2, 3, 4],
   mapSize: 23, roomSize: 7, floorCount: 5, townSize: 21,
   skillCooldown: 6, fleeDistance: 3.5, threatFade: 0.98,

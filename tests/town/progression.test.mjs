@@ -2,9 +2,21 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import { newMeta, encode, decode } from '../../js/town/meta.js';
 import { recruit, chooseCompanions, tickResidents } from '../../js/town/residents.js';
 import { returnFrom, succeed, volunteers, tickTown, acceptVisitor } from '../../js/town/story.js';
-import { placePlan, presetPlan, recognizeRooms, undo, validatePlan } from '../../js/town/settlement.js';
+import { placePlan, presetPlan, recognizeRooms, undo, validatePlan, autoBuild } from '../../js/town/settlement.js';
 import { createWorld } from '../../js/sim/world.js';
 import { B } from '../../js/data/balance.js';
+test('처음 마을의 불빛 안에 숙소 청사진을 자동으로 놓을 수 있다',()=>{
+  const m=newMeta();
+  const before={...m.resources};
+  const result=autoBuild(m);
+  assert.equal(result.ok,true);
+  assert.ok(m.blueprints.some(b=>b.kind==='bed'));
+  assert.ok(m.resources.wood<before.wood);
+  for(const b of m.blueprints){
+    assert.ok(Math.hypot(b.x-10,b.y-10)<=m.light);
+    assert.ok(Math.hypot(b.x-10,b.y-10)>=1.2);
+  }
+});
 test('튜토리얼에서 구한 사람이 첫 주민이 된다',()=>{const m=newMeta(),w=createWorld({tutorial:true});w.won=true;assert.equal(returnFrom(m,w),'town');assert.equal(m.residents.length,1);assert.ok(m.tutorialDone);returnFrom(m,w);assert.equal(m.residents.length,1);});
 test('빛 밖 건설과 비용 부족은 자원을 소비하지 않는다',()=>{const m=newMeta(),before={...m.resources};assert.equal(placePlan(m,[{x:0,y:0,kind:'wall'}]).reason,'darkness');assert.deepEqual(m.resources,before);m.resources.wood=0;assert.equal(placePlan(m,[{x:12,y:10,kind:'bed'}]).reason,'cost');});
 test('숙소 청사진은 주민이 완성하고 폐쇄된 방으로 인식된다',()=>{const m=newMeta();m.light=20;recruit(m);const plan=presetPlan('lodging',12,7);assert.ok(placePlan(m,plan).ok);for(let i=0;i<200;i++)tickTown(m,0.5);assert.equal(m.blueprints.length,0);assert.ok(m.rooms.some(r=>r.kind==='lodging'));m.buildings=m.buildings.filter(b=>!(b.x===12&&b.y===8));recognizeRooms(m);assert.equal(m.rooms.length,0);});
