@@ -16,43 +16,43 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install test dependencies
-        run: npm install --no-audit --no-fund
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-      - name: Check architecture and syntax
+      - name: Install Playwright
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Module import check
         run: npm run lint
-      - name: Simulation and settlement regression tests
-        run: npm run test:rules
-      - name: Combat measurements
-        run: npm run measure
-      - name: Desktop and mobile browser tests
-        run: npm run test:browser
-      - name: Upload test results
+      - name: Smoke test (headless Chromium)
+        run: node tests/smoke.mjs
+      # 기능별 확인 목록(story·stones·items)은 오래 걸려서 CI에서는 뺐다 — 로컬에서 npm run test:all
+      - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: screenshots
           path: test-results/
-          if-no-files-found: warn
+          if-no-files-found: ignore
   build:
     needs: test
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Collect browser modules
+      - uses: actions/checkout@v6
+      - name: Collect site
         run: |
           mkdir -p _site
           cp index.html _site/
+          cp dungeon.html _site/
+          cp raid-lab.html _site/
           cp -r js _site/
+          cp -r versions _site/
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
   deploy:

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0c0b11">
+<title>레이드 실험실 · 횃불과 원소</title>
+<link rel="stylesheet" href="js/lab/lab.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+</head>
+<body>
+<main id="app">
+  <div id="stage" aria-label="레이드 방"></div>
+  <header id="top">
+    <div class="modebar" aria-label="전투 방식">
+      <button data-mode="A">A 턴제</button><button data-mode="B">B 격자 실시간</button><button data-mode="C">C 자유 이동</button><button data-mode="D">D 격자 액션</button><button data-mode="E">E 반턴제</button>
+    </div>
+    <div class="tools"><a href="index.html">← 돌아가기</a><button id="speed">1×</button><button id="autopause">자동 멈춤 켬</button><button id="pause">▶ 시작</button><button id="reset">다시</button><button id="compare">기록</button></div>
+    <div class="bossline"><b>잊힌 파수병</b><div class="bar"><b id="bosslag"></b><i id="bosshp"></i></div><span id="bossnum">120/120</span></div>
+    <div class="subline"><span id="phase">1단계</span><span id="clock">0R</span><span id="warning"></span></div>
+    <div id="party" class="party"></div>
+  </header>
+  <div id="log" aria-live="polite"></div>
+  <div id="joystick"><div id="stick"></div></div>
+  <footer id="bottom">
+    <div id="hint">칸을 탭해 이동하거나 공격한다.</div>
+    <div class="skills"><button data-skill="water"><strong>💧</strong><span>물벼락</span><small></small></button><button data-skill="bolt"><strong>⚡</strong><span>번개</span><small></small></button><button data-skill="counter"><strong>🛡</strong><span>반격</span><small></small></button></div>
+    <div class="commands"><button data-command="focus">🎯<small>집중</small></button><button data-command="scatter">⤧<small>흩어져</small></button><button data-command="gather">⤨<small>모여</small></button><button data-command="retreat">↩<small>물러나</small></button><button data-command="auto">🤖<small>자동</small></button></div>
+    <button id="wait">한 턴 기다리기</button>
+  </footer>
+  <section id="overlay" hidden></section>
+</main>
+<script type="module" src="js/lab/main.js"></script>
+</body>
+</html>
