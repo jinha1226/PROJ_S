@@ -47,7 +47,7 @@ export function sweep(e, dx, dy, o = {}) {
     const tx = x + dx / n, ty = y + dy / n;
     let [nx, ny] = pushOutWalls(tx, ty, r, o.onDoor);
     if (Math.hypot(nx - tx, ny - ty) > 0.02) wall = true;
-    let hit; [nx, ny, hit] = pushOutBodies(e, nx, ny, o.ghost);
+    let hit = null; if (!o.noBodies) [nx, ny, hit] = pushOutBodies(e, nx, ny, o.ghost); // 돌진·점멸은 몸을 뚫고 지나간다
     if (hit) body = hit;
     if (o.cellBlock) { // 칸으로 싸우는 적(1단계): 남의 발밑 칸에는 들어가지 않는다(대각선으로 붙어도 서로 이웃 칸)
       const cx = Math.round(nx), cy = Math.round(ny), q = (cx !== Math.round(x) || cy !== Math.round(y)) && G.ents.find((b) => b !== e && b.alive && b.x === cx && b.y === cy && !(o.ghost && (b.ally || (b.npc && b.freed))));

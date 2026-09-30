@@ -37,7 +37,7 @@ export function heroAttack(dt) {
   if (G.swingT > 1e-6 || !p.alive || G.over || p.st.frozen > 0 || p.st.stun > 0) return;
   const t = swingTarget(); if (!t) return;
   swing(t);
-  G.swingT = beatOfWeapon();
+  G.swingT = beatOfWeapon() / (1 + ((p.fx && p.fx.haste && p.fx.haste.v) || 0));
 }
 
 /** 무기 한 번: 모양 안의 적을 친다 */

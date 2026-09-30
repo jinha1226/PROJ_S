@@ -6,7 +6,8 @@ import { emitStatus } from '../core/snap.js';
 import { G, I, emit, isFoe, isP, log } from '../core/state.js';
 import { rand, ri } from '../util/rng.js';
 import { jo } from '../util/text.js';
-import { ACTS, foeTarget, startAct, unitById } from './action.js';
+import { foeTarget, startAct, unitById } from './action.js';
+import { ACTS } from './acts.js';
 import { angTo, dist, faceAng } from './body.js';
 import { spread, steerAway, steerTo } from './steer.js';
 
@@ -30,7 +31,7 @@ ACTS.melee = {
     const t = unitById(a.target); if (!t || !t.alive) return;
     const ang = angTo(u, t), dx = Math.cos(ang), dy = Math.sin(ang);
     faceAng(u, ang); emit('lunge', { id: u.id, dx, dy });
-    if (dist(u, t) > COMBAT.reach + COMBAT.whiff) { emit('whiff', { id: u.id, x: t.x, y: t.y }); return; }
+    if (dist(u, t) > COMBAT.reach + COMBAT.whiff) { u.whiffT = G.clock + 2; emit('whiff', { id: u.id, x: t.x, y: t.y }); return; } // 헛친 적은 2초 동안 빈틈(로그 특성)
     reveal(u);
     damage(t, Math.max(1, u.atk + ri(-1, u.type === 'goblin' ? 0 : 1)), 'hit', { dx: Math.sign(Math.round(dx)), dy: Math.sign(Math.round(dy)), src: u });
     if (u.type === 'leech' && t.alive) { t.st.bleed = Math.max(t.st.bleed || 0, 2); emitStatus(t); } // 피를 빤다

@@ -8,6 +8,7 @@ import { setPos } from '../../js/core/space.js';
 import { G, newSt, setListener } from '../../js/core/state.js';
 import { S_NONE, T_FLOOR, T_WALL } from '../../js/data/terrain.js';
 import { mulberry32, setR } from '../../js/util/rng.js';
+import { setClass } from '../../js/sim/classes.js';
 
 export const events = [];
 setListener((type, data) => events.push({ type, ...data }));
@@ -32,6 +33,7 @@ export function arena(foes = [], o = {}) {
   for (const k of Object.keys(G.eq)) G.eq[k] = null;
   if (o.body) G.eq.body = makeGear(o.body, { known: true });
   G.xp = 0; G.level = 1; G.heroBase = 30; G.vengeance = 0; G.auras = {}; G.darkAmbushUsed = false;
+  Object.assign(p, { fx: {}, scd: {}, classHp: 0 }); setClass(p, o.cls || { levels: {} });
   G.eq.weapon = makeGear(o.weapon ?? 'sword'); refreshStats();
   G.ps.eva = 0; G.ps.block = 0; G.ps.def = 0; G.ps.acc = 0; G.ps.crit = 0; G.ps.vamp = 0; G.ps.torchSlow = 0; G.ps.torchCost = 0;
   Object.assign(p, { x: CX, y: CY, hp: 40, max: 40, shield: 0, alive: true, st: newSt(), face: [1, 0], ang: 0, act: null });
@@ -44,7 +46,7 @@ export function arena(foes = [], o = {}) {
     e.st = newSt(); G.ents.push(e);
   }
   G.hurt = false; G.hurtTurn = -9; G.target = null; G.paused = false;
-  initClock();
+  G.zones = []; initClock();
   events.length = 0;
   return G;
 }

@@ -246,7 +246,7 @@ export function holder() {
 }
 export function refreshStats() {
   const H = holder(); if (!H.eq) return;
-  const s = calcStats(H.eq), mx = H.base + s.maxHp, u = H.unit;
+  const s = calcStats(H.eq), u = H.unit, mx = H.base + s.maxHp + ((!H.town && u && u.classHp) || 0); // Class 레벨마다 HP(data/classes.js hpLv)
   if (!H.town) { G.ps = s; if (s.insight && G.weakKnown) for (const c of ['beast', 'armor', 'bone']) G.weakKnown[c] = true; }
   if (u && u.max !== mx) { u.hp = Math.max(1, Math.min(mx, u.hp + Math.max(0, mx - u.max))); u.max = mx; if (!H.town) emit('hp', { id: 0, hp: u.hp, max: u.max }); }
   return s;

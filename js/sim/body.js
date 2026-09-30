@@ -23,10 +23,11 @@ export function beatOf(e) { return (COMBAT.beat[e.boss] ?? COMBAT.beat[e.type] ?
 /** 걷는 속도(칸/초): 빙결·기절이면 0, 골절 절반, 가속 1.5배 */
 export function speedOf(e) {
   if (!e.st) return 0;
-  if (e.st.frozen > 0 || e.st.stun > 0) return 0;
+  if (e.st.frozen > 0 || e.st.stun > 0 || (e.fx && e.fx.root)) return 0;
   let v = isP(e) ? RT.heroSpeed : e.boss ? COMBAT.bossSpeed : COMBAT.foeSpeed[e.npc ? 'npc' : e.type] ?? 3.3;
   if (e.st.frac > 0) v *= 0.5;
   if (e.st.haste > 0) v *= 1.5;
+  if (e.fx && e.fx.haste) v *= 1 + e.fx.haste.v;
   return v;
 }
 
@@ -49,6 +50,7 @@ export function walk(e, vx, vy, dt, o = {}) {
   const r = sweep(e, vx * s, vy * s, { ghost: e.team === 'party', onDoor: isFoe(e) || e.npc ? (x, y) => { openDoor(x, y); if (G.vis[y * G.W + x]) log('문이 열렸다.', 'info'); } : null });
   setPos(e, r.x, r.y);
   const moved = Math.hypot(r.x - px, r.y - py);
+  if (moved > 1e-4) e.movedAt = G.clock;
   if (moved > 1e-4 && !o.keepFace) faceAng(e, Math.atan2(r.y - py, r.x - px));
   return { moved, body: r.body, wall: r.wall, cell: e.x !== ox || e.y !== oy };
 }

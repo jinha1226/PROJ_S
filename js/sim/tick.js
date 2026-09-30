@@ -8,9 +8,11 @@ import { S_ASH, S_NONE, S_WATER } from '../data/terrain.js';
 import { tickAct } from './action.js';
 import { initBody, walk } from './body.js';
 import { BOSS_BRAINS, bossTimers } from './boss.js';
+import { tickEffects } from './effects.js';
 import { leechBrain, meleeBrain, npcBrain, shamanBrain } from './foes.js';
 import { tickProjs } from './projectile.js';
 import { archerBrain, chargerBrain, mageBrain } from './ranged.js';
+import { tickSkills } from './skillfx.js';
 import { steerAway } from './steer.js';
 import { heroAttack } from './weapon.js';
 
@@ -22,6 +24,7 @@ const BRAINS = { goblin: meleeBrain, rat: meleeBrain, leech: leechBrain, shaman:
 function think(e) {
   if (e.act || e.st.frozen > 0 || e.st.stun > 0) return null; // 기절·빙결: 생각도 멈춘다
   if (e.npc) return npcBrain(e);
+  if (e.decoy) return null;
   if (!isFoe(e)) return e.ally ? meleeBrain(e) : null;
   if (!e.awake) return null;
   if (e.st.fear > 0) { const p = G.player; return p ? steerAway(e, p.px, p.py) : null; }
@@ -45,6 +48,8 @@ export function simTick(dt) {
   for (const e of G.ents) if (e.alive && e.act) tickAct(e, dt);
   heroAttack(dt);
   tickProjs(dt);
+  tickEffects(dt);
+  tickSkills(dt);
   for (const e of G.ents) if (e.alive) statusTick(e, dt);
   holdTick(dt);
   G.envAcc = (G.envAcc || 0) + dt;

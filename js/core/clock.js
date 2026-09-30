@@ -13,7 +13,7 @@ import { G, I, log } from './state.js';
    흐르는 동안 고정 틱(RT.tick)으로 나아간다. 한 틱 = 등불지기 걸음 → 전투 코어(sim/tick.js: 적·행동·투사체·상태이상).
    걸음 박자(RT.turn)마다 endTurn: 횃불·회복·쉬기·깨어남(적은 움직이지 않는다). */
 export function initClock() {
-  Object.assign(G, { clock: G.clock || 0, paused: false, stuckAbort: false, acc: 0, turnAcc: 0, swingT: 0, stuckT: 0, intent: { dir: null, hold: false }, walk: null, resting: false, target: null, projs: [], twin: null, envAcc: 0, stillT: 0, holdAcc: 0, flowCache: null });
+  Object.assign(G, { clock: G.clock || 0, paused: false, stuckAbort: false, acc: 0, turnAcc: 0, swingT: 0, stuckT: 0, intent: { dir: null, hold: false }, walk: null, resting: false, target: null, projs: [], zones: [], twin: null, envAcc: 0, stillT: 0, holdAcc: 0, flowCache: null });
   const p = G.player; if (p) { setPos(p, p.x, p.y); p.ppx = p.px; p.ppy = p.py; }
   G.alpha = 1;
 }
@@ -28,7 +28,7 @@ export function setTarget(id) { G.target = id; }
 export function setRest(on) { G.resting = !!on; G.restFrom = G.stats.turns; }
 /** 가방·정보 창이 열려 있으면 자동 걷기·쉬기도 멈춘다(입력이 매 프레임 알려 준다) */
 export function setPaused(on) { G.paused = !!on; }
-export const flowing = () => !!(G.player && G.player.alive && !G.over && !G.paused && G.intent && (G.intent.dir || G.intent.hold || G.walk || G.resting));
+export const flowing = () => !!(G.player && G.player.alive && !G.over && !G.paused && G.intent && (G.intent.dir || G.intent.hold || G.walk || G.resting || (G.player.act && !G.player.act.done))); // 스킬을 시전하는 동안에도 흐른다
 
 /** 실시간 dt(초)만큼 흘린다. 흐르지 않으면 0. 돈 틱 수를 돌려준다 */
 export function advance(dt) {
@@ -65,7 +65,7 @@ function moveHero(dt) {
   if (r.body && r.body.npc && !r.body.freed) freeNpc(r.body);
   const moved = Math.hypot(r.x - px, r.y - py);
   if (G.walk && moved < s * 0.2) { G.stuckT += dt; if (G.stuckT >= RT.stuck) { G.walk = null; G.stuckAbort = true; } } else G.stuckT = 0;
-  setPos(p, r.x, r.y);
+  setPos(p, r.x, r.y); if (Math.hypot(r.x - px, r.y - py) > 1e-4) p.movedAt = G.clock;
   if (moved > 1e-4) p.face = [Math.sign(Math.round(dx * 10)), Math.sign(Math.round(dy * 10))];
   if (p.x !== ox || p.y !== oy) enterCell(p);
 }

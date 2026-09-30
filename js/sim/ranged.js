@@ -8,7 +8,8 @@ import { COMBAT } from '../data/realtime.js';
 import { S_WATER } from '../data/terrain.js';
 import { rand } from '../util/rng.js';
 import { jo } from '../util/text.js';
-import { ACTS, foeTarget, startAct } from './action.js';
+import { foeTarget, startAct } from './action.js';
+import { ACTS } from './acts.js';
 import { angTo, dist, faceAng, walk } from './body.js';
 import { keepRange, meleeBrain } from './foes.js';
 import { spawnProj } from './projectile.js';
@@ -23,7 +24,7 @@ export function archerBrain(e) {
   const t = foeTarget(e); if (!t) return null;
   const d = dist(e, t);
   if (d < 2) return steerAway(e, t.px, t.py);
-  if (e.cd <= 0 && d <= COMBAT.aimRange && canSee(e, t)) {
+  if (e.cd <= 0 && d <= COMBAT.aimRange && canSee(e, t) && !(e.fx && e.fx.silence)) {
     const ang = angTo(e, t); faceAng(e, ang);
     startAct(e, 'aim', { wind: COMBAT.tele.aim, ang, target: t.id, tele: { kind: 'line', cells: cellsAlong(e.px, e.py, ang, COMBAT.arrow.range), mark: [t.x, t.y] }, fx: 'aim' });
     return null;
@@ -45,7 +46,7 @@ ACTS.aim = {
 export function mageBrain(e) {
   const t = foeTarget(e); if (!t) return null;
   const d = dist(e, t);
-  if (e.cd <= 0 && d <= COMBAT.castRange && canSee(e, t)) {
+  if (e.cd <= 0 && d <= COMBAT.castRange && canSee(e, t) && !(e.fx && e.fx.silence)) {
     faceAng(e, angTo(e, t));
     const cells = e.boss ? square3(t.x, t.y) : plus(t.x, t.y);
     startAct(e, 'cast', { wind: COMBAT.tele.cast, cells, elem: e.elem, cd: COMBAT.recast * (e.boss ? 0.8 : 1), tele: { kind: 'cells', cells, elem: e.elem }, fx: 'cast' });

@@ -5,6 +5,8 @@ import { S_ICE, S_WATER, T_DOOR, T_OPEN, T_STAIRS, T_WALL } from '../data/terrai
 import { DARK, torchTier } from '../data/torch.js';
 import { JOBS } from '../data/town.js';
 import { FORMS } from '../data/weapons.js';
+import { healBy, incoming, lastStand, outgoing, shieldBroke, stun, unitsNear } from '../sim/effects.js';
+import { afterWeaponHit } from '../sim/skillfx.js';
 import { D8, sgn } from '../util/grid.js';
 import { pick, rand, ri } from '../util/rng.js';
 import { jo } from '../util/text.js';
@@ -28,6 +30,7 @@ export function damage(e, amt, kind = 'hit', o = {}) {
   if (isFoe(e) && !e.awake) e.awake = true;
   if (e.hidden) reveal(e); // 숨어 있던 적은 맞으면 드러난다
   const src = o.src || G.curSrc;
+  if (!DOT[kind]) { amt = incoming(e, outgoing(src, e, amt, kind), kind, src); if (amt <= 0) { if (isP(e)) G.hurt = true; return 0; } } // 스킬 효과: 막기·되치기·장막·표식·강화·특성(sim/effects.js)
   // 장비: 내가 맞을 때 회피·막기·방어·저항, 내가 칠 때 원소 피해
   const struck = isP(e) && src && src !== e && isFoe(src);
   if (isP(e) && G.ps) {
@@ -51,10 +54,11 @@ export function damage(e, amt, kind = 'hit', o = {}) {
   if (struck && G.ps && G.ps.thorns && src.alive && PHYS[kind] && Math.hypot((src.px ?? src.x) - (e.px ?? e.x), (src.py ?? src.y) - (e.py ?? e.y)) <= 1.6) { const s0 = src; damage(s0, G.ps.thorns, 'impact', { label: '가시', src: G.player }); } // 가시
   if (struck) reduceColor('green'); // 초록: 적에게 맞았을 때(0 피해·보호막이 막아도)
   if (isP(e) && G.auras && G.auras.guard && amt > 0) amt = Math.ceil(amt / 2); // 막기
-  if (isP(e) && e.shield > 0) { const a = Math.min(e.shield, amt); e.shield -= a; amt -= a; emit('shieldHit', { absorbed: a, left: e.shield }); }
+  if (e.shield > 0 && amt > 0) { const a = Math.min(e.shield, amt); e.shield -= a; amt -= a; if (isP(e)) emit('shieldHit', { absorbed: a, left: e.shield }); if (e.shield <= 0) shieldBroke(e); }
   if (isP(e) && amt > 0) G.combatDmg = (G.combatDmg || 0) + Math.min(amt, e.hp);
   // 빨강: 내 공격(무기·스킬)이 적에게 적중
   if (isFoe(e) && amt > 0 && (!src || src === G.player) && G.ctx && G.ctx.origin !== 'enemy' && !DOT[kind]) reduceColor('red');
+  amt = lastStand(e, amt); // 죽음 유예
   if (amt > 0) {
     e.hp -= amt;
     if (isP(e)) { (G.hurtLog ||= []).push({ t: G.clock || 0, who: src && src !== e ? src.name : HURT_BY[kind] || '알 수 없는 것', amt, kind }); if (G.hurtLog.length > 8) G.hurtLog.shift(); } // 사망 요약
@@ -231,6 +235,8 @@ export function weaponHit(t, ctx, o = {}) {
   if (f === 'pierce' && t.st.vital > 0) { crit = true; dmg = Math.ceil(dmg * cm); t.st.vital = 0; label = '급소!'; }
   else if (f === 'pierce' && ps.crit && rand() * 100 < ps.crit) { crit = true; dmg = Math.ceil(dmg * cm); label = '급소!'; }
   if (w.range && o.near) { dmg = Math.max(1, Math.floor(dmg / 2)); label = label || '너무 가깝다'; } // 붙은 적에게 쏘면 절반
+  if (o.mul) { dmg = Math.max(1, Math.round(dmg * o.mul)); label = label || (o.mul >= 1.5 ? '강타' : ''); } // 스킬: 무기 ×N
+  const nx = p.fx && p.fx.next; if (nx && !o.counter) { delete p.fx.next; dmg = Math.round(dmg * nx.mul); label = '일격!'; } // 신성한 일격·점멸 뒤 한 방
   const dealt = damage(t, dmg, 'hit', { dx, dy, label, big: crit || weak, form: f, crit, src: p });
   weaponUsed();
   if (ps.vamp && dealt > 0 && !C.noBleed) heal(p, Math.max(1, Math.floor(dealt * 0.3))); // 흡혈(해골 제외)
@@ -242,7 +248,10 @@ export function weaponHit(t, ctx, o = {}) {
     emitStatus(t);
     if (f === 'blunt' && ps.fracPush && !o.noPush) push(t, dx, dy, 1);
     weaponBrand(t, ps.brand);
+    if (nx && nx.stun) stun(t, nx.stun);
   }
+  if (nx && nx.heal) for (const a of unitsNear(p, p.px, p.py, nx.r || 3, true)) healBy(p, a, nx.heal);
+  afterWeaponHit(p, t);
 }
 /** 무기 브랜드: 원소는 원소 규칙 그대로 반응한다 */
 function weaponBrand(t, b) {
