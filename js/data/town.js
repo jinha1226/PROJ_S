@@ -37,34 +37,6 @@ export const JOB_CLOTH = { alchemist: 0x6aa04a, carpenter: 0x9a6a3a, keeper: 0x8
 
 export const MOODS = ['😠', '😟', '🙂', '😊', '😄'];
 
-export const RECIPES = [
-  { id: 'w_axe', b: 'forge', weapon: 'axe', in: { 가죽: 1, 뼈: 1, 광석: 2 } },
-  { id: 'w_hammer', b: 'forge', weapon: 'hammer', in: { 뼈: 2, 광석: 2 } },
-  { id: 'w_spear', b: 'forge', weapon: 'spear', in: { 심장: 1, 광석: 2 } },
-  { id: 'a_leather', b: 'forge', armor: 'leather', in: { 가죽: 3 } },
-  { id: 'a_bone', b: 'forge', armor: 'bone', in: { 뼈: 3, 광석: 1 }, hidden: true },
-  { id: 'o_shield', b: 'forge', gear: 'shield', in: { 가죽: 2, 광석: 1 } },
-  { id: 'o_cloak', b: 'hunter', gear: 'cloak', in: { 가죽: 2 } },
-  { id: 'o_boots', b: 'hunter', gear: 'boots', in: { 가죽: 1, 뼈: 1 } },
-  { id: 'o_gloves', b: 'forge', gear: 'gloves', in: { 가죽: 1, 광석: 1 } },
-  { id: 'e_enh', b: 'forge', enhance: true, in: { 마석: 1, 광석: 2 } },
-  { id: 'e_qual', b: 'forge', quality: true, in: { 마석: 1, 광석: 2 } },
-  { id: 'i_ident', b: 'library', out: 'ident', n: 1, in: { 심장: 1, 약초: 1 } },
-  { id: 'i_heal', b: 'herb', out: 'heal', n: 1, in: { 약초: 2 } },
-  { id: 'i_ember', b: 'inn', out: 'ember_jar', n: 1, in: { 기름: 1, 약초: 1 } },
-  { id: 'i_cure', b: 'herb', out: 'cure', n: 1, in: { 약초: 1, 심장: 1 } },
-  { id: 'i_haste', b: 'herb', out: 'haste', n: 1, in: { 심장: 1, 얼음: 1 }, hidden: true },
-  { id: 'i_oil', b: 'hunter', out: 'oil', n: 2, in: { 기름: 1 } },
-  { id: 'i_water', b: 'hunter', out: 'water', n: 2, in: { 가죽: 1 } },
-  { id: 'i_smoke', b: 'hunter', out: 'smoke', n: 1, in: { 뼈: 1, 약초: 1 } },
-  { id: 'i_recall', b: 'library', out: 'recall', n: 1, in: { 마석: 2, 심장: 1, 뼈: 1 } },
-  { id: 'i_tele', b: 'library', out: 'tele', n: 1, in: { 심장: 1, 뼈: 1, 약초: 1 } },
-  { id: 'i_blaze', b: 'library', out: 'blaze', n: 1, in: { 기름: 1, 심장: 1 } },
-  { id: 'i_fear', b: 'library', out: 'fear', n: 1, in: { 뼈: 2 }, hidden: true },
-  { id: 'f_feast', b: 'inn', buff: 'feast', in: { 가죽: 1, 약초: 1 } },
-  { id: 'f_stew', b: 'inn', out: 'heal', n: 2, in: { 약초: 1, 심장: 1 } },
-];
-
 export const BLD = {
   gate: { name: '출발문', icon: '🚪', x: 5, y: 1.3 },
   altar: { name: '영혼석 제단', icon: '💎', x: 2.2, y: 3.6 },

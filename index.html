@@ -172,6 +172,21 @@ body.slowmo #banner{font-size:34px}
 #tname{font-size:17px}
 #tinfo{margin-top:6px;font-size:12px;color:#fff;background:rgba(20,30,20,.55);border-radius:10px;padding:5px 9px;display:inline-block}
 #tbottom{padding:0 10px calc(10px + var(--sb))}
+#tclock{margin-top:6px;display:flex;align-items:center;gap:5px;font-size:13px;color:#fff}
+#tclock #ttime{background:rgba(20,30,20,.55);border-radius:10px;padding:5px 9px;font-weight:700;color:#ffe9b0}
+#tclock.night #ttime{background:rgba(20,24,50,.7);color:#b8c6ff}
+#tclock button{width:34px;height:30px;border-radius:9px;border:1px solid rgba(255,230,180,.25);background:rgba(40,34,26,.8);font-size:13px}
+#tclock button.on{border-color:#ffd27a;box-shadow:0 0 10px rgba(255,200,90,.4)}
+table.jobs{border-collapse:collapse;width:100%;margin-top:6px;font-size:12.5px}
+table.jobs th{font-weight:400;font-size:15px;padding:2px}
+table.jobs th small{font-size:10px;color:#9aa2bd}
+table.jobs td{border-top:1px solid var(--line);padding:4px 2px;text-align:center}
+table.jobs td.who{text-align:left;min-width:92px}
+table.jobs td.who small{color:#9aa2bd}
+.pri{width:40px;height:34px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.05);font-size:10px;letter-spacing:-1px;color:#ffd27a}
+.pri.p0{color:#666}.pri.p3{background:rgba(255,190,90,.18)}.pri.auto{opacity:.6}
+.autob{margin-top:3px;height:24px;padding:0 7px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.05);font-size:11px}
+.autob.on{border-color:#8fffb0;color:#8fffb0}
 #tbtns{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
 #tbtns.hidden{display:none}
 #buildbar{pointer-events:auto;background:rgba(28,24,18,.92);border:1px solid rgba(255,230,180,.25);border-radius:16px;padding:7px;display:flex;flex-direction:column;gap:6px}
@@ -336,9 +351,9 @@ details{margin-top:4px;font-size:13px}details summary{cursor:pointer}details sum
 </div>
 <div id="hud-overlay" class="hidden"><button id="hud-overlay-close">닫기 ✕</button><div id="hud-overlay-body"></div></div>
 <div id="townhud" class="hidden">
-  <div id="ttop"><div class="hprow"><b id="tname">🏕 정착지</b><span style="flex:1"></span><button id="btn-sound2" class="round">🔊</button><button id="btn-help2" class="round" title="도감">📖</button></div><div id="tinfo"></div></div>
+  <div id="ttop"><div class="hprow"><b id="tname">🏕 정착지</b><span style="flex:1"></span><button id="btn-sound2" class="round">🔊</button><button id="btn-help2" class="round" title="도감">📖</button></div><div id="tclock"><span id="ttime"></span><button data-sp="0">⏸</button><button data-sp="1">▶</button><button data-sp="2">⏩</button></div><div id="tinfo"></div></div>
   <div id="tbottom"><div id="tbtns">
-    <button data-o="build">🔨<small>건설</small></button><button data-o="people">👥<small>사람</small></button><button data-o="craft">⚒<small>제작</small></button><button data-o="storage">📦<small>창고</small></button><button data-o="plaza">🔥<small>모닥불</small></button><button data-o="gate">🚪<small>출발</small></button>
+    <button data-o="build">🔨<small>건설</small></button><button data-o="people">👥<small>사람</small></button><button data-o="work">📋<small>일</small></button><button data-o="storage">📦<small>창고</small></button><button data-o="plaza">🔥<small>모닥불</small></button><button data-o="gate">🚪<small>출발</small></button>
   </div><div id="buildbar" class="hidden"></div></div>
   <canvas id="mag" class="hidden" width="162" height="162"></canvas>
 </div>

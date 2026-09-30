@@ -6,7 +6,7 @@ import { dominant } from '../core/meta.js';
 import { hearthGlow } from '../core/visitors.js';
 import { JOBS } from '../data/town.js';
 import { _w } from '../render/common.js';
-import { npcParts } from '../render/dolls.js';
+import { matProp, npcParts } from '../render/dolls.js';
 import { View } from '../render/view.js';
 import { Town } from './town.js';
 
@@ -26,8 +26,11 @@ export class TownNPC {
     const w = Town.workSpot(n); this.pos = new THREE.Vector3(...(spawnAt || [w[0] + (Math.random() - 0.5), 0, w[1] + (Math.random() - 0.5)]));
     this.target = null; this.state = 'work'; this.t = 0; this.dur = 2 + Math.random() * 5; this.yaw = Math.random() * 6; this.yawT = this.yaw;
     this.phase = Math.random() * 6; this.bubbleT = 3 + Math.random() * 8; this.partner = null; this.face = null; this.hop = 0;
-    this.d.root.position.copy(this.pos);
+    this.d.root.position.copy(this.pos); this.doing = n.doing; this.carryObj = null; this.task = null;
   }
+  /** 나르는 짐(머리 위) */
+  setCarry(m) { this.dropCarry(); const o = matProp(m); o.position.set(0, 1.25, 0.05); o.scale.setScalar(1.1); this.d.root.add(o); this.carryObj = o; }
+  dropCarry() { if (this.carryObj) { this.d.root.remove(this.carryObj); this.carryObj = null; } }
   /** 벽을 돌아 문으로 다닌다(Town.route) */
   goto(x, z, next, dur, face) { this.path = Town.route(this.pos.x, this.pos.z, x, z); const [px, pz] = this.path.shift(); this.target = new THREE.Vector3(px, 0, pz); this.state = 'walk'; this.next = next; this.nextDur = dur; this.face = face || null; }
   update(dt, time) {
@@ -46,7 +49,16 @@ export class TownNPC {
       else if (w === 'read') tiltZ = Math.sin(k * 0.3) * 0.08;
       else if (w === 'stir') this.yawT += dt * 0.8;
       else { bob = Math.sin(k * 0.4) * 0.03; if (Math.random() < dt * 2) View.dio.sparks.emit({ pos: _w.set(this.pos.x, 1.1, this.pos.z), n: 1, color: 0xc07aff, speed: 0.4, up: 0.6, grav: 0, life: 0.8, size: 0.1 }); }
-    } else if (this.state === 'chat') { bob = Math.abs(Math.sin(time * 4 + this.phase)) * 0.04; }
+    } else if (this.state === 'task') {
+      const k = time * 6 + this.phase, w = this.task === 'craft' ? JOBS[n.job].work : this.task;
+      if (w === 'build' || w === 'gather' || w === 'hammer' || w === 'carve') { tiltX = Math.max(0, Math.sin(k * 1.2)) * 0.45; if (Math.sin(k * 1.2) > 0.97 && Math.random() < 0.4) View.dio.sparks.emit({ pos: _w.set(this.pos.x + Math.sin(this.yaw) * 0.5, 0.35, this.pos.z + Math.cos(this.yaw) * 0.5), n: 4, color: w === 'hammer' ? 0xffb040 : 0xc8a070, color2: 0xffffff, speed: 2, life: 0.35, size: 0.08 }); }
+      else if (w === 'farm') tiltX = 0.5 + Math.sin(k * 0.5) * 0.15;
+      else if (w === 'read') tiltZ = Math.sin(k * 0.3) * 0.08;
+      else if (w === 'cook' || w === 'stir') { tiltX = 0.15; tiltZ = Math.sin(k) * 0.1; if (Math.random() < dt * 1.5) View.dio.sparks.emit({ pos: _w.set(this.pos.x + Math.sin(this.yaw) * 0.5, 0.9, this.pos.z + Math.cos(this.yaw) * 0.5), n: 1, color: 0xffffff, speed: 0.2, up: 0.8, grav: 0, life: 1, size: 0.1 }); }
+      else bob = Math.sin(k * 0.4) * 0.03;
+    } else if (this.state === 'sleep') { sy = 0.7; tiltX = 1.2; }
+    else if (this.state === 'drop') { if (this.carryObj && this.t > 0.2) { View.dio.sparks.emit({ pos: _w.set(this.pos.x, 0.5, this.pos.z), n: 6, color: 0xffe9b0, speed: 1.2, life: 0.4, size: 0.08 }); this.dropCarry(); } }
+    else if (this.state === 'chat') { bob = Math.abs(Math.sin(time * 4 + this.phase)) * 0.04; }
     else if (this.state === 'nap') { sy = 0.82; tiltX = 0.25; }
     else if (this.state === 'gather') { bob = Math.abs(Math.sin(time * 6 + this.phase)) * 0.1; }
     if (this.state !== 'walk' && this.t > this.dur) Town.decide(this);

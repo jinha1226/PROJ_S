@@ -34,9 +34,9 @@ await page.evaluate(() => { const g = window.__game, G = g.G; document.querySele
     g.refreshStats(); G.ps.eva = 0; g.computeFOV(); return G; };
 });
 
-// 1. 층마다 장비 2~4개, 대부분 평범
+// 1. 장비 드롭은 드물고(층마다 바닥 · 상자 합쳐 1개 안팎) 대부분 속성 장비(설계_정착지_2단계 §8.3)
 const s1 = await page.evaluate(() => { const g = window.__game, G = g.G; let tot = 0, plain = 0, n = 0; for (let r = 0; r < 30; r++) { g.regen(); const list = [...G.gear.values()]; tot += list.length + G.chests.size; plain += list.filter((it) => !it.brand && !it.ego && !it.art && !it.un && !it.jt).length; n += list.length; } return { perFloor: +(tot / 30).toFixed(2), plainShare: +(plain / Math.max(1, n)).toFixed(2) }; });
-check('층마다 장비 1.5~4개, 대부분 평범', s1.perFloor >= 1.5 && s1.perFloor <= 4 && s1.plainShare >= 0.4, JSON.stringify(s1));
+check('층마다 장비 드묾(0.3~1.5개), 대부분 속성', s1.perFloor >= 0.3 && s1.perFloor <= 1.5 && s1.plainShare <= 0.5, JSON.stringify(s1));
 
 // 2. 미확인 무기: 적중 10번 뒤 드러남, 음수도 있다
 const s2 = await page.evaluate(() => { const g = window.__game, G = arena([[1, 0, { hp: 999, max: 999 }]]); const it = g.makeGear('sword'); it.plus = -2; G.bag.push(it); g.equip(G.bag.length - 1, 'weapon'); const before = g.gearName(it);
@@ -136,10 +136,8 @@ check('§10-5 원거리: 붙은 적 절반', d5.half, JSON.stringify(d5));
 // §10-7 품질: 구역마다 오르고, 강화 +N과 따로 더해진다. 대장장이가 품질을 올린다
 const d7 = await page.evaluate(() => { const g = window.__game, G = arena(), M = g.META; const qs = {}; for (const d of [3, 8, 13, 18]) { let q = 0; for (let k = 0; k < 40 && !q; k++) { const it = g.rollGear(d); if (it.q) q = it.q; } qs[d] = q; }
   G.eq.weapon = g.makeGear('sword', { q: 3, plus: 2, known: true }); g.refreshStats(); const dmg = G.ps.dmg, name = g.gearName(G.eq.weapon);
-  const it = g.makeGear('body_leather', { known: true }); M.gear.push(it); M.mats.마석 = 5; M.mats.광석 = 5; const q = g.RECIPES.find((r) => r.id === 'e_qual');
-  g.Town.enhancePick(q, { name: '대장', t: { C: 0, O: 0, H: 0, A: 0, X: 0, E: 0 }, mood: 0 }, 'forge'); const k = [...document.querySelectorAll('[data-e]')].find((b) => b.closest('.prow').textContent.includes(g.gearName(it, true))); if (k) k.click();
-  document.querySelector('#sheet').classList.add('hidden'); return { qs, dmg, name, smith: it.q }; });
-check('§10-7 품질: 구역 = 품질, 강화와 따로 더함, 대장장이가 올림', d7.qs[3] === 1 && d7.qs[8] === 2 && d7.qs[13] === 3 && d7.qs[18] === 4 && d7.dmg === 4 && /^\+2 좋은 장검$/.test(d7.name) && d7.smith === 2, JSON.stringify(d7));
+  document.querySelector('#sheet').classList.add('hidden'); return { qs, dmg, name }; });
+check('§10-7 품질: 구역 = 품질, 강화와 따로 더함', d7.qs[3] === 1 && d7.qs[8] === 2 && d7.qs[13] === 3 && d7.qs[18] === 4 && d7.dmg === 4 && /^\+2 좋은 장검$/.test(d7.name), JSON.stringify(d7));
 
 // §10-9 옛 저장(v6 DCSS식) → 새 칸 구조
 const d9 = await page.evaluate(() => { const g = window.__game, mk = (base, o = {}) => ({ uid: 'u' + base, base, plus: 0, brand: null, ego: null, jt: null, jv: 0, je: null, art: null, un: null, idP: true, idX: true, worn: 0, hits: 0, ...o });

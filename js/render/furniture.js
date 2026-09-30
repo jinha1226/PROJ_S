@@ -10,7 +10,7 @@ const scaled = (parts, s) => parts.map((p) => ({ ...p, p: p.p.map((v) => v * s),
 const h01 = (n) => { const s = Math.sin(n * 91.7 + 17.3) * 43758.5453; return s - Math.floor(s); };
 
 /** 청사진 상자 높이 */
-export const FURN_H = { bed: 0.5, table: 0.75, chair: 0.85, shelf: 1.3, lamp: 1.3, hearth: 1.3, anvil: 0.65, herbtable: 1.0, leather: 1.15, bookshelf: 1.55, decor: 0.55, altar: 1.0, gate: 1.15, heap: 0.6 };
+export const FURN_H = { bed: 0.5, table: 0.75, chair: 0.85, shelf: 1.3, lamp: 1.3, hearth: 1.3, anvil: 0.65, herbtable: 1.0, leather: 1.15, bookshelf: 1.55, decor: 0.55, altar: 1.0, gate: 1.15, heap: 0.6, whetstone: 0.8, furnace: 1.4, still: 1.1, crucible: 1.0, desk: 0.9, starmap: 1.5, jar: 0.8 };
 
 /** 가구 도형 목록 (K.partGeo 형식) */
 export function furnParts(k) {
@@ -45,6 +45,14 @@ export function furnParts(k) {
     case 'gate': return scaled([B(-0.78, 0.9, 0, 0.34, 1.8, 0.4, 0xa8a294), B(0.78, 0.9, 0, 0.34, 1.8, 0.4, 0xa8a294), B(0, 1.9, 0, 2.0, 0.32, 0.46, 0x948e80), B(0, 2.12, 0, 0.3, 0.2, 0.5, 0xb45aff), B(-0.78, 0.08, 0, 0.46, 0.16, 0.5, 0x8a8476), B(0.78, 0.08, 0, 0.46, 0.16, 0.5, 0x8a8476)], 0.5);
     case 'heap': return [C(-0.05, 0.08, 0.12, 0.08, 0.72, 0x8a5a32, [0, 0.25, Math.PI / 2]), C(-0.05, 0.08, -0.05, 0.08, 0.72, 0x7a5030, [0, 0.25, Math.PI / 2]), C(-0.05, 0.22, 0.04, 0.08, 0.7, 0x9a6a3a, [0, 0.25, Math.PI / 2]),
       { s: 'ico', p: [0.3, 0.1, -0.28], k: [0.14, 0.11, 0.13], c: 0x9a968c }, { s: 'ico', p: [0.18, 0.08, -0.36], k: [0.1, 0.08, 0.1], c: 0x8a867c }, { s: 'sphere', p: [-0.28, 0.2, -0.3], k: [0.17, 0.2, 0.16], c: 0xd8c8a0 }, B(0.28, 0.14, 0.26, 0.26, 0.26, 0.26, 0xb08050)];
+    // 작업방 등급 가구(설계_정착지_2단계 §9.1)
+    case 'whetstone': return [B(0, 0.3, 0, 0.5, 0.6, 0.4, WOOD_D), C(0, 0.72, 0, 0.26, 0.1, STONE, [Math.PI / 2, 0, 0]), B(0, 0.62, 0.22, 0.06, 0.2, 0.06, IRON)];
+    case 'furnace': return [C(0, 0.55, 0, 0.42, 1.1, 0x6a5a50), { s: 'cone', p: [0, 1.25, 0], k: [0.3, 0.35, 0.3], c: 0x5a4a44 }, B(0, 0.35, 0.38, 0.34, 0.3, 0.1, 0xff7a2a)];
+    case 'still': return [B(0, 0.35, 0, 0.7, 0.7, 0.5, WOOD), { s: 'sphere', p: [-0.12, 0.88, 0], k: 0.2, c: 0xb87a3a }, C(0.2, 0.95, 0, 0.03, 0.4, 0xb87a3a, [0, 0, -0.8]), C(0.3, 0.8, 0, 0.08, 0.16, 0x8fe0ff)];
+    case 'crucible': return [C(0, 0.25, 0, 0.36, 0.5, STONE), C(0, 0.55, 0, 0.3, 0.12, IRON), { s: 'oct', p: [0, 0.85, 0], k: [0.12, 0.2, 0.12], c: 0xd06aff }];
+    case 'desk': return [B(0, 0.72, 0, 1.0, 0.08, 0.6, WOOD), ...legs(0.44, 0.24, 0.68), B(-0.2, 0.8, 0, 0.3, 0.04, 0.22, 0xf2ead8), C(0.3, 0.84, -0.1, 0.05, 0.14, 0x2a2a3a)];
+    case 'starmap': return [B(0, 0.7, 0, 0.1, 1.4, 0.1, WOOD_D), B(0, 1.05, 0.06, 0.9, 0.7, 0.04, 0x1a2250), { s: 'sphere', p: [0.2, 1.15, 0.1], k: 0.05, c: 0xfff2a0 }, { s: 'sphere', p: [-0.22, 0.95, 0.1], k: 0.04, c: 0xbfe0ff }];
+    case 'jar': return [{ s: 'sphere', p: [0, 0.32, 0], k: [0.3, 0.34, 0.3], c: 0xb86a3a }, C(0, 0.68, 0, 0.14, 0.1, 0x9a5a30)];
   }
   return [B(0, 0.3, 0, 0.8, 0.6, 0.8, WOOD)];
 }

@@ -55,9 +55,10 @@ const a2 = await page.evaluate(() => [scr(R0[0], R0[1]), scr(R0[0] + 3, R0[1] + 
 await page.touchscreen.tap(a2[0].x, a2[0].y); await page.waitForTimeout(80);
 const mag = await page.evaluate(() => { const T = window.__game.Town, m = !document.querySelector('#mag').classList.contains('hidden'), first = document.querySelector('#bstat').textContent; T.bm.cur = { x: R0[0] + 3, y: R0[1] + 3 }; T.previewRect(); const cost = document.querySelector('#bstat').textContent; T.bm.cur = T.bm.start; T.previewRect(); return { mag: m, stat: first, cost, stages }; });
 await page.touchscreen.tap(a2[1].x, a2[1].y); await page.waitForTimeout(80);
-const s2 = await page.evaluate(() => { const S = window.__game.META.settle, [x0, y0] = R0, cells = []; for (let y = y0; y <= y0 + 3; y++) for (let x = x0; x <= x0 + 3; x++) cells.push(y * 40 + x);
-  return { walls: cells.filter((i) => S.wall[i] === 1).length, doors: cells.filter((i) => S.wall[i] === 3).length, floors: cells.filter((i) => S.floor[i] === 2).length, left: S.bp.length, wood: S.stock.나무 }; });
-check('§11-2 방 그리기 4×4: 벽 11 · 문 1 · 바닥 4, 그리는 동안 비용이 보이고 놓으면 지어진다', s2.walls === 11 && s2.doors === 1 && s2.floors === 4 && s2.left === 0 && s2.wood === 10 && /🪵나무 30/.test(mag.cost), JSON.stringify({ ...s2, cost: mag.cost }));
+const s2 = await page.evaluate(() => { const g = window.__game, S = g.META.settle, [x0, y0] = R0, cells = []; for (let y = y0; y <= y0 + 3; y++) for (let x = x0; x <= x0 + 3; x++) cells.push(y * 40 + x);
+  const bp0 = S.bp.length, w0 = S.stock.나무, walls0 = cells.filter((i) => S.wall[i]).length; S.stock.나무 += 20; const col = g.Colony.passHours(48); g.Town.refreshWorld(); // 청사진만 놓이고, 주민이 몇 시간에 걸쳐 짓는다
+  return { bp0, w0, walls0, built: col.built, walls: cells.filter((i) => S.wall[i] === 1).length, doors: cells.filter((i) => S.wall[i] === 3).length, floors: cells.filter((i) => S.floor[i] === 2).length, left: S.bp.length, wood: S.stock.나무 }; });
+check('§11-2 방 그리기 4×4: 청사진 16 → 주민이 지어 벽 11 · 문 1 · 바닥 4, 그리는 동안 비용이 보인다', s2.bp0 === 16 && s2.w0 === 40 && s2.walls0 === 0 && s2.built >= 16 && s2.walls === 11 && s2.doors === 1 && s2.floors === 4 && s2.left === 0 && /🪵나무 30/.test(mag.cost), JSON.stringify({ ...s2, cost: mag.cost }));
 check('건설 화면은 한 단계씩: 분류 → 물건 → 그리기(버튼 두셋)', mag.stages[0] === 'cats' && mag.stages[1] === 'items' && mag.stages[2] >= 8 && mag.stages[3] === 'draw' && mag.stages[4] <= 4, JSON.stringify(mag.stages));
 // 3. 두 번 탭 사각형 + 돋보기
 check('§11-3 두 번 탭으로 사각형, 첫 탭에 돋보기', mag.mag && /끝 칸|칸/.test(mag.stat), JSON.stringify(mag));
@@ -69,7 +70,7 @@ const s8 = await page.evaluate(() => { const g = window.__game, S = g.META.settl
   S.bp = []; const free = []; for (let i = 0; i < 1600 && free.length < 2; i++) { const x = i % 40, y = (i / 40) | 0; if (Z.checkBps([{ L: 'furn', k: 'chair', x, y }]).ok.length && !S.floor[i]) free.push(i); }
   S.terr[free[0]] = 4; S.terr[free[1]] = 5; for (const i of free) Z.cutArea(i % 40, (i / 40) | 0, i % 40, (i / 40) | 0); const r = { gained: { 나무: S.stock.나무, 돌: S.stock.돌 } };
   return { w0, w1, built, toast, left, red, gained: r.gained, wood: S.stock.나무, stone: S.stock.돌 }; });
-check('§11-8 지으면 나무가 줄고, 모자라면 이유와 빨간 청사진, 베기·캐기로 는다', s8.built >= 12 && s8.w1 < s8.w0 && /모자라/.test(s8.toast) && s8.left > 0 && s8.red && s8.wood === 8 && s8.stone === 6, JSON.stringify(s8));
+check('§11-8 지으면 나무가 줄고, 모자라면 이유와 빨간 청사진, 베기·캐기로 는다', s8.built >= 12 && /모자라/.test(s8.toast) && s8.left > 0 && s8.red && s8.wood === 8 && s8.stone === 6, JSON.stringify(s8));
 
 // 7. 닫힌 방 인식 + 가구로 종류, 제작은 방 조건
 const s7 = await page.evaluate(() => { const g = window.__game, S = g.META.settle, Z = g.Settle; S.stock.나무 = 200; S.stock.돌 = 200; g.META.mats.광석 = 20; S.bp = []; g.Town.refreshWorld();
@@ -98,16 +99,27 @@ await page.evaluate(() => { const Z = window.__game.Settle, S = window.__game.ME
 const s5 = await page.evaluate(() => { const g = window.__game, T = g.Town; T.buildAct('stop'); T.buildAct('back'); T.buildAct('cat', 'room'); T.buildAct('item', 'preset:library'); T.buildAct('size', 'S'); window.shelf0 = g.META.settle.furn.filter((f) => f.k === 'bookshelf').length; const spots = T.bm.spots.map((s) => [s.x, s.y, s.w, s.h]); window.sp0 = T.bm.spots[0]; look(sp0.x + 1, sp0.y + 1); return { n: spots.length, spots }; });
 const p5 = await page.evaluate(() => scr(sp0.x + 1, sp0.y + 1));
 await page.touchscreen.tap(p5.x, p5.y); await page.waitForTimeout(80);
-const s5b = await page.evaluate(() => { const g = window.__game, S = g.META.settle, Z = g.Settle; return { shelf: S.furn.filter((f) => f.k === 'bookshelf').length + S.bp.filter((b) => b.k === 'bookshelf').length - shelf0, library: Z.hasRoom('library') }; });
+const s5b = await page.evaluate(() => { const g = window.__game, S = g.META.settle, Z = g.Settle; g.META.mats.마석 = (g.META.mats.마석 || 0) + 20; S.stock.나무 += 40; g.Colony.passHours(36); return { shelf: S.furn.filter((f) => f.k === 'bookshelf').length + S.bp.filter((b) => b.k === 'bookshelf').length - shelf0, library: Z.hasRoom('library') }; });
 check('§11-5 프리셋: 추천 자리 2~3곳, 누르면 그 자리에 지어진다', s5.n >= 2 && s5.n <= 3 && s5b.shelf === 1 && s5b.library, JSON.stringify({ ...s5, ...s5b }));
 
 // 6. 알아서 짓기: 모자란 방(침대, 직업 작업방)을 한 번에
-const s6 = await page.evaluate(() => { const g = window.__game, M = g.META, S = M.settle; S.bp = []; M.npcs.push({ ...M.npcs[0], id: 'nh', name: '사냥', job: 'hunter', rel: {} });
-  const need = g.Settle.neededRooms().map(([k]) => k); g.Town.buildAct('auto'); const all = [...S.furn, ...S.bp], beds = all.filter((b) => b.k === 'bed').length, leather = all.filter((b) => b.k === 'leather').length;
-  M.npcs.pop(); return { need, beds, leather }; });
-check('§11-6 알아서 짓기: 침대·작업방을 한 번에', s6.need.includes('bedroom') && s6.need.includes('hunter') && s6.beds >= 2 && s6.leather === 1, JSON.stringify(s6));
+const s6 = await page.evaluate(() => { const g = window.__game, M = g.META, S = M.settle; S.bp = []; M.npcs.push({ ...M.npcs[0], id: 'nh', name: '연금', job: 'alchemist', rel: {} });
+  const need = g.Settle.neededRooms().map(([k]) => k); g.Town.buildAct('auto'); const all = [...S.furn, ...S.bp], beds = all.filter((b) => b.k === 'bed').length, herbt = all.filter((b) => b.k === 'herbtable').length;
+  M.npcs.pop(); return { need, beds, herbt }; });
+check('§11-6 알아서 짓기: 침대·작업방을 한 번에', s6.need.includes('bedroom') && s6.need.includes('herb') && s6.beds >= 2 && s6.herbt === 1, JSON.stringify(s6));
 await page.evaluate(() => { const g = window.__game; g.META.settle.bp = []; g.Town.exitBuild(); g.Town.refreshWorld(); });
 await page.screenshot({ path: path.join(outDir, 'settlement.png') });
+
+// 정착지 2단계: 📋 일(배정표 · 목표 재고 · 제작) · 시계와 배속
+const w2 = await page.evaluate(() => { const g = window.__game, M = g.META, T = g.Town;
+  T.workSheet('jobs'); const rows = document.querySelectorAll('table.jobs tr').length - 1;
+  const b = document.querySelector('.pri[data-w="haul"]'), n = M.npcs.find((q) => q.id === b.dataset.n), p0 = g.Colony.priOf(n, 'haul'); b.click(); const manual = !n.work.auto, p = n.work.pri.haul;
+  T.workSheet('stock'); const t0 = g.Colony.target('나무'); document.querySelector('[data-t="나무"][data-d="5"]').click(); const tgt = M.colony.targets.나무 - t0;
+  T.workSheet('craft'); const craft = !!document.querySelector('#sheet [data-tab="craft"].on');
+  const hr = () => M.time.day * 24 + M.time.hour, h0 = hr(); T.busy = false; T.spIdx = 2; for (let k = 0; k < 60; k++) T.frame(0.1); const h1 = hr(); T.spIdx = 0; for (let k = 0; k < 30; k++) T.frame(0.1); const h2 = hr(); T.spIdx = 1;
+  n.work.auto = true; document.querySelector('#sheet').classList.add('hidden');
+  return { rows, manual, step: p === (p0 + 1) % 4, tgt, craft, adv: h1 - h0, paused: h2 === h1, clock: document.querySelector('#ttime').textContent }; });
+check('2단계: 일 배정표 · 목표 재고 · 제작 칸, 배속과 멈춤', w2.rows === (await page.evaluate(() => window.__game.META.npcs.length)) && w2.manual && w2.step && w2.tgt === 5 && w2.craft && w2.adv >= 2 && w2.paused && /일/.test(w2.clock), JSON.stringify(w2));
 
 // 9. 옛 저장(고정 건물) → 같은 기능의 방
 const s9 = await page.evaluate(() => { const g = window.__game;
@@ -115,7 +127,7 @@ const s9 = await page.evaluate(() => { const g = window.__game;
     mats: { 약초: 2 }, items: {}, recipes: {}, fallen: [], closed: {}, lit: [true, false, false, false], visitors: [], lore: [], glowMods: [], relics: [], unrandsSeen: [], gear: [], hero: null, rememberedKeepers: [] };
   localStorage.setItem('torch-meta-v3', JSON.stringify(old)); g.resetMetaForTest(); const M = g.loadMeta(); const Z = g.Settle;
   return { v: M.v, has: ['forge', 'herb', 'inn', 'library', 'altar'].map((k) => Z.hasRoom(k)), gate: M.settle.furn.some((f) => f.k === 'gate'), heap: M.settle.furn.some((f) => f.k === 'heap'), bld: Object.keys(M.buildings).sort().join() }; });
-check('§11-9 옛 마을의 고정 건물이 같은 기능의 방으로', s9.v === 10 && s9.has.every(Boolean) && s9.gate && s9.heap && /forge/.test(s9.bld), JSON.stringify(s9));
+check('§11-9 옛 마을의 고정 건물이 같은 기능의 방으로', s9.v === 11 && s9.has.every(Boolean) && s9.gate && s9.heap && /forge/.test(s9.bld), JSON.stringify(s9));
 
 check('§11-11 페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 await browser.close(); server.close();

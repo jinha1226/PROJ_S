@@ -38,12 +38,12 @@ check('방문 확률은 밝기를 따르고, 밝기 20 이하면 아무도 안 �
 await page.evaluate(() => { const g = window.__game; g.META.hero = g.newHero(); g.META.cleared[0] = true; g.Town.enter({ reason: 'boss', zone: 1, zf: 3, loot: {}, npcs: [], first: true, kills: 3 }); });
 const done = () => page.waitForFunction(() => !window.__game.Town.busy && !document.querySelector('#sheet').classList.contains('hidden'), null, { timeout: 90000 });
 await done(); await hide();
-const s2 = await page.evaluate(() => { const g = window.__game, M = g.META; M.glowMods = []; M.npcs.forEach((n) => { n.mood = 0; }); M.npcs.push(mk('cook', { A: 1 })); const glow = g.hearthGlow(); const jobs = new Set(); for (let r = 0; r < 300; r++) { M.visitors = []; for (const v of g.rollVisitors()) jobs.add(v.npc.job + ':' + v.npc.from); } M.visitors = []; M.npcs.pop(); return { lit: M.lit[0], land: g.Town.lands[0].k, glow, jobs: [...jobs], recall: M.items.recall }; });
+const s2 = await page.evaluate(() => { const g = window.__game, M = g.META; M.glowMods = []; M.npcs.forEach((n) => { n.mood = 0; }); M.npcs.push(mk('cook', { A: 1 })); const glow = g.hearthGlow(); const jobs = new Set(); for (let r = 0; r < 300; r++) { M.visitors = []; for (const v of g.rollVisitors()) jobs.add(v.npc.origin + ':' + v.npc.from); } M.visitors = []; M.npcs.pop(); return { lit: M.lit[0], land: g.Town.lands[0].k, glow, jobs: [...jobs], recall: M.items.recall }; });
 check('1구역 조각: 호숫가가 밝아지고 호숫가 사람들이 온다 · 보스 첫 처치 두루마리', s2.lit && s2.land > 0.9 && s2.jobs.length && s2.jobs.every((j) => /^(fisher|boatman|cook):lake$/.test(j)) && s2.recall === 1, JSON.stringify(s2));
 
 // 3. 요청은 성격을 따르고, 채워야 받아들일 수 있다
 const s3 = await page.evaluate(() => { const g = window.__game, M = g.META, keep = M.npcs.slice(), out = {};
-  const v = (t) => ({ npc: mk('fisher', t), waits: 0, req: null });
+  const v = (t) => ({ npc: mk('cook', t), waits: 0, req: null });
   const hon = v({ H: 2 }); hon.req = 'H+'; M.npcs = keep.map((n) => ({ ...n, t: { ...n.t, H: -1 } })); out.honNo = g.requestState(hon).ok; M.npcs[0].t.H = 2; out.honYes = g.requestState(hon).ok;
   const soc = v({ X: 2 }); soc.req = 'X+'; M.npcs = keep.slice(0, 2); out.socNo = g.requestState(soc).ok; M.npcs = [...keep, mk('cook'), mk('cook')]; out.socYes = g.requestState(soc).ok;
   const greedy = v({ H: -2 }); greedy.req = 'H-'; M.mats = { 약초: 1 }; out.greedNo = g.requestState(greedy).ok; M.mats = { 약초: 2, 광석: 2 }; out.greedYes = g.requestState(greedy).ok;
@@ -53,7 +53,7 @@ check('요청: 정직·외향·욕심 — 채우면 받아들이고 값을 치�
 
 // 4. 까칠한 방문자 · 두 번 기다리면 세 번째 귀환에 떠난다
 const s4 = await page.evaluate(() => { const g = window.__game, M = g.META, keep = M.npcs.slice();
-  const foe = mk('cook', { A: -2, C: -2 }), vis = { npc: mk('miner', { A: -2, C: 2 }), waits: 0, req: 'A-' };
+  const foe = mk('cook', { A: -2, C: -2 }), vis = { npc: mk('carpenter', { A: -2, C: 2 }), waits: 0, req: 'A-' };
   M.npcs = [...keep, foe]; const no = g.requestState(vis).ok; M.npcs = keep.map((n) => ({ ...n, t: { ...n.t, A: 2, C: 2 } })); const yes = g.requestState(vis).ok; M.npcs = keep;
   M.visitors = [vis]; const seen = []; for (let k = 0; k < 3; k++) { g.processReturn({ reason: 'recall', zone: 1, zf: 1, loot: {} }); seen.push(M.visitors.includes(vis)); }
   M.visitors = []; return { no, yes, seen }; });
@@ -91,7 +91,7 @@ check('귀환 두루마리: 보스 층 불가 · 빛이 모인 한 턴 뒤 정�
 await hide();
 
 // 7. 쓰러지면 자원자 창 → 고른 주민의 일터가 빈다
-await page.evaluate(() => { const g = window.__game, M = g.META; M.npcs = [mk('blacksmith', { E: -2 }), mk('herbalist', { H: 2 }), mk('scholar', { A: 1 })]; M.npcs.forEach((n) => { for (const m of M.npcs) if (m !== n) n.rel[m.id] = 30; }); M.hero = g.newHero(); g.enterDungeon(1); g.returnToTown('death'); });
+await page.evaluate(() => { const g = window.__game, M = g.META; M.npcs = [mk('blacksmith', { E: -2 }), mk('alchemist', { H: 2 }), mk('scholar', { A: 1 })]; M.npcs.forEach((n) => { for (const m of M.npcs) if (m !== n) n.rel[m.id] = 30; }); M.hero = g.newHero(); g.enterDungeon(1); g.returnToTown('death'); });
 await done();
 await page.evaluate(() => document.querySelector('#sheet .close')?.click());
 await page.waitForTimeout(500);

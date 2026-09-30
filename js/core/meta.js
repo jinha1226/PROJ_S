@@ -1,11 +1,9 @@
 import { ROOMS } from '../data/build.js';
 import { CLASS_RULE } from '../data/classes.js';
 import { CLOCK } from '../data/colony.js';
-import { GEAR_BASES } from '../data/gear.js';
 import { APPEAR, ITEMS } from '../data/items.js';
 import { LEVEL_XP } from '../data/stones.js';
-import { BLD, CRAFT_B, HAIRS, HERO_NAMES, JOBS, JOB_CLOTH, JOB_IDS, NAMES, ORIGINS, RECIPES, SKINS, TRAITS, adj } from '../data/town.js';
-import { FORMS, WPN } from '../data/weapons.js';
+import { BLD, CRAFT_B, HAIRS, HERO_NAMES, JOBS, JOB_CLOTH, JOB_IDS, NAMES, ORIGINS, SKINS, TRAITS, adj } from '../data/town.js';
 import { validLevels } from '../sim/classes.js';
 import { pick, rand, ri, shuffle } from '../util/rng.js';
 import { jo } from '../util/text.js';
@@ -105,9 +103,8 @@ export const moodAdd = (n, d) => { n.mood = Math.max(-2, Math.min(2, n.mood + d)
 
 export function craftNote(n) {
   const o = [];
-  if (n.t.C >= 1) o.push('성실해서 가끔 하나 더 만든다'); if (n.t.C <= -1) o.push('대충 해서 명품이 드물다');
-  if (n.t.O >= 1) o.push('호기심이 많아 명품이 잘 나온다');
-  if (n.t.H <= -1) o.push('재료를 슬쩍할 때가 있다');
+  if (n.t.C >= 1) o.push('성실해서 가끔 하나 더 만든다'); if (n.t.C <= -1) o.push('대충 해서 품질이 떨어질 때가 있다');
+  if (n.t.O >= 1) o.push('호기심이 많아 좋은 품질이 잘 나온다');
   if (n.mood <= -1) o.push('기분이 나빠 손이 굳었다'); if (n.mood >= 1) o.push('기분이 좋아 손끝이 가볍다');
   return o.join(' · ') || '무난한 솜씨';
 }
@@ -170,9 +167,7 @@ export function genEvents(out, r) {
   // 발견
   const cur = N.filter((n) => n.t.O >= 1);
   if (cur.length && rand() < 0.5) {
-    const c = pick(cur), hid = RECIPES.filter((q) => q.hidden && !META.recipes[q.id] && META.buildings[q.b]);
-    if (hid.length) { const q = pick(hid); META.recipes[q.id] = true; add('💡', `${adj(c, 'O')} ${jo(c.name, '이가')} 전리품을 뜯어보다 새 제작법을 찾았다. ${recipeName(q)}.`); }
-    else { const m = pick(['약초', '광석', '가죽']); META.mats[m] = (META.mats[m] || 0) + 1; add('🔍', `${adj(c, 'O')} ${jo(c.name, '이가')} 마을 뒤편에서 ${jo(m, '을를')} 찾아왔다.`); }
+    const c = pick(cur), m = pick(['약초', '광석', '가죽', '마석']); META.mats[m] = (META.mats[m] || 0) + 1; add('🔍', `${adj(c, 'O')} ${jo(c.name, '이가')} 마을 뒤편에서 ${jo(m, '을를')} 찾아왔다.`);
   }
   // 잔치
   const good = pairs.filter(([a, b]) => a.t.A >= 1 && b.t.A >= 1 && (a.rel[b.id] || 0) > 20);
@@ -187,7 +182,6 @@ export function genEvents(out, r) {
 /** 다음 귀환까지 유지되는 밝기 증감 */
 export function glowMod(v, why) { META.glowMods.push({ v, why }); }
 
-export function recipeName(q) { return q.out ? `${ITEMS[q.out].name}${q.n > 1 ? ' ×' + q.n : ''}` : q.weapon ? `${WPN(q.weapon).name} · ${FORMS[WPN(q.weapon).form].name} ${WPN(q.weapon).dmg.join('–')}` : q.armor ? (q.armor === 'bone' ? '보호 사슬 갑옷 · 방어 4, 층마다 보호막 4' : '가죽 갑옷 · 방어 2') : q.gear ? `${GEAR_BASES[q.gear].name} · 방어 ${GEAR_BASES[q.gear].def}${GEAR_BASES[q.gear].block ? `, 막기 ${GEAR_BASES[q.gear].block}%` : ''}` : q.enhance ? '창고 장비 하나 강화' : q.quality ? '창고 장비 하나 품질 올리기' : '든든한 한 끼 · 다음 출발 보호막 6'; }
 
 export function processReturn(r) {
   META.visits++; META.closed = {}; META.glowMods = [];

@@ -82,6 +82,7 @@ function produce(R, o, n) {
   }
   if (out.item) { META.items[out.item] = (META.items[out.item] || 0) + out.n; return R.name; }
   if (out.convert) { const spec = n && n.job === 'alchemist' ? 1.5 : 1; for (const [m, k] of Object.entries(out.convert)) addStock(m, Math.round(k * spec)); return R.name; }
+  if (out.meal) { addStock('식사', out.meal * (n && JOBS[n.job].spec.includes('cook') ? 2 : 1)); return null; }
   if (out.buff) { META.buff = out.buff; return R.name; }
   const it = findGear(o.target); if (!it) return null;
   if (out.enhance) { it.plus = (it.plus || 0) + 1; return `${R.name}`; }

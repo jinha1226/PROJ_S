@@ -1,17 +1,18 @@
-import { canEnchant, craftArmor, craftWeapon, gearCss, gearName, makeGear } from '../core/gear.js';
-import { META, craftNote, invAdd, invCount, moodAdd, newHero, packLimit, recipeName, saveMeta } from '../core/meta.js';
+import { clockText, isNight } from '../core/colony.js';
+import { gearCss, gearName } from '../core/gear.js';
+import { META, craftNote, invAdd, invCount, newHero, packLimit, saveMeta } from '../core/meta.js';
 import { progOf } from '../core/progress.js';
-import { hasRoom, radius } from '../core/settlement.js';
+import { radius, stockOf } from '../core/settlement.js';
 import { cap, hearthGlow } from '../core/visitors.js';
 import { ROOMS, SCX, SCY } from '../data/build.js';
 import { ROLES } from '../data/classes.js';
 import { BOSSES } from '../data/enemies.js';
-import { QUALITY, SLOTS, SLOT_ICON, hasQuality, isWeapon, slotKind } from '../data/gear.js';
+import { SLOTS, SLOT_ICON, slotKind } from '../data/gear.js';
 import { ITEMS, MATS } from '../data/items.js';
 import { COLORS, STONE } from '../data/stones.js';
 import { ZONES } from '../data/terrain.js';
 import { JAR_WOOD } from '../data/torch.js';
-import { BLD, CRAFT_B, JOBS, MOODS, ORIGINS, RECIPES, TRAITS, adj } from '../data/town.js';
+import { BLD, JOBS, MOODS, ORIGINS, TRAITS, adj } from '../data/town.js';
 import { LANDS } from '../data/visitors.js';
 import { enterDungeon } from '../flow.js';
 import { W3 } from '../render/common.js';
@@ -19,7 +20,6 @@ import { Sfx } from '../render/sfx.js';
 import { View } from '../render/view.js';
 import { classOf } from '../sim/classes.js';
 import { $, UI } from '../ui/ui.js';
-import { pick, rand } from '../util/rng.js';
 import { jo } from '../util/text.js';
 import { talkLine } from './town-npc.js';
 import { Town } from './town.js';
@@ -27,10 +27,16 @@ import { Town } from './town.js';
 Object.assign(Town, {
   renderHud() {
     const h = META.hero, cl = META.cleared.map((c, k) => (c ? `✓${k + 1}` : '')).filter(Boolean).join(' ');
-    const S = META.settle, res = S ? `<br>🪵 ${S.stock.나무 || 0} · 🪨 ${S.stock.돌 || 0} · 🔮 ${META.mats.마석 || 0} · 빛 ${radius()}칸${S.bp.length ? ` · 청사진 ${S.bp.length}` : ''}` : '';
+    const S = META.settle, n = (m) => stockOf(m), res = S ? `<br>🪵 ${n('나무')} · 🪨 ${n('돌')} · ⛓ ${n('광석')} · 🌾 ${n('식량')} · 🍲 ${n('식사')} · 🔮 ${n('마석')} · 빛 ${radius()}칸${S.bp.length ? ` · 청사진 ${S.bp.length}` : ''}` : '';
     $('#tinfo').innerHTML = `<b class="glow">🔥 ${hearthGlow()}</b> · 주민 ${META.npcs.length}/${cap()}${META.visitors.length ? ` · 방문자 ${META.visitors.length}` : ''} · ${h ? `등불지기 ${h.name}(${h.gen}대) HP ${h.hp}/${h.max}` : META.needSuccessor ? '횃불을 들 사람을 골라야 한다' : `다음 등불지기 ${META.gen + 1}대째`}${cl ? ` · 구역 ${cl}` : ''}${res}`;
   },
-  sheet(html) { const sh = $('#sheet'); sh.innerHTML = html; sh.classList.remove('hidden'); sh.querySelector('.close')?.addEventListener('click', () => sh.classList.add('hidden')); return sh; },
+  /** 시계 · 배속 */
+  renderClock() {
+    if (!META.time) return; const night = isNight();
+    $('#ttime').innerHTML = `${night ? '🌙' : '☀'} ${clockText()}`; $('#tclock').classList.toggle('night', night);
+    document.querySelectorAll('#tclock [data-sp]').forEach((b) => b.classList.toggle('on', +b.dataset.sp === this.spIdx));
+  },
+  sheet(html) { const sh = $('#sheet'); sh.classList.remove('tall'); sh.innerHTML = html; sh.classList.remove('hidden'); sh.querySelector('.close')?.addEventListener('click', () => sh.classList.add('hidden')); return sh; },
   /* ---- 출발문: 구역 선택 · 준비 ---- */
   gate() {
     if (!META.hero && META.needSuccessor) { this.successionSheet(); return; }
@@ -96,61 +102,6 @@ Object.assign(Town, {
     }; });
   },
   /* ---- 제작소 ---- */
-  craft(bid) {
-    const have = CRAFT_B.filter((b) => hasRoom(b));
-    if (!have.length) { UI.toast('작업방이 아직 없다.'); return; }
-    if (!bid || !have.includes(bid)) bid = have[0];
-    const workers = META.npcs.filter((n) => JOBS[n.job].b === bid);
-    if (!workers.some((n) => n.id === this.crafter)) this.crafter = workers[0]?.id;
-    const cr = workers.find((n) => n.id === this.crafter), closed = META.closed[bid];
-    const tabs = have.map((b) => `<button class="wbtn ${b === bid ? 'on' : ''}" data-t="${b}">${BLD[b].icon} ${BLD[b].name}</button>`).join('');
-    const who = workers.length ? workers.map((n) => `<button class="wbtn ${n === cr ? 'on' : ''}" data-c="${n.id}">${MOODS[n.mood + 2]} ${n.name}<small style="color:#9aa2bd">${craftNote(n)}</small></button>`).join('') : '<p style="color:#9aa2bd">일할 사람이 없다.</p>';
-    const rows = RECIPES.filter((q) => q.b === bid && (!q.hidden || META.recipes[q.id])).map((q) => {
-      const ok = Object.entries(q.in).every(([m, n]) => (META.mats[m] || 0) >= n);
-      const inp = Object.entries(q.in).map(([m, n]) => `<span style="color:${(META.mats[m] || 0) >= n ? '#dfe3f5' : '#ff8a8a'}">${MATS[m]}${m} ${META.mats[m] || 0}/${n}</span>`).join(' ');
-      return `<div class="prow"><span>${recipeName(q)}${q.hidden ? ' <small style="color:#ffe38a">새 제작법</small>' : ''}<br><small>${inp}</small></span><button class="mk" data-r="${q.id}" ${ok && cr && !closed ? '' : 'disabled'}>만들기</button></div>`;
-    }).join('');
-    const sh = this.sheet(`<h3>제작 <button class="close">닫기</button></h3><div class="wrow" style="grid-template-columns:repeat(3,1fr)">${tabs}</div>
-      ${closed ? `<div class="gtxt" style="color:#ff9aa4;margin-top:8px">💢 ${closed} 때문에 이번엔 작업이 멈췄다.</div>` : ''}
-      <div class="sec">누가 만들까</div><div class="wrow">${who}</div>
-      <div class="sec">제작법</div>${rows}<div class="gline">${this.craftMsg || ''}</div>
-      <div class="sec">재료</div><div class="gtxt">${Object.entries(MATS).map(([m, ic]) => `${ic}${m} ${META.mats[m] || 0}`).join(' · ')}</div>`);
-    this.craftMsg = null;
-    sh.querySelectorAll('[data-t]').forEach((b) => { b.onclick = () => this.craft(b.dataset.t); });
-    sh.querySelectorAll('[data-c]').forEach((b) => { b.onclick = () => { this.crafter = b.dataset.c; this.craft(bid); }; });
-    sh.querySelectorAll('[data-r]').forEach((b) => { b.onclick = () => { const q = RECIPES.find((r) => r.id === b.dataset.r); if (q.enhance || q.quality) { this.enhancePick(q, cr, bid); return; } this.doCraft(q, cr, bid); this.craft(bid); }; });
-  },
-  /** 대장장이: 마석 1 + 광석 2로 창고(또는 등불지기)의 장비 하나를 강화 +1, 또는 품질 한 단계(데드셀안 §5). 성실한 대장장이는 가끔 광석을 덜 쓴다 */
-  enhancePick(q, n, bid) {
-    const ok = q.quality ? (it) => hasQuality(it.base) && (it.q || 1) < 4 : (it) => canEnchant(it, isWeapon(it) ? 'w' : 'a');
-    const pool = [...META.gear.map((it) => ['창고', it]), ...(META.hero ? [...Object.values(META.hero.eq), ...META.hero.bag].filter(Boolean).map((it) => ['등불지기', it]) : [])].filter(([, it]) => ok(it));
-    const sh = this.sheet(`<h3>${q.quality ? '품질을 올릴' : '강화할'} 장비 <button class="close">닫기</button></h3><div class="gtxt">${n.name}: “${n.t.C >= 1 ? '제대로 두드려 주지.' : '뭐, 해 보지.'}” <small style="color:#9aa2bd">${q.quality ? '무기·방어구·방패만, 명장의 품질까지' : '유물·장신구는 강화할 수 없다'}</small></div>
-      ${pool.map(([w, it], k) => `<div class="prow"><span style="color:${gearCss(it)}">${gearName(it, true)} <small>${w}</small></span><button class="mk" data-e="${k}">${q.quality ? `→ ${QUALITY[(it.q || 1) + 1].name}` : '+1'}</button></div>`).join('') || `<p style="color:#9aa2bd">${q.quality ? '품질을 올릴' : '강화할'} 수 있는 장비가 없다.</p>`}`);
-    sh.querySelectorAll('[data-e]').forEach((b) => { b.onclick = () => {
-      const it = pool[+b.dataset.e][1]; META.mats.마석 -= 1; const save = n.t.C >= 1 && rand() < 0.35; META.mats.광석 -= save ? 1 : 2;
-      if (q.quality) it.q = (it.q || 1) + 1; else { it.plus++; it.idP = true; } moodAdd(n, n.t.C >= 1 ? 1 : 0); saveMeta();
-      this.craftMsg = `✅ <b>${gearName(it, true)}</b>${save ? `<br>${adj(n, 'C')} ${jo(n.name, '이가')} 광석을 하나 아꼈다.` : ''}`;
-      const [bx, by] = this.spot(bid), B = { x: bx, y: by }, D = View.dio; D.sparks.emit({ pos: W3(B.x, B.y, 1.2), n: 30, color: 0xffe14a, color2: 0xffffff, speed: 3, up: 2, grav: -3, life: 0.7, size: 0.13 }); Sfx.play('crit');
-      Town.redressHero?.(); this.craft(bid);
-    }; });
-  },
-  doCraft(q, n, bid) {
-    for (const [m, k] of Object.entries(q.in)) META.mats[m] -= k;
-    const notes = [], t = n.t;
-    const plus = rand() < 0.1 + t.O * 0.07 + t.C * 0.05 + n.mood * 0.05, extra = t.C >= 1 && rand() < 0.35;
-    if (t.H <= -1 && rand() < 0.3) { const m = pick(Object.keys(q.in)); if (META.mats[m] > 0) { META.mats[m]--; notes.push(`${jo(n.name, '이가')} ${m} 하나를 슬쩍 챙겼다`); } }
-    let made;
-    if (q.out) { const cnt = (q.n || 1) + (extra ? 1 : 0) + (plus ? 1 : 0); META.items[q.out] = (META.items[q.out] || 0) + cnt; made = `${ITEMS[q.out].name} ×${cnt}`; if (extra) notes.push(`${adj(n, 'C')} ${jo(n.name, '이가')} 하나 더 만들었다`); if (plus) notes.push('손끝이 좋아 하나 더 나왔다'); }
-    else if (q.weapon) { const it = craftWeapon(q.weapon + (plus ? '+' : '')); META.gear.push(it); made = gearName(it); if (plus) notes.push(`명품이 나왔다. ${adj(n, 'O')} ${n.name}의 솜씨다`); }
-    else if (q.gear) { const it = makeGear(q.gear, { plus: plus ? 1 : 0, q: 2, known: true }); META.gear.push(it); made = gearName(it); if (plus) notes.push(`명품이 나왔다. ${adj(n, 'O')} ${n.name}의 솜씨다`); }
-    else if (q.armor) { const it = craftArmor(q.armor + (plus ? '+' : '')); META.gear.push(it); made = gearName(it); if (plus) notes.push(`명품이 나왔다. ${adj(n, 'O')} ${n.name}의 솜씨다`); }
-    else { META.buff = 'feast'; made = '든든한 한 끼 · 다음 출발 보호막 6'; }
-    moodAdd(n, t.C >= 1 ? 1 : 0);
-    saveMeta();
-    this.craftMsg = `✅ <b>${made}</b>${notes.length ? '<br>' + notes.join(' · ') : ''}`;
-    const [bx, by] = this.spot(bid), b = { x: bx, y: by }, D = View.dio; D.sparks.emit({ pos: W3(b.x, b.y, 1.2), n: 30, color: plus ? 0xffe14a : 0xffb040, color2: 0xffffff, speed: 3, up: 2, grav: -3, life: 0.7, size: 0.13 }); D.pool.flash(W3(b.x, b.y), 0xffc070, 50, 0.5, 6); Sfx.play(plus ? 'crit' : 'blunt');
-    const tn = this.npcs.find((x) => x.n === n); if (tn) View.dio.labels.pop(W3(tn.pos.x, tn.pos.z, 1.75), '', { html: `<span class="bub">${plus ? '이건 걸작이야!' : t.C <= -1 ? '됐지? 이 정도면…' : '다 됐어.'}</span>`, cls: 'gem', vx: 0, rise: 14, dur: 2.4 });
-  },
   /* ---- 창고 · 휴식 · 카드 ---- */
   storage() {
     const it = Object.entries(META.items).filter(([, n]) => n > 0).map(([k, n]) => `${ITEMS[k].name} ×${n}`).join(' · ') || '없음';
@@ -206,11 +157,13 @@ Object.assign(Town, {
     const after = () => { const f = this.afterReport; this.afterReport = null; if (f) f(); };
     const vis = res.visitors.map((v) => `<div>❔ ${JOBS[v.npc.job].name} ${jo(v.npc.name, '이가')} 모닥불 앞에서 기다린다.</div>`).join('') + res.left.map((v) => `<div>🚶 기다리던 ${jo(v.npc.name, '이가')} 떠났다.</div>`).join('');
     const sh2 = [res.shard ? `<div>🔥 ${LANDS[res.shard - 1].name}의 등불 조각을 모닥불에 넣었다.</div>` : '', res.recallReward ? '<div>📜 보스를 처음 쓰러뜨려 귀환 두루마리를 하나 얻었다.</div>' : ''].join('');
-    if (!W && !loot && !arr && !evs && !vis && !sh2) { after(); return; }
+    const c = res.colony, col = c && c.hours ? [Object.keys(c.got).length ? `<div>🧺 ${Object.entries(c.got).map(([m, k]) => `${MATS[m] || ''}${m} ${k}`).join(' · ')}</div>` : '', c.built ? `<div>🔨 ${c.built}곳을 지었다.</div>` : '', c.made.length ? `<div>⚒ ${[...new Set(c.made)].map((m) => `${m}${c.made.filter((q) => q === m).length > 1 ? ` ×${c.made.filter((q) => q === m).length}` : ''}`).join(' · ')}</div>` : '', c.meals ? `<div>🍲 ${c.meals}끼를 먹었다.</div>` : '', c.hungry ? `<div style="color:#ff9aa4">😣 ${c.hungry}번 끼니를 걸렀다. 식량을 챙기자.</div>` : ''].join('') : '';
+    if (!W && !loot && !arr && !evs && !vis && !sh2 && !col) { after(); return; }
     const rs = this.sheet(`<h3>귀환 보고 <button class="close">확인</button></h3><div class="gtxt">${W}</div>${sh2 ? `<div class="gtxt" style="color:#f0c070;margin-top:6px">${sh2}</div>` : ''}
       ${res.dark ? '<div class="gtxt" style="color:#8a9ab8;margin-top:6px">정착지에는 아무도 남아 있지 않다…</div>' : ''}${vis ? `<div class="sec">방문자</div><div class="gtxt">${vis}</div>` : ''}
       ${loot ? `<div class="sec">가져온 것</div><div class="gtxt">${loot}</div>` : ''}${lost ? `<div class="sec">잃은 것</div><div class="gtxt" style="color:#ff9aa4">${lost}</div>` : ''}
       ${arr || blt ? `<div class="sec">새 얼굴</div><div class="gtxt">${arr}${blt}</div>` : ''}
+      ${col ? `<div class="sec">그동안 <small>${c.hours}시간</small></div><div class="gtxt">${col}</div>` : ''}
       ${evs ? `<div class="sec">그동안 마을에서는</div><div class="gtxt">${evs}</div>` : ''}`);
     rs.querySelector('.close').addEventListener('click', after);
     this.renderHud();

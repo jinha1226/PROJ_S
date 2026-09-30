@@ -74,7 +74,7 @@ function meals() {
 /* ---------- 일 ---------- */
 /** 이 사람의 일 우선순위 0~3. 알아서면 직업 특기 일 3, 나머지 1 */
 export function priOf(n, w) {
-  if (!n.work || n.work.auto) return JOBS[n.job].spec.includes(w) ? 3 : w === 'craft' ? (stationRoomOf(n) ? 3 : 0) : 1;
+  if (!n.work || n.work.auto) return w === 'craft' ? (stationRoomOf(n) ? 3 : 0) : JOBS[n.job].spec.includes(w) ? 3 : 1; // 제작은 작업방에 선 사람만
   return n.work.pri[w] ?? 1;
 }
 const stationRoomOf = (n) => Object.keys({ forge: 1, herb: 1, library: 1, inn: 1 }).find((k) => stationWorker(k) === n);
@@ -193,9 +193,9 @@ const got = (m, n) => { const g = META.colony.sum.got; g[m] = (g[m] || 0) + n; }
 /* ---------- 새 땅: 근처 자원을 넉넉히 (§5) ---------- */
 export function ensureNearResources(s = S(), seed = 1) {
   let r = seed >>> 0; const rnd = () => { r = (r * 1664525 + 1013904223) >>> 0; return r / 4294967296; };
-  const R = radius() + NEAR_RES.pad, count = (t) => { let c = 0; for (let i = 0; i < s.terr.length; i++) { const x = i % SW, y = (i / SW) | 0; if (s.terr[i] === t && (x - SCX) ** 2 + (y - SCY) ** 2 <= R * R) c++; } return c; };
+  const pad = (k) => (k === 'ore' ? 0 : NEAR_RES.pad), count = (t, R) => { let c = 0; for (let i = 0; i < s.terr.length; i++) { const x = i % SW, y = (i / SW) | 0; if (s.terr[i] === t && (x - SCX) ** 2 + (y - SCY) ** 2 <= R * R) c++; } return c; }; // 광맥은 처음부터 빛 안에
   for (const [k, want] of [['tree', NEAR_RES.tree], ['rock', NEAR_RES.rock], ['ore', NEAR_RES.ore]]) {
-    let need = want - count(TR[k]);
+    const R = radius() + pad(k); let need = want - count(TR[k], R);
     for (let tries = 0; need > 0 && tries < 2000; tries++) {
       const a = rnd() * Math.PI * 2, d = 5 + rnd() * (R - 5), x = Math.round(SCX + Math.cos(a) * d), y = Math.round(SCY + Math.sin(a) * d), i = I(x, y);
       if (x < 1 || y < 1 || x >= SW - 1 || y >= SW - 1 || (s.terr[i] !== TR.grass && s.terr[i] !== TR.dirt) || s.wall[i] || s.floor[i] || s.zone[i]) continue;

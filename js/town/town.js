@@ -1,10 +1,12 @@
 import * as THREE from 'three';
+import { colony, tickReal } from '../core/colony.js';
 import { META, processReturn, rel, saveMeta } from '../core/meta.js';
 import { furnCells, roomName } from '../core/rooms.js';
-import { costOf, inLight, invalidate, missing, radius, roomAt, rooms } from '../core/settlement.js';
+import { costOf, inLight, invalidate, missing, radius, roomAt, roomTier, rooms } from '../core/settlement.js';
 import { Game } from '../core/state.js';
 import { hearthGlow } from '../core/visitors.js';
 import { FURN, ROOMS, SCX, SCY, SH, SW, TERRAIN } from '../data/build.js';
+import { CLOCK, STATIONS } from '../data/colony.js';
 import { weaponId } from '../data/gear.js';
 import { WORKTALK } from '../data/lines.js';
 import { JOBS } from '../data/town.js';
@@ -23,7 +25,7 @@ import { TownNPC, talkLine } from './town-npc.js';
 /* ================= 정착지: 40×40 땅 · 방 · 주민 (docs/설계_정착지_건설.md 1단계) ================= */
 const I = (x, y) => y * SW + x;
 const HERO_AT = [SCX - 1, SCY + 1.1];
-const CRAFT_ROOMS = ['forge', 'herb', 'hunter', 'library', 'inn'];
+const CRAFT_ROOMS = Object.keys(STATIONS);
 
 export const Town = {
   sv: null,
@@ -35,6 +37,8 @@ export const Town = {
   roomTags: [],
   shower: [],
   busy: false,
+  spIdx: 1, // 배속(CLOCK.speeds)
+  pileObjs: new Map(),
   /** 기능 자리(월드 좌표 [x, z]): 모닥불 · 출발문 · 제단 · 창고 더미 · 작업방 가운데 */
   spot(kind) {
     const S = META.settle;
@@ -78,7 +82,7 @@ export const Town = {
     this.build(res.visitors);
     if (res.shard) META.lit[res.shard - 1] = true;
     this.busy = true;
-    this.startIntro();
+    this.startIntro(); this.renderClock();
     if (res.dark) { setTimeout(() => { this.busy = false; this.afterReport = () => this.endingDark(); this.report(r, res); }, 700); this.renderHud(); return; }
     const hasLoot = r.loot && Object.keys(r.loot).length, steps = [];
     steps.push((next) => this.waitIntro(next));
@@ -101,6 +105,7 @@ export const Town = {
     for (const n of this.npcs) D.scene.remove(n.d.root); this.npcs = [];
     for (const t of [...this.tags, ...this.roomTags]) t.remove(); this.tags = []; this.roomTags = [];
     for (const s of this.shower) D.scene.remove(s.o); this.shower = [];
+    for (const o of this.pileObjs.values()) D.scene.remove(o); this.pileObjs.clear();
     this.hero = null; this.lands = []; this.graves = []; this.visitorDolls = []; this.orbs = []; this.intro = null;
     const rig = D.rig; Object.assign(rig, { drag: null, onePan: false, panMode: false, bounds: null, maxZoom: 1.7 }); D.camera.far = 140; D.camera.updateProjectionMatrix();
     $('#townhud').style.opacity = '';
@@ -112,7 +117,7 @@ export const Town = {
     Object.assign(D.rig, { onePan: true, panMode: true, bounds: [2, 2, SW - 3, SH - 3], maxZoom: 2.2 });
     D.rig.reset(); // 정착지는 늘 탑뷰(정면·기본 확대)로 시작한다
     this.sv = new SettleView(D.scene);
-    this.refreshWorld();
+    colony(); this.refreshWorld(); this.syncPiles();
     for (const n of META.npcs) this.npcs.push(new TownNPC(n));
     if (META.hero) {
       const sp = dollSpec({ type: 'hero', face: [0, 1], eq: META.hero.eq }), d = K.doll(sp.parts, { scale: 1.3, gloss: sp.gloss }); const ex = sp.extra(d); if (META.hero.eq.weapon) ex.wh.add(weaponDoll(weaponId(META.hero.eq.weapon), META.hero.eq.weapon).root);
@@ -130,6 +135,24 @@ export const Town = {
       const tag = document.createElement('div'); tag.className = 'btag'; tag.textContent = `${r.kind ? ROOMS[r.kind].icon : '▫'} ${roomName(r)}`;
       tag.dataset.x = r.cx; tag.dataset.z = r.cy; View.labelRoot.appendChild(tag); this.roomTags.push(tag);
     }
+  },
+  /** 바닥 더미(베고 캔 것 · 거둔 식량): 나르기 일이 창고로 옮긴다 */
+  syncPiles() {
+    const D = View.dio, C = META.colony; if (!C) return;
+    const live = new Set(C.piles.map((p) => p.id));
+    for (const [id, o] of this.pileObjs) if (!live.has(id)) { D.scene.remove(o); this.pileObjs.delete(id); }
+    for (const p of C.piles) {
+      let o = this.pileObjs.get(p.id);
+      if (!o) { o = matProp(p.m); o.position.set(p.x + ((p.id * 37) % 7 - 3) * 0.06, 0.02, p.y + ((p.id * 53) % 7 - 3) * 0.06); o.rotation.y = p.id; D.scene.add(o); this.pileObjs.set(p.id, o); }
+      o.scale.setScalar(0.9 + Math.min(0.8, p.n * 0.05));
+    }
+  },
+  /** 한 시간(또는 여러 시간)이 흐른 뒤: 화면을 따라잡는다 */
+  afterHours() {
+    const C = META.colony;
+    if (C.changed) { C.changed = false; this.refreshWorld(); this.syncPiles(); if (this.buildMode) this.renderBuild?.(); }
+    this.renderClock(); this.renderHud(); saveMeta(); this.workRefresh?.();
+    for (const t of this.npcs) if (t.doing !== t.n.doing || t.n.carry) { t.doing = t.n.doing; if (t.state !== 'walk') t.t = t.dur; } // 할 일이 바뀌면 곧 움직인다
   },
   fireLevel() { const g = hearthGlow(); return g <= GLOW.low ? 1 : g < GLOW.vision ? 2 : 3; },
   /* ---------- 들어올 때 줌인 (§8.1): 높은 곳에서 어둠 속 작은 불빛 → 마을. 누르면 건너뛴다 ---------- */
@@ -189,6 +212,7 @@ export const Town = {
     const bad = others.filter((o) => (n.rel[o.n.id] || 0) <= -20);
     const ok = (x, z) => bad.every((o) => o.pos.distanceTo(W3(x, z)) > 3 && (!o.target || o.target.distanceTo(W3(x, z)) > 3));
     if (t.partner) { t.partner.partner = null; t.partner = null; }
+    if (this.decideTask(t)) return;
     const w = this.workSpot(n);
     if (n.t.C <= -1 && r < 0.3) { t.goto(w[0], w[1], 'nap', 5); return; }
     const friends = others.filter((o) => (n.rel[o.n.id] || 0) >= 20 && !o.partner && o.state !== 'walk' && o.state !== 'gather');
@@ -206,9 +230,29 @@ export const Town = {
     if (!room) { t.goto(this.center.x + 1.5, this.center.z + 1.5, 'idle', 3); return; }
     t.goto(w[0], w[1], 'work', Math.max(2.5, 6 + n.t.C * 1.6), [room.cx, room.cy]);
   },
+  /** 정착지의 일(core/colony.js)을 따라 움직인다. 쉴 때만 예전처럼 돌아다닌다 */
+  decideTask(t) {
+    const n = t.n, tk = n.task;
+    if (n.doing === 'sleep' || n.doing === 'faint') {
+      const beds = META.settle.furn.filter((f) => f.k === 'bed'), b = beds[META.npcs.indexOf(n)];
+      const [x, z] = b ? [b.x, b.y] : [SCX + Math.cos(META.npcs.indexOf(n)) * 2.2, SCY + Math.sin(META.npcs.indexOf(n)) * 2.2];
+      t.goto(x, z, 'sleep', 4); return true;
+    }
+    if (n.carry) { const [x, z] = this.spot('storage'); t.setCarry(n.carry); n.carry = null; t.goto(x + 0.6, z + 0.6, 'drop', 0.8, [x, z]); return true; }
+    if (!tk || tk.x == null || n.doing === 'rest') return false;
+    // 일할 자리: 나무·바위·밭은 그 칸 옆, 작업방은 방 안
+    let x = tk.x, z = tk.y, face = null;
+    if (tk.kind === 'gather' || tk.kind === 'build' || tk.kind === 'farm') { const a = Math.atan2(SCY - tk.y, SCX - tk.x); x = tk.x + Math.cos(a) * 0.7; z = tk.y + Math.sin(a) * 0.7; face = [tk.x, tk.y]; }
+    else if (tk.kind === 'craft' || tk.kind === 'cook') { const r = rooms().find((q) => q.kind === (tk.room || 'inn')); if (r) { const i = [...r.cells][(n.id.charCodeAt(1) * 7) % r.cells.size]; x = i % SW; z = (i / SW) | 0; face = [r.cx, r.cy]; } }
+    t.task = tk.kind;
+    if (Math.hypot(t.pos.x - x, t.pos.z - z) < 0.4) { t.state = 'task'; t.t = 0; t.dur = 5; return true; }
+    t.goto(x, z, 'task', 5, face); return true;
+  },
   bubble(t) {
     const n = t.n; let text;
-    if (t.state === 'chat') text = pick(['💬', '😄', '💬 그러니까…', '하하']);
+    if (t.state === 'task' && t.n.task) text = { build: '🔨 뚝딱뚝딱', gather: t.n.task.what === 'tree' ? '🪓 영차!' : '⛏ 쾅!', farm: '🌾 …', cook: '🍲 보글보글', craft: pick(WORKTALK[JOBS[t.n.job].work] || ['⚒']), haul: '📦 영차' }[t.task] || '…';
+    else if (t.state === 'sleep') text = '💤';
+    else if (t.state === 'chat') text = pick(['💬', '😄', '💬 그러니까…', '하하']);
     else if (t.state === 'nap') text = '💤';
     else if (t.state === 'work') text = n.mood <= -1 ? '😤 …' : pick(WORKTALK[JOBS[n.job].work]);
     else if (t.state === 'gather') text = n.t.X >= 1 ? '우와, 이게 다 뭐야?' : n.t.H <= -1 ? '하나쯤 없어져도…' : '수고했어요.';
@@ -218,6 +262,7 @@ export const Town = {
   frame(sdt) {
     const D = View.dio, time = K.SHARED.uTime.value;
     this.introFrame(sdt);
+    if (!this.busy && !this.intro && META.settle && tickReal(sdt, CLOCK.speeds[this.spIdx])) this.afterHours();
     this.sv?.frame(sdt, time);
     for (const t of this.npcs) t.update(sdt, time);
     this.hearthFrame(sdt, time);
@@ -267,7 +312,7 @@ export const Town = {
   },
   roomCard(r) {
     const furn = Object.entries(r.furn).map(([k, n]) => `${FURN[k].icon} ${FURN[k].name}${n > 1 ? ` ${n}` : ''}`).join(' · ') || '가구 없음';
-    const hint = !r.kind ? '안에 놓인 가구로 방의 쓰임이 정해진다.' : CRAFT_ROOMS.includes(r.kind) ? '작업대를 누르면 만들 수 있다.' : '';
+    const hint = !r.kind ? '안에 놓인 가구로 방의 쓰임이 정해진다.' : CRAFT_ROOMS.includes(r.kind) ? `${roomTier(r)}등급 작업방 · 작업대를 누르면 제작 주문.` : '';
     UI.info(`<h3>${r.kind ? ROOMS[r.kind].icon : '▫'} ${roomName(r)} <small style="color:#9aa2bd">${r.cells.size}칸</small></h3><div class="gtxt">${furn}</div>${hint ? `<div class="gtxt" style="color:#9aa2bd">${hint}</div>` : ''}`);
   },
   open(id) {
