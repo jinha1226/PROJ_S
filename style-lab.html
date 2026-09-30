@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#101014">
+<title>스타일 실험실 · 횃불과 원소</title>
+<link rel="stylesheet" href="js/style-lab/style-lab.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+</head>
+<body>
+<main id="app">
+  <header id="top">
+    <div class="head"><a href="index.html">← 돌아가기</a><b>스타일 실험실</b><button id="compare">비교</button></div>
+    <div class="seg three" aria-label="스타일"><button data-style="A">A 현재</button><button data-style="B">B 로우폴리</button><button data-style="C">C 2D</button></div>
+    <div class="seg scenes" aria-label="장면"><button data-scene="dungeon">던전 전투</button><button data-scene="settle">정착지</button><button id="freeze">멈춤</button></div>
+  </header>
+  <div id="stage" aria-label="장면"><div class="badge">멈춤</div></div>
+  <footer id="bottom">
+    <div class="sname" id="sname"></div>
+    <div id="rate"></div>
+    <input id="memo" type="text" maxlength="200" placeholder="메모" autocomplete="off">
+  </footer>
+  <section id="overlay" hidden></section>
+</main>
+<script type="module" src="js/style-lab/main.js"></script>
+</body>
+</html>

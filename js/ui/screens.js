@@ -15,7 +15,7 @@ Object.assign(UI, {
       <p style="font-size:13px">몬스터를 쓰러뜨리면 영혼석 하나가 무작위로 떨어진다. 영혼석마다 스킬이 하나씩 있다.</p>
       <div class="chips"><span>탭: 이동·공격</span><span>먼 칸 탭: 자동 이동</span><span>길게 누르기: 정보</span><span>스킬: 칸 탭 후 한 번 더 탭</span><span>두 손가락: 회전</span><span>핀치: 확대</span></div>
       <button class="bigbtn" id="btn-start">정착지로</button>
-      <p style="font-size:12px"><a href="raid-lab.html" style="color:#ffe0a0">레이드 실험실</a></p>
+      <p style="font-size:12px"><a href="raid-lab.html" style="color:#ffe0a0">레이드 실험실</a> · <a href="style-lab.html" style="color:#ffe0a0">스타일 실험실</a></p>
       <p style="font-size:12px;color:#7d86a6;margin-top:14px">진행은 이 브라우저에 저장된다 · <a href="#" id="btn-wipe" style="color:#9aa2bd">처음부터</a></p>`);
     $('#btn-start').onclick = () => { Sfx.init(); this.start(); };
     $('#btn-wipe').onclick = (ev) => { ev.preventDefault(); if (confirm('정착지와 모험가 기록을 모두 지울까?')) { try { localStorage.removeItem('torch-meta-v3'); } catch (_) { /* 없음 */ } resetMeta(); UI.toast('기록을 지웠다.'); } };

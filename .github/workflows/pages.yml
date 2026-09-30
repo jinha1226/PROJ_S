@@ -48,6 +48,7 @@ jobs:
           cp index.html _site/
           cp dungeon.html _site/
           cp raid-lab.html _site/
+          cp style-lab.html _site/
           cp -r js _site/
           cp -r versions _site/
           touch _site/.nojekyll
