@@ -42,3 +42,15 @@ test('같은 씨앗·같은 입력이면 결과가 같다', () => {
   const go = () => { arena([[3, 0], [-3, 2, 'archer'], [2, -3, 'mage'], [-2, -2, 'rat']], { seed: 11 }); run(secs(4), [0.3, 0.2]); run(secs(2)); return snap(); };
   assert.equal(go(), go());
 });
+
+test('멈춘 동안에는 날아가던 화살도 그 자리에 떠 있다', () => {
+  arena([[4, 0, 'archer', { cd: 0, cdInit: true, hp: 99, max: 99 }]]);
+  G.eq.weapon = null;
+  run(secs(0.85));
+  const pr = G.projs[0];
+  assert.ok(pr, '화살이 떴다');
+  const x = pr.x;
+  setIntent(null, false);
+  for (let k = 0; k < 40; k++) advance(0.05);
+  assert.equal(G.projs[0].x, x);
+});

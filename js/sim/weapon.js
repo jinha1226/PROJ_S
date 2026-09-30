@@ -33,7 +33,7 @@ export function heroAttack(dt) {
   const p = G.player;
   if (G.twin) { G.twin.t -= dt; if (G.twin.t <= 0) { const t = G.ents.find((e) => e.id === G.twin.id); G.twin = null; if (t && t.alive && dist(p, t) <= shapeOf().reach + 0.3) weaponHit(t, null, { extra: true }); } }
   G.swingT = Math.max(0, (G.swingT || 0) - dt);
-  if (G.swingT > 0 || !p.alive || G.over || p.st.frozen > 0 || p.st.stun > 0) return;
+  if (G.swingT > 1e-6 || !p.alive || G.over || p.st.frozen > 0 || p.st.stun > 0) return;
   const t = swingTarget(); if (!t) return;
   swing(t);
   G.swingT = beatOfWeapon();

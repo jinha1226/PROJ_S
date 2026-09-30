@@ -6,7 +6,8 @@
     "test": "node tests/smoke.mjs",
     "lint": "node tools/fix-imports.mjs --check",
     "fix-imports": "node tools/fix-imports.mjs",
-    "test:all": "node tests/smoke.mjs && node tests/realtime.mjs && node tests/items.mjs && node tests/story.mjs && node tests/settlement.mjs"
+    "test:all": "node --test \"tests/sim/*.test.mjs\" && node tests/smoke.mjs && node tests/realtime.mjs && node tests/items.mjs && node tests/story.mjs && node tests/settlement.mjs",
+    "test:sim": "node --test \"tests/sim/*.test.mjs\""
   },
   "devDependencies": {
     "acorn": "^8.14.0",

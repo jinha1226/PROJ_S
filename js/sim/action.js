@@ -24,14 +24,14 @@ export function tickAct(u, dt) {
   a.t += dt;
   const A = ACTS[a.kind];
   if (!a.done) {
-    if (a.t < a.wind) return;
+    if (a.t < a.wind - 1e-6) return;
     a.done = true; a.t = a.wind; G.intentsDirty = true;
     u.cd = a.cd ?? beatOf(u);
     A.resolve(u, a);
     if (!u.alive || u.act !== a) return;
   }
   if (A.update) { if (A.update(u, a, dt)) { u.act = null; G.intentsDirty = true; } return; }
-  if (a.t >= a.wind + a.recover) { u.act = null; G.intentsDirty = true; }
+  if (a.t >= a.wind + a.recover - 1e-6) { u.act = null; G.intentsDirty = true; }
 }
 
 /** 이 유닛이 노릴 상대: 가장 가까운 반대편 유닛(주민·중립은 빼고). 적에게는 등불지기와 동료 */
