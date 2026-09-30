@@ -99,6 +99,6 @@ export const LOOT = {
 };
 export const ELEM_CRYSTAL = { fire: '불 결정', frost: '얼음 결정', bolt: '번개 결정' };
 /** 장비 드롭: 층마다 기대 개수 · 속성 장비 비율 */
-export const GEAR_DROP = { perFloor: 0.3, special: 0.6, bossSpecial: true };
+export const DROP_RATE = { floor: 0.15, special: 0.6, chest: 0.35 }; // 바닥 장비 확률 · 떨어진 장비가 속성 장비일 확률 · 층마다 상자(/§8.3)
 /** 층 바닥 재료: 약초 · 마석 조각 */
 export const FLOOR_MATS = { 약초: [1, 2], 마석: [2, 3] };

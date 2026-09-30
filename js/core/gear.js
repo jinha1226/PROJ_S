@@ -1,4 +1,5 @@
 import { BASE } from '../data/classes.js';
+import { DROP_RATE } from '../data/colony.js';
 import { kindOf } from '../data/enemies.js';
 import { AMULETS, ART_A, ART_B, BAG_MAX, BASE_EVA, BRANDS, CAPS, EGOS, ELEM, GEAR_BASES, GEAR_DROP, JEWEL_LOOK, QUALITY, RANDART_COSTS, RANDART_PROPS, RINGS, SLOTS, SLOT_NAME, UNRANDS, clampRes, dropTable, fitsSlot, hasQuality, isJewel, isWeapon, newBase, plusMax, twoHanded, weaponOf } from '../data/gear.js';
 import { T_FLOOR, T_STAIRS, ZONE_FLOORS } from '../data/terrain.js';
@@ -132,7 +133,7 @@ export function makeUnrand(id) {
 /** 층(depth 1~12)에 맞는 무작위 장비. force 'art': 유물 이상(보스·희귀 상자) */
 export function rollGear(depth, force) {
   const d = depth === 'boss' ? G.floor : depth;
-  let cat = force === 'art' ? (rand() < 0.2 ? 4 : 3) : wpick(dropTable(d).map((w, k) => [k, w]));
+  let cat = force === 'art' ? (rand() < 0.2 ? 4 : 3) : force === 'special' ? (rand() < 0.75 ? 2 : 3) : wpick(dropTable(d).map((w, k) => [k, w]));
   if (cat === 4) {
     const seen = new Set(META ? META.unrandsSeen || [] : []), left = Object.keys(UNRANDS).filter((k) => !seen.has(k));
     if (left.length) { const u = pick(left); if (META) { META.unrandsSeen = [...seen, u]; saveMeta(); } const un = makeUnrand(u); if (un.q) un.q = qualityOf(d); return un; } // 유품도 구역 품질
@@ -373,17 +374,19 @@ export function placeGear(it, x, y, from) {
 }
 /** 몬스터 5%(갑옷 고블린·돌진형 15%), 보스 1개 확정(유물 이상 30%) */
 export function dropGearFrom(e) {
-  if (e.boss) { placeGear(rollGear(G.floor, rand() < 0.3 ? 'art' : null), e.x, e.y); return; }
+  if (e.boss) { placeGear(rollGear(G.floor, rand() < 0.3 ? 'art' : 'special'), e.x, e.y); return; } // 보스는 속성 장비 확정
   const chance = (GEAR_DROP[kindOf(e)] ?? GEAR_DROP.default) * DARK[torchTier(G.torch ?? 100)].drop; // 어두울수록 더 남긴다
-  if (rand() * 100 < chance) placeGear(rollGear(G.floor), e.x, e.y);
+  if (rand() * 100 < chance) placeGear(rollDrop(G.floor), e.x, e.y);
 }
 /** 바닥의 장비 1~2개 + 죽은 등불지기가 남긴 유품 */
+/** 던전에서 떨어지는 장비: 드물고, 떨어지면 절반 넘게 속성 장비 */
+export const rollDrop = (d) => rollGear(d, rand() < DROP_RATE.special ? 'special' : null);
 export function placeFloorGear(rooms, tile, start) {
-  const n = ri(1, 2);
+  const n = rand() < DROP_RATE.floor ? 1 : 0;
   for (let k = 0, placed = 0; k < 200 && placed < n; k++) {
     const r = rooms[ri(0, rooms.length - 1)], x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1), i = I(x, y);
     if (tile[i] !== T_FLOOR || G.items.has(i) || G.mats.has(i) || G.gear.has(i) || Math.max(Math.abs(x - start.x), Math.abs(y - start.y)) < 3) continue;
-    G.gear.set(i, rollGear(G.floor)); placed++;
+    G.gear.set(i, rollDrop(G.floor)); placed++;
   }
   for (const rel of (META && META.relics) || []) {
     if (rel.zone !== G.zone || rel.zf !== G.zf) continue;
@@ -405,7 +408,7 @@ export function openChest(x, y) {
 /** 층마다 상자 0~1개(+extra), 장비 확정 */
 export function placeChests(rooms, tile, extra = 0) {
   G.chests = new Map();
-  const n = ri(0, 1) + extra;
+  const n = (rand() < DROP_RATE.chest ? 1 : 0) + extra;
   for (let k = 0, placed = 0; k < 200 && placed < n; k++) {
     const r = rooms[ri(1, rooms.length - 1)], x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1), i = I(x, y);
     if (tile[i] !== T_FLOOR || G.items.has(i) || G.mats.has(i) || G.gear.has(i) || G.chests.has(i)) continue;

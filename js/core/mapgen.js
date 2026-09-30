@@ -1,6 +1,7 @@
+import { FLOOR_MATS } from '../data/colony.js';
 import { BOSSES, ENEMY, MAGE } from '../data/enemies.js';
 import { ITEM_W } from '../data/items.js';
-import { FLOORS, SURF_OF, S_GRASS, S_ICE, S_NONE, S_OIL, S_WATER, T_DOOR, T_FLOOR, T_STAIRS, T_WALL, ZONES, ZONE_FLOORS } from '../data/terrain.js';
+import { FLOORS, SURF_OF, S_GRASS, S_NONE, S_OIL, S_WATER, T_DOOR, T_FLOOR, T_STAIRS, T_WALL, ZONES, ZONE_FLOORS } from '../data/terrain.js';
 import { D4, D8, cheb, sgn } from '../util/grid.js';
 import { pick, rand, ri, shuffle, wpick } from '../util/rng.js';
 import { initClock } from './clock.js';
@@ -116,12 +117,12 @@ export function genFloor() {
   }
   // 재료
   G.mats = new Map();
-  for (let k = 0, placed = 0; k < 300 && placed < 6; k++) {
+  // 바닥 재료: 약초 · 마석 조각 (docs/설계_정착지_2단계.md §8.1)
+  const want = [...Array(ri(...FLOOR_MATS.약초)).fill('약초'), ...Array(ri(...FLOOR_MATS.마석)).fill('마석')];
+  for (let k = 0, placed = 0; k < 300 && placed < want.length; k++) {
     const r = rooms[ri(1, rooms.length - 1)], x = ri(r.x, r.x + r.w - 1), y = ri(r.y, r.y + r.h - 1), i = I(x, y);
     if (tile[i] !== T_FLOOR || G.mats.has(i)) continue;
-    const sf = surf[i], nearWall = D4.some(([dx, dy]) => tile[I(x + dx, y + dy)] === T_WALL);
-    const m = sf === S_GRASS ? '약초' : sf === S_OIL ? '기름' : sf === S_ICE ? '얼음' : nearWall ? '광석' : rand() < 0.5 ? '약초' : '광석';
-    G.mats.set(i, m); placed++;
+    G.mats.set(i, want[placed] === '약초' && surf[i] !== S_GRASS && rand() < 0.3 ? '마석' : want[placed]); placed++;
   }
   // 소모품
   for (let k = 0, placed = 0; k < 300 && placed < F.items + 2; k++) {

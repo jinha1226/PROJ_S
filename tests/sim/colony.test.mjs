@@ -74,3 +74,12 @@ test('원정 뒤: 지난 시간만큼 돌리고 요약한다(최대 3일)', () =
   assert.equal(sum.hours, 60); assert.ok((sum.got.나무 || 0) > 0 && sum.meals > 0, JSON.stringify(sum));
   assert.equal(passHours(500).hours, 72);
 });
+
+test('전리품: 모든 적이 마석, 마법사는 자기 원소 결정, 보스는 마석 10 · 심장', async () => {
+  const { lootOf } = await import('../../js/core/combat.js');
+  setR(mulberry32(5));
+  const mage = Array.from({ length: 50 }, () => lootOf({ type: 'mage', elem: 'bolt' })).flat();
+  assert.ok(mage.filter((m) => m === '마석').length >= 90 && mage.includes('번개 결정') && !mage.includes('불 결정'));
+  const boss = lootOf({ type: 'goblin', boss: 'chief' });
+  assert.equal(boss.filter((m) => m === '마석').length, 10); assert.ok(boss.includes('심장'));
+});

@@ -1,3 +1,4 @@
+import { ELEM_CRYSTAL, LOOT } from '../data/colony.js';
 import { PHYS } from '../data/colors.js';
 import { CATS, catOf, monRes } from '../data/enemies.js';
 import { CAPS, RES_MUL, clampRes, weaponOf } from '../data/gear.js';
@@ -80,12 +81,12 @@ export function kill(e) {
   if (e.ally) return;
   if (e.npc) { log(`${jo(e.name, '을를')} 잃었다…`, 'bad'); return; }
   G.stats.kills++; gainXp(e);
-  // 무기로 쓰러뜨리면 재료 하나(무작위 — 막타 형태와 상관없다)
-  const f = e.lastForm, part = f ? pick(['가죽', '뼈', '심장']) : null;
-  if (part) { addLoot(part, 1); emit('loot', { x: e.x, y: e.y, m: part }); }
+  // 전리품: 마석 + 적 종류별 특별 재료 (docs/설계_정착지_2단계.md §8.1)
+  const f = e.lastForm, got = lootOf(e), part = got.find((m) => m !== '마석') || null;
+  for (const m of got) addLoot(m, 1);
+  if (got.length) emit('loot', { x: e.x, y: e.y, m: part || '마석', list: got });
   if (e.boss) {
     G.exitOpen = true; G.tile[G.stairs] = T_STAIRS; snapTerrain();
-    addLoot('마석', 1); addLoot(pick(['가죽', '뼈', '심장']), 2);
     emit('portal', { x: G.stairs % G.W, y: (G.stairs / G.W) | 0 }); emit('banner', { text: `${e.name} 격파!`, elem: 'chain' });
     log('귀환의 문이 열렸다.', 'syn');
   }
@@ -98,6 +99,13 @@ export function kill(e) {
   dropGearFrom(e);
 }
 
+/** 이 적이 남기는 재료(마석은 개수만큼 여러 번) */
+export function lootOf(e) {
+  const L = LOOT[e.boss ? 'boss' : e.type] || LOOT.goblin, out = [];
+  if (rand() < L.stone[1]) for (let k = 0; k < L.stone[0]; k++) out.push('마석');
+  for (const [m, p] of L.mats) if (rand() < p) out.push(m === 'crystal' ? ELEM_CRYSTAL[e.elem] || pick(Object.values(ELEM_CRYSTAL)) : m);
+  return out;
+}
 /** 숨은 적이 드러난다 */
 export function reveal(e) {
   if (!e.hidden) return; e.hidden = false; e.revealed = true;

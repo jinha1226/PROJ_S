@@ -127,7 +127,7 @@ export function dropTable(depth) {
   const z = Math.ceil(depth / ZONE_FLOORS); // 구역
   return z <= 1 ? [70, 20, 8, 2, 0] : z === 2 ? [55, 25, 14, 5, 1] : z === 3 ? [45, 25, 20, 8, 2] : [35, 25, 25, 12, 3];
 }
-export const GEAR_DROP = { default: 5, goblin_armor: 15, charger: 15 };
+export const GEAR_DROP = { default: 0.7, goblin_armor: 2, charger: 2 }; // 처치할 때 장비(%) — 장비는 주로 마을에서 만든다(docs/설계_정착지_2단계.md §8.3)
 
 /** 저항 7단계 → 받는 피해 배율 (docs/밸런스_기준.md §3) */
 export const RES_MUL = { '-3': 2.5, '-2': 2, '-1': 1.5, 0: 1, 1: 0.5, 2: 0.33, 3: 0.2 };
